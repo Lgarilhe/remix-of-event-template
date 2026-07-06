@@ -308,7 +308,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Parlez-nous de vous</h2>
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Parlez-nous de vous</h2>
         <p className="text-muted-foreground text-sm">Entrez le nom de votre société, on récupère tout automatiquement.</p>
       </div>
 
@@ -334,7 +334,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
           onClick={handleSearch}
           disabled={query.trim().length < 2 || phase === 'scanning'}
           className="h-11 px-5 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm shrink-0"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           {phase === 'scanning' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rechercher'}
         </Button>
@@ -487,8 +486,8 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold text-lg leading-tight">{company.name}</h3>
                   <span
-                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-border"
-                    style={{ background: 'hsl(var(--landing-accent-yellow))' }}
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 rounded-md"
+                    style={{ background: 'hsl(var(--success) / 0.15)', color: 'hsl(var(--success))' }}
                   >
                     Enrichi
                   </span>
@@ -565,7 +564,6 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                 onClick={handleContinue}
                 disabled={isCreating}
                 className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                 {isCreating ? 'Création...' : 'Continuer'}

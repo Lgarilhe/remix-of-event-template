@@ -49,7 +49,7 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-3xl md:text-4xl">
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
           Quels sont vos secteurs ?
         </h2>
         <p className="text-muted-foreground text-sm">
@@ -70,16 +70,11 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
               key={spec.value}
               type="button"
               onClick={() => toggle(spec.value)}
-              className={`px-3 py-1.5 text-xs font-semibold border-2 transition-all duration-200 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all duration-200 ${
                 active
-                  ? 'border-border text-foreground'
-                  : 'border-border text-muted-foreground hover:border-border'
+                  ? 'border-emerald-500/40 bg-emerald-500/15 text-foreground'
+                  : 'border-border text-muted-foreground hover:bg-accent/40 hover:text-foreground'
               }`}
-              style={
-                active
-                  ? { background: 'hsl(var(--skalr-green) / 0.15)' }
-                  : {}
-              }
             >
               {spec.label}
             </button>
@@ -104,7 +99,6 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
         <Button
           onClick={() => onSubmit(Array.from(selected))}
           className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />
         </Button>

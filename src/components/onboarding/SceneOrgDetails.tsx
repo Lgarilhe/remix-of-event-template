@@ -99,7 +99,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-3xl md:text-4xl">
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
           {isFreelance ? 'Votre activité indépendante' : 'Votre équipe recrutement'}
         </h2>
         <p className="text-muted-foreground text-sm">
@@ -233,7 +233,6 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource: '', freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined })}
           disabled={!canSubmit}
           className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           Suivant <ArrowRight className="w-4 h-4" />
         </Button>

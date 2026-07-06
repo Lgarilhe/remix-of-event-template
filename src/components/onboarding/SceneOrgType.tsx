@@ -38,7 +38,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-3xl md:text-4xl">
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
           Quel est votre profil ?
         </h2>
         <p className="text-muted-foreground text-sm">
@@ -61,22 +61,19 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + index * 0.08, duration: 0.35 }}
               className={`
-                w-full text-left p-3.5 border-2 transition-all duration-200
+                w-full text-left p-3.5 rounded-lg border transition-all duration-200
                 flex items-start gap-3
                 ${isSelected
-                  ? 'border-border bg-foreground/[0.03]'
-                  : 'border-border hover:border-border'}
+                  ? 'border-foreground/40 bg-accent/60 shadow-sm'
+                  : 'border-border hover:bg-accent/30'}
               `}
-              style={isSelected ? { boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' } : {}}
             >
               <div
-                className={`w-9 h-9 flex items-center justify-center shrink-0 transition-colors ${
-                  isSelected
-                    ? 'bg-foreground text-background'
-                    : 'bg-accent/50 text-foreground/60'
+                className={`w-9 h-9 flex items-center justify-center shrink-0 rounded-lg transition-colors ${
+                  isSelected ? 'bg-emerald-500/30' : 'bg-emerald-500/15'
                 }`}
               >
-                <Icon className="w-4.5 h-4.5" />
+                <Icon className="w-4.5 h-4.5 text-foreground" strokeWidth={2} />
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-sm font-semibold block">{option.title}</span>
@@ -88,7 +85,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  className="w-5 h-5 bg-foreground text-background flex items-center justify-center shrink-0 mt-0.5"
+                  className="w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center shrink-0 mt-0.5"
                 >
                   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />

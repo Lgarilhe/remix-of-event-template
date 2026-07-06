@@ -222,10 +222,10 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
   // --- CLASSIFY STEP ---
   if (profileStep === 'classify' && scanResult) {
     const typeOptions = [
-      { value: 'rpo' as const, label: 'RPO', color: 'var(--skalr-purple)' },
-      { value: 'cabinet' as const, label: 'Cabinet', color: 'var(--skalr-green)' },
-      { value: 'direct' as const, label: 'Direct', color: 'var(--skalr-pink)' },
-      { value: 'other' as const, label: 'Autre', color: 'var(--muted-foreground)' },
+      { value: 'rpo' as const, label: 'RPO' },
+      { value: 'cabinet' as const, label: 'Cabinet' },
+      { value: 'direct' as const, label: 'Direct' },
+      { value: 'other' as const, label: 'Autre' },
     ];
 
     const classifiedCount = expClassifications.filter(c => c.type !== null).length;
@@ -239,7 +239,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
       >
         {/* Header */}
         <div className="text-center space-y-2">
-          <h2 className="font-editorial italic text-3xl md:text-4xl">Classez vos expériences</h2>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Classez vos expériences</h2>
           <p className="text-muted-foreground text-sm max-w-sm mx-auto">
             Pour chaque poste, indiquez le contexte de recrutement.
           </p>
@@ -247,10 +247,9 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
         {/* Progress */}
         <div className="flex items-center gap-3">
-          <div className="h-1 flex-1 bg-border overflow-hidden">
+          <div className="h-1 flex-1 rounded-full bg-border overflow-hidden">
             <motion.div
-              className="h-full"
-              style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
+              className="h-full bg-success"
               initial={{ width: 0 }}
               animate={{ width: `${expClassifications.length ? (classifiedCount / expClassifications.length) * 100 : 0}%` }}
               transition={{ duration: 0.4, ease: 'easeOut' }}
@@ -291,16 +290,12 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                         />
                       ) : null}
                       <div
-                        className={`w-8 h-8 border border-border flex items-center justify-center text-xs font-bold text-muted-foreground ${exp.logoUrl ? 'hidden' : ''}`}
-                        style={{ background: `hsl(var(--skalr-purple) / ${0.05 + (i % 3) * 0.03})` }}
+                        className={`w-8 h-8 rounded-md border border-border bg-accent/40 flex items-center justify-center text-xs font-bold text-muted-foreground ${exp.logoUrl ? 'hidden' : ''}`}
                       >
                         {exp.company?.charAt(0)?.toUpperCase() || '?'}
                       </div>
                       {isClassified && activeOpt && (
-                        <div
-                          className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 flex items-center justify-center text-[7px] text-white border border-background"
-                          style={{ background: `hsl(${activeOpt.color})` }}
-                        >
+                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] text-background bg-success border border-background">
                           ✓
                         </div>
                       )}
@@ -332,20 +327,11 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                               )
                             );
                           }}
-                          className={`px-2.5 py-1 text-xs font-bold uppercase tracking-wider border-2 transition-all ${
+                          className={`px-2.5 py-1 text-xs font-bold uppercase tracking-wider rounded-md border transition-all ${
                             isActive
-                              ? 'text-white'
-                              : 'border-border/8 text-muted-foreground/30 hover:text-muted-foreground/60 hover:border-border'
+                              ? 'bg-foreground text-background border-foreground'
+                              : 'border-border/60 text-muted-foreground/40 hover:text-muted-foreground hover:bg-accent/40'
                           }`}
-                          style={
-                            isActive
-                              ? {
-                                  background: `hsl(${opt.color})`,
-                                  borderColor: `hsl(${opt.color})`,
-                                  boxShadow: `2px 2px 0px 0px hsl(${opt.color} / 0.3)`,
-                                }
-                              : {}
-                          }
                         >
                           {opt.label}
                         </button>
@@ -377,7 +363,6 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             onClick={handleGenerateBio}
             disabled={generatingBio}
             className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {generatingBio ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -396,7 +381,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Faisons connaissance</h2>
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Faisons connaissance</h2>
         <p className="text-muted-foreground text-sm">
           {isFreelance
             ? 'Présentez-vous et connectez votre LinkedIn pour générer votre vitrine.'
@@ -406,11 +391,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
       {/* Avatar */}
       <motion.div
-        className="mx-auto flex items-center justify-center w-20 h-20 text-2xl font-bold text-white border border-border"
-        style={{
-          background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))',
-          boxShadow: '3px 3px 0px 0px hsl(var(--primary))',
-        }}
+        className="mx-auto flex items-center justify-center w-20 h-20 text-2xl font-bold text-foreground rounded-xl border border-border bg-emerald-500/15"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -499,10 +480,7 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                     className="w-12 h-12 border border-border object-cover shrink-0"
                   />
                 ) : (
-                  <div
-                    className="w-12 h-12 border border-border shrink-0 flex items-center justify-center text-sm font-bold text-white"
-                    style={{ background: 'linear-gradient(135deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
-                  >
+                  <div className="w-12 h-12 rounded-xl border border-border bg-emerald-500/15 shrink-0 flex items-center justify-center text-sm font-bold text-foreground">
                     {scanResult.name?.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('') || '?'}
                   </div>
                 )}
@@ -525,21 +503,19 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
               {/* Key info badges */}
               <div className="flex flex-wrap gap-1.5">
                 {scanResult.yearsExperience > 0 && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border border-border text-foreground"
-                    style={{ background: 'hsl(var(--skalr-green) / 0.1)' }}>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md border border-border bg-emerald-500/10 text-foreground">
                     <Briefcase className="w-3 h-3" />
                     {scanResult.yearsExperience} ans d'exp.
                   </span>
                 )}
                 {scanResult.seniority && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border border-border text-foreground"
-                    style={{ background: 'hsl(var(--skalr-purple) / 0.1)' }}>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md border border-border bg-accent/40 text-foreground">
                     <Tag className="w-3 h-3" />
                     {scanResult.seniority}
                   </span>
                 )}
                 {scanResult.location && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border border-border text-muted-foreground">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md border border-border text-muted-foreground">
                     <MapPin className="w-3 h-3" />
                     {scanResult.location}
                   </span>
@@ -553,14 +529,13 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
                     const count = expClassifications.filter(c => c.type === type).length;
                     if (!count) return null;
                     const config = {
-                      rpo: { label: 'RPO', color: 'var(--skalr-purple)' },
-                      cabinet: { label: 'Cabinet', color: 'var(--skalr-green)' },
-                      direct: { label: 'Direct', color: 'var(--skalr-pink)' },
-                      other: { label: 'Autre', color: 'var(--foreground)' },
+                      rpo: { label: 'RPO' },
+                      cabinet: { label: 'Cabinet' },
+                      direct: { label: 'Direct' },
+                      other: { label: 'Autre' },
                     }[type];
                     return (
-                      <span key={type} className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border"
-                        style={{ background: `hsl(${config.color} / 0.1)` }}>
+                      <span key={type} className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider rounded-md border border-border bg-accent/40 text-foreground">
                         {config.label} × {count}
                       </span>
                     );
@@ -676,7 +651,6 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
             type="submit"
             disabled={saving || scanning}
             className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />

@@ -215,7 +215,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5 px-1">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-2xl sm:text-3xl md:text-4xl">Votre image employeur</h2>
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Votre image employeur</h2>
         <p className="text-muted-foreground text-sm">On analyse votre présence en ligne pour identifier vos forces et axes d'amélioration.</p>
       </div>
 
@@ -292,7 +292,6 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               <Button
                 onClick={onNext}
                 className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 <ArrowRight className="w-4 h-4" /> Passer
               </Button>
@@ -353,8 +352,11 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                 <div className="flex items-center gap-2 mb-1 justify-center sm:justify-start flex-wrap">
                   <h3 className="font-semibold text-base sm:text-lg">Score Marque Employeur</h3>
                   <span
-                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-border"
-                    style={{ background: overallScore >= 70 ? 'hsl(var(--skalr-green))' : 'hsl(var(--landing-accent-yellow))' }}
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 rounded-md"
+                    style={{
+                      background: overallScore >= 70 ? 'hsl(var(--success) / 0.15)' : 'hsl(var(--warning) / 0.15)',
+                      color: overallScore >= 70 ? 'hsl(var(--success))' : 'hsl(var(--warning))',
+                    }}
                   >
                     {overallScore >= 70 ? 'Bon' : 'À améliorer'}
                   </span>
@@ -429,15 +431,15 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actions prioritaires</h4>
                   <span
-                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 border border-border"
-                    style={{ background: 'hsl(var(--landing-accent-yellow))' }}
+                    className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 rounded-md"
+                    style={{ background: 'hsl(var(--warning) / 0.15)', color: 'hsl(var(--warning))' }}
                   >
                     Quick wins
                   </span>
                 </div>
                 {quickWins.map((action, i) => (
                   <div key={i} className="flex items-start gap-2.5 text-sm text-foreground/80">
-                    <div className="w-2 h-2 mt-1.5 shrink-0 rounded-full" style={{ background: 'hsl(var(--skalr-green))' }} />
+                    <div className="w-2 h-2 mt-1.5 shrink-0 rounded-full bg-success" />
                     {action}
                   </div>
                 ))}
@@ -467,7 +469,6 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               <Button
                 onClick={onNext}
                 className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-                style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
               >
                 <ArrowRight className="w-4 h-4" /> Continuer
               </Button>

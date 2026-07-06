@@ -85,7 +85,7 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="font-editorial italic text-3xl md:text-4xl text-foreground"
+          className="text-2xl md:text-3xl font-bold tracking-tight text-foreground"
         >
           {isHighScore ? 'Configuration parfaite !' : 'Votre espace est prêt'}
         </motion.h1>
@@ -101,7 +101,7 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
       </div>
 
       {/* Récap checklist */}
-      <div className="w-full border border-border bg-card/60 backdrop-blur-sm divide-y divide-border/60">
+      <div className="w-full rounded-lg border border-border bg-card/60 backdrop-blur-sm divide-y divide-border/60 overflow-hidden">
         {items.map((item, i) => (
           <motion.div
             key={item.key}
@@ -115,8 +115,7 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 0.6 + i * 0.08, type: 'spring', stiffness: 400, damping: 18 }}
-                className="w-5 h-5 flex items-center justify-center shrink-0"
-                style={{ background: 'hsl(var(--skalr-green) / 0.15)', color: 'hsl(var(--skalr-green))' }}
+                className="w-5 h-5 flex items-center justify-center shrink-0 rounded-md bg-success/15 text-success"
               >
                 <Check className="w-3 h-3" strokeWidth={3.5} />
               </motion.span>
@@ -159,13 +158,7 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
         whileHover={{ scale: 1.02, y: -1 }}
         whileTap={{ scale: 0.97 }}
         onClick={onFinish}
-        className="konekt-shine relative w-full py-4 text-sm font-bold tracking-wider uppercase border border-border flex items-center justify-center gap-2 overflow-hidden"
-        style={{
-          fontFamily: "'Space Mono', monospace",
-          background: 'hsl(var(--landing-accent-yellow))',
-          color: 'hsl(40 3% 11%)',
-          boxShadow: '0 8px 32px hsl(var(--landing-accent-yellow) / 0.25), 3px 3px 0px 0px hsl(var(--primary))',
-        }}
+        className="konekt-shine relative w-full py-4 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 overflow-hidden bg-foreground text-background hover:bg-foreground/90 transition-colors shadow-lg"
       >
         <Rocket className="w-4 h-4" />
         Lancer Konekt

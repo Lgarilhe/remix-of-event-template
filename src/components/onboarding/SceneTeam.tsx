@@ -191,7 +191,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Invitez vos collaborateurs</h2>
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Invitez vos collaborateurs</h2>
         <p className="text-muted-foreground text-sm">Le recrutement est un sport d'équipe.</p>
       </div>
 
@@ -338,7 +338,6 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
               size="icon"
               disabled={isInviting || !email.trim()}
               className="h-10 w-10 border border-border bg-foreground text-background hover:bg-foreground/90 shrink-0"
-              style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
             >
               {isInviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             </Button>
@@ -349,7 +348,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
           <div className="flex flex-wrap gap-1.5">
             {invitedEmails.map((em) => (
               <Badge key={em} variant="secondary" className="text-xs gap-1 font-mono">
-                <Check className="w-3 h-3" style={{ color: 'hsl(var(--skalr-green))' }} />
+                <Check className="w-3 h-3 text-success" />
                 {em}
               </Badge>
             ))}
@@ -367,7 +366,6 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
             onClick={handleFinish}
             disabled={isSending}
             className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
             {isSending ? 'Envoi...' : totalInvites > 0 ? `Inviter ${totalInvites} & terminer` : 'Passer'}

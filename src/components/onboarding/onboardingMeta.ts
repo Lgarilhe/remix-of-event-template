@@ -29,18 +29,16 @@ export interface ChapterDef {
   title: string;
   tagline: string;
   icon: LucideIcon;
-  /** Nom de variable CSS HSL (sans hsl()) utilisée comme couleur d'accent */
-  accent: string;
   scenes: SceneKey[];
 }
 
+// Couleur unique pour tout le wizard (accent émeraude de la sidebar) — pas d'arc-en-ciel.
 export const CHAPTERS: ChapterDef[] = [
   {
     id: 'activity',
     title: 'Votre activité',
     tagline: 'Quelques questions pour adapter Konekt à votre métier.',
     icon: Compass,
-    accent: '--skalr-purple',
     scenes: ['orgtype', 'orgdetails', 'discovery', 'specializations'],
   },
   {
@@ -48,7 +46,6 @@ export const CHAPTERS: ChapterDef[] = [
     title: 'Votre société',
     tagline: 'On construit votre espace de travail automatiquement.',
     icon: Building2,
-    accent: '--skalr-blue',
     scenes: ['org', 'audit'],
   },
   {
@@ -56,7 +53,6 @@ export const CHAPTERS: ChapterDef[] = [
     title: 'Votre profil',
     tagline: 'Vous êtes le visage de vos messages. Soignons-le.',
     icon: UserRound,
-    accent: '--skalr-pink',
     scenes: ['profile', 'aitone'],
   },
   {
@@ -64,7 +60,6 @@ export const CHAPTERS: ChapterDef[] = [
     title: 'Vos outils',
     tagline: 'Connectez vos canaux : c’est le moteur de Konekt.',
     icon: PlugZap,
-    accent: '--skalr-cyan',
     scenes: ['integrations'],
   },
   {
@@ -72,7 +67,6 @@ export const CHAPTERS: ChapterDef[] = [
     title: 'Votre équipe',
     tagline: 'Invitez vos collègues, tout le monde avance ensemble.',
     icon: Users,
-    accent: '--skalr-green',
     scenes: ['team'],
   },
 ];

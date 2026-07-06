@@ -39,7 +39,7 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onSkip, onBack, save
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-3xl md:text-4xl">
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
           Comment nous avez-vous trouvé ?
         </h2>
         <p className="text-muted-foreground text-sm">
@@ -91,7 +91,6 @@ export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onSkip, onBack, save
             onClick={() => selected && onSubmit(selected)}
             disabled={!selected}
             className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             Suivant <ArrowRight className="w-4 h-4" />
           </Button>

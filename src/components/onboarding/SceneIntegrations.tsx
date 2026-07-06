@@ -129,7 +129,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
       id: 'email',
       name: 'Email professionnel',
       description: 'Envoyez et suivez vos séquences email depuis votre adresse.',
-      icon: <Mail className="w-5 h-5" style={{ color: 'hsl(var(--skalr-blue))' }} />,
+      icon: <Mail className="w-4 h-4 text-foreground" strokeWidth={2} />,
       connected: emailConnected,
       actions: [
         { label: 'Gmail', provider: 'GOOGLE' },
@@ -150,7 +150,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Connectez vos comptes</h2>
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Connectez vos comptes</h2>
         <p className="text-muted-foreground text-sm">
           LinkedIn est essentiel pour le sourcing. L'email et WhatsApp démultiplient vos séquences multicanales.
         </p>
@@ -178,12 +178,12 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
             <motion.span
               key={r.id}
               className="w-6 h-1 rounded-full"
-              animate={{ background: r.connected ? 'hsl(var(--skalr-green))' : 'hsl(var(--foreground) / 0.12)' }}
+              animate={{ background: r.connected ? 'hsl(var(--success))' : 'hsl(var(--foreground) / 0.12)' }}
               transition={{ duration: 0.4 }}
             />
           ))}
         </div>
-        <span className="text-2xs text-muted-foreground" style={{ fontFamily: "'Space Mono', monospace" }}>
+        <span className="text-2xs font-mono text-muted-foreground">
           {totalConnected}/{rows.length} canaux connectés
         </span>
         <Button
@@ -209,15 +209,15 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08 }}
-              className={`border overflow-hidden transition-colors duration-300 ${
-                def.connected ? 'border-[hsl(var(--skalr-green)/0.4)] bg-[hsl(var(--skalr-green)/0.04)]' : 'border-border'
+              className={`rounded-lg border overflow-hidden transition-colors duration-300 ${
+                def.connected ? 'border-success/40 bg-success/5' : 'border-border'
               }`}
             >
               <div className="flex items-center gap-3 p-3">
                 {def.logo ? (
                   <img src={def.logo} alt={def.name} className="w-8 h-8 object-contain shrink-0" />
                 ) : (
-                  <div className="w-8 h-8 flex items-center justify-center border border-border bg-card shrink-0">
+                  <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-500/15 shrink-0">
                     {def.icon}
                   </div>
                 )}
@@ -225,10 +225,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold">{def.name}</span>
                     {def.essential && (
-                      <span
-                        className="text-xs uppercase tracking-wider font-bold px-1.5 py-0.5 border border-border text-foreground"
-                        style={{ background: 'hsl(var(--landing-accent-yellow))', color: 'hsl(40 3% 11%)' }}
-                      >
+                      <span className="text-xs uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-foreground">
                         Essentiel
                       </span>
                     )}
@@ -241,8 +238,7 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider shrink-0"
-                    style={{ color: 'hsl(var(--skalr-green))' }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider shrink-0 text-success"
                   >
                     <Check className="w-3.5 h-3.5" /> Connecté
                   </motion.div>
@@ -255,7 +251,6 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
                         onClick={() => handleHostedConnect(def.id, action.provider)}
                         disabled={isLoading}
                         className="text-xs uppercase tracking-wider font-bold border border-border bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
-                        style={{ boxShadow: '2px 2px 0px 0px hsl(var(--primary))' }}
                       >
                         {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5 mr-1" />}
                         {action.label}
@@ -277,7 +272,6 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
         <Button
           onClick={() => onNext(totalConnected)}
           className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
         >
           <ArrowRight className="w-4 h-4" />
           {totalConnected > 0 ? 'Continuer' : 'Passer'}

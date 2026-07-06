@@ -31,7 +31,7 @@ export const CollaboratorWelcome: React.FC<Props> = ({ orgName, onCreateWorkspac
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.15, duration: 0.4 }}
         >
-          <h1 className="font-editorial italic text-2xl sm:text-3xl leading-tight">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight leading-tight">
             Vous avez rejoint{' '}
             <span className="skalr-gradient-text">{orgName}</span>
           </h1>

@@ -17,38 +17,32 @@ interface BlobDef {
   duration: number;
 }
 
+// Palette sobre alignée sur le reste de l'app : lueurs neutres + un souffle
+// d'émeraude (accent unique de la sidebar). Pas d'arc-en-ciel.
 const BLOBS: BlobDef[] = [
   {
     size: 640,
-    color: '--skalr-purple',
-    alpha: 0.10,
+    color: '--foreground',
+    alpha: 0.045,
     initial: { top: '-12%', left: '-8%' },
     drift: { x: [0, 90, -40, 0], y: [0, 50, 110, 0], scale: [1, 1.15, 0.95, 1] },
     duration: 46,
   },
   {
     size: 560,
-    color: '--skalr-blue',
-    alpha: 0.09,
+    color: '--success',
+    alpha: 0.05,
     initial: { top: '55%', left: '68%' },
     drift: { x: [0, -110, 40, 0], y: [0, -60, -130, 0], scale: [1, 0.9, 1.12, 1] },
     duration: 52,
   },
   {
     size: 460,
-    color: '--skalr-pink',
-    alpha: 0.07,
+    color: '--foreground',
+    alpha: 0.035,
     initial: { top: '68%', left: '-6%' },
     drift: { x: [0, 120, 60, 0], y: [0, -90, -30, 0], scale: [1, 1.1, 0.92, 1] },
     duration: 58,
-  },
-  {
-    size: 380,
-    color: '--skalr-cyan',
-    alpha: 0.06,
-    initial: { top: '-8%', left: '62%' },
-    drift: { x: [0, -70, 30, 0], y: [0, 80, 140, 0], scale: [1, 0.95, 1.08, 1] },
-    duration: 64,
   },
 ];
 

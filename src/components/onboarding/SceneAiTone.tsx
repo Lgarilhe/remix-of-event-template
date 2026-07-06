@@ -69,7 +69,7 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="font-editorial italic text-3xl md:text-4xl">Comment écrivez-vous ?</h2>
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Comment écrivez-vous ?</h2>
         <p className="text-muted-foreground text-sm">
           L’IA Konekt rédige vos messages d’approche. Donnez-lui votre ton — vous pourrez l’ajuster à tout moment dans les Réglages.
         </p>
@@ -89,10 +89,9 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
               transition={{ delay: 0.1 + index * 0.07, duration: 0.35 }}
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className={`text-left p-3 border-2 transition-all duration-200 ${
-                isSelected ? 'border-border bg-foreground/[0.04]' : 'border-border/60 hover:border-border'
+              className={`text-left p-3 rounded-lg border transition-all duration-200 ${
+                isSelected ? 'border-foreground/40 bg-accent/60 shadow-sm' : 'border-border hover:bg-accent/30'
               }`}
-              style={isSelected ? { boxShadow: '0 4px 16px hsl(var(--skalr-pink) / 0.15)' } : {}}
               aria-pressed={isSelected}
             >
               <span className="text-sm font-semibold block">{t.label}</span>
@@ -111,9 +110,11 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="border border-border bg-card/60 backdrop-blur-sm p-3.5 flex gap-3"
+            className="rounded-lg border border-border bg-card/60 backdrop-blur-sm p-3.5 flex gap-3"
           >
-            <MessageSquareQuote className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'hsl(var(--skalr-pink))' }} />
+            <span className="w-6 h-6 flex items-center justify-center rounded-md bg-emerald-500/15 shrink-0">
+              <MessageSquareQuote className="w-3.5 h-3.5 text-foreground" />
+            </span>
             <p className="text-xs text-muted-foreground italic leading-relaxed">{selectedTone.example}</p>
           </motion.div>
         )}
@@ -158,7 +159,6 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
             onClick={handleSubmit}
             disabled={!tone || isSaving}
             className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
           >
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
             Suivant

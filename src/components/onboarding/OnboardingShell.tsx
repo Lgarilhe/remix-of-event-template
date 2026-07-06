@@ -43,10 +43,7 @@ const ScoreRing: React.FC<{ percent: number }> = ({ percent }) => {
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
         />
       </svg>
-      <span
-        className="text-xs font-bold text-foreground/80 tabular-nums"
-        style={{ fontFamily: "'Space Mono', monospace" }}
-      >
+      <span className="text-xs font-mono font-bold text-foreground/80 tabular-nums">
         <NumberTicker value={percent} className="tracking-normal" />%
       </span>
     </div>
@@ -81,8 +78,7 @@ export const OnboardingShell: React.FC<Props> = ({
       {/* Barre de progression globale */}
       <div className="fixed top-0 inset-x-0 h-1 z-50 bg-foreground/5">
         <motion.div
-          className="h-full konekt-shine"
-          style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)), hsl(var(--skalr-blue)))' }}
+          className="h-full konekt-shine bg-emerald-500"
           initial={{ width: 0 }}
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
@@ -123,9 +119,9 @@ export const OnboardingShell: React.FC<Props> = ({
                   width: i === chapterIdx ? 26 : 12,
                   background:
                     i < chapterIdx
-                      ? `hsl(var(${c.accent}) / 0.55)`
+                      ? 'hsl(var(--success) / 0.55)'
                       : i === chapterIdx
-                      ? `hsl(var(${c.accent}))`
+                      ? 'hsl(var(--success))'
                       : 'hsl(var(--foreground) / 0.12)',
                 }}
                 animate={i === chapterIdx ? { scaleY: [1, 1.5, 1] } : {}}
@@ -167,17 +163,13 @@ export const OnboardingShell: React.FC<Props> = ({
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 className="w-full max-w-lg mx-auto flex items-center justify-center gap-2 mb-5 flex-wrap"
               >
-                <span
-                  className="inline-flex items-center gap-1.5 text-3xs uppercase tracking-wider font-bold px-2 py-1 border border-border bg-card/60 backdrop-blur-sm"
-                  style={{ fontFamily: "'Space Mono', monospace", color: `hsl(var(${chapter.accent}))` }}
-                >
-                  <chapter.icon className="w-3 h-3" />
+                <span className="inline-flex items-center gap-1.5 text-3xs font-mono uppercase tracking-wider font-medium px-2 py-1 rounded-md border border-border bg-card/60 backdrop-blur-sm text-foreground">
+                  <span className="w-4 h-4 flex items-center justify-center rounded bg-emerald-500/15">
+                    <chapter.icon className="w-2.5 h-2.5" />
+                  </span>
                   Chapitre {String(chapterIdx + 1).padStart(2, '0')} — {chapter.title}
                 </span>
-                <span
-                  className="text-3xs uppercase tracking-wider text-muted-foreground"
-                  style={{ fontFamily: "'Space Mono', monospace" }}
-                >
+                <span className="text-3xs font-mono uppercase tracking-wider text-muted-foreground">
                   Étape {stepInChapter}/{chapter.scenes.length}
                 </span>
               </motion.div>
@@ -194,10 +186,7 @@ export const OnboardingShell: React.FC<Props> = ({
 
             {/* Compteur bas */}
             <div className="text-center pt-8 pb-2">
-              <span
-                className="text-xs text-muted-foreground/70 tracking-wider"
-                style={{ fontFamily: "'Space Mono', monospace" }}
-              >
+              <span className="text-xs font-mono text-muted-foreground/70 tracking-wider">
                 {String(stepIndex + 1).padStart(2, '0')} / {String(flow.length).padStart(2, '0')}
               </span>
             </div>

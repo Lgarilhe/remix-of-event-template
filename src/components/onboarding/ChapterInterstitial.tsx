@@ -13,7 +13,8 @@ const AUTO_DISMISS_MS = 2600;
 
 /**
  * Interstitiel plein écran affiché à l'entrée d'un nouveau chapitre :
- * numéro géant, titre éditorial, tagline. Se ferme seul ou au clic.
+ * numéro géant, titre, tagline. Sobre et monochrome, accent émeraude unique
+ * (même langage que l'AppSidebar). Se ferme seul ou au clic.
  */
 export const ChapterInterstitial: React.FC<Props> = ({ chapter, chapterIndex, totalChapters, onDismiss }) => {
   const reduceMotion = useReducedMotion();
@@ -34,11 +35,11 @@ export const ChapterInterstitial: React.FC<Props> = ({ chapter, chapterIndex, to
       onClick={onDismiss}
       className="fixed inset-0 z-40 flex flex-col items-center justify-center cursor-pointer bg-background/80 backdrop-blur-xl px-6"
     >
-      {/* Halo d'accent */}
+      {/* Halo neutre */}
       <motion.div
         aria-hidden="true"
         className="absolute w-[520px] h-[520px] rounded-full pointer-events-none"
-        style={{ background: `radial-gradient(circle, hsl(var(${chapter.accent}) / 0.14) 0%, transparent 65%)`, filter: 'blur(30px)' }}
+        style={{ background: 'radial-gradient(circle, hsl(var(--foreground) / 0.05) 0%, transparent 65%)', filter: 'blur(30px)' }}
         initial={{ scale: 0.6, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
@@ -50,11 +51,10 @@ export const ChapterInterstitial: React.FC<Props> = ({ chapter, chapterIndex, to
           initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 40, filter: 'blur(10px)' }}
           animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="text-7xl md:text-8xl font-bold leading-none select-none"
+          className="font-mono text-7xl md:text-8xl font-bold leading-none select-none"
           style={{
-            fontFamily: "'Space Mono', monospace",
             color: 'transparent',
-            WebkitTextStroke: `1.5px hsl(var(${chapter.accent}) / 0.6)`,
+            WebkitTextStroke: '1.5px hsl(var(--foreground) / 0.3)',
           }}
         >
           {String(chapterIndex + 1).padStart(2, '0')}
@@ -65,10 +65,9 @@ export const ChapterInterstitial: React.FC<Props> = ({ chapter, chapterIndex, to
           initial={{ scale: 0, rotate: -12 }}
           animate={{ scale: 1, rotate: 0 }}
           transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.18 }}
-          className="w-12 h-12 flex items-center justify-center border border-border bg-card/80"
-          style={{ color: `hsl(var(${chapter.accent}))`, boxShadow: `0 8px 32px hsl(var(${chapter.accent}) / 0.25)` }}
+          className="w-12 h-12 flex items-center justify-center rounded-xl bg-emerald-500/15 border border-border"
         >
-          <Icon className="w-5 h-5" />
+          <Icon className="w-5 h-5 text-foreground" strokeWidth={2} />
         </motion.div>
 
         {/* Titre */}
@@ -76,7 +75,7 @@ export const ChapterInterstitial: React.FC<Props> = ({ chapter, chapterIndex, to
           initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
-          className="font-editorial italic text-4xl md:text-5xl text-foreground"
+          className="text-3xl md:text-4xl font-bold tracking-tight text-foreground"
         >
           {chapter.title}
         </motion.h2>
@@ -105,9 +104,9 @@ export const ChapterInterstitial: React.FC<Props> = ({ chapter, chapterIndex, to
               className="h-1 w-8 rounded-full transition-colors"
               style={{
                 background: i < chapterIndex
-                  ? 'hsl(var(--foreground) / 0.35)'
+                  ? 'hsl(var(--success) / 0.45)'
                   : i === chapterIndex
-                  ? `hsl(var(${chapter.accent}))`
+                  ? 'hsl(var(--success))'
                   : 'hsl(var(--foreground) / 0.1)',
               }}
             />
@@ -118,8 +117,7 @@ export const ChapterInterstitial: React.FC<Props> = ({ chapter, chapterIndex, to
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.6 }}
           transition={{ delay: 1 }}
-          className="text-3xs uppercase tracking-wider text-muted-foreground mt-1"
-          style={{ fontFamily: "'Space Mono', monospace" }}
+          className="text-3xs font-mono uppercase tracking-wider text-muted-foreground mt-1"
         >
           Cliquez pour continuer
         </motion.span>
