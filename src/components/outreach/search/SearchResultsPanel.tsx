@@ -99,6 +99,8 @@ interface SearchResultsPanelProps {
   onToggleProfileSelection: (id: string) => void;
   onToggleSelectAll: () => void;
   onScoreProfile: (profile: LinkedInProfile) => void;
+  /** Scoring profond auto à l'ouverture de la fiche (profil complet fourni). */
+  onDeepScoreProfile?: (fullProfile: LinkedInProfile) => Promise<void> | void;
   onBatchScore: () => void;
   onBulkDismiss: () => void;
   onBulkAddToProject: () => void;
@@ -190,6 +192,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onToggleProfileSelection,
   onToggleSelectAll,
   onScoreProfile,
+  onDeepScoreProfile,
   onBatchScore,
   onBulkDismiss,
   onBulkAddToProject,
@@ -1210,6 +1213,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         airtableMatch={detailProfile ? getAirtableMatch(getCanonicalProfileUrl(detailProfile)) : undefined}
         notionMatch={detailProfile ? getNotionMatch({ url: getCanonicalProfileUrl(detailProfile), name: getProfileDisplayName(detailProfile) }) : undefined}
         onScoreProfile={detailProfile ? () => onScoreProfile(detailProfile) : undefined}
+        onDeepScore={onDeepScoreProfile}
         onArchive={detailProfile && selectedJob ? () => onArchive(detailProfile) : undefined}
         onMessageSent={onMessageSent}
         onSequenceEnroll={onSequenceEnrollSuccess}

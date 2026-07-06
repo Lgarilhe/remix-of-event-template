@@ -269,6 +269,10 @@ interface ScoringResult {
   dimensions: Record<string, DimensionScore>;
   dataCompleteness: "full" | "partial" | "minimal";
   missingDataPoints: string[];
+  /** Profondeur de l'évaluation : 'quick' = données de liste (recherche),
+   *  'deep' = profil complet fourni par le frontend après visite du profil
+   *  dans l'app (fiche candidat). Les scores deep écrasent le cache quick. */
+  scoringDepth?: "quick" | "deep";
   skippedLLM: boolean;
   processingTimeMs: number;
   tokensUsed: { input: number; output: number } | null;
@@ -2486,6 +2490,7 @@ async function setCachedScore(
         weightedCriteriaScore: result.weightedCriteriaScore,
         semanticScore: result.semanticScore,
         hardFilterPassed: result.hardFilterPassed,
+        scoringDepth: result.scoringDepth,
       },
       status,
       updated_at: new Date().toISOString(),
@@ -3007,13 +3012,19 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
     const body = await req.json();
-    const { profile, job, profiles, customScoringInstructions, accountId } = body as {
+    const { profile, job, profiles, customScoringInstructions, accountId, scoringMode } = body as {
       profile?: ProfileData;
       job?: JobData;
       profiles?: ProfileData[];
       customScoringInstructions?: string;
       accountId?: string;
+      scoringMode?: string;
     };
+    // Mode deep : le frontend a visité le profil dans l'app (get_profile,
+    // gated ledger) et envoie le profil COMPLET (summary, descriptions
+    // d'expériences...). On bypass le cache pour re-scorer avec ces données
+    // riches, et le résultat est marqué scoringDepth='deep'.
+    const isDeepScoring = scoringMode === "deep";
 
     // Resolve AI model from frontend override (request-scoped)
     let aiParams: { aiAction: string; modelId: string; description: string | null; wasAutoRouted: boolean } = {
@@ -3187,7 +3198,9 @@ Deno.serve(async (req) => {
       const startTime = Date.now();
       const candidateId = p.id;
 
-      const cached = await getCachedScore(supabase, candidateId, job.id);
+      // Mode deep : on ignore le cache (le but est justement de re-scorer avec
+      // le profil complet fraîchement récupéré).
+      const cached = isDeepScoring ? null : await getCachedScore(supabase, candidateId, job.id);
       if (cached) {
         console.log(`[cache] HIT for ${p.name} → score=${cached.finalScore}`);
         return { profile: p, startTime, cached, needsLLM: false };
@@ -3213,6 +3226,7 @@ Deno.serve(async (req) => {
           dimensions: {},
           dataCompleteness: "minimal" as const,
           missingDataPoints: [],
+          scoringDepth: isDeepScoring ? "deep" as const : "quick" as const,
           skippedLLM: true,
           processingTimeMs: Date.now() - startTime,
           tokensUsed: null,
@@ -3427,6 +3441,7 @@ Deno.serve(async (req) => {
             dimensions: weighted.dimensions,
             dataCompleteness: weighted.dataCompleteness,
             missingDataPoints: weighted.missingDataPoints,
+            scoringDepth: isDeepScoring ? "deep" : "quick",
             skippedLLM: false,
             processingTimeMs: Date.now() - ps.startTime,
             tokensUsed: llmResult.tokensUsed,
@@ -3582,6 +3597,7 @@ Deno.serve(async (req) => {
         dimensions: weighted.dimensions,
         dataCompleteness: weighted.dataCompleteness,
         missingDataPoints: weighted.missingDataPoints,
+        scoringDepth: isDeepScoring ? "deep" : "quick",
         criteriaEvaluations: llmResult?.criteriaEvaluations || [],
         likelyToSwitchScore: llmResult?.likelyToSwitchScore ?? null,
         careerGrowthScore: llmResult?.careerGrowthScore ?? null,

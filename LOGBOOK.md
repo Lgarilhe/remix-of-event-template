@@ -32,6 +32,21 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-07-07 — SHIP — Scoring à deux niveaux : éval. rapide (liste) vs éval. complète (fiche = visite de profil)
+
+**Contexte** : idée de Laurent — le scoring de masse ne dispose que des données de liste (pas de « À propos », pas de descriptions d'expériences) depuis que le robot d'enrichissement est éteint (décision 07/07) ; il affichait pourtant un score faussement précis. Le seul chemin légitime vers les données complètes est la visite de profil que l'user déclenche lui-même.
+**Décision / Fait** :
+1. **score-profile-job** : body accepte `scoringMode:'deep'` → bypass du cache match_scores + résultat marqué `scoringDepth:'deep'|'quick'` (persisté dans scoring_result et job_candidate_status.scoring_details). Les scores historiques sans le champ = quick.
+2. **Fiche candidat (ProfileDetailSheet)** : à l'ouverture (job sélectionné, score pas encore 'deep'), après un délai anti-rafale de 1,5 s → récupère le profil complet (ordre : données déjà en main → linkedin_profile_data persisté SI il passe `looksLikeFullProfileData` (résumé ou description d'expérience — les blobs minces du scoring de masse sont écartés) → sinon get_profile = 1 visite réelle, gated ledger côté serveur) puis `scoreProfile(full, {deep:true})`. Une tentative max par profil ; échecs silencieux ; pas d'auto-dismiss en deep (l'user regarde le profil). La visite persiste le blob complet (écrasement volontaire du blob mince) → les ouvertures suivantes ne re-visitent pas.
+3. **UI honnête** : badge « Éval. rapide » / « Éval. complète » + spinner « Analyse complète en cours… » dans le bloc Scoring de la fiche ; coche CheckCircle2 sur le badge score des cartes + tooltips différenciés.
+**Garde-fou** : le scoring profond n'est déclenché QUE par l'ouverture manuelle d'une fiche — aucun chemin batch (sinon on recrée le robot d'enrichissement par la porte de devant).
+**Impact** : score-profile-job (edge, redéployé via workflow), useLinkedInScoring (scoreProfile options.deep + mapping scoringDepth), JobScoreDisplay (type), ProfileDetailSheet (effet deep + helpers mergeUnipileFullProfile/looksLikeFullProfileData factorisation), SearchResultsPanel + LinkedInSearch (câblage onDeepScoreProfile), CardStatusBadges (badge).
+**Reste à faire** :
+- [ ] Valider en prod avec Laurent : ouvrir une fiche d'un profil scoré → badge passe de « rapide » à « complète », score potentiellement ajusté.
+**Refs** : branche claude/sourcing-filters-visibility-r0zsr8 → main.
+
+---
+
 ## 2026-07-07 — SHIP — Bannière reconnexion + InMails cron réparés (enrichissement : en attente de confirmation)
 
 **Contexte** : suite du verdict conflits de session (INSIGHT 2026-07-06). Chantiers du backlog livrés sur feu vert Laurent.

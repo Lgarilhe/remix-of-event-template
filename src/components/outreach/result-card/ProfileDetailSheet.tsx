@@ -38,6 +38,53 @@ import { toast } from 'sonner';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PHONE_REGEX = /^(\+?[\d().\s-]{6,})$/;
 
+// Fusionne un profil complet (retour get_profile) sur un profil de liste,
+// sans jamais écraser une donnée existante par du vide. Utilisé par
+// l'auto-enrich vivier ET par le scoring profond.
+function mergeUnipileFullProfile(base: LinkedInProfile, p: Record<string, any>): LinkedInProfile {
+  const enrichedSkills = p.skills?.map((s: any) => typeof s === 'string' ? s : s.name).filter(Boolean);
+  const enrichedWorkExp = (p.positions || p.experiences || p.work_experience || []).map((exp: any) => ({
+    role: exp.title || exp.role,
+    company: exp.company_name || exp.company,
+    company_logo: exp.company_logo || exp.logo_url || exp.logo,
+    description: exp.description,
+    start: exp.start_date || exp.starts_at || exp.start,
+    end: exp.end_date || exp.ends_at || exp.end,
+  }));
+  const enrichedEducation = (p.education || []).map((edu: any) => ({
+    school: edu.school_name || edu.school,
+    degree: edu.degree_name || edu.degree,
+    field_of_study: edu.field_of_study || edu.field,
+    start: edu.start_date || edu.starts_at || edu.start,
+    end: edu.end_date || edu.ends_at || edu.end,
+  }));
+
+  return {
+    ...base,
+    summary: p.about || p.summary || base.summary,
+    skills: enrichedSkills?.length ? enrichedSkills : (base.skills || []),
+    work_experience: enrichedWorkExp.length ? enrichedWorkExp : (base.work_experience || []),
+    education: enrichedEducation.length ? enrichedEducation : ((base as any).education || []),
+    location: p.location?.name || p.location || base.location,
+    profile_picture_url: p.profile_picture_url || p.picture_url || base.profile_picture_url,
+    connections_count: p.connections_count || base.connections_count,
+    network_distance: p.network_distance || base.network_distance,
+  } as LinkedInProfile;
+}
+
+// Un blob linkedin_profile_data est « complet » s'il contient le résumé
+// (À propos) ou au moins une description d'expérience — la signature des
+// données issues d'une visite de profil. Nécessaire car le scoring de masse
+// persiste AUSSI cette colonne, mais avec les données MINCES de la liste :
+// sans ce test, le scoring profond croirait détenir le profil complet et
+// re-noterait les mêmes données en les marquant « complètes » à tort.
+function looksLikeFullProfileData(d: Record<string, any> | null | undefined): boolean {
+  if (!d) return false;
+  if (d.about || d.summary) return true;
+  const exps = d.positions || d.experiences || d.work_experience || [];
+  return Array.isArray(exps) && exps.some((e: any) => e?.description);
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
@@ -152,6 +199,10 @@ interface ProfileDetailSheetProps {
   airtableMatch?: any;
   notionMatch?: any;
   onScoreProfile?: () => void;
+  /** Scoring profond : appelé automatiquement à l'ouverture de la fiche avec
+   *  le profil complet (après visite du profil). Le hook re-score avec ces
+   *  données riches → score marqué 'deep' qui remplace le score de liste. */
+  onDeepScore?: (fullProfile: LinkedInProfile) => Promise<void> | void;
   onArchive?: () => void;
   onMessageSent?: () => void;
   onSequenceEnroll?: () => void;
@@ -189,6 +240,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   airtableMatch,
   notionMatch,
   onScoreProfile,
+  onDeepScore,
   onArchive,
   onMessageSent,
   onSequenceEnroll,
@@ -337,34 +389,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
           // Only replace fields that are ACTUALLY better than what we already have
           // This prevents Apollo data from being overwritten with empty Unipile responses
-          const enrichedSkills = p.skills?.map((s: any) => typeof s === 'string' ? s : s.name).filter(Boolean);
-          const enrichedWorkExp = (p.positions || p.experiences || []).map((exp: any) => ({
-            role: exp.title,
-            company: exp.company_name || exp.company,
-            company_logo: exp.company_logo || exp.logo_url || exp.logo,
-            description: exp.description,
-            start: exp.start_date || exp.starts_at,
-            end: exp.end_date || exp.ends_at,
-          }));
-          const enrichedEducation = (p.education || []).map((edu: any) => ({
-            school: edu.school_name || edu.school,
-            degree: edu.degree_name || edu.degree,
-            field_of_study: edu.field_of_study || edu.field,
-            start: edu.start_date || edu.starts_at,
-            end: edu.end_date || edu.ends_at,
-          }));
-
-          setEnrichedProfile({
-            ...profile,
-            summary: p.about || p.summary || profile.summary,
-            skills: enrichedSkills?.length ? enrichedSkills : (profile.skills || []),
-            work_experience: enrichedWorkExp.length ? enrichedWorkExp : (profile.work_experience || []),
-            education: enrichedEducation.length ? enrichedEducation : ((profile as any).education || []),
-            location: p.location?.name || p.location || profile.location,
-            profile_picture_url: p.profile_picture_url || p.picture_url || profile.profile_picture_url,
-            connections_count: p.connections_count || profile.connections_count,
-            network_distance: p.network_distance || profile.network_distance,
-          } as LinkedInProfile);
+          setEnrichedProfile(mergeUnipileFullProfile(profile, p));
 
           const { error } = await supabase
             .from('job_candidate_status')
@@ -392,6 +417,95 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       setIsEnriching(false);
     };
   }, [open, profile?.id, accountId]);
+
+  // ─── Scoring profond à l'ouverture de la fiche ─────────────────────────
+  // Le score de liste ('quick') est calculé sur les seules données de
+  // recherche. Ouvrir la fiche = LE geste d'approfondissement : on récupère
+  // le profil complet (visite de profil réelle, quota vérifié côté serveur
+  // via le ledger) et on re-score avec — résultat marqué 'deep'. Une seule
+  // tentative par profil ; délai de 1,5 s pour ne pas déclencher de visites
+  // en rafale quand l'user navigue vite entre les fiches (⟵/⟶).
+  const [isDeepScoring, setIsDeepScoring] = useState(false);
+  const deepScoreAttemptedRef = useRef<Set<string>>(new Set());
+  // Ref pour lire le callback sans le mettre dans les deps : le parent le
+  // recrée à chaque render (arrow inline) → en dep, le timer de 1,5 s
+  // repartirait de zéro à chaque re-render du parent.
+  const onDeepScoreRef = useRef(onDeepScore);
+  onDeepScoreRef.current = onDeepScore;
+
+  useEffect(() => {
+    if (!open || !profile || !accountId || !onDeepScore || !selectedJob) return;
+    if (jobScore?.scoringDepth === 'deep') return; // déjà évalué sur profil complet
+    if (isEnriching) return; // auto-enrich vivier en cours → il fournira les données
+    if (deepScoreAttemptedRef.current.has(profile.id)) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      if (cancelled) return;
+      deepScoreAttemptedRef.current.add(profile.id);
+      setIsDeepScoring(true);
+      try {
+        // 1. Données complètes déjà en main (auto-enrich vivier passé par là).
+        let full: LinkedInProfile | null = enrichedProfile;
+
+        // 2. Sinon, profil complet persisté lors d'une précédente visite
+        //    → zéro visite LinkedIn supplémentaire. Le test looksLikeFull…
+        //    écarte les blobs minces écrits par le scoring de masse.
+        if (!full) {
+          const { data: row } = await supabase
+            .from('job_candidate_status')
+            .select('linkedin_profile_data')
+            .eq('candidate_id', profile.id)
+            .not('linkedin_profile_data', 'is', null)
+            .limit(1)
+            .maybeSingle();
+          const cachedData = row?.linkedin_profile_data as Record<string, any> | null;
+          if (looksLikeFullProfileData(cachedData)) {
+            full = mergeUnipileFullProfile(profile, cachedData!);
+          }
+        }
+
+        // 3. Sinon, visite du profil (1 vue LinkedIn, gated par le ledger).
+        if (!full) {
+          const profileUrl = profile.public_profile_url || profile.profile_url;
+          if (!profileUrl) return;
+          const { data: resp } = await invokeUnipile({
+            body: { action: 'get_profile', account_id: accountId, profile_url: profileUrl },
+          });
+          if (cancelled || !resp?.success || !resp.profile) return;
+          emitQuotaAction('profileVisits', 1, accountId);
+          full = mergeUnipileFullProfile(profile, resp.profile as Record<string, any>);
+          setEnrichedProfile(full); // profite aussi à l'affichage de la fiche
+          // Persist best-effort → les prochaines ouvertures ne re-visitent pas.
+          // Écrasement volontaire : les données de visite sont strictement plus
+          // riches que le blob mince éventuellement écrit par le scoring de masse.
+          supabase
+            .from('job_candidate_status')
+            .update({ linkedin_profile_data: resp.profile as any })
+            .eq('candidate_id', profile.id)
+            .then(({ error }) => {
+              if (error) console.warn('[ProfileDetail] persist full profile failed:', error);
+            });
+        }
+
+        if (cancelled || !full) return;
+        await onDeepScoreRef.current?.(full);
+      } catch (err) {
+        console.warn('[ProfileDetail] Deep scoring failed:', err);
+      } finally {
+        if (!cancelled) setIsDeepScoring(false);
+      }
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setIsDeepScoring(false);
+    };
+    // enrichedProfile et onDeepScore volontairement absents des deps (lus via
+    // closure/ref) : leur mutation ne doit pas relancer le timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, profile?.id, accountId, !!onDeepScore, selectedJob?.id, jobScore?.scoringDepth, isEnriching]);
 
   const effectiveProfile = enrichedProfile || profile;
 
@@ -831,13 +945,45 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <div className="bg-background rounded-lg border border-border overflow-hidden">
                   <details open className="group">
                     <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-                      <h3 className="text-xs font-semibold text-foreground">Scoring</h3>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3 className="text-xs font-semibold text-foreground">Scoring</h3>
+                        {/* Profondeur de l'éval : rapide (données de liste) vs
+                            complète (profil visité). Pendant le re-score → spinner. */}
+                        {isDeepScoring ? (
+                          <span className="inline-flex items-center gap-1 text-3xs font-medium text-muted-foreground">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Analyse complète en cours…
+                          </span>
+                        ) : jobScore.scoringDepth === 'deep' ? (
+                          <span
+                            className="text-3xs font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                            title="Évalué sur le profil complet (parcours détaillé, À propos…)"
+                          >
+                            Éval. complète
+                          </span>
+                        ) : (
+                          <span
+                            className="text-3xs font-medium px-1.5 py-0.5 rounded bg-foreground/5 text-muted-foreground"
+                            title="Évalué sur les données de la liste de recherche — l'analyse complète se lance automatiquement à l'ouverture de la fiche"
+                          >
+                            Éval. rapide
+                          </span>
+                        )}
+                      </div>
                       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
                     </summary>
                     <div className="px-3 sm:px-4 pb-4">
                       <JobScoreDisplay result={jobScore} jobTitle={selectedJob?.title} compact={false} />
                     </div>
                   </details>
+                </div>
+              )}
+
+              {/* Profil pas encore scoré + analyse complète en cours */}
+              {!jobScore && isDeepScoring && (
+                <div className="bg-background rounded-lg border border-border p-3 sm:p-4 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Analyse complète du profil en cours…
                 </div>
               )}
 

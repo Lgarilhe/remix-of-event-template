@@ -548,6 +548,9 @@ function mapScoringResult(raw: any): JobMatchResult {
     } : null,
     dimensions: raw.dimensions,
     dataCompleteness: raw.dataCompleteness,
+    // Défaut 'quick' : les scores historiques (avant l'introduction du
+    // scoring profond) ont tous été calculés sur les données de liste.
+    scoringDepth: raw.scoringDepth === 'deep' ? 'deep' : 'quick',
     missingDataPoints: raw.missingDataPoints,
     skippedLLM: raw.skippedLLM,
     processingTimeMs: raw.processingTimeMs,
@@ -708,14 +711,19 @@ export function useLinkedInScoring({
     };
   }, [selectedJob?.id, batchReport.length]);
 
-  // Score a single profile
-  const scoreProfile = useCallback(async (profile: LinkedInProfile) => {
+  // Score a single profile.
+  // options.deep : scoring profond — le profil passé contient les données
+  // complètes (visite du profil dans l'app via get_profile). Bypass le cache
+  // serveur, résultat marqué scoringDepth='deep'. Déclenché automatiquement
+  // à l'ouverture de la fiche candidat → erreurs silencieuses (pas de toast).
+  const scoreProfile = useCallback(async (profile: LinkedInProfile, options?: { deep?: boolean }) => {
+    const silent = options?.deep === true;
     if (!selectedJob) {
-      toast.error('Sélectionnez un poste pour le scoring');
+      if (!silent) toast.error('Sélectionnez un poste pour le scoring');
       return;
     }
     if (scoringDisabledReason) {
-      toast.error(scoringDisabledReason);
+      if (!silent) toast.error(scoringDisabledReason);
       return;
     }
 
@@ -765,6 +773,7 @@ export function useLinkedInScoring({
         },
         customScoringInstructions,
         accountId: accountId || undefined,
+        scoringMode: options?.deep ? 'deep' : undefined,
       }, { modelOverride: scoringModel || undefined });
 
       if (error) throw error;
@@ -778,8 +787,11 @@ export function useLinkedInScoring({
         // Serialize full LinkedIn profile for storage
         const linkedinProfileData = serializeProfileForStorage(profile);
 
-        // Auto-dismiss profiles with 'skip' recommendation
-        if (mapped.recommendation === 'skip' && candidateStatus) {
+        // Auto-dismiss profiles with 'skip' recommendation.
+        // Pas en mode deep : l'user est en train de REGARDER le profil dans la
+        // fiche — l'écarter sous ses yeux serait brutal. On enregistre le score
+        // (branche saveScore) et il tranche lui-même.
+        if (!options?.deep && mapped.recommendation === 'skip' && candidateStatus) {
           await candidateStatus.batchDismiss([{
             id: profile.id,
             name: profileName,
@@ -817,7 +829,7 @@ export function useLinkedInScoring({
       }
     } catch (err) {
       console.error('Score error:', err);
-      toast.error('Erreur lors du scoring');
+      if (!silent) toast.error('Erreur lors du scoring');
     }
   }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId, scoringModel, scoringDisabledReason]);
 

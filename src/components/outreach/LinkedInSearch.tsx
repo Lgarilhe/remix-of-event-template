@@ -1094,6 +1094,14 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onToggleProfileSelection={search.toggleProfileSelection}
           onToggleSelectAll={() => search.toggleSelectAll(selectableProfiles)}
           onScoreProfile={scoring.scoreProfile}
+          onDeepScoreProfile={
+            // Scoring profond auto à l'ouverture d'une fiche : seulement si un
+            // job est sélectionné et que le scoring est possible (titre requis
+            // en recherche autonome). Le hook re-score avec le profil complet.
+            search.selectedJob && !scoringDisabledReason
+              ? (fullProfile) => scoring.scoreProfile(fullProfile, { deep: true })
+              : undefined
+          }
           onBatchScore={scoring.handleBatchScore}
           onBulkDismiss={handleBulkDismiss}
           onBulkAddToProject={handleBulkAddToProject}

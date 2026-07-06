@@ -56,6 +56,9 @@ export interface JobMatchResult {
   confidenceScore?: number;
   dimensions?: ScoringDimensions;
   dataCompleteness?: 'full' | 'partial' | 'minimal';
+  /** Profondeur de l'évaluation : 'quick' = données de la liste de recherche,
+   *  'deep' = profil complet (visite du profil dans l'app). */
+  scoringDepth?: 'quick' | 'deep';
   missingDataPoints?: string[];
   criteriaEvaluations?: Array<{ label: string; verdict: 'pass' | 'partial' | 'fail' | 'unknown'; reason: string }>;
   likelyToSwitchScore?: number | null;

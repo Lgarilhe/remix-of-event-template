@@ -14,7 +14,7 @@ interface CardStatusBadgesProps {
   historyData?: any;
   historyLoading?: boolean;
   /** Score IA pour ce candidat sur le job courant (si déjà scoré) */
-  jobScore?: { match_score: number } | null;
+  jobScore?: { match_score: number; recommendation?: string; scoringDepth?: 'quick' | 'deep' } | null;
   /** LinkedIn signal "Likely to respond" — affiché en badge "Réactif" si true */
   isLikelyToRespond?: boolean;
   /** Si le candidat est déjà dans une séquence pour cette mission. */
@@ -141,10 +141,16 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
               ? 'border-warning/40 bg-warning/10 text-warning'
               : 'border-destructive/40 bg-destructive/10 text-destructive'
           }`}
-          title={`Score IA : ${jobScore.match_score}/100 — ${jobScore.recommendation || ''}`}
+          title={jobScore.scoringDepth === 'deep'
+            ? `Score IA complet (profil visité) : ${jobScore.match_score}/100 — ${jobScore.recommendation || ''}`
+            : `Score IA rapide (données de la liste) : ${jobScore.match_score}/100 — l'analyse complète se lance à l'ouverture de la fiche`}
         >
           <Target className="w-3 h-3" aria-hidden="true" />
           {jobScore.match_score}
+          {/* Coche = éval. complète (profil visité), sinon score rapide (liste) */}
+          {jobScore.scoringDepth === 'deep' && (
+            <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+          )}
         </Badge>
       )}
 
