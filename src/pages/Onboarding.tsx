@@ -13,10 +13,14 @@ import { SceneAudit } from '@/components/onboarding/SceneAudit';
 import { SceneProfile, type ProfileFormState } from '@/components/onboarding/SceneProfile';
 import { SceneIntegrations } from '@/components/onboarding/SceneIntegrations';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
+import { SceneGoal, GOAL_OPTIONS } from '@/components/onboarding/SceneGoal';
 import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
+import { SceneStack, STACK_OPTIONS } from '@/components/onboarding/SceneStack';
 import { SceneDiscovery } from '@/components/onboarding/SceneDiscovery';
 import { SceneSpecializations } from '@/components/onboarding/SceneSpecializations';
 import { SceneAiTone } from '@/components/onboarding/SceneAiTone';
+import { SceneQuotas } from '@/components/onboarding/SceneQuotas';
+import { EMPTY_AI_CONTEXT } from '@/hooks/useAiContext';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
 import { SceneLaunch, type LaunchChecklistItem } from '@/components/onboarding/SceneLaunch';
 import {
@@ -56,6 +60,8 @@ const Onboarding = () => {
   );
   const [companyData, setCompanyData] = useState<OnboardingCompanyData | null>(null);
   const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(restored?.orgDetails ?? null);
+  const [goal, setGoal] = useState(restored?.goal ?? '');
+  const [stack, setStack] = useState<string[]>(restored?.stack ?? []);
   const [discoverySource, setDiscoverySource] = useState(restored?.discoverySource ?? '');
   const [specializations, setSpecializations] = useState<string[]>(restored?.specializations ?? []);
   const [profileState, setProfileState] = useState<ProfileFormState | undefined>(
@@ -108,6 +114,8 @@ const Onboarding = () => {
     saveOnboardingProgress({
       step,
       orgType,
+      goal,
+      stack,
       orgDetails: orgDetailsData,
       discoverySource,
       specializations,
@@ -120,7 +128,7 @@ const Onboarding = () => {
           }
         : null,
     });
-  }, [step, orgType, orgDetailsData, discoverySource, specializations, completedScenes, profileState]);
+  }, [step, orgType, goal, stack, orgDetailsData, discoverySource, specializations, completedScenes, profileState]);
 
   useEffect(() => {
     if (organization && !orgCreated) {
@@ -155,6 +163,21 @@ const Onboarding = () => {
     [markCompleted, goNext]
   );
 
+  // ─── Contexte IA org (objectif + outils) — injecté à la création de l'org ───
+  const buildOrgAiContext = useCallback(() => {
+    const parts: string[] = [];
+    if (goal) {
+      const label = GOAL_OPTIONS.find((o) => o.value === goal)?.title ?? goal;
+      parts.push(`Objectif principal de l'équipe : ${label}.`);
+    }
+    if (stack.length > 0 && !stack.includes('none')) {
+      const labels = stack.map((v) => STACK_OPTIONS.find((o) => o.value === v)?.label ?? v);
+      parts.push(`Outils déjà utilisés : ${labels.join(', ')}.`);
+    }
+    if (parts.length === 0) return null;
+    return { ...EMPTY_AI_CONTEXT, free_text: parts.join(' ') };
+  }, [goal, stack]);
+
   // ─── Handlers ───
   const handleOrgTypeSelected = useCallback(
     (type: OrgType) => {
@@ -164,6 +187,22 @@ const Onboarding = () => {
       setStep(1);
     },
     [markCompleted]
+  );
+
+  const handleGoalSelected = useCallback(
+    (value: string) => {
+      setGoal(value);
+      completeAndNext('goal');
+    },
+    [completeAndNext]
+  );
+
+  const handleStackSubmitted = useCallback(
+    (values: string[]) => {
+      setStack(values);
+      completeAndNext('stack');
+    },
+    [completeAndNext]
   );
 
   const handleOrgDetailsSubmitted = useCallback(
@@ -198,6 +237,7 @@ const Onboarding = () => {
             slug: `${slug}-${Date.now().toString(36)}`,
           });
           if (org?.id) {
+            const aiCtx = buildOrgAiContext();
             await supabase
               .from('organizations')
               .update({
@@ -206,6 +246,8 @@ const Onboarding = () => {
                 specializations: specs,
                 discovery_source: discoverySource,
                 freelance_mode: orgDetailsData.freelanceMode,
+                annual_hires: orgDetailsData.annualHires ?? null,
+                ...(aiCtx ? { ai_context: aiCtx } : {}),
               } as any)
               .eq('id', org.id);
           }
@@ -217,7 +259,7 @@ const Onboarding = () => {
 
       setStep((s) => Math.min(s + 1, flow.length - 1));
     },
-    [markCompleted, createOrganization, orgType, orgDetailsData, discoverySource, flow.length]
+    [markCompleted, createOrganization, orgType, orgDetailsData, discoverySource, flow.length, buildOrgAiContext]
   );
 
   const handleOrgCreated = useCallback(
@@ -227,6 +269,7 @@ const Onboarding = () => {
       markCompleted('org');
 
       if (organizationId && orgType && orgDetailsData) {
+        const aiCtx = buildOrgAiContext();
         supabase
           .from('organizations')
           .update({
@@ -235,13 +278,15 @@ const Onboarding = () => {
             specializations,
             discovery_source: discoverySource,
             freelance_mode: orgDetailsData.freelanceMode,
+            annual_hires: orgDetailsData.annualHires ?? null,
+            ...(aiCtx ? { ai_context: aiCtx } : {}),
           } as any)
           .eq('id', organizationId);
       }
 
       goNext();
     },
-    [markCompleted, goNext, organizationId, orgType, orgDetailsData, specializations, discoverySource]
+    [markCompleted, goNext, organizationId, orgType, orgDetailsData, specializations, discoverySource, buildOrgAiContext]
   );
 
   const handleIntegrationsNext = useCallback(
@@ -279,8 +324,9 @@ const Onboarding = () => {
     }
     items.push(
       { key: 'profile', label: 'Profil recruteur complété', done: completedScenes.has('profile'), settingsPath: '/settings?tab=account' },
-      { key: 'aitone', label: 'Ton de l’IA personnalisé', done: completedScenes.has('aitone'), settingsPath: '/settings?tab=ai-context' },
-      { key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings?tab=account' }
+      { key: 'aitone', label: 'IA personnalisée (ton & consignes)', done: completedScenes.has('aitone'), settingsPath: '/settings?tab=ai-context' },
+      { key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings?tab=account' },
+      { key: 'quotas', label: 'Rythme de prospection réglé', done: completedScenes.has('quotas'), settingsPath: '/settings?tab=account' }
     );
     if (flow.includes('team')) {
       items.push({ key: 'team', label: 'Équipe invitée', done: completedScenes.has('team') || teamInvitedCount > 0, settingsPath: '/settings?tab=team' });
@@ -340,8 +386,14 @@ const Onboarding = () => {
             {currentScene === 'orgtype' && (
               <SceneOrgType onSelect={handleOrgTypeSelected} onBack={() => {}} />
             )}
+            {currentScene === 'goal' && (
+              <SceneGoal onSelect={handleGoalSelected} onBack={goBack} savedValue={goal} />
+            )}
             {currentScene === 'orgdetails' && orgType && (
               <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
+            )}
+            {currentScene === 'stack' && (
+              <SceneStack onSubmit={handleStackSubmitted} onBack={goBack} savedStack={stack} />
             )}
             {currentScene === 'discovery' && (
               <SceneDiscovery
@@ -386,6 +438,13 @@ const Onboarding = () => {
             )}
             {currentScene === 'integrations' && (
               <SceneIntegrations onNext={handleIntegrationsNext} onBack={goBack} />
+            )}
+            {currentScene === 'quotas' && (
+              <SceneQuotas
+                onNext={() => completeAndNext('quotas')}
+                onSkip={goNext}
+                onBack={goBack}
+              />
             )}
             {currentScene === 'team' && (
               <SceneTeam

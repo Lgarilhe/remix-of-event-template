@@ -42,26 +42,58 @@ const TONES: { value: AiContextTone; label: string; description: string; example
  * Étape onboarding : personnalisation du ton de l'IA Konekt.
  * Écrit profiles.ai_context via useUserAiContext (même cible que Réglages > Contexte IA).
  */
+const DO_SUGGESTIONS = [
+  'Mentionner le télétravail dès le 1er message',
+  'Annoncer la fourchette de salaire',
+  'Messages courts et directs',
+  'Personnaliser avec le parcours du candidat',
+];
+
+const DONT_SUGGESTIONS = [
+  'Pas d’emojis',
+  'Pas de jargon RH',
+  'Pas de flatterie exagérée',
+  'Jamais plus de 2 relances',
+];
+
 export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
   const { aiContext, save, isSaving } = useUserAiContext();
   const [tone, setTone] = useState<AiContextTone | null>(null);
   const [freeText, setFreeText] = useState('');
+  const [doList, setDoList] = useState<Set<string>>(new Set());
+  const [dontList, setDontList] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     if (hydrated) return;
-    if (aiContext.tone || aiContext.free_text) {
+    if (aiContext.tone || aiContext.free_text || aiContext.do.length || aiContext.dont.length) {
       setTone(aiContext.tone);
       setFreeText(aiContext.free_text);
+      setDoList(new Set(aiContext.do));
+      setDontList(new Set(aiContext.dont));
     }
     setHydrated(true);
   }, [aiContext, hydrated]);
 
   const selectedTone = TONES.find((t) => t.value === tone);
 
+  const toggleIn = (setter: React.Dispatch<React.SetStateAction<Set<string>>>) => (value: string) => {
+    setter((prev) => {
+      const next = new Set(prev);
+      next.has(value) ? next.delete(value) : next.add(value);
+      return next;
+    });
+  };
+
   const handleSubmit = () => {
     if (!tone) return;
-    save({ ...aiContext, tone, free_text: freeText.trim() });
+    save({
+      ...aiContext,
+      tone,
+      free_text: freeText.trim(),
+      do: Array.from(doList),
+      dont: Array.from(dontList),
+    });
     onNext();
   };
 
@@ -119,6 +151,65 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Consignes do / don't */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="space-y-3"
+      >
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            À faire systématiquement
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {DO_SUGGESTIONS.map((item) => {
+              const active = doList.has(item);
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => toggleIn(setDoList)(item)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-all duration-200 ${
+                    active
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-foreground'
+                      : 'border-border text-muted-foreground hover:bg-accent/40 hover:text-foreground'
+                  }`}
+                  aria-pressed={active}
+                >
+                  {item}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            À éviter absolument
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {DONT_SUGGESTIONS.map((item) => {
+              const active = dontList.has(item);
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => toggleIn(setDontList)(item)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-all duration-200 ${
+                    active
+                      ? 'border-destructive/40 bg-destructive/10 text-foreground'
+                      : 'border-border text-muted-foreground hover:bg-accent/40 hover:text-foreground'
+                  }`}
+                  aria-pressed={active}
+                >
+                  {item}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </motion.div>
 
       {/* Contexte libre */}
       <motion.div

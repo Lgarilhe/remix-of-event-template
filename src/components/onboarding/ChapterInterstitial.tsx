@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import type { ChapterDef } from './onboardingMeta';
+import type { ChapterDef, SceneKey } from './onboardingMeta';
+import { STEP_META, formatDuration } from './onboardingMeta';
 
 interface Props {
   chapter: ChapterDef;
@@ -89,6 +90,21 @@ export const ChapterInterstitial: React.FC<Props> = ({ chapter, chapterIndex, to
         >
           {chapter.tagline}
         </motion.p>
+
+        {/* Stats du chapitre */}
+        <motion.span
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.45 }}
+          className="text-2xs font-mono uppercase tracking-wider text-muted-foreground/70"
+        >
+          {chapter.scenes.length} étape{chapter.scenes.length > 1 ? 's' : ''} · ≈{' '}
+          {formatDuration(
+            chapter.scenes
+              .filter((s): s is Exclude<SceneKey, 'launch'> => s !== 'launch')
+              .reduce((sum, s) => sum + STEP_META[s].durationSec, 0)
+          )}
+        </motion.span>
 
         {/* Barre de progression des chapitres */}
         <motion.div

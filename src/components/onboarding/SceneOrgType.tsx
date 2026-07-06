@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, Building2, Users, UserCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Building2, Users, UserCircle } from 'lucide-react';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
@@ -33,6 +32,14 @@ const ORG_TYPE_OPTIONS: { value: OrgType; icon: React.ElementType; title: string
 
 export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [selected, setSelected] = useState<OrgType | null>(null);
+  const firedRef = React.useRef(false);
+
+  const handlePick = (value: OrgType) => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    setSelected(value);
+    setTimeout(() => onSelect(value), 380);
+  };
 
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
@@ -56,7 +63,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
             <motion.button
               key={option.value}
               type="button"
-              onClick={() => setSelected(option.value)}
+              onClick={() => handlePick(option.value)}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + index * 0.08, duration: 0.35 }}
@@ -104,14 +111,9 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.4 }}
       >
-        <Button
-          onClick={() => selected && onSelect(selected)}
-          disabled={!selected}
-          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-          style={{ boxShadow: '0 4px 16px hsl(var(--primary) / 0.15)' }}
-        >
-          Suivant <ArrowRight className="w-4 h-4" />
-        </Button>
+        <span className="text-2xs font-mono text-muted-foreground/60 uppercase tracking-wider">
+          Sélectionnez pour continuer
+        </span>
       </motion.div>
     </div>
   );

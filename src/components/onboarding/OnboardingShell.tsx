@@ -6,7 +6,7 @@ import { OnboardingBackdrop } from './OnboardingBackdrop';
 import { ChapterRail } from './ChapterRail';
 import { StepExplainer } from './StepExplainer';
 import type { ChapterDef, SceneKey } from './onboardingMeta';
-import { STEP_META, chapterIndexOfScene } from './onboardingMeta';
+import { STEP_META, chapterIndexOfScene, remainingSeconds } from './onboardingMeta';
 
 interface Props {
   chapters: ChapterDef[];
@@ -70,6 +70,7 @@ export const OnboardingShell: React.FC<Props> = ({
   const chapter = chapterIdx >= 0 ? chapters[chapterIdx] : null;
   const meta = !isLaunch ? STEP_META[currentScene] : null;
   const stepInChapter = chapter ? chapter.scenes.indexOf(currentScene) + 1 : 0;
+  const remainingMin = Math.max(1, Math.ceil(remainingSeconds(flow, stepIndex) / 60));
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-x-clip bg-background">
@@ -170,7 +171,7 @@ export const OnboardingShell: React.FC<Props> = ({
                   Chapitre {String(chapterIdx + 1).padStart(2, '0')} — {chapter.title}
                 </span>
                 <span className="text-3xs font-mono uppercase tracking-wider text-muted-foreground">
-                  Étape {stepInChapter}/{chapter.scenes.length}
+                  Étape {stepInChapter}/{chapter.scenes.length} · ≈ {remainingMin} min restante{remainingMin > 1 ? 's' : ''}
                 </span>
               </motion.div>
             )}

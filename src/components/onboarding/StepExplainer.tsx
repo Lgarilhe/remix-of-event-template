@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Clock3, ChevronDown, Check, SkipForward } from 'lucide-react';
 import type { ChapterDef, StepMeta } from './onboardingMeta';
+import { formatDuration } from './onboardingMeta';
 
 interface Props {
   meta: StepMeta;
@@ -36,7 +37,7 @@ const ExplainerBody: React.FC<{ meta: StepMeta }> = ({ meta }) => (
 
     <div className="flex items-center gap-3 pt-1 border-t border-border/60">
       <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground pt-2">
-        <Clock3 className="w-3 h-3" /> {meta.duration}
+        <Clock3 className="w-3 h-3" /> {formatDuration(meta.durationSec)}
       </span>
       {meta.skippable && (
         <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground pt-2">
