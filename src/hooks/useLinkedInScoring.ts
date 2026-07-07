@@ -714,16 +714,17 @@ export function useLinkedInScoring({
   // Score a single profile.
   // options.deep : scoring profond — le profil passé contient les données
   // complètes (visite du profil dans l'app via get_profile). Bypass le cache
-  // serveur, résultat marqué scoringDepth='deep'. Déclenché automatiquement
-  // à l'ouverture de la fiche candidat → erreurs silencieuses (pas de toast).
+  // serveur, résultat marqué scoringDepth='deep'. Déclenché par le bouton
+  // "Analyse complète" de la fiche (action volontaire → erreurs affichées,
+  // comme le scoring standard ; avant, l'auto-déclenchement à l'ouverture
+  // imposait des erreurs silencieuses).
   const scoreProfile = useCallback(async (profile: LinkedInProfile, options?: { deep?: boolean }) => {
-    const silent = options?.deep === true;
     if (!selectedJob) {
-      if (!silent) toast.error('Sélectionnez un poste pour le scoring');
+      toast.error('Sélectionnez un poste pour le scoring');
       return;
     }
     if (scoringDisabledReason) {
-      if (!silent) toast.error(scoringDisabledReason);
+      toast.error(scoringDisabledReason);
       return;
     }
 
@@ -829,7 +830,7 @@ export function useLinkedInScoring({
       }
     } catch (err) {
       console.error('Score error:', err);
-      if (!silent) toast.error('Erreur lors du scoring');
+      toast.error('Erreur lors du scoring');
     }
   }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId, scoringModel, scoringDisabledReason]);
 
