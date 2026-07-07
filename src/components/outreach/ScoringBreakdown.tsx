@@ -19,12 +19,15 @@ const DIMENSION_LABELS: Record<string, string> = {
   receptivity: 'Réceptivité',
   tenure: 'Stabilité',
   contract_fit: 'Contrat',
+  salary_fit: 'Rémunération',
   tech_fit_llm: 'Tech (IA)',
   soft_skills_llm: 'Soft Skills (IA)',
 };
 
 const DimensionRow: React.FC<{ label: string; score: number; weight: number }> = ({ label, score, weight }) => {
-  const weightPct = Math.round(weight * 100);
+  // Le backend émet des poids en pourcents entiers (35, 25…) ; les anciens
+  // scores stockaient des fractions (0.35). Normaliser évite d'afficher ×3500%.
+  const weightPct = weight > 1 ? Math.round(weight) : Math.round(weight * 100);
   return (
     <div className="flex items-center gap-2">
       <span className="w-24 text-xs text-muted-foreground font-medium truncate">{label}</span>

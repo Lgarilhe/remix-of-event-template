@@ -2240,7 +2240,12 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
             { type: "text", text: profilesBlock },
           ],
         }],
-        max_tokens: inputs.length * 250 + 200, // ~250 tokens per profile + overhead
+        // 600 tokens/profil : le schéma de sortie (~25 champs dont
+        // criteriaEvaluations par critère du brief) dépasse largement les
+        // 250 tokens de l'ancien budget → réponses tronquées → profils sans
+        // résultat ou batch entier non parsable (BATCH_PARSE_FAILED). C'est
+        // un plafond, pas une cible : pas de surcoût si le modèle est concis.
+        max_tokens: inputs.length * 600 + 400,
         temperature: 0.1,
       }),
     }, 90000); // Longer timeout for batch
@@ -2263,6 +2268,9 @@ Réponds avec un JSON ARRAY (mode BATCH) — un objet par candidat dans l'ordre,
   if (!data) throw lastError || new Error("LLM batch call failed after retries");
 
   const rawContent = data.content?.[0]?.text || "";
+  if (data.stop_reason === "max_tokens") {
+    console.warn(`[llm-batch] Response truncated at max_tokens (${inputs.length} profiles) — tail profiles will fall back to individual scoring`);
+  }
   // Log cache hit/miss stats — useful to verify caching is actually working
   if (data.usage) {
     const u = data.usage;
@@ -2426,6 +2434,17 @@ function capScoreOnMustHaveFail(
 
 // ─── Cache ───────────────────────────────────────────────────────────────────
 
+// Résultat "dégradé" = la passe LLM a échoué (skippedLLM) alors que le profil
+// n'était PAS éliminé par hard filter : score algo seul, verdicts 'incertain',
+// pas de summary/criteriaEvaluations IA. Ces résultats ne doivent ni être
+// servis depuis le cache ni y être écrits — sinon le score partiel est figé
+// 48h et le frontend (qui skippe les profils déjà scorés) ne le ré-évalue
+// jamais. Les KO hard-filter (hardFilterPassed=false) restent cachés : ce
+// sont des verdicts définitifs, pas des échecs.
+function isDegradedResult(result: ScoringResult): boolean {
+  return result.skippedLLM === true && result.hardFilterPassed !== false;
+}
+
 async function getCachedScore(
   supabase: SupabaseClient,
   candidateId: string,
@@ -2447,7 +2466,12 @@ async function getCachedScore(
       return null; // Cache expired, will re-score
     }
 
-    return data.scoring_result as ScoringResult;
+    const result = data.scoring_result as ScoringResult;
+    // Score dégradé (entrée héritée d'avant le fix) → cache miss pour re-tenter
+    // la passe LLM au prochain scoring.
+    if (isDegradedResult(result)) return null;
+
+    return result;
   } catch {
     return null;
   }
@@ -2460,18 +2484,23 @@ async function setCachedScore(
   result: ScoringResult,
 ): Promise<void> {
   try {
-    // 1. Cache in match_scores (for fast lookup)
-    await supabase.from("match_scores").upsert(
-      {
-        candidate_id: candidateId,
-        job_id: jobId,
-        score: result.finalScore,
-        confidence: result.confidenceScore,
-        scoring_result: result,
-        created_at: new Date().toISOString(),
-      },
-      { onConflict: "candidate_id,job_id" },
-    );
+    // 1. Cache in match_scores (for fast lookup) — sauf résultat dégradé :
+    // on ne fige pas 48h un score sans passe IA, et on n'écrase pas un
+    // éventuel score complet déjà caché (ex: deep scoring dont le LLM a
+    // échoué, qui écraserait le score quick complet).
+    if (!isDegradedResult(result)) {
+      await supabase.from("match_scores").upsert(
+        {
+          candidate_id: candidateId,
+          job_id: jobId,
+          score: result.finalScore,
+          confidence: result.confidenceScore,
+          scoring_result: result,
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: "candidate_id,job_id" },
+      );
+    }
 
     // 2. Also update job_candidate_status with scoring data (for pipeline view)
     const status = result.finalScore >= 60 ? 'scored' : 'dismissed';

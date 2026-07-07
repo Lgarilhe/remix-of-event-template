@@ -20,6 +20,8 @@ export interface JobCandidateStatus {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** JobMatchResult complet persisté au scoring (chargé par LIGHT_COLUMNS). */
+  scoring_details?: any;
   linkedin_profile_data?: any;
 }
 

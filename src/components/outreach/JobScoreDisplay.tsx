@@ -15,7 +15,7 @@ export interface SalaryAnalysis {
   explanation?: string;
 }
 
-export interface DimensionScore { score: number; weight: number; }
+export interface DimensionScore { score: number; weight: number; details?: string; }
 
 export interface ScoringDimensions {
   tech_stack?: DimensionScore;
@@ -88,6 +88,14 @@ export interface JobMatchResult {
   skippedLLM?: boolean;
   processingTimeMs?: number;
   tokensUsed?: { input: number; output: number } | null;
+}
+
+/** Score "dégradé" : la passe IA a échoué (skippedLLM) sans que le profil soit
+ *  éliminé par hard filter. Le score affiché est provisoire (critères
+ *  structurés seuls : XP, localisation, stabilité…) et doit pouvoir être
+ *  relancé — le batch scoring et le bouton Score re-scorent ces profils. */
+export function isDegradedScore(result?: JobMatchResult | null): boolean {
+  return result?.skippedLLM === true && result?.hardFilterPassed !== false;
 }
 
 export interface BatchScoringStats {
@@ -228,6 +236,26 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
     incertain: { text: 'XP à vérifier', ok: false },
   }[result.experience_match] || { text: 'À vérifier', ok: false };
 
+  // Passe IA échouée → le score est provisoire. Sans ce badge, un résultat
+  // fallback algo-only est visuellement indistinguable d'un scoring complet.
+  const aiIncompleteBadge = isDegradedScore(result) ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium border border-amber-500/40 bg-amber-500/10 text-amber-600 cursor-help rounded-lg">
+          <AlertTriangle className="w-3 h-3" />
+          Analyse IA incomplète
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <p className="text-xs font-medium">L'évaluation IA n'a pas abouti pour ce profil.</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Score provisoire basé sur les critères structurés uniquement (expérience, localisation, stabilité…).
+          Relancez le scoring pour obtenir l'analyse complète.
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  ) : null;
+
   const confidenceBadge = result.confidenceScore != null && result.confidenceScore < 70 ? (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -252,6 +280,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <RecommendationPill rec={result.recommendation} />
+            {aiIncompleteBadge}
             {confidenceBadge}
             <SalaryBadge analysis={result.salary_analysis} />
             {result.matching_skills.slice(0, 2).map((skill, i) => (
@@ -319,6 +348,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <RecommendationPill rec={result.recommendation} />
+            {aiIncompleteBadge}
             {result.investigationNeeded && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -359,7 +389,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <CompatChip icon={Briefcase} label="Expérience" value={expLabel.text} ok={expLabel.ok} />
         <CompatChip icon={MapPin} label="Localisation" value={result.location_match ? 'Compatible' : 'À vérifier'} ok={!!result.location_match} />
-        <SalaryCompatChip analysis={result.salary_analysis} />
+        <SalaryCompatChip analysis={result.salary_analysis} salaryFit={result.dimensions?.salary_fit} />
       </div>
 
       {/* ─── FORCES & POINTS D'ATTENTION (highlights LLM) ──────────────────── */}
@@ -506,20 +536,34 @@ const CompatChip: React.FC<{ icon: React.ElementType; label: string; value: stri
   </div>
 );
 
-// ── Salary compat chip dédié (gère les 3 cas analysed/null/range) ──
-const SalaryCompatChip: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis }) => {
-  if (!analysis) {
-    return <CompatChip icon={DollarSign} label="Rémunération" value="Non vérifiée" ok={false} />;
+// ── Salary compat chip dédié ──
+// salary_analysis n'est plus émis par le backend actuel (producteur legacy) :
+// le cas nominal est le fallback sur la dimension heuristique salary_fit
+// (détection TJM/salaire dans le headline/summary vs fourchette du poste).
+const SalaryCompatChip: React.FC<{ analysis?: SalaryAnalysis; salaryFit?: DimensionScore }> = ({ analysis, salaryFit }) => {
+  if (analysis && analysis.status !== 'unknown') {
+    const cfg = {
+      adequate: { value: 'Compatible', ok: true },
+      too_low: { value: 'Budget poste sous le marché', ok: false },
+      too_high: { value: 'Budget poste confortable', ok: true },
+    }[analysis.status];
+    if (cfg) {
+      return <CompatChip icon={DollarSign} label="Rémunération" value={cfg.value} ok={cfg.ok} />;
+    }
   }
-  const ok = analysis.compatible !== false && !analysis.over_max;
-  return (
-    <CompatChip
-      icon={DollarSign}
-      label="Rémunération"
-      value={analysis.compatible ? 'Compatible' : analysis.over_max ? '> max' : '?'}
-      ok={ok}
-    />
-  );
+  if (salaryFit) {
+    // ok seulement sur signal explicite compatible (95) — le défaut neutre 70
+    // ("Pas d'indication explicite") reste gris pour ne pas surpromettre.
+    return (
+      <CompatChip
+        icon={DollarSign}
+        label="Rémunération"
+        value={salaryFit.details || (salaryFit.score >= 80 ? 'Compatible' : 'À vérifier')}
+        ok={salaryFit.score >= 80}
+      />
+    );
+  }
+  return <CompatChip icon={DollarSign} label="Rémunération" value="Non vérifiée" ok={false} />;
 };
 
 // ── Power score chip (Mobilité, Progression) ──

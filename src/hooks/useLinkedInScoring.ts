@@ -5,7 +5,7 @@ import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
-import { JobMatchResult, BatchScoringStats } from '@/components/outreach/JobScoreDisplay';
+import { JobMatchResult, BatchScoringStats, isDegradedScore } from '@/components/outreach/JobScoreDisplay';
 import { BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { toast } from 'sonner';
 import { confirmAlert } from '@/lib/confirmAlert';
@@ -896,8 +896,13 @@ export function useLinkedInScoring({
 
     // Use merged results (including pool profiles) if available, otherwise fall back to search results
     const allProfiles = allAvailableProfilesRef?.current || results;
-    // Exclude profiles that already have a score to avoid re-scoring
-    const profilesToScore = allProfiles.filter(p => selectedProfiles.has(p.id) && !jobScores[p.id]);
+    // Exclude profiles that already have a score to avoid re-scoring — SAUF
+    // les scores dégradés (passe IA échouée, skippedLLM) : sans cette
+    // exception, un score partiel restait définitif puisque rien ne le
+    // re-scorait jamais (l'edge function ne cache plus ces résultats).
+    const profilesToScore = allProfiles.filter(p =>
+      selectedProfiles.has(p.id) && (!jobScores[p.id] || isDegradedScore(jobScores[p.id]))
+    );
 
     if (profilesToScore.length === 0) {
       toast.info('Tous les profils sélectionnés sont déjà scorés');
@@ -1012,6 +1017,9 @@ export function useLinkedInScoring({
                 location_match: false,
                 summary: 'Rate limited - réessayez plus tard',
                 recommendation: 'maybe',
+                // Marque le placeholder comme dégradé : badge "Analyse IA
+                // incomplète" + re-scorable (sinon le guard batch le figeait).
+                skippedLLM: true,
               } as any));
               break;
             }

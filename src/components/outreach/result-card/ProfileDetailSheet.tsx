@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LinkedInProfile } from '../types';
-import { JobMatchResult, JobScoreDisplay, SalaryBadge } from '../JobScoreDisplay';
+import { JobMatchResult, JobScoreDisplay, SalaryBadge, isDegradedScore } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { CardExpandedContent } from './CardExpandedContent';
@@ -868,7 +868,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
             {/* ─── ACTIONS BAR ─── */}
             <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border overflow-x-auto no-scrollbar" data-no-swipe>
-              {selectedJob && onScoreProfile && !jobScore && (
+              {selectedJob && onScoreProfile && (!jobScore || isDegradedScore(jobScore)) && (
                 <Button
                   size="sm"
                   onClick={handleScore}
@@ -876,7 +876,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   className="h-7 gap-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 px-3 font-medium shrink-0"
                 >
                   {isScoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
-                  Score
+                  {/* Score dégradé (passe IA échouée) → proposer la relance */}
+                  {jobScore ? 'Relancer le score' : 'Score'}
                 </Button>
               )}
 
