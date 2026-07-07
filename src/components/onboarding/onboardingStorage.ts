@@ -1,7 +1,10 @@
 import type { OrgType, SceneKey } from './onboardingMeta';
 import type { OrgDetailsData } from './SceneOrgDetails';
 
-const STORAGE_KEY = 'konekt_onboarding_progress_v2';
+// ⚠️ Bumper la version à chaque changement de forme du flow (ajout/retrait
+// d'étapes) : un step index persisté sur l'ancien flow pointerait sur la
+// mauvaise scène et ferait sauter les nouvelles étapes.
+const STORAGE_KEY = 'konekt_onboarding_progress_v3';
 
 export interface PersistedProgress {
   step: number;
