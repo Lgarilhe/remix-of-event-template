@@ -15,6 +15,10 @@ const CRITERIA_CONFIG: Record<string, { label: string; shortLabel: string }> = {
   company_fit: { label: 'Culture & fit entreprise', shortLabel: 'Fit' },
   soft_skills: { label: 'Soft skills', shortLabel: 'Soft' },
   location: { label: 'Localisation', shortLabel: 'Loc' },
+  receptivity: { label: 'Réceptivité (ouverture au changement)', shortLabel: 'Réceptivité' },
+  tenure: { label: 'Stabilité (durée moyenne des postes)', shortLabel: 'Stabilité' },
+  contract_fit: { label: 'Compatibilité contrat', shortLabel: 'Contrat' },
+  salary_fit: { label: 'Compatibilité rémunération', shortLabel: 'Salaire' },
   tech_fit_llm: { label: 'Tech (évaluation IA)', shortLabel: 'Tech IA' },
   soft_skills_llm: { label: 'Soft Skills (évaluation IA)', shortLabel: 'Soft IA' },
 };
@@ -53,7 +57,8 @@ export const CriteriaIndicators: React.FC<CriteriaIndicatorsProps> = ({ dimensio
             </TooltipTrigger>
             <TooltipContent side="top" className="max-w-xs">
               <p className="text-xs font-medium">{config.label}: {dim.score}/100</p>
-              {dim.weight > 0 && <p className="text-xs text-muted-foreground">Poids: {Math.round(dim.weight * 100)}%</p>}
+              {/* Poids backend en pourcents entiers (35), anciens scores en fractions (0.35) */}
+              {dim.weight > 0 && <p className="text-xs text-muted-foreground">Poids: {dim.weight > 1 ? Math.round(dim.weight) : Math.round(dim.weight * 100)}%</p>}
             </TooltipContent>
           </Tooltip>
         );

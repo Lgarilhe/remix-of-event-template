@@ -624,15 +624,26 @@ export function useLinkedInSearch({
       let added = 0;
       for (const [candidateId, status] of candidateStatus.statuses) {
         if (!next[candidateId] && status.score != null && status.recommendation) {
+          // Ré-hydrate le détail persisté (batchSaveScores stocke le
+          // JobMatchResult entier dans scoring_details) plutôt qu'un stub
+          // minimal : sinon, après un reload, la fiche affiche une éval
+          // neutre ("XP à vérifier", pas de confiance ni dimensions) même
+          // pour un scoring complet — et le flag skippedLLM (score dégradé
+          // re-scorable) était perdu, bloquant tout re-scoring.
+          const details = (status.scoring_details && typeof status.scoring_details === 'object')
+            ? (status.scoring_details as Partial<JobMatchResult>)
+            : null;
           next[candidateId] = {
             profile_name: status.candidate_name || '',
-            match_score: status.score,
-            recommendation: status.recommendation as 'go' | 'maybe' | 'skip',
             matching_skills: [],
             missing_skills: [],
             experience_match: 'incertain',
             location_match: false,
             summary: '',
+            ...(details || {}),
+            // Les colonnes DB restent la source de vérité pour score/reco.
+            match_score: status.score,
+            recommendation: status.recommendation as 'go' | 'maybe' | 'skip',
           };
           added++;
         }

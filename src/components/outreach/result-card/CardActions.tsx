@@ -1,6 +1,6 @@
 import React from 'react';
 import { LinkedInProfile } from '../types';
-import { JobMatchResult } from '../JobScoreDisplay';
+import { JobMatchResult, isDegradedScore } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
@@ -69,9 +69,10 @@ export const CardActions: React.FC<CardActionsProps> = ({
 }) => {
   const iconSize = compact ? 'w-3.5 h-3.5' : 'w-4 h-4';
 
-  // Détermine le CTA primaire selon l'état du profil
+  // Détermine le CTA primaire selon l'état du profil.
+  // Un score dégradé (passe IA échouée) doit pouvoir être relancé.
   const recommendation = jobScore?.recommendation;
-  const showScore = !!selectedJob && !!onScoreProfile && !jobScore;
+  const showScore = !!selectedJob && !!onScoreProfile && (!jobScore || isDegradedScore(jobScore));
   const showSequenceCTA = !!accountId && !!jobScore && recommendation !== 'skip';
 
   return (
