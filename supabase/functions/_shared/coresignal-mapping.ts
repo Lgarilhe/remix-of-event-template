@@ -142,18 +142,22 @@ const FUNCTION_TO_DEPARTMENT: Record<string, string> = {
 
 type EsClause = Record<string, unknown>;
 
-function pushTitleClauses(target: EsClause[], keywords: string) {
-  const parts = keywords
-    .split(/\s+OR\s+|,/i)
+/**
+ * Construit les clauses OU (match_phrase) pour TOUTES les variantes d'intitulé.
+ * Un intitulé = match_phrase (obligatoire, cf. audit). Toutes les variantes
+ * (plusieurs filtres de poste + « OR »/virgules internes) sont fusionnées dans
+ * un unique `should` : le candidat doit matcher AU MOINS UN intitulé.
+ */
+function titleShouldClauses(keywordsList: string[]): EsClause[] {
+  const parts = keywordsList
+    .flatMap((k) => k.split(/\s+OR\s+|,/i))
     .map((s) => s.trim())
     .filter(Boolean);
-  if (parts.length === 0) return;
-  // Un titre = match_phrase (obligatoire, cf. audit). Plusieurs → OR interne.
-  const should = parts.flatMap((p) => ([
+  const uniq = [...new Set(parts)];
+  return uniq.flatMap((p) => ([
     { match_phrase: { active_experience_title: p } },
     { match_phrase: { 'experience.position_title': p } },
   ]));
-  target.push({ bool: { should, minimum_should_match: 1 } });
 }
 
 /**
@@ -192,7 +196,13 @@ export function mapFiltersToEsDsl(filters: LinkedInFiltersLite): {
       titleSources.push(t.name);
     }
   });
-  titleSources.forEach((k) => pushTitleClauses(must, k));
+  // TOUTES les variantes d'intitulé dans UNE seule clause `must` (OU interne).
+  // Sinon plusieurs filtres de poste seraient ET-és → un candidat devrait
+  // porter tous les intitulés à la fois → 0 résultat (bug constaté en prod).
+  const titleShould = titleShouldClauses(titleSources);
+  if (titleShould.length > 0) {
+    must.push({ bool: { should: titleShould, minimum_should_match: 1 } });
+  }
 
   // ── Localisation ── (name = "Paris" / "France" / "Paris, Île-de-France, France")
   const locationNames = [
