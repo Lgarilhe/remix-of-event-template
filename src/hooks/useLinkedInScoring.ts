@@ -777,6 +777,12 @@ export function useLinkedInScoring({
     try {
       // Base Konekt : hydrate la fiche complète (collect) avant scoring. No-op LinkedIn.
       const hydratedProfile = await hydrateIfDatabase(profile);
+      // Réinjecter la fiche enrichie dans la liste affichée, sinon la modale
+      // garde les données d'aperçu partielles (1 exp, ni formation ni skills)
+      // alors que le collect a bien ramené la fiche complète.
+      if (setResults && hydratedProfile !== profile) {
+        setResults((prev) => prev.map((p) => (p.id === profile.id ? { ...hydratedProfile, _preScore: (p as LinkedInProfile & { _preScore?: number })._preScore } : p)));
+      }
       const profileData = buildProfileData(hydratedProfile);
 
       const { data, error } = await invokeWithCredits('score-profile-job', 'scoring', {
@@ -984,6 +990,22 @@ export function useLinkedInScoring({
       // Base Konekt : hydrate les fiches complètes (collect) avant scoring, à
       // concurrence bornée. No-op LinkedIn (needsReveal/hydrateIfDatabase gardés).
       const hydratedProfiles = await hydrateAllChunked(profilesToScore, 4);
+      // Réinjecter les fiches enrichies (collect) dans la liste affichée, en
+      // conservant le _preScore existant. Sinon les cartes/modales gardent les
+      // données d'aperçu partielles après le scoring (bug « fiches vides »).
+      if (setResults) {
+        const hydratedById = new Map<string, LinkedInProfile>();
+        profilesToScore.forEach((orig, i) => {
+          const h = hydratedProfiles[i];
+          if (h && h !== orig) hydratedById.set(orig.id, h);
+        });
+        if (hydratedById.size > 0) {
+          setResults((prev) => prev.map((p) => {
+            const h = hydratedById.get(p.id);
+            return h ? { ...h, _preScore: (p as LinkedInProfile & { _preScore?: number })._preScore } : p;
+          }));
+        }
+      }
       const profilesData = hydratedProfiles.map(buildProfileData);
       const jobPayload = {
         id: selectedJob.id,
