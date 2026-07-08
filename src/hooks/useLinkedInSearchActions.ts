@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { invokeCoresignal } from '@/lib/invokeCoresignal';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { LinkedInFiltersState, LinkedInProfile, LinkedInApiType } from '@/components/outreach/types';
 import { filterByCalculatedExperience } from '@/components/outreach/calculateExperience';
@@ -800,13 +801,21 @@ export function useLinkedInSearchActions(
           console.log('[LinkedInSearch] Search params:', params);
         }
 
-        // Sourcing 100 % LinkedIn (Unipile) — décision 2026-04-27.
-        // L'option "Base Konekt" via database-search (Apollo/PDL) a été retirée :
-        // coût trop élevé en browsing (~$0.28/profil PDL ou bulk_match Apollo
-        // obligatoire) + ToS multi-user d'Apollo violés sans contrat OEM custom.
-        // Apollo/PDL restent en backend pour usage futur enrichment ciblé
-        // (récupérer email/phone d'un candidat shortlisté).
-        const result = await invokeUnipile({ body: params });
+        // Sourcing double source :
+        //  - LinkedIn (Unipile) : recherche live via la session LinkedIn de l'user.
+        //  - Base Konekt (Coresignal) : recherche base de données, identité visible,
+        //    sans toucher au compte LinkedIn. Cf. docs/coresignal-integration-audit.md
+        //    (« Coresignal pour lire, Unipile pour agir »).
+        // La pagination Base Konekt est page-based : on traduit le curseur en n° de page.
+        const result = isDatabase
+          ? await invokeCoresignal({
+              body: {
+                action: 'preview',
+                filters: currentFilters,
+                page: currentCursor ? Number(currentCursor) : 1,
+              },
+            })
+          : await invokeUnipile({ body: params });
         const data: Record<string, unknown> = result.data || {};
 
         if (!data?.success) {

@@ -4,6 +4,7 @@ import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
 import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
 
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
@@ -117,6 +118,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   const [keywordsDraft, setKeywordsDraft] = useState('');
   const { data: allJobs = [] } = useJobs();
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
+  // Feature flag Base Konekt (rollout contrôlé par org). Lisible admin/owner.
+  const { integrations } = useOrganizationIntegrations();
+  const coresignalEnabled = integrations?.coresignal_enabled === true;
 
   const handleApplyPresetJob = useCallback((jobId: string | null, _jobTitle: string | null) => {
     if (jobId) {
@@ -143,14 +147,41 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </Alert>
       )}
 
-      {/* Sourcing 100 % LinkedIn — toggle Base Konekt retiré (2026-04-27).
-          La "Base Konekt" via Apollo/PDL coûtait trop cher en browsing (~$0.28/profil
-          PDL ou bulk_match Apollo obligatoire) et violait les ToS multi-user d'Apollo.
-          Tous les concurrents (Lemlist, HeyReach, Phantombuster) utilisent le compte
-          LinkedIn de l'user en source primaire — c'est le bon design.
-          PDL/Apollo restent en place côté backend pour usage enrichment ciblé futur
-          (récupérer email/phone d'un candidat shortlisté, 1 crédit/profil actionnable). */}
-      {accounts.length === 0 && (
+      {/* Sélecteur de source — visible seulement si Base Konekt activée pour l'org.
+          « LinkedIn » = recherche live via la session LinkedIn. « Base Konekt » =
+          recherche base de données (identité visible, sans toucher au compte). */}
+      {coresignalEnabled && onSearchSourceChange && (
+        <div className="grid grid-cols-2 gap-1 p-1 bg-muted rounded-md">
+          <button
+            type="button"
+            onClick={() => onSearchSourceChange('linkedin')}
+            className={cn(
+              'text-xs font-medium py-1.5 rounded transition-colors',
+              searchSource !== 'database'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            LinkedIn
+          </button>
+          <button
+            type="button"
+            onClick={() => onSearchSourceChange('database')}
+            className={cn(
+              'text-xs font-medium py-1.5 rounded transition-colors',
+              searchSource === 'database'
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            Base Konekt
+          </button>
+        </div>
+      )}
+
+      {/* Alerte compte LinkedIn — uniquement en mode LinkedIn (la Base Konekt
+          n'exige pas de compte connecté). */}
+      {searchSource !== 'database' && accounts.length === 0 && (
         <Alert variant="destructive" className="bg-destructive/10 border-destructive/30 py-2">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <AlertTitle className="text-destructive text-xs">Aucun compte LinkedIn connecté</AlertTitle>

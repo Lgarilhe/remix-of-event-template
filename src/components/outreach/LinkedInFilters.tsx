@@ -50,6 +50,7 @@ import { toast } from 'sonner';
 import { BasicFiltersSection } from './filters/BasicFiltersSection';
 import { PositionFiltersSection } from './filters/PositionFiltersSection';
 import { RecruiterFiltersSection } from './filters/RecruiterFiltersSection';
+import { DatabaseFiltersSection } from './filters/DatabaseFiltersSection';
 
 interface LinkedInFiltersProps {
   filters: LinkedInFiltersState;
@@ -884,6 +885,16 @@ export const LinkedInFilters: React.FC<LinkedInFiltersProps> = ({
             onToggle={() => toggleSection('recruiter')}
             activeFiltersPreview={recruiterFiltersPreview}
             countRecruiterFilters={countRecruiterFilters}
+          />
+        )}
+
+        {/* ===== FILTRES BASE KONEKT — base de données uniquement ===== */}
+        {filters.api === 'database' && (
+          <DatabaseFiltersSection
+            filters={filters}
+            onChange={onChange}
+            isOpen={openSections.database}
+            onToggle={() => toggleSection('database')}
           />
         )}
       </div>

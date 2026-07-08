@@ -23,6 +23,8 @@ export interface OrganizationIntegrations {
   aircall_api_id: string | null;
   aircall_api_token: string | null;
   aircall_connected: boolean;
+  coresignal_api_key: string | null;
+  coresignal_enabled: boolean;
 }
 
 export const useOrganizationIntegrations = () => {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { invokeCoresignal } from '@/lib/invokeCoresignal';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
@@ -9,6 +10,31 @@ import { JobMatchResult, BatchScoringStats, isDegradedScore } from '@/components
 import { BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { toast } from 'sonner';
 import { confirmAlert } from '@/lib/confirmAlert';
+
+/**
+ * Pour un profil Base Konekt (source==='database') affiché en aperçu (données
+ * partielles), récupère la fiche complète (collect) avant scoring, afin que
+ * score-profile-job dispose du résumé, des descriptions d'expérience et des
+ * skills — sans aucune modification de score-profile-job lui-même.
+ *
+ * Défensif : ne bloque JAMAIS le scoring (fallback = profil d'origine).
+ * No-op immédiat pour les profils LinkedIn (source !== 'database').
+ */
+async function hydrateIfDatabase(profile: LinkedInProfile): Promise<LinkedInProfile> {
+  if (!profile || (profile as { source?: string }).source !== 'database') return profile;
+  const hasDescription = Array.isArray(profile.work_experience)
+    && profile.work_experience.some((w) => !!w?.description);
+  if (hasDescription) return profile; // fiche déjà complète (collect en cache)
+  try {
+    const { data } = await invokeCoresignal({ body: { action: 'collect', id: profile.id } });
+    if (data?.success && data.profile) {
+      return { ...(data.profile as LinkedInProfile), source: 'database' };
+    }
+  } catch {
+    // fallback silencieux sur le profil d'aperçu
+  }
+  return profile;
+}
 
 // Fire-and-forget: generate embedding for a candidate after scoring
 async function generateCandidateEmbedding(profile: LinkedInProfile): Promise<void> {
@@ -729,7 +755,9 @@ export function useLinkedInScoring({
     }
 
     try {
-      const profileData = buildProfileData(profile);
+      // Base Konekt : hydrate la fiche complète (collect) avant scoring. No-op LinkedIn.
+      const hydratedProfile = await hydrateIfDatabase(profile);
+      const profileData = buildProfileData(hydratedProfile);
 
       const { data, error } = await invokeWithCredits('score-profile-job', 'scoring', {
         profile: profileData,
@@ -916,7 +944,9 @@ export function useLinkedInScoring({
     const PARALLEL_BATCHES = 3;
 
     try {
-      const profilesData = profilesToScore.map(buildProfileData);
+      // Base Konekt : hydrate les fiches complètes (collect) avant scoring. No-op LinkedIn.
+      const hydratedProfiles = await Promise.all(profilesToScore.map(hydrateIfDatabase));
+      const profilesData = hydratedProfiles.map(buildProfileData);
       const jobPayload = {
         id: selectedJob.id,
         title: selectedJob.title,

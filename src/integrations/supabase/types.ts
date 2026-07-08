@@ -3597,6 +3597,8 @@ export type Database = {
           apollo_api_key: string | null
           calendly_api_key: string | null
           calendly_connected: boolean
+          coresignal_api_key: string | null
+          coresignal_enabled: boolean
           created_at: string
           id: string
           notion_api_key: string | null
@@ -3630,6 +3632,8 @@ export type Database = {
           notion_connected?: boolean
           notion_postes_db_id?: string | null
           notion_shortlist_db_id?: string | null
+          coresignal_api_key?: string | null
+          coresignal_enabled?: boolean
           organization_id: string
           pdl_api_key?: string | null
           unipile_api_key?: string | null
@@ -3656,6 +3660,8 @@ export type Database = {
           notion_connected?: boolean
           notion_postes_db_id?: string | null
           notion_shortlist_db_id?: string | null
+          coresignal_api_key?: string | null
+          coresignal_enabled?: boolean
           organization_id?: string
           pdl_api_key?: string | null
           unipile_api_key?: string | null
@@ -5518,6 +5524,8 @@ export type Database = {
           apollo_api_key: string | null
           calendly_api_key: string | null
           calendly_connected: boolean
+          coresignal_api_key: string | null
+          coresignal_enabled: boolean
           created_at: string
           id: string
           notion_api_key: string | null

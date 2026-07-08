@@ -115,6 +115,9 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   debrief: { action: "debrief", label: "Débrief rapide", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
   meeting_minutes: { action: "meeting_minutes", label: "Compte-rendu réunion", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "qualification" },
   generate_client_competitors: { action: "generate_client_competitors", label: "Concurrents client", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing", autoDefault: "claude-haiku-4-5" },
+  // Base Konekt (recherche base de données) — pas de tokens LLM, floor = coût réel
+  coresignal_preview: { action: "coresignal_preview", label: "Base Konekt — aperçu", floor: 1, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
+  coresignal_collect: { action: "coresignal_collect", label: "Base Konekt — fiche complète", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
 };
 
 // ─── Credit Calculation (frontend) ──────────────────────────────────────────

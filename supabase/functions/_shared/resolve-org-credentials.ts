@@ -3,7 +3,7 @@
  * Reads per-org credentials from organization_integrations, falls back to Deno.env.
  *
  * Usage:
- *   import { resolveUnipileCredentials, resolveNotionCredentials, resolveApolloCredentials, resolvePDLCredentials, resolveAnthropicCredentials } from '../_shared/resolve-org-credentials.ts';
+ *   import { resolveUnipileCredentials, resolveNotionCredentials, resolveApolloCredentials, resolvePDLCredentials, resolveCoresignalCredentials, resolveAnthropicCredentials } from '../_shared/resolve-org-credentials.ts';
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
@@ -31,6 +31,10 @@ export interface PDLCredentials {
   apiKey: string;
 }
 
+export interface CoresignalCredentials {
+  apiKey: string;
+}
+
 export interface AnthropicCredentials {
   apiKey: string;
 }
@@ -41,6 +45,7 @@ const unipileCache = new Map<string, UnipileCredentials | null>();
 const notionCache = new Map<string, NotionCredentials | null>();
 const apolloCache = new Map<string, ApolloCredentials | null>();
 const pdlCache = new Map<string, PDLCredentials | null>();
+const coresignalCache = new Map<string, CoresignalCredentials | null>();
 const anthropicCache = new Map<string, AnthropicCredentials | null>();
 
 export function clearCredentialCaches() {
@@ -48,6 +53,7 @@ export function clearCredentialCaches() {
   notionCache.clear();
   apolloCache.clear();
   pdlCache.clear();
+  coresignalCache.clear();
   anthropicCache.clear();
 }
 
@@ -228,6 +234,41 @@ export async function resolvePDLCredentials(
   }
 
   const envKey = Deno.env.get("PDL_API_KEY");
+  if (envKey) return { apiKey: envKey };
+  return null;
+}
+
+// ─── Coresignal (Base Konekt) ────────────────────────────────────────────────
+
+export async function resolveCoresignalCredentials(
+  organizationId?: string | null,
+  supabaseClient?: SupabaseClient
+): Promise<CoresignalCredentials | null> {
+  if (organizationId) {
+    const cached = coresignalCache.get(organizationId);
+    if (cached !== undefined) return cached;
+
+    try {
+      const sb = supabaseClient ?? getServiceClient();
+      const { data } = await sb
+        .from("organization_integrations")
+        .select("coresignal_api_key")
+        .eq("organization_id", organizationId)
+        .single();
+
+      if (data?.coresignal_api_key) {
+        const creds: CoresignalCredentials = { apiKey: data.coresignal_api_key };
+        console.log(`[resolve-creds] Using org-specific Coresignal credentials for org ${organizationId}`);
+        coresignalCache.set(organizationId, creds);
+        return creds;
+      }
+    } catch (e) {
+      console.warn(`[resolve-creds] Failed to resolve org Coresignal credentials:`, e);
+    }
+    coresignalCache.set(organizationId, null);
+  }
+
+  const envKey = Deno.env.get("CORESIGNAL_API_KEY");
   if (envKey) return { apiKey: envKey };
   return null;
 }

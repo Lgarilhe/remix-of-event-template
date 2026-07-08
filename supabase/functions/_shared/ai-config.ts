@@ -336,6 +336,24 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "sourcing",
   },
+  // ─── Base Konekt (recherche base de données) ────────────────────────────
+  // Pas de tokens LLM : appel API externe. Le floor = coût réel facturé.
+  coresignal_preview: {
+    action: "coresignal_preview",
+    label: "Base Konekt — aperçu",
+    floor: 1,           // 1 crédit / page d'aperçu (browsing économique)
+    typicalTokens: 0,
+    routingTier: "fast",
+    category: "sourcing",
+  },
+  coresignal_collect: {
+    action: "coresignal_collect",
+    label: "Base Konekt — fiche complète",
+    floor: 2,           // 2 crédits / fiche révélée (scoring + coordonnées)
+    typicalTokens: 0,
+    routingTier: "fast",
+    category: "sourcing",
+  },
 };
 
 // ─── Routing Defaults ───────────────────────────────────────────────────────
