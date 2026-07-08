@@ -341,7 +341,9 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   coresignal_preview: {
     action: "coresignal_preview",
     label: "Base Konekt — aperçu",
-    floor: 1,           // 1 crédit / page d'aperçu (browsing économique)
+    // Doc Coresignal : /search/es_dsl ET /search/es_dsl/preview = 2 crédits
+    // provider / requête (une page ≈ 20 profils). floor = coût réel.
+    floor: 2,           // 2 crédits / page d'aperçu (~20 profils)
     typicalTokens: 0,
     routingTier: "fast",
     category: "sourcing",
