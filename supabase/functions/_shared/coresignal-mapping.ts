@@ -68,6 +68,10 @@ export interface LinkedInProfileLite {
   profile_picture_url?: string;
   location?: string;
   industry?: string;
+  /** Niveau hiérarchique du poste actif (ex. Manager, Director, VP) — dispo dès l'aperçu. */
+  seniority_level?: string;
+  /** Département du poste actif (ex. Sales, Engineering) — dispo dès l'aperçu. */
+  department?: string;
   connections_count?: number;
   followers_count?: number;
   open_to_work?: boolean;
@@ -495,6 +499,8 @@ export function coresignalToLinkedInProfile(raw: Record<string, unknown>): Linke
     profile_picture_url: (raw.picture_url as string) || undefined,
     location,
     industry,
+    seniority_level: (raw.active_experience_management_level as string) || undefined,
+    department: (raw.active_experience_department as string) || undefined,
     connections_count: typeof raw.connections_count === 'number' ? raw.connections_count : undefined,
     followers_count: typeof raw.followers_count === 'number' ? raw.followers_count : undefined,
     contact_info: email ? { emails: [email], phones: [] } : undefined,
@@ -528,6 +534,8 @@ export function coresignalPreviewToProfile(raw: Record<string, unknown>): Linked
     public_profile_url: linkedin,
     location: (raw.location_full as string) || (raw.location_country as string) || undefined,
     industry: (raw.company_industry as string) || undefined,
+    seniority_level: (raw.active_experience_management_level as string) || undefined,
+    department: (raw.active_experience_department as string) || undefined,
     connections_count: typeof raw.connections_count === 'number' ? raw.connections_count : undefined,
     followers_count: typeof raw.followers_count === 'number' ? raw.followers_count : undefined,
     work_experience: (company || role)

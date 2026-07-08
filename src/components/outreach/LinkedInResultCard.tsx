@@ -444,6 +444,26 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <span className="min-w-0 break-words sm:truncate">{profile.location.split(',')[0]}</span>
                 </>
               )}
+              {/* Base Konekt : signaux dispo dès l'aperçu (niveau, département,
+                  secteur) — gratuits, ne nécessitent pas de collect. */}
+              {(profile as any).seniority_level && (
+                <>
+                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="shrink-0">{(profile as any).seniority_level}</span>
+                </>
+              )}
+              {(profile as any).department && (
+                <>
+                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="min-w-0 break-words sm:truncate">{(profile as any).department}</span>
+                </>
+              )}
+              {(profile as any).source === 'database' && (profile as any).industry && (
+                <>
+                  <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
+                  <span className="min-w-0 break-words sm:truncate">{(profile as any).industry}</span>
+                </>
+              )}
               {totalExperience && (
                 <>
                   <span className="text-muted-foreground/30 select-none" aria-hidden="true">•</span>
