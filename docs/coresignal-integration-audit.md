@@ -283,6 +283,65 @@ selon le plan. Trivialement couvert par notre grille de crédits Konekt.
 
 ---
 
+## 13. Architecture hybride Coresignal × Unipile (blueprint retenu)
+
+> Validé le 2026-07-08. Principe directeur : **« Coresignal pour lire, Unipile pour agir »**.
+> Le risque de ban LinkedIn est proportionnel au volume d'actions non-humaines ; ~80 % de ce
+> volume est de la lecture (recherches paginées, visites de profils pour scoring) → déporté
+> sur Coresignal. Le budget confiance du compte LinkedIn est réservé à ce que lui seul sait faire.
+
+### 13.1 Répartition des rôles
+
+| Étape | Source | Empreinte LinkedIn |
+|---|---|---|
+| Recherche, itération filtres, estimation volume | Coresignal preview | zéro |
+| Fiche complète pour scoring | Coresignal collect (2 cr) | zéro (avant : 1 visite/candidat scoré) |
+| Signaux d'intention (open-to-work, degré, viewed-your-profile, ex-collègues) | Unipile — irremplaçable | faible, ciblé |
+| Vérification finale avant contact | Unipile `get_profile` sur ~25 finalistes | ~25 visites/mission |
+| Contact LinkedIn (invitations, messages, InMails) | Unipile exclusivement | seul poste assumé |
+| Email/mobile en parallèle | Coresignal (email pro) + BetterContact | zéro — chaque email envoyé = un InMail économisé |
+| Veille vivier / alertes changement de poste | Coresignal webhooks | zéro |
+
+### 13.2 Routage par licence du compte connecté
+
+- **Classic** : compte fragile (commercial use limit) → Coresignal moteur de recherche PRIMAIRE,
+  le compte ne sert qu'aux invitations/messages. Ouvre le segment « recruteurs sans licence
+  payante » (le marché de Kalent) avec le canal LinkedIn en plus.
+- **Sales Navigator** : Coresignal pour le volume ; Sales Nav réservé aux recherches « signal »
+  (changed_jobs, following_your_company, viewed_your_profile) croisées avec le pool Coresignal.
+- **Recruiter** : recherche Recruiter conservée en source primaire au choix de l'user, mais le
+  `get_profile` de masse du scoring est remplacé par le collect Coresignal (matching par URL) ;
+  Recruiter utilisé en couche signal (ex. recherche spotlight open_to_work hebdo par mission,
+  intersectée avec le pool) plutôt qu'en pagination profonde.
+
+### 13.3 Mécanique anti-ban (renforcements sur l'existant)
+
+Briques existantes : `useUnipileQuota`, `LinkedInSafetySettings`, proxy dédié, plafond ~100
+invitations en attente, vérif crédits InMail fail-closed, pause auto sur `account_disconnected`.
+À ajouter :
+
+1. **Budget confiance par compte** : quotas journaliers par type d'action (visites / recherches /
+   invitations / messages), calibrés par licence et ancienneté — maintenus bas car la lecture
+   part chez Coresignal.
+2. **Routage de canal à l'enrollment** : 1er degré → message direct ; email vérifié → email
+   d'abord (coût LinkedIn nul) ; sinon invitation avec note ou InMail. Les séquences savent
+   déjà auto-skip par canal ; il manque la règle « canal le moins cher en budget LinkedIn d'abord ».
+3. **Fusion des sources par `linkedin_url`** (`linkedin_shorthand_names` + `historical_ids`
+   côté Coresignal pour les URLs renommées). Règle héritée de l'époque Apollo : le live Unipile
+   gagne sur le poste actuel, Coresignal gagne sur la richesse (email, signaux, firmographics),
+   ne jamais écraser une donnée par du vide.
+4. **Fraîcheur à deux niveaux** : browsing sur cache Coresignal (jours) → vérification live
+   Unipile uniquement au moment de contacter.
+
+### 13.4 Résultat attendu & limite connue
+
+Par mission : de plusieurs centaines d'interactions LinkedIn à **~25-40** (vérifs finalistes +
+contacts réels). Limite : le matching URL Coresignal↔Unipile ne sera pas parfait à 100 %
+(profils très récents ou renommés) → fallback « chercher ce profil via LinkedIn » = une
+recherche Unipile ciblée.
+
+---
+
 ## Annexe — Tests réels du 2026-07-08 (compte trial Konekt)
 
 | Test | Résultat |
