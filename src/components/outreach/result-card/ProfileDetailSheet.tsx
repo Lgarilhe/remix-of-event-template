@@ -31,6 +31,7 @@ import {
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { invokeUnipile } from '@/lib/invokeUnipile';
+import { invokeCoresignal } from '@/lib/invokeCoresignal';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
@@ -343,8 +344,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       (profile as any)._source === 'database' ||
       (profile as any).source === 'database';
     const isPoolProfile = Boolean((profile as any)._fromPool);
+    // Les profils Base Konekt sont enrichis via Coresignal collect (effet
+    // dédié ci-dessous), JAMAIS via Unipile/LinkedIn (« Coresignal pour lire »).
     const needsEnrichment =
-      (isPoolProfile || isDatabaseProfile) &&
+      isPoolProfile && !isDatabaseProfile &&
       (!profile.work_experience?.length); // Only enrich if missing work experience — don't enrich just for summary/skills
 
     if (!needsEnrichment) {
@@ -417,6 +420,38 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
       setIsEnriching(false);
     };
   }, [open, profile?.id, accountId]);
+
+  // ─── Base Konekt : révélation de la fiche complète à l'ouverture ─────────
+  // L'aperçu ne contient que le poste courant. Le collect Coresignal ramène
+  // tout le parcours, la formation, les compétences, le résumé et la photo.
+  // Résultat mis en cache 30 j côté serveur → réouverture gratuite. Ne touche
+  // jamais le compte LinkedIn (contrairement à l'auto-enrich pool ci-dessus).
+  useEffect(() => {
+    if (!open || !profile) return;
+    const isDb = (profile as any).source === 'database' || (profile as any)._source === 'database';
+    if (!isDb) return;
+    // Déjà complet (fiche collectée en cache) si une expérience a une description.
+    const hasFull = Array.isArray(profile.work_experience)
+      && profile.work_experience.some((w) => !!w?.description);
+    if (hasFull) return;
+
+    let cancelled = false;
+    setIsEnriching(true);
+    (async () => {
+      try {
+        const { data } = await invokeCoresignal({ body: { action: 'collect', id: profile.id } });
+        if (!cancelled && data?.success && data.profile) {
+          setEnrichedProfile({ ...(data.profile as LinkedInProfile), source: 'database' } as LinkedInProfile);
+        }
+      } catch (err) {
+        if (!cancelled) console.warn('[ProfileDetail] Base Konekt collect failed:', err);
+      } finally {
+        if (!cancelled) setIsEnriching(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, profile?.id]);
 
   // ─── Scoring profond à la demande ───────────────────────────────────────
   // Le score de liste ('quick') est calculé sur les seules données de
