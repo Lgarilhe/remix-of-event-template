@@ -144,6 +144,37 @@ ALTER TABLE knowledge_chunks
 | Badge global discret | **CRÉER** : indicateur « IA souveraine » (footer AgentDrawer + sorties de génération) quand le mode est actif — preuve visible pour l'utilisateur ET ses clients |
 | Bannière scoring | **CRÉER** : si le mode a changé depuis le dernier scoring d'une mission, bannière « les scores existants ont été calculés en mode X » + CTA re-scorer. Pas de blocage dur |
 
+## 5 bis. Uniformisation des sélecteurs de modèles existants
+
+État des lieux : UN composant partagé `src/components/ai/ModelPicker.tsx` utilisé à
+9 endroits (AutoFillFiltersButton, InlineAIPanel, OutreachMessageModal, AgentChatPanel,
+SearchResultsPanel, LiveCoachingPanel, FraudDetectionTab, ScorecardTab ×2) + le défaut
+org dans `AICreditsSettings` + UN résolveur `resolveModel()` (`src/types/aiCredits.ts`,
+miroir de `_shared/ai-config.ts`).
+
+**Principe : le mode n'est PAS un 10ᵉ sélecteur — c'est le cadre qui contraint tous
+les sélecteurs existants.** Hiérarchie unique : mode (org) → défaut org → override par
+action → auto-routage par tier.
+
+1. `resolveModel()` (front) et `getModel()` (back) gagnent un paramètre `aiMode` —
+   le clamp souverain vit dans le résolveur, une seule fois. Les 9 pickers en héritent.
+2. `ModelPicker` lit le mode via le contexte org (pas de prop drilling) et dérive sa
+   liste du `MODEL_CATALOG` filtré (fin de la liste hardcodée de 4 modèles Claude).
+3. UX souverain : modèles frontier **grisés + cadenas** avec tooltip « Disponible en
+   mode Performance » (visibles, pas cachés — découvrabilité + upsell).
+4. Changement de mode : les préférences stockées (défaut org, overrides) sont
+   **suspendues, pas effacées** — bannière dans AICreditsSettings, re-bascule = retour.
+5. **Le clamp serveur est la garantie** : le frontend propose, `getModel()` en edge
+   function tranche — un appel direct ne peut pas contourner le mode.
+
+⚠️ Risque structurel : le catalogue front (`aiCredits.ts`) est un miroir du catalogue
+back (`ai-config.ts`) — les edge functions ne peuvent pas importer depuis `src/`.
+Parade : test unitaire de synchro champ à champ des deux catalogues.
+
+Optionnel (~0,5 j) : hook commun `useActionModelOverride(actionId)` (localStorage)
+pour rendre les overrides persistants par action/user et supprimer les 9 `useState`
+locaux dupliqués.
+
 ## 6. Règle branding — exception à acter
 
 La règle CLAUDE.md (« vendor names never user-facing ») reçoit UNE exception délibérée :
