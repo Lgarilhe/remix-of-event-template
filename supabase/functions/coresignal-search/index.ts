@@ -103,11 +103,22 @@ async function callCoresignal(
 
 /** Mappe les erreurs Coresignal → réponse Konekt (sans nommer le fournisseur). */
 function mapCoresignalError(http: CoresignalHttp): Response {
+  // Log interne du détail amont — indispensable pour diagnostiquer (le status
+  // brut n'est jamais exposé à l'UI, cf. règle branding CLAUDE.md).
+  console.error(
+    `[coresignal-search] upstream error status=${http.status} body=${JSON.stringify(http.body ?? null)?.slice(0, 300)}`,
+  );
+  if (http.status === 401 || http.status === 403) {
+    return json(500, { success: false, error: "Accès Base Konekt refusé — vérifiez la clé configurée", errorType: "AUTH", retryable: false });
+  }
   if (http.status === 402) {
     return json(402, { success: false, error: "Quota Base Konekt épuisé", errorType: "CREDITS", retryable: false });
   }
   if (http.status === 429) {
     return json(429, { success: false, error: "Trop de requêtes, réessayez dans un instant", errorType: "RATE_LIMIT", retryable: true });
+  }
+  if (http.status === 400) {
+    return json(400, { success: false, error: "Recherche non comprise par la Base Konekt, ajustez vos critères", errorType: "BAD_QUERY", retryable: false });
   }
   return json(502, { success: false, error: "La Base Konekt est momentanément indisponible", errorType: "UPSTREAM", retryable: true });
 }
