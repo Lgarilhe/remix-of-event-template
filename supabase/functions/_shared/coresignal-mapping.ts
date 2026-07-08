@@ -147,17 +147,46 @@ type EsClause = Record<string, unknown>;
  * Un intitulé = match_phrase (obligatoire, cf. audit). Toutes les variantes
  * (plusieurs filtres de poste + « OR »/virgules internes) sont fusionnées dans
  * un unique `should` : le candidat doit matcher AU MOINS UN intitulé.
+ * Les guillemets LinkedIn résiduels autour des phrases sont retirés.
  */
 function titleShouldClauses(keywordsList: string[]): EsClause[] {
   const parts = keywordsList
     .flatMap((k) => k.split(/\s+OR\s+|,/i))
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/^"+|"+$/g, '').trim())
     .filter(Boolean);
   const uniq = [...new Set(parts)];
   return uniq.flatMap((p) => ([
     { match_phrase: { active_experience_title: p } },
     { match_phrase: { 'experience.position_title': p } },
   ]));
+}
+
+/**
+ * Traduit la syntaxe booléenne LinkedIn (AND / OR / NOT) vers la syntaxe
+ * simple_query_string d'Elasticsearch (ET implicite / | / -).
+ *
+ * Vérifié en live (2026-07-08) : pour simple_query_string, les mots AND/OR/NOT
+ * ne sont PAS des opérateurs — ils deviennent des termes requis avec
+ * default_operator=and (y compris les termes derrière NOT !) → 0 résultat
+ * systématique dès que l'user colle une requête booléenne LinkedIn.
+ * Après traduction : mêmes mots-clés → 3M hits au lieu de 0.
+ */
+function toSimpleQuerySyntax(raw: string): string {
+  let q = raw;
+  // NOT (a OR b OR c) → -a -b -c
+  q = q.replace(/\bNOT\s*\(([^)]*)\)/gi, (_m, grp: string) =>
+    grp
+      .split(/\s+OR\s+/i)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => `-${t}`)
+      .join(' '));
+  // NOT terme (ou NOT "phrase")
+  q = q.replace(/\bNOT\s+("[^"]+"|\S+)/gi, (_m, t: string) => `-${t}`);
+  // OR → | ; AND → implicite (default_operator: and)
+  q = q.replace(/\s+OR\s+/gi, ' | ');
+  q = q.replace(/\s+AND\s+/gi, ' ');
+  return q.replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -309,11 +338,13 @@ export function mapFiltersToEsDsl(filters: LinkedInFiltersLite): {
     if (lang) should.push({ match: { 'languages.language': lang } });
   });
 
-  // ── Mots-clés libres → recherche plein texte (simple_query_string, tolérant) ──
+  // ── Mots-clés libres → recherche plein texte (simple_query_string) ──
+  // La syntaxe booléenne LinkedIn est traduite (cf. toSimpleQuerySyntax),
+  // sinon AND/OR/NOT deviennent des termes requis → 0 résultat garanti.
   if (filters.keywords && filters.keywords.trim()) {
     must.push({
       simple_query_string: {
-        query: filters.keywords.trim().slice(0, 500),
+        query: toSimpleQuerySyntax(filters.keywords.trim()).slice(0, 500),
         fields: ['headline', 'summary', 'experience.description', 'inferred_skills'],
         default_operator: 'and',
       },
