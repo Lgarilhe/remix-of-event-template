@@ -342,6 +342,58 @@ recherche Unipile ciblée.
 
 ---
 
+## 14. Inventaire des champs filtrables — sélection validée (2026-07-08)
+
+> Trois groupes : A = parité avec les filtres existants (MVP complet), B = nouveaux filtres
+> « Base Konekt » (4 retenus pour le MVP), C = réservés au scoring/tri (pas de filtre UI).
+> Tous les champs sont requêtables en ES DSL sur `employee_multi_source`.
+
+### A. Mappés sur les filtres existants (MVP — parité)
+
+| Champ Coresignal | Filtre Konekt existant | Note |
+|---|---|---|
+| `active_experience_title` + `experience[].position_title` | Rôle (scope current/past) | `match_phrase` obligatoire |
+| `location_city/country/regions/full` | Localisation | Texte — pas de résolution geo ID différée |
+| `inferred_skills[]` | Skills | ⚠️ inférés par modèle — l'indiquer dans l'UI |
+| `total_experience_duration_months` | Années d'expérience | Natif serveur (mieux que le filtrage client actuel) |
+| `active_experience_management_level` (11 niveaux) | Séniorité | Table de correspondance à écrire |
+| `active_experience_department` (20 départements) | Fonction | idem |
+| `experience[].company_name` | Entreprise actuelle/passée | « alumni de X » inclus |
+| `company_industry`, `company_size_range` | Industrie, taille | — |
+| `experience[].company_last_funding_round.type` | `db_funding_stage` (existant) | Catégorie startup/scaleup dérivable |
+| `education[].institution_name`, `degree` | École / diplôme | — |
+| `last_graduation_date` | Année de diplôme | Dispo sans Recruiter |
+| `languages[].language` | Langues parlées | Dispo sans Recruiter |
+| `primary_professional_email_status` | `db_email_verified` (existant) | — |
+| `headline` + `summary` + descriptions | Keywords booléens | Traducteur boolean → `query_string` + garde 15k chars |
+
+### B. Nouveaux filtres « Base Konekt »
+
+**Retenus MVP (4)** :
+
+| Champ | Filtre | Valeur |
+|---|---|---|
+| `experience[].description` (fulltext) | « A travaillé sur… » | Unique au marché — ni LinkedIn ni Kalent |
+| `experience_recently_closed[]` | « A quitté son poste récemment » | Candidats réellement disponibles |
+| `tenure_stats.avg_tenure_months` | Stabilité moyenne min | Anti job-hopper |
+| `institution_ranking_score` | « Top écoles » | Branché sur le système Pedigree |
+
+**Phase 2 (selon retours)** : `experience_change_last_identified_at` (a bougé il y a < X mois),
+`months_in_management`, `internal_promotion_rate.recently_promoted`, `is_decision_maker`,
+`certifications[].title`, `profile_score` (seuil qualité), `is_working`,
+`experience[].date_from/to_year` par entreprise (requêtes alumni fines).
+
+### C. Scoring/tri uniquement (pas de filtre UI)
+
+- `influence_score`, `post_frequency_yearly`, `posting_recency`, `engagement_per_post`
+  → alimentent `engagementScore` (probabilité de réponse) de `score-profile-job`
+- `connections_count` / `followers_count` → option de tri
+- Salaire projeté (p25/median/p75) → couverture FR faible, logger le fill-rate uniquement
+- `patents`, `publications`, `awards`, `projects` → niches, plus tard
+- `historical_skills`, breakdowns d'expérience par département/niveau → carburant scoring
+
+---
+
 ## Annexe — Tests réels du 2026-07-08 (compte trial Konekt)
 
 | Test | Résultat |
