@@ -211,14 +211,21 @@ async function handleCollect(apiKey: string, svc: ReturnType<typeof serviceClien
   const raw = (http.body ?? {}) as Record<string, unknown>;
   const profile = coresignalToLinkedInProfile(raw);
 
-  // 3. Upsert cache
+  // 3. Upsert cache — réécrire explicitement fetched_at/expires_at : sur un
+  // UPDATE (conflit), les DEFAULT ne se réappliquent pas, donc sans ça une
+  // fiche re-collectée après expiration garderait un expires_at périmé et
+  // serait considérée expirée à vie → on repaierait chaque collect indéfiniment.
   if (orgId) {
     try {
+      const now = new Date();
+      const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // +30j
       await svc.from("coresignal_profile_cache").upsert({
         organization_id: orgId,
         coresignal_id: String(raw.id ?? key),
         linkedin_url: profile.public_profile_url ?? linkedinUrl ?? null,
         profile_data: profile,
+        fetched_at: now.toISOString(),
+        expires_at: expires.toISOString(),
         credits_consumed: 2,
       }, { onConflict: "organization_id,coresignal_id" });
     } catch (e) {

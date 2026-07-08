@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { invokeCoresignal } from '@/lib/invokeCoresignal';
+import { ACTION_COSTS } from '@/types/aiCredits';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { getYear, parseDate } from '@/components/outreach/dateUtils';
 import { Job } from '@/types/jobs';
@@ -34,6 +35,25 @@ async function hydrateIfDatabase(profile: LinkedInProfile): Promise<LinkedInProf
     // fallback silencieux sur le profil d'aperçu
   }
   return profile;
+}
+
+/** True si le profil Base Konekt doit être révélé (collect) avant scoring. */
+function needsReveal(p: LinkedInProfile): boolean {
+  if ((p as { source?: string }).source !== 'database') return false;
+  return !(Array.isArray(p.work_experience) && p.work_experience.some((w) => !!w?.description));
+}
+
+/**
+ * Hydrate une liste de profils par lots à concurrence bornée (évite de saturer
+ * le rate-limit collect Coresignal / le rate-limit edge par user). Préserve l'ordre.
+ */
+async function hydrateAllChunked(profiles: LinkedInProfile[], chunkSize = 4): Promise<LinkedInProfile[]> {
+  const out: LinkedInProfile[] = [];
+  for (let i = 0; i < profiles.length; i += chunkSize) {
+    const chunk = profiles.slice(i, i + chunkSize);
+    out.push(...(await Promise.all(chunk.map(hydrateIfDatabase))));
+  }
+  return out;
 }
 
 // Fire-and-forget: generate embedding for a candidate after scoring
@@ -939,13 +959,31 @@ export function useLinkedInScoring({
       return;
     }
 
+    // Base Konekt : estimation de coût + confirmation avant de révéler les fiches
+    // complètes (collect). Les profils déjà complets ne sont pas recomptés.
+    const toReveal = profilesToScore.filter(needsReveal);
+    if (toReveal.length > 0) {
+      const perCollect = ACTION_COSTS.coresignal_collect?.floor ?? 2;
+      const estCost = toReveal.length * perCollect;
+      const ok = await confirmAlert({
+        title: 'Révéler les fiches Base Konekt ?',
+        description: `${toReveal.length} fiche(s) complète(s) vont être récupérées pour permettre le scoring (≈ ${estCost} crédits).`,
+        confirmLabel: 'Révéler et scorer',
+      });
+      if (!ok) {
+        setScoringInProgress(false);
+        return;
+      }
+    }
+
     // Batch settings — now with parallelization
     const BATCH_SIZE = 10;
     const PARALLEL_BATCHES = 3;
 
     try {
-      // Base Konekt : hydrate les fiches complètes (collect) avant scoring. No-op LinkedIn.
-      const hydratedProfiles = await Promise.all(profilesToScore.map(hydrateIfDatabase));
+      // Base Konekt : hydrate les fiches complètes (collect) avant scoring, à
+      // concurrence bornée. No-op LinkedIn (needsReveal/hydrateIfDatabase gardés).
+      const hydratedProfiles = await hydrateAllChunked(profilesToScore, 4);
       const profilesData = hydratedProfiles.map(buildProfileData);
       const jobPayload = {
         id: selectedJob.id,
