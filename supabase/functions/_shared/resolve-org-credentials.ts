@@ -7,6 +7,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import type { AiMode } from "./ai-config.ts";
 type SupabaseClient = ReturnType<typeof createClient>;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -43,12 +44,46 @@ const apolloCache = new Map<string, ApolloCredentials | null>();
 const pdlCache = new Map<string, PDLCredentials | null>();
 const anthropicCache = new Map<string, AnthropicCredentials | null>();
 
+const aiModeCache = new Map<string, AiMode>();
+
 export function clearCredentialCaches() {
   unipileCache.clear();
   notionCache.clear();
   apolloCache.clear();
   pdlCache.clear();
   anthropicCache.clear();
+  aiModeCache.clear();
+}
+
+/**
+ * Résout le mode IA d'une organisation (performance | sovereign | sovereign_fr).
+ * Défaut « performance » si absent/erreur (jamais bloquant). Caché par org.
+ * Cf. docs/ai-sovereign-mode.md.
+ */
+export async function getOrgAiMode(
+  organizationId?: string | null,
+  supabaseClient?: SupabaseClient,
+): Promise<AiMode> {
+  if (!organizationId) return "performance";
+  const cached = aiModeCache.get(organizationId);
+  if (cached !== undefined) return cached;
+
+  try {
+    const sb = supabaseClient ?? getServiceClient();
+    const { data } = await sb
+      .from("organizations")
+      .select("ai_mode")
+      .eq("id", organizationId)
+      .single();
+    const raw = (data?.ai_mode as string) || "performance";
+    const valid: AiMode[] = ["performance", "sovereign", "sovereign_fr"];
+    const mode: AiMode = (valid as string[]).includes(raw) ? (raw as AiMode) : "performance";
+    aiModeCache.set(organizationId, mode);
+    return mode;
+  } catch (e) {
+    console.warn("[resolve-creds] getOrgAiMode failed, defaulting to performance:", e);
+    return "performance";
+  }
 }
 
 // ─── Service client singleton ────────────────────────────────────────────────

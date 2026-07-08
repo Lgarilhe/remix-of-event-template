@@ -10,14 +10,30 @@
 // ─── Model Catalog ──────────────────────────────────────────────────────────
 
 export type ModelTier = "budget" | "balanced" | "premium";
-export type ModelProvider = "anthropic" | "google";
+export type ModelProvider = "anthropic" | "google" | "openai" | "scaleway" | "ovh";
 export type RoutingTier = "fast" | "default" | "thinking";
+
+/**
+ * Mode IA de l'organisation :
+ *  - performance : frontier (Claude), défaut.
+ *  - sovereign   : modèles open source hébergés UE (Scaleway / OVH).
+ *  - sovereign_fr: variante « 100 % modèle français » (Mistral uniquement).
+ * Cf. docs/ai-sovereign-mode.md.
+ */
+export type AiMode = "performance" | "sovereign" | "sovereign_fr";
 
 export interface AIModel {
   id: string;
   name: string;
   provider: ModelProvider;
   tier: ModelTier;
+  /**
+   * Identifiant modèle attendu par l'API du provider (slug Scaleway/OVH, ou
+   * id daté Anthropic). Si absent, on retombe sur `id`.
+   */
+  apiModelId?: string;
+  /** true = modèle open source hébergé UE (mode souverain). */
+  sovereign?: boolean;
   /** USD per million input tokens */
   inputPricePerMTok: number;
   /** USD per million output tokens */
@@ -81,6 +97,76 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
     supportsThinking: true,
     description: "Le plus intelligent",
   },
+
+  // ─── Modèles souverains (open source, hébergés UE via Scaleway) ─────────────
+  // ⚠️ Prix/multiplicateurs PLACEHOLDER — à confirmer sur la console Scaleway
+  //    avant activation (cf. docs/ai-sovereign-mode.md §10). Les `apiModelId`
+  //    doivent correspondre EXACTEMENT aux slugs du catalogue Scaleway.
+  "qwen3-35b": {
+    id: "qwen3-35b",
+    name: "Modèle souverain — rapide",   // Qwen3.6-35b-a3b (nom interne masqué en UI)
+    provider: "scaleway",
+    apiModelId: "qwen3.6-35b-a3b",
+    sovereign: true,
+    tier: "balanced",
+    inputPricePerMTok: 0.30,
+    outputPricePerMTok: 0.90,
+    multiplier: 0.12,
+    contextWindow: 256_000,
+    supportsThinking: false,
+    description: "Souverain — scoring & classification",
+  },
+  "mistral-medium-3-5": {
+    id: "mistral-medium-3-5",
+    name: "Modèle souverain — rédaction (FR)",  // Mistral Medium 3.5
+    provider: "scaleway",
+    apiModelId: "mistral-medium-3.5-128b",
+    sovereign: true,
+    tier: "balanced",
+    inputPricePerMTok: 0.40,
+    outputPricePerMTok: 2.00,
+    multiplier: 0.20,
+    contextWindow: 128_000,
+    supportsThinking: false,
+    description: "Souverain 🇫🇷 — messages & réponses",
+  },
+  "glm-5-2": {
+    id: "glm-5-2",
+    name: "Modèle souverain — raisonnement",  // GLM-5.2
+    provider: "scaleway",
+    apiModelId: "glm-5.2",
+    sovereign: true,
+    tier: "premium",
+    inputPricePerMTok: 0.60,
+    outputPricePerMTok: 2.20,
+    multiplier: 0.30,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Souverain — agent & raisonnement",
+  },
+  "gemma-4-26b": {
+    id: "gemma-4-26b",
+    name: "Modèle souverain — léger",  // Gemma-4-26b
+    provider: "scaleway",
+    apiModelId: "gemma-4-26b-a4b",
+    sovereign: true,
+    tier: "budget",
+    inputPricePerMTok: 0.20,
+    outputPricePerMTok: 0.40,
+    multiplier: 0.08,
+    contextWindow: 128_000,
+    supportsThinking: false,
+    description: "Souverain — classifications rapides",
+  },
+};
+
+// ─── Provider config (base URL + secret d'API par provider) ──────────────────
+export const PROVIDER_CONFIG: Record<ModelProvider, { baseUrl: string; apiKeyEnv: string; kind: "anthropic" | "openai" }> = {
+  anthropic: { baseUrl: "https://api.anthropic.com/v1/messages", apiKeyEnv: "ANTHROPIC_API_KEY", kind: "anthropic" },
+  scaleway:  { baseUrl: "https://api.scaleway.ai/v1/chat/completions", apiKeyEnv: "SCALEWAY_AI_API_KEY", kind: "openai" },
+  ovh:       { baseUrl: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions", apiKeyEnv: "OVH_AI_API_KEY", kind: "openai" },
+  openai:    { baseUrl: "https://api.openai.com/v1/chat/completions", apiKeyEnv: "OPENAI_API_KEY", kind: "openai" },
+  google:    { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", apiKeyEnv: "GOOGLE_AI_API_KEY", kind: "openai" },
 };
 
 // ─── Action Cost Catalog ────────────────────────────────────────────────────
@@ -346,6 +432,23 @@ const ROUTING_DEFAULTS: Record<RoutingTier, string> = {
   thinking: "claude-sonnet-4-6",
 };
 
+// Défauts souverains par tier (mode sovereign).
+const SOVEREIGN_ROUTING_DEFAULTS: Record<RoutingTier, string> = {
+  fast: "gemma-4-26b",
+  default: "qwen3-35b",
+  thinking: "glm-5-2",
+};
+// Variante « 100 % modèle français » : Mistral partout (mode sovereign_fr).
+const SOVEREIGN_FR_ROUTING_DEFAULTS: Record<RoutingTier, string> = {
+  fast: "mistral-medium-3-5",
+  default: "mistral-medium-3-5",
+  thinking: "mistral-medium-3-5",
+};
+
+function sovereignDefaults(aiMode: AiMode): Record<RoutingTier, string> {
+  return aiMode === "sovereign_fr" ? SOVEREIGN_FR_ROUTING_DEFAULTS : SOVEREIGN_ROUTING_DEFAULTS;
+}
+
 // ─── Credit Calculation ─────────────────────────────────────────────────────
 
 /**
@@ -419,40 +522,80 @@ export function getModel(
   routingTier: RoutingTier,
   userOverride?: string | null,
   orgDefault?: string | null,
-  actionId?: string | null
+  actionId?: string | null,
+  aiMode: AiMode = "performance"
 ): string {
-  // User explicitly chose a model — always respect
-  if (userOverride && MODEL_CATALOG[userOverride]) {
-    return userOverride;
-  }
+  // Résolution standard (mode performance).
+  const resolvePerformance = (): string => {
+    if (userOverride && MODEL_CATALOG[userOverride]) return userOverride;
+    if (routingTier !== "fast" && orgDefault && MODEL_CATALOG[orgDefault]) return orgDefault;
+    if (actionId) {
+      const auto = ACTION_COSTS[actionId]?.autoDefault;
+      if (auto && MODEL_CATALOG[auto]) return auto;
+    }
+    return ROUTING_DEFAULTS[routingTier];
+  };
 
-  // Org default — skip for "fast" tier (always stay on budget models)
-  if (routingTier !== "fast" && orgDefault && MODEL_CATALOG[orgDefault]) {
-    return orgDefault;
-  }
+  if (aiMode === "performance") return resolvePerformance();
 
-  // Per-action auto default (e.g. scoring → Haiku) takes priority over
-  // the tier's generic default
-  if (actionId) {
-    const auto = ACTION_COSTS[actionId]?.autoDefault;
-    if (auto && MODEL_CATALOG[auto]) return auto;
+  // Mode souverain : CLAMP au catalogue souverain. Un override/défaut org
+  // explicitement souverain est respecté ; sinon on prend l'équivalent
+  // souverain du tier. Les préférences non-souveraines sont suspendues (pas
+  // effacées — côté stockage). sovereign_fr force Mistral (ignore tout override).
+  const isSovereign = (id?: string | null) => !!(id && MODEL_CATALOG[id]?.sovereign);
+  if (aiMode === "sovereign") {
+    if (isSovereign(userOverride)) return userOverride!;
+    if (routingTier !== "fast" && isSovereign(orgDefault)) return orgDefault!;
   }
+  return sovereignDefaults(aiMode)[routingTier];
+}
 
-  return ROUTING_DEFAULTS[routingTier];
+export interface ResolvedModel {
+  provider: ModelProvider;
+  /** "anthropic" (Messages API) ou "openai" (Chat Completions). */
+  kind: "anthropic" | "openai";
+  /** Id modèle attendu par l'API du provider. */
+  apiModelId: string;
+  baseUrl: string;
+  apiKeyEnv: string;
+}
+
+/**
+ * Résolution STRICTE modèle → provider. JETTE si le modèle est inconnu du
+ * catalogue — plus aucun fallback silencieux vers Anthropic (garde de
+ * souveraineté : un modèle souverain mal résolu ne doit jamais partir chez
+ * Anthropic sans erreur). Cf. docs/ai-sovereign-mode.md §2.
+ */
+export function resolveModelAndProvider(modelId: string): ResolvedModel {
+  const model = MODEL_CATALOG[modelId];
+  if (!model) {
+    throw new Error(
+      `[ai-config] Modèle inconnu '${modelId}' — absent du MODEL_CATALOG. ` +
+      `Refus de fallback silencieux (garde de souveraineté).`,
+    );
+  }
+  const cfg = PROVIDER_CONFIG[model.provider];
+  if (!cfg) {
+    throw new Error(`[ai-config] Aucune config provider pour '${model.provider}' (modèle '${modelId}').`);
+  }
+  const apiModelId = model.provider === "anthropic"
+    ? getAnthropicModelId(modelId)
+    : (model.apiModelId ?? modelId);
+  return { provider: model.provider, kind: cfg.kind, apiModelId, baseUrl: cfg.baseUrl, apiKeyEnv: cfg.apiKeyEnv };
 }
 
 /**
  * Get the Anthropic model ID string for API calls.
  * Translates our internal IDs to Anthropic's expected format.
+ * JETTE sur un id non-Claude (avant : fallback silencieux vers Sonnet) — la
+ * résolution multi-provider passe désormais par resolveModelAndProvider().
  */
 export function getAnthropicModelId(modelId: string): string {
-  // Ids non-Claude (ex: choix "gemini-*" persisté côté client/org avant la
-  // purge des modèles Google du catalogue) → fallback explicite vers le
-  // défaut Claude. getModel() ne retourne plus jamais ces ids (guard
-  // MODEL_CATALOG), ceci est une ceinture de sécurité pour les call sites
-  // qui passeraient un id brut.
   if (!modelId.startsWith("claude-")) {
-    return ROUTING_DEFAULTS.default;
+    throw new Error(
+      `[ai-config] getAnthropicModelId a reçu un id non-Claude '${modelId}'. ` +
+      `Utiliser resolveModelAndProvider() pour router vers le bon provider.`,
+    );
   }
   const mapping: Record<string, string> = {
     "claude-haiku-4-5": "claude-haiku-4-5-20251001",
