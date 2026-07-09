@@ -7,6 +7,7 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
 
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
+import { SearchPromptBar } from './SearchPromptBar';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
 import { SearchHistory } from './SearchHistory';
 import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
@@ -345,6 +346,20 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             </p>
           </div>
         </div>
+      )}
+
+      {/* Barre de recherche en langage naturel — entrée principale (mission).
+          La phrase augmente le brief ; l'IA Konekt en dérive les filtres
+          éditables affichés ci-dessous. */}
+      {activeProject && selectedJob && (
+        <SearchPromptBar
+          selectedJob={selectedJob}
+          accountId={selectedAccount}
+          searchSource={filters.api === 'database' ? 'database' : 'linkedin'}
+          currentLocation={filters.location}
+          onApplyFilters={(update) => setFilters(prev => ({ ...prev, ...update }))}
+          onSuggestionsGenerated={onSuggestionsGenerated}
+        />
       )}
 
       <div className="space-y-2 sm:space-y-3">
