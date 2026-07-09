@@ -14,6 +14,12 @@ export default {
   	},
   	extend: {
   		fontFamily: {
+			brand: [
+				'Bricolage Grotesque',
+				'Outfit',
+				'system-ui',
+				'sans-serif'
+			],
 			sans: [
 				'Instrument Sans',
 				'ui-sans-serif',
