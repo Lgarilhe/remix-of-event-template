@@ -30,8 +30,13 @@ const corsHeaders = {
 
 const CORESIGNAL_BASE = "https://api.coresignal.com/cdapi/v2";
 const EMPLOYEE = "employee_multi_source";
-const PREVIEW_PAGE_SIZE = 20;
-const PREVIEW_MAX_PAGES = 5; // Coresignal plafonne le preview à 100 résultats
+// Le preview direct (/search/es_dsl/preview?page=N) est plafonné à 5 pages (100
+// résultats) PAR CORESIGNAL. Pour paginer au-delà, on passe par /search/es_dsl
+// (jusqu'à 1000 IDs/appel + curseur `after`, sans plafond), puis on résout les
+// cartes de chaque page via preview-by-ids. Une page d'affichage = 20 (= taille
+// de page du preview, donc un seul appel preview la couvre).
+const DB_PAGE_SIZE = 20;
+const ID_BLOCK_SIZE = 1000; // taille d'un bloc d'IDs renvoyé par /search/es_dsl
 const MAX_ES_DSL_CHARS = 15000;
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -74,6 +79,8 @@ interface CoresignalHttp {
   status: number;
   totalResults: number | null;
   creditsRemaining: number | null;
+  /** Curseur de pagination profonde (search_after) renvoyé par /search/es_dsl. */
+  nextAfter: string | null;
   body: unknown;
 }
 
@@ -90,6 +97,7 @@ async function callCoresignal(
 
   const totalResults = res.headers.get("x-total-results");
   const creditsRemaining = res.headers.get("x-credits-remaining");
+  const nextAfter = res.headers.get("x-next-page-after");
   let body: unknown = null;
   try { body = await res.json(); } catch { /* peut être vide sur erreur */ }
 
@@ -98,6 +106,7 @@ async function callCoresignal(
     status: res.status,
     totalResults: totalResults != null ? Number(totalResults) : null,
     creditsRemaining: creditsRemaining != null ? Number(creditsRemaining) : null,
+    nextAfter: nextAfter != null && nextAfter !== "" ? nextAfter : null,
     body,
   };
 }
@@ -144,9 +153,81 @@ async function settle(svc: ReturnType<typeof serviceClient>, orgId: string | nul
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
+// Hydratation GRATUITE depuis le cache : remplace les cartes partielles par la
+// fiche complète (photo, XP, formations, compétences) quand l'org a déjà
+// collecté le profil (30j). Une relecture cache ne débite rien (cf. handleCollect
+// : cache HIT = pas de settle). Plus l'org révèle, plus ses listes s'enrichissent.
+async function hydratePreviewFromCache(
+  svc: ReturnType<typeof serviceClient>,
+  orgId: string | null,
+  results: LinkedInProfileLite[],
+): Promise<LinkedInProfileLite[]> {
+  if (!orgId || results.length === 0) return results;
+  try {
+    const ids = results.map((r) => String(r.id)).filter(Boolean);
+    if (ids.length === 0) return results;
+    const { data: cachedRows } = await svc
+      .from("coresignal_profile_cache")
+      .select("coresignal_id, profile_data, expires_at")
+      .eq("organization_id", orgId)
+      .in("coresignal_id", ids);
+    if (!cachedRows || cachedRows.length === 0) return results;
+    const now = new Date();
+    const fullById = new Map<string, LinkedInProfileLite>();
+    for (const row of cachedRows as { coresignal_id: string; profile_data: LinkedInProfileLite | null; expires_at: string }[]) {
+      if (row.profile_data && new Date(row.expires_at) > now) {
+        fullById.set(String(row.coresignal_id), row.profile_data);
+      }
+    }
+    if (fullById.size === 0) return results;
+    let hydrated = 0;
+    const out = results.map((r) => {
+      const full = fullById.get(String(r.id));
+      if (!full) return r;
+      hydrated++;
+      // La fiche complète remplace la carte partielle, en conservant l'id
+      // d'origine + les signaux d'aperçu si la fiche ne les porte pas.
+      return { ...full, id: r.id, seniority_level: full.seniority_level ?? r.seniority_level, department: full.department ?? r.department };
+    });
+    console.log(`[coresignal-search] preview cache hydration: ${hydrated}/${results.length} enriched (free)`);
+    return out;
+  } catch (e) {
+    console.warn("[coresignal-search] preview cache hydration failed (non-blocking):", e);
+    return results;
+  }
+}
+
+// État de pagination profonde transporté dans un curseur opaque (JSON). Ne
+// contient QUE le bloc d'IDs courant (≤1000) + le curseur `after` du bloc
+// suivant → taille bornée quelle que soit la profondeur.
+interface DbPageCursor {
+  ids: string[];
+  offset: number;
+  after: string | null;
+  total: number | null;
+}
+
+// Récupère un bloc d'IDs triés par pertinence via /search/es_dsl (jusqu'à 1000).
+async function fetchIdBlock(
+  apiKey: string,
+  dsl: unknown,
+  after: string | null,
+): Promise<{ ok: true; ids: string[]; nextAfter: string | null; total: number | null } | { ok: false; http: CoresignalHttp }> {
+  const qs = after ? `?after=${encodeURIComponent(after)}` : "";
+  const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl${qs}`, { method: "POST", body: dsl });
+  if (!http.ok) return { ok: false, http };
+  const ids = Array.isArray(http.body) ? (http.body as unknown[]).map(String) : [];
+  // On ne poursuit vers un bloc suivant que si celui-ci est plein — sinon c'est
+  // la fin des résultats (évite un appel `after` inutile qui renverrait 0).
+  const nextAfter = ids.length >= ID_BLOCK_SIZE ? http.nextAfter : null;
+  return { ok: true, ids, nextAfter, total: http.totalResults };
+}
+
+// Pagination Base Konekt SANS PLAFOND : IDs profonds (relevance) via /search/es_dsl
+// + cartes via preview-by-ids. Piloté par un curseur opaque (voir DbPageCursor).
 async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, params: Record<string, unknown>): Promise<Response> {
   const filters = (params.filters ?? {}) as LinkedInFiltersLite;
-  const page = Math.max(1, Math.min(PREVIEW_MAX_PAGES, Number(params.page) || 1));
+  const rawCursor = typeof params.cursor === "string" && params.cursor ? params.cursor : null;
 
   const { query, sort } = mapFiltersToEsDsl(filters);
   const dsl = { query, sort };
@@ -154,71 +235,89 @@ async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClien
     return json(400, { success: false, error: "Recherche trop complexe, réduisez le nombre de critères", errorType: "QUERY_TOO_LARGE" });
   }
 
-  const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl/preview?page=${page}`, { method: "POST", body: dsl });
-  if (!http.ok) return mapCoresignalError(http);
-
-  const rawList = Array.isArray(http.body) ? (http.body as Record<string, unknown>[]) : [];
-  const results = rawList.map(coresignalPreviewToProfile);
-
-  // Hydratation GRATUITE depuis le cache : tout profil déjà collecté par cette
-  // org (dans les 30j) réapparaît en liste avec sa fiche complète (photo, XP,
-  // formations, compétences) sans reconsommer de crédit — une relecture cache
-  // ne débite rien (cf. handleCollect : cache HIT = pas de settle). Plus l'org
-  // révèle de profils, plus ses listes s'enrichissent d'elles-mêmes.
-  if (orgId && results.length > 0) {
+  // 1. Résoudre l'état de pagination depuis le curseur opaque.
+  let state: DbPageCursor;
+  if (rawCursor) {
     try {
-      const ids = results.map((r) => String(r.id)).filter(Boolean);
-      if (ids.length > 0) {
-        const { data: cachedRows } = await svc
-          .from("coresignal_profile_cache")
-          .select("coresignal_id, profile_data, expires_at")
-          .eq("organization_id", orgId)
-          .in("coresignal_id", ids);
-        if (cachedRows && cachedRows.length > 0) {
-          const now = new Date();
-          const fullById = new Map<string, Record<string, unknown>>();
-          for (const row of cachedRows as { coresignal_id: string; profile_data: Record<string, unknown> | null; expires_at: string }[]) {
-            if (row.profile_data && new Date(row.expires_at) > now) {
-              fullById.set(String(row.coresignal_id), row.profile_data);
-            }
-          }
-          if (fullById.size > 0) {
-            let hydrated = 0;
-            for (let i = 0; i < results.length; i++) {
-              const full = fullById.get(String(results[i].id));
-              if (full) {
-                // La fiche complète (cache) remplace la carte partielle, en
-                // conservant l'id d'origine + les signaux d'aperçu au cas où la
-                // fiche collectée ne les porterait pas.
-                const fullProfile = full as LinkedInProfileLite;
-                results[i] = {
-                  ...fullProfile,
-                  id: results[i].id,
-                  seniority_level: fullProfile.seniority_level ?? results[i].seniority_level,
-                  department: fullProfile.department ?? results[i].department,
-                };
-                hydrated++;
-              }
-            }
-            console.log(`[coresignal-search] preview cache hydration: ${hydrated}/${results.length} enriched (free)`);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[coresignal-search] preview cache hydration failed (non-blocking):", e);
+      const parsed = JSON.parse(rawCursor) as DbPageCursor;
+      state = Array.isArray(parsed.ids)
+        ? parsed
+        : { ids: [], offset: 0, after: null, total: null };
+    } catch {
+      state = { ids: [], offset: 0, after: null, total: null };
     }
+  } else {
+    state = { ids: [], offset: 0, after: null, total: null };
   }
 
-  const total = http.totalResults;
+  // 2-6. Avancer bloc par bloc / tranche par tranche jusqu'à obtenir des cartes
+  //       ou épuiser les résultats. La boucle bornée évite qu'une tranche vide
+  //       (IDs tous supprimés — rare) stoppe la pagination côté front, qui
+  //       s'arrête sur un lot vide. Chaque tour = au plus 1 preview (+1 bloc).
+  let results: LinkedInProfileLite[] = [];
+  let creditsRemaining: number | null = null;
+  const MAX_SKIP = 5;
+  for (let guard = 0; guard < MAX_SKIP; guard++) {
+    // Charger un bloc d'IDs si le bloc courant est épuisé.
+    if (state.offset >= state.ids.length) {
+      if (state.ids.length === 0 && state.after === null) {
+        // Tout premier appel de la recherche → 1er bloc (after=null).
+        const block = await fetchIdBlock(apiKey, dsl, null);
+        if (!block.ok) return mapCoresignalError(block.http);
+        state = { ids: block.ids, offset: 0, after: block.nextAfter, total: block.total ?? state.total };
+      } else if (state.after) {
+        const block = await fetchIdBlock(apiKey, dsl, state.after);
+        if (!block.ok) return mapCoresignalError(block.http);
+        state = { ids: block.ids, offset: 0, after: block.nextAfter, total: block.total ?? state.total };
+      } else {
+        break; // plus aucun bloc → fin des résultats
+      }
+    }
 
-  // Pagination preview : page suivante si pleine ET dans le plafond de 100.
-  const hasMore = results.length === PREVIEW_PAGE_SIZE && page < PREVIEW_MAX_PAGES && (total == null || page * PREVIEW_PAGE_SIZE < total);
-  const cursor = hasMore ? String(page + 1) : null;
+    const slice = state.ids.slice(state.offset, state.offset + DB_PAGE_SIZE);
+    if (slice.length === 0) break;
+    state.offset += slice.length;
 
-  await settle(svc, orgId, userId, "coresignal_preview", `Base Konekt — aperçu (page ${page})`);
-  console.log(`[coresignal-search] preview page=${page} results=${results.length} total=${total} credits=${http.creditsRemaining}`);
+    // Cartes des IDs de la tranche via preview-by-ids (terms filter, 1 page).
+    const previewBody = {
+      query: { bool: { filter: [{ terms: { id: slice.map((s) => Number(s)) } }, { term: { is_deleted: 0 } }] } },
+    };
+    const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl/preview?page=1`, { method: "POST", body: previewBody });
+    if (!http.ok) return mapCoresignalError(http);
+    creditsRemaining = http.creditsRemaining;
+    const rawList = Array.isArray(http.body) ? (http.body as Record<string, unknown>[]) : [];
 
-  return json(200, { success: true, results, cursor, total });
+    // Reordonner selon l'ordre pertinence de la tranche (terms ne le garantit pas).
+    const cardById = new Map<string, LinkedInProfileLite>();
+    for (const raw of rawList) {
+      const card = coresignalPreviewToProfile(raw);
+      cardById.set(String(card.id), card);
+    }
+    results = slice
+      .map((id) => cardById.get(String(id)))
+      .filter((c): c is LinkedInProfileLite => Boolean(c));
+
+    if (results.length > 0) break; // tranche non vide → on la sert
+    // sinon tranche entièrement vide (rare) → on tente la suivante
+  }
+
+  // Hydratation cache (gratuit).
+  results = await hydratePreviewFromCache(svc, orgId, results);
+
+  // Curseur suivant (borné : uniquement le bloc courant + son `after`).
+  const hasMore = state.offset < state.ids.length || state.after != null;
+  const nextCursor = hasMore
+    ? JSON.stringify({ ids: state.ids, offset: state.offset, after: state.after, total: state.total } as DbPageCursor)
+    : null;
+
+  // Débit uniquement si on a réellement servi des cartes (une fin de résultats
+  // ne coûte rien à l'utilisateur).
+  if (results.length > 0) {
+    await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — aperçu");
+  }
+  console.log(`[coresignal-search] preview served=${results.length} offset=${state.offset}/${state.ids.length} hasMore=${hasMore} total=${state.total} credits=${creditsRemaining}`);
+
+  return json(200, { success: true, results, cursor: nextCursor, total: state.total });
 }
 
 async function handleSearch(apiKey: string, svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, params: Record<string, unknown>): Promise<Response> {

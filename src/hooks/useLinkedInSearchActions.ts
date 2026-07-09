@@ -806,13 +806,16 @@ export function useLinkedInSearchActions(
         //  - Base Konekt (Coresignal) : recherche base de données, identité visible,
         //    sans toucher au compte LinkedIn. Cf. docs/coresignal-integration-audit.md
         //    (« Coresignal pour lire, Unipile pour agir »).
-        // La pagination Base Konekt est page-based : on traduit le curseur en n° de page.
+        // Pagination Base Konekt : curseur opaque géré côté edge (pagination
+        // profonde sans plafond, triée par pertinence). Le front l'échoie tel quel.
         const result = isDatabase
           ? await invokeCoresignal({
               body: {
                 action: 'preview',
                 filters: currentFilters,
-                page: currentCursor ? Number(currentCursor) : 1,
+                // Curseur opaque (pagination profonde sans plafond, cf. edge).
+                // 1er appel : null → 1re page.
+                cursor: currentCursor ?? null,
               },
             })
           : await invokeUnipile({ body: params });
