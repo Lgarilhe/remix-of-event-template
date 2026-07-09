@@ -18,6 +18,7 @@ import {
   coresignalToLinkedInProfile,
   coresignalPreviewToProfile,
   type LinkedInFiltersLite,
+  type LinkedInProfileLite,
 } from "../_shared/coresignal-mapping.ts";
 import { settleCredits } from "../_shared/settle-credits.ts";
 
@@ -158,6 +159,56 @@ async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClien
 
   const rawList = Array.isArray(http.body) ? (http.body as Record<string, unknown>[]) : [];
   const results = rawList.map(coresignalPreviewToProfile);
+
+  // Hydratation GRATUITE depuis le cache : tout profil déjà collecté par cette
+  // org (dans les 30j) réapparaît en liste avec sa fiche complète (photo, XP,
+  // formations, compétences) sans reconsommer de crédit — une relecture cache
+  // ne débite rien (cf. handleCollect : cache HIT = pas de settle). Plus l'org
+  // révèle de profils, plus ses listes s'enrichissent d'elles-mêmes.
+  if (orgId && results.length > 0) {
+    try {
+      const ids = results.map((r) => String(r.id)).filter(Boolean);
+      if (ids.length > 0) {
+        const { data: cachedRows } = await svc
+          .from("coresignal_profile_cache")
+          .select("coresignal_id, profile_data, expires_at")
+          .eq("organization_id", orgId)
+          .in("coresignal_id", ids);
+        if (cachedRows && cachedRows.length > 0) {
+          const now = new Date();
+          const fullById = new Map<string, Record<string, unknown>>();
+          for (const row of cachedRows as { coresignal_id: string; profile_data: Record<string, unknown> | null; expires_at: string }[]) {
+            if (row.profile_data && new Date(row.expires_at) > now) {
+              fullById.set(String(row.coresignal_id), row.profile_data);
+            }
+          }
+          if (fullById.size > 0) {
+            let hydrated = 0;
+            for (let i = 0; i < results.length; i++) {
+              const full = fullById.get(String(results[i].id));
+              if (full) {
+                // La fiche complète (cache) remplace la carte partielle, en
+                // conservant l'id d'origine + les signaux d'aperçu au cas où la
+                // fiche collectée ne les porterait pas.
+                const fullProfile = full as LinkedInProfileLite;
+                results[i] = {
+                  ...fullProfile,
+                  id: results[i].id,
+                  seniority_level: fullProfile.seniority_level ?? results[i].seniority_level,
+                  department: fullProfile.department ?? results[i].department,
+                };
+                hydrated++;
+              }
+            }
+            console.log(`[coresignal-search] preview cache hydration: ${hydrated}/${results.length} enriched (free)`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[coresignal-search] preview cache hydration failed (non-blocking):", e);
+    }
+  }
+
   const total = http.totalResults;
 
   // Pagination preview : page suivante si pleine ET dans le plafond de 100.

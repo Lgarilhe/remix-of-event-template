@@ -16,11 +16,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Briefcase, MapPin, GraduationCap,
-  Building2, Users, TrendingUp, AlertTriangle,
+  Users, TrendingUp, AlertTriangle,
   X, ExternalLink,
 } from 'lucide-react';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { classifyFromProfile } from '@/lib/companyClassification';
+import { CompanyLogo } from '@/components/candidates/CompanyLogo';
 
 // Sub-components
 import { CardStatusBadges } from './result-card/CardStatusBadges';
@@ -108,6 +109,20 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
     otherCurrentJobs, pastJobs, connectionsCount,
     isLikelyToRespond, totalExperience,
   } = profileData;
+  // Logo entreprise par domaine — dispo dès l'aperçu (gratuit). Le site de la
+  // société active permet un logo précis ; à défaut, CompanyLogo devine depuis
+  // le nom puis tombe sur le favicon.
+  const companyLogoUrl = useMemo(() => {
+    const website = (profile as any).company_website as string | undefined;
+    if (!website || typeof website !== 'string') return undefined;
+    try {
+      const host = new URL(website.startsWith('http') ? website : `https://${website}`)
+        .hostname.replace(/^www\./, '');
+      return host ? `https://logo.clearbit.com/${host}` : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [profile]);
   const companyType = useMemo(() => {
     if (!currentCompany) return null;
     return classifyFromProfile({
@@ -422,7 +437,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   {profileData.currentJob?.logo ? (
                     <img src={profileData.currentJob.logo} alt={currentCompany || ''} className="w-4 h-4 rounded object-contain bg-card border border-border/30 shrink-0" />
                   ) : (
-                    <Building2 className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true" />
+                    <CompanyLogo company={currentCompany || ''} logoUrl={companyLogoUrl} size="sm" className="w-4 h-4 shrink-0" />
                   )}
                   <span className="min-w-0 break-words sm:truncate">{currentCompany}</span>
                   {companyType && companyType.type !== 'other' && (

@@ -68,6 +68,8 @@ export interface LinkedInProfileLite {
   profile_picture_url?: string;
   location?: string;
   industry?: string;
+  /** Domaine/site de la société active — sert à résoudre le logo par domaine dès l'aperçu. */
+  company_website?: string;
   /** Niveau hiérarchique du poste actif (ex. Manager, Director, VP) — dispo dès l'aperçu. */
   seniority_level?: string;
   /** Département du poste actif (ex. Sales, Engineering) — dispo dès l'aperçu. */
@@ -499,6 +501,7 @@ export function coresignalToLinkedInProfile(raw: Record<string, unknown>): Linke
     profile_picture_url: (raw.picture_url as string) || undefined,
     location,
     industry,
+    company_website: (raw.active_experience_company_website as string) || undefined,
     seniority_level: (raw.active_experience_management_level as string) || undefined,
     department: (raw.active_experience_department as string) || undefined,
     connections_count: typeof raw.connections_count === 'number' ? raw.connections_count : undefined,
@@ -534,6 +537,7 @@ export function coresignalPreviewToProfile(raw: Record<string, unknown>): Linked
     public_profile_url: linkedin,
     location: (raw.location_full as string) || (raw.location_country as string) || undefined,
     industry: (raw.company_industry as string) || undefined,
+    company_website: (raw.company_website as string) || undefined,
     seniority_level: (raw.active_experience_management_level as string) || undefined,
     department: (raw.active_experience_department as string) || undefined,
     connections_count: typeof raw.connections_count === 'number' ? raw.connections_count : undefined,
@@ -542,6 +546,7 @@ export function coresignalPreviewToProfile(raw: Record<string, unknown>): Linked
       ? [{
           company,
           role,
+          company_url: normalizeLinkedinUrl(raw.company_linkedin_url) || (raw.company_website as string) || undefined,
           industry: (raw.company_industry as string) || undefined,
           location: (raw.company_hq_full_address as string) || undefined,
           current: true,
