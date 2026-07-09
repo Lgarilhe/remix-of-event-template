@@ -33,9 +33,9 @@ Ces 5 principes l'emportent sur l'envie d'être proactif. Si tension entre "fair
 5. **Sync with main first** — `git fetch origin main && git rebase origin/main`
 
 ## Before committing
-Les hooks pre-commit (`.claude/settings.json`) lancent **automatiquement** :
-- `npx tsc --noEmit` — bloque le commit si erreurs TS
-- `npx vite build` — bloque le commit si build prod échoue
+Les hooks pre-commit (`.claude/settings.json`) lancent **automatiquement** (⚠️ uniquement sur les `git commit` passés par l'outil Bash de Claude Code — un `git commit` humain ou un push direct les contourne ; le vrai filet obligatoire = CI de PR, à câbler) :
+- `npx tsc --noEmit -p tsconfig.app.json` — **ratchet** : bloque si le nombre d'erreurs TS dépasse la baseline (37 au 2026-07-09). Résorber la dette puis abaisser la baseline. ⚠️ Ne PAS revenir à `npx tsc --noEmit` sans `-p` : le `tsconfig.json` racine est solution-style (`"files": []`) → vérifie 0 fichier (hook vacant). Une partie des 37 erreurs vient d'un `src/integrations/supabase/types.ts` désynchronisé du schéma DB → régénérer via `supabase gen types typescript --linked` (ne PAS laisser la sortie CLI polluer le fichier).
+- `npx vite build` — bloque le commit si build prod échoue. ⚠️ esbuild strip les types → ce build ne type-check PAS (d'où le hook tsc ci-dessus).
 
 Vérif manuelle à faire en plus : **pas d'imports orphelins** (grep pour les noms de composants/fonctions supprimés).
 

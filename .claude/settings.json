@@ -7,7 +7,7 @@
           {
             "type": "command",
             "if": "Bash(git commit:*)",
-            "command": "npx tsc --noEmit > /tmp/tsc-check.txt 2>&1; if [ $? -ne 0 ]; then tail -20 /tmp/tsc-check.txt; echo '{\"decision\":\"block\",\"reason\":\"TypeScript errors found. Fix them before committing.\"}'; else echo '{\"decision\":\"allow\"}'; fi",
+            "command": "npx tsc --noEmit -p tsconfig.app.json > /tmp/tsc-check.txt 2>&1; ERRS=$(grep -c 'error TS' /tmp/tsc-check.txt); if [ \"$ERRS\" -gt 37 ]; then echo TS errors: $ERRS above baseline 37; tail -20 /tmp/tsc-check.txt; echo '{\"decision\":\"block\",\"reason\":\"Nouvelles erreurs TypeScript au-dessus de la baseline 37. Corrigez-les ou regenerez src/integrations/supabase/types.ts avant de committer.\"}'; else echo tsc $ERRS errors baseline 37 report-only; echo '{\"decision\":\"allow\"}'; fi",
             "timeout": 120,
             "statusMessage": "Type-checking with tsc..."
           },

@@ -80,24 +80,6 @@ async function sendViaResend(
   throw new ResendSendError(response.status, errorText.slice(0, 1000), retryAfterSeconds)
 }
 
-function parseJwtClaims(token: string): Record<string, unknown> | null {
-  const parts = token.split('.')
-  if (parts.length < 2) {
-    return null
-  }
-
-  try {
-    const payload = parts[1]
-      .replaceAll('-', '+')
-      .replaceAll('_', '/')
-      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
-
-    return JSON.parse(atob(payload)) as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
-
 // Move a message to the dead letter queue and log the reason.
 // deno-lint-ignore no-explicit-any
 async function moveToDlq(
@@ -153,9 +135,17 @@ Deno.serve(async (req) => {
   // gateway HS256 vs nouveaux JWT ES256), donc on valide ici en interne.
   const token = authHeader.slice('Bearer '.length).trim()
   const cronSecret = Deno.env.get('PROCESS_SEQUENCES_SECRET') || ''
+  // Auth stricte : secret cron OU clé service-role comparée à l'IDENTIQUE.
+  // NE PAS décoder le JWT pour lire `role` : verify_jwt=false au gateway, donc
+  // un JWT forgé non signé (`atob()` du payload) suffirait à usurper
+  // service_role. Seule une égalité exacte au secret réel est sûre.
+  const serviceKeys = [
+    Deno.env.get('SB_SECRET_KEY'),
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+  ].filter((k): k is string => !!k && k.length > 0)
   const isCronCaller = cronSecret.length > 0 && token === cronSecret
-  const claims = isCronCaller ? null : parseJwtClaims(token)
-  if (!isCronCaller && claims?.role !== 'service_role') {
+  const isServiceCaller = serviceKeys.some((k) => token === k)
+  if (!isCronCaller && !isServiceCaller) {
     return new Response(
       JSON.stringify({ error: 'Forbidden' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } },

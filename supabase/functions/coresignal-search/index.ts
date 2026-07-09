@@ -21,6 +21,7 @@ import {
   type LinkedInProfileLite,
 } from "../_shared/coresignal-mapping.ts";
 import { settleCredits } from "../_shared/settle-credits.ts";
+import { ACTION_COSTS } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -134,10 +135,10 @@ function mapCoresignalError(http: CoresignalHttp): Response {
 }
 
 /** Débite les crédits Konekt (action non-LLM, floor utilisé car tokens=0). */
-async function settle(svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, action: string, description: string) {
-  if (!orgId) return;
+async function settle(svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, action: string, description: string): Promise<boolean> {
+  if (!orgId) return false;
   try {
-    await settleCredits(svc, {
+    const result = await settleCredits(svc, {
       organizationId: orgId,
       userId: userId ?? "",
       aiAction: action,
@@ -146,8 +147,15 @@ async function settle(svc: ReturnType<typeof serviceClient>, orgId: string | nul
       tokensOutput: 0,
       description,
     });
+    if (!result?.success) {
+      // Crédit fournisseur consommé mais NON débité → drift ledger. Loggé en
+      // error (le pré-check de solde en amont rend ce cas rare : race concurrente).
+      console.error(`[coresignal-search] settle non appliqué (org=${orgId} action=${action}):`, result);
+    }
+    return result?.success ?? false;
   } catch (e) {
-    console.warn("[coresignal-search] settleCredits failed (non-blocking):", e);
+    console.error("[coresignal-search] settleCredits a levé (crédit fournisseur non débité):", e);
+    return false;
   }
 }
 
@@ -207,6 +215,30 @@ interface DbPageCursor {
   total: number | null;
 }
 
+function isNumericId(s: unknown): s is string {
+  return typeof s === "string" && s.length > 0 && Number.isFinite(Number(s));
+}
+
+// Valide/type le curseur opaque reçu du client. Retourne null si le curseur est
+// altéré ou d'une autre source (ex. curseur Unipile envoyé à la Base Konekt) →
+// l'appelant renvoie un 400 explicite au lieu de repartir silencieusement page 1
+// (ce qui masquerait le bug ET re-facturerait une page déjà vue).
+function parseCursor(raw: string): DbPageCursor | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const c = parsed as Record<string, unknown>;
+  if (!Array.isArray(c.ids) || !c.ids.every(isNumericId)) return null;
+  if (typeof c.offset !== "number" || !Number.isInteger(c.offset) || c.offset < 0) return null;
+  if (!(c.after === null || typeof c.after === "string")) return null;
+  if (!(c.total === null || typeof c.total === "number")) return null;
+  return { ids: c.ids as string[], offset: c.offset, after: c.after as string | null, total: c.total as number | null };
+}
+
 // Récupère un bloc d'IDs triés par pertinence via /search/es_dsl (jusqu'à 1000).
 async function fetchIdBlock(
   apiKey: string,
@@ -235,17 +267,14 @@ async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClien
     return json(400, { success: false, error: "Recherche trop complexe, réduisez le nombre de critères", errorType: "QUERY_TOO_LARGE" });
   }
 
-  // 1. Résoudre l'état de pagination depuis le curseur opaque.
+  // 1. Résoudre l'état de pagination depuis le curseur opaque (validé).
   let state: DbPageCursor;
   if (rawCursor) {
-    try {
-      const parsed = JSON.parse(rawCursor) as DbPageCursor;
-      state = Array.isArray(parsed.ids)
-        ? parsed
-        : { ids: [], offset: 0, after: null, total: null };
-    } catch {
-      state = { ids: [], offset: 0, after: null, total: null };
+    const parsed = parseCursor(rawCursor);
+    if (!parsed) {
+      return json(400, { success: false, error: "Curseur de pagination invalide", errorType: "BAD_CURSOR", retryable: false });
     }
+    state = parsed;
   } else {
     state = { ids: [], offset: 0, after: null, total: null };
   }
@@ -429,16 +458,58 @@ Deno.serve(async (req) => {
       orgId = organization_id ?? null;
     }
 
-    // Rate limit (par user), sauf service-role
+    // Gate de rollout (utilisateurs uniquement) : la Base Konekt n'est ouverte
+    // qu'aux orgs explicitement activées. Vérifié CÔTÉ SERVEUR — le front ne fait
+    // qu'un pré-affichage — pour empêcher tout appel direct qui consommerait des
+    // crédits fournisseur (clé partagée) hors périmètre.
     if (userId) {
-      const { data: allowed } = await svc.rpc("check_rate_limit", {
+      if (!orgId) {
+        return json(403, { success: false, error: "Base Konekt non activée", errorType: "NOT_ENABLED" });
+      }
+      const { data: integ } = await svc
+        .from("organization_integrations")
+        .select("coresignal_enabled")
+        .eq("organization_id", orgId)
+        .maybeSingle();
+      if (integ?.coresignal_enabled !== true) {
+        return json(403, { success: false, error: "Base Konekt non activée", errorType: "NOT_ENABLED" });
+      }
+    }
+
+    // Rate limit (par user), sauf service-role — FAIL-CLOSED : une erreur du RPC
+    // bloque (pour un fournisseur payant, l'indisponibilité du contrôle ne doit
+    // pas ouvrir les vannes).
+    if (userId) {
+      const { data: allowed, error: rlError } = await svc.rpc("check_rate_limit", {
         p_user_id: userId,
         p_action: "coresignal_search",
         p_max_requests: 30,
         p_window_seconds: 60,
       });
-      if (allowed === false) {
+      if (rlError) {
+        console.error("[coresignal-search] rate-limit check failed:", rlError);
+        return json(503, { success: false, error: "Service momentanément indisponible, réessayez", errorType: "RATE_LIMIT_UNAVAILABLE", retryable: true });
+      }
+      if (allowed !== true) {
         return json(429, { success: false, error: "Trop de requêtes, réessayez dans un instant", errorType: "RATE_LIMIT", retryable: true });
+      }
+    }
+
+    // Pré-check solde (fail-closed) AVANT tout appel fournisseur payant : sans lui,
+    // une org à 0 crédit consomme la Base Konekt sans débit ni trace (le settle
+    // post-paiement étant fail-open).
+    if (userId && orgId && (action === "preview" || action === "search" || action === "collect")) {
+      const cost = action === "collect"
+        ? (ACTION_COSTS.coresignal_collect?.floor ?? 2)
+        : (ACTION_COSTS.coresignal_preview?.floor ?? 2);
+      const { data: balance } = await svc
+        .from("ai_credit_balances")
+        .select("plan_credits, topup_credits")
+        .eq("organization_id", orgId)
+        .maybeSingle();
+      const total = (balance?.plan_credits ?? 0) + (balance?.topup_credits ?? 0);
+      if (total < cost) {
+        return json(402, { success: false, error: `Crédits Konekt insuffisants (${total} disponibles, ${cost} requis)`, errorType: "INSUFFICIENT_CREDITS", retryable: false });
       }
     }
 
