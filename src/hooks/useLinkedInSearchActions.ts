@@ -837,7 +837,10 @@ export function useLinkedInSearchActions(
         const fetchedTotal: number | null = (data.total as number) || null;
 
         if (fetchedTotal !== null) latestTotal = fetchedTotal;
-        quota.recordAction('searchResultsFetched', batch.length);
+        // Le quota de recherche LinkedIn (anti-ban) ne concerne QUE LinkedIn.
+        // La Base Konekt ne touche pas le compte LinkedIn → ne pas décompter,
+        // sinon elle épuise le compteur et bloque sa propre pagination.
+        if (!isDatabase) quota.recordAction('searchResultsFetched', batch.length);
 
         // Apply client-side experience filter
         const filteredBatch = filterByCalculatedExperience(
@@ -1067,10 +1070,15 @@ export function useLinkedInSearchActions(
   }, [selectedAccount, selectedJob, filters, cursor, results, quota, candidateStatus, autoHideTreatedRef, activeProject?.kind, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
 
   const handleLoadMore = useCallback(() => {
-    if (!cursor || context.quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
+    if (!cursor) return;
+    const isDatabase = context.searchSource === 'database';
+    // La Base Konekt n'est pas soumise au quota de recherche LinkedIn (anti-ban) :
+    // la 1re page l'ignore déjà (cf. handleSearch), la pagination doit aussi —
+    // sinon « Lot suivant » reste sans effet une fois le compteur LinkedIn plein.
+    if (isDatabase || context.quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
       handleSearch(true);
     }
-  }, [cursor, handleSearch, context.quota]);
+  }, [cursor, handleSearch, context.quota, context.searchSource]);
 
   return {
     handleSearch,
