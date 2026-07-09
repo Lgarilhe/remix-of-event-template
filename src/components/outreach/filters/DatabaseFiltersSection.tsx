@@ -71,12 +71,12 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
     <FilterSection
       id="database"
       title="Filtres avancés Base Konekt"
-      icon={<Database className="w-4 h-4 text-primary" />}
+      icon={<Database className="w-4 h-4 text-muted-foreground" />}
       badge={countActive}
       isOpen={isOpen}
       onToggle={onToggle}
       activeFiltersPreview={preview}
-      bgColorClass="bg-primary/5"
+      bgColorClass=""
     >
       {/* Technologies */}
       <FilterGroup title="Technologies" badge={filters.db_technologies.length}>

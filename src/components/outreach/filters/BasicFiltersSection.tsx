@@ -66,12 +66,12 @@ export const BasicFiltersSection: React.FC<BasicFiltersSectionProps> = ({
     <FilterSection
       id="basic"
       title="Recherche de base"
-      icon={<Filter className="w-4 h-4 text-sky-500/80" />}
+      icon={<Filter className="w-4 h-4 text-muted-foreground" />}
       badge={countBasicFilters}
       isOpen={isOpen}
       onToggle={onToggle}
       activeFiltersPreview={activeFiltersPreview}
-      bgColorClass="bg-info/5"
+      bgColorClass=""
     >
       {/* Location - with priority and scope for Recruiter */}
       <FilterGroup title="Localisation" badge={filters.location.length}>

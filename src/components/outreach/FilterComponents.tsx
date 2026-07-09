@@ -39,38 +39,36 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
       <button
         type="button"
         onClick={onToggle}
-        className={`flex flex-col items-start w-full p-4 border-b border-border hover:bg-muted/50 transition-colors text-left ${bgColorClass}`}
+        className={`flex flex-col items-start w-full px-3 py-3 border-b border-[var(--k-hairline)] hover:bg-[var(--k-surface-2)] transition-colors text-left ${bgColorClass}`}
       >
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 [&_svg]:text-[var(--k-text-muted)]">
             {icon}
-            <span className="text-sm font-semibold text-foreground uppercase tracking-wide">{title}</span>
+            <span className="text-[11px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">{title}</span>
             {badge !== undefined && badge > 0 && (
-              <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
+              <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-[var(--k-surface-2)] text-[var(--k-text-muted)] border border-[var(--k-hairline)]">
                 {badge}
               </Badge>
             )}
           </div>
-          <ChevronRight className="w-4 h-4 text-foreground/40" />
+          <ChevronRight className="w-4 h-4 text-[var(--k-text-muted)]" />
         </div>
         {activeFiltersPreview && activeFiltersPreview.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2 w-full">
+          <div className="flex flex-wrap gap-1.5 mt-2 w-full">
             {activeFiltersPreview.filter(Boolean).slice(0, 5).map((filter, index) => (
-              <Badge
+              <span
                 key={index}
-                variant="outline"
-                className="text-xs h-5 px-1.5 bg-background/60 text-foreground/70 border-border font-normal"
+                className="inline-flex items-center text-[12.5px] h-6 px-2.5 rounded-full bg-transparent text-[var(--k-text-2)] border border-[var(--k-hairline)]"
               >
                 {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
-              </Badge>
+              </span>
             ))}
             {activeFiltersPreview.length > 5 && (
-              <Badge
-                variant="outline"
-                className="text-xs h-5 px-1.5 bg-accent/50 text-foreground border-border font-normal"
+              <span
+                className="inline-flex items-center text-[12.5px] h-6 px-2.5 rounded-full bg-transparent text-[var(--k-text-muted)] border border-[var(--k-hairline)]"
               >
                 +{activeFiltersPreview.length - 5}
-              </Badge>
+              </span>
             )}
           </div>
         )}

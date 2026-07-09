@@ -152,15 +152,15 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           « LinkedIn » = recherche live via la session LinkedIn. « Base Konekt » =
           recherche base de données (identité visible, sans toucher au compte). */}
       {coresignalEnabled && onSearchSourceChange && (
-        <div className="grid grid-cols-2 gap-1 p-1 bg-muted rounded-md">
+        <div className="grid grid-cols-2 gap-1 p-1 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)]">
           <button
             type="button"
             onClick={() => onSearchSourceChange('linkedin')}
             className={cn(
-              'text-xs font-medium py-1.5 rounded transition-colors',
+              'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
               searchSource !== 'database'
-                ? 'bg-background shadow-sm text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
+                : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
             )}
           >
             LinkedIn
@@ -169,10 +169,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             type="button"
             onClick={() => onSearchSourceChange('database')}
             className={cn(
-              'text-xs font-medium py-1.5 rounded transition-colors',
+              'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
               searchSource === 'database'
-                ? 'bg-background shadow-sm text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
+                : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
             )}
           >
             Base Konekt
@@ -363,10 +363,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       )}
 
       <div className="space-y-2 sm:space-y-3">
-        {/* Filter actions — HEAD's AutoFillFiltersButton kept (no onOpenFilterWizard
-            prop in HEAD signature; the wizard is invoked via the search.showFilterWizard
-            state from useLinkedInSearch instead) */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        {/* Auto-fill depuis le brief — masqué en contexte mission : la barre
+            de recherche en langage naturel (SearchPromptBar) couvre déjà la
+            génération, l'ancien bouton violet faisait doublon. */}
+        <div className={cn('flex-wrap items-center gap-1.5 sm:gap-2', activeProject ? 'hidden' : 'flex')}>
           <AutoFillFiltersButton
             selectedJob={selectedJob}
             accountId={selectedAccount}
@@ -570,7 +570,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           <Button
             onClick={onSearch}
             disabled={loading || (!selectedAccount && searchSource !== 'database') || !selectedJob || needsReconnection || !isApiModeAvailable}
-            className="flex-1 bg-foreground text-background hover:bg-foreground/90"
+            className="flex-1 bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border-0"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin mr-2" />
