@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       agent_conversations: {
@@ -52,6 +27,7 @@ export type Database = {
           results_summary: Json | null
           search_config: Json | null
           status: string
+          title: string | null
           updated_at: string
         }
         Insert: {
@@ -66,6 +42,7 @@ export type Database = {
           results_summary?: Json | null
           search_config?: Json | null
           status?: string
+          title?: string | null
           updated_at?: string
         }
         Update: {
@@ -80,6 +57,7 @@ export type Database = {
           results_summary?: Json | null
           search_config?: Json | null
           status?: string
+          title?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -147,6 +125,7 @@ export type Database = {
           params: Json
           proposed_at: string
           real_result: Json | null
+          scheduled_for: string | null
           status: string
           tool_name: string
           updated_at: string
@@ -165,6 +144,7 @@ export type Database = {
           params?: Json
           proposed_at?: string
           real_result?: Json | null
+          scheduled_for?: string | null
           status?: string
           tool_name: string
           updated_at?: string
@@ -183,6 +163,7 @@ export type Database = {
           params?: Json
           proposed_at?: string
           real_result?: Json | null
+          scheduled_for?: string | null
           status?: string
           tool_name?: string
           updated_at?: string
@@ -1782,8 +1763,10 @@ export type Database = {
       }
       candidate_reminders: {
         Row: {
-          candidate_id: string
+          auto_generated: boolean
+          candidate_id: string | null
           candidate_name: string | null
+          category: string
           completed_at: string | null
           created_at: string
           created_by: string
@@ -1794,12 +1777,15 @@ export type Database = {
           job_title: string | null
           organization_id: string | null
           shortlist_id: string | null
+          source_event_id: string | null
           title: string
           updated_at: string
         }
         Insert: {
-          candidate_id: string
+          auto_generated?: boolean
+          candidate_id?: string | null
           candidate_name?: string | null
+          category?: string
           completed_at?: string | null
           created_at?: string
           created_by: string
@@ -1810,12 +1796,15 @@ export type Database = {
           job_title?: string | null
           organization_id?: string | null
           shortlist_id?: string | null
+          source_event_id?: string | null
           title: string
           updated_at?: string
         }
         Update: {
-          candidate_id?: string
+          auto_generated?: boolean
+          candidate_id?: string | null
           candidate_name?: string | null
+          category?: string
           completed_at?: string | null
           created_at?: string
           created_by?: string
@@ -1826,6 +1815,7 @@ export type Database = {
           job_title?: string | null
           organization_id?: string | null
           shortlist_id?: string | null
+          source_event_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -1835,6 +1825,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_reminders_source_event_id_fkey"
+            columns: ["source_event_id"]
+            isOneToOne: false
+            referencedRelation: "qualification_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -1914,6 +1911,115 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "chat_categories_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_competitors: {
+        Row: {
+          client_company_name: string
+          client_company_name_normalized: string
+          competitor_name: string
+          country: string | null
+          created_at: string
+          created_by: string | null
+          domain: string | null
+          enabled: boolean | null
+          id: string
+          linkedin_company_id: string | null
+          organization_id: string
+          reason: string | null
+          relation_kind: string | null
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_company_name: string
+          client_company_name_normalized: string
+          competitor_name: string
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain?: string | null
+          enabled?: boolean | null
+          id?: string
+          linkedin_company_id?: string | null
+          organization_id: string
+          reason?: string | null
+          relation_kind?: string | null
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_company_name?: string
+          client_company_name_normalized?: string
+          competitor_name?: string
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain?: string | null
+          enabled?: boolean | null
+          id?: string
+          linkedin_company_id?: string | null
+          organization_id?: string
+          reason?: string | null
+          relation_kind?: string | null
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_competitors_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_pedigree_presets: {
+        Row: {
+          client_company_name: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_default_for_client: boolean | null
+          name: string
+          organization_id: string
+          pedigree_requirements: Json
+          updated_at: string
+        }
+        Insert: {
+          client_company_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_default_for_client?: boolean | null
+          name: string
+          organization_id: string
+          pedigree_requirements?: Json
+          updated_at?: string
+        }
+        Update: {
+          client_company_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_default_for_client?: boolean | null
+          name?: string
+          organization_id?: string
+          pedigree_requirements?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_pedigree_presets_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -2078,6 +2184,50 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      coresignal_profile_cache: {
+        Row: {
+          coresignal_id: string
+          credits_consumed: number
+          expires_at: string
+          fetched_at: string
+          id: string
+          linkedin_url: string | null
+          organization_id: string
+          profile_data: Json
+          source_query_hash: string | null
+        }
+        Insert: {
+          coresignal_id: string
+          credits_consumed?: number
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          linkedin_url?: string | null
+          organization_id: string
+          profile_data: Json
+          source_query_hash?: string | null
+        }
+        Update: {
+          coresignal_id?: string
+          credits_consumed?: number
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          linkedin_url?: string | null
+          organization_id?: string
+          profile_data?: Json
+          source_query_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coresignal_profile_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       credit_purchases: {
         Row: {
@@ -2684,6 +2834,54 @@ export type Database = {
         }
         Relationships: []
       }
+      jarvis_kb: {
+        Row: {
+          chunk_no: number
+          content: string
+          doc: string
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          chunk_no: number
+          content: string
+          doc: string
+          id?: never
+          updated_at?: string
+        }
+        Update: {
+          chunk_no?: number
+          content?: string
+          doc?: string
+          id?: never
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      jarvis_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          message_id: string | null
+          role: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          role: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          role?: string
+        }
+        Relationships: []
+      }
       job_assignments: {
         Row: {
           assigned_by: string
@@ -2968,6 +3166,36 @@ export type Database = {
           },
         ]
       }
+      linkedin_action_log: {
+        Row: {
+          account_id: string
+          action_type: string
+          created_at: string
+          id: string
+          organization_id: string | null
+          source: string | null
+          user_id: string | null
+        }
+        Insert: {
+          account_id: string
+          action_type: string
+          created_at?: string
+          id?: string
+          organization_id?: string | null
+          source?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          action_type?: string
+          created_at?: string
+          id?: string
+          organization_id?: string | null
+          source?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       match_scores: {
         Row: {
           candidate_id: string
@@ -3058,7 +3286,11 @@ export type Database = {
       }
       member_linkedin_accounts: {
         Row: {
+          account_status: string | null
+          failure_reason: string | null
           id: string
+          last_checked_at: string | null
+          last_usage_pct: number | null
           linked_at: string
           linked_by: string
           linkedin_account_id: string
@@ -3072,10 +3304,15 @@ export type Database = {
           proxy_port: number | null
           proxy_protocol: string | null
           proxy_updated_at: string | null
+          quota_paused_until: string | null
           user_id: string
         }
         Insert: {
+          account_status?: string | null
+          failure_reason?: string | null
           id?: string
+          last_checked_at?: string | null
+          last_usage_pct?: number | null
           linked_at?: string
           linked_by: string
           linkedin_account_id: string
@@ -3089,10 +3326,15 @@ export type Database = {
           proxy_port?: number | null
           proxy_protocol?: string | null
           proxy_updated_at?: string | null
+          quota_paused_until?: string | null
           user_id: string
         }
         Update: {
+          account_status?: string | null
+          failure_reason?: string | null
           id?: string
+          last_checked_at?: string | null
+          last_usage_pct?: number | null
           linked_at?: string
           linked_by?: string
           linkedin_account_id?: string
@@ -3106,6 +3348,7 @@ export type Database = {
           proxy_port?: number | null
           proxy_protocol?: string | null
           proxy_updated_at?: string | null
+          quota_paused_until?: string | null
           user_id?: string
         }
         Relationships: [
@@ -3120,35 +3363,47 @@ export type Database = {
       }
       member_quotas: {
         Row: {
+          business_hours_end: number | null
+          business_hours_start: number | null
           created_at: string
           id: string
+          max_actions_per_day: number | null
           max_inmails_per_day: number | null
           max_messages_per_day: number | null
           max_profile_visits_per_day: number | null
           max_searches_per_day: number | null
           organization_id: string
+          timezone: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          business_hours_end?: number | null
+          business_hours_start?: number | null
           created_at?: string
           id?: string
+          max_actions_per_day?: number | null
           max_inmails_per_day?: number | null
           max_messages_per_day?: number | null
           max_profile_visits_per_day?: number | null
           max_searches_per_day?: number | null
           organization_id: string
+          timezone?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          business_hours_end?: number | null
+          business_hours_start?: number | null
           created_at?: string
           id?: string
+          max_actions_per_day?: number | null
           max_inmails_per_day?: number | null
           max_messages_per_day?: number | null
           max_profile_visits_per_day?: number | null
           max_searches_per_day?: number | null
           organization_id?: string
+          timezone?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -3583,6 +3838,53 @@ export type Database = {
           },
         ]
       }
+      org_pedigree_directory_overrides: {
+        Row: {
+          aliases: string[] | null
+          canonical_name: string
+          category: string | null
+          created_at: string
+          entity_type: string
+          id: string
+          linkedin_id: string | null
+          notes: string | null
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[] | null
+          canonical_name: string
+          category?: string | null
+          created_at?: string
+          entity_type: string
+          id?: string
+          linkedin_id?: string | null
+          notes?: string | null
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[] | null
+          canonical_name?: string
+          category?: string | null
+          created_at?: string
+          entity_type?: string
+          id?: string
+          linkedin_id?: string | null
+          notes?: string | null
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_pedigree_directory_overrides_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_integrations: {
         Row: {
           aircall_api_id: string | null
@@ -3624,6 +3926,8 @@ export type Database = {
           apollo_api_key?: string | null
           calendly_api_key?: string | null
           calendly_connected?: boolean
+          coresignal_api_key?: string | null
+          coresignal_enabled?: boolean
           created_at?: string
           id?: string
           notion_api_key?: string | null
@@ -3631,8 +3935,6 @@ export type Database = {
           notion_connected?: boolean
           notion_postes_db_id?: string | null
           notion_shortlist_db_id?: string | null
-          coresignal_api_key?: string | null
-          coresignal_enabled?: boolean
           organization_id: string
           pdl_api_key?: string | null
           unipile_api_key?: string | null
@@ -3652,6 +3954,8 @@ export type Database = {
           apollo_api_key?: string | null
           calendly_api_key?: string | null
           calendly_connected?: boolean
+          coresignal_api_key?: string | null
+          coresignal_enabled?: boolean
           created_at?: string
           id?: string
           notion_api_key?: string | null
@@ -3659,8 +3963,6 @@ export type Database = {
           notion_connected?: boolean
           notion_postes_db_id?: string | null
           notion_shortlist_db_id?: string | null
-          coresignal_api_key?: string | null
-          coresignal_enabled?: boolean
           organization_id?: string
           pdl_api_key?: string | null
           unipile_api_key?: string | null
@@ -3826,6 +4128,7 @@ export type Database = {
       organizations: {
         Row: {
           agency_permissions: Json | null
+          ai_context: Json | null
           ai_model_default: string | null
           annual_hires: string | null
           careers_url: string | null
@@ -3845,6 +4148,7 @@ export type Database = {
         }
         Insert: {
           agency_permissions?: Json | null
+          ai_context?: Json | null
           ai_model_default?: string | null
           annual_hires?: string | null
           careers_url?: string | null
@@ -3864,6 +4168,7 @@ export type Database = {
         }
         Update: {
           agency_permissions?: Json | null
+          ai_context?: Json | null
           ai_model_default?: string | null
           annual_hires?: string | null
           careers_url?: string | null
@@ -4003,6 +4308,108 @@ export type Database = {
           },
         ]
       }
+      pedigree_company_directory: {
+        Row: {
+          aliases: string[] | null
+          canonical_name: string
+          category: string | null
+          country: string | null
+          created_at: string
+          domain: string | null
+          funding_stage: string | null
+          id: string
+          last_resolved_at: string | null
+          linkedin_company_id: string | null
+          notes: string | null
+          resolution_status: string | null
+          source: string | null
+          tier: number | null
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[] | null
+          canonical_name: string
+          category?: string | null
+          country?: string | null
+          created_at?: string
+          domain?: string | null
+          funding_stage?: string | null
+          id?: string
+          last_resolved_at?: string | null
+          linkedin_company_id?: string | null
+          notes?: string | null
+          resolution_status?: string | null
+          source?: string | null
+          tier?: number | null
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[] | null
+          canonical_name?: string
+          category?: string | null
+          country?: string | null
+          created_at?: string
+          domain?: string | null
+          funding_stage?: string | null
+          id?: string
+          last_resolved_at?: string | null
+          linkedin_company_id?: string | null
+          notes?: string | null
+          resolution_status?: string | null
+          source?: string | null
+          tier?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pedigree_school_directory: {
+        Row: {
+          aliases: string[] | null
+          canonical_name: string
+          category: string | null
+          country: string | null
+          created_at: string
+          id: string
+          last_resolved_at: string | null
+          linkedin_school_id: string | null
+          notes: string | null
+          resolution_status: string | null
+          source: string | null
+          tier: number | null
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[] | null
+          canonical_name: string
+          category?: string | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          last_resolved_at?: string | null
+          linkedin_school_id?: string | null
+          notes?: string | null
+          resolution_status?: string | null
+          source?: string | null
+          tier?: number | null
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[] | null
+          canonical_name?: string
+          category?: string | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          last_resolved_at?: string | null
+          linkedin_school_id?: string | null
+          notes?: string | null
+          resolution_status?: string | null
+          source?: string | null
+          tier?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       process_templates: {
         Row: {
           created_at: string | null
@@ -4044,9 +4451,64 @@ export type Database = {
           },
         ]
       }
+      profile_enrichment_queue: {
+        Row: {
+          account_id: string
+          attempts: number
+          candidate_id: string | null
+          created_at: string
+          dedup_key: string
+          id: string
+          job_id: string
+          last_error: string | null
+          organization_id: string | null
+          profile_url: string | null
+          provider_id: string | null
+          scheduled_at: string
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          account_id: string
+          attempts?: number
+          candidate_id?: string | null
+          created_at?: string
+          dedup_key: string
+          id?: string
+          job_id?: string
+          last_error?: string | null
+          organization_id?: string | null
+          profile_url?: string | null
+          provider_id?: string | null
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          attempts?: number
+          candidate_id?: string | null
+          created_at?: string
+          dedup_key?: string
+          id?: string
+          job_id?: string
+          last_error?: string | null
+          organization_id?: string | null
+          profile_url?: string | null
+          provider_id?: string | null
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           active_organization_id: string | null
+          ai_context: Json | null
           avg_time_to_fill_days: number | null
           created_at: string
           display_name: string | null
@@ -4071,6 +4533,7 @@ export type Database = {
         }
         Insert: {
           active_organization_id?: string | null
+          ai_context?: Json | null
           avg_time_to_fill_days?: number | null
           created_at?: string
           display_name?: string | null
@@ -4095,6 +4558,7 @@ export type Database = {
         }
         Update: {
           active_organization_id?: string | null
+          ai_context?: Json | null
           avg_time_to_fill_days?: number | null
           created_at?: string
           display_name?: string | null
@@ -4194,6 +4658,7 @@ export type Database = {
           job_criteria: Json | null
           job_id: string | null
           job_title: string | null
+          manager_id: string | null
           notes: string | null
           notion_candidate_id: string | null
           notion_shortlist_id: string | null
@@ -4227,6 +4692,7 @@ export type Database = {
           job_criteria?: Json | null
           job_id?: string | null
           job_title?: string | null
+          manager_id?: string | null
           notes?: string | null
           notion_candidate_id?: string | null
           notion_shortlist_id?: string | null
@@ -4260,6 +4726,7 @@ export type Database = {
           job_criteria?: Json | null
           job_id?: string | null
           job_title?: string | null
+          manager_id?: string | null
           notes?: string | null
           notion_candidate_id?: string | null
           notion_shortlist_id?: string | null
@@ -4396,6 +4863,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      search_failure_log: {
+        Row: {
+          account_id: string | null
+          created_at: string
+          error_detail: string | null
+          error_type: string | null
+          http_status: number | null
+          id: string
+          search_body: Json | null
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string
+          error_detail?: string | null
+          error_type?: string | null
+          http_status?: number | null
+          id?: string
+          search_body?: Json | null
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string
+          error_detail?: string | null
+          error_type?: string | null
+          http_status?: number | null
+          id?: string
+          search_body?: Json | null
+        }
+        Relationships: []
       }
       search_history: {
         Row: {
@@ -4592,6 +5089,7 @@ export type Database = {
           resolved_profile_id: string | null
           sequence_id: string
           status: string
+          tracking_data: Json
           updated_at: string
           user_timezone: string
         }
@@ -4622,6 +5120,7 @@ export type Database = {
           resolved_profile_id?: string | null
           sequence_id: string
           status?: string
+          tracking_data?: Json
           updated_at?: string
           user_timezone?: string
         }
@@ -4652,6 +5151,7 @@ export type Database = {
           resolved_profile_id?: string | null
           sequence_id?: string
           status?: string
+          tracking_data?: Json
           updated_at?: string
           user_timezone?: string
         }
@@ -5056,6 +5556,7 @@ export type Database = {
           name: string
           notes: string | null
           organization_id: string | null
+          pedigree_preset_id: string | null
           stats_dismissed: number
           stats_messaged: number
           stats_scored: number
@@ -5086,6 +5587,7 @@ export type Database = {
           name: string
           notes?: string | null
           organization_id?: string | null
+          pedigree_preset_id?: string | null
           stats_dismissed?: number
           stats_messaged?: number
           stats_scored?: number
@@ -5116,6 +5618,7 @@ export type Database = {
           name?: string
           notes?: string | null
           organization_id?: string | null
+          pedigree_preset_id?: string | null
           stats_dismissed?: number
           stats_messaged?: number
           stats_scored?: number
@@ -5137,6 +5640,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sourcing_projects_pedigree_preset_id_fkey"
+            columns: ["pedigree_preset_id"]
+            isOneToOne: false
+            referencedRelation: "client_pedigree_presets"
             referencedColumns: ["id"]
           },
         ]
@@ -5458,6 +5968,24 @@ export type Database = {
         }
         Returns: undefined
       }
+      check_linkedin_action_quota: {
+        Args: {
+          p_account_id: string
+          p_action_type: string
+          p_daily_visible_cap?: number
+          p_day_since: string
+          p_inmail_daily_cap?: number
+          p_log?: boolean
+          p_organization_id?: string
+          p_profile_view_cap?: number
+          p_search_cap?: number
+          p_source?: string
+          p_user_id?: string
+          p_week_since: string
+          p_weekly_invite_cap?: number
+        }
+        Returns: Json
+      }
       check_rate_limit: {
         Args: {
           p_action: string
@@ -5467,8 +5995,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      cleanup_linkedin_action_log: { Args: never; Returns: undefined }
       cleanup_old_webhook_events: { Args: never; Returns: number }
       cleanup_rate_limit_log: { Args: never; Returns: undefined }
+      cleanup_search_failure_log: { Args: never; Returns: undefined }
       cosine_similarity_match: {
         Args: { p_candidate_id: string; p_job_id: string }
         Returns: number
@@ -5507,6 +6037,18 @@ export type Database = {
           account_id: string
           failure_count: number
           last_failure_at: string
+        }[]
+      }
+      get_multiple_project_stats: {
+        Args: { p_project_ids: string[] }
+        Returns: {
+          dismissed: number
+          messaged: number
+          project_id: string
+          scored: number
+          shortlisted: number
+          total: number
+          untreated: number
         }[]
       }
       get_org_integration: {
@@ -5550,6 +6092,16 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: string
       }
+      get_outreach_acceptance_stats: {
+        Args: never
+        Returns: {
+          connected: number
+          not_connected: number
+          pending: number
+          total_enrolled: number
+          user_id: string
+        }[]
+      }
       get_portal_token: {
         Args: { p_token: string }
         Returns: {
@@ -5584,6 +6136,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      get_project_stats: {
+        Args: { p_project_id: string }
+        Returns: {
+          dismissed: number
+          messaged: number
+          scored: number
+          shortlisted: number
+          total: number
+          untreated: number
+        }[]
       }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       get_vivier_candidates: {
@@ -5727,11 +6290,18 @@ export type Database = {
         }
       }
       invoke_process_email_queue: { Args: never; Returns: undefined }
+      invoke_process_enrichment_queue: { Args: never; Returns: undefined }
       invoke_process_inmail_queue: { Args: never; Returns: undefined }
+      invoke_process_scheduled_actions: { Args: never; Returns: undefined }
       invoke_process_sequences: {
         Args: { p_action: string; p_force?: boolean }
         Returns: undefined
       }
+      invoke_refresh_pedigree_by_funding_stage: {
+        Args: never
+        Returns: undefined
+      }
+      invoke_resolve_pedigree_directory: { Args: never; Returns: undefined }
       is_mission_team_member: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
@@ -5747,6 +6317,13 @@ export type Database = {
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
+      }
+      jarvis_kb_search: {
+        Args: { q: string }
+        Returns: {
+          content: string
+          doc: string
+        }[]
       }
       move_to_dlq: {
         Args: {
@@ -5764,6 +6341,10 @@ export type Database = {
           msg_id: number
           read_ct: number
         }[]
+      }
+      recompute_mission_stats: {
+        Args: { p_mission_ids: string[] }
+        Returns: undefined
       }
       record_cron_heartbeat: {
         Args: { p_error?: string; p_job_name: string; p_status?: string }
@@ -5807,6 +6388,25 @@ export type Database = {
         Returns: {
           chunk_type: string
           content: string
+          id: string
+          metadata: Json
+          similarity: number
+        }[]
+      }
+      retrieve_context_org: {
+        Args: {
+          p_chunk_types?: string[]
+          p_entity_ids?: string[]
+          p_entity_type?: string
+          p_limit?: number
+          p_org_id: string
+          p_query_embedding: string
+        }
+        Returns: {
+          chunk_type: string
+          content: string
+          entity_id: string
+          entity_type: string
           id: string
           metadata: Json
           similarity: number
@@ -5943,9 +6543,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       app_role: ["admin", "user"],
