@@ -770,8 +770,8 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
       {/* Composer — prompt-kit-style pill with Notion/Claude toolbar */}
       <div className="shrink-0 px-3 pb-3 pt-1">
         <div className="mx-auto w-full max-w-2xl">
-          {/* Formats alignés sur ingest-user-file (PDF + texte). Word/images : pas encore supportés. */}
-          <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.txt,.md,.csv">
+          {/* Formats alignés sur ingest-user-file (PDF, images, texte). Word : pas encore supporté. */}
+          <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
             <ComposerPrimitive.Root className="relative flex flex-col rounded-[1.75rem] border border-border bg-background p-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
               {/* Attached files */}
               {files.length > 0 && (

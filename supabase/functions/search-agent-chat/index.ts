@@ -1083,7 +1083,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             // la conversation vient d'être créée côté serveur — create-path).
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ conversation_id })}\n\n`));
             let currentMessages = [...messages];
-            let maxToolRounds = 5;
+            // Rounds dynamiques (P2.6) : plafond haut (8) pour les chaînes de
+            // tools rapides, borné par un budget temps MURAL — la vraie
+            // contrainte est le hard-limit edge (~150s), pas le nombre de
+            // rounds. On ne DÉMARRE pas de nouveau round passé 95s.
+            let maxToolRounds = 8;
+            const LOOP_WALL_BUDGET_MS = 95_000;
+            const loopStartedAt = Date.now();
+            let roundNumber = 0;
             let apiErrored = false;
             let awaitingApprovalCount = 0;
 
@@ -1096,7 +1103,19 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
 
             // Tool-calling loop
             while (maxToolRounds > 0) {
-              console.log(`[search-agent-chat] Tool loop round ${6 - maxToolRounds}, messages: ${currentMessages.length}`);
+              roundNumber++;
+              const elapsedMs = Date.now() - loopStartedAt;
+              if (roundNumber > 1 && elapsedMs > LOOP_WALL_BUDGET_MS) {
+                // Budget temps épuisé : on s'arrête HONNÊTEMENT plutôt que de
+                // risquer une coupure hard-limit en plein stream.
+                console.warn(`[search-agent-chat] Wall budget exhausted (${elapsedMs}ms) — stopping before round ${roundNumber}`);
+                const budgetMsg = "Je me suis arrêté avant la fin (temps de traitement atteint). Dis-moi « continue » pour que je reprenne où j'en étais.";
+                fullResponse += (fullResponse ? "\n\n" : "") + budgetMsg;
+                const budgetChunk = { choices: [{ delta: { content: budgetMsg }, index: 0 }] };
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(budgetChunk)}\n\n`));
+                break;
+              }
+              console.log(`[search-agent-chat] Tool loop round ${roundNumber}, elapsed ${elapsedMs}ms, messages: ${currentMessages.length}`);
 
               const apiBody: any = {
                 model: resolvedModel,
@@ -1125,7 +1144,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               // (~1s) et plus rien ne bornerait un stream figé. L'abort fait
               // rejeter reader.read() → catch global → [DONE] propre.
               const roundAbort = new AbortController();
-              const roundTimer = setTimeout(() => roundAbort.abort(), 120000);
+              // Deadline du round bornée par le temps mural restant (~140s au
+              // total, marge sous le hard-limit edge ~150s) — avant : 120s
+              // fixes par round, soit jusqu'à 215s cumulés possibles.
+              const roundDeadlineMs = Math.max(30_000, Math.min(120_000, 140_000 - (Date.now() - loopStartedAt)));
+              const roundTimer = setTimeout(() => roundAbort.abort(), roundDeadlineMs);
               const loopResponse = await fetch("https://api.anthropic.com/v1/messages", {
                 method: "POST",
                 headers: {

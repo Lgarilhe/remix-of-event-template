@@ -60,13 +60,25 @@ function chunkText(text: string): string[] {
   return chunks.filter((c) => c.length > 20);
 }
 
-/** Extraction PDF via l'API Anthropic (document block) — pas de lib de parsing. */
-async function extractPdfText(
+/**
+ * Extraction PDF (document block) ou image (vision) via l'API Anthropic —
+ * pas de lib de parsing.
+ */
+async function extractViaAI(
+  kind: "pdf" | "image",
+  mediaType: string,
   contentBase64: string,
   filename: string,
 ): Promise<{ text: string; usage: { input_tokens: number; output_tokens: number } | null }> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
+
+  const contentBlock = kind === "pdf"
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: contentBase64 } }
+    : { type: "image", source: { type: "base64", media_type: mediaType, data: contentBase64 } };
+  const instruction = kind === "pdf"
+    ? `Extrais le texte INTÉGRAL de ce document ("${filename}") de façon fidèle, en conservant la structure (titres, sections, listes). N'ajoute AUCUN commentaire, AUCUNE introduction — uniquement le contenu du document.`
+    : `Cette image ("${filename}") a été jointe par un recruteur (typiquement : capture d'écran d'un profil, d'une offre d'emploi, d'un échange, ou photo d'un document). Transcris FIDÈLEMENT tout le texte visible en conservant la structure, puis ajoute si utile une ligne "[Description : …]" décrivant brièvement le visuel. Aucune introduction.`;
 
   const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -80,20 +92,14 @@ async function extractPdfText(
       max_tokens: 16_000,
       messages: [{
         role: "user",
-        content: [
-          { type: "document", source: { type: "base64", media_type: "application/pdf", data: contentBase64 } },
-          {
-            type: "text",
-            text: `Extrais le texte INTÉGRAL de ce document ("${filename}") de façon fidèle, en conservant la structure (titres, sections, listes). N'ajoute AUCUN commentaire, AUCUNE introduction — uniquement le contenu du document.`,
-          },
-        ],
+        content: [contentBlock, { type: "text", text: instruction }],
       }],
     }),
   }, 90_000);
 
   if (!res.ok) {
     const err = await res.text().catch(() => "");
-    throw new Error(`PDF extraction failed (${res.status}): ${err.slice(0, 200)}`);
+    throw new Error(`${kind} extraction failed (${res.status}): ${err.slice(0, 200)}`);
   }
   const data = await res.json();
   const text = (data.content ?? [])
@@ -169,8 +175,19 @@ Deno.serve(async (req) => {
     let extracted = "";
     let aiUsage: { input_tokens: number; output_tokens: number } | null = null;
 
+    const IMAGE_MIMES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
     if (mime === "application/pdf" || lowerName.endsWith(".pdf")) {
-      const result = await extractPdfText(content_base64, filename);
+      const result = await extractViaAI("pdf", "application/pdf", content_base64, filename);
+      extracted = result.text;
+      aiUsage = result.usage;
+    } else if (IMAGE_MIMES.includes(mime) || /\.(png|jpe?g|webp|gif)$/.test(lowerName)) {
+      const mediaType = IMAGE_MIMES.includes(mime)
+        ? mime
+        : lowerName.endsWith(".png") ? "image/png"
+        : lowerName.endsWith(".webp") ? "image/webp"
+        : lowerName.endsWith(".gif") ? "image/gif"
+        : "image/jpeg";
+      const result = await extractViaAI("image", mediaType, content_base64, filename);
       extracted = result.text;
       aiUsage = result.usage;
     } else if (TEXT_MIMES.includes(mime) || /\.(txt|md|csv|markdown)$/.test(lowerName)) {
@@ -183,7 +200,7 @@ Deno.serve(async (req) => {
     } else if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) {
       return json({ error: "Format Word pas encore supporté — exporte le document en PDF et rejoins-le." }, 415);
     } else {
-      return json({ error: `Format non supporté (${mime || filename}). Formats acceptés : PDF, TXT, MD, CSV.` }, 415);
+      return json({ error: `Format non supporté (${mime || filename}). Formats acceptés : PDF, images (PNG/JPG/WebP), TXT, MD, CSV.` }, 415);
     }
 
     extracted = extracted.slice(0, MAX_EXTRACTED_CHARS).trim();
