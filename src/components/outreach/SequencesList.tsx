@@ -221,11 +221,40 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
 
-      // Map old client-side IDs to database IDs after insert
-      const clientIdToDbId: Record<string, string> = {};
+      // Payload de steps envoyé à la RPC transactionnelle `save_sequence_steps`.
+      // On garde `id` = id CLIENT (= id DB pour un step existant, id généré pour
+      // un nouveau) : la RPC s'en sert pour faire l'UPDATE in-place des steps
+      // existants (préserve leurs exécutions planifiées) et pour remapper les
+      // refs de branchement (if_true/false_goto, timeout_branch, next_step).
+      const buildStepsPayload = () => sequence.steps.map(step => ({
+        id: step.id,
+        step_order: step.order,
+        action_type: step.actionType,
+        condition_type: step.conditionType,
+        condition_value: step.conditionValue ?? null,
+        delay_days: step.delayDays ?? 0,
+        delay_hours: step.delayHours ?? 0,
+        delay_minutes: step.delayMinutes ?? 0,
+        preferred_hour_start: step.preferredHourStart ?? null,
+        preferred_hour_end: step.preferredHourEnd ?? null,
+        subject_template: step.subjectTemplate ?? null,
+        message_template: step.messageTemplate ?? null,
+        use_ai_personalization: step.useAiPersonalization ?? false,
+        ai_tone: step.aiTone ?? null,
+        timeout_days: step.timeoutDays ?? null,
+        wait_for_event: step.waitForEvent ?? null,
+        variant_group: step.variantGroup ?? null,
+        variant_weight: step.variantWeight ?? 100,
+        if_true_goto_step: step.ifTrueGotoStep ?? null,
+        if_false_goto_step: step.ifFalseGotoStep ?? null,
+        timeout_branch_step_id: step.timeoutBranchStepId ?? null,
+        next_step_id: step.nextStepId ?? null,
+      }));
+
+      let targetSequenceId: string;
 
       if (sequence.id) {
-        // UPDATE existing sequence
+        // UPDATE de l'entête de séquence uniquement (les steps passent par la RPC).
         const { error: updateError } = await supabase
           .from('outreach_sequences')
           .update({
@@ -240,78 +269,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           .eq('id', sequence.id);
 
         if (updateError) throw updateError;
-
-        // Delete old steps
-        await supabase
-          .from('sequence_steps')
-          .delete()
-          .eq('sequence_id', sequence.id);
-
-        // Step 1: Insert steps WITHOUT branch references
-        const stepsToInsert = sequence.steps.map(step => ({
-          sequence_id: sequence.id,
-          step_order: step.order,
-          action_type: step.actionType,
-          condition_type: step.conditionType,
-          condition_value: step.conditionValue || null,
-          delay_days: step.delayDays,
-          delay_hours: step.delayHours,
-          delay_minutes: step.delayMinutes || 0,
-          preferred_hour_start: step.preferredHourStart,
-          preferred_hour_end: step.preferredHourEnd,
-          subject_template: step.subjectTemplate,
-          message_template: step.messageTemplate,
-          use_ai_personalization: step.useAiPersonalization,
-          ai_tone: step.aiTone,
-          timeout_days: step.timeoutDays,
-          wait_for_event: step.waitForEvent,
-          variant_group: step.variantGroup || null,
-          variant_weight: step.variantWeight || 100,
-          timeout_branch_step_id: null,
-          if_true_goto_step: null,
-          if_false_goto_step: null,
-        }));
-
-        const { data: insertedSteps, error: stepsError } = await supabase
-          .from('sequence_steps')
-          .insert(stepsToInsert)
-          .select();
-
-        if (stepsError) throw stepsError;
-
-        // Build mapping from client ID to DB ID
-        sequence.steps.forEach((step, index) => {
-          if (insertedSteps && insertedSteps[index]) {
-            clientIdToDbId[step.id] = insertedSteps[index].id;
-          }
-        });
-
-        // Step 2: Update steps WITH branch references (now that all IDs exist)
-        for (const step of sequence.steps) {
-          const dbId = clientIdToDbId[step.id];
-          if (!dbId) continue;
-
-          const ifTrueDbId = step.ifTrueGotoStep ? clientIdToDbId[step.ifTrueGotoStep] : null;
-          const ifFalseDbId = step.ifFalseGotoStep ? clientIdToDbId[step.ifFalseGotoStep] : null;
-          const timeoutBranchDbId = step.timeoutBranchStepId ? clientIdToDbId[step.timeoutBranchStepId] : null;
-          const nextStepDbId = step.nextStepId ? clientIdToDbId[step.nextStepId] : null;
-
-          if (ifTrueDbId || ifFalseDbId || timeoutBranchDbId || nextStepDbId) {
-            await supabase
-              .from('sequence_steps')
-              .update({
-                if_true_goto_step: ifTrueDbId,
-                if_false_goto_step: ifFalseDbId,
-                timeout_branch_step_id: timeoutBranchDbId,
-                next_step_id: nextStepDbId,
-              })
-              .eq('id', dbId);
-          }
-        }
-
-        toast.success('Séquence mise à jour');
+        targetSequenceId = sequence.id;
       } else {
-        // CREATE new sequence
+        // CREATE de l'entête de séquence.
         const { data: newSeq, error: createError } = await supabase
           .from('outreach_sequences')
           .insert({
@@ -325,68 +285,20 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           .single();
 
         if (createError) throw createError;
-
-        // Step 1: Insert steps WITHOUT branch references
-        const stepsToInsert = sequence.steps.map(step => ({
-          sequence_id: newSeq.id,
-          step_order: step.order,
-          action_type: step.actionType,
-          condition_type: step.conditionType,
-          delay_days: step.delayDays,
-          delay_hours: step.delayHours,
-          delay_minutes: step.delayMinutes || 0,
-          preferred_hour_start: step.preferredHourStart,
-          preferred_hour_end: step.preferredHourEnd,
-          subject_template: step.subjectTemplate,
-          message_template: step.messageTemplate,
-          use_ai_personalization: step.useAiPersonalization,
-          ai_tone: step.aiTone,
-          timeout_days: step.timeoutDays,
-          wait_for_event: step.waitForEvent,
-          timeout_branch_step_id: null,
-          if_true_goto_step: null,
-          if_false_goto_step: null,
-        }));
-
-        const { data: insertedSteps, error: stepsError } = await supabase
-          .from('sequence_steps')
-          .insert(stepsToInsert)
-          .select();
-
-        if (stepsError) throw stepsError;
-
-        // Build mapping from client ID to DB ID
-        sequence.steps.forEach((step, index) => {
-          if (insertedSteps && insertedSteps[index]) {
-            clientIdToDbId[step.id] = insertedSteps[index].id;
-          }
-        });
-
-        // Step 2: Update steps WITH branch references (now that all IDs exist)
-        for (const step of sequence.steps) {
-          const dbId = clientIdToDbId[step.id];
-          if (!dbId) continue;
-
-          const ifTrueDbId = step.ifTrueGotoStep ? clientIdToDbId[step.ifTrueGotoStep] : null;
-          const ifFalseDbId = step.ifFalseGotoStep ? clientIdToDbId[step.ifFalseGotoStep] : null;
-          const timeoutBranchDbId = step.timeoutBranchStepId ? clientIdToDbId[step.timeoutBranchStepId] : null;
-          const nextStepDbId = step.nextStepId ? clientIdToDbId[step.nextStepId] : null;
-
-          if (ifTrueDbId || ifFalseDbId || timeoutBranchDbId || nextStepDbId) {
-            await supabase
-              .from('sequence_steps')
-              .update({
-                if_true_goto_step: ifTrueDbId,
-                if_false_goto_step: ifFalseDbId,
-                timeout_branch_step_id: timeoutBranchDbId,
-                next_step_id: nextStepDbId,
-              })
-              .eq('id', dbId);
-          }
-        }
-
-        toast.success('Séquence créée');
+        targetSequenceId = newSeq.id;
       }
+
+      // Sauvegarde transactionnelle des steps : UPDATE in-place des existants,
+      // INSERT des nouveaux, DELETE des seuls steps réellement retirés. Ne
+      // détruit PLUS les exécutions planifiées des enrollments actifs (bloquant B1).
+      const { error: stepsError } = await supabase.rpc('save_sequence_steps' as any, {
+        p_sequence_id: targetSequenceId,
+        p_steps: buildStepsPayload(),
+      });
+
+      if (stepsError) throw stepsError;
+
+      toast.success(sequence.id ? 'Séquence mise à jour' : 'Séquence créée');
 
       fetchSequences();
       setShowBuilder(false);

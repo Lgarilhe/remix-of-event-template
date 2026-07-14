@@ -80,22 +80,15 @@ async function sendViaResend(
   throw new ResendSendError(response.status, errorText.slice(0, 1000), retryAfterSeconds)
 }
 
-function parseJwtClaims(token: string): Record<string, unknown> | null {
-  const parts = token.split('.')
-  if (parts.length < 2) {
-    return null
-  }
-
-  try {
-    const payload = parts[1]
-      .replaceAll('-', '+')
-      .replaceAll('_', '/')
-      .padEnd(Math.ceil(parts[1].length / 4) * 4, '=')
-
-    return JSON.parse(atob(payload)) as Record<string, unknown>
-  } catch {
-    return null
-  }
+// Comparaison à temps constant pour éviter les timing attacks sur les secrets.
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder()
+  const ab = enc.encode(a)
+  const bb = enc.encode(b)
+  if (ab.length !== bb.length) return false
+  let diff = 0
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i]
+  return diff === 0
 }
 
 // Move a message to the dead letter queue and log the reason.
@@ -148,14 +141,19 @@ Deno.serve(async (req) => {
 
   // Auth: deux callers légitimes
   // 1. Cron pg_net via invoke_process_email_queue (envoie PROCESS_SEQUENCES_SECRET)
-  // 2. Frontend / autre edge function (envoie un JWT service_role)
+  // 2. Autre edge function (envoie le service role key en Bearer)
   // Note: config.toml met verify_jwt=false sur toutes les fonctions (incompat
   // gateway HS256 vs nouveaux JWT ES256), donc on valide ici en interne.
+  //
+  // On compare le token aux DEUX secrets réels (constant-time). On NE décode
+  // PLUS les claims du JWT : un simple atob() du payload ne vérifie pas la
+  // signature, donc n'importe qui pouvait forger `xx.<base64 role=service_role>.xx`
+  // et invoquer la fonction à volonté (martelage Resend, DoS de la file).
   const token = authHeader.slice('Bearer '.length).trim()
   const cronSecret = Deno.env.get('PROCESS_SEQUENCES_SECRET') || ''
-  const isCronCaller = cronSecret.length > 0 && token === cronSecret
-  const claims = isCronCaller ? null : parseJwtClaims(token)
-  if (!isCronCaller && claims?.role !== 'service_role') {
+  const isCronCaller = cronSecret.length > 0 && timingSafeEqual(token, cronSecret)
+  const isServiceRoleCaller = timingSafeEqual(token, supabaseServiceKey)
+  if (!isCronCaller && !isServiceRoleCaller) {
     return new Response(
       JSON.stringify({ error: 'Forbidden' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } },

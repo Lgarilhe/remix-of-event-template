@@ -71,15 +71,28 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      // Garde anti-race : on ne met à jour QUE si l'exécution est encore
+      // 'scheduled'. Si le moteur l'a déjà passée en 'sending'/'sent' pendant
+      // que le modal était ouvert, l'UPDATE n'affecte 0 ligne → on prévient
+      // l'user au lieu de falsifier silencieusement un message déjà parti.
+      const { data: updated, error } = await supabase
         .from('sequence_step_executions')
         .update({
           final_subject: needsSubject ? subject.trim() : null,
           final_message: message.trim(),
         })
-        .eq('id', execution.id);
+        .eq('id', execution.id)
+        .eq('status', 'scheduled')
+        .select('id');
 
       if (error) throw error;
+
+      if (!updated || updated.length === 0) {
+        toast.error("Ce message est déjà en cours d'envoi ou envoyé — modification impossible.");
+        onSaved();
+        onClose();
+        return;
+      }
 
       toast.success('Message mis à jour');
       onSaved();
