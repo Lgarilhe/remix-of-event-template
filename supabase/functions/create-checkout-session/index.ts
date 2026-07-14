@@ -93,6 +93,12 @@ Deno.serve(async (req) => {
       return json({ error: "Forbidden" }, 403);
     }
 
+    // Billing = action sensible : réservée aux owner/admin de l'org
+    // (un simple membre ne doit pas pouvoir souscrire un abonnement).
+    if (!["owner", "admin"].includes(membership.role)) {
+      return json({ error: "Seuls les administrateurs peuvent gérer la facturation" }, 403);
+    }
+
     // Get or create Stripe customer
     let stripeCustomerId: string | null = null;
 
