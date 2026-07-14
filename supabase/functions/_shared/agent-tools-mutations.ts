@@ -13,6 +13,7 @@
 import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
+import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -3493,6 +3494,322 @@ const bulkDismiss: AgentTool = {
   },
 };
 
+// ─── Tool — send_email (P2.4 audit 2026-07-14) ──────────────────────────────
+// Envoie un email depuis la BOÎTE CONNECTÉE du recruteur (member_email_accounts,
+// même transport que les étapes email de séquence : POST /api/v1/emails chez le
+// provider LinkedIn/email). mutation_external → approbation TOUJOURS obligatoire
+// (clamp serveur, jamais auto). Vérifie la liste de suppression — absent du
+// chemin séquences historique, ajouté ici.
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function textToHtml(s: string): string {
+  return `<div>${escapeHtml(s).replace(/\n/g, '<br>')}</div>`;
+}
+
+async function resolveSenderEmailAccount(
+  ctx: ToolContext,
+): Promise<{ email_account_id: string; email_address: string | null } | null> {
+  const { data } = await ctx.adminClient
+    .from('member_email_accounts')
+    .select('email_account_id, email_address, user_id, account_status')
+    .eq('organization_id', ctx.organizationId)
+    .limit(20);
+  const rows = (data as Array<{ email_account_id: string; email_address: string | null; user_id: string; account_status: string | null }> | null) ?? [];
+  const ok = rows.filter((r) => (r.account_status ?? 'OK') === 'OK');
+  return ok.find((r) => r.user_id === ctx.userId) ?? ok[0] ?? null;
+}
+
+const sendEmail: AgentTool = {
+  name: 'send_email',
+  description:
+    "Send an email to a candidate or contact FROM the user's connected email inbox (Gmail/Outlook). " +
+    "Use when the user says 'envoie un email à X', 'écris un mail à marie@…'. " +
+    "Requires to_email (ask the user or resolve via enrich_candidate_contact if unknown — NEVER invent an address). " +
+    "body is plain text (French, no markdown) — line breaks preserved. " +
+    "This is a REAL external send : always requires user approval, no exception. " +
+    "For LinkedIn messages use send_linkedin_message ; for multi-step campaigns use sequences.",
+  category: 'mutation_external',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      to_email: { type: 'string', description: "Recipient email address. Never invented — from the user, get_candidate_detail, or enrich_candidate_contact." },
+      recipient_name: { type: 'string', description: 'Recipient full name (shown in the approval banner and the email).' },
+      subject: { type: 'string', description: 'Email subject (French, concise).' },
+      body: { type: 'string', description: 'Email body, PLAIN TEXT French (no markdown, no HTML). Max 5000 chars.' },
+    },
+    required: ['to_email', 'subject', 'body'],
+  },
+
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    const to = String(params.to_email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(to)) return { allowed: false, reason: `Adresse email invalide : "${to}"` };
+    if (!String(params.subject || '').trim()) return { allowed: false, reason: 'subject is required' };
+    const body = String(params.body || '').trim();
+    if (!body) return { allowed: false, reason: 'body is required' };
+    if (body.length > 5000) return { allowed: false, reason: 'body too long (max 5000 chars)' };
+
+    // Liste de suppression (bounces / désabonnements)
+    const { data: suppressed } = await ctx.adminClient
+      .from('suppressed_emails')
+      .select('email')
+      .eq('email', to)
+      .maybeSingle();
+    if (suppressed) {
+      return { allowed: false, reason: `${to} est sur la liste de suppression (bounce ou désabonnement) — envoi interdit.` };
+    }
+
+    const sender = await resolveSenderEmailAccount(ctx);
+    if (!sender) {
+      return { allowed: false, reason: "Aucune boîte email connectée sur l'organisation (Réglages → Connecteurs) — impossible d'envoyer." };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const to = String(params.to_email).trim().toLowerCase();
+    const sender = await resolveSenderEmailAccount(ctx);
+    const body = String(params.body).trim();
+    return {
+      summary: `Envoyer un email à ${params.recipient_name ? `${params.recipient_name} <${to}>` : to} : « ${String(params.subject).slice(0, 80)} »`,
+      details: {
+        to_email: to,
+        recipient_name: String(params.recipient_name || '') || null,
+        from_account: sender?.email_address ?? sender?.email_account_id ?? null,
+        subject: String(params.subject),
+        body_full: body,
+        body_preview: body.length > 160 ? body.slice(0, 157) + '…' : body,
+      },
+      warning: 'Envoi externe RÉEL depuis ta boîte email connectée — irréversible une fois parti.',
+    };
+  },
+
+  async execute(params, ctx) {
+    const to = String(params.to_email).trim().toLowerCase();
+    const sender = await resolveSenderEmailAccount(ctx);
+    if (!sender) return { success: false, error: 'Aucune boîte email connectée.' };
+
+    let creds: { apiKey: string; dsn: string } | null = null;
+    try {
+      creds = await resolveUnipileCredentials(ctx.organizationId, ctx.adminClient);
+    } catch (e) {
+      console.error('[send_email] credentials error:', e);
+    }
+    if (!creds) return { success: false, error: 'Connexion au service email impossible (credentials indisponibles).' };
+    const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
+
+    const res = await fetchWithTimeout(`${baseDsn}/api/v1/emails`, {
+      method: 'POST',
+      headers: { 'X-API-KEY': creds.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_id: sender.email_account_id,
+        subject: String(params.subject),
+        body: textToHtml(String(params.body).trim()),
+        to: [{ display_name: String(params.recipient_name || '') || to, identifier: to }],
+      }),
+    }, 20000);
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      console.error('[send_email] provider error:', res.status, err.slice(0, 300));
+      return { success: false, error: `Échec de l'envoi (${res.status}). Vérifie que ta boîte email est bien connectée.` };
+    }
+
+    return {
+      success: true,
+      data: {
+        to_email: to,
+        from_account: sender.email_address ?? null,
+        message: `Email envoyé à ${to} depuis ${sender.email_address ?? 'ta boîte connectée'}.`,
+      },
+    };
+  },
+};
+
+// ─── Tool — create_sequence (P2.5 audit 2026-07-14) ─────────────────────────
+// Crée une séquence outreach multi-étapes (outreach_sequences + sequence_steps).
+// Ne déclenche AUCUN envoi : les envois partent à l'enrollment (enroll_in_sequence,
+// lui-même sous approbation). Types d'étapes exposés au modèle = sous-ensemble
+// sûr du CHECK action_type.
+
+const SEQ_STEP_TYPES: Record<string, { action_type: string; channel: 'linkedin' | 'email' }> = {
+  message: { action_type: 'message', channel: 'linkedin' },
+  inmail: { action_type: 'inmail', channel: 'linkedin' },
+  connection_request: { action_type: 'connection_request', channel: 'linkedin' },
+  email: { action_type: 'email', channel: 'email' },
+  wait_reply: { action_type: 'wait_reply', channel: 'linkedin' },
+};
+
+interface SeqStepInput {
+  type: string;
+  delay_days: number;
+  subject: string | null;
+  message: string | null;
+}
+
+function parseSequenceSteps(params: Record<string, unknown>): { steps: SeqStepInput[] } | { error: string } {
+  const raw = Array.isArray(params.steps) ? params.steps : [];
+  if (raw.length < 1 || raw.length > 8) return { error: 'steps doit contenir entre 1 et 8 étapes' };
+  const steps: SeqStepInput[] = [];
+  for (const [i, s] of raw.entries()) {
+    const st = (s ?? {}) as Record<string, unknown>;
+    const type = String(st.type || '').trim();
+    if (!SEQ_STEP_TYPES[type]) {
+      return { error: `Étape ${i + 1} : type "${type}" invalide (attendu : ${Object.keys(SEQ_STEP_TYPES).join(', ')})` };
+    }
+    const message = String(st.message || '').trim() || null;
+    const subject = String(st.subject || '').trim() || null;
+    if (type !== 'wait_reply' && !message) return { error: `Étape ${i + 1} (${type}) : message requis` };
+    if ((type === 'email' || type === 'inmail') && !subject) return { error: `Étape ${i + 1} (${type}) : subject requis` };
+    steps.push({
+      type,
+      delay_days: Math.min(Math.max(Math.round(Number(st.delay_days) || 0), 0), 30),
+      subject,
+      message,
+    });
+  }
+  return { steps };
+}
+
+const createSequence: AgentTool = {
+  name: 'create_sequence',
+  description:
+    "Create a multi-step outreach sequence (LinkedIn messages / InMails / connection requests / emails / wait-for-reply). " +
+    "Use when the user says 'crée une séquence de relance', 'monte-moi une séquence 3 touches pour la mission X'. " +
+    "Creating a sequence sends NOTHING — candidates are added later via enroll_in_sequence (separate approval). " +
+    "steps: 1-8 items {type: message|inmail|connection_request|email|wait_reply, delay_days (0-30, since previous step), " +
+    "subject (required for email/inmail), message (template text ; variables {{first_name}}, {{company}} supported)}. " +
+    "Optional mission_id links the sequence to a mission.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Sequence name (French, ex : "Relance DevOps senior — 3 touches").' },
+      description: { type: 'string', description: 'Optional short description.' },
+      mission_id: { type: 'string', description: 'Optional sourcing_projects UUID to attach the sequence to.' },
+      steps: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: Object.keys(SEQ_STEP_TYPES) },
+            delay_days: { type: 'number', description: 'Days to wait after the previous step (0-30, default 0).' },
+            subject: { type: 'string', description: 'Subject — required for email and inmail steps.' },
+            message: { type: 'string', description: 'Message template (plain text French). Not needed for wait_reply.' },
+          },
+          required: ['type'],
+        },
+        description: '1-8 steps, in order.',
+      },
+    },
+    required: ['name', 'steps'],
+  },
+
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    if (!String(params.name || '').trim()) return { allowed: false, reason: 'name is required' };
+    const parsed = parseSequenceSteps(params);
+    if ('error' in parsed) return { allowed: false, reason: parsed.error };
+    const missionId = String(params.mission_id || '').trim();
+    if (missionId) {
+      const { data: project } = await ctx.adminClient
+        .from('sourcing_projects')
+        .select('id, organization_id')
+        .eq('id', missionId)
+        .maybeSingle();
+      if (!project || project.organization_id !== ctx.organizationId) {
+        return { allowed: false, reason: 'Mission introuvable dans cette organisation' };
+      }
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, _ctx) {
+    const parsed = parseSequenceSteps(params);
+    const steps = 'steps' in parsed ? parsed.steps : [];
+    const STEP_LABEL: Record<string, string> = {
+      message: 'Message LinkedIn',
+      inmail: 'InMail',
+      connection_request: 'Demande de connexion',
+      email: 'Email',
+      wait_reply: 'Attente de réponse',
+    };
+    return {
+      summary: `Créer la séquence « ${String(params.name).slice(0, 80)} » (${steps.length} étape(s))`,
+      details: {
+        name: String(params.name),
+        description: String(params.description || '') || null,
+        mission_id: String(params.mission_id || '') || null,
+        steps: steps.map((s, i) => ({
+          order: i + 1,
+          type: STEP_LABEL[s.type] ?? s.type,
+          delay: s.delay_days > 0 ? `J+${s.delay_days}` : 'immédiat',
+          subject: s.subject,
+          message_preview: s.message ? (s.message.length > 120 ? s.message.slice(0, 117) + '…' : s.message) : null,
+        })),
+      },
+      warning: "Aucun envoi ne part à la création : les candidats sont ajoutés ensuite via l'enrollment (validation séparée).",
+    };
+  },
+
+  async execute(params, ctx) {
+    const parsed = parseSequenceSteps(params);
+    if ('error' in parsed) return { success: false, error: parsed.error };
+
+    const { data: seq, error: seqErr } = await ctx.adminClient
+      .from('outreach_sequences')
+      .insert({
+        name: String(params.name).trim().slice(0, 200),
+        description: String(params.description || '').trim().slice(0, 1000) || null,
+        is_active: true,
+        created_by: ctx.userId,
+        organization_id: ctx.organizationId,
+        project_id: String(params.mission_id || '').trim() || null,
+      })
+      .select('id')
+      .single();
+    if (seqErr || !seq) return { success: false, error: seqErr?.message || 'sequence insert failed' };
+
+    const stepRows = parsed.steps.map((s, i) => ({
+      sequence_id: seq.id,
+      step_order: i + 1,
+      action_type: SEQ_STEP_TYPES[s.type].action_type,
+      step_channel: SEQ_STEP_TYPES[s.type].channel,
+      condition_type: 'always',
+      delay_days: s.delay_days,
+      delay_hours: 0,
+      subject_template: s.subject,
+      message_template: s.message,
+      use_ai_personalization: false,
+    }));
+    const { error: stepsErr } = await ctx.adminClient.from('sequence_steps').insert(stepRows);
+    if (stepsErr) {
+      // Cleanup best-effort : pas de séquence orpheline sans étapes
+      await ctx.adminClient.from('outreach_sequences').delete().eq('id', seq.id);
+      return { success: false, error: `steps insert failed: ${stepsErr.message}` };
+    }
+
+    return {
+      success: true,
+      data: {
+        sequence_id: seq.id,
+        steps_created: stepRows.length,
+        message: `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s). Pour y ajouter des candidats : enroll_in_sequence (validation séparée).`,
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -3530,5 +3847,8 @@ export function registerMutatingTools(): void {
   // P2.2 — actions multi-candidats
   registerTool(bulkUpdateStage);
   registerTool(bulkDismiss);
+  // P2.4/P2.5 — email sortant + création de séquences
+  registerTool(sendEmail);
+  registerTool(createSequence);
   registered = true;
 }

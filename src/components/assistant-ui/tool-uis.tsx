@@ -34,6 +34,8 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   get_inbox_overview: 'Lecture de la messagerie',
   bulk_update_stage: 'Déplacement de candidats',
   bulk_dismiss: 'Écartement de candidats',
+  send_email: "Envoi d'email",
+  create_sequence: 'Création de séquence',
   create_mission: 'Création de mission',
   send_linkedin_message: 'Message LinkedIn',
   pause_sequence: 'Pause de séquence',

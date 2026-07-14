@@ -50,6 +50,7 @@ const POLICY_TOOLS: PolicyTool[] = [
   { name: 'regenerate_search_filters', label: 'Régénérer les filtres LinkedIn', autoEligible: true },
   { name: 'apply_search_filters_to_mission', label: 'Appliquer les filtres de recherche', autoEligible: true },
   { name: 'enroll_in_sequence', label: 'Enrôler dans une séquence', autoEligible: true },
+  { name: 'create_sequence', label: 'Créer une séquence', autoEligible: true },
   { name: 'pause_sequence', label: 'Mettre en pause une séquence', autoEligible: true },
   { name: 'resume_sequence', label: 'Reprendre une séquence', autoEligible: true },
   { name: 'draft_outreach_message', label: "Rédiger un message d'approche", autoEligible: true },
@@ -58,6 +59,7 @@ const POLICY_TOOLS: PolicyTool[] = [
   { name: 'bulk_update_stage', label: 'Déplacer plusieurs candidats', autoEligible: true },
   // Approbation obligatoire (envois externes / destructif / équipe)
   { name: 'send_linkedin_message', label: 'Envoyer un message LinkedIn', autoEligible: false, description: 'Envoi externe — approbation obligatoire' },
+  { name: 'send_email', label: 'Envoyer un email', autoEligible: false, description: 'Envoi externe — approbation obligatoire' },
   { name: 'launch_search', label: 'Lancer la recherche autonome', autoEligible: false, description: 'Consomme crédits + compte LinkedIn — approbation obligatoire' },
   { name: 'dismiss_candidate', label: 'Écarter un candidat', autoEligible: false, description: 'Destructif — approbation obligatoire' },
   { name: 'bulk_dismiss', label: 'Écarter plusieurs candidats', autoEligible: false, description: 'Destructif — approbation obligatoire' },

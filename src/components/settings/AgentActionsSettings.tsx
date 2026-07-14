@@ -125,6 +125,8 @@ const TOOL_LABEL: Record<string, string> = {
   get_inbox_overview: 'Vue messagerie',
   bulk_update_stage: 'Déplacer plusieurs candidats',
   bulk_dismiss: 'Écarter plusieurs candidats',
+  send_email: 'Envoyer un email',
+  create_sequence: 'Créer une séquence',
 };
 
 const STATUS_CONFIG: Record<

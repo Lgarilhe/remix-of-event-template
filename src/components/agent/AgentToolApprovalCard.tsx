@@ -62,6 +62,7 @@ interface AgentToolApprovalCardProps {
 // a relu et patché les params → confirmation implicite).
 const SENSITIVE_TOOLS = new Set<string>([
   'send_linkedin_message',
+  'send_email',
   'dismiss_candidate',
   'bulk_dismiss',
   'invite_team_member',
@@ -154,6 +155,8 @@ const TOOL_LABEL: Record<string, string> = {
   launch_search: 'Lancer la recherche autonome',
   bulk_update_stage: 'Déplacer plusieurs candidats',
   bulk_dismiss: 'Écarter plusieurs candidats',
+  send_email: 'Envoyer un email',
+  create_sequence: 'Créer une séquence',
 };
 
 // ─── Editable fields configuration ─────────────────────────────────────────
