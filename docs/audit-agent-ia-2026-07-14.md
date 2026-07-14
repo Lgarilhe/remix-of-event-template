@@ -168,3 +168,32 @@ Ce que l'agent **ne voit pas** aujourd'hui, classé par impact :
 
 Effort total estimé : **5-6 semaines** de dev pour la cible complète, sans refonte architecturale —
 le registre de tools, le cycle d'approbation et le RAG absorbent tout.
+
+---
+
+## 7. Post-scriptum — exécution (même jour, cette branche)
+
+L'intégralité des plans P0, P1 et P2 a été livrée sur `claude/ai-chat-audit-x62ewv`
+(commits `2a64e7c` → `301ee4b`) :
+
+- **P0** : modes brief/process/outreach outillés (classifieur étendu) et dérivés de
+  l'onglet actif ; `missionTitle` dans le contexte de page ; tools `schedule_interview`
+  et `launch_search` (le [SEARCH_PLAN] validé était un cul-de-sac — rien n'appelait
+  `run-agent-search`) ; `ACTION_COSTS` complétés, `message_id` réel, create-path
+  conversation backend, reprise depuis `/agents`.
+- **P1** : web search natif (server tool API, pause_turn, chips) ; upload de fichiers
+  bout-en-bout (`ingest-user-file` : PDF + images via IA, TXT/MD/CSV, → knowledge lake
+  `document`/`user_upload`, champ `documents` dans `search_knowledge`) ;
+  `get_inbox_overview` ; mémoire `user_insights` injectée dans `ai-chat-completion`
+  et `text-action`.
+- **P2** : politiques d'autonomie `agent_tool_policies` (auto/approve/off par org et
+  par tool, clamp serveur pour mutation_external + destructifs, UI Réglages) ;
+  `bulk_update_stage` / `bulk_dismiss` ; agent proactif `agent-daily-digest`
+  (cron 6h UTC lun-ven, opt-in, déterministe) ; `send_email` (boîte connectée,
+  suppression list, approbation obligatoire) ; `create_sequence` ; boucle agentique
+  dynamique (8 rounds bornés à ~140s mural).
+
+Total : **26 mutations + 16 lectures + web search**. Reste en backlog : ingestion
+Word (.docx), refacturation crédits du web search, pré-autorisation crédits (P3),
+factorisation auth sur `requireOrgAccess`, sortie de la liste clients du prompt
+sourcing vers la DB.
