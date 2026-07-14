@@ -139,6 +139,9 @@ verify_jwt = false
 [functions.ingest-context]
 verify_jwt = false
 
+[functions.ingest-user-file]
+verify_jwt = false
+
 [functions.live-coach]
 verify_jwt = false
 

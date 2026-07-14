@@ -165,7 +165,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const validEntityTypes = ["candidate", "job", "company", "conversation"];
+    // 'document' = fichiers uploadés par les users (P1.2, chunk user_upload)
+    const validEntityTypes = ["candidate", "job", "company", "conversation", "document"];
     if (entity_type && !validEntityTypes.includes(entity_type)) {
       return new Response(
         JSON.stringify({ error: `entity_type must be one of: ${validEntityTypes.join(", ")}` }),

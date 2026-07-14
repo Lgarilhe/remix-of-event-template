@@ -37,11 +37,12 @@ const ChatThread: React.FC<{
   initialMessages: readonly ThreadMessageLike[];
   contextMode?: 'brief' | 'process' | 'sourcing' | 'outreach' | null;
   modelSlot: React.ReactNode;
-}> = ({ adapter, initialMessages, contextMode, modelSlot }) => {
+  filesBridge?: React.MutableRefObject<{ files: File[]; clear: () => void }>;
+}> = ({ adapter, initialMessages, contextMode, modelSlot, filesBridge }) => {
   const runtime = useLocalRuntime(adapter, { initialMessages });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SkalrThread contextMode={contextMode} modelSlot={modelSlot} />
+      <SkalrThread contextMode={contextMode} modelSlot={modelSlot} filesBridge={filesBridge} />
       <SearchCandidatesToolUI />
       <EnrichCompanyToolUI />
       <WebSearchToolUI />
@@ -117,6 +118,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const effectiveContextModeRef = useRef(effectiveContextMode);
   effectiveContextModeRef.current = effectiveContextMode;
 
+  // Pont fichiers joints (P1.2) : le composer (SkalrThread) publie ses
+  // fichiers ici ; l'adaptateur les lit à l'envoi puis vide les chips.
+  const filesBridge = useRef<{ files: File[]; clear: () => void }>({ files: [], clear: () => {} });
+
   // Lazily ensure a conversation row exists before the first message.
   // The backend 400s without a conversation_id and has no create path, so
   // we create it client-side (RLS-scoped) — same insert as useAgentChat.
@@ -151,6 +156,8 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         getAccessToken: () => accessTokenRef.current || '',
         getAppContext: () => appContextRef.current,
         getContextMode: () => effectiveContextModeRef.current ?? null,
+        getPendingFiles: () => filesBridge.current.files,
+        consumePendingFiles: () => filesBridge.current.clear(),
         apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         modelOverride: selectedModel,
         contextMode,
@@ -358,6 +365,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           adapter={adapter}
           initialMessages={initialMessages}
           contextMode={effectiveContextMode}
+          filesBridge={filesBridge}
           modelSlot={
             <ModelPicker
               actionId={effectiveContextMode === 'sourcing' ? 'agent_search_calibration' : 'agent_chat'}

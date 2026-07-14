@@ -228,6 +228,15 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     category: "agent",
     autoDefault: "claude-haiku-4-5",
   },
+  file_ingest: {
+    action: "file_ingest",
+    label: "Lecture de fichier joint",
+    floor: 1,
+    typicalTokens: 8_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+  },
   filter_generation: {
     action: "filter_generation",
     label: "Filtres IA automatiques",

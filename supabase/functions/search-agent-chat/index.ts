@@ -268,9 +268,22 @@ const sourcingTools = [
       required: ["company_name"],
     },
   },
-  // web_search disabled — handler is a stub (returns "not available"). Re-enable
-  // when Perplexity Sonar / Tavily integration ships (Sprint 5 in RAG_AGENT_AUDIT.md).
+  // web_search : SERVER TOOL natif de l'API (P1.1 audit 2026-07-14) — exécuté
+  // côté API, pas ici. Injecté dans allTools via buildWebSearchTool() plus bas.
 ];
+
+// Variante du server tool web_search selon le modèle : la version 20260209
+// (filtrage dynamique) requiert Sonnet 4.6 / Opus 4.6+ ; les modèles plus
+// anciens (Haiku 4.5, Sonnet 4.5) utilisent la variante de base 20250305.
+function buildWebSearchTool(resolvedModel: string): Record<string, unknown> {
+  const modern = resolvedModel.includes("sonnet-4-6") || resolvedModel.includes("opus-4-6")
+    || resolvedModel.includes("opus-4-7") || resolvedModel.includes("opus-4-8") || resolvedModel.includes("sonnet-5");
+  return {
+    type: modern ? "web_search_20260209" : "web_search_20250305",
+    name: "web_search",
+    max_uses: 3,
+  };
+}
 
 async function executeTool(
   toolName: string,
@@ -331,10 +344,6 @@ async function executeTool(
           domain: c.domain || null,
           website_url: c.websiteUrl || null,
         });
-      }
-
-      case "web_search": {
-        return JSON.stringify({ note: "Web search not yet available. Use the information from the brief and enrich_company tool instead." });
       }
 
       default:
@@ -805,10 +814,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 "DATA = la demande (ou le suivi) nécessite de LIRE les données PROPRES de " +
                 "l'organisation : missions/postes, candidats (noms, scores, étape pipeline), " +
                 "pipeline, process d'entretien, séquences/relances, statistiques, compteurs, " +
-                "équipe, crédits, fil LinkedIn verbatim, vivier/CRM, contexte RAG. Ex : « combien " +
+                "équipe, crédits, fil LinkedIn verbatim, messagerie/inbox (non-lus, qui a " +
+                "répondu), vivier/CRM, contexte RAG. Ex : « combien " +
                 "de candidats sur ma mission X », « où en est mon pipeline », « résume mon échange " +
                 "LinkedIn avec X », « quelles missions j'ai en cours », et TOUT suivi demandant " +
-                "le détail (ex : après « tu as 6 candidats », le suivi « donne-moi leurs noms » = DATA).\n" +
+                "le détail (ex : après « tu as 6 candidats », le suivi « donne-moi leurs noms » = DATA). " +
+                "DATA couvre AUSSI les demandes d'infos PUBLIQUES/RÉCENTES nécessitant une recherche web : " +
+                "actualité ou levée de fonds d'une entreprise, salaires marché, veille secteur, personne publique " +
+                "(ex : « qu'est-ce qui se dit sur X en ce moment », « la boîte Y a levé combien ? »).\n" +
                 "ACTION = la demande exprime une MODIFICATION / un envoi à effectuer dans Konekt : " +
                 "envoyer un message LinkedIn, ajouter une note, écarter/dismiss un candidat, " +
                 "assigner à un collaborateur, mettre en pause/reprendre une séquence, créer/" +
@@ -908,7 +921,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `(membres, rôles, qui a connecté LinkedIn/email, invitations en attente, crédits), ` +
         `et get_vivier_overview (CRM/vivier — contacts et entreprises connus, top engagés). ` +
         `Pour lire le fil de discussion LINKEDIN verbatim avec quelqu'un (candidat OU contact) : ` +
-        `get_linkedin_thread(person_name). ` +
+        `get_linkedin_thread(person_name). Pour une VUE D'ENSEMBLE de la messagerie LinkedIn ` +
+        `(« qui m'a répondu ? », « des non-lus ? », « quoi de neuf ? ») : get_inbox_overview ` +
+        `(option unread_only). ` +
+        `Tu disposes aussi d'une RECHERCHE WEB (web_search) pour les informations publiques ` +
+        `et récentes : actualité/levée de fonds d'une entreprise, tendances marché, salaires, ` +
+        `personne publique. Utilise-la quand la réponse dépend d'infos hors de Konekt et ` +
+        `cite tes sources (liens). Max 3 recherches par réponse — sois précis dans tes requêtes. ` +
         `Pour CONNAÎTRE LE STATUT d'une action IA (envoi LinkedIn, modif candidat, ` +
         `etc.) — « tu as bien envoyé ? », « c'est planifié ? », « où en est ma ` +
         `demande ? » : appelle get_recent_agent_actions (filtres optionnels : ` +
@@ -1063,10 +1082,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             let awaitingApprovalCount = 0;
 
             // Combine read-only sourcing tools (hardcoded) + registry mutating tools
-            // (dynamically registered via registerMutatingTools()). Constant
-            // across rounds — computed once, outside the loop.
+            // (dynamically registered via registerMutatingTools()) + le server
+            // tool web_search (exécuté côté API — jamais dispatché ici).
+            // Constant across rounds — computed once, outside the loop.
             const registryTools = getAnthropicToolDefinitions();
-            const allTools = [...sourcingTools, ...registryTools];
+            const allTools = [...sourcingTools, ...registryTools, buildWebSearchTool(resolvedModel)];
 
             // Tool-calling loop
             while (maxToolRounds > 0) {
@@ -1155,6 +1175,20 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                       const cb = event.content_block || {};
                       if (cb.type === "tool_use") {
                         partials.set(event.index, { type: "tool_use", id: cb.id, name: cb.name, _json: "" });
+                      } else if (cb.type === "server_tool_use") {
+                        // Server tool (web_search) : exécuté côté API. On
+                        // reconstruit le bloc pour le ré-émettre dans l'historique
+                        // et on affiche la chip « recherche web » côté UI.
+                        partials.set(event.index, { type: "server_tool_use", id: cb.id, name: cb.name, _json: "" });
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.id, name: cb.name || "web_search", state: "running" } })}\n\n`));
+                      } else if (typeof cb.type === "string" && cb.type.endsWith("_tool_result")) {
+                        // Résultat de server tool (web_search_tool_result…) :
+                        // arrive complet dans le start — on le conserve tel quel
+                        // (il DOIT être ré-émis avec le contenu assistant).
+                        partials.set(event.index, { ...cb });
+                        if (cb.tool_use_id) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.tool_use_id, name: "web_search", state: "done", outcome: "ok" } })}\n\n`));
+                        }
                       } else {
                         partials.set(event.index, { type: "text", text: "" });
                       }
@@ -1172,7 +1206,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                     } else if (event.type === "content_block_stop") {
                       const p = partials.get(event.index);
                       if (!p) continue;
-                      if (p.type === "tool_use") {
+                      if (p.type === "tool_use" || p.type === "server_tool_use") {
                         try { p.input = p._json ? JSON.parse(p._json) : {}; } catch { p.input = {}; }
                         delete p._json;
                       }
@@ -1202,12 +1236,32 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               _tokensOut += roundTokensOut;
               // Filtre les text blocks vides (possibles en streaming autour des
               // tool_use) : l'API rejette un message assistant avec text:"" (400).
-              const roundContent = roundBlocks.filter((b: any) => b && (b.type === 'tool_use' || (b.type === 'text' && b.text)));
+              // Les blocs server-side (server_tool_use + *_tool_result) sont
+              // conservés : ils DOIVENT être ré-émis dans l'historique assistant.
+              const roundContent = roundBlocks.filter((b: any) => b && (
+                b.type === 'tool_use' ||
+                b.type === 'server_tool_use' ||
+                (typeof b.type === 'string' && b.type.endsWith('_tool_result')) ||
+                (b.type === 'text' && b.text)
+              ));
 
               console.log(`[search-agent-chat] Round streamed: stop_reason=${stopReason}, content_types=${roundContent.map((b: any) => b.type).join(',')}, +${roundTokensOut} out tokens`);
 
               // Erreur in-stream → on sort honnêtement (message déjà émis + persisté via fullResponse).
               if (apiErrored) break;
+
+              // pause_turn : la boucle server-side (web_search) a atteint sa
+              // limite d'itérations API. On ré-émet le contenu assistant tel
+              // quel et on relance — l'API reprend où elle s'était arrêtée.
+              // PAS de message user intermédiaire (l'API détecte le
+              // server_tool_use terminal et continue seule).
+              if (stopReason === 'pause_turn') {
+                if (roundContent.length > 0) {
+                  currentMessages.push({ role: 'assistant', content: roundContent });
+                }
+                maxToolRounds--;
+                continue;
+              }
 
               if (stopReason === 'tool_use') {
                 const toolUseBlocks = roundContent.filter((b: any) => b.type === 'tool_use');

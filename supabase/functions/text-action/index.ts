@@ -344,10 +344,27 @@ Génère maintenant la réponse JSON.`;
     const _aiParams = extractAIParams(body, aiAction);
 
     // Load AI context (Settings → Contexte IA)
-    const aiContext = await loadAndBuildAiContext(adminClient, {
+    let aiContext = await loadAndBuildAiContext(adminClient, {
       userId,
       orgId: (body.organization_id as string) || null,
     });
+
+    // Mémoire cross-session (P1.4) : les insights appris par le Copilot
+    // (style de message, préférences, secteur) profitent aussi aux actions
+    // texte inline. Fail-soft — l'absence de mémoire ne bloque rien.
+    if (userId && body.organization_id) {
+      try {
+        const { getRelevantInsights, formatInsightsForPrompt } = await import("../_shared/user-memory.ts");
+        const insights = await getRelevantInsights(adminClient, {
+          userId,
+          organizationId: body.organization_id as string,
+          limit: 5,
+        });
+        aiContext = (aiContext || "") + formatInsightsForPrompt(insights);
+      } catch (e) {
+        console.warn("[text-action] user-memory injection skipped:", e);
+      }
+    }
 
     const result = await callClaudeCompat({
       max_tokens: action === 'summarize' ? 1024 : action === 'cta_reply' ? 1200 : 1500,

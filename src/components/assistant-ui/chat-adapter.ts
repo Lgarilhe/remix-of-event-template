@@ -19,6 +19,14 @@ interface SkalrAdapterConfig {
    * tab (brief/process/outreach) without recreating the runtime on navigation.
    */
   getContextMode?: () => string | null;
+  /**
+   * Fichiers joints en attente dans le composer (P1.2). Lus à l'envoi :
+   * chaque fichier est envoyé à `ingest-user-file` (extraction + indexation
+   * knowledge lake), et son texte est injecté dans le message pour que
+   * l'agent le voie immédiatement. `consumePendingFiles` vide les chips UI.
+   */
+  getPendingFiles?: () => File[];
+  consumePendingFiles?: () => void;
   apiKey: string;
   modelOverride?: string | null;
   contextMode?: string | null;
@@ -26,6 +34,57 @@ interface SkalrAdapterConfig {
   projectId?: string | null;
   accountId?: string | null;
   organizationId?: string;
+}
+
+/** File → base64 (sans le préfixe data:) */
+async function fileToBase64(file: File): Promise<string> {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < buf.length; i += CHUNK) {
+    binary += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Envoie les fichiers joints à ingest-user-file et construit les blocs
+ * [FICHIER JOINT] à injecter dans le message. Fail-soft par fichier : un
+ * échec d'extraction devient une note visible par l'agent (pas un throw).
+ */
+async function ingestPendingFiles(config: SkalrAdapterConfig, files: File[]): Promise<string> {
+  let blocks = '';
+  for (const file of files.slice(0, 5)) {
+    try {
+      const resp = await fetch(`${config.supabaseUrl}/functions/v1/ingest-user-file`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.getAccessToken()}`,
+          apikey: config.apiKey,
+        },
+        body: JSON.stringify({
+          organization_id: config.organizationId,
+          filename: file.name,
+          mime_type: file.type || undefined,
+          content_base64: await fileToBase64(file),
+          project_id: config.projectId || undefined,
+        }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data?.success && data.extracted_text) {
+        blocks += `\n\n[FICHIER JOINT : ${file.name}]\n${String(data.extracted_text).slice(0, 8000)}\n[/FICHIER JOINT]`;
+        if (data.lake_indexed) {
+          blocks += `\n(Ce document est aussi indexé dans la base de connaissances — retrouvable plus tard via la recherche sémantique.)`;
+        }
+      } else {
+        blocks += `\n\n[FICHIER JOINT : ${file.name} — lecture impossible : ${data?.error || `erreur ${resp.status}`}]`;
+      }
+    } catch (e) {
+      blocks += `\n\n[FICHIER JOINT : ${file.name} — lecture impossible : ${e instanceof Error ? e.message : 'erreur réseau'}]`;
+    }
+  }
+  return blocks;
 }
 
 export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAdapter {
@@ -39,12 +98,21 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
             .join('\n')
         : '';
 
-      if (!userContent.trim()) return;
+      const pendingFiles = config.getPendingFiles?.() ?? [];
+      if (!userContent.trim() && pendingFiles.length === 0) return;
 
       // The backend rejects requests without a conversation_id (400) and has
       // no create-on-the-fly path. Guarantee the row exists first.
       const conversationId = await config.ensureConversationId();
       if (!conversationId) throw new Error('Conversation introuvable');
+
+      // Fichiers joints (P1.2) : extraction + indexation lake AVANT l'envoi,
+      // le texte extrait est injecté à la suite du message utilisateur.
+      let messageWithFiles = userContent;
+      if (pendingFiles.length > 0) {
+        messageWithFiles += await ingestPendingFiles(config, pendingFiles);
+        config.consumePendingFiles?.();
+      }
 
       const appContext = config.getAppContext?.() ?? undefined;
       const contextMode = config.getContextMode ? config.getContextMode() : (config.contextMode || null);
@@ -58,7 +126,7 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
         },
         body: JSON.stringify({
           conversation_id: conversationId,
-          message: userContent,
+          message: messageWithFiles,
           _ai_model: config.modelOverride || undefined,
           // Le sourcing garde son action historique (calibration) ; les autres
           // modes (libre/brief/process/outreach) sont facturés en agent_chat.
