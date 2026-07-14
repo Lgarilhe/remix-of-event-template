@@ -36,13 +36,55 @@ function generateTrackingId(): string {
   return crypto.randomUUID().replace(/-/g, '');
 }
 
+// Génère un token hex 32 octets pour le lien de désinscription.
+function generateUnsubscribeToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Récupère (ou crée) le token unsubscribe unique par adresse email. Même schéma
+// que send-transactional-email : une seule ligne par email (onConflict email).
+// Retourne '' en cas d'échec (ex. table absente) → le caller dégrade en envoyant
+// sans footer plutôt que de bloquer l'envoi.
+// deno-lint-ignore no-explicit-any
+async function getOrCreateUnsubscribeToken(supabase: any, email: string): Promise<string> {
+  const normalized = (email || '').toLowerCase().trim();
+  if (!normalized) return '';
+  try {
+    const { data: existing } = await supabase
+      .from('email_unsubscribe_tokens')
+      .select('token, used_at')
+      .eq('email', normalized)
+      .maybeSingle();
+    if (existing?.token) return existing.token;
+
+    const token = generateUnsubscribeToken();
+    await supabase
+      .from('email_unsubscribe_tokens')
+      .upsert({ token, email: normalized }, { onConflict: 'email', ignoreDuplicates: true });
+    // Re-read : si une requête concurrente a gagné la course, on récupère SON token.
+    const { data: stored } = await supabase
+      .from('email_unsubscribe_tokens')
+      .select('token')
+      .eq('email', normalized)
+      .maybeSingle();
+    return stored?.token || token;
+  } catch (e) {
+    console.warn('[sequence-send-email] getOrCreateUnsubscribeToken failed (dégradé):', e);
+    return '';
+  }
+}
+
 function wrapLinksForTracking(html: string, trackingId: string, baseUrl: string): string {
   // Replace href="..." in anchor tags with tracking redirect
   return html.replace(
     /(<a\s[^>]*href=")([^"]+)("[^>]*>)/gi,
     (match, prefix, url, suffix) => {
-      // Don't track mailto: or tel: links
-      if (url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#')) {
+      // Don't track mailto: / tel: / anchor links, nor the unsubscribe link
+      // (le réécrire en redirect de tracking compterait une désinscription
+      // comme un clic et casserait la sémantique du lien opt-out).
+      if (url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#') || url.includes('/unsubscribe?token=')) {
         return match;
       }
       const trackUrl = `${baseUrl}/functions/v1/sequence-email-track?tid=${trackingId}&evt=click&url=${encodeURIComponent(url)}`;
@@ -455,9 +497,19 @@ Deno.serve(async (req) => {
     htmlBody = htmlBody.replace(/\{\{signature\}\}/g, '');
 
     // 7. Add unsubscribe footer if enabled
+    // Le lien pointe vers la page /unsubscribe du front (GET valide le token,
+    // POST désinscrit + ajoute à suppressed_emails). L'ancien lien
+    // `handle-email-unsubscribe?email=...` renvoyait 400 (le handler attend un
+    // `token`, pas un `email`) → le candidat ne pouvait JAMAIS se désinscrire.
     if (step.include_unsubscribe) {
-      const unsubLink = `${SUPABASE_URL}/functions/v1/handle-email-unsubscribe?email=${encodeURIComponent(recipientEmail)}`;
-      htmlBody += `<br/><br/><p style="font-size:11px;color:#999;">Si vous ne souhaitez plus recevoir ces messages, <a href="${unsubLink}" style="color:#999;">cliquez ici</a>.</p>`;
+      const unsubToken = await getOrCreateUnsubscribeToken(supabase, recipientEmail);
+      if (unsubToken) {
+        const appUrl = (Deno.env.get('APP_URL') || 'https://konekt-app-navy.vercel.app').replace(/\/+$/, '');
+        const unsubLink = `${appUrl}/unsubscribe?token=${encodeURIComponent(unsubToken)}`;
+        htmlBody += `<br/><br/><p style="font-size:11px;color:#999;">Si vous ne souhaitez plus recevoir ces messages, <a href="${unsubLink}" style="color:#999;">cliquez ici</a>.</p>`;
+      } else {
+        console.warn('[sequence-send-email] Pas de token unsubscribe disponible — envoi sans footer (dégradé)');
+      }
     }
 
     // 8. Email tracking

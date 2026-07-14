@@ -939,19 +939,34 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
     return;
   }
 
-  // Skip auto-replies / system bounces
   const subjectLower = (subject || '').toLowerCase();
+
+  // === HARD BOUNCE ===
+  // Un NDR (mailer-daemon/postmaster, ou sujet type "Undelivered"/"Delivery
+  // Status Notification") signale une adresse morte. Avant, on faisait juste
+  // `return` → l'enrollment restait 'active' et les étapes email suivantes
+  // repartaient vers l'adresse invalide (réputation domaine dégradée) et la
+  // condition if_bounced ne matchait jamais. On stoppe l'enrollment + suppress.
+  const isBounce =
+    senderEmail.startsWith('mailer-daemon@') ||
+    senderEmail.startsWith('postmaster@') ||
+    /undeliverable|delivery status notification|delivery has failed|mail delivery (failed|subsystem)|returned mail|failure notice|delivery failure|delivery incomplete/i.test(subjectLower);
+
+  if (isBounce) {
+    await handleBounce(supabase, account_id, payload, senderEmail);
+    return;
+  }
+
+  // Skip auto-replies (out-of-office, etc.) — ni réponse ni bounce.
   const isAutoReply = subjectLower.includes('auto-reply') ||
     subjectLower.includes('out of office') ||
     subjectLower.includes('absence du bureau') ||
     subjectLower.includes('réponse automatique') ||
-    senderEmail.startsWith('mailer-daemon@') ||
-    senderEmail.startsWith('postmaster@') ||
     senderEmail.startsWith('no-reply@') ||
     senderEmail.startsWith('noreply@');
 
   if (isAutoReply) {
-    console.log('[unipile-webhook][mail] Skipping auto-reply / bounce from', senderEmail);
+    console.log('[unipile-webhook][mail] Skipping auto-reply from', senderEmail);
     return;
   }
 
@@ -1050,5 +1065,76 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
     }
 
     console.log('[unipile-webhook][mail] Enrollment', enrollment.id, 'marked replied (email)');
+  }
+}
+
+/**
+ * Traite un NDR (bounce email). L'adresse qui a bouncé n'est PAS l'expéditeur
+ * (mailer-daemon), elle est dans le corps du NDR. On l'en extrait, puis — pour
+ * chaque adresse qu'on a RÉELLEMENT séquencée depuis ce compte (garde-fou
+ * anti faux-positif sur un parsing bruité) — on l'ajoute à suppressed_emails,
+ * on passe les enrollments actifs/en pause en 'bounced' et on annule leurs
+ * étapes encore en attente.
+ */
+async function handleBounce(supabase: SupabaseClient, accountId: string, payload: WebhookPayload, senderEmail: string) {
+  // PostgREST ilike : '_' et '%' sont des jokers → on les échappe pour un
+  // match exact insensible à la casse sur l'adresse.
+  const escapeLike = (s: string) => s.replace(/([%_\\])/g, '\\$1');
+
+  const bodyText = `${payload.subject || ''}\n${payload.body_plain || payload.body || ''}`;
+  const ourAddresses = new Set(
+    (payload.to_attendees || []).map(a => (a.identifier || '').toLowerCase().trim()).filter(Boolean),
+  );
+  const emailRegex = /[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/gi;
+  const found = [...new Set((bodyText.match(emailRegex) || []).map(e => e.toLowerCase().trim()))];
+  const candidates = found.filter(e =>
+    !ourAddresses.has(e) &&
+    e !== senderEmail &&
+    !e.startsWith('mailer-daemon@') &&
+    !e.startsWith('postmaster@') &&
+    !e.startsWith('noreply@') &&
+    !e.startsWith('no-reply@'),
+  );
+
+  if (candidates.length === 0) {
+    console.log('[unipile-webhook][bounce] No candidate address extracted from NDR — skipping', { account: accountId });
+    return;
+  }
+
+  for (const addr of candidates) {
+    // On ne suppress QUE les adresses qu'on a réellement séquencées depuis ce
+    // compte — sinon un NDR bruité pourrait blacklister une adresse au hasard.
+    const { data: enrs, error: enrErr } = await supabase
+      .from('sequence_enrollments')
+      .select('id, status')
+      .eq('account_id', accountId)
+      .ilike('email_used', escapeLike(addr));
+    if (enrErr) {
+      console.error('[unipile-webhook][bounce] enrollment lookup failed:', enrErr);
+      continue;
+    }
+    if (!enrs || enrs.length === 0) continue;
+
+    // Hard bounce → ne plus jamais emailer cette adresse.
+    const { error: supErr } = await supabase
+      .from('suppressed_emails')
+      .upsert({ email: addr, reason: 'bounce' }, { onConflict: 'email' });
+    if (supErr) console.error('[unipile-webhook][bounce] suppress failed:', supErr);
+
+    for (const enr of enrs) {
+      if (enr.status === 'active' || enr.status === 'paused') {
+        await supabase
+          .from('sequence_enrollments')
+          .update({ status: 'bounced', updated_at: new Date().toISOString() })
+          .eq('id', enr.id);
+      }
+      // Annuler les étapes encore en attente pour ce candidat.
+      await supabase
+        .from('sequence_step_executions')
+        .update({ status: 'cancelled', skip_reason: 'Email bounced (NDR)', updated_at: new Date().toISOString() })
+        .eq('enrollment_id', enr.id)
+        .in('status', ['scheduled', 'waiting_event', 'quota_blocked']);
+    }
+    console.log(`[unipile-webhook][bounce] Suppressed ${addr} + bounced ${enrs.length} enrollment(s) on account ${accountId}`);
   }
 }

@@ -316,6 +316,25 @@ async function handleProcess(supabase: any, force = false) {
       }
     }
 
+    // Recovery: re-arm executions blocked on quota once their cooldown has passed.
+    // Quand un cap LinkedIn est atteint, checkQuotaForAction met l'exécution en
+    // 'quota_blocked' avec scheduled_at = +24h. Mais le fetch principal ne prend
+    // que status='scheduled' → sans ce janitor, ces exécutions restent gelées à
+    // vie (l'enrollment reste 'active' mais ne repart jamais). On les repasse en
+    // 'scheduled' dès que scheduled_at <= now pour qu'elles retentent au cycle
+    // suivant (le gate quota re-bloquera si le cap est toujours atteint).
+    const { data: rearmed, error: rearmError } = await supabase
+      .from('sequence_step_executions')
+      .update({ status: 'scheduled' })
+      .eq('status', 'quota_blocked')
+      .lte('scheduled_at', now)
+      .select('id');
+    if (rearmError) {
+      console.warn('[process] quota_blocked re-arm failed (non-blocking):', rearmError);
+    } else if (rearmed?.length) {
+      console.log(`[process] Re-armed ${rearmed.length} quota_blocked execution(s) → scheduled`);
+    }
+
     // Smart batching: fetch more candidates, then split by action visibility
     // Non-visible actions (profile_visit, check_connection) = safe to batch aggressively
     // Visible actions (message, inmail, connection_request) = keep conservative but maximized.
@@ -462,10 +481,31 @@ async function handleProcess(supabase: any, force = false) {
         const senderUserId = (step.sender_id as string) || (enrollment.created_by as string) || null;
         const userQuotas = await getUserQuotas(supabase, senderUserId);
 
+        // === INBOX ROTATION: assign sender BEFORE the quota/health gate ===
+        // Doit se faire AVANT checkQuotaForAction : le message part depuis le
+        // compte effectif (sender_id → assigned_sender_id → account_id, cf.
+        // executeStepAction), donc le ledger de quota et le health-check doivent
+        // porter sur CE compte, pas sur enrollment.account_id. Sinon, en rotation
+        // multi-sender, on décompte/vérifie le mauvais compte et on peut dépasser
+        // les limites LinkedIn du compte réellement utilisé (risque de restriction
+        // du compte — conformité #260513-007211).
+        if (sequence?.multi_sender_enabled && sequence.sender_accounts?.length > 0 && !enrollment.assigned_sender_id) {
+          const sender = await pickSenderForRotation(supabase, sequence);
+          if (sender) {
+            await supabase.from('sequence_enrollments').update({ assigned_sender_id: sender.account_id }).eq('id', enrollment.id);
+            enrollment.assigned_sender_id = sender.account_id;
+            console.log(`[process] Rotation: assigned sender ${sender.account_id} to enrollment ${enrollment.id}`);
+          }
+        }
+
+        // Compte LinkedIn effectivement utilisé pour l'envoi (identique à
+        // executeStepAction). Sert de clé pour le gate quota ET le health-check.
+        const effectiveAccountId = ((step.sender_id || enrollment.assigned_sender_id || enrollment.account_id) as string | undefined) || null;
+
         const quotaCheck = await checkQuotaForAction(
           supabase,
           step.action_type,
-          enrollment.account_id,
+          effectiveAccountId || enrollment.account_id,
           uCreds.apiKey,
           uCreds.dsn,
           senderUserId,
@@ -487,16 +527,17 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
-        // Check LinkedIn account health before executing
-        if (enrollment.account_id) {
+        // Check LinkedIn account health before executing — on the account we'll
+        // actually send from (effectiveAccountId), not necessarily enrollment.account_id.
+        if (effectiveAccountId) {
           const { data: accountStatus } = await supabase
             .from('member_linkedin_accounts')
             .select('account_status')
-            .eq('linkedin_account_id', enrollment.account_id)
+            .eq('linkedin_account_id', effectiveAccountId)
             .maybeSingle();
 
           if (accountStatus && accountStatus.account_status !== 'OK') {
-            console.warn(`[process] ⛔ Account ${enrollment.account_id} status is '${accountStatus.account_status}' — skipping execution`);
+            console.warn(`[process] ⛔ Account ${effectiveAccountId} status is '${accountStatus.account_status}' — skipping execution`);
             await supabase.from('sequence_step_executions').update({
               status: 'scheduled',
               scheduled_at: new Date(Date.now() + 3600000).toISOString(), // retry in 1h
@@ -634,26 +675,27 @@ async function handleProcess(supabase: any, force = false) {
           }
         }
 
-        // === INBOX ROTATION: assign sender if multi_sender_enabled ===
-        if (sequence?.multi_sender_enabled && sequence.sender_accounts?.length > 0 && !enrollment.assigned_sender_id) {
-          const sender = await pickSenderForRotation(supabase, sequence);
-          if (sender) {
-            await supabase.from('sequence_enrollments').update({ assigned_sender_id: sender.account_id }).eq('id', enrollment.id);
-            enrollment.assigned_sender_id = sender.account_id;
-            console.log(`[process] Rotation: assigned sender ${sender.account_id} to enrollment ${enrollment.id}`);
-          }
-        }
+        // (Rotation du sender déplacée AVANT le gate quota/health — voir plus haut.)
 
         // Snapshot du contenu de l'étape AU MOMENT du lock.
         // Si le user modifie step.message_template plus tard, l'historique des
         // exécutions reste figé sur ce qui a été réellement envoyé/programmé.
-        // Sur retry (retry_count > 0), on garde la valeur déjà snapshotée.
-        const isRetry = (exec.retry_count || 0) > 0;
-        const snapshotMessage = isRetry && exec.final_message
-          ? exec.final_message
+        //
+        // On préserve exec.final_message/subject dès qu'il est déjà renseigné,
+        // pas seulement sur retry : une exécution 'scheduled' fraîche a
+        // final_message = null (cf. EnrollmentPreviewModal qui n'insère jamais
+        // de final_message). Un final_message NON vide sur une exécution
+        // 'scheduled' signifie donc une édition manuelle explicite via
+        // EditScheduledMessageModal (le user a corrigé le message avant envoi) —
+        // l'écraser par step.message_template renverrait le template d'origine
+        // au candidat au lieu de sa correction.
+        const editedMessage = (exec.final_message as string | null | undefined)?.trim();
+        const editedSubject = (exec.final_subject as string | null | undefined)?.trim();
+        const snapshotMessage = editedMessage
+          ? (exec.final_message as string)
           : (step.message_template || '');
-        const snapshotSubject = isRetry && exec.final_subject
-          ? exec.final_subject
+        const snapshotSubject = editedSubject
+          ? (exec.final_subject as string)
           : (step.subject_template || '');
 
         const { data: lockResult, error: lockError } = await supabase
@@ -713,7 +755,10 @@ async function handleProcess(supabase: any, force = false) {
         //  1. Already generated on a previous attempt (retry) → avoids double billing
         //  2. Preview override was used (the user has already seen and approved
         //     this exact message in the modal — regenerating would betray the WYSIWYG)
-        const alreadyPersonalized = !!(exec.final_message && (exec.retry_count || 0) > 0);
+        // Skip la régénération IA si le contenu est déjà figé : soit snapshoté
+        // sur un retry précédent, soit édité à la main (editedMessage) — dans les
+        // deux cas exec.final_message fait foi et regénérer trahirait l'intention.
+        const alreadyPersonalized = !!editedMessage;
         if (step.use_ai_personalization && needsMessage(step.action_type) && !alreadyPersonalized && !usedPreviewOverride) {
           const personalized = await generatePersonalizedMessage(supabase, enrollment, step, exec, uCreds.apiKey, uCreds.dsn);
           if (personalized) { finalMessage = personalized.message; finalSubject = personalized.subject || finalSubject; }
