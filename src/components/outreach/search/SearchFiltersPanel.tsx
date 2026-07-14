@@ -8,6 +8,7 @@ import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations
 
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { SearchPromptBar } from './SearchPromptBar';
+import { FilterFacets } from './FilterFacets';
 import { QuotaDisplay } from '@/components/outreach/QuotaDisplay';
 import { SearchHistory } from './SearchHistory';
 import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
@@ -117,6 +118,9 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
+  // Détail complet (autocomplete LinkedIn, booléen, spotlights…) replié par
+  // défaut en contexte mission : les facettes couvrent l'essentiel.
+  const [advancedOpen, setAdvancedOpen] = useState(!activeProject);
   const { data: allJobs = [] } = useJobs();
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
   // Feature flag Base Konekt (rollout contrôlé par org). Lisible admin/owner.
@@ -362,6 +366,16 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         />
       )}
 
+      {/* Facettes — la recherche entière lisible et éditable d'un coup d'œil.
+          Le détail complet reste accessible via « Options avancées ». */}
+      <FilterFacets
+        filters={filters}
+        setFilters={setFilters}
+        accountId={selectedAccount}
+        searchSource={searchSource === 'database' || filters.api === 'database' ? 'database' : 'linkedin'}
+        onClearAll={onClearFilters}
+      />
+
       <div className="space-y-2 sm:space-y-3">
         {/* Auto-fill depuis le brief — masqué en contexte mission : la barre
             de recherche en langage naturel (SearchPromptBar) couvre déjà la
@@ -498,6 +512,26 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         />
       )}
 
+      {/* ── Options avancées — booléen, autocomplete LinkedIn, spotlights… ── */}
+      <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(o => !o)}
+          aria-expanded={advancedOpen}
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
+        >
+          <svg
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round"
+            className={cn('w-3.5 h-3.5 text-[var(--k-text-muted)] transition-transform duration-200', advancedOpen && 'rotate-90')}
+          >
+            <path d="M9.5 7 15 12l-5.5 5" />
+          </svg>
+          Options avancées
+          <span className="ml-auto font-mono text-[11px] text-[var(--k-text-muted)]">booléen · séniorité · école · spotlights</span>
+        </button>
+      </div>
+
+      <div className={cn(!advancedOpen && 'hidden', 'space-y-2 sm:space-y-2.5')}>
       {/* Keywords preview + edit dialog — compact (label inline + bouton) */}
       <div className="bg-background border border-border p-2.5">
         <div className="flex items-center justify-between mb-1.5">
@@ -563,6 +597,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         onChange={setFilters}
         accountId={selectedAccount}
       />
+      </div>{/* /Options avancées */}
 
       {/* Action buttons — sticky at bottom */}
       <div className="sticky bottom-0 z-10 bg-background pt-2 pb-1 border-t border-border -mx-0 px-0">
