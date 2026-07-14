@@ -3279,6 +3279,220 @@ const launchSearch: AgentTool = {
   },
 };
 
+// ─── Tools bulk — bulk_update_stage / bulk_dismiss (P2.2 audit 2026-07-14) ──
+// Actions multi-candidats (max 50) sur UNE mission. Le dry-run liste CHAQUE
+// candidat par son nom pour que l'utilisateur voie exactement ce qui va être
+// modifié avant d'approuver. Ne crée jamais de rows : les candidats absents
+// de job_candidate_status pour cette mission sont ignorés et signalés.
+
+const BULK_MAX = 50;
+
+interface BulkTarget {
+  candidate_id: string;
+  candidate_name: string | null;
+  current: string | null;
+}
+
+async function resolveBulkTargets(
+  ctx: ToolContext,
+  jobId: string,
+  candidateIds: string[],
+  field: 'pipeline_stage' | 'status',
+): Promise<{ found: BulkTarget[]; missing: string[] }> {
+  const { data } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select(`candidate_id, candidate_name, ${field}`)
+    .eq('organization_id', ctx.organizationId)
+    .eq('job_id', jobId)
+    .in('candidate_id', candidateIds);
+  const rows = (data as Array<Record<string, any>> | null) ?? [];
+  const foundIds = new Set(rows.map((r) => r.candidate_id));
+  return {
+    found: rows.map((r) => ({
+      candidate_id: r.candidate_id,
+      candidate_name: r.candidate_name ?? null,
+      current: r[field] ?? null,
+    })),
+    missing: candidateIds.filter((id) => !foundIds.has(id)),
+  };
+}
+
+function parseBulkIds(params: Record<string, unknown>): string[] {
+  const raw = Array.isArray(params.candidate_ids) ? params.candidate_ids : [];
+  return [...new Set(raw.map((x) => String(x || '').trim()).filter(Boolean))].slice(0, BULK_MAX);
+}
+
+const bulkUpdateStage: AgentTool = {
+  name: 'bulk_update_stage',
+  description:
+    "Move SEVERAL candidates (2-50) of one mission to a new pipeline stage in a single action. " +
+    "Use when the user says 'passe ces 5 candidats en Pressenti', 'déplace tous ceux que je t'ai listés en Contacté'. " +
+    "Resolve candidate_ids first via get_mission_candidates — never invent them. " +
+    "The approval preview lists every candidate by name. Candidates not in the mission pipeline are skipped and reported. " +
+    "For ONE candidate, use update_candidate_stage instead.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      job_id: { type: 'string', description: 'The mission id (same as used by get_mission_candidates / update_candidate_stage).' },
+      candidate_ids: {
+        type: 'array',
+        items: { type: 'string' },
+        description: `Candidate ids (2-${BULK_MAX}), from get_mission_candidates. Never invented.`,
+      },
+      new_stage: {
+        type: 'string',
+        enum: ALLOWED_STAGES as unknown as string[],
+        description: 'Target pipeline stage.',
+      },
+      reason: { type: 'string', description: 'Optional reason (logged).' },
+    },
+    required: ['job_id', 'candidate_ids', 'new_stage'],
+  },
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    const ids = parseBulkIds(params);
+    if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : update_candidate_stage)` };
+    if (!String(params.job_id || '').trim()) return { allowed: false, reason: 'job_id is required' };
+    const stage = String(params.new_stage || '');
+    if (!(ALLOWED_STAGES as readonly string[]).includes(stage)) {
+      return { allowed: false, reason: `new_stage must be one of: ${ALLOWED_STAGES.join(', ')}` };
+    }
+    return { allowed: true };
+  },
+  async dryRun(params, ctx) {
+    const ids = parseBulkIds(params);
+    const jobId = String(params.job_id);
+    const stage = String(params.new_stage);
+    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'pipeline_stage');
+    const toMove = found.filter((t) => t.current !== stage);
+    const noOps = found.length - toMove.length;
+    return {
+      summary: `Déplacer ${toMove.length} candidat(s) vers « ${stage} »`,
+      details: {
+        job_id: jobId,
+        new_stage: stage,
+        reason: String(params.reason || '') || null,
+        candidates: found.map((t) => ({
+          name: t.candidate_name || t.candidate_id,
+          from: t.current,
+          to: stage,
+          no_op: t.current === stage,
+        })),
+        skipped_not_in_pipeline: missing,
+        no_op_count: noOps,
+      },
+      warning: missing.length > 0
+        ? `${missing.length} candidat(s) introuvable(s) sur cette mission — ils seront ignorés.`
+        : noOps > 0
+        ? `${noOps} candidat(s) déjà au stade cible (aucun changement pour eux).`
+        : undefined,
+    };
+  },
+  async execute(params, ctx) {
+    const ids = parseBulkIds(params);
+    const jobId = String(params.job_id);
+    const stage = String(params.new_stage);
+    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'pipeline_stage');
+    if (found.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
+    const { data, error } = await ctx.adminClient
+      .from('job_candidate_status')
+      .update({ pipeline_stage: stage })
+      .eq('organization_id', ctx.organizationId)
+      .eq('job_id', jobId)
+      .in('candidate_id', found.map((t) => t.candidate_id))
+      .select('candidate_id');
+    if (error) return { success: false, error: error.message };
+    const updated = (data as Array<{ candidate_id: string }> | null)?.length ?? 0;
+    return {
+      success: true,
+      data: {
+        updated,
+        skipped: missing.length,
+        new_stage: stage,
+        message: `${updated} candidat(s) déplacé(s) vers « ${stage} »${missing.length ? ` (${missing.length} ignoré(s), hors pipeline)` : ''}.`,
+      },
+    };
+  },
+};
+
+const bulkDismiss: AgentTool = {
+  name: 'bulk_dismiss',
+  description:
+    "Dismiss SEVERAL candidates (2-50) of one mission in a single action (status='dismissed' — filtered out upfront, different from stage 'Perdu'). " +
+    "Use when the user says 'écarte tous les candidats sous 40 de score', 'dismiss ces 8 profils'. " +
+    "Resolve candidate_ids first via get_mission_candidates — never invent them. reason is REQUIRED (logged as skip_reason on each candidate). " +
+    "The approval preview lists every candidate by name. This action always requires user approval.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      job_id: { type: 'string', description: 'The mission id (same as used by get_mission_candidates / dismiss_candidate).' },
+      candidate_ids: {
+        type: 'array',
+        items: { type: 'string' },
+        description: `Candidate ids (2-${BULK_MAX}), from get_mission_candidates. Never invented.`,
+      },
+      reason: { type: 'string', description: 'Why these candidates are dismissed (required, French, logged).' },
+    },
+    required: ['job_id', 'candidate_ids', 'reason'],
+  },
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    const ids = parseBulkIds(params);
+    if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : dismiss_candidate)` };
+    if (!String(params.job_id || '').trim()) return { allowed: false, reason: 'job_id is required' };
+    if (!String(params.reason || '').trim()) return { allowed: false, reason: 'reason is required for bulk dismissal' };
+    return { allowed: true };
+  },
+  async dryRun(params, ctx) {
+    const ids = parseBulkIds(params);
+    const jobId = String(params.job_id);
+    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'status');
+    const toDismiss = found.filter((t) => t.current !== 'dismissed');
+    return {
+      summary: `Écarter ${toDismiss.length} candidat(s) de la mission`,
+      details: {
+        job_id: jobId,
+        reason: String(params.reason),
+        candidates: found.map((t) => ({
+          name: t.candidate_name || t.candidate_id,
+          current_status: t.current,
+          already_dismissed: t.current === 'dismissed',
+        })),
+        skipped_not_in_pipeline: missing,
+      },
+      warning: `Action destructive : ${toDismiss.length} candidat(s) seront marqués « écartés » sur cette mission.${missing.length ? ` ${missing.length} id(s) introuvable(s) seront ignorés.` : ''}`,
+    };
+  },
+  async execute(params, ctx) {
+    const ids = parseBulkIds(params);
+    const jobId = String(params.job_id);
+    const reason = String(params.reason).slice(0, 500);
+    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'status');
+    if (found.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
+    const { data, error } = await ctx.adminClient
+      .from('job_candidate_status')
+      .update({ status: 'dismissed', skip_reason: reason })
+      .eq('organization_id', ctx.organizationId)
+      .eq('job_id', jobId)
+      .in('candidate_id', found.map((t) => t.candidate_id))
+      .select('candidate_id');
+    if (error) return { success: false, error: error.message };
+    const updated = (data as Array<{ candidate_id: string }> | null)?.length ?? 0;
+    return {
+      success: true,
+      data: {
+        dismissed: updated,
+        skipped: missing.length,
+        message: `${updated} candidat(s) écarté(s)${missing.length ? ` (${missing.length} ignoré(s), hors pipeline)` : ''}. Motif : ${reason}`,
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -3313,5 +3527,8 @@ export function registerMutatingTools(): void {
   // P0.3 audit 2026-07-14 — calendrier interne + pont vers run-agent-search
   registerTool(scheduleInterview);
   registerTool(launchSearch);
+  // P2.2 — actions multi-candidats
+  registerTool(bulkUpdateStage);
+  registerTool(bulkDismiss);
   registered = true;
 }

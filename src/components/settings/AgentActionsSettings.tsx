@@ -58,6 +58,7 @@ import { fr } from 'date-fns/locale';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { AgentPoliciesSettings } from './AgentPoliciesSettings';
 
 type ActionStatus = 'proposed' | 'approved' | 'executed' | 'auto_executed' | 'failed' | 'rejected';
 
@@ -121,6 +122,9 @@ const TOOL_LABEL: Record<string, string> = {
   update_member_quota: 'Modifier les quotas d\'un membre',
   apply_search_filters_to_mission: 'Appliquer les filtres de recherche',
   launch_search: 'Lancer la recherche autonome',
+  get_inbox_overview: 'Vue messagerie',
+  bulk_update_stage: 'Déplacer plusieurs candidats',
+  bulk_dismiss: 'Écarter plusieurs candidats',
 };
 
 const STATUS_CONFIG: Record<
@@ -425,6 +429,9 @@ export const AgentActionsSettings = () => {
           Rafraîchir
         </Button>
       </div>
+
+      {/* Politiques d'autonomie par action (P2.1) */}
+      <AgentPoliciesSettings />
 
       {/* Quick stats — count par statut */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

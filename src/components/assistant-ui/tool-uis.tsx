@@ -32,6 +32,8 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   schedule_interview: "Planification d'entretien",
   launch_search: 'Lancement de la recherche',
   get_inbox_overview: 'Lecture de la messagerie',
+  bulk_update_stage: 'Déplacement de candidats',
+  bulk_dismiss: 'Écartement de candidats',
   create_mission: 'Création de mission',
   send_linkedin_message: 'Message LinkedIn',
   pause_sequence: 'Pause de séquence',
