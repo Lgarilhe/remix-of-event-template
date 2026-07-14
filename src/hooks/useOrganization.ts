@@ -383,31 +383,49 @@ export const useOrganizationMembers = (orgId: string | null) => {
 
   const updateRole = useMutation({
     mutationFn: async ({ memberId, role }: { memberId: string; role: string }) => {
-      const { error } = await supabase
+      // Jamais "owner" ni valeur arbitraire depuis le client
+      const ASSIGNABLE_ROLES = ['admin', 'member', 'collaborator'];
+      if (!ASSIGNABLE_ROLES.includes(role)) {
+        throw new Error('Rôle invalide');
+      }
+
+      // .select() pour détecter un refus RLS : sans lui, un UPDATE bloqué
+      // par la RLS renvoie un succès avec 0 ligne et l'échec est invisible.
+      const { data, error } = await supabase
         .from('organization_members')
         .update({ role })
-        .eq('id', memberId);
+        .eq('id', memberId)
+        .select('id');
 
       if (error) throw error;
+      if (!data?.length) throw new Error('Modification refusée — droits insuffisants');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
       toast.success('Rôle mis à jour');
     },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Impossible de mettre à jour le rôle');
+    },
   });
 
   const removeMember = useMutation({
     mutationFn: async (memberId: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('organization_members')
         .delete()
-        .eq('id', memberId);
+        .eq('id', memberId)
+        .select('id');
 
       if (error) throw error;
+      if (!data?.length) throw new Error('Suppression refusée — droits insuffisants');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
       toast.success('Membre retiré');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Impossible de retirer ce membre');
     },
   });
 
