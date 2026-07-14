@@ -201,7 +201,11 @@ Si agent autonome, 2 questions :
 1. Combien de profils/jour ? [OPTIONS]["10", "25", "50"][/OPTIONS]
 2. Review ou auto ? [OPTIONS]["Review", "Auto 80+"][/OPTIONS]
 
-Puis : [AGENT_ACTION]{"action":"start_search","mode":"autonomous","config":{...}}[/AGENT_ACTION]
+Puis appelle le tool launch_search (SANS tag texte) : il ouvre un bandeau
+d'approbation, l'user valide, et la vraie recherche demarre en tache de fond.
+Le [SEARCH_PLAN] doit avoir ete emis AVANT (il est sauvegarde sur la
+conversation, launch_search le lit). Ne pretends JAMAIS que la recherche
+tourne tant que le tool_result ne confirme pas le lancement.
 
 ETAPE 8 — MESSAGES D'APPROCHE (si demande)
 
@@ -421,7 +425,8 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { conversation_id, message, job_context, context_mode, brief_context, project_id, app_context } = body;
+    const { conversation_id: bodyConversationId, message, job_context, context_mode, brief_context, project_id, app_context } = body;
+    let conversation_id: string | undefined = bodyConversationId;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "agent_search_calibration", modelId: "claude-sonnet-4-6", description: null,
     };
@@ -441,18 +446,50 @@ Deno.serve(async (req) => {
       console.warn("[search-agent-chat] Failed to resolve model, using default:", e);
     }
 
-    if (!conversation_id || !message) {
-      return new Response(JSON.stringify({ error: "conversation_id and message required" }), {
+    if (!message) {
+      return new Response(JSON.stringify({ error: "message required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Verify user belongs to the conversation's organization
-    const { data: conv } = await supabase
-      .from("agent_conversations")
-      .select("organization_id, created_by")
-      .eq("id", conversation_id)
-      .single();
+    // Create-path (P0.4 audit 2026-07-14) : sans conversation_id, on crée la
+    // conversation côté serveur (avant : 400 sec, le client DEVAIT insérer la
+    // row lui-même). Le client web continue de créer côté RLS ; ce chemin sert
+    // les autres callers (API, mobile). L'id est renvoyé en 1er event SSE.
+    let createdConversation = false;
+    let conv: { organization_id: string | null; created_by: string | null } | null = null;
+    if (!conversation_id) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("active_organization_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const { data: created, error: createErr } = await supabase
+        .from("agent_conversations")
+        .insert({
+          organization_id: prof?.active_organization_id ?? null,
+          created_by: user.id,
+          status: "calibrating",
+        })
+        .select("id, organization_id, created_by")
+        .single();
+      if (createErr || !created) {
+        return new Response(JSON.stringify({ error: `Failed to create conversation: ${createErr?.message ?? "unknown"}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      conversation_id = created.id;
+      conv = created;
+      createdConversation = true;
+    } else {
+      // Verify user belongs to the conversation's organization
+      const { data: existing } = await supabase
+        .from("agent_conversations")
+        .select("organization_id, created_by")
+        .eq("id", conversation_id)
+        .single();
+      conv = existing;
+    }
 
     if (!conv) {
       return new Response(JSON.stringify({ error: "Conversation not found" }), {
@@ -460,7 +497,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (conv.organization_id) {
+    if (!createdConversation && conv.organization_id) {
       const { data: membership, error: membershipError } = await supabase
         .from("organization_members")
         .select("id")
@@ -488,12 +525,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Save user message (after auth validation)
-    await supabase.from("agent_messages").insert({
-      conversation_id,
-      role: "user",
-      content: message,
-    });
+    // Save user message (after auth validation). On garde l'id : les
+    // agent_tool_executions proposées ce tour-ci y sont rattachées
+    // (message_id — P0.4 audit 2026-07-14, avant : toujours null).
+    const { data: userMessageRow } = await supabase
+      .from("agent_messages")
+      .insert({
+        conversation_id,
+        role: "user",
+        content: message,
+      })
+      .select("id")
+      .single();
+    const userMessageId: string | null = userMessageRow?.id ?? null;
 
     // Fetch conversation history (limit to 24 messages to control token costs).
     // IMPORTANT : on prend les 24 plus RÉCENTS (desc) puis on remet en ordre
@@ -633,6 +677,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       && context_mode !== 'brief'
       && context_mode !== 'process'
       && context_mode !== 'outreach';
+    // Modes opérationnels (P0.1 audit 2026-07-14) : brief/process/outreach
+    // gardent leur prompt spécialisé mais passent AUSSI par le classifieur
+    // B.2 — une question DATA ou une demande ACTION dans ces modes entre dans
+    // la boucle d'outils au lieu de rester en streaming pur sans accès données.
+    const isOperationalMode = !isSourcingMode && (
+      context_mode === 'brief' || context_mode === 'process' || context_mode === 'outreach'
+    );
 
     let activeSystemPrompt: string;
     if (context_mode === 'brief') {
@@ -718,7 +769,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     // DATA et ACTION nécessitent les tools (read + mutating) → tools loop.
     // Fail-soft : toute erreur/timeout → CHAT (zéro régression sur le chat normal).
     const classifierPromise = (async (): Promise<{ data: boolean; action: boolean }> => {
-      if (!isFreeMode) return { data: false, action: false };
+      if (!isFreeMode && !isOperationalMode) return { data: false, action: false };
       try {
         // Fil récent (derniers tours) → un suivi court ("et leur nom ?",
         // "lesquelles ?", "détaille") hérite du sujet du tour précédent et
@@ -804,7 +855,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     // tools chargés mais Claude n'appellera aucun outil donc inoffensif).
     // Faux négatifs sont plus douloureux (Claude fabrique des réponses sans
     // tool call) → on préfère élargir.
-    if (isFreeMode && !classifiedDATA && !classifiedACTION) {
+    if ((isFreeMode || isOperationalMode) && !classifiedDATA && !classifiedACTION) {
       const lastUserMsg = String(message || '').slice(0, 500).toLowerCase();
       const ACTION_KEYWORDS = /\b(envoie?|envoyer|envoi|écris\s+à|ajoute|écarte?r?|écartes|dismiss|archive|archiv\w+|invite|assigne|assignes|applique|appliques|pousse|pousses|mets?\s+en\s+pause|relance|relances|reprends?|réactive|modifie|modifies|change\s+(le|la|les|de|du)|enrichis|enrich\w+|trouve\s+l['"]?email|crée\s+(la|une|le)|supprime|delete|push)\b/i;
       if (ACTION_KEYWORDS.test(lastUserMsg)) {
@@ -814,12 +865,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     }
     const classifiedTOOLS = classifiedDATA || classifiedACTION;
 
-    // Free + (DATA ou ACTION) : on entre dans la boucle d'outils avec le prompt
-    // libre, augmenté d'une consigne d'accès LECTURE + ACTIONS. Sans ça le
-    // freeSystemPrompt dit « tu ne peux pas » et le modèle hésiterait à appeler
-    // les outils. On n'augmente QUE ce chemin → le chat normal (CHAT) garde
-    // un prompt byte-identique (zéro régression sur l'UX Réflexion validée).
-    if (isFreeMode && classifiedTOOLS) {
+    // Free/opérationnel + (DATA ou ACTION) : on entre dans la boucle d'outils
+    // avec le prompt du mode, augmenté d'une consigne d'accès LECTURE + ACTIONS.
+    // Sans ça le freeSystemPrompt dit « tu ne peux pas » et le modèle hésiterait
+    // à appeler les outils. On n'augmente QUE ce chemin → le chat normal (CHAT)
+    // garde un prompt byte-identique (zéro régression sur l'UX Réflexion validée).
+    if ((isFreeMode || isOperationalMode) && classifiedTOOLS) {
       activeSystemPrompt = activeSystemPrompt +
         `\n\n=== ACCÈS DONNÉES (cette conversation) ===\n` +
         `Tu disposes d'OUTILS EN LECTURE SEULE sur les données Konekt de cet ` +
@@ -876,7 +927,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `update_mission_brief, regenerate_search_filters, apply_search_filters_to_mission, ` +
         `create_mission), outreach (send_linkedin_message, pause_sequence, resume_sequence, ` +
         `enroll_in_sequence, draft_outreach_message), équipe (invite_team_member, ` +
-        `update_member_quota), enrichment (enrich_candidate_contact). ` +
+        `update_member_quota), enrichment (enrich_candidate_contact), ` +
+        `calendrier (schedule_interview : programme un entretien — start_at ISO avec ` +
+        `timezone Europe/Paris, durée défaut 45 min, mission optionnelle ; ne fait ` +
+        `AUCUN envoi d'invitation au candidat), sourcing (launch_search : lance la ` +
+        `VRAIE recherche autonome de candidats — uniquement si un plan de recherche ` +
+        `[SEARCH_PLAN] a déjà été validé sur cette conversation). ` +
         `CHAQUE appel à un outil mutant ouvre un BANDEAU D'APPROBATION côté UI : tu ` +
         `n'exécutes JAMAIS toi-même, tu PROPOSES via le tool call, l'user ` +
         `valide/rejette/édite dans le bandeau. ` +
@@ -988,8 +1044,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `l'approbation user dans le bandeau. Si status='failed' → cite l'error_message.`;
     }
 
-    // --- Sourcing mode (ou chat libre classé DATA/ACTION) : boucle d'outils ---
-    if (isSourcingMode || (isFreeMode && classifiedTOOLS)) {
+    // --- Sourcing mode (ou chat libre/opérationnel classé DATA/ACTION) : boucle d'outils ---
+    if (isSourcingMode || ((isFreeMode || isOperationalMode) && classifiedTOOLS)) {
       const encoder = new TextEncoder();
       let fullResponse = "";
       let _tokensIn = 0;
@@ -998,6 +1054,9 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       const transformedStream = new ReadableStream({
         async start(controller) {
           try {
+            // 1er event : l'id de conversation (indispensable au caller quand
+            // la conversation vient d'être créée côté serveur — create-path).
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ conversation_id })}\n\n`));
             let currentMessages = [...messages];
             let maxToolRounds = 5;
             let apiErrored = false;
@@ -1182,8 +1241,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                       userId: user.id,
                       organizationId: orgId,
                       conversationId: conversation_id,
-                      messageId: null, // we don't have a message_id yet at this point
+                      // Rattache l'execution au message user déclencheur (le
+                      // message assistant n'existe pas encore à ce stade).
+                      messageId: userMessageId,
                       adminClient: supabase,
+                      userBearer: authHeader.replace(/^Bearer\s+/i, "") || null,
                     };
                     const handled = await handleProposedToolCall(tc.name, tc.input, ctx);
                     if (handled.outcome === 'awaiting_approval') awaitingApprovalCount++;
@@ -1386,6 +1448,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         // throw) laissait le stream sans [DONE] (UI bloquée sur "…"), sans
         // persistance du partiel et sans settle des crédits.
         try {
+        // 1er event : l'id de conversation (create-path — voir chemin tools).
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ conversation_id })}\n\n`));
         while (true) {
           const { done, value } = await reader.read();
           if (done) {

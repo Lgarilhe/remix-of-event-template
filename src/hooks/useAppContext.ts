@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 /**
  * Passive app-location context: where the user currently is in the app.
@@ -39,6 +40,7 @@ const PAGE_LABELS: Array<[RegExp, string]> = [
 
 export function useAppContext(): AppContext {
   const { pathname, search } = useLocation();
+  const queryClient = useQueryClient();
 
   return useMemo(() => {
     const missionId = pathname.match(/^\/missions\/([^/]+)/)?.[1] ?? null;
@@ -51,8 +53,27 @@ export function useAppContext(): AppContext {
       : null;
     const page = PAGE_LABELS.find(([re]) => re.test(pathname))?.[1] ?? 'Application';
 
-    // Title is resolved by the agent via Phase B read tools (keeps this hook
-    // query-free so it's safe to run app-wide, incl. public/unauth pages).
-    return { page, path: pathname, missionId, missionTitle: null, missionTab, candidateId };
-  }, [pathname, search]);
+    // Title résolu depuis le CACHE React Query uniquement (aucun fetch : le
+    // hook reste sûr app-wide, incl. pages publiques/unauth). Si la mission
+    // n'est pas encore en cache, l'agent retombe sur ses read tools.
+    let missionTitle: string | null = null;
+    if (missionId) {
+      const single = queryClient.getQueryData<{ name?: string }>(['sourcing-project', missionId]);
+      if (single?.name) {
+        missionTitle = single.name;
+      } else {
+        for (const [, list] of queryClient.getQueriesData<Array<{ id: string; name?: string }>>({
+          queryKey: ['sourcing-projects'],
+        })) {
+          const hit = Array.isArray(list) ? list.find((p) => p?.id === missionId) : undefined;
+          if (hit?.name) {
+            missionTitle = hit.name;
+            break;
+          }
+        }
+      }
+    }
+
+    return { page, path: pathname, missionId, missionTitle, missionTab, candidateId };
+  }, [pathname, search, queryClient]);
 }

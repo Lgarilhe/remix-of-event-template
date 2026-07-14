@@ -150,6 +150,7 @@ const TOOL_LABEL: Record<string, string> = {
   update_member_quota: 'Modifier les quotas d\'un membre',
   // Phase Calibration — Push de filtres de recherche
   apply_search_filters_to_mission: 'Appliquer les filtres de recherche LinkedIn',
+  launch_search: 'Lancer la recherche autonome',
 };
 
 // ─── Editable fields configuration ─────────────────────────────────────────

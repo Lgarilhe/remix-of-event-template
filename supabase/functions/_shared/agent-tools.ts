@@ -36,6 +36,14 @@ export interface ToolContext {
   messageId: string | null;
   /** Service-role client (bypass RLS) — pour les mutations DB */
   adminClient: SupabaseClient;
+  /**
+   * JWT brut de l'utilisateur (sans le préfixe "Bearer "). Présent quand le
+   * tool est proposé (search-agent-chat) ou approuvé (agent-tool-action) —
+   * absent sur le chemin cron (process-scheduled-actions). Permet à un tool
+   * d'appeler une edge function interne AVEC l'identité user (ex :
+   * launch_search → run-agent-search), sans élargir l'auth de la cible.
+   */
+  userBearer?: string | null;
 }
 
 export interface DryRunResult {
@@ -379,10 +387,13 @@ export async function confirmToolExecution(
     .update({ status: 'approved', approved_at: new Date().toISOString() })
     .eq('id', executionId);
 
-  // Execute
+  // Execute — le ctx d'approbation (agent-tool-action) n'a pas le
+  // conversation_id d'origine : on le réinjecte depuis la row pour que les
+  // tools qui en dépendent (launch_search) le voient à l'exécution.
+  const execCtx: ToolContext = { ...ctx, conversationId: row.conversation_id ?? ctx.conversationId };
   let result: ExecuteResult;
   try {
-    result = await tool.execute(row.params as Record<string, unknown>, ctx);
+    result = await tool.execute(row.params as Record<string, unknown>, execCtx);
   } catch (err) {
     result = { success: false, error: err instanceof Error ? err.message : String(err) };
   }

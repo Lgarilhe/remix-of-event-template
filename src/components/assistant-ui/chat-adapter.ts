@@ -4,13 +4,21 @@ interface SkalrAdapterConfig {
   supabaseUrl: string;
   /**
    * Returns the active conversation id, creating one if none exists yet.
-   * The backend has no create-on-the-fly path — the row MUST exist before
-   * the first message, so creation happens client-side (RLS-scoped insert).
+   * Le backend sait désormais créer la conversation si l'id est absent
+   * (create-path P0.4) et renvoie l'id en 1er event SSE — mais le client web
+   * continue de créer côté RLS pour avoir l'id tout de suite (historique,
+   * bandeau d'approbation realtime).
    */
   ensureConversationId: () => Promise<string>;
   getAccessToken: () => string;
   /** Fresh passive app-location context at send time (page/mission/tab/candidate) */
   getAppContext?: () => unknown;
+  /**
+   * Fresh effective context mode at send time. Takes precedence over the
+   * static `contextMode` — used to derive the mode from the active mission
+   * tab (brief/process/outreach) without recreating the runtime on navigation.
+   */
+  getContextMode?: () => string | null;
   apiKey: string;
   modelOverride?: string | null;
   contextMode?: string | null;
@@ -39,6 +47,7 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
       if (!conversationId) throw new Error('Conversation introuvable');
 
       const appContext = config.getAppContext?.() ?? undefined;
+      const contextMode = config.getContextMode ? config.getContextMode() : (config.contextMode || null);
 
       const resp = await fetch(`${config.supabaseUrl}/functions/v1/search-agent-chat`, {
         method: 'POST',
@@ -51,8 +60,10 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
           conversation_id: conversationId,
           message: userContent,
           _ai_model: config.modelOverride || undefined,
-          _ai_action: 'agent_search_calibration',
-          context_mode: config.contextMode || undefined,
+          // Le sourcing garde son action historique (calibration) ; les autres
+          // modes (libre/brief/process/outreach) sont facturés en agent_chat.
+          _ai_action: contextMode === 'sourcing' ? 'agent_search_calibration' : 'agent_chat',
+          context_mode: contextMode || undefined,
           brief_context: config.briefContext || undefined,
           project_id: config.projectId || undefined,
           account_id: config.accountId || undefined,

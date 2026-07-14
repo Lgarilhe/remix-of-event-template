@@ -11,6 +11,14 @@ interface AgentContextValue {
   toggleAgent: () => void;
   conversationId: string | null;
   setConversationId: (id: string | null) => void;
+  /**
+   * Ouvre le drawer sur une conversation existante (reprise depuis /agents ou
+   * ailleurs). Incrémente openRequestNonce pour que le panel re-seed même
+   * s'il est déjà monté.
+   */
+  openConversation: (conversationId: string) => void;
+  /** Compteur bumpé par openConversation — le panel re-seed quand il change */
+  openRequestNonce: number;
   initialJobId: string | null;
   unreadCount: number;
   setUnreadCount: (count: number) => void;
@@ -44,6 +52,8 @@ const AgentContext = createContext<AgentContextValue>({
   toggleAgent: () => {},
   conversationId: null,
   setConversationId: () => {},
+  openConversation: () => {},
+  openRequestNonce: 0,
   initialJobId: null,
   unreadCount: 0,
   setUnreadCount: () => {},
@@ -89,6 +99,20 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const openAgentWithMessage = useCallback((message: string) => {
     setInitialMessage(message);
+    setIsOpen(true);
+  }, []);
+
+  const [openRequestNonce, setOpenRequestNonce] = useState(0);
+  const openConversation = useCallback((id: string) => {
+    setConversationId(id);
+    setInitialJobId(null);
+    setInitialMessage(null);
+    setContextMode(null);
+    setBriefContext(null);
+    setAutoJob(null);
+    setProjectId(null);
+    setAccountId(null);
+    setOpenRequestNonce((n) => n + 1);
     setIsOpen(true);
   }, []);
 
@@ -143,6 +167,8 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toggleAgent,
         conversationId,
         setConversationId,
+        openConversation,
+        openRequestNonce,
         initialJobId,
         initialMessage,
         openAgentWithMessage,

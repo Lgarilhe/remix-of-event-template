@@ -2958,6 +2958,327 @@ const applySearchFiltersToMission: AgentTool = {
   },
 };
 
+// ─── Tool — schedule_interview ──────────────────────────────────────────────
+// Programme un entretien / une session de qualification dans le calendrier
+// interne (table qualification_sessions — même insert que CreateEventModal).
+// P0.3 audit 2026-07-14 : le label UI existait déjà, le tool manquait.
+
+interface ResolvedInterviewCandidate {
+  candidateId: string | null;
+  candidateName: string;
+  candidateHeadline: string | null;
+  inPipeline: boolean;
+}
+
+async function resolveInterviewCandidate(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+): Promise<ResolvedInterviewCandidate> {
+  const explicitId = String(params.candidate_id || '').trim();
+  const name = String(params.candidate_name || '').trim();
+
+  if (explicitId) {
+    const { data } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_id, candidate_name, candidate_headline')
+      .eq('organization_id', ctx.organizationId)
+      .eq('candidate_id', explicitId)
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      return {
+        candidateId: data.candidate_id,
+        candidateName: data.candidate_name || name || explicitId,
+        candidateHeadline: data.candidate_headline ?? null,
+        inPipeline: true,
+      };
+    }
+  }
+  if (name) {
+    const { data } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_id, candidate_name, candidate_headline')
+      .eq('organization_id', ctx.organizationId)
+      .ilike('candidate_name', `%${name.slice(0, 80)}%`)
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      return {
+        candidateId: data.candidate_id,
+        candidateName: data.candidate_name || name,
+        candidateHeadline: data.candidate_headline ?? null,
+        inPipeline: true,
+      };
+    }
+  }
+  return { candidateId: explicitId || null, candidateName: name || explicitId, candidateHeadline: null, inPipeline: false };
+}
+
+async function resolveInterviewMission(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+): Promise<{ id: string; name: string | null; job_title: string | null; client_name: string | null; job_id: string | null } | null> {
+  const missionId = String(params.mission_id || '').trim();
+  const missionName = String(params.mission_name || '').trim();
+  if (!missionId && !missionName) return null;
+  let q = ctx.adminClient
+    .from('sourcing_projects')
+    .select('id, name, job_title, client_name, job_id')
+    .eq('organization_id', ctx.organizationId);
+  q = missionId ? q.eq('id', missionId) : q.ilike('name', `%${missionName.slice(0, 80)}%`);
+  const { data } = await q.limit(1).maybeSingle();
+  return (data as { id: string; name: string | null; job_title: string | null; client_name: string | null; job_id: string | null } | null) ?? null;
+}
+
+function parseInterviewSlot(params: Record<string, unknown>): { startAt: Date; endAt: Date; duration: number } | { error: string } {
+  const startMs = Date.parse(String(params.start_at || ''));
+  if (Number.isNaN(startMs)) return { error: "start_at invalide — attendu un datetime ISO 8601 (ex : 2026-07-16T14:00:00+02:00)" };
+  if (startMs < Date.now() - 5 * 60_000) return { error: 'start_at est dans le passé' };
+  const duration = Math.min(Math.max(Math.round(Number(params.duration_minutes) || 45), 15), 240);
+  const startAt = new Date(startMs);
+  return { startAt, endAt: new Date(startMs + duration * 60_000), duration };
+}
+
+const frDate = (d: Date) =>
+  d.toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Europe/Paris' });
+
+const scheduleInterview: AgentTool = {
+  name: 'schedule_interview',
+  description:
+    "Schedule an interview / qualification session with a candidate in the Konekt calendar (visible in /calendar and via get_upcoming_interviews). " +
+    "Use when the user says 'programme un entretien avec X', 'cale un call avec Marie jeudi 14h', 'planifie la pré-qualif de Théo'. " +
+    "Pass start_at as full ISO 8601 datetime WITH timezone (Europe/Paris for French users). Default duration: 45 min. " +
+    "Optional mission_id/mission_name links the interview to a mission (recommended when known). " +
+    "This creates the calendar slot in Konekt only — it does NOT send any invitation email to the candidate. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      candidate_name: { type: 'string', description: "Full name of the candidate (ex : 'Marie Dupont')." },
+      candidate_id: { type: 'string', description: "Optional stable candidate id (LinkedIn provider_id 'ACoAA…') if known from a read tool. Never invent it." },
+      start_at: { type: 'string', description: "Interview start — ISO 8601 datetime with timezone (ex : '2026-07-16T14:00:00+02:00'). Must be in the future." },
+      duration_minutes: { type: 'number', description: 'Duration in minutes (default 45, min 15, max 240).' },
+      event_name: { type: 'string', description: "Optional title (default : 'Entretien — {candidate}')." },
+      location: { type: 'string', description: "Optional location : visio link, phone, address." },
+      mission_id: { type: 'string', description: 'Optional mission UUID to attach the interview to.' },
+      mission_name: { type: 'string', description: 'Optional mission name (resolved server-side) if the UUID is unknown.' },
+      notes: { type: 'string', description: 'Optional prep notes (free text, max 2000 chars).' },
+    },
+    required: ['candidate_name', 'start_at'],
+  },
+
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    if (!String(params.candidate_name || '').trim()) return { allowed: false, reason: 'candidate_name is required' };
+    const slot = parseInterviewSlot(params);
+    if ('error' in slot) return { allowed: false, reason: slot.error };
+    if ((params.mission_id || params.mission_name) && !(await resolveInterviewMission(ctx, params))) {
+      return { allowed: false, reason: 'Mission introuvable dans cette organisation' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const slot = parseInterviewSlot(params);
+    if ('error' in slot) throw new Error(slot.error);
+    const [candidate, mission] = await Promise.all([
+      resolveInterviewCandidate(ctx, params),
+      resolveInterviewMission(ctx, params),
+    ]);
+    const eventName = String(params.event_name || '').trim() || `Entretien — ${candidate.candidateName}`;
+    const missionLabel = mission ? (mission.name || mission.job_title || mission.id) : null;
+    return {
+      summary: `Programmer « ${eventName} » avec ${candidate.candidateName} le ${frDate(slot.startAt)} (${slot.duration} min)`,
+      details: {
+        candidate_name: candidate.candidateName,
+        candidate_in_pipeline: candidate.inPipeline,
+        event_name: eventName,
+        start_at: slot.startAt.toISOString(),
+        end_at: slot.endAt.toISOString(),
+        duration_minutes: slot.duration,
+        location: String(params.location || '').trim() || null,
+        mission: missionLabel,
+      },
+      warning: candidate.inPipeline
+        ? undefined
+        : "Candidat introuvable dans le pipeline : l'entretien sera créé quand même, mais sans lien vers une card candidat.",
+    };
+  },
+
+  async execute(params, ctx) {
+    const slot = parseInterviewSlot(params);
+    if ('error' in slot) return { success: false, error: slot.error };
+    const [candidate, mission] = await Promise.all([
+      resolveInterviewCandidate(ctx, params),
+      resolveInterviewMission(ctx, params),
+    ]);
+    const eventName = String(params.event_name || '').trim() || `Entretien — ${candidate.candidateName}`;
+
+    const insert: Record<string, unknown> = {
+      organization_id: ctx.organizationId,
+      created_by: ctx.userId,
+      manager_id: ctx.userId,
+      candidate_profile_id: candidate.candidateId || crypto.randomUUID(),
+      candidate_name: candidate.candidateName,
+      candidate_headline: candidate.candidateHeadline,
+      event_name: eventName,
+      event_start_at: slot.startAt.toISOString(),
+      event_end_at: slot.endAt.toISOString(),
+      event_location: String(params.location || '').trim() || null,
+      notes: String(params.notes || '').trim().slice(0, 2000) || null,
+      status: 'scheduled',
+    };
+    if (mission) {
+      insert.project_id = mission.id;
+      insert.client_name = mission.client_name || null;
+      insert.job_title = mission.job_title || mission.name;
+      if (mission.job_id) insert.job_id = mission.job_id;
+    }
+
+    const { data, error } = await ctx.adminClient
+      .from('qualification_sessions')
+      .insert(insert)
+      .select('id')
+      .single();
+    if (error) return { success: false, error: error.message };
+
+    return {
+      success: true,
+      data: {
+        session_id: data.id,
+        start_at: slot.startAt.toISOString(),
+        message: `Entretien programmé le ${frDate(slot.startAt)} (${slot.duration} min). Visible dans le calendrier Konekt. Aucune invitation n'a été envoyée au candidat.`,
+      },
+    };
+  },
+};
+
+// ─── Tool — launch_search ───────────────────────────────────────────────────
+// Pont chat → run-agent-search (P0.3 audit 2026-07-14). Avant ce tool, le
+// [SEARCH_PLAN] validé laissait la conversation en status='plan_proposed'
+// sans AUCUN déclencheur : la vraie recherche était inatteignable depuis le
+// chat. Exécution fire-and-forget : run-agent-search tourne jusqu'à ~140s et
+// poste sa progression dans agent_messages ; on ne bloque pas l'approbation.
+
+const launchSearch: AgentTool = {
+  name: 'launch_search',
+  description:
+    "Launch the REAL autonomous candidate search for this conversation's validated search plan (the [SEARCH_PLAN] you emitted earlier). " +
+    "Use when the user confirms they want the autonomous agent to actually run ('lance la recherche', 'go', 'lance l'agent autonome'). " +
+    "REQUIRES a search plan to already exist on this conversation — emit and validate the [SEARCH_PLAN] first. " +
+    "The search runs in the background (a few minutes) : it queries LinkedIn with the plan's filters, scores each profile against the brief, " +
+    "and adds the best matches to the mission pipeline. Progress messages appear in this conversation. " +
+    "Costs AI credits (per-profile scoring) and uses the user's LinkedIn account. " +
+    "Always proposes the launch for user approval — never executes silently.",
+  category: 'mutation_external',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      confirm: {
+        type: 'boolean',
+        description: 'Set to true to confirm the launch of the autonomous search.',
+      },
+    },
+    required: [],
+  },
+
+  async verifyAccess(_params, ctx) {
+    if (!ctx.conversationId) {
+      return { allowed: false, reason: "Aucune conversation active — le plan de recherche vit sur la conversation." };
+    }
+    const { data: conv } = await ctx.adminClient
+      .from('agent_conversations')
+      .select('organization_id, status, search_config')
+      .eq('id', ctx.conversationId)
+      .maybeSingle();
+    if (!conv) return { allowed: false, reason: 'Conversation introuvable' };
+    if (conv.organization_id && conv.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette conversation appartient à une autre organisation' };
+    }
+    const cfg = (conv.search_config as Record<string, unknown> | null) ?? null;
+    if (!cfg || !cfg.filters) {
+      return { allowed: false, reason: "Aucun plan de recherche sur cette conversation — génère et valide d'abord un [SEARCH_PLAN]." };
+    }
+    if (conv.status === 'running') {
+      return { allowed: false, reason: 'Une recherche est déjà en cours sur cette conversation.' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(_params, ctx) {
+    const { data: conv } = await ctx.adminClient
+      .from('agent_conversations')
+      .select('search_config, job_title')
+      .eq('id', ctx.conversationId as string)
+      .maybeSingle();
+    const cfg = ((conv?.search_config as Record<string, unknown> | null) ?? {});
+    const summary = typeof cfg.summary === 'string' ? cfg.summary : null;
+    const stop = (cfg.stop_conditions as Record<string, unknown> | null) ?? null;
+    return {
+      summary: `Lancer la recherche autonome${summary ? ` : ${summary.slice(0, 140)}` : ''}`,
+      details: {
+        plan_summary: summary,
+        job_title: conv?.job_title ?? null,
+        stop_conditions: stop,
+        filter_keys: Object.keys((cfg.filters as Record<string, unknown> | null) ?? {}),
+      },
+      warning:
+        "Consomme des crédits IA (scoring de chaque profil trouvé) et utilise ton compte LinkedIn pour la recherche. Durée : quelques minutes, progression affichée dans la conversation.",
+    };
+  },
+
+  async execute(_params, ctx) {
+    if (!ctx.conversationId) {
+      return { success: false, error: 'Aucune conversation active pour cette exécution.' };
+    }
+    if (!ctx.userBearer) {
+      // Chemin cron (process-scheduled-actions) : pas de JWT user disponible.
+      // launch_search ne programme jamais de scheduled_for, donc ce cas ne
+      // devrait pas arriver — garde-fou explicite plutôt qu'un 401 opaque.
+      return { success: false, error: "Lancement impossible hors session utilisateur (JWT absent). Relance depuis le chat." };
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+    // Fire-and-forget : run-agent-search tourne ~2 min et poste sa progression
+    // dans agent_messages. waitUntil garde l'invocation vivante côté runtime.
+    const searchPromise = fetchWithTimeout(
+      `${supabaseUrl}/functions/v1/run-agent-search`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ctx.userBearer}`,
+          apikey: anonKey,
+        },
+        body: JSON.stringify({ conversation_id: ctx.conversationId }),
+      },
+      150_000,
+    ).then(async (res) => {
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error(`[launch_search] run-agent-search ${res.status}: ${body.slice(0, 300)}`);
+      }
+    }).catch((e) => console.error('[launch_search] run-agent-search failed:', e));
+    try {
+      (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil?.(searchPromise);
+    } catch { /* no-op */ }
+
+    return {
+      success: true,
+      data: {
+        conversation_id: ctx.conversationId,
+        message:
+          'Recherche autonome lancée. La progression et les candidats trouvés arrivent dans cette conversation (et dans le pipeline de la mission) dans les prochaines minutes.',
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -2989,7 +3310,8 @@ export function registerMutatingTools(): void {
   registerTool(updateMemberQuota);
   // Phase Calibration — Push de filtres de recherche depuis le chat
   registerTool(applySearchFiltersToMission);
-  // schedule_interview reporté : pas de calendar branché, table events
-  // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
+  // P0.3 audit 2026-07-14 — calendrier interne + pont vers run-agent-search
+  registerTool(scheduleInterview);
+  registerTool(launchSearch);
   registered = true;
 }

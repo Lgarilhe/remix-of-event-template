@@ -120,6 +120,7 @@ const TOOL_LABEL: Record<string, string> = {
   invite_team_member: 'Inviter un membre',
   update_member_quota: 'Modifier les quotas d\'un membre',
   apply_search_filters_to_mission: 'Appliquer les filtres de recherche',
+  launch_search: 'Lancer la recherche autonome',
 };
 
 const STATUS_CONFIG: Record<

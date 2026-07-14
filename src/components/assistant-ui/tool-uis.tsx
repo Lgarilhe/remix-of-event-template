@@ -29,6 +29,8 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   update_mission_brief: 'Modification du brief',
   regenerate_search_filters: 'Régénération des filtres',
   apply_search_filters_to_mission: 'Application des filtres',
+  schedule_interview: "Planification d'entretien",
+  launch_search: 'Lancement de la recherche',
   create_mission: 'Création de mission',
   send_linkedin_message: 'Message LinkedIn',
   pause_sequence: 'Pause de séquence',
