@@ -77,11 +77,23 @@ export async function maybeCompactConversation(
       .range(covered, covered + toSummarize - 1);
     if (!rows || rows.length === 0) return;
 
-    const transcript = rows
-      .map((m: { role: string; content: unknown }) =>
-        `[${m.role}] ${typeof m.content === "string" ? m.content : JSON.stringify(m.content)}`.slice(0, 700))
-      .join("\n")
-      .slice(0, 14_000);
+    // Transcript construit ligne par ligne avec budget de caractères : le
+    // curseur ne doit avancer QUE du nombre de messages réellement soumis au
+    // résumeur. (Avant : cap global .slice(0, 14000) APRÈS coup — jusqu'à
+    // ~20 messages d'une passe pleine de 40 étaient marqués « couverts » sans
+    // avoir été vus par le résumé → perdus de toute mémoire, silencieusement.)
+    const MAX_TRANSCRIPT_CHARS = 14_000;
+    const lines: string[] = [];
+    let transcriptLen = 0;
+    let includedCount = 0;
+    for (const m of rows as Array<{ role: string; content: unknown }>) {
+      const line = `[${m.role}] ${typeof m.content === "string" ? m.content : JSON.stringify(m.content)}`.slice(0, 700);
+      if (includedCount > 0 && transcriptLen + line.length + 1 > MAX_TRANSCRIPT_CHARS) break;
+      lines.push(line);
+      transcriptLen += line.length + 1;
+      includedCount++;
+    }
+    const transcript = lines.join("\n");
 
     const result = await callClaudeCompat({
       model: "claude-haiku-4-5-20251001",
@@ -106,9 +118,9 @@ export async function maybeCompactConversation(
 
     await adminClient
       .from("agent_conversations")
-      .update({ summary: newSummary.slice(0, 4_000), summary_message_count: covered + rows.length })
+      .update({ summary: newSummary.slice(0, 4_000), summary_message_count: covered + includedCount })
       .eq("id", conversationId);
-    console.log(`[compaction] conv=${conversationId} summarized ${rows.length} msgs (cursor ${covered} → ${covered + rows.length})`);
+    console.log(`[compaction] conv=${conversationId} summarized ${includedCount}/${rows.length} msgs (cursor ${covered} → ${covered + includedCount})`);
   } catch (e) {
     console.warn("[compaction] skipped:", e);
   }
