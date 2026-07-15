@@ -2044,9 +2044,13 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     const { data } = await supabase.from('sequence_steps').select('*').eq('id', forceBranchStepId).maybeSingle();
     nextStep = data;
   } else {
-    // Fetch current step with branching columns — use ID if available (step_order is no longer unique)
+    // Fetch current step with branching columns — use ID if available (step_order is no longer unique).
+    // select('*') volontaire : nommer ends_sequence ici ferait échouer la
+    // requête si la fonction se déploie avant la migration qui ajoute la
+    // colonne (workflows migrations/functions parallèles) — avec '*', la
+    // colonne absente donne juste undefined → falsy → comportement inchangé.
     let currentStepQuery = supabase.from('sequence_steps')
-      .select('id, next_step_id, parent_step_id, branch, step_order, sequence_id, ends_sequence');
+      .select('*');
     if (currentStepId) {
       currentStepQuery = currentStepQuery.eq('id', currentStepId);
     } else {
