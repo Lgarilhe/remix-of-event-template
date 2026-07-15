@@ -928,6 +928,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `et récentes : actualité/levée de fonds d'une entreprise, tendances marché, salaires, ` +
         `personne publique. Utilise-la quand la réponse dépend d'infos hors de Konekt et ` +
         `cite tes sources (liens). Max 3 recherches par réponse — sois précis dans tes requêtes. ` +
+        `Des CONNECTEURS EXTERNES configurés par l'organisation (Notion, Slack, calendrier, ` +
+        `outils internes…) peuvent exposer des outils supplémentaires : utilise-les comme les ` +
+        `autres. ⚠️ Leurs actions d'ÉCRITURE s'exécutent DIRECTEMENT (pas de bandeau ` +
+        `d'approbation) — avant tout appel d'écriture sur un connecteur, ANNONCE en une phrase ` +
+        `ce que tu vas faire, et en cas de doute demande confirmation à l'utilisateur d'abord. ` +
         `Pour CONNAÎTRE LE STATUT d'une action IA (envoi LinkedIn, modif candidat, ` +
         `etc.) — « tu as bien envoyé ? », « c'est planifié ? », « où en est ma ` +
         `demande ? » : appelle get_recent_agent_actions (filtres optionnels : ` +
@@ -1104,6 +1109,39 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             const registryTools = getAnthropicToolDefinitions();
             const allTools = [...sourcingTools, ...registryTools, buildWebSearchTool(resolvedModel)];
 
+            // ── Connecteurs MCP de l'org (P3.1) ────────────────────────────
+            // Serveurs MCP distants configurés dans Réglages → Actions de
+            // l'agent. Attachés via le connecteur MCP natif de l'API (beta) :
+            // l'API s'y connecte côté serveur, leurs outils apparaissent comme
+            // des blocs mcp_tool_use/mcp_tool_result dans le stream. Fail-soft
+            // intégral : erreur de chargement → pas de MCP ; 400 API (serveur
+            // injoignable/invalide) → retry du round sans MCP.
+            let mcpServers: Array<Record<string, unknown>> = [];
+            if (orgId) {
+              try {
+                const { data: mcpRows } = await supabase
+                  .from("organization_mcp_servers")
+                  .select("name, url, authorization_token")
+                  .eq("organization_id", orgId)
+                  .eq("enabled", true)
+                  .limit(5);
+                mcpServers = ((mcpRows ?? []) as Array<{ name: string; url: string; authorization_token: string | null }>)
+                  .filter((r) => r.name && r.url && r.url.startsWith("https://"))
+                  .map((r) => ({
+                    type: "url",
+                    name: r.name,
+                    url: r.url,
+                    ...(r.authorization_token ? { authorization_token: r.authorization_token } : {}),
+                  }));
+              } catch (e) {
+                console.warn("[search-agent-chat] MCP servers load skipped:", e);
+              }
+            }
+            let mcpDisabledForRequest = false;
+            if (mcpServers.length > 0) {
+              console.log(`[search-agent-chat] MCP connectors attached: ${mcpServers.map((s) => s.name).join(", ")}`);
+            }
+
             // Tool-calling loop
             while (maxToolRounds > 0) {
               roundNumber++;
@@ -1120,6 +1158,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               }
               console.log(`[search-agent-chat] Tool loop round ${roundNumber}, elapsed ${elapsedMs}ms, messages: ${currentMessages.length}`);
 
+              // Connecteurs MCP actifs pour CE round (désactivés après un 400)
+              const activeMcpServers = mcpDisabledForRequest ? [] : mcpServers;
               const apiBody: any = {
                 model: resolvedModel,
                 max_tokens: 16000,
@@ -1132,7 +1172,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
                 ],
                 messages: currentMessages,
-                tools: allTools,
+                // Chaque serveur MCP DOIT être référencé par un mcp_toolset.
+                tools: [
+                  ...allTools,
+                  ...activeMcpServers.map((s) => ({ type: "mcp_toolset", mcp_server_name: s.name })),
+                ],
+                ...(activeMcpServers.length > 0 ? { mcp_servers: activeMcpServers } : {}),
                 // Streaming par round : l'user voit le texte arriver au fil de
                 // l'eau au lieu de fixer "…" pendant toute la génération.
                 stream: true,
@@ -1158,6 +1203,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   "x-api-key": ANTHROPIC_API_KEY,
                   "anthropic-version": "2023-06-01",
                   "Content-Type": "application/json",
+                  // Beta requise pour le connecteur MCP natif
+                  ...(activeMcpServers.length > 0 ? { "anthropic-beta": "mcp-client-2025-11-20" } : {}),
                 },
                 body: JSON.stringify(apiBody),
                 signal: roundAbort.signal,
@@ -1166,6 +1213,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               if (!loopResponse.ok) {
                 clearTimeout(roundTimer);
                 const errorText = await loopResponse.text();
+                // Fail-soft MCP : un serveur MCP injoignable/mal configuré fait
+                // 400 la requête ENTIÈRE. On retry UNE fois sans connecteurs
+                // plutôt que de casser le chat de toute l'org.
+                if (loopResponse.status === 400 && activeMcpServers.length > 0 && !mcpDisabledForRequest) {
+                  mcpDisabledForRequest = true;
+                  console.warn(`[search-agent-chat] 400 with MCP attached — retrying round without connectors: ${errorText.slice(0, 300)}`);
+                  continue;
+                }
                 console.error("[search-agent-chat] AI error in tool loop:", loopResponse.status, errorText);
                 apiErrored = true;
                 // Message honnête, accumulé dans fullResponse pour être persisté
@@ -1213,6 +1268,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                         // et on affiche la chip « recherche web » côté UI.
                         partials.set(event.index, { type: "server_tool_use", id: cb.id, name: cb.name, _json: "" });
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.id, name: cb.name || "web_search", state: "running" } })}\n\n`));
+                      } else if (cb.type === "mcp_tool_use") {
+                        // Outil d'un connecteur MCP : exécuté côté API (P3.1).
+                        // Bloc reconstruit pour ré-émission + chip UI avec le
+                        // nom du connecteur.
+                        partials.set(event.index, { type: "mcp_tool_use", id: cb.id, name: cb.name, server_name: cb.server_name, _json: "" });
+                        const chipName = cb.server_name ? `${cb.server_name} · ${cb.name || "outil"}` : (cb.name || "connecteur");
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.id, name: chipName, state: "running" } })}\n\n`));
                       } else if (typeof cb.type === "string" && cb.type.endsWith("_tool_result")) {
                         // Résultat de server tool (web_search_tool_result…) :
                         // arrive complet dans le start — on le conserve tel quel
@@ -1238,7 +1300,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                     } else if (event.type === "content_block_stop") {
                       const p = partials.get(event.index);
                       if (!p) continue;
-                      if (p.type === "tool_use" || p.type === "server_tool_use") {
+                      if (p.type === "tool_use" || p.type === "server_tool_use" || p.type === "mcp_tool_use") {
                         try { p.input = p._json ? JSON.parse(p._json) : {}; } catch { p.input = {}; }
                         delete p._json;
                       }
@@ -1273,6 +1335,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               const roundContent = roundBlocks.filter((b: any) => b && (
                 b.type === 'tool_use' ||
                 b.type === 'server_tool_use' ||
+                b.type === 'mcp_tool_use' ||
                 (typeof b.type === 'string' && b.type.endsWith('_tool_result')) ||
                 (b.type === 'text' && b.text)
               ));

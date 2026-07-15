@@ -59,6 +59,7 @@ import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AgentPoliciesSettings } from './AgentPoliciesSettings';
+import { AgentConnectorsSettings } from './AgentConnectorsSettings';
 
 type ActionStatus = 'proposed' | 'approved' | 'executed' | 'auto_executed' | 'failed' | 'rejected';
 
@@ -434,6 +435,9 @@ export const AgentActionsSettings = () => {
 
       {/* Politiques d'autonomie par action (P2.1) */}
       <AgentPoliciesSettings />
+
+      {/* Connecteurs MCP du copilot (P3.1) */}
+      <AgentConnectorsSettings />
 
       {/* Quick stats — count par statut */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
