@@ -2,7 +2,11 @@
 // process-agent-tasks — worker des tâches de fond du copilot (P5, 2026-07-15)
 // ============================================================================
 // Invoqué chaque minute par cron (migration 20260715130000) avec Bearer
-// PROCESS_SEQUENCES_SECRET (même pattern qu'agent-daily-digest). Réclame UNE
+// PROCESS_SEQUENCES_SECRET (même pattern qu'agent-daily-digest). ⚠️ Exige
+// l'entrée [functions.process-agent-tasks] verify_jwt = false dans
+// supabase/config.toml : sans elle, le gateway rejette le Bearer secret du
+// cron en 401 AVANT ce code (récidive du 2026-06-10, revécu au déploiement
+// initial du 2026-07-15). Réclame UNE
 // tâche via claim_agent_background_task() puis en traite UN morceau borné
 // (timeout edge 60s → quelques lots/tick + re-tick), met à jour la progression
 // (visible en realtime), et à la fin notifie l'utilisateur.
