@@ -875,6 +875,15 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         classifiedACTION = true;
         console.log(`[search-agent-chat] B.2 keyword fallback → ACTION=true (Haiku missed it)`);
       }
+      // Idem pour les demandes explicites de recherche web (web_search est un
+      // tool → nécessite la boucle d'outils). Vu en prod : « Cherche sur le
+      // Web des infos sur le client » classé CHAT → le modèle répondait
+      // « je n'ai pas accès au web ». Faux positifs inoffensifs (cf. supra).
+      const WEB_KEYWORDS = /\b(sur\s+(le\s+)?web|sur\s+internet|sur\s+google|recherche\s+web|actualit[ée]s?|dernières?\s+news|levée\s+de\s+fonds|qu[’']est-ce\s+qui\s+se\s+dit)\b/i;
+      if (!classifiedACTION && WEB_KEYWORDS.test(lastUserMsg)) {
+        classifiedDATA = true;
+        console.log(`[search-agent-chat] B.2 keyword fallback → DATA=true (web search intent)`);
+      }
     }
     const classifiedTOOLS = classifiedDATA || classifiedACTION;
 
