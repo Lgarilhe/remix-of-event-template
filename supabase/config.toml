@@ -16,6 +16,9 @@ project_id = "crckfywoyjxkawathdff"
 [functions.accept-invitation]
 verify_jwt = false
 
+[functions.accept-mission-invitation]
+verify_jwt = false
+
 [functions.add-to-shortlist]
 verify_jwt = false
 

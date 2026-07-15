@@ -40,7 +40,10 @@ const FEATURE_MATRIX: Record<Feature, Record<OrgType, boolean>> = {
 
 /** Check if a feature is available for the given org type */
 export function hasFeature(orgType: OrgType | null | undefined, feature: Feature): boolean {
-  if (!orgType) return true; // Default: allow everything if org_type not set yet
+  // Fail-closed : orgType est null pendant le chargement de l'org (ou si
+  // org_type n'est pas renseigné) — on ne doit jamais ouvrir toutes les
+  // features par défaut dans cette fenêtre.
+  if (!orgType) return false;
   return FEATURE_MATRIX[feature]?.[orgType] ?? false;
 }
 

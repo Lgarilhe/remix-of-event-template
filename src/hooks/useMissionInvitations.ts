@@ -136,51 +136,19 @@ export const useAcceptMissionInvitation = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Connectez-vous pour accepter l\'invitation');
 
-      // Get invitation
-      const { data: invitation, error: fetchErr } = await db
-        .from('mission_invitations')
-        .select('*')
-        .eq('token', token)
-        .eq('status', 'pending')
-        .maybeSingle();
+      // Server-side acceptance: verifies token, expiration and that the
+      // invitation email matches the logged-in user, then adds to mission_team.
+      const { data, error } = await invokeEdgeFunction<{ project_id?: string }>(
+        'accept-mission-invitation',
+        { token }
+      );
 
-      if (fetchErr || !invitation) throw new Error('Invitation introuvable ou expirée');
-
-      // Check expiration
-      if (invitation.expires_at && new Date(invitation.expires_at) < new Date()) {
-        await db.from('mission_invitations').update({ status: 'expired' }).eq('id', invitation.id);
-        throw new Error('Cette invitation a expiré');
+      if (error || !data?.success) {
+        throw new Error(data?.error || 'Erreur lors de l\'acceptation');
       }
-
-      // Add to mission_team
-      const { error: teamErr } = await db
-        .from('mission_team')
-        .insert({
-          project_id: invitation.project_id,
-          user_id: user.id,
-          role: invitation.role,
-        });
-
-      if (teamErr) {
-        if (teamErr.code === '23505') {
-          // Already a member — just mark invitation as accepted
-        } else {
-          throw teamErr;
-        }
-      }
-
-      // Mark invitation as accepted
-      await db
-        .from('mission_invitations')
-        .update({
-          status: 'accepted',
-          accepted_by: user.id,
-          accepted_at: new Date().toISOString(),
-        })
-        .eq('id', invitation.id);
 
       toast.success('Invitation acceptée — vous avez accès à la mission');
-      return invitation.project_id;
+      return (data.project_id as string) || null;
     } catch (err: any) {
       toast.error(err?.message || 'Erreur lors de l\'acceptation');
       return null;
