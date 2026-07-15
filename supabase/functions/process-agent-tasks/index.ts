@@ -41,10 +41,18 @@ const corsHeaders = {
 // deno-lint-ignore no-explicit-any
 type Any = any;
 
-// ─── Bornage par tick (rester sous le timeout edge 60s) ─────────────────────
+// ─── Bornage par tick (rester sous la limite edge ~150s wall-clock) ─────────
+// Leçon prod 2026-07-15 (1er scoring réel) : un lot de 10 profils prend 60-90s
+// côté LLM (batch Haiku + escalation Sonnet des borderline). L'ancien timeout
+// client de 50s coupait la connexion alors que score-profile-job TERMINAIT et
+// PERSISTAIT côté serveur → 5 « échecs » apparents → tâche en error à tort,
+// pendant que les scores s'écrivaient. D'où : timeout 100s, on ne DÉMARRE un
+// lot que dans les 30 premières secondes du tick (pire cas ≈ 130s < 150s), et
+// un timeout client n'est PAS un échec (le drain est mesuré au tick suivant).
 const BATCH_SIZE = 10;              // limite de score-profile-job (10 profils/appel)
-const MAX_BATCHES_PER_TICK = 3;     // jusqu'à 30 profils/tick
-const TICK_BUDGET_MS = 45_000;      // marge sous les 60s
+const MAX_BATCHES_PER_TICK = 3;     // plafond dur (rarement atteint avec le budget)
+const BATCH_START_BUDGET_MS = 30_000;  // ne pas DÉMARRER de lot au-delà
+const BATCH_TIMEOUT_MS = 100_000;   // durée max d'UN lot côté client
 const MAX_ATTEMPTS = 5;             // ticks consécutifs SANS progrès avant abandon
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 50_000): Promise<Response> {
@@ -222,25 +230,38 @@ async function runScoreMissionProfiles(
     ...(clientCompetitors ? { clientCompetitors, restrictSearchToCompetitors } : {}),
   };
 
-  // Total (re)calculé au premier tick sur le scope RÉEL (project_id, job_id) —
-  // le tool insère un total project-wide qui peut être plus large.
+  // Référence de progression : le « restant » mesuré au TOUT PREMIER tick,
+  // figé dans result.initial_remaining (le tool insère un total project-wide
+  // potentiellement plus large que le scope réel (project_id, job_id)).
+  // done = initial - remaining : reste juste même quand un lot a été coupé
+  // côté client (timeout) mais a abouti côté serveur — le drain « en retard »
+  // est automatiquement compté au tick suivant.
   let remaining = await countRemaining();
-  let progressTotal = task.progress_total || 0;
-  if ((task.progress_done || 0) === 0) {
-    progressTotal = remaining;
-    await guardedStatusUpdate(supabase, task.id, { progress_total: progressTotal });
+  let initialRemaining = Number((task.result as Any)?.initial_remaining ?? NaN);
+  if (!Number.isFinite(initialRemaining)) {
+    initialRemaining = remaining;
+    await guardedStatusUpdate(supabase, task.id, {
+      progress_total: initialRemaining,
+      result: { initial_remaining: initialRemaining },
+    });
     if (remaining === 0) {
       await completeTask(supabase, task, { scored: 0, note: "Aucun profil à scorer." });
       return;
     }
   }
+  const progressTotal = initialRemaining;
 
-  let done = task.progress_done || 0;
+  let done = Math.max(0, initialRemaining - remaining);
   let failed = task.progress_failed || 0;
   let batchesThisTick = 0;
-  let drainedThisTick = 0;
+  // Drain arrivé ENTRE les ticks (lot du tick précédent terminé après coupure) :
+  // c'est du progrès, il doit remettre le compteur de stall à zéro.
+  const progressedSinceLastTick = done > (task.progress_done || 0);
+  if (progressedSinceLastTick) {
+    await guardedStatusUpdate(supabase, task.id, { progress_done: Math.min(done, progressTotal) });
+  }
 
-  while (batchesThisTick < MAX_BATCHES_PER_TICK && remaining > 0 && Date.now() - startedAt < TICK_BUDGET_MS) {
+  while (batchesThisTick < MAX_BATCHES_PER_TICK && remaining > 0 && Date.now() - startedAt < BATCH_START_BUDGET_MS) {
     // Annulation utilisateur en cours de route → on s'arrête proprement.
     const { data: fresh } = await supabase
       .from("agent_background_tasks").select("status").eq("id", task.id).maybeSingle();
@@ -273,23 +294,35 @@ async function runScoreMissionProfiles(
     });
 
     // Appel score-profile-job (persiste job_candidate_status + settle crédits).
-    const resp = await fetchWithTimeout(
-      `${supabaseUrl}/functions/v1/score-profile-job`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` },
-        body: JSON.stringify({
-          profiles,
-          job: jobPayload,
-          customScoringInstructions: params.scoring_instructions || undefined,
-          // Contexte de confiance (service-role) pour l'imputation crédits + org.
-          organization_id: task.organization_id,
-          user_id: task.created_by,
-          _ai_action: "scoring",
-        }),
-      },
-      50_000,
-    );
+    // ⚠️ Un timeout client n'est PAS un échec : la fonction cible continue et
+    // termine côté serveur. On clôt juste le tick ; le drain sera constaté au
+    // tick suivant via initial_remaining - remaining.
+    let resp: Response;
+    try {
+      resp = await fetchWithTimeout(
+        `${supabaseUrl}/functions/v1/score-profile-job`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` },
+          body: JSON.stringify({
+            profiles,
+            job: jobPayload,
+            customScoringInstructions: params.scoring_instructions || undefined,
+            // Contexte de confiance (service-role) pour l'imputation crédits + org.
+            organization_id: task.organization_id,
+            user_id: task.created_by,
+            _ai_action: "scoring",
+          }),
+        },
+        BATCH_TIMEOUT_MS,
+      );
+    } catch (e) {
+      const aborted = e instanceof Error && (e.name === "AbortError" || /abort/i.test(e.message));
+      if (!aborted) throw e;
+      console.warn(`[agent-tasks] task=${task.id} lot ${batchesThisTick + 1} : délai client dépassé — le scoring continue côté serveur, drain compté au prochain tick`);
+      batchesThisTick++;
+      break;
+    }
 
     if (resp.status === 429) {
       // Rate limit : on sort du tick. Si RIEN n'a drainé sur ce tick, le bloc
@@ -311,9 +344,8 @@ async function runScoreMissionProfiles(
     // compte en "failed" — et surtout ne compte PAS comme progrès.
     const remainingAfter = await countRemaining();
     const drained = Math.max(0, remaining - remainingAfter);
-    done += drained;
+    done = Math.max(0, initialRemaining - remainingAfter);
     failed += Math.max(0, rows.length - drained);
-    drainedThisTick += drained;
     remaining = remainingAfter;
 
     await guardedStatusUpdate(supabase, task.id, {
@@ -332,36 +364,41 @@ async function runScoreMissionProfiles(
     return;
   }
 
-  if (batchesThisTick > 0 && drainedThisTick === 0) {
-    // STALL : du travail envoyé, aucun drain. attempts++ ; au bout de
-    // MAX_ATTEMPTS ticks consécutifs sans progrès → fin honnête.
+  // Progrès de CE cycle = done a augmenté depuis la valeur stockée avant le
+  // tick — couvre le drain observé PENDANT le tick ET le drain arrivé ENTRE
+  // les ticks (lot du tick précédent terminé côté serveur après la coupure).
+  const progressedThisCycle = done > (task.progress_done || 0);
+
+  if (!progressedThisCycle && batchesThisTick > 0) {
+    // STALL : du travail envoyé, aucun progrès constaté. attempts++ ; au bout
+    // de MAX_ATTEMPTS cycles consécutifs sans progrès → fin honnête.
     const attempts = (task.attempts || 0) + 1;
     if (attempts >= MAX_ATTEMPTS) {
       if (done > 0) {
-        // Fin partielle : on a scoré une partie, le reste est non-drainable.
-        await completeTask(supabase, task, { scored: done, failed, stuck: remaining, partial: true });
+        // Fin partielle : une partie scorée, le reste non-drainable.
+        await completeTask(supabase, task, { initial_remaining: initialRemaining, scored: done, failed, stuck: remaining, partial: true });
       } else {
         await failTask(supabase, task, `Aucun profil n'a pu être scoré (${remaining} restants non traitables)`, true);
       }
       return;
     }
-    const ok = await guardedStatusUpdate(supabase, task.id, {
+    const okStall = await guardedStatusUpdate(supabase, task.id, {
       status: "queued",
       locked_at: null,
       attempts,
-      last_error: `Tick sans progression (${remaining} profils non drainés)`,
+      last_error: `Cycle sans progression (${remaining} profils non drainés)`,
     });
-    if (ok) console.warn(`[agent-tasks] task=${task.id} stall ${attempts}/${MAX_ATTEMPTS} → re-queue`);
+    if (okStall) console.warn(`[agent-tasks] task=${task.id} stall ${attempts}/${MAX_ATTEMPTS} → re-queue`);
     return;
   }
 
-  // Encore du travail, et ce tick a progressé (ou n'a rien envoyé : budget
+  // Encore du travail, et ce cycle a progressé (ou n'a rien envoyé : budget
   // temps épuisé avant le 1er lot) → re-queue. Le progrès remet attempts à 0 :
   // une tâche longue légitime n'est jamais tuée par le gate.
   const ok = await guardedStatusUpdate(supabase, task.id, {
     status: "queued",
     locked_at: null,
-    ...(drainedThisTick > 0 ? { attempts: 0, last_error: null } : {}),
+    ...(progressedThisCycle ? { attempts: 0, last_error: null } : {}),
   });
   if (ok) console.log(`[agent-tasks] task=${task.id} re-queue (${remaining} restants)`);
   else console.log(`[agent-tasks] task=${task.id} statut modifié pendant le tick (annulée ?) — pas de re-queue`);
