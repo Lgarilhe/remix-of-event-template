@@ -52,8 +52,15 @@ type Any = any;
 // D'où : lots de 5 profils (≈35-70s, tiennent dans le délai), réduits à 3 en
 // mode rattrapage (attempts>0), timeout client 120s, et on ne DÉMARRE un lot
 // que dans les 20 premières secondes du tick (pire cas ≈ 140s < 150s).
+// 3. Un profil « toxique » (données qui font planter le moteur de scoring →
+//    500) en tête de file bloque TOUTE la file (elle reprend toujours au même
+//    endroit). Isolation automatique : lots dégressifs 5 → 3 → 1 selon
+//    attempts ; un échec sur un lot d'UN SEUL profil met ce profil de côté
+//    (result.skip_candidate_ids, compté en progress_failed) et la file avance.
 const BATCH_SIZE = 5;               // profils par appel scoring (10 = trop long, tué)
-const RETRY_BATCH_SIZE = 3;         // encore plus court après un cycle sans progrès
+const RETRY_BATCH_SIZE = 3;         // après 1-2 cycles sans progrès
+const ISOLATE_BATCH_SIZE = 1;       // après 3+ cycles : isoler le profil fautif
+const MAX_SKIPPED = 50;             // garde-fou : au-delà, un vrai souci systémique
 const MAX_BATCHES_PER_TICK = 3;     // plafond dur (rarement atteint avec le budget)
 const BATCH_START_BUDGET_MS = 20_000;  // ne pas DÉMARRER de lot au-delà
 const BATCH_TIMEOUT_MS = 120_000;   // durée max d'UN lot côté client
@@ -184,15 +191,27 @@ async function runScoreMissionProfiles(
     .maybeSingle();
   const jobId = sampleRow?.job_id || `project:${projectId}`;
 
+  // Profils mis de côté (toxiques : le moteur de scoring 500 dessus, isolés
+  // par lot de 1). Persistés dans result.skip_candidate_ids pour survivre aux
+  // re-ticks. Exclus du scope de drain → la file avance malgré eux.
+  const skippedIds: string[] = Array.isArray((task.result as Any)?.skip_candidate_ids)
+    ? [...(task.result as Any).skip_candidate_ids]
+    : [];
+  const skipFilter = () =>
+    skippedIds.length > 0 ? `(${skippedIds.map((id) => `"${String(id).replace(/"/g, "")}"`).join(",")})` : null;
+
   // Compteur "restants" — le scope EXACT du travail de cette tâche.
   const countRemaining = async (): Promise<number> => {
-    const { count, error } = await supabase
+    let q = supabase
       .from("job_candidate_status")
       .select("id", { count: "exact", head: true })
       .eq("project_id", projectId)
       .eq("job_id", jobId)
       .is("score", null)
       .not("linkedin_profile_data", "is", null);
+    const sf = skipFilter();
+    if (sf) q = q.not("candidate_id", "in", sf);
+    const { count, error } = await q;
     if (error) throw new Error(`comptage profils : ${error.message}`);
     return count ?? 0;
   };
@@ -258,6 +277,7 @@ async function runScoreMissionProfiles(
   let done = Math.max(0, initialRemaining - remaining);
   let failed = task.progress_failed || 0;
   let batchesThisTick = 0;
+  let lastBatchError: string | null = null;
   // Drain arrivé ENTRE les ticks (lot du tick précédent terminé après coupure) :
   // c'est du progrès, il doit remettre le compteur de stall à zéro.
   const progressedSinceLastTick = done > (task.progress_done || 0);
@@ -275,11 +295,11 @@ async function runScoreMissionProfiles(
     }
 
     // Lot suivant de profils non scorés — MÊME scope que countRemaining.
-    // Taille réduite en mode rattrapage : si le cycle précédent n'a rien
-    // drainé (souvent : lot trop long → tué par le timeout), un lot plus
-    // court passe sous le délai et débloque la situation.
-    const batchSize = (task.attempts || 0) > 0 ? RETRY_BATCH_SIZE : BATCH_SIZE;
-    const { data: rows, error: rowsErr } = await supabase
+    // Taille dégressive en rattrapage : cycle(s) sans progrès → lots plus
+    // courts (timeout) puis lot de 1 (isolement d'un profil toxique).
+    const attemptsSoFar = task.attempts || 0;
+    const batchSize = attemptsSoFar >= 3 ? ISOLATE_BATCH_SIZE : attemptsSoFar > 0 ? RETRY_BATCH_SIZE : BATCH_SIZE;
+    let batchQuery = supabase
       .from("job_candidate_status")
       .select("candidate_id, candidate_name, linkedin_profile_data")
       .eq("project_id", projectId)
@@ -288,6 +308,9 @@ async function runScoreMissionProfiles(
       .not("linkedin_profile_data", "is", null)
       .order("created_at", { ascending: true })
       .limit(batchSize);
+    const sf = skipFilter();
+    if (sf) batchQuery = batchQuery.not("candidate_id", "in", sf);
+    const { data: rows, error: rowsErr } = await batchQuery;
     if (rowsErr) throw new Error(`lecture profils : ${rowsErr.message}`);
     if (!rows || rows.length === 0) break; // plus rien → terminé
 
@@ -342,7 +365,33 @@ async function runScoreMissionProfiles(
     }
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
-      throw new Error(`score-profile-job ${resp.status}: ${body.slice(0, 300)}`);
+      const errInfo = `scoring ${resp.status}: ${body.slice(0, 200)}`;
+      batchesThisTick++;
+      if (rows.length === 1) {
+        // Lot d'UN profil en échec → profil toxique identifié : on le met de
+        // côté définitivement pour CETTE tâche et la file avance. Compté en
+        // "failed" (l'utilisateur voit « X n'ont pas pu être traités »).
+        skippedIds.push(rows[0].candidate_id);
+        failed += 1;
+        await guardedStatusUpdate(supabase, task.id, {
+          progress_failed: failed,
+          result: { initial_remaining: initialRemaining, skip_candidate_ids: skippedIds },
+        });
+        console.warn(`[agent-tasks] task=${task.id} profil isolé (${errInfo}) — ${skippedIds.length} mis de côté, la file continue`);
+        if (skippedIds.length >= MAX_SKIPPED) {
+          await failTask(supabase, task, `Trop de profils en échec de scoring (${skippedIds.length}) — problème systémique probable. Dernière erreur : ${errInfo}`, true);
+          return;
+        }
+        lastBatchError = null;
+        remaining = await countRemaining(); // le skip sort du scope → recompte
+        done = Math.max(0, initialRemaining - remaining);
+        continue; // le profil isolé est hors scope → le prochain select avance
+      }
+      // Lot multi-profils en échec : fin de tick. Le garde anti-stall réduit
+      // la taille des lots aux cycles suivants (5 → 3 → 1) jusqu'à isoler.
+      lastBatchError = errInfo;
+      console.warn(`[agent-tasks] task=${task.id} lot de ${rows.length} en échec (${errInfo}) → fin de tick, lots réduits au prochain cycle`);
+      break;
     }
     await resp.json().catch(() => ({}));
     batchesThisTick++;
@@ -368,7 +417,15 @@ async function runScoreMissionProfiles(
   }
 
   if (remaining === 0) {
-    await completeTask(supabase, task, { scored: done, failed });
+    // done inclut les profils mis de côté (sortis du scope) — le récap les
+    // décompte et les affiche comme « non traités ».
+    await completeTask(supabase, task, {
+      scored: Math.max(0, done - failed),
+      failed,
+      ...(failed > 0 ? { stuck: failed } : {}),
+      ...(skippedIds.length > 0 ? { skip_candidate_ids: skippedIds } : {}),
+      initial_remaining: initialRemaining,
+    });
     return;
   }
 
@@ -394,7 +451,9 @@ async function runScoreMissionProfiles(
       status: "queued",
       locked_at: null,
       attempts,
-      last_error: `Cycle sans progression (${remaining} profils non drainés)`,
+      last_error: lastBatchError
+        ? `Cycle sans progression — ${lastBatchError}`
+        : `Cycle sans progression (${remaining} profils non drainés)`,
     });
     if (okStall) console.warn(`[agent-tasks] task=${task.id} stall ${attempts}/${MAX_ATTEMPTS} → re-queue`);
     return;
