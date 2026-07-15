@@ -834,7 +834,17 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Switch
                       checked={seq.is_active}
-                      onCheckedChange={() => handleToggleActive(seq.id, seq.is_active)}
+                      onCheckedChange={(next) => {
+                        // Même garde que le Switch desktop : confirmation si on
+                        // désactive avec des candidats actifs (un tap mobile
+                        // coupait l'envoi pour N candidats sans AlertDialog —
+                        // audit 2026-07, Frontend M1).
+                        if (!next && seq.enrollments.active > 0) {
+                          setToggleConfirm({ id: seq.id, nextActive: false, activeCount: seq.enrollments.active });
+                          return;
+                        }
+                        handleToggleActive(seq.id, seq.is_active);
+                      }}
                       onClick={(e) => e.stopPropagation()}
                       className="data-[state=checked]:bg-foreground scale-90"
                     />
