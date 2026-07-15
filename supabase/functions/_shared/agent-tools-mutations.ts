@@ -3816,6 +3816,144 @@ const createSequence: AgentTool = {
 
 let registered = false;
 
+// ─── Tool de fond — start_background_scoring (P5 agent de fond 2026-07-15) ───
+// Lance le scoring EN TÂCHE DE FOND de tous les profils sourcés NON scorés
+// d'une mission. Insère une ligne dans agent_background_tasks ; le worker
+// process-agent-tasks (cron chaque minute) traite par lots et notifie à la fin.
+// L'utilisateur peut fermer l'app entre-temps.
+
+/** Normalise une référence mission en UUID sourcing_projects (accepte 'project:{uuid}'). */
+function normalizeMissionId(raw: unknown): string {
+  return String(raw || '').trim().replace(/^project:/, '');
+}
+
+async function countUnscoredProfiles(ctx: ToolContext, projectId: string): Promise<number> {
+  const { count } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select('id', { count: 'exact', head: true })
+    .eq('project_id', projectId)
+    .is('score', null)
+    .not('linkedin_profile_data', 'is', null);
+  return count ?? 0;
+}
+
+const startBackgroundScoring: AgentTool = {
+  name: 'start_background_scoring',
+  description:
+    "Score ALL un-scored sourced profiles of a mission IN THE BACKGROUND. " +
+    "Use when the user wants to score many profiles at once without waiting ('score les 200 profils de la mission en fond', " +
+    "'lance le scoring de tous les candidats non notés', 'évalue tout le vivier de cette mission'). " +
+    "The work runs server-side in batches over several minutes; the user can close the app and gets notified when done, " +
+    "with live progress meanwhile. Resolve the mission_id first via get_my_missions. " +
+    "Costs AI credits (scoring is billed per profile). Only profiles NOT yet scored are processed. " +
+    "For scoring a handful of profiles interactively, keep using the normal search/scoring flow instead.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      mission_id: { type: 'string', description: 'sourcing_projects UUID (from get_my_missions).' },
+      scoring_instructions: {
+        type: 'string',
+        description: 'Optional extra scoring guidance for this run (e.g. "priorise l\'expérience scale-up").',
+      },
+    },
+    required: ['mission_id'],
+  },
+
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    const projectId = normalizeMissionId(params.mission_id);
+    if (!projectId) return { allowed: false, reason: 'mission_id est requis' };
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('id, organization_id')
+      .eq('id', projectId)
+      .maybeSingle();
+    if (!project) return { allowed: false, reason: 'Mission introuvable' };
+    if (project.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    }
+    // Une seule tâche de scoring active par mission à la fois.
+    const { data: active } = await ctx.adminClient
+      .from('agent_background_tasks')
+      .select('id')
+      .eq('organization_id', ctx.organizationId)
+      .eq('kind', 'score_mission_profiles')
+      .in('status', ['queued', 'running'])
+      .contains('params', { project_id: projectId })
+      .limit(1)
+      .maybeSingle();
+    if (active) {
+      return { allowed: false, reason: 'Un scoring de fond est déjà en cours sur cette mission — attends qu\'il se termine.' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const projectId = normalizeMissionId(params.mission_id);
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('name')
+      .eq('id', projectId)
+      .maybeSingle();
+    const count = await countUnscoredProfiles(ctx, projectId);
+    const missionName = project?.name || 'la mission';
+    return {
+      summary: count > 0
+        ? `Scorer ${count} profil${count > 1 ? 's' : ''} de « ${missionName} » en tâche de fond`
+        : `Aucun profil à scorer sur « ${missionName} »`,
+      details: {
+        mission: missionName,
+        profiles_to_score: count,
+        scoring_instructions: String(params.scoring_instructions || '') || null,
+      },
+      warning: count > 0
+        ? `Consomme des crédits IA (scoring facturé par profil, ~${count} à ${count * 2} crédits selon la richesse des profils). Le traitement tourne en arrière-plan ; tu seras notifié à la fin.`
+        : undefined,
+    };
+  },
+
+  async execute(params, ctx) {
+    const projectId = normalizeMissionId(params.mission_id);
+    const { data: project } = await ctx.adminClient
+      .from('sourcing_projects')
+      .select('name')
+      .eq('id', projectId)
+      .maybeSingle();
+    const count = await countUnscoredProfiles(ctx, projectId);
+    const missionName = project?.name || 'Mission';
+    if (count === 0) {
+      return { success: true, data: { message: `Tous les profils de « ${missionName} » sont déjà scorés — rien à lancer.`, profiles_to_score: 0 } };
+    }
+    const { data: inserted, error } = await ctx.adminClient
+      .from('agent_background_tasks')
+      .insert({
+        organization_id: ctx.organizationId,
+        created_by: ctx.userId,
+        conversation_id: ctx.conversationId,
+        kind: 'score_mission_profiles',
+        params: {
+          project_id: projectId,
+          ...(params.scoring_instructions ? { scoring_instructions: String(params.scoring_instructions).slice(0, 500) } : {}),
+        },
+        title: missionName,
+        progress_total: count,
+      })
+      .select('id')
+      .single();
+    if (error) return { success: false, error: `Impossible de lancer la tâche : ${error.message}` };
+    return {
+      success: true,
+      data: {
+        task_id: inserted.id,
+        profiles_to_score: count,
+        message: `C'est lancé : ${count} profil${count > 1 ? 's' : ''} de « ${missionName} » seront scorés en arrière-plan. Tu peux fermer l'app — je te préviens dès que c'est terminé, et la progression s'affiche en temps réel.`,
+      },
+    };
+  },
+};
+
 export function registerMutatingTools(): void {
   if (registered) return;
   registerTool(updateCandidateStage);
@@ -3850,5 +3988,7 @@ export function registerMutatingTools(): void {
   // P2.4/P2.5 — email sortant + création de séquences
   registerTool(sendEmail);
   registerTool(createSequence);
+  // P5 — agent de fond : scoring en masse en tâche de fond
+  registerTool(startBackgroundScoring);
   registered = true;
 }

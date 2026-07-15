@@ -3055,6 +3055,19 @@ Deno.serve(async (req) => {
     // riches, et le résultat est marqué scoringDepth='deep'.
     const isDeepScoring = scoringMode === "deep";
 
+    // Contexte de confiance pour les appels internes (worker de fond en
+    // service-role : pas de userId issu du JWT). On n'accepte organization_id /
+    // user_id du body QUE si l'appelant est authentifié en service-role — sinon
+    // c'est le userId du JWT qui fait foi (anti-usurpation). Sert à l'imputation
+    // des crédits, au contexte org (cache enrichment) et rien d'autre.
+    const isServiceRole = auth.method === "service_role";
+    const trustedOrgId = (isServiceRole && typeof (body as any).organization_id === "string")
+      ? (body as any).organization_id as string
+      : null;
+    const effectiveUserId = userId ?? ((isServiceRole && typeof (body as any).user_id === "string")
+      ? (body as any).user_id as string
+      : null);
+
     // Resolve AI model from frontend override (request-scoped)
     let aiParams: { aiAction: string; modelId: string; description: string | null; wasAutoRouted: boolean } = {
       aiAction: "scoring", modelId: "claude-sonnet-4-6", description: null, wasAutoRouted: false,
@@ -3150,7 +3163,7 @@ Deno.serve(async (req) => {
     let resolvedOrgId: string | null = null;
     try {
       const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      resolvedOrgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
+      resolvedOrgId = trustedOrgId ?? (effectiveUserId ? await resolveOrgIdFromUser(effectiveUserId, supabase as any) : null);
       resolvedUnipile = await resolveUnipileCredentials(resolvedOrgId, supabase as any);
     } catch (e) {
       console.warn('[score-profile-job] Failed to resolve org credentials, falling back to env:', e);
@@ -3183,7 +3196,7 @@ Deno.serve(async (req) => {
         // après).
         supabase: supabase as any,
         organizationId: resolvedOrgId,
-        userId,
+        userId: effectiveUserId,
         jobId: job.id,
       };
       console.log(`[enrichment] Context initialized: ${dailyCount}/${ENRICHMENT_DAILY_LIMIT} used today, cache=${resolvedOrgId ? 'enabled' : 'disabled (no org)'}`);
@@ -3683,15 +3696,15 @@ Deno.serve(async (req) => {
     if (totalTokens > 0) {
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const orgId = userId ? await resolveOrgIdFromUser(userId, supabase as any) : null;
-        if (orgId && userId) {
+        const orgId = trustedOrgId ?? (effectiveUserId ? await resolveOrgIdFromUser(effectiveUserId, supabase as any) : null);
+        if (orgId && effectiveUserId) {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
 
           // Settle de la 1ère passe (modèle = aiParams.modelId)
           if (firstPassTokensInput + firstPassTokensOutput > 0) {
             const r1 = await settleCredits(supabase as any, {
               organizationId: orgId,
-              userId,
+              userId: effectiveUserId,
               aiAction: aiParams.aiAction,
               modelId: aiParams.modelId,
               tokensInput: firstPassTokensInput,
@@ -3708,7 +3721,7 @@ Deno.serve(async (req) => {
             const escalationModelInternal = TIER_ESCALATION_MAP[CLAUDE_MODEL] ?? aiParams.modelId;
             const r2 = await settleCredits(supabase as any, {
               organizationId: orgId,
-              userId,
+              userId: effectiveUserId,
               aiAction: aiParams.aiAction,
               modelId: escalationModelInternal,
               tokensInput: escalatedTokensInput,

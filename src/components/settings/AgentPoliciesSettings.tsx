@@ -57,6 +57,7 @@ const POLICY_TOOLS: PolicyTool[] = [
   { name: 'enrich_candidate_contact', label: 'Enrichir un contact', autoEligible: true },
   { name: 'schedule_interview', label: 'Planifier un entretien', autoEligible: true },
   { name: 'bulk_update_stage', label: 'Déplacer plusieurs candidats', autoEligible: true },
+  { name: 'start_background_scoring', label: 'Scorer une mission en tâche de fond', autoEligible: true, description: 'Consomme des crédits (scoring en masse) — par défaut soumis à approbation' },
   // Approbation obligatoire (envois externes / destructif / équipe)
   { name: 'send_linkedin_message', label: 'Envoyer un message LinkedIn', autoEligible: false, description: 'Envoi externe — approbation obligatoire' },
   { name: 'send_email', label: 'Envoyer un email', autoEligible: false, description: 'Envoi externe — approbation obligatoire' },

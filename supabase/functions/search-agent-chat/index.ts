@@ -997,6 +997,9 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `etc.) — « tu as bien envoyé ? », « c'est planifié ? », « où en est ma ` +
         `demande ? » : appelle get_recent_agent_actions (filtres optionnels : ` +
         `status, tool_name, since_hours, scope). C'est la seule source de vérité. ` +
+        `Pour l'avancement d'une TÂCHE DE FOND (scoring en masse lancé via ` +
+        `start_background_scoring) — « où en est le scoring ? », « c'est fini ? », ` +
+        `« combien reste-t-il ? » : appelle get_background_tasks. ` +
         `Quand tu cites un candidat, rends son nom CLIQUABLE : lien markdown ` +
         `[Nom](profile_path) en réutilisant EXACTEMENT et TEL QUEL le champ ` +
         `« profile_path » renvoyé par l'outil (il commence déjà par « / », ex. ` +
@@ -1021,7 +1024,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `timezone Europe/Paris, durée défaut 45 min, mission optionnelle ; ne fait ` +
         `AUCUN envoi d'invitation au candidat), sourcing (launch_search : lance la ` +
         `VRAIE recherche autonome de candidats — uniquement si un plan de recherche ` +
-        `[SEARCH_PLAN] a déjà été validé sur cette conversation). ` +
+        `[SEARCH_PLAN] a déjà été validé sur cette conversation), ` +
+        `tâches de fond (start_background_scoring : score EN ARRIÈRE-PLAN tous les ` +
+        `profils sourcés NON scorés d'une mission — pour « score les 200 profils de ` +
+        `la mission en fond », « évalue tout le vivier ». Résous le mission_id via ` +
+        `get_my_missions. Le travail tourne côté serveur par lots sur plusieurs ` +
+        `minutes ; l'user peut fermer l'app et sera notifié à la fin. Ne l'utilise ` +
+        `PAS pour scorer une poignée de profils — ça reste le flux de recherche normal). ` +
         `Selon la POLITIQUE D'AUTONOMIE configurée par l'organisation, un outil mutant ` +
         `soit s'exécute DIRECTEMENT (tool_result outcome "executed_inline" — l'action est ` +
         `FAITE, tu peux le confirmer), soit ouvre un BANDEAU D'APPROBATION côté UI ` +

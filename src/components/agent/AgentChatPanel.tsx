@@ -13,6 +13,7 @@ import { SkalrThread } from '@/components/assistant-ui/thread';
 import { SearchCandidatesToolUI, EnrichCompanyToolUI, WebSearchToolUI } from '@/components/assistant-ui/tool-uis';
 import type { AgentConversation } from '@/types/agentChat';
 import { AgentToolApprovalCard } from './AgentToolApprovalCard';
+import { AgentBackgroundTasksBar } from './AgentBackgroundTasksBar';
 
 interface AgentChatPanelProps {
   onClose?: () => void;
@@ -352,6 +353,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
       {/* Tool approval banner — Sprint 1 (RAG_AGENT_AUDIT.md §8) */}
       <AgentToolApprovalCard conversationId={conversationId} />
+
+      {/* Tâches de fond en cours (scoring en masse) — progression temps réel */}
+      <AgentBackgroundTasksBar />
 
       {/* Thread — keyed by seedKey so it remounts (fresh seeded runtime)
           on history-select / restore, but NOT on model/context change. */}

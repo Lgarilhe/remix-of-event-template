@@ -2331,6 +2331,69 @@ const getInboxOverview: AgentTool = {
   },
 };
 
+// ─── get_background_tasks (P5 agent de fond 2026-07-15) ─────────────────────
+// État des tâches de fond (scoring en masse…) de l'org : en cours + récentes.
+const getBackgroundTasks: AgentTool = {
+  name: 'get_background_tasks',
+  description:
+    "Liste les tâches de FOND du copilot (scoring en masse lancé via start_background_scoring) : " +
+    "en cours et récemment terminées, avec leur progression. À utiliser quand l'utilisateur demande " +
+    "« où en est le scoring ? », « c'est fini ? », « combien de profils restent à scorer ? », " +
+    "« la tâche de fond tourne toujours ? ». Renvoie pour chaque tâche : mission, statut " +
+    "(queued=en file, running=en cours, done=terminé, error=échec, canceled=annulé), progression " +
+    "(faits/total), et l'heure de fin le cas échéant.",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      active_only: { type: 'boolean', description: 'true = seulement en file/en cours. Défaut false (inclut les récentes terminées).' },
+      limit: { type: 'integer', description: 'Nombre max (défaut 10, max 25)', minimum: 1, maximum: 25 },
+    },
+    required: [],
+  },
+  verifyAccess(_p, ctx) {
+    if (!ctx.organizationId) return Promise.resolve({ allowed: false, reason: 'No active organization' });
+    return Promise.resolve({ allowed: true });
+  },
+  dryRun: trivialDryRun('Lecture : tâches de fond du copilot'),
+  async execute(params, ctx) {
+    const limit = Math.min(25, Math.max(1, Number(params.limit ?? 10)));
+    const activeOnly = params.active_only === true;
+    let q = ctx.adminClient
+      .from('agent_background_tasks')
+      .select('id, kind, title, status, progress_total, progress_done, progress_failed, last_error, created_at, finished_at, params')
+      .eq('organization_id', ctx.organizationId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (activeOnly) q = q.in('status', ['queued', 'running']);
+    const { data, error } = await q;
+    if (error) return { success: false, error: error.message };
+    const tasks = ((data as Array<Record<string, any>> | null) ?? []).map((t) => ({
+      id: t.id,
+      mission: t.title,
+      type: t.kind === 'score_mission_profiles' ? 'scoring' : t.kind,
+      status: t.status,
+      progress: `${t.progress_done ?? 0}/${t.progress_total ?? 0}`,
+      failed: t.progress_failed || 0,
+      mission_id: t.params?.project_id ?? null,
+      finished_at: t.finished_at,
+      error: t.status === 'error' ? (t.last_error || null) : null,
+    }));
+    const active = tasks.filter((t) => t.status === 'queued' || t.status === 'running').length;
+    return {
+      success: true,
+      data: {
+        active_count: active,
+        tasks,
+        note: tasks.length === 0
+          ? 'Aucune tâche de fond récente.'
+          : 'Les tâches "running" avancent par lots toutes les minutes ; la progression est en temps réel côté interface.',
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -2354,5 +2417,6 @@ export function registerReadTools(): void {
   registerTool(getOrgAnalytics);
   registerTool(getTeamOverview);
   registerTool(getRecentAgentActions);
+  registerTool(getBackgroundTasks);
   registered = true;
 }
