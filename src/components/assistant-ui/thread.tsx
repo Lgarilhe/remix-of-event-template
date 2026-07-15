@@ -768,7 +768,9 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
       </ThreadPrimitive.Viewport>
 
       {/* Composer — prompt-kit-style pill with Notion/Claude toolbar */}
-      <div className="shrink-0 px-3 pb-3 pt-1">
+      {/* Marge basse = max(0.75rem, safe-area) : évite que la barre de saisie
+          soit rognée par la barre de navigation système sur mobile. */}
+      <div className="shrink-0 px-3 pb-3 pt-1" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="mx-auto w-full max-w-2xl">
           {/* Formats alignés sur ingest-user-file (PDF, images, texte). Word : pas encore supporté. */}
           <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
