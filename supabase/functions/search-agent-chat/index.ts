@@ -14,6 +14,11 @@ import {
   bumpInsightUsage,
   extractInsightsFromConversation,
 } from "../_shared/user-memory.ts";
+import {
+  maybeCompactConversation,
+  formatSummaryForPrompt,
+  HISTORY_WINDOW,
+} from "../_shared/conversation-compaction.ts";
 
 // Register tools at module load (idempotent)
 registerMutatingTools();
@@ -406,6 +411,48 @@ async function maybeGenerateTitle(
   }
 }
 
+/**
+ * Hooks mémoire post-réponse, communs aux deux chemins (tools + streaming) :
+ *   1. Extraction d'insights durables (tous les 6 messages — Sprint 3).
+ *   2. Compaction : résumé glissant du contexte sorti de la fenêtre (P4.2).
+ * À lancer fire-and-forget via EdgeRuntime.waitUntil — ne bloque jamais le [DONE].
+ */
+// deno-lint-ignore no-explicit-any
+async function runMemoryHooks(supabase: any, conversationId: string, userId: string, orgId: string): Promise<void> {
+  try {
+    const { count } = await supabase
+      .from("agent_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("conversation_id", conversationId);
+    const total = count ?? 0;
+
+    // Tous les 6 messages, on tente une extraction (idempotent côté DB).
+    if (orgId && total >= 6 && total % 6 === 0) {
+      const { data: msgs } = await supabase
+        .from("agent_messages")
+        .select("role, content")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      const formatted = (msgs ?? []).reverse().map((m: { role: string; content: unknown }) => ({
+        role: m.role,
+        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+      }));
+      await extractInsightsFromConversation(supabase, {
+        userId,
+        organizationId: orgId,
+        conversationId,
+        messages: formatted,
+      }).catch((e) => console.warn("[search-agent-chat] insight extraction failed:", e));
+    }
+
+    // Compaction (no-op tant que la conversation tient dans la fenêtre de 24).
+    await maybeCompactConversation(supabase, conversationId);
+  } catch (e) {
+    console.warn("[search-agent-chat] memory hooks failed:", e);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -494,7 +541,7 @@ Deno.serve(async (req) => {
       // Verify user belongs to the conversation's organization
       const { data: existing } = await supabase
         .from("agent_conversations")
-        .select("organization_id, created_by")
+        .select("organization_id, created_by, summary")
         .eq("id", conversation_id)
         .single();
       conv = existing;
@@ -558,7 +605,7 @@ Deno.serve(async (req) => {
       .select("role, content, metadata")
       .eq("conversation_id", conversation_id)
       .order("created_at", { ascending: false })
-      .limit(24);
+      .limit(HISTORY_WINDOW);
     const history = (historyDesc || []).slice().reverse();
 
     // Build messages for AI
@@ -860,6 +907,10 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       // Fire-and-forget bump (ne bloque pas la conv)
       bumpInsightUsage(supabase, insights.map((i) => i.id)).catch(() => {});
     }
+    // Compaction (P4.2) : si la conversation a débordé de la fenêtre de 24
+    // messages, un résumé glissant du contexte ancien existe sur la
+    // conversation → on l'injecte pour que le modèle n'oublie pas le début.
+    activeSystemPrompt = activeSystemPrompt + formatSummaryForPrompt((conv as { summary?: string | null })?.summary);
     let classifiedDATA = clfResult.data;
     let classifiedACTION = clfResult.action;
     // Fallback déterministe : si Haiku rate et classe en CHAT, on rattrape les
@@ -1092,6 +1143,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       let fullResponse = "";
       let _tokensIn = 0;
       let _tokensOut = 0;
+      let _webSearchCount = 0;
 
       const transformedStream = new ReadableStream({
         async start(controller) {
@@ -1248,6 +1300,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               const roundBlocks: any[] = [];
               let stopReason: string | null = null;
               let roundTokensOut = 0;
+              let roundWebSearches = 0;
               {
                 const loopReader = loopResponse.body!.getReader();
                 const loopDecoder = new TextDecoder();
@@ -1320,6 +1373,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                       // output_tokens est CUMULATIF au sein d'un message → on
                       // garde la dernière valeur, ajoutée une fois le round fini.
                       if (event.usage?.output_tokens) roundTokensOut = event.usage.output_tokens;
+                      // Recherches web facturées par l'API (P4.4) — cumulatif
+                      // au sein du message, même traitement.
+                      if (event.usage?.server_tool_use?.web_search_requests) {
+                        roundWebSearches = event.usage.server_tool_use.web_search_requests;
+                      }
                     } else if (event.type === "error") {
                       // Erreur DANS le flux (ex. overloaded_error, équivalent
                       // mid-stream d'un 529) : HTTP 200 donc !ok ne la voit pas.
@@ -1337,6 +1395,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               // timer orphelin abort un stream déjà mort — no-op inoffensif.)
               clearTimeout(roundTimer);
               _tokensOut += roundTokensOut;
+              _webSearchCount += roundWebSearches;
               // Filtre les text blocks vides (possibles en streaming autour des
               // tool_use) : l'API rejette un message assistant avec text:"" (400).
               // Les blocs server-side (server_tool_use + *_tool_result) sont
@@ -1488,34 +1547,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   .eq("id", conversation_id);
               }
 
-              // Sprint 3 — Mémoire cross-session : extraction async fire-and-forget
-              // après chaque réponse (toutes les 4-5 messages on aura assez de signal).
-              // On compte les messages totaux pour ne pas extraire trop souvent.
-              try {
-                const { count } = await supabase
-                  .from('agent_messages')
-                  .select('id', { count: 'exact', head: true })
-                  .eq('conversation_id', conversation_id);
-                // Tous les 6 messages, on tente une extraction (idempotent côté DB).
-                if ((count ?? 0) >= 6 && (count ?? 0) % 6 === 0) {
-                  const { data: msgs } = await supabase
-                    .from('agent_messages')
-                    .select('role, content')
-                    .eq('conversation_id', conversation_id)
-                    .order('created_at', { ascending: false })
-                    .limit(20);
-                  const formatted = (msgs ?? []).reverse().map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }));
-                  // Fire-and-forget — pas d'await pour ne pas ralentir la response
-                  extractInsightsFromConversation(supabase, {
-                    userId: user.id,
-                    organizationId: orgId,
-                    conversationId: conversation_id,
-                    messages: formatted,
-                  }).catch((e) => console.warn('[search-agent-chat] insight extraction failed:', e));
-                }
-              } catch (e) {
-                console.warn('[search-agent-chat] insight extraction count check failed:', e);
-              }
+              // Hooks mémoire (insights Sprint 3 + compaction P4.2) —
+              // fire-and-forget, survit à la fermeture du stream via waitUntil.
+              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId);
+              try { (globalThis as any).EdgeRuntime?.waitUntil?.(memoryPromise); } catch { /* no-op */ }
+              memoryPromise.catch(() => {});
             }
 
             // Settle AI credits
@@ -1532,6 +1568,19 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                     tokensInput: _tokensIn, tokensOutput: _tokensOut,
                     description: _aiParams.description,
                   }).catch((e) => console.error("[search-agent-chat] settle error:", e));
+                  // Recherches web (P4.4) : facturées par l'API en plus des
+                  // tokens (~1 cent/recherche) → transaction séparée à
+                  // 1 crédit/recherche, visible dans l'historique de crédits.
+                  if (_webSearchCount > 0) {
+                    await settleCredits(adminClient as any, {
+                      organizationId: resolvedOrgId, userId: user.id,
+                      aiAction: "web_search", modelId: _aiParams.modelId,
+                      tokensInput: 0, tokensOutput: 0,
+                      flatCredits: _webSearchCount,
+                      costUsd: _webSearchCount * 0.01,
+                      description: `${_webSearchCount} recherche${_webSearchCount > 1 ? "s" : ""} web`,
+                    }).catch((e) => console.error("[search-agent-chat] web_search settle error:", e));
+                  }
                 }
               } catch (e) { console.warn("[search-agent-chat] settle skipped:", e); }
             }
@@ -1648,6 +1697,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   .update({ search_config: enrichedConfig, status: "plan_proposed" })
                   .eq("id", conversation_id);
               }
+
+              // Hooks mémoire (insights + compaction) — P4.3 : le chemin
+              // streaming simple n'extrayait JAMAIS d'insights, seule la
+              // boucle d'outils le faisait. Fire-and-forget via waitUntil.
+              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId);
+              try { (globalThis as any).EdgeRuntime?.waitUntil?.(memoryPromise); } catch { /* no-op */ }
+              memoryPromise.catch(() => {});
             }
 
             // Settle AI credits (fire-and-forget)

@@ -9,8 +9,9 @@
 //      chunk_type='user_upload', TTL 90j) → retrouvable plus tard via
 //      search_knowledge (recherche sémantique).
 //
-// Formats : PDF (extraction via IA, document block), TXT/MD/CSV (direct).
-// DOCX/images : refusés proprement (v1).
+// Formats : PDF (extraction via IA, document block), images (vision),
+// DOCX (unzip → word/document.xml, runs <w:t>), TXT/MD/CSV (direct).
+// .doc legacy (binaire) : refusé proprement.
 //
 // Body : { organization_id, filename, mime_type, content_base64, project_id? }
 // ============================================================================
@@ -109,6 +110,51 @@ async function extractViaAI(
   return { text, usage: data.usage ?? null };
 }
 
+/**
+ * Extraction texte d'un .docx : c'est un zip dont word/document.xml contient
+ * le contenu. On n'extrait QUE les runs <w:t> (le texte visible) — surtout ne
+ * pas strip bêtement toutes les balises, ça ferait fuiter les codes de champ
+ * (<w:instrText> HYPERLINK…) et les suppressions en mode révision (<w:delText>).
+ */
+function docxXmlToText(xml: string): string {
+  // Marque tabs / sauts de ligne / fins de paragraphe comme des runs texte
+  // AVANT extraction, pour préserver la structure du document.
+  const withBreaks = xml
+    .replace(/<w:tab[^>]*\/>/g, "<w:t>\t</w:t>")
+    .replace(/<w:(?:br|cr)[^>]*\/>/g, "<w:t>\n</w:t>")
+    .replace(/<\/w:p>/g, "<w:t>\n\n</w:t>");
+  const texts: string[] = [];
+  const re = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(withBreaks)) !== null) texts.push(m[1]);
+  return texts
+    .join("")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&amp;/g, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function extractDocxText(contentBase64: string): Promise<string> {
+  const { unzipSync, strFromU8 } = await import("https://esm.sh/fflate@0.8.2?target=deno");
+  const bin = Uint8Array.from(atob(contentBase64), (c) => c.charCodeAt(0));
+  // Garde zip-bomb : originalSize = taille décompressée annoncée. Un zip de
+  // 10 Mo peut se décompresser en Go (ratio deflate ~1000:1) → OOM de la
+  // function. 30 Mo de XML ≈ très au-delà de tout document Word réel.
+  const MAX_XML_BYTES = 30 * 1024 * 1024;
+  const files = unzipSync(bin, {
+    filter: (f) => f.name === "word/document.xml" && f.originalSize <= MAX_XML_BYTES,
+  });
+  const entry = files["word/document.xml"];
+  if (!entry) throw new Error("word/document.xml introuvable — fichier .docx corrompu ?");
+  return docxXmlToText(strFromU8(entry));
+}
+
 /** Embeddings OpenAI (même modèle que le reste du lake — 1536 dims). */
 async function embedChunks(texts: string[]): Promise<number[][]> {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
@@ -197,10 +243,20 @@ Deno.serve(async (req) => {
       } catch {
         return json({ error: "Décodage du fichier texte impossible" }, 400);
       }
-    } else if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) {
-      return json({ error: "Format Word pas encore supporté — exporte le document en PDF et rejoins-le." }, 415);
+    } else if (
+      mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      lowerName.endsWith(".docx")
+    ) {
+      try {
+        extracted = await extractDocxText(content_base64);
+      } catch (e) {
+        console.error("[ingest-user-file] docx extraction failed:", e);
+        return json({ error: "Lecture du fichier Word impossible (fichier corrompu ?). Essaie de l'exporter en PDF." }, 422);
+      }
+    } else if (lowerName.endsWith(".doc")) {
+      return json({ error: "Ancien format Word (.doc) non supporté — réenregistre le document en .docx ou exporte-le en PDF." }, 415);
     } else {
-      return json({ error: `Format non supporté (${mime || filename}). Formats acceptés : PDF, images (PNG/JPG/WebP), TXT, MD, CSV.` }, 415);
+      return json({ error: `Format non supporté (${mime || filename}). Formats acceptés : PDF, Word (.docx), images (PNG/JPG/WebP), TXT, MD, CSV.` }, 415);
     }
 
     extracted = extracted.slice(0, MAX_EXTRACTED_CHARS).trim();

@@ -90,6 +90,14 @@ export interface SettleParams {
   tokensInput: number;
   tokensOutput: number;
   description: string | null;
+  /**
+   * Coût forfaitaire (en crédits) qui REMPLACE le calcul par tokens.
+   * Pour les actions sans tokens LLM propres : recherches web (1 crédit/
+   * recherche), enrichments à l'unité, etc.
+   */
+  flatCredits?: number;
+  /** Coût USD réel à logger quand le calcul par tokens ne s'applique pas. */
+  costUsd?: number;
 }
 
 /**
@@ -106,9 +114,12 @@ export async function settleCredits(
   try {
     const { organizationId, userId, aiAction, modelId, tokensInput, tokensOutput, description } = params;
 
-    // Calculate credits from actual tokens
-    const { credits } = calculateTokenCredits(tokensInput, tokensOutput, modelId, aiAction);
-    const costUsd = calculateUSDCost(tokensInput, tokensOutput, modelId);
+    // Calculate credits from actual tokens — sauf coût forfaitaire explicite
+    // (actions sans tokens propres : web_search, enrichments à l'unité).
+    const credits = params.flatCredits != null && params.flatCredits > 0
+      ? Math.ceil(params.flatCredits)
+      : calculateTokenCredits(tokensInput, tokensOutput, modelId, aiAction).credits;
+    const costUsd = params.costUsd ?? calculateUSDCost(tokensInput, tokensOutput, modelId);
 
     // --- Atomic settle via optimistic concurrency control ---
     // Read-then-conditional-write: the UPDATE's WHERE clause includes the
