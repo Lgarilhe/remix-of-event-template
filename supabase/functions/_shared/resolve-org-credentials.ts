@@ -40,13 +40,44 @@ export interface AnthropicCredentials {
 }
 
 // ─── Internal caches ─────────────────────────────────────────────────────────
+//
+// Cache par org AVEC TTL. Deux règles issues de l'audit 2026-07 :
+//  1. On ne cache JAMAIS sur erreur de requête (blip DB) — sinon le `null`
+//     cache le fallback ENV cross-org pour toute la vie de l'isolate
+//     (plusieurs heures) : les envois d'une org partiraient avec les
+//     credentials d'une autre. On ne cache un négatif que si la requête a
+//     RÉUSSI et que l'org n'a réellement pas de credentials configurés.
+//  2. TTL court sur les négatifs (60s) pour que des credentials fraîchement
+//     configurés soient pris en compte sans redéploiement ; TTL 5 min sur
+//     les positifs (rotation de clés).
 
-const unipileCache = new Map<string, UnipileCredentials | null>();
-const notionCache = new Map<string, NotionCredentials | null>();
-const apolloCache = new Map<string, ApolloCredentials | null>();
-const pdlCache = new Map<string, PDLCredentials | null>();
-const coresignalCache = new Map<string, CoresignalCredentials | null>();
-const anthropicCache = new Map<string, AnthropicCredentials | null>();
+const POSITIVE_TTL_MS = 5 * 60 * 1000;
+const NEGATIVE_TTL_MS = 60 * 1000;
+
+interface CacheEntry<T> { value: T | null; expiresAt: number }
+
+const unipileCache = new Map<string, CacheEntry<UnipileCredentials>>();
+const notionCache = new Map<string, CacheEntry<NotionCredentials>>();
+const apolloCache = new Map<string, CacheEntry<ApolloCredentials>>();
+const pdlCache = new Map<string, CacheEntry<PDLCredentials>>();
+const coresignalCache = new Map<string, CacheEntry<CoresignalCredentials>>();
+const anthropicCache = new Map<string, CacheEntry<AnthropicCredentials>>();
+
+function cacheGet<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null | undefined {
+  const entry = cache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiresAt) { cache.delete(key); return undefined; }
+  return entry.value;
+}
+
+function cacheSet<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T | null) {
+  cache.set(key, { value, expiresAt: Date.now() + (value === null ? NEGATIVE_TTL_MS : POSITIVE_TTL_MS) });
+}
+
+// PGRST116 = zéro ligne pour .single() → « pas de config » légitime, pas une erreur transitoire.
+function isNoRowError(error: { code?: string } | null): boolean {
+  return !!error && error.code === 'PGRST116';
+}
 
 export function clearCredentialCaches() {
   unipileCache.clear();
@@ -83,12 +114,12 @@ export async function resolveUnipileCredentials(
   supabaseClient?: SupabaseClient
 ): Promise<UnipileCredentials | null> {
   if (organizationId) {
-    const cached = unipileCache.get(organizationId);
+    const cached = cacheGet(unipileCache, organizationId);
     if (cached !== undefined) return cached;
 
     try {
       const sb = supabaseClient ?? getServiceClient();
-      const { data } = await sb
+      const { data, error } = await sb
         .from("organization_integrations")
         .select("unipile_api_key, unipile_dsn, unipile_connected")
         .eq("organization_id", organizationId)
@@ -100,14 +131,19 @@ export async function resolveUnipileCredentials(
           dsn: normalizeDsn(data.unipile_dsn),
         };
         console.log(`[resolve-creds] Using org-specific Unipile credentials for org ${organizationId}`);
-        unipileCache.set(organizationId, creds);
+        cacheSet(unipileCache, organizationId, creds);
         return creds;
       }
+      if (!error || isNoRowError(error)) {
+        // Requête OK, pas de creds configurés → négatif légitime (TTL court).
+        cacheSet(unipileCache, organizationId, null);
+      } else {
+        // Erreur transitoire (blip DB) → ne PAS cacher, fallback ENV ponctuel.
+        console.warn(`[resolve-creds] Transient error resolving Unipile creds (not cached):`, error);
+      }
     } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org Unipile credentials:`, e);
+      console.warn(`[resolve-creds] Failed to resolve org Unipile credentials (not cached):`, e);
     }
-
-    unipileCache.set(organizationId, null);
   }
 
   const envKey = Deno.env.get("UNIPILE_API_KEY");
@@ -126,12 +162,12 @@ export async function resolveNotionCredentials(
   supabaseClient?: SupabaseClient
 ): Promise<NotionCredentials | null> {
   if (organizationId) {
-    const cached = notionCache.get(organizationId);
+    const cached = cacheGet(notionCache, organizationId);
     if (cached !== undefined) return cached;
 
     try {
       const sb = supabaseClient ?? getServiceClient();
-      const { data } = await sb
+      const { data, error } = await sb
         .from("organization_integrations")
         .select("notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_postes_db_id, notion_connected")
         .eq("organization_id", organizationId)
@@ -145,14 +181,17 @@ export async function resolveNotionCredentials(
           postesDbId: data.notion_postes_db_id || null,
         };
         console.log(`[resolve-creds] Using org-specific Notion credentials for org ${organizationId}`);
-        notionCache.set(organizationId, creds);
+        cacheSet(notionCache, organizationId, creds);
         return creds;
       }
+      if (!error || isNoRowError(error)) {
+        cacheSet(notionCache, organizationId, null);
+      } else {
+        console.warn(`[resolve-creds] Transient error resolving Notion creds (not cached):`, error);
+      }
     } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org Notion credentials:`, e);
+      console.warn(`[resolve-creds] Failed to resolve org Notion credentials (not cached):`, e);
     }
-
-    notionCache.set(organizationId, null);
   }
 
   const envKey = Deno.env.get("NOTION_API_KEY");
@@ -175,12 +214,12 @@ export async function resolveApolloCredentials(
   supabaseClient?: SupabaseClient
 ): Promise<ApolloCredentials | null> {
   if (organizationId) {
-    const cached = apolloCache.get(organizationId);
+    const cached = cacheGet(apolloCache, organizationId);
     if (cached !== undefined) return cached;
 
     try {
       const sb = supabaseClient ?? getServiceClient();
-      const { data } = await sb
+      const { data, error } = await sb
         .from("organization_integrations")
         .select("apollo_api_key")
         .eq("organization_id", organizationId)
@@ -189,13 +228,17 @@ export async function resolveApolloCredentials(
       if (data?.apollo_api_key) {
         const creds: ApolloCredentials = { apiKey: data.apollo_api_key };
         console.log(`[resolve-creds] Using org-specific Apollo credentials for org ${organizationId}`);
-        apolloCache.set(organizationId, creds);
+        cacheSet(apolloCache, organizationId, creds);
         return creds;
       }
+      if (!error || isNoRowError(error)) {
+        cacheSet(apolloCache, organizationId, null);
+      } else {
+        console.warn(`[resolve-creds] Transient error resolving Apollo creds (not cached):`, error);
+      }
     } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org Apollo credentials:`, e);
+      console.warn(`[resolve-creds] Failed to resolve org Apollo credentials (not cached):`, e);
     }
-    apolloCache.set(organizationId, null);
   }
 
   const envKey = Deno.env.get("APOLLO_API_KEY");
@@ -210,12 +253,12 @@ export async function resolvePDLCredentials(
   supabaseClient?: SupabaseClient
 ): Promise<PDLCredentials | null> {
   if (organizationId) {
-    const cached = pdlCache.get(organizationId);
+    const cached = cacheGet(pdlCache, organizationId);
     if (cached !== undefined) return cached;
 
     try {
       const sb = supabaseClient ?? getServiceClient();
-      const { data } = await sb
+      const { data, error } = await sb
         .from("organization_integrations")
         .select("pdl_api_key")
         .eq("organization_id", organizationId)
@@ -224,13 +267,17 @@ export async function resolvePDLCredentials(
       if (data?.pdl_api_key) {
         const creds: PDLCredentials = { apiKey: data.pdl_api_key };
         console.log(`[resolve-creds] Using org-specific PDL credentials for org ${organizationId}`);
-        pdlCache.set(organizationId, creds);
+        cacheSet(pdlCache, organizationId, creds);
         return creds;
       }
+      if (!error || isNoRowError(error)) {
+        cacheSet(pdlCache, organizationId, null);
+      } else {
+        console.warn(`[resolve-creds] Transient error resolving PDL creds (not cached):`, error);
+      }
     } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org PDL credentials:`, e);
+      console.warn(`[resolve-creds] Failed to resolve org PDL credentials (not cached):`, e);
     }
-    pdlCache.set(organizationId, null);
   }
 
   const envKey = Deno.env.get("PDL_API_KEY");
@@ -245,12 +292,12 @@ export async function resolveCoresignalCredentials(
   supabaseClient?: SupabaseClient
 ): Promise<CoresignalCredentials | null> {
   if (organizationId) {
-    const cached = coresignalCache.get(organizationId);
+    const cached = cacheGet(coresignalCache, organizationId);
     if (cached !== undefined) return cached;
 
     try {
       const sb = supabaseClient ?? getServiceClient();
-      const { data } = await sb
+      const { data, error } = await sb
         .from("organization_integrations")
         .select("coresignal_api_key")
         .eq("organization_id", organizationId)
@@ -259,13 +306,17 @@ export async function resolveCoresignalCredentials(
       if (data?.coresignal_api_key) {
         const creds: CoresignalCredentials = { apiKey: data.coresignal_api_key };
         console.log(`[resolve-creds] Using org-specific Coresignal credentials for org ${organizationId}`);
-        coresignalCache.set(organizationId, creds);
+        cacheSet(coresignalCache, organizationId, creds);
         return creds;
       }
+      if (!error || isNoRowError(error)) {
+        cacheSet(coresignalCache, organizationId, null);
+      } else {
+        console.warn(`[resolve-creds] Transient error resolving Coresignal creds (not cached):`, error);
+      }
     } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org Coresignal credentials:`, e);
+      console.warn(`[resolve-creds] Failed to resolve org Coresignal credentials (not cached):`, e);
     }
-    coresignalCache.set(organizationId, null);
   }
 
   const envKey = Deno.env.get("CORESIGNAL_API_KEY");
@@ -280,12 +331,12 @@ export async function resolveAnthropicCredentials(
   supabaseClient?: SupabaseClient
 ): Promise<AnthropicCredentials | null> {
   if (organizationId) {
-    const cached = anthropicCache.get(organizationId);
+    const cached = cacheGet(anthropicCache, organizationId);
     if (cached !== undefined) return cached;
 
     try {
       const sb = supabaseClient ?? getServiceClient();
-      const { data } = await sb
+      const { data, error } = await sb
         .from("organization_integrations")
         .select("anthropic_api_key")
         .eq("organization_id", organizationId)
@@ -294,13 +345,17 @@ export async function resolveAnthropicCredentials(
       if (data?.anthropic_api_key) {
         const creds: AnthropicCredentials = { apiKey: data.anthropic_api_key };
         console.log(`[resolve-creds] Using org-specific Anthropic credentials for org ${organizationId}`);
-        anthropicCache.set(organizationId, creds);
+        cacheSet(anthropicCache, organizationId, creds);
         return creds;
       }
+      if (!error || isNoRowError(error)) {
+        cacheSet(anthropicCache, organizationId, null);
+      } else {
+        console.warn(`[resolve-creds] Transient error resolving Anthropic creds (not cached):`, error);
+      }
     } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org Anthropic credentials:`, e);
+      console.warn(`[resolve-creds] Failed to resolve org Anthropic credentials (not cached):`, e);
     }
-    anthropicCache.set(organizationId, null);
   }
 
   const envKey = Deno.env.get("ANTHROPIC_API_KEY");

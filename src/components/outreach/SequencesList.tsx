@@ -245,10 +245,18 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         wait_for_event: step.waitForEvent ?? null,
         variant_group: step.variantGroup ?? null,
         variant_weight: step.variantWeight ?? 100,
+        // '__end__' = sentinelle « Fin de séquence » du StepEditor : persistée
+        // via ends_sequence (avant, elle devenait next_step_id=null = « auto »
+        // et le moteur enchaînait quand même sur l'étape suivante).
+        ends_sequence: step.nextStepId === '__end__',
+        cc_emails: step.ccEmails ?? null,
+        bcc_emails: step.bccEmails ?? null,
+        include_unsubscribe: step.includeUnsubscribe ?? null,
+        signature_id: step.signatureId ?? null,
         if_true_goto_step: step.ifTrueGotoStep ?? null,
         if_false_goto_step: step.ifFalseGotoStep ?? null,
         timeout_branch_step_id: step.timeoutBranchStepId ?? null,
-        next_step_id: step.nextStepId ?? null,
+        next_step_id: step.nextStepId === '__end__' ? null : (step.nextStepId ?? null),
       }));
 
       let targetSequenceId: string;
@@ -419,15 +427,41 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         .single() as any);
       if (seqErr || !newSeq) throw seqErr || new Error('Création échouée');
 
-      // 3. Re-crée les steps avec la nouvelle sequence_id
+      // 3. Re-crée les steps via la RPC transactionnelle. On passe les ANCIENS
+      // ids comme ids « client » : n'appartenant pas à la nouvelle séquence,
+      // la RPC insère des copies et REMAPPE les refs de branchement
+      // (next_step_id, if_true/false_goto, timeout_branch) vers les nouveaux
+      // ids. L'ancien insert brut copiait ces refs telles quelles → la copie
+      // exécutait les steps de la séquence SOURCE (audit 2026-07, Builder H1).
       if (steps && steps.length > 0) {
-        const stepsCopy = (steps as any[]).map((s: any) => {
-          const { id: _id, sequence_id: _sid, created_at: _ca, updated_at: _ua, ...rest } = s;
-          return { ...rest, sequence_id: newSeq.id };
+        const payload = (steps as any[]).map((s: any) => ({
+          id: s.id,
+          step_order: s.step_order,
+          action_type: s.action_type,
+          condition_type: s.condition_type,
+          condition_value: s.condition_value ?? null,
+          delay_days: s.delay_days ?? 0,
+          delay_hours: s.delay_hours ?? 0,
+          delay_minutes: s.delay_minutes ?? 0,
+          preferred_hour_start: s.preferred_hour_start ?? null,
+          preferred_hour_end: s.preferred_hour_end ?? null,
+          subject_template: s.subject_template ?? null,
+          message_template: s.message_template ?? null,
+          use_ai_personalization: s.use_ai_personalization ?? false,
+          ai_tone: s.ai_tone ?? null,
+          timeout_days: s.timeout_days ?? null,
+          wait_for_event: s.wait_for_event ?? null,
+          variant_group: s.variant_group ?? null,
+          variant_weight: s.variant_weight ?? 100,
+          if_true_goto_step: s.if_true_goto_step ?? null,
+          if_false_goto_step: s.if_false_goto_step ?? null,
+          timeout_branch_step_id: s.timeout_branch_step_id ?? null,
+          next_step_id: s.next_step_id ?? null,
+        }));
+        const { error: stepsCreateErr } = await supabase.rpc('save_sequence_steps' as any, {
+          p_sequence_id: newSeq.id,
+          p_steps: payload,
         });
-        const { error: stepsCreateErr } = await (supabase
-          .from('sequence_steps')
-          .insert(stepsCopy as any) as any);
         if (stepsCreateErr) throw stepsCreateErr;
       }
 
@@ -455,6 +489,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         order: s.step_order,
         actionType: s.action_type,
         conditionType: s.condition_type || 'always',
+        conditionValue: s.condition_value ?? undefined,
         delayDays: s.delay_days,
         delayHours: s.delay_hours,
         delayMinutes: s.delay_minutes || 0,
@@ -466,10 +501,19 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         aiTone: s.ai_tone,
         timeoutDays: s.timeout_days,
         waitForEvent: s.wait_for_event,
+        // Recharger AUSSI les configs A/B et options email — avant, une simple
+        // ré-édition + save détruisait variant_group/cc/bcc/signature
+        // silencieusement (audit 2026-07, Builder H3).
+        variantGroup: s.variant_group ?? undefined,
+        variantWeight: s.variant_weight ?? undefined,
+        ccEmails: s.cc_emails ?? undefined,
+        bccEmails: s.bcc_emails ?? undefined,
+        includeUnsubscribe: s.include_unsubscribe ?? undefined,
+        signatureId: s.signature_id ?? undefined,
         timeoutBranchStepId: s.timeout_branch_step_id,
         ifTrueGotoStep: s.if_true_goto_step,
         ifFalseGotoStep: s.if_false_goto_step,
-        nextStepId: s.next_step_id,
+        nextStepId: s.ends_sequence ? '__end__' : s.next_step_id,
       })),
     };
     setEditingSequence(sequence);

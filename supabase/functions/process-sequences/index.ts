@@ -806,6 +806,29 @@ async function handleProcess(supabase: any, force = false) {
           await new Promise(r => setTimeout(r, spacingMs));
         }
 
+        // ⭐ LAST-CALL CHECK avant l'envoi d'une action VISIBLE ⭐
+        // Entre le claim 'sending' et ici s'écoulent 10-45s (génération IA,
+        // interpolation, jitter). Si le candidat a répondu pendant cette
+        // fenêtre, le webhook a passé l'enrollment en 'replied' mais n'annule
+        // que les exécutions 'scheduled' — pas la nôtre (déjà 'sending').
+        // Sans ce re-check, la relance part APRÈS la réponse du candidat.
+        // Le re-check post-envoi existant (plus bas) ne fait que re-labelliser
+        // un message déjà parti — trop tard. Uniquement pour les actions
+        // visibles : inutile de payer une requête pour un profile_visit.
+        if (!INVISIBLE_ACTIONS.has(effectiveActionType)) {
+          const { data: lastCall } = await supabase
+            .from('sequence_enrollments').select('status').eq('id', enrollment.id).single();
+          if (lastCall && lastCall.status !== 'active') {
+            console.warn(`[process] ⛔ LAST-CALL: enrollment ${enrollment.id} became '${lastCall.status}' before send — cancelling step ${exec.id}`);
+            await supabase.from('sequence_step_executions').update({
+              status: 'cancelled', skip_reason: `Enrollment became ${lastCall.status} before send (last-call check)`,
+              executed_at: new Date().toISOString(),
+            }).eq('id', exec.id);
+            results.skipped++;
+            continue;
+          }
+        }
+
         const executeResult = await executeStepAction(effectiveActionType, enrollment, step,
           { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase, uCreds.apiKey, uCreds.dsn);
 
@@ -2021,9 +2044,13 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     const { data } = await supabase.from('sequence_steps').select('*').eq('id', forceBranchStepId).maybeSingle();
     nextStep = data;
   } else {
-    // Fetch current step with branching columns — use ID if available (step_order is no longer unique)
+    // Fetch current step with branching columns — use ID if available (step_order is no longer unique).
+    // select('*') volontaire : nommer ends_sequence ici ferait échouer la
+    // requête si la fonction se déploie avant la migration qui ajoute la
+    // colonne (workflows migrations/functions parallèles) — avec '*', la
+    // colonne absente donne juste undefined → falsy → comportement inchangé.
     let currentStepQuery = supabase.from('sequence_steps')
-      .select('id, next_step_id, parent_step_id, branch, step_order, sequence_id');
+      .select('*');
     if (currentStepId) {
       currentStepQuery = currentStepQuery.eq('id', currentStepId);
     } else {
@@ -2034,6 +2061,17 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
         .is('branch', null);
     }
     const { data: currentStep } = await currentStepQuery.maybeSingle();
+
+    // « Fin de séquence » explicite choisie dans le builder. Avant cette
+    // colonne, le StepEditor stockait la sentinelle '__end__' qui devenait
+    // next_step_id=null à la sauvegarde → le moteur retombait sur
+    // step_order+1 et ENCHAÎNAIT quand même (l'inverse de l'intention de
+    // l'user — audit 2026-07, Builder H2).
+    if (currentStep?.ends_sequence) {
+      console.log(`[scheduleNextStep] Step ${currentStep.id} marks end of sequence — completing enrollment ${enrollment.id}`);
+      await supabase.from('sequence_enrollments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', enrollment.id);
+      return;
+    }
 
     // === NEW: parent_step_id/branch tree resolution ===
     // If a conditionResult is provided, route to the matching child branch
@@ -2258,7 +2296,7 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     return;
   }
 
-  await supabase.from('sequence_step_executions').insert({
+  const { error: insertErr } = await supabase.from('sequence_step_executions').insert({
     enrollment_id: enrollment.id,
     step_id: nextStep.id,
     step_order: nextStep.step_order,
@@ -2267,6 +2305,17 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     variant_assigned: variantAssigned,
     organization_id: enrollment.organization_id ?? null,
   });
+  if (insertErr) {
+    // 23505 = violation de l'index unique partiel (une exécution pendante
+    // existe déjà pour ce (enrollment, step)) — c'est le filet anti
+    // double-planification qui fait son travail sur une course que le
+    // check-then-insert ci-dessus n'a pas vue. Bénin : on ne replanifie pas.
+    if ((insertErr as { code?: string }).code === '23505') {
+      console.log(`[scheduleNextStep] Duplicate pending execution blocked by unique index (enrollment=${enrollment.id} step=${nextStep.id})`);
+    } else {
+      console.error(`[scheduleNextStep] Failed to insert execution for enrollment ${enrollment.id}:`, insertErr);
+    }
+  }
 }
 
 // deno-lint-ignore no-explicit-any
@@ -2615,11 +2664,14 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
 
 // deno-lint-ignore no-explicit-any
 async function logAnalytics(supabase: any, sequenceId: string, field: string) {
-  const today = new Date().toISOString().split('T')[0];
+  // Incrément atomique via RPC (l'ancien read-then-write perdait des
+  // incréments en concurrence webhook/cron — audit 2026-07).
   try {
-    const { data: existing } = await supabase.from('sequence_analytics').select('*').eq('sequence_id', sequenceId).eq('date', today).maybeSingle();
-    if (existing) await supabase.from('sequence_analytics').update({ [field]: (existing[field] || 0) + 1 }).eq('id', existing.id);
-    else await supabase.from('sequence_analytics').insert({ sequence_id: sequenceId, date: today, [field]: 1 });
+    const { error } = await supabase.rpc('increment_sequence_analytics', {
+      p_sequence_id: sequenceId,
+      p_field: field,
+    });
+    if (error) console.error('Analytics error:', error);
   } catch (e) { console.error('Analytics error:', e); }
 }
 

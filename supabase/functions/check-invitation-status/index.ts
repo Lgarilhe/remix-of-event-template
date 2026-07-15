@@ -244,15 +244,11 @@ Deno.serve(async (req) => {
               console.log(`[check-invitation] 🔄 Resolved waiting_event for ${enrollment.profile_name}`);
             }
 
-            // Log analytics
-            const today = new Date().toISOString().split('T')[0];
-            await supabase
-              .from('sequence_analytics')
-              .upsert({
-                sequence_id: enrollment.sequence_id,
-                date: today,
-                invites_accepted: 1,
-              }, { onConflict: 'sequence_id,date' });
+            // Log analytics — incrément atomique (cf. increment_sequence_analytics)
+            await supabase.rpc('increment_sequence_analytics', {
+              p_sequence_id: enrollment.sequence_id,
+              p_field: 'invites_accepted',
+            });
           } else if (enrollment.connection_status === 'pending_invite') {
             // Only mark as not_connected if it was pending_invite and confirmed not connected
             await supabase

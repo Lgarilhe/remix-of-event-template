@@ -363,28 +363,15 @@ Deno.serve(async (req) => {
               .in('status', ['scheduled', 'waiting_event']);
           }
 
-          // Log analytics for each affected sequence
-          const today = new Date().toISOString().split('T')[0];
+          // Log analytics for each affected sequence — incrément atomique.
+          // (no calendly_booked column exists, so we track via
+          // replies_received as a proxy — booking > reply)
           const sequenceIds = [...new Set(uniqueEnrollments.map(e => e.sequence_id))];
           for (const seqId of sequenceIds) {
-            // Upsert into sequence_analytics — no calendly_booked column exists,
-            // so we track via replies_received as a proxy (booking > reply)
-            const { data: existing } = await supabase
-              .from('sequence_analytics')
-              .select('id, replies_received')
-              .eq('sequence_id', seqId)
-              .eq('date', today)
-              .maybeSingle();
-
-            if (existing) {
-              await supabase.from('sequence_analytics').update({
-                replies_received: (existing.replies_received || 0) + 1,
-              }).eq('id', existing.id);
-            } else {
-              await supabase.from('sequence_analytics').insert({
-                sequence_id: seqId, date: today, replies_received: 1,
-              });
-            }
+            await supabase.rpc('increment_sequence_analytics', {
+              p_sequence_id: seqId,
+              p_field: 'replies_received',
+            });
           }
 
           console.log(`[calendly-webhook] ✅ Stopped ${uniqueEnrollments.length} active sequence(s) → status: booked`);
