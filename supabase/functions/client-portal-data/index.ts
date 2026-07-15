@@ -112,11 +112,18 @@ async function handleFetchPortal(req: Request, supabase: any) {
     .in("project_id", allProjectIds)
     .order("updated_at", { ascending: false });
 
-  // Group candidates by project
+  // Group candidates by project — anonymisation CÔTÉ SERVEUR.
+  // Si le client n'a pas la permission de voir les noms (souvent RGPD), on ne
+  // renvoie JAMAIS candidate_name/candidate_headline : le masquage front seul
+  // était contournable en lisant la réponse JSON dans l'onglet Réseau.
+  const permissions = parsePermissions(tokenRow.permissions);
   const candidatesByProject = new Map<string, any[]>();
   (allCandidates || []).forEach((c: any) => {
+    const candidate = permissions.can_see_names
+      ? c
+      : { ...c, candidate_name: null, candidate_headline: null };
     const list = candidatesByProject.get(c.project_id) || [];
-    list.push(c);
+    list.push(candidate);
     candidatesByProject.set(c.project_id, list);
   });
 
@@ -132,7 +139,7 @@ async function handleFetchPortal(req: Request, supabase: any) {
     org_name: org?.name || null,
     org_logo: org?.logo_url || null,
     projects: portalProjects,
-    permissions: parsePermissions(tokenRow.permissions),
+    permissions,
   });
 }
 

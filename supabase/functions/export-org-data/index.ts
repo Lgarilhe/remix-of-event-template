@@ -2,7 +2,7 @@
  * Edge function: Export organization data (RGPD portability)
  *
  * Exports all data for an organization as JSON:
- * - Candidates (from candidate_job_status)
+ * - Candidates (from job_candidate_status)
  * - Sourcing projects
  * - AI credit transactions
  * - Messages sent (from Unipile logs if available)
@@ -72,13 +72,13 @@ Deno.serve(async (req) => {
 
     // Fetch all data in parallel
     const [
-      { data: candidates },
-      { data: projects },
-      { data: transactions },
-      { data: members },
+      { data: candidates, error: candidatesError },
+      { data: projects, error: projectsError },
+      { data: transactions, error: transactionsError },
+      { data: members, error: membersError },
     ] = await Promise.all([
       adminClient
-        .from("candidate_job_status")
+        .from("job_candidate_status")
         .select("*")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false })
@@ -99,6 +99,17 @@ Deno.serve(async (req) => {
         .select("user_id, role, created_at")
         .eq("organization_id", organizationId),
     ]);
+
+    // RGPD art. 20 : un export incomplet doit échouer explicitement, jamais
+    // renvoyer un jeu de données tronqué en silence.
+    const queryError = candidatesError || projectsError || transactionsError || membersError;
+    if (queryError) {
+      console.error("[export-org-data] query failed:", queryError);
+      return new Response(
+        JSON.stringify({ error: "Export incomplet — réessayez", detail: queryError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const exportData = {
       export_date: new Date().toISOString(),

@@ -1,0 +1,103 @@
+name: CI
+
+# Contrôles obligatoires sur chaque PR vers main. Complète le hook pre-commit
+# de .claude/settings.json (qui, lui, ne s'applique qu'aux commits passés par
+# l'outil Bash de Claude Code — un git commit humain ou un push direct le
+# contourne). Ici, c'est GitHub qui fait foi.
+#
+# Philosophie RATCHET (comme le hook) : build bloquant (il passe déjà), mais
+# type-check et lint ne bloquent que si le nombre d'erreurs DÉPASSE la baseline
+# — la dette existante passe, une régression est refusée. Abaisser les baselines
+# au fur et à mesure de la résorption.
+#
+# Baselines au 2026-07-15 (après merge de main + régénération de types.ts) :
+#   TSC_BASELINE  = 32    (npx tsc --noEmit -p tsconfig.app.json)
+#   LINT_BASELINE = 1811  (npm run lint)
+# Objectif : descendre ces deux nombres jusqu'à 0, puis passer les jobs en
+# "0 toléré" (remplacer la comparaison par un simple exit sur erreur).
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TSC_BASELINE: 32
+  LINT_BASELINE: 1811
+
+jobs:
+  build:
+    name: Build (bloquant)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Vite production build
+        run: npx vite build
+
+  typecheck:
+    name: Type-check (ratchet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: tsc --noEmit -p tsconfig.app.json
+        # shell sans -e/-o pipefail : on gère les codes de sortie à la main.
+        shell: bash --noprofile --norc {0}
+        run: |
+          npx tsc --noEmit -p tsconfig.app.json > tsc.log 2>&1
+          ERRS=$(grep -c 'error TS' tsc.log)
+          [ -z "$ERRS" ] && ERRS=0
+          echo "TypeScript : $ERRS erreurs (baseline $TSC_BASELINE)"
+          tail -40 tsc.log
+          if [ "$ERRS" -gt "$TSC_BASELINE" ]; then
+            echo "::error::$ERRS erreurs TypeScript > baseline $TSC_BASELINE — nouvelles erreurs introduites. Corrigez-les ou régénérez src/integrations/supabase/types.ts."
+            exit 1
+          fi
+          if [ "$ERRS" -lt "$TSC_BASELINE" ]; then
+            echo "::notice::$ERRS < baseline $TSC_BASELINE — pensez à abaisser TSC_BASELINE dans .github/workflows/ci.yml."
+          fi
+          exit 0
+
+  lint:
+    name: Lint (ratchet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: eslint
+        shell: bash --noprofile --norc {0}
+        run: |
+          npm run lint > lint.log 2>&1
+          # eslint imprime "✖ N problems (E errors, W warnings)" ; 0 problème => pas de ligne.
+          PROBLEMS=$(grep -oE '[0-9]+ problems' lint.log | head -1 | grep -oE '^[0-9]+')
+          [ -z "$PROBLEMS" ] && PROBLEMS=0
+          echo "ESLint : $PROBLEMS problèmes (baseline $LINT_BASELINE)"
+          tail -30 lint.log
+          if [ "$PROBLEMS" -gt "$LINT_BASELINE" ]; then
+            echo "::error::$PROBLEMS problèmes ESLint > baseline $LINT_BASELINE — nouvelles erreurs introduites."
+            exit 1
+          fi
+          if [ "$PROBLEMS" -lt "$LINT_BASELINE" ]; then
+            echo "::notice::$PROBLEMS < baseline $LINT_BASELINE — pensez à abaisser LINT_BASELINE dans .github/workflows/ci.yml."
+          fi
+          exit 0
