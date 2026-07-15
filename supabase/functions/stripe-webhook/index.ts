@@ -133,7 +133,34 @@ Deno.serve(async (req) => {
             break;
           }
 
-          // Add topup credits
+          // IDEMPOTENCE : on insère d'ABORD la ligne d'achat, dont
+          // stripe_session_id est UNIQUE (migration 20260715120000). Un event
+          // Stripe rejoué (retry/redelivery) provoque une violation d'unicité
+          // (23505) → on saute le crédit au lieu de le doubler. La ligne d'achat
+          // sert de verrou : rien n'est crédité avant qu'elle soit posée.
+          const { error: purchaseError } = await adminClient.from("credit_purchases").insert({
+            organization_id: orgId,
+            user_id: userId || null,
+            pack_id: metadata.pack_id,
+            credits,
+            amount_cents: session.amount_total,
+            currency: session.currency || "eur",
+            stripe_session_id: session.id,
+            stripe_payment_intent_id: session.payment_intent,
+          });
+          if (purchaseError) {
+            if (purchaseError.code === "23505") {
+              console.log(`[stripe-webhook] session ${session.id} déjà traitée — crédit ignoré (idempotence)`);
+              break;
+            }
+            // Autre erreur : on NE crédite PAS (fail-closed). Sans la ligne
+            // d'achat, l'idempotence n'est plus garantie → 500 pour que Stripe
+            // retente ; un vrai double-crédit est pire qu'un retry.
+            console.error("[stripe-webhook] credit_purchases insert failed — crédit annulé:", purchaseError);
+            return json({ error: "credit_purchase insert failed" }, 500);
+          }
+
+          // Créditer le solde (après le verrou d'idempotence).
           const { data: bal } = await adminClient
             .from("ai_credit_balances")
             .select("topup_credits, credits_total")
@@ -143,7 +170,7 @@ Deno.serve(async (req) => {
           const currentTopup = bal?.topup_credits ?? 0;
           const currentTotal = bal?.credits_total ?? 0;
 
-          await adminClient
+          const { error: balanceError } = await adminClient
             .from("ai_credit_balances")
             .upsert({
               organization_id: orgId,
@@ -151,8 +178,13 @@ Deno.serve(async (req) => {
               credits_total: currentTotal + credits,
               updated_at: new Date().toISOString(),
             }, { onConflict: "organization_id" });
+          if (balanceError) {
+            // Achat enregistré mais solde non crédité → à réconcilier (loggé en
+            // error pour alerte). Ne pas 500 : un retry sauterait via l'idempotence.
+            console.error(`[stripe-webhook] SOLDE NON CRÉDITÉ pour org ${orgId} (achat ${session.id} enregistré) — à réconcilier:`, balanceError);
+          }
 
-          // Log the purchase
+          // Journaliser la transaction de crédit.
           await adminClient.from("ai_credit_transactions").insert({
             organization_id: orgId,
             user_id: userId || null,
@@ -172,19 +204,6 @@ Deno.serve(async (req) => {
               amount_total: session.amount_total,
             },
           });
-
-          // Log credit purchase
-          const { error: creditPurchaseError } = await adminClient.from("credit_purchases").insert({
-            organization_id: orgId,
-            user_id: userId || null,
-            pack_id: metadata.pack_id,
-            credits,
-            amount_cents: session.amount_total,
-            currency: session.currency || "eur",
-            stripe_session_id: session.id,
-            stripe_payment_intent_id: session.payment_intent,
-          });
-          if (creditPurchaseError) console.warn("[stripe-webhook] credit_purchases insert failed (table may not exist):", creditPurchaseError);
 
           console.log(`[stripe-webhook] Added ${credits} topup credits for org ${orgId}`);
         }
