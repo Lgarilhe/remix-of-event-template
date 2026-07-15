@@ -1069,12 +1069,18 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {viewMode !== 'compact' && displayResults.map((profile, index) => (
               <motion.div
                 key={profile.id || `profile-${index}`}
+                // layout="position" : quand le tri par score réordonne la
+                // liste (scoring terminé, toggle sortByScore), les cartes
+                // glissent vers leur nouvelle place au lieu de se téléporter.
+                // "position" = transform-only, pas de distorsion d'échelle.
+                layout="position"
                 initial={{ opacity: 0, y: 12, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{
                   delay: Math.min(index * 0.05, 1.2),
                   duration: 0.35,
                   ease: [0.25, 0.46, 0.45, 0.94],
+                  layout: { duration: 0.45, ease: [0.22, 1, 0.36, 1], delay: 0 },
                 }}
                 whileHover={{ y: -2, transition: { duration: 0.15 } }}
                 className="transition-shadow duration-200 hover:shadow-md"

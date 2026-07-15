@@ -8,7 +8,19 @@ const corsHeaders = {
 };
 
 const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
-if (!WEBHOOK_SECRET) console.warn('[unipile-webhook] ⚠️ UNIPILE_WEBHOOK_SECRET not set — webhook auth is DISABLED, all requests will be accepted');
+// Note : le handler est fail-closed (500 si secret absent, 401 si header
+// invalide) — ce warn signale juste une config incomplète au boot.
+if (!WEBHOOK_SECRET) console.warn('[unipile-webhook] ⚠️ UNIPILE_WEBHOOK_SECRET not set — all requests will be REJECTED until configured');
+
+// Comparaison à temps constant (anti timing attack sur le secret webhook).
+function timingSafeEqual(a: string, b: string): boolean {
+  const ab = new TextEncoder().encode(a);
+  const bb = new TextEncoder().encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
+}
 
 // Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -140,6 +152,11 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Hoistés pour être accessibles dans le catch (purge de la ligne de dédup
+  // en cas d'échec réel — voir commentaire du catch).
+  let dedupKeyForCleanup: string | null = null;
+  let supabaseForCleanup: SupabaseClient | null = null;
+
   try {
     // Verify webhook authenticity
     const authHeader = req.headers.get('unipile-auth');
@@ -150,7 +167,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    if (!authHeader || authHeader !== WEBHOOK_SECRET) {
+    if (!authHeader || !timingSafeEqual(authHeader, WEBHOOK_SECRET)) {
       console.error('[unipile-webhook] Invalid or missing auth header');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -186,6 +203,8 @@ Deno.serve(async (req) => {
           : null)
       || `${payload.account_id || 'no-acc'}:${payload.event}:${(payload as any).chat_id || ''}:${(payload as any).user_provider_id || ''}:${Math.floor(Date.now() / 60000)}`;
     const eventKey = `unipile:${payload.event}:${eventIdRaw}`.slice(0, 500);
+    dedupKeyForCleanup = eventKey;
+    supabaseForCleanup = supabase;
 
     try {
       const { data: isNew } = await supabase.rpc('record_webhook_event', {
@@ -382,11 +401,24 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('[unipile-webhook] Error:', error);
-    // Still return 200 to prevent retries for parsing errors
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    // Échec RÉEL de traitement (DB down, RPC en erreur…) → 500 pour exploiter
+    // les retries Unipile (5×) au lieu de perdre l'event définitivement
+    // (audit 2026-07, Delivery M11 : un blip DB de 30s pendant un
+    // mail_received = réponse du candidat jamais enregistrée → on continuait
+    // de le relancer). On purge d'abord la ligne de dédup, sinon le retry
+    // serait ignoré comme doublon.
+    if (dedupKeyForCleanup && supabaseForCleanup) {
+      try {
+        await supabaseForCleanup.from('webhook_event_log').delete().eq('event_key', dedupKeyForCleanup);
+      } catch (cleanupErr) {
+        console.warn('[unipile-webhook] Dedup cleanup failed:', cleanupErr);
+      }
+    }
+    return new Response(JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
     }), {
+      status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
@@ -529,15 +561,12 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
       }
     }
 
-    // Log analytics
-    const today = new Date().toISOString().split('T')[0];
-    await supabase
-      .from('sequence_analytics')
-      .upsert({
-        sequence_id: enrollment.sequence_id,
-        date: today,
-        invites_accepted: 1,
-      }, { onConflict: 'sequence_id,date' });
+    // Log analytics — RPC d'incrément atomique (l'ancien upsert REMETTAIT le
+    // compteur à 1 à partir du 2e événement du jour, faussant toutes les stats)
+    await supabase.rpc('increment_sequence_analytics', {
+      p_sequence_id: enrollment.sequence_id,
+      p_field: 'invites_accepted',
+    });
 
     console.log('[unipile-webhook] Updated enrollment:', enrollment.id, 'to connected');
   }
@@ -702,7 +731,11 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         continue;
       }
 
-      // Cancel any pending step executions
+      // Cancel any pending step executions — TOUS les statuts pendants, pas
+      // seulement 'scheduled' (audit 2026-07, Delivery M6) : une exécution
+      // 'waiting_event' ou 'quota_blocked' laissée vivante après un reply
+      // repartait dès qu'elle était débloquée, alors que l'enrollment est
+      // 'replied'. Aligné sur cancelRemainingExecutions (sequence-webhooks-handler).
       await supabase
         .from('sequence_step_executions')
         .update({
@@ -711,30 +744,33 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
           updated_at: new Date().toISOString(),
         })
         .eq('enrollment_id', enrollment.id)
-        .eq('status', 'scheduled');
+        .in('status', ['scheduled', 'waiting_event', 'quota_blocked']);
 
-      // Log analytics
-      const today = new Date().toISOString().split('T')[0];
-      await supabase
-        .from('sequence_analytics')
-        .upsert({
-          sequence_id: enrollment.sequence_id,
-          date: today,
-          replies_received: 1,
-        }, { onConflict: 'sequence_id,date' });
+      // Log analytics — incrément atomique (cf. increment_sequence_analytics)
+      await supabase.rpc('increment_sequence_analytics', {
+        p_sequence_id: enrollment.sequence_id,
+        p_field: 'replies_received',
+      });
 
       console.log('[unipile-webhook] Enrollment', enrollment.id, 'marked as replied');
 
-      // Update job_candidate_status to 'replied' and sync pipeline_stage
-      const { data: jcsRows } = await supabase
+      // Update job_candidate_status to 'replied' and sync pipeline_stage.
+      // Scopé par org (audit 2026-07, Delivery M7) : sans ce filtre, deux orgs
+      // qui suivent le même profil voyaient le candidat passer « Répondu »
+      // dans le pipeline de l'AUTRE org (fuite cross-tenant).
+      let jcsQuery = supabase
         .from('job_candidate_status')
         .select('id, pipeline_stage')
         .eq('candidate_id', enrollment.profile_id)
         .in('status', ['contacted', 'shortlisted', 'scored', 'new', 'messaged', 'discovered', 'untreated']);
+      if ((enrollment as { organization_id?: string }).organization_id) {
+        jcsQuery = jcsQuery.eq('organization_id', (enrollment as { organization_id?: string }).organization_id);
+      }
+      const { data: jcsRows } = await jcsQuery;
       if (jcsRows && jcsRows.length > 0) {
         for (const row of jcsRows) {
-          const shouldUpdatePipeline = !row.pipeline_stage || 
-            row.pipeline_stage === 'Nouveau' || 
+          const shouldUpdatePipeline = !row.pipeline_stage ||
+            row.pipeline_stage === 'Nouveau' ||
             row.pipeline_stage === 'Contacté';
           await supabase
             .from('job_candidate_status')
@@ -939,19 +975,34 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
     return;
   }
 
-  // Skip auto-replies / system bounces
   const subjectLower = (subject || '').toLowerCase();
+
+  // === HARD BOUNCE ===
+  // Un NDR (mailer-daemon/postmaster, ou sujet type "Undelivered"/"Delivery
+  // Status Notification") signale une adresse morte. Avant, on faisait juste
+  // `return` → l'enrollment restait 'active' et les étapes email suivantes
+  // repartaient vers l'adresse invalide (réputation domaine dégradée) et la
+  // condition if_bounced ne matchait jamais. On stoppe l'enrollment + suppress.
+  const isBounce =
+    senderEmail.startsWith('mailer-daemon@') ||
+    senderEmail.startsWith('postmaster@') ||
+    /undeliverable|delivery status notification|delivery has failed|mail delivery (failed|subsystem)|returned mail|failure notice|delivery failure|delivery incomplete/i.test(subjectLower);
+
+  if (isBounce) {
+    await handleBounce(supabase, account_id, payload, senderEmail);
+    return;
+  }
+
+  // Skip auto-replies (out-of-office, etc.) — ni réponse ni bounce.
   const isAutoReply = subjectLower.includes('auto-reply') ||
     subjectLower.includes('out of office') ||
     subjectLower.includes('absence du bureau') ||
     subjectLower.includes('réponse automatique') ||
-    senderEmail.startsWith('mailer-daemon@') ||
-    senderEmail.startsWith('postmaster@') ||
     senderEmail.startsWith('no-reply@') ||
     senderEmail.startsWith('noreply@');
 
   if (isAutoReply) {
-    console.log('[unipile-webhook][mail] Skipping auto-reply / bounce from', senderEmail);
+    console.log('[unipile-webhook][mail] Skipping auto-reply from', senderEmail);
     return;
   }
 
@@ -970,13 +1021,16 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
     `account=${account_id} email_id=${email_id || '?'} subject="${subjectLower.slice(0, 80)}"`,
   );
 
-  // 1. Récupérer les enrollments actifs avec email_used = senderEmail sur ce account_id
+  // 1. Récupérer les enrollments actifs avec email_used = senderEmail sur ce
+  //    account_id. ilike avec jokers ÉCHAPPÉS (audit 2026-07, L5) : '_' et '%'
+  //    sont des jokers SQL — sans échappement, jo_n@x.com matchait jon@x.com.
+  const escapedSender = senderEmail.replace(/([%_\\])/g, '\\$1');
   const { data: enrollments, error: enrErr } = await supabase
     .from('sequence_enrollments')
-    .select('id, sequence_id, profile_id, account_id, email_used')
+    .select('id, sequence_id, profile_id, account_id, email_used, organization_id')
     .eq('account_id', account_id)
     .eq('status', 'active')
-    .ilike('email_used', senderEmail);
+    .ilike('email_used', escapedSender);
 
   if (enrErr) {
     console.error('[unipile-webhook][mail] Error fetching enrollments:', enrErr);
@@ -991,7 +1045,6 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
   console.log(`[unipile-webhook][mail] Matched ${enrollments.length} enrollment(s)`);
 
   // 2. Marquer chaque enrollment comme replied + canceller les étapes pending
-  const today = new Date().toISOString().split('T')[0];
   for (const enrollment of enrollments) {
     const { error: updErr } = await supabase
       .from('sequence_enrollments')
@@ -1007,6 +1060,7 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
       continue;
     }
 
+    // Tous les statuts pendants (cf. commentaire du site handleReply plus haut)
     await supabase
       .from('sequence_step_executions')
       .update({
@@ -1015,23 +1069,24 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
         updated_at: new Date().toISOString(),
       })
       .eq('enrollment_id', enrollment.id)
-      .eq('status', 'scheduled');
+      .in('status', ['scheduled', 'waiting_event', 'quota_blocked']);
 
-    await supabase
-      .from('sequence_analytics')
-      .upsert({
-        sequence_id: enrollment.sequence_id,
-        date: today,
-        replies_received: 1,
-      }, { onConflict: 'sequence_id,date' });
+    // Incrément atomique (cf. increment_sequence_analytics)
+    await supabase.rpc('increment_sequence_analytics', {
+      p_sequence_id: enrollment.sequence_id,
+      p_field: 'replies_received',
+    });
 
-    // Update job_candidate_status si on a un profile_id
+    // Update job_candidate_status si on a un profile_id — scopé par org
+    // (fuite cross-tenant sinon, cf. site handleReply plus haut)
     if (enrollment.profile_id) {
-      const { data: jcsRows } = await supabase
+      let jcsQuery = supabase
         .from('job_candidate_status')
         .select('id, pipeline_stage')
         .eq('candidate_id', enrollment.profile_id)
         .in('status', ['contacted', 'shortlisted', 'scored', 'new', 'messaged', 'discovered', 'untreated']);
+      if (enrollment.organization_id) jcsQuery = jcsQuery.eq('organization_id', enrollment.organization_id);
+      const { data: jcsRows } = await jcsQuery;
       if (jcsRows && jcsRows.length > 0) {
         for (const row of jcsRows) {
           const shouldUpdatePipeline = !row.pipeline_stage ||
@@ -1050,5 +1105,76 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
     }
 
     console.log('[unipile-webhook][mail] Enrollment', enrollment.id, 'marked replied (email)');
+  }
+}
+
+/**
+ * Traite un NDR (bounce email). L'adresse qui a bouncé n'est PAS l'expéditeur
+ * (mailer-daemon), elle est dans le corps du NDR. On l'en extrait, puis — pour
+ * chaque adresse qu'on a RÉELLEMENT séquencée depuis ce compte (garde-fou
+ * anti faux-positif sur un parsing bruité) — on l'ajoute à suppressed_emails,
+ * on passe les enrollments actifs/en pause en 'bounced' et on annule leurs
+ * étapes encore en attente.
+ */
+async function handleBounce(supabase: SupabaseClient, accountId: string, payload: WebhookPayload, senderEmail: string) {
+  // PostgREST ilike : '_' et '%' sont des jokers → on les échappe pour un
+  // match exact insensible à la casse sur l'adresse.
+  const escapeLike = (s: string) => s.replace(/([%_\\])/g, '\\$1');
+
+  const bodyText = `${payload.subject || ''}\n${payload.body_plain || payload.body || ''}`;
+  const ourAddresses = new Set(
+    (payload.to_attendees || []).map(a => (a.identifier || '').toLowerCase().trim()).filter(Boolean),
+  );
+  const emailRegex = /[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/gi;
+  const found = [...new Set((bodyText.match(emailRegex) || []).map(e => e.toLowerCase().trim()))];
+  const candidates = found.filter(e =>
+    !ourAddresses.has(e) &&
+    e !== senderEmail &&
+    !e.startsWith('mailer-daemon@') &&
+    !e.startsWith('postmaster@') &&
+    !e.startsWith('noreply@') &&
+    !e.startsWith('no-reply@'),
+  );
+
+  if (candidates.length === 0) {
+    console.log('[unipile-webhook][bounce] No candidate address extracted from NDR — skipping', { account: accountId });
+    return;
+  }
+
+  for (const addr of candidates) {
+    // On ne suppress QUE les adresses qu'on a réellement séquencées depuis ce
+    // compte — sinon un NDR bruité pourrait blacklister une adresse au hasard.
+    const { data: enrs, error: enrErr } = await supabase
+      .from('sequence_enrollments')
+      .select('id, status')
+      .eq('account_id', accountId)
+      .ilike('email_used', escapeLike(addr));
+    if (enrErr) {
+      console.error('[unipile-webhook][bounce] enrollment lookup failed:', enrErr);
+      continue;
+    }
+    if (!enrs || enrs.length === 0) continue;
+
+    // Hard bounce → ne plus jamais emailer cette adresse.
+    const { error: supErr } = await supabase
+      .from('suppressed_emails')
+      .upsert({ email: addr, reason: 'bounce' }, { onConflict: 'email' });
+    if (supErr) console.error('[unipile-webhook][bounce] suppress failed:', supErr);
+
+    for (const enr of enrs) {
+      if (enr.status === 'active' || enr.status === 'paused') {
+        await supabase
+          .from('sequence_enrollments')
+          .update({ status: 'bounced', updated_at: new Date().toISOString() })
+          .eq('id', enr.id);
+      }
+      // Annuler les étapes encore en attente pour ce candidat.
+      await supabase
+        .from('sequence_step_executions')
+        .update({ status: 'cancelled', skip_reason: 'Email bounced (NDR)', updated_at: new Date().toISOString() })
+        .eq('enrollment_id', enr.id)
+        .in('status', ['scheduled', 'waiting_event', 'quota_blocked']);
+    }
+    console.log(`[unipile-webhook][bounce] Suppressed ${addr} + bounced ${enrs.length} enrollment(s) on account ${accountId}`);
   }
 }

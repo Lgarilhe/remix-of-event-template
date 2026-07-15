@@ -13,6 +13,35 @@ import { cn } from '@/lib/utils';
 
 const HIDDEN_FAB_ROUTES = ['/auth', '/onboarding', '/portal'];
 
+/**
+ * Hauteur RÉELLEMENT visible du viewport, suivie en temps réel via
+ * l'API visualViewport. Sur mobile, 100dvh est mal mesuré par certains
+ * navigateurs (Samsung Internet, webviews in-app) et ne suit pas toujours
+ * le clavier virtuel → le composer du chat sortait de l'écran et le champ
+ * de saisie passait sous le clavier. visualViewport donne la vraie hauteur
+ * visible, clavier inclus. Retourne null si l'API est absente (desktop
+ * ancien) → fallback CSS 100dvh.
+ */
+function useVisualViewportHeight(active: boolean): number | null {
+  const [height, setHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setHeight(Math.round(vv.height));
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, [active]);
+
+  return active ? height : null;
+}
+
 const AgentFAB: React.FC = () => {
   const { toggleAgent, isOpen, unreadCount } = useAgent();
   const location = useLocation();
@@ -60,6 +89,7 @@ const AgentFAB: React.FC = () => {
 
 export const AgentDrawer: React.FC = () => {
   const { isOpen, closeAgent, toggleAgent, contextMode, briefContext, initialMessage, autoJob, projectId, accountId } = useAgent();
+  const viewportHeight = useVisualViewportHeight(isOpen);
 
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {
@@ -80,6 +110,13 @@ export const AgentDrawer: React.FC = () => {
         <SheetContent
           side="right"
           className="w-full sm:w-[420px] p-0 bg-background border-l border-border border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
+          // Mobile : hauteur pilotée par visualViewport (vraie zone visible,
+          // clavier virtuel inclus). Fallback 100dvh si l'API est absente ;
+          // les navigateurs sans dvh ignorent le style inline → h-full.
+          style={{
+            height: viewportHeight ? `${viewportHeight}px` : '100dvh',
+            maxHeight: viewportHeight ? `${viewportHeight}px` : '100dvh',
+          }}
         >
           <SheetTitle className="sr-only">Assistant IA</SheetTitle>
           <SheetDescription className="sr-only">

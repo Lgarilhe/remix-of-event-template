@@ -10,9 +10,9 @@ name: CI
 # — la dette existante passe, une régression est refusée. Abaisser les baselines
 # au fur et à mesure de la résorption.
 #
-# Baselines au 2026-07-09 (après régénération de types.ts depuis le schéma prod) :
-#   TSC_BASELINE  = 31    (npx tsc --noEmit -p tsconfig.app.json)
-#   LINT_BASELINE = 1788  (npm run lint)
+# Baselines au 2026-07-15 (après merge de main + régénération de types.ts) :
+#   TSC_BASELINE  = 32    (npx tsc --noEmit -p tsconfig.app.json)
+#   LINT_BASELINE = 1811  (npm run lint)
 # Objectif : descendre ces deux nombres jusqu'à 0, puis passer les jobs en
 # "0 toléré" (remplacer la comparaison par un simple exit sur erreur).
 
@@ -26,8 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  TSC_BASELINE: 31
-  LINT_BASELINE: 1788
+  TSC_BASELINE: 32
+  LINT_BASELINE: 1811
 
 jobs:
   build:

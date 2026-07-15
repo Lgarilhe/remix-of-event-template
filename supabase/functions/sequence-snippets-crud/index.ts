@@ -28,15 +28,17 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get user's org
+    // Get user's org — profiles n'a PAS de colonne organization_id : c'est
+    // active_organization_id, clé user_id. L'ancienne requête échouait
+    // silencieusement → orgId null → 403 pour tout le monde (audit 2026-07).
     let orgId: string | null = null;
     if (auth.userId) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('organization_id')
-        .eq('id', auth.userId)
+        .select('active_organization_id')
+        .eq('user_id', auth.userId)
         .single();
-      orgId = profile?.organization_id || null;
+      orgId = profile?.active_organization_id || null;
     }
 
     if (!orgId) {

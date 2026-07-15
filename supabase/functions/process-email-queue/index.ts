@@ -63,11 +63,21 @@ async function sendViaResend(
   if (Object.keys(customHeaders).length > 0) body.headers = customHeaders
   if (payload.label) body.tags = [{ name: 'label', value: payload.label.slice(0, 256) }]
 
-  const response = await fetch(RESEND_API_URL, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  })
+  // Timeout 15s (convention repo fetchWithTimeout) : un hang Resend bloquait
+  // tout le batch et pouvait consommer le budget 60s de la fonction.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  let response: Response
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
 
   if (response.ok) {
     const json = await response.json().catch(() => ({}))
@@ -78,6 +88,17 @@ async function sendViaResend(
   const retryAfter = response.headers.get('Retry-After')
   const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) || 60 : null
   throw new ResendSendError(response.status, errorText.slice(0, 1000), retryAfterSeconds)
+}
+
+// Comparaison à temps constant pour éviter les timing attacks sur les secrets.
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder()
+  const ab = enc.encode(a)
+  const bb = enc.encode(b)
+  if (ab.length !== bb.length) return false
+  let diff = 0
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i]
+  return diff === 0
 }
 
 // Move a message to the dead letter queue and log the reason.
@@ -130,22 +151,19 @@ Deno.serve(async (req) => {
 
   // Auth: deux callers légitimes
   // 1. Cron pg_net via invoke_process_email_queue (envoie PROCESS_SEQUENCES_SECRET)
-  // 2. Frontend / autre edge function (envoie un JWT service_role)
+  // 2. Autre edge function (envoie le service role key en Bearer)
   // Note: config.toml met verify_jwt=false sur toutes les fonctions (incompat
   // gateway HS256 vs nouveaux JWT ES256), donc on valide ici en interne.
+  //
+  // On compare le token aux DEUX secrets réels (constant-time). On NE décode
+  // PLUS les claims du JWT : un simple atob() du payload ne vérifie pas la
+  // signature, donc n'importe qui pouvait forger `xx.<base64 role=service_role>.xx`
+  // et invoquer la fonction à volonté (martelage Resend, DoS de la file).
   const token = authHeader.slice('Bearer '.length).trim()
   const cronSecret = Deno.env.get('PROCESS_SEQUENCES_SECRET') || ''
-  // Auth stricte : secret cron OU clé service-role comparée à l'IDENTIQUE.
-  // NE PAS décoder le JWT pour lire `role` : verify_jwt=false au gateway, donc
-  // un JWT forgé non signé (`atob()` du payload) suffirait à usurper
-  // service_role. Seule une égalité exacte au secret réel est sûre.
-  const serviceKeys = [
-    Deno.env.get('SB_SECRET_KEY'),
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
-  ].filter((k): k is string => !!k && k.length > 0)
-  const isCronCaller = cronSecret.length > 0 && token === cronSecret
-  const isServiceCaller = serviceKeys.some((k) => token === k)
-  if (!isCronCaller && !isServiceCaller) {
+  const isCronCaller = cronSecret.length > 0 && timingSafeEqual(token, cronSecret)
+  const isServiceRoleCaller = timingSafeEqual(token, supabaseServiceKey)
+  if (!isCronCaller && !isServiceRoleCaller) {
     return new Response(
       JSON.stringify({ error: 'Forbidden' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } },
@@ -283,14 +301,20 @@ Deno.serve(async (req) => {
           label: payload.label,
         })
 
-        // Log success
-        await supabase.from('email_send_log').insert({
+        // Log success — l'erreur de CET insert doit être vérifiée : c'est le
+        // log 'sent' qui protège du double-envoi via la garde alreadySent
+        // (audit 2026-07, Delivery M9). S'il échoue en silence, un retry VT
+        // renverrait le même email.
+        const { error: sentLogError } = await supabase.from('email_send_log').insert({
           message_id: payload.message_id,
           template_name: payload.label || queue,
           recipient_email: payload.to,
           status: 'sent',
           metadata: resendEmailId ? { provider: 'resend', resend_email_id: resendEmailId } : { provider: 'resend' },
         })
+        if (sentLogError) {
+          console.error('Failed to record sent log — deleting from queue anyway to avoid double-send on retry', { queue, msg_id: msg.msg_id, error: sentLogError })
+        }
 
         // Delete from queue
         const { error: delError } = await supabase.rpc('delete_email', {

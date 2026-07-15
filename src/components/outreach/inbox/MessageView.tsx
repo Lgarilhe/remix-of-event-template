@@ -19,6 +19,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ToneSelector, AITone } from './ToneSelector';
@@ -1028,8 +1029,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 const isLastOfGroup = !nextIsSameSender;
 
                 return (
-                  <div
+                  <motion.div
                     key={msg.id ?? idx}
+                    // Entrée spring par bulle : un message envoyé ou une
+                    // réponse qui arrive se pose au lieu d'apparaître d'un
+                    // coup. Au premier rendu du thread, toutes les bulles
+                    // montent ensemble (pas de stagger — resterait lourd sur
+                    // les longues conversations).
+                    initial={{ opacity: 0, y: 6, scale: 0.985 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 480, damping: 38, mass: 0.7 }}
                     className={cn(
                       'flex group/msg relative',
                       isSender ? 'justify-end' : 'justify-start',
@@ -1183,7 +1192,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                         </button>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
               <div ref={messagesEndRef} />

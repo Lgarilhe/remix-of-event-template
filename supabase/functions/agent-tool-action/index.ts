@@ -81,6 +81,9 @@ Deno.serve(async (req) => {
       conversationId: null,
       messageId: null,
       adminClient,
+      // JWT user brut — permet aux tools d'appeler une edge function interne
+      // avec l'identité de l'utilisateur (ex : launch_search → run-agent-search).
+      userBearer: (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '') || null,
     };
 
     if (action === 'approve') {

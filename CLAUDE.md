@@ -34,7 +34,7 @@ Ces 5 principes l'emportent sur l'envie d'être proactif. Si tension entre "fair
 
 ## Before committing
 Les hooks pre-commit (`.claude/settings.json`) lancent **automatiquement** (⚠️ uniquement sur les `git commit` passés par l'outil Bash de Claude Code — un `git commit` humain ou un push direct les contourne ; le vrai filet obligatoire = CI de PR, à câbler) :
-- `npx tsc --noEmit -p tsconfig.app.json` — **ratchet** : bloque si le nombre d'erreurs TS dépasse la baseline (31 au 2026-07-09, après régénération de `types.ts` depuis le schéma prod). Résorber la dette puis abaisser la baseline. ⚠️ Ne PAS revenir à `npx tsc --noEmit` sans `-p` : le `tsconfig.json` racine est solution-style (`"files": []`) → vérifie 0 fichier (hook vacant). Les 31 erreurs restantes sont de vraies anomalies code/schéma (ex. `profiles` n'a pas de colonnes `full_name`/`email` mais le code les interroge ; type `SourcingProject` désynchronisé) — à corriger au cas par cas, ne PAS masquer par `as any`. Régénérer `types.ts` via `supabase gen types typescript --linked` (ne PAS laisser la sortie CLI polluer le fichier).
+- `npx tsc --noEmit -p tsconfig.app.json` — **ratchet** : bloque si le nombre d'erreurs TS dépasse la baseline (32 au 2026-07-15, après merge de main + régénération de `types.ts` depuis le schéma prod). Résorber la dette puis abaisser la baseline. ⚠️ Ne PAS revenir à `npx tsc --noEmit` sans `-p` : le `tsconfig.json` racine est solution-style (`"files": []`) → vérifie 0 fichier (hook vacant). Les 32 erreurs restantes sont de vraies anomalies code/schéma (ex. `profiles` n'a pas de colonnes `full_name`/`email` mais le code les interroge ; type `SourcingProject` désynchronisé) — à corriger au cas par cas, ne PAS masquer par `as any`. Régénérer `types.ts` via `supabase gen types typescript --linked` (ne PAS laisser la sortie CLI polluer le fichier).
 - `npx vite build` — bloque le commit si build prod échoue. ⚠️ esbuild strip les types → ce build ne type-check PAS (d'où le hook tsc ci-dessus).
 
 Vérif manuelle à faire en plus : **pas d'imports orphelins** (grep pour les noms de composants/fonctions supprimés).
@@ -44,9 +44,19 @@ Vérif manuelle à faire en plus : **pas d'imports orphelins** (grep pour les no
 2. `npx tsc --noEmit && npx vite build` → doit passer.
 3. Commit + push → PR ou merge direct sur `main`.
 4. Vercel redéploie auto le frontend (~2min).
-5. **Edge functions** ne sont PAS auto-déployées : `supabase functions deploy <name> --project-ref crckfywoyjxkawathdff`.
+5. **Edge functions** : auto-déployées par `.github/workflows/deploy-edge-functions.yml` sur push `main` (depuis 2026-07). Hotfix manuel toujours possible : `supabase functions deploy <name> --project-ref crckfywoyjxkawathdff`.
 6. **Migrations SQL** : auto-appliquées par `.github/workflows/deploy-migrations.yml` sur push `main` (paths `supabase/migrations/**`) via `supabase db push --linked`. ⚠️ Ce workflow a été cassé pendant des semaines (table de suivi remote `supabase_migrations.schema_migrations` désynchro — 6/219 versions trackées seulement → `db push` refuse : « Found local migration files to be inserted before the last migration on remote »). Réparé via l'input `repair_tracking=true` (break-glass, tracking-only). Si tu vois cette erreur : relancer le workflow en `workflow_dispatch` avec `repair_tracking=true`. Hotfix manuel toujours possible : `supabase db push --linked` (idempotent) ou SQL editor.
 7. Rollback Vercel : Dashboard Vercel → Deployments → "Promote to Production" sur le deploy précédent.
+
+### 🚨 Discipline migrations — règles ABSOLUES (incidents des 14-15/07/2026)
+
+Deux sessions Claude en parallèle ont cassé le workflow de migrations 3 fois en 24h (collisions de versions, tracking désynchronisé). Pour ne JAMAIS reproduire :
+
+1. **Toute migration passe par un fichier committé** dans `supabase/migrations/` — jamais de DDL direct via SQL editor ou MCP `apply_migration` sans fichier correspondant dans le repo.
+2. **Si tu dois hotfixer en prod via MCP** (workflow cassé, urgence) : après application, **aligne la table de suivi sur la version du fichier du repo** — `UPDATE supabase_migrations.schema_migrations SET version = '<version du fichier>' WHERE name = '<name>'`. MCP `apply_migration` stampe son propre timestamp → sans cet alignement, le prochain `db push` refuse (« Remote migration versions not found in local migrations directory »).
+3. **Timestamp unique obligatoire** : avant de créer un fichier, `ls supabase/migrations/ | grep <ta date>` ET `git fetch origin main && git ls-tree origin/main supabase/migrations/` — deux fichiers avec la même version cassent la CI e2e (duplicate key sur `schema_migrations_pkey`) et le push prod. Utilise `date -u +%Y%m%d%H%M%S` (heure réelle, pas un timestamp rond).
+4. **Jamais** `supabase migration repair --status reverted` sur une version dont le fichier existe dans le repo — ça recrée l'erreur out-of-order au push suivant (le DDL reste appliqué mais le tracking l'oublie).
+5. Diagnostic rapide d'une désynchro : comparer `select version from supabase_migrations.schema_migrations` avec `ls supabase/migrations/` — toute version présente d'un seul côté doit être réconciliée (fichier reconstruit depuis `statements`, ou tracking renommé), jamais ignorée.
 
 ---
 

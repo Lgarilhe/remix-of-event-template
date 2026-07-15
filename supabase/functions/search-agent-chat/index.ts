@@ -14,6 +14,11 @@ import {
   bumpInsightUsage,
   extractInsightsFromConversation,
 } from "../_shared/user-memory.ts";
+import {
+  maybeCompactConversation,
+  formatSummaryForPrompt,
+  HISTORY_WINDOW,
+} from "../_shared/conversation-compaction.ts";
 
 // Register tools at module load (idempotent)
 registerMutatingTools();
@@ -201,7 +206,11 @@ Si agent autonome, 2 questions :
 1. Combien de profils/jour ? [OPTIONS]["10", "25", "50"][/OPTIONS]
 2. Review ou auto ? [OPTIONS]["Review", "Auto 80+"][/OPTIONS]
 
-Puis : [AGENT_ACTION]{"action":"start_search","mode":"autonomous","config":{...}}[/AGENT_ACTION]
+Puis appelle le tool launch_search (SANS tag texte) : il ouvre un bandeau
+d'approbation, l'user valide, et la vraie recherche demarre en tache de fond.
+Le [SEARCH_PLAN] doit avoir ete emis AVANT (il est sauvegarde sur la
+conversation, launch_search le lit). Ne pretends JAMAIS que la recherche
+tourne tant que le tool_result ne confirme pas le lancement.
 
 ETAPE 8 — MESSAGES D'APPROCHE (si demande)
 
@@ -264,9 +273,22 @@ const sourcingTools = [
       required: ["company_name"],
     },
   },
-  // web_search disabled — handler is a stub (returns "not available"). Re-enable
-  // when Perplexity Sonar / Tavily integration ships (Sprint 5 in RAG_AGENT_AUDIT.md).
+  // web_search : SERVER TOOL natif de l'API (P1.1 audit 2026-07-14) — exécuté
+  // côté API, pas ici. Injecté dans allTools via buildWebSearchTool() plus bas.
 ];
+
+// Variante du server tool web_search selon le modèle : la version 20260209
+// (filtrage dynamique) requiert Sonnet 4.6 / Opus 4.6+ ; les modèles plus
+// anciens (Haiku 4.5, Sonnet 4.5) utilisent la variante de base 20250305.
+function buildWebSearchTool(resolvedModel: string): Record<string, unknown> {
+  const modern = resolvedModel.includes("sonnet-4-6") || resolvedModel.includes("opus-4-6")
+    || resolvedModel.includes("opus-4-7") || resolvedModel.includes("opus-4-8") || resolvedModel.includes("sonnet-5");
+  return {
+    type: modern ? "web_search_20260209" : "web_search_20250305",
+    name: "web_search",
+    max_uses: 3,
+  };
+}
 
 async function executeTool(
   toolName: string,
@@ -329,10 +351,6 @@ async function executeTool(
         });
       }
 
-      case "web_search": {
-        return JSON.stringify({ note: "Web search not yet available. Use the information from the brief and enrich_company tool instead." });
-      }
-
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` });
     }
@@ -393,6 +411,48 @@ async function maybeGenerateTitle(
   }
 }
 
+/**
+ * Hooks mémoire post-réponse, communs aux deux chemins (tools + streaming) :
+ *   1. Extraction d'insights durables (tous les 6 messages — Sprint 3).
+ *   2. Compaction : résumé glissant du contexte sorti de la fenêtre (P4.2).
+ * À lancer fire-and-forget via EdgeRuntime.waitUntil — ne bloque jamais le [DONE].
+ */
+// deno-lint-ignore no-explicit-any
+async function runMemoryHooks(supabase: any, conversationId: string, userId: string, orgId: string): Promise<void> {
+  try {
+    const { count } = await supabase
+      .from("agent_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("conversation_id", conversationId);
+    const total = count ?? 0;
+
+    // Tous les 6 messages, on tente une extraction (idempotent côté DB).
+    if (orgId && total >= 6 && total % 6 === 0) {
+      const { data: msgs } = await supabase
+        .from("agent_messages")
+        .select("role, content")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      const formatted = (msgs ?? []).reverse().map((m: { role: string; content: unknown }) => ({
+        role: m.role,
+        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+      }));
+      await extractInsightsFromConversation(supabase, {
+        userId,
+        organizationId: orgId,
+        conversationId,
+        messages: formatted,
+      }).catch((e) => console.warn("[search-agent-chat] insight extraction failed:", e));
+    }
+
+    // Compaction (no-op tant que la conversation tient dans la fenêtre de 24).
+    await maybeCompactConversation(supabase, conversationId);
+  } catch (e) {
+    console.warn("[search-agent-chat] memory hooks failed:", e);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -421,7 +481,8 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { conversation_id, message, job_context, context_mode, brief_context, project_id, app_context } = body;
+    const { conversation_id: bodyConversationId, message, job_context, context_mode, brief_context, project_id, app_context } = body;
+    let conversation_id: string | undefined = bodyConversationId;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "agent_search_calibration", modelId: "claude-sonnet-4-6", description: null,
     };
@@ -441,18 +502,50 @@ Deno.serve(async (req) => {
       console.warn("[search-agent-chat] Failed to resolve model, using default:", e);
     }
 
-    if (!conversation_id || !message) {
-      return new Response(JSON.stringify({ error: "conversation_id and message required" }), {
+    if (!message) {
+      return new Response(JSON.stringify({ error: "message required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Verify user belongs to the conversation's organization
-    const { data: conv } = await supabase
-      .from("agent_conversations")
-      .select("organization_id, created_by")
-      .eq("id", conversation_id)
-      .single();
+    // Create-path (P0.4 audit 2026-07-14) : sans conversation_id, on crée la
+    // conversation côté serveur (avant : 400 sec, le client DEVAIT insérer la
+    // row lui-même). Le client web continue de créer côté RLS ; ce chemin sert
+    // les autres callers (API, mobile). L'id est renvoyé en 1er event SSE.
+    let createdConversation = false;
+    let conv: { organization_id: string | null; created_by: string | null } | null = null;
+    if (!conversation_id) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("active_organization_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const { data: created, error: createErr } = await supabase
+        .from("agent_conversations")
+        .insert({
+          organization_id: prof?.active_organization_id ?? null,
+          created_by: user.id,
+          status: "calibrating",
+        })
+        .select("id, organization_id, created_by")
+        .single();
+      if (createErr || !created) {
+        return new Response(JSON.stringify({ error: `Failed to create conversation: ${createErr?.message ?? "unknown"}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      conversation_id = created.id;
+      conv = created;
+      createdConversation = true;
+    } else {
+      // Verify user belongs to the conversation's organization
+      const { data: existing } = await supabase
+        .from("agent_conversations")
+        .select("organization_id, created_by, summary")
+        .eq("id", conversation_id)
+        .single();
+      conv = existing;
+    }
 
     if (!conv) {
       return new Response(JSON.stringify({ error: "Conversation not found" }), {
@@ -460,7 +553,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (conv.organization_id) {
+    if (!createdConversation && conv.organization_id) {
       const { data: membership, error: membershipError } = await supabase
         .from("organization_members")
         .select("id")
@@ -488,12 +581,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Save user message (after auth validation)
-    await supabase.from("agent_messages").insert({
-      conversation_id,
-      role: "user",
-      content: message,
-    });
+    // Save user message (after auth validation). On garde l'id : les
+    // agent_tool_executions proposées ce tour-ci y sont rattachées
+    // (message_id — P0.4 audit 2026-07-14, avant : toujours null).
+    const { data: userMessageRow } = await supabase
+      .from("agent_messages")
+      .insert({
+        conversation_id,
+        role: "user",
+        content: message,
+      })
+      .select("id")
+      .single();
+    const userMessageId: string | null = userMessageRow?.id ?? null;
 
     // Fetch conversation history (limit to 24 messages to control token costs).
     // IMPORTANT : on prend les 24 plus RÉCENTS (desc) puis on remet en ordre
@@ -505,7 +605,7 @@ Deno.serve(async (req) => {
       .select("role, content, metadata")
       .eq("conversation_id", conversation_id)
       .order("created_at", { ascending: false })
-      .limit(24);
+      .limit(HISTORY_WINDOW);
     const history = (historyDesc || []).slice().reverse();
 
     // Build messages for AI
@@ -633,6 +733,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       && context_mode !== 'brief'
       && context_mode !== 'process'
       && context_mode !== 'outreach';
+    // Modes opérationnels (P0.1 audit 2026-07-14) : brief/process/outreach
+    // gardent leur prompt spécialisé mais passent AUSSI par le classifieur
+    // B.2 — une question DATA ou une demande ACTION dans ces modes entre dans
+    // la boucle d'outils au lieu de rester en streaming pur sans accès données.
+    const isOperationalMode = !isSourcingMode && (
+      context_mode === 'brief' || context_mode === 'process' || context_mode === 'outreach'
+    );
 
     let activeSystemPrompt: string;
     if (context_mode === 'brief') {
@@ -718,7 +825,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     // DATA et ACTION nécessitent les tools (read + mutating) → tools loop.
     // Fail-soft : toute erreur/timeout → CHAT (zéro régression sur le chat normal).
     const classifierPromise = (async (): Promise<{ data: boolean; action: boolean }> => {
-      if (!isFreeMode) return { data: false, action: false };
+      if (!isFreeMode && !isOperationalMode) return { data: false, action: false };
       try {
         // Fil récent (derniers tours) → un suivi court ("et leur nom ?",
         // "lesquelles ?", "détaille") hérite du sujet du tour précédent et
@@ -754,10 +861,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 "DATA = la demande (ou le suivi) nécessite de LIRE les données PROPRES de " +
                 "l'organisation : missions/postes, candidats (noms, scores, étape pipeline), " +
                 "pipeline, process d'entretien, séquences/relances, statistiques, compteurs, " +
-                "équipe, crédits, fil LinkedIn verbatim, vivier/CRM, contexte RAG. Ex : « combien " +
+                "équipe, crédits, fil LinkedIn verbatim, messagerie/inbox (non-lus, qui a " +
+                "répondu), vivier/CRM, contexte RAG. Ex : « combien " +
                 "de candidats sur ma mission X », « où en est mon pipeline », « résume mon échange " +
                 "LinkedIn avec X », « quelles missions j'ai en cours », et TOUT suivi demandant " +
-                "le détail (ex : après « tu as 6 candidats », le suivi « donne-moi leurs noms » = DATA).\n" +
+                "le détail (ex : après « tu as 6 candidats », le suivi « donne-moi leurs noms » = DATA). " +
+                "DATA couvre AUSSI les demandes d'infos PUBLIQUES/RÉCENTES nécessitant une recherche web : " +
+                "actualité ou levée de fonds d'une entreprise, salaires marché, veille secteur, personne publique " +
+                "(ex : « qu'est-ce qui se dit sur X en ce moment », « la boîte Y a levé combien ? »).\n" +
                 "ACTION = la demande exprime une MODIFICATION / un envoi à effectuer dans Konekt : " +
                 "envoyer un message LinkedIn, ajouter une note, écarter/dismiss un candidat, " +
                 "assigner à un collaborateur, mettre en pause/reprendre une séquence, créer/" +
@@ -796,6 +907,10 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
       // Fire-and-forget bump (ne bloque pas la conv)
       bumpInsightUsage(supabase, insights.map((i) => i.id)).catch(() => {});
     }
+    // Compaction (P4.2) : si la conversation a débordé de la fenêtre de 24
+    // messages, un résumé glissant du contexte ancien existe sur la
+    // conversation → on l'injecte pour que le modèle n'oublie pas le début.
+    activeSystemPrompt = activeSystemPrompt + formatSummaryForPrompt((conv as { summary?: string | null })?.summary);
     let classifiedDATA = clfResult.data;
     let classifiedACTION = clfResult.action;
     // Fallback déterministe : si Haiku rate et classe en CHAT, on rattrape les
@@ -804,22 +919,31 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
     // tools chargés mais Claude n'appellera aucun outil donc inoffensif).
     // Faux négatifs sont plus douloureux (Claude fabrique des réponses sans
     // tool call) → on préfère élargir.
-    if (isFreeMode && !classifiedDATA && !classifiedACTION) {
+    if ((isFreeMode || isOperationalMode) && !classifiedDATA && !classifiedACTION) {
       const lastUserMsg = String(message || '').slice(0, 500).toLowerCase();
       const ACTION_KEYWORDS = /\b(envoie?|envoyer|envoi|écris\s+à|ajoute|écarte?r?|écartes|dismiss|archive|archiv\w+|invite|assigne|assignes|applique|appliques|pousse|pousses|mets?\s+en\s+pause|relance|relances|reprends?|réactive|modifie|modifies|change\s+(le|la|les|de|du)|enrichis|enrich\w+|trouve\s+l['"]?email|crée\s+(la|une|le)|supprime|delete|push)\b/i;
       if (ACTION_KEYWORDS.test(lastUserMsg)) {
         classifiedACTION = true;
         console.log(`[search-agent-chat] B.2 keyword fallback → ACTION=true (Haiku missed it)`);
       }
+      // Idem pour les demandes explicites de recherche web (web_search est un
+      // tool → nécessite la boucle d'outils). Vu en prod : « Cherche sur le
+      // Web des infos sur le client » classé CHAT → le modèle répondait
+      // « je n'ai pas accès au web ». Faux positifs inoffensifs (cf. supra).
+      const WEB_KEYWORDS = /\b(sur\s+(le\s+)?web|sur\s+internet|sur\s+google|recherche\s+web|actualit[ée]s?|dernières?\s+news|levée\s+de\s+fonds|qu[’']est-ce\s+qui\s+se\s+dit)\b/i;
+      if (!classifiedACTION && WEB_KEYWORDS.test(lastUserMsg)) {
+        classifiedDATA = true;
+        console.log(`[search-agent-chat] B.2 keyword fallback → DATA=true (web search intent)`);
+      }
     }
     const classifiedTOOLS = classifiedDATA || classifiedACTION;
 
-    // Free + (DATA ou ACTION) : on entre dans la boucle d'outils avec le prompt
-    // libre, augmenté d'une consigne d'accès LECTURE + ACTIONS. Sans ça le
-    // freeSystemPrompt dit « tu ne peux pas » et le modèle hésiterait à appeler
-    // les outils. On n'augmente QUE ce chemin → le chat normal (CHAT) garde
-    // un prompt byte-identique (zéro régression sur l'UX Réflexion validée).
-    if (isFreeMode && classifiedTOOLS) {
+    // Free/opérationnel + (DATA ou ACTION) : on entre dans la boucle d'outils
+    // avec le prompt du mode, augmenté d'une consigne d'accès LECTURE + ACTIONS.
+    // Sans ça le freeSystemPrompt dit « tu ne peux pas » et le modèle hésiterait
+    // à appeler les outils. On n'augmente QUE ce chemin → le chat normal (CHAT)
+    // garde un prompt byte-identique (zéro régression sur l'UX Réflexion validée).
+    if ((isFreeMode || isOperationalMode) && classifiedTOOLS) {
       activeSystemPrompt = activeSystemPrompt +
         `\n\n=== ACCÈS DONNÉES (cette conversation) ===\n` +
         `Tu disposes d'OUTILS EN LECTURE SEULE sur les données Konekt de cet ` +
@@ -857,7 +981,18 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `(membres, rôles, qui a connecté LinkedIn/email, invitations en attente, crédits), ` +
         `et get_vivier_overview (CRM/vivier — contacts et entreprises connus, top engagés). ` +
         `Pour lire le fil de discussion LINKEDIN verbatim avec quelqu'un (candidat OU contact) : ` +
-        `get_linkedin_thread(person_name). ` +
+        `get_linkedin_thread(person_name). Pour une VUE D'ENSEMBLE de la messagerie LinkedIn ` +
+        `(« qui m'a répondu ? », « des non-lus ? », « quoi de neuf ? ») : get_inbox_overview ` +
+        `(option unread_only). ` +
+        `Tu disposes aussi d'une RECHERCHE WEB (web_search) pour les informations publiques ` +
+        `et récentes : actualité/levée de fonds d'une entreprise, tendances marché, salaires, ` +
+        `personne publique. Utilise-la quand la réponse dépend d'infos hors de Konekt et ` +
+        `cite tes sources (liens). Max 3 recherches par réponse — sois précis dans tes requêtes. ` +
+        `Des CONNECTEURS EXTERNES configurés par l'organisation (Notion, Slack, calendrier, ` +
+        `outils internes…) peuvent exposer des outils supplémentaires : utilise-les comme les ` +
+        `autres. ⚠️ Leurs actions d'ÉCRITURE s'exécutent DIRECTEMENT (pas de bandeau ` +
+        `d'approbation) — avant tout appel d'écriture sur un connecteur, ANNONCE en une phrase ` +
+        `ce que tu vas faire, et en cas de doute demande confirmation à l'utilisateur d'abord. ` +
         `Pour CONNAÎTRE LE STATUT d'une action IA (envoi LinkedIn, modif candidat, ` +
         `etc.) — « tu as bien envoyé ? », « c'est planifié ? », « où en est ma ` +
         `demande ? » : appelle get_recent_agent_actions (filtres optionnels : ` +
@@ -872,14 +1007,28 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `\n\n=== ACTIONS (modifications) ===\n` +
         `Tu disposes aussi d'OUTILS MUTANTS pour PROPOSER des modifications : ` +
         `pipeline (add_candidate_note, dismiss_candidate, assign_candidate_to_member, ` +
-        `update_candidate_stage, add_to_shortlist), missions (update_mission_status, ` +
+        `update_candidate_stage, add_to_shortlist ; en MASSE sur 2-50 candidats : ` +
+        `bulk_update_stage, bulk_dismiss — résous d'abord les candidate_ids via ` +
+        `get_mission_candidates, ne les invente jamais), missions (update_mission_status, ` +
         `update_mission_brief, regenerate_search_filters, apply_search_filters_to_mission, ` +
-        `create_mission), outreach (send_linkedin_message, pause_sequence, resume_sequence, ` +
+        `create_mission), outreach (send_linkedin_message, send_email — email RÉEL depuis la ` +
+        `boîte connectée de l'user, adresse JAMAIS inventée : demande-la ou résous-la via ` +
+        `get_candidate_detail / enrich_candidate_contact —, create_sequence — crée une séquence ` +
+        `multi-étapes SANS rien envoyer —, pause_sequence, resume_sequence, ` +
         `enroll_in_sequence, draft_outreach_message), équipe (invite_team_member, ` +
-        `update_member_quota), enrichment (enrich_candidate_contact). ` +
-        `CHAQUE appel à un outil mutant ouvre un BANDEAU D'APPROBATION côté UI : tu ` +
-        `n'exécutes JAMAIS toi-même, tu PROPOSES via le tool call, l'user ` +
-        `valide/rejette/édite dans le bandeau. ` +
+        `update_member_quota), enrichment (enrich_candidate_contact), ` +
+        `calendrier (schedule_interview : programme un entretien — start_at ISO avec ` +
+        `timezone Europe/Paris, durée défaut 45 min, mission optionnelle ; ne fait ` +
+        `AUCUN envoi d'invitation au candidat), sourcing (launch_search : lance la ` +
+        `VRAIE recherche autonome de candidats — uniquement si un plan de recherche ` +
+        `[SEARCH_PLAN] a déjà été validé sur cette conversation). ` +
+        `Selon la POLITIQUE D'AUTONOMIE configurée par l'organisation, un outil mutant ` +
+        `soit s'exécute DIRECTEMENT (tool_result outcome "executed_inline" — l'action est ` +
+        `FAITE, tu peux le confirmer), soit ouvre un BANDEAU D'APPROBATION côté UI ` +
+        `(outcome "awaiting_approval" — tu PROPOSES, l'user valide/rejette/édite). ` +
+        `Fie-toi UNIQUEMENT à l'outcome du tool_result pour savoir dans quel cas tu es. ` +
+        `Les actions sensibles (envois LinkedIn, écarter, inviter, quotas) exigent ` +
+        `TOUJOURS l'approbation, quelle que soit la politique. ` +
         `\n\n**🚫 RÈGLE ANTI-FABRICATION (CRITIQUE) :** ` +
         `Tu ne dois JAMAIS prétendre avoir appelé un outil que tu n'as pas RÉELLEMENT ` +
         `appelé. Phrases INTERDITES tant qu'aucun tool_use n'a été émis dans CE tour : ` +
@@ -988,31 +1137,90 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `l'approbation user dans le bandeau. Si status='failed' → cite l'error_message.`;
     }
 
-    // --- Sourcing mode (ou chat libre classé DATA/ACTION) : boucle d'outils ---
-    if (isSourcingMode || (isFreeMode && classifiedTOOLS)) {
+    // --- Sourcing mode (ou chat libre/opérationnel classé DATA/ACTION) : boucle d'outils ---
+    if (isSourcingMode || ((isFreeMode || isOperationalMode) && classifiedTOOLS)) {
       const encoder = new TextEncoder();
       let fullResponse = "";
       let _tokensIn = 0;
       let _tokensOut = 0;
+      let _webSearchCount = 0;
 
       const transformedStream = new ReadableStream({
         async start(controller) {
           try {
+            // 1er event : l'id de conversation (indispensable au caller quand
+            // la conversation vient d'être créée côté serveur — create-path).
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ conversation_id })}\n\n`));
             let currentMessages = [...messages];
-            let maxToolRounds = 5;
+            // Rounds dynamiques (P2.6) : plafond haut (8) pour les chaînes de
+            // tools rapides, borné par un budget temps MURAL — la vraie
+            // contrainte est le hard-limit edge (~150s), pas le nombre de
+            // rounds. On ne DÉMARRE pas de nouveau round passé 95s.
+            let maxToolRounds = 8;
+            const LOOP_WALL_BUDGET_MS = 95_000;
+            const loopStartedAt = Date.now();
+            let roundNumber = 0;
             let apiErrored = false;
             let awaitingApprovalCount = 0;
 
             // Combine read-only sourcing tools (hardcoded) + registry mutating tools
-            // (dynamically registered via registerMutatingTools()). Constant
-            // across rounds — computed once, outside the loop.
+            // (dynamically registered via registerMutatingTools()) + le server
+            // tool web_search (exécuté côté API — jamais dispatché ici).
+            // Constant across rounds — computed once, outside the loop.
             const registryTools = getAnthropicToolDefinitions();
-            const allTools = [...sourcingTools, ...registryTools];
+            const allTools = [...sourcingTools, ...registryTools, buildWebSearchTool(resolvedModel)];
+
+            // ── Connecteurs MCP de l'org (P3.1) ────────────────────────────
+            // Serveurs MCP distants configurés dans Réglages → Actions de
+            // l'agent. Attachés via le connecteur MCP natif de l'API (beta) :
+            // l'API s'y connecte côté serveur, leurs outils apparaissent comme
+            // des blocs mcp_tool_use/mcp_tool_result dans le stream. Fail-soft
+            // intégral : erreur de chargement → pas de MCP ; 400 API (serveur
+            // injoignable/invalide) → retry du round sans MCP.
+            let mcpServers: Array<Record<string, unknown>> = [];
+            if (orgId) {
+              try {
+                const { data: mcpRows } = await supabase
+                  .from("organization_mcp_servers")
+                  .select("name, url, authorization_token")
+                  .eq("organization_id", orgId)
+                  .eq("enabled", true)
+                  .limit(5);
+                mcpServers = ((mcpRows ?? []) as Array<{ name: string; url: string; authorization_token: string | null }>)
+                  .filter((r) => r.name && r.url && r.url.startsWith("https://"))
+                  .map((r) => ({
+                    type: "url",
+                    name: r.name,
+                    url: r.url,
+                    ...(r.authorization_token ? { authorization_token: r.authorization_token } : {}),
+                  }));
+              } catch (e) {
+                console.warn("[search-agent-chat] MCP servers load skipped:", e);
+              }
+            }
+            let mcpDisabledForRequest = false;
+            if (mcpServers.length > 0) {
+              console.log(`[search-agent-chat] MCP connectors attached: ${mcpServers.map((s) => s.name).join(", ")}`);
+            }
 
             // Tool-calling loop
             while (maxToolRounds > 0) {
-              console.log(`[search-agent-chat] Tool loop round ${6 - maxToolRounds}, messages: ${currentMessages.length}`);
+              roundNumber++;
+              const elapsedMs = Date.now() - loopStartedAt;
+              if (roundNumber > 1 && elapsedMs > LOOP_WALL_BUDGET_MS) {
+                // Budget temps épuisé : on s'arrête HONNÊTEMENT plutôt que de
+                // risquer une coupure hard-limit en plein stream.
+                console.warn(`[search-agent-chat] Wall budget exhausted (${elapsedMs}ms) — stopping before round ${roundNumber}`);
+                const budgetMsg = "Je me suis arrêté avant la fin (temps de traitement atteint). Dis-moi « continue » pour que je reprenne où j'en étais.";
+                fullResponse += (fullResponse ? "\n\n" : "") + budgetMsg;
+                const budgetChunk = { choices: [{ delta: { content: budgetMsg }, index: 0 }] };
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(budgetChunk)}\n\n`));
+                break;
+              }
+              console.log(`[search-agent-chat] Tool loop round ${roundNumber}, elapsed ${elapsedMs}ms, messages: ${currentMessages.length}`);
 
+              // Connecteurs MCP actifs pour CE round (désactivés après un 400)
+              const activeMcpServers = mcpDisabledForRequest ? [] : mcpServers;
               const apiBody: any = {
                 model: resolvedModel,
                 max_tokens: 16000,
@@ -1025,7 +1233,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
                 ],
                 messages: currentMessages,
-                tools: allTools,
+                // Chaque serveur MCP DOIT être référencé par un mcp_toolset.
+                tools: [
+                  ...allTools,
+                  ...activeMcpServers.map((s) => ({ type: "mcp_toolset", mcp_server_name: s.name })),
+                ],
+                ...(activeMcpServers.length > 0 ? { mcp_servers: activeMcpServers } : {}),
                 // Streaming par round : l'user voit le texte arriver au fil de
                 // l'eau au lieu de fixer "…" pendant toute la génération.
                 stream: true,
@@ -1040,13 +1253,19 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               // (~1s) et plus rien ne bornerait un stream figé. L'abort fait
               // rejeter reader.read() → catch global → [DONE] propre.
               const roundAbort = new AbortController();
-              const roundTimer = setTimeout(() => roundAbort.abort(), 120000);
+              // Deadline du round bornée par le temps mural restant (~140s au
+              // total, marge sous le hard-limit edge ~150s) — avant : 120s
+              // fixes par round, soit jusqu'à 215s cumulés possibles.
+              const roundDeadlineMs = Math.max(30_000, Math.min(120_000, 140_000 - (Date.now() - loopStartedAt)));
+              const roundTimer = setTimeout(() => roundAbort.abort(), roundDeadlineMs);
               const loopResponse = await fetch("https://api.anthropic.com/v1/messages", {
                 method: "POST",
                 headers: {
                   "x-api-key": ANTHROPIC_API_KEY,
                   "anthropic-version": "2023-06-01",
                   "Content-Type": "application/json",
+                  // Beta requise pour le connecteur MCP natif
+                  ...(activeMcpServers.length > 0 ? { "anthropic-beta": "mcp-client-2025-11-20" } : {}),
                 },
                 body: JSON.stringify(apiBody),
                 signal: roundAbort.signal,
@@ -1055,6 +1274,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               if (!loopResponse.ok) {
                 clearTimeout(roundTimer);
                 const errorText = await loopResponse.text();
+                // Fail-soft MCP : un serveur MCP injoignable/mal configuré fait
+                // 400 la requête ENTIÈRE. On retry UNE fois sans connecteurs
+                // plutôt que de casser le chat de toute l'org.
+                if (loopResponse.status === 400 && activeMcpServers.length > 0 && !mcpDisabledForRequest) {
+                  mcpDisabledForRequest = true;
+                  console.warn(`[search-agent-chat] 400 with MCP attached — retrying round without connectors: ${errorText.slice(0, 300)}`);
+                  continue;
+                }
                 console.error("[search-agent-chat] AI error in tool loop:", loopResponse.status, errorText);
                 apiErrored = true;
                 // Message honnête, accumulé dans fullResponse pour être persisté
@@ -1073,6 +1300,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               const roundBlocks: any[] = [];
               let stopReason: string | null = null;
               let roundTokensOut = 0;
+              let roundWebSearches = 0;
               {
                 const loopReader = loopResponse.body!.getReader();
                 const loopDecoder = new TextDecoder();
@@ -1096,6 +1324,27 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                       const cb = event.content_block || {};
                       if (cb.type === "tool_use") {
                         partials.set(event.index, { type: "tool_use", id: cb.id, name: cb.name, _json: "" });
+                      } else if (cb.type === "server_tool_use") {
+                        // Server tool (web_search) : exécuté côté API. On
+                        // reconstruit le bloc pour le ré-émettre dans l'historique
+                        // et on affiche la chip « recherche web » côté UI.
+                        partials.set(event.index, { type: "server_tool_use", id: cb.id, name: cb.name, _json: "" });
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.id, name: cb.name || "web_search", state: "running" } })}\n\n`));
+                      } else if (cb.type === "mcp_tool_use") {
+                        // Outil d'un connecteur MCP : exécuté côté API (P3.1).
+                        // Bloc reconstruit pour ré-émission + chip UI avec le
+                        // nom du connecteur.
+                        partials.set(event.index, { type: "mcp_tool_use", id: cb.id, name: cb.name, server_name: cb.server_name, _json: "" });
+                        const chipName = cb.server_name ? `${cb.server_name} · ${cb.name || "outil"}` : (cb.name || "connecteur");
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.id, name: chipName, state: "running" } })}\n\n`));
+                      } else if (typeof cb.type === "string" && cb.type.endsWith("_tool_result")) {
+                        // Résultat de server tool (web_search_tool_result…) :
+                        // arrive complet dans le start — on le conserve tel quel
+                        // (il DOIT être ré-émis avec le contenu assistant).
+                        partials.set(event.index, { ...cb });
+                        if (cb.tool_use_id) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.tool_use_id, name: "web_search", state: "done", outcome: "ok" } })}\n\n`));
+                        }
                       } else {
                         partials.set(event.index, { type: "text", text: "" });
                       }
@@ -1113,7 +1362,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                     } else if (event.type === "content_block_stop") {
                       const p = partials.get(event.index);
                       if (!p) continue;
-                      if (p.type === "tool_use") {
+                      if (p.type === "tool_use" || p.type === "server_tool_use" || p.type === "mcp_tool_use") {
                         try { p.input = p._json ? JSON.parse(p._json) : {}; } catch { p.input = {}; }
                         delete p._json;
                       }
@@ -1124,6 +1373,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                       // output_tokens est CUMULATIF au sein d'un message → on
                       // garde la dernière valeur, ajoutée une fois le round fini.
                       if (event.usage?.output_tokens) roundTokensOut = event.usage.output_tokens;
+                      // Recherches web facturées par l'API (P4.4) — cumulatif
+                      // au sein du message, même traitement.
+                      if (event.usage?.server_tool_use?.web_search_requests) {
+                        roundWebSearches = event.usage.server_tool_use.web_search_requests;
+                      }
                     } else if (event.type === "error") {
                       // Erreur DANS le flux (ex. overloaded_error, équivalent
                       // mid-stream d'un 529) : HTTP 200 donc !ok ne la voit pas.
@@ -1141,14 +1395,36 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               // timer orphelin abort un stream déjà mort — no-op inoffensif.)
               clearTimeout(roundTimer);
               _tokensOut += roundTokensOut;
+              _webSearchCount += roundWebSearches;
               // Filtre les text blocks vides (possibles en streaming autour des
               // tool_use) : l'API rejette un message assistant avec text:"" (400).
-              const roundContent = roundBlocks.filter((b: any) => b && (b.type === 'tool_use' || (b.type === 'text' && b.text)));
+              // Les blocs server-side (server_tool_use + *_tool_result) sont
+              // conservés : ils DOIVENT être ré-émis dans l'historique assistant.
+              const roundContent = roundBlocks.filter((b: any) => b && (
+                b.type === 'tool_use' ||
+                b.type === 'server_tool_use' ||
+                b.type === 'mcp_tool_use' ||
+                (typeof b.type === 'string' && b.type.endsWith('_tool_result')) ||
+                (b.type === 'text' && b.text)
+              ));
 
               console.log(`[search-agent-chat] Round streamed: stop_reason=${stopReason}, content_types=${roundContent.map((b: any) => b.type).join(',')}, +${roundTokensOut} out tokens`);
 
               // Erreur in-stream → on sort honnêtement (message déjà émis + persisté via fullResponse).
               if (apiErrored) break;
+
+              // pause_turn : la boucle server-side (web_search) a atteint sa
+              // limite d'itérations API. On ré-émet le contenu assistant tel
+              // quel et on relance — l'API reprend où elle s'était arrêtée.
+              // PAS de message user intermédiaire (l'API détecte le
+              // server_tool_use terminal et continue seule).
+              if (stopReason === 'pause_turn') {
+                if (roundContent.length > 0) {
+                  currentMessages.push({ role: 'assistant', content: roundContent });
+                }
+                maxToolRounds--;
+                continue;
+              }
 
               if (stopReason === 'tool_use') {
                 const toolUseBlocks = roundContent.filter((b: any) => b.type === 'tool_use');
@@ -1182,8 +1458,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                       userId: user.id,
                       organizationId: orgId,
                       conversationId: conversation_id,
-                      messageId: null, // we don't have a message_id yet at this point
+                      // Rattache l'execution au message user déclencheur (le
+                      // message assistant n'existe pas encore à ce stade).
+                      messageId: userMessageId,
                       adminClient: supabase,
+                      userBearer: authHeader.replace(/^Bearer\s+/i, "") || null,
                     };
                     const handled = await handleProposedToolCall(tc.name, tc.input, ctx);
                     if (handled.outcome === 'awaiting_approval') awaitingApprovalCount++;
@@ -1268,34 +1547,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   .eq("id", conversation_id);
               }
 
-              // Sprint 3 — Mémoire cross-session : extraction async fire-and-forget
-              // après chaque réponse (toutes les 4-5 messages on aura assez de signal).
-              // On compte les messages totaux pour ne pas extraire trop souvent.
-              try {
-                const { count } = await supabase
-                  .from('agent_messages')
-                  .select('id', { count: 'exact', head: true })
-                  .eq('conversation_id', conversation_id);
-                // Tous les 6 messages, on tente une extraction (idempotent côté DB).
-                if ((count ?? 0) >= 6 && (count ?? 0) % 6 === 0) {
-                  const { data: msgs } = await supabase
-                    .from('agent_messages')
-                    .select('role, content')
-                    .eq('conversation_id', conversation_id)
-                    .order('created_at', { ascending: false })
-                    .limit(20);
-                  const formatted = (msgs ?? []).reverse().map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }));
-                  // Fire-and-forget — pas d'await pour ne pas ralentir la response
-                  extractInsightsFromConversation(supabase, {
-                    userId: user.id,
-                    organizationId: orgId,
-                    conversationId: conversation_id,
-                    messages: formatted,
-                  }).catch((e) => console.warn('[search-agent-chat] insight extraction failed:', e));
-                }
-              } catch (e) {
-                console.warn('[search-agent-chat] insight extraction count check failed:', e);
-              }
+              // Hooks mémoire (insights Sprint 3 + compaction P4.2) —
+              // fire-and-forget, survit à la fermeture du stream via waitUntil.
+              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId);
+              try { (globalThis as any).EdgeRuntime?.waitUntil?.(memoryPromise); } catch { /* no-op */ }
+              memoryPromise.catch(() => {});
             }
 
             // Settle AI credits
@@ -1312,6 +1568,19 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                     tokensInput: _tokensIn, tokensOutput: _tokensOut,
                     description: _aiParams.description,
                   }).catch((e) => console.error("[search-agent-chat] settle error:", e));
+                  // Recherches web (P4.4) : facturées par l'API en plus des
+                  // tokens (~1 cent/recherche) → transaction séparée à
+                  // 1 crédit/recherche, visible dans l'historique de crédits.
+                  if (_webSearchCount > 0) {
+                    await settleCredits(adminClient as any, {
+                      organizationId: resolvedOrgId, userId: user.id,
+                      aiAction: "web_search", modelId: _aiParams.modelId,
+                      tokensInput: 0, tokensOutput: 0,
+                      flatCredits: _webSearchCount,
+                      costUsd: _webSearchCount * 0.01,
+                      description: `${_webSearchCount} recherche${_webSearchCount > 1 ? "s" : ""} web`,
+                    }).catch((e) => console.error("[search-agent-chat] web_search settle error:", e));
+                  }
                 }
               } catch (e) { console.warn("[search-agent-chat] settle skipped:", e); }
             }
@@ -1386,6 +1655,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         // throw) laissait le stream sans [DONE] (UI bloquée sur "…"), sans
         // persistance du partiel et sans settle des crédits.
         try {
+        // 1er event : l'id de conversation (create-path — voir chemin tools).
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ conversation_id })}\n\n`));
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
@@ -1426,6 +1697,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   .update({ search_config: enrichedConfig, status: "plan_proposed" })
                   .eq("id", conversation_id);
               }
+
+              // Hooks mémoire (insights + compaction) — P4.3 : le chemin
+              // streaming simple n'extrayait JAMAIS d'insights, seule la
+              // boucle d'outils le faisait. Fire-and-forget via waitUntil.
+              const memoryPromise = runMemoryHooks(supabase, conversation_id, user.id, orgId);
+              try { (globalThis as any).EdgeRuntime?.waitUntil?.(memoryPromise); } catch { /* no-op */ }
+              memoryPromise.catch(() => {});
             }
 
             // Settle AI credits (fire-and-forget)

@@ -204,6 +204,47 @@ Deno.serve(async (req: Request) => {
 
       const user = await validateUser();
 
+      // Sécurité multi-tenant : chaque account_id demandé DOIT appartenir à
+      // l'organisation du caller. Sans cette vérif, un user authentifié peut
+      // enqueue un InMail en passant le linkedin_account_id d'une AUTRE org →
+      // l'envoi (et la consommation de crédits/quotas InMail) partirait depuis
+      // le compte LinkedIn d'un tiers (impersonation cross-tenant).
+      {
+        const requestedAccountIds = [
+          ...new Set(items.map((it: any) => it?.account_id).filter(Boolean)),
+        ] as string[];
+        if (requestedAccountIds.length === 0) {
+          throw new Error("Missing account_id");
+        }
+        let callerOrgId: string | null = null;
+        try {
+          const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+          callerOrgId = await resolveOrgIdFromUser(user.id, supabase);
+        } catch (e) {
+          console.warn("[process-inmail-queue] org resolution failed at enqueue:", e);
+        }
+        const { data: ownedAccounts, error: ownErr } = callerOrgId
+          ? await supabase
+              .from("member_linkedin_accounts")
+              .select("linkedin_account_id")
+              .eq("organization_id", callerOrgId)
+              .in("linkedin_account_id", requestedAccountIds)
+          : { data: [], error: null };
+        if (ownErr) throw ownErr;
+        const ownedSet = new Set((ownedAccounts || []).map((a: any) => a.linkedin_account_id));
+        const unauthorized = requestedAccountIds.filter((id) => !ownedSet.has(id));
+        if (unauthorized.length > 0) {
+          console.warn(
+            `[process-inmail-queue] user ${user.id} tried to enqueue with unauthorized account(s):`,
+            unauthorized,
+          );
+          return new Response(
+            JSON.stringify({ success: false, error: "Compte LinkedIn non autorisé" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+
       // Load user's configured business hours + timezone (default 8h-19h Paris)
       const userQuotas = await loadUserQuotas(supabase, user.id);
       const timezone = user_timezone || userQuotas.timezone;
@@ -327,6 +368,27 @@ Deno.serve(async (req: Request) => {
       };
 
       const now = new Date();
+
+      // Janitor (audit 2026-07, Delivery M1) : un item resté en 'sending'
+      // > 15 min = la fonction a crashé/timeout entre le claim et l'issue.
+      // Sans ce nettoyage, l'item n'était ni envoyé ni ré-essayé, invisible
+      // pour l'utilisateur, pour toujours. → 'failed' (action VISIBLE : pas
+      // de retry auto, impossible de savoir si l'InMail est parti avant le
+      // crash — même logique anti double-envoi que process-sequences).
+      {
+        const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const { data: unstuck, error: unstuckErr } = await supabase
+          .from("inmail_queue")
+          .update({
+            status: "failed",
+            error_message: "Interrompu pendant l'envoi — relance auto désactivée pour éviter un double envoi. Re-planifiez manuellement si nécessaire.",
+          })
+          .eq("status", "sending")
+          .lt("updated_at", stuckCutoff)
+          .select("id");
+        if (unstuckErr) console.warn("[process-inmail-queue] stuck-sending janitor failed (non-blocking):", unstuckErr);
+        else if (unstuck?.length) console.warn(`[process-inmail-queue] Janitor: ${unstuck.length} stuck 'sending' item(s) → failed`);
+      }
 
       // Get items that are scheduled and ready to send.
       // Conformité LinkedIn (warning #260513-007211) : on limite à 3 InMails/cycle
@@ -517,11 +579,24 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // Mark as sending
-        await supabase
+        // Claim atomique : passer en 'sending' UNIQUEMENT si l'item est encore
+        // scheduled/pending. Entre le SELECT initial et ici s'écoulent plusieurs
+        // requêtes (statut compte, cooldown, solde InMail ~15s, quota), donc deux
+        // invocations concurrentes (cron toutes les 3 min + action manuelle UI)
+        // peuvent avoir sélectionné le MÊME item. Seule celle dont l'UPDATE
+        // affecte 1 ligne envoie ; l'autre voit 0 ligne (statut déjà 'sending')
+        // et skip → plus de double InMail au même candidat.
+        const { data: claimed, error: claimErr } = await supabase
           .from("inmail_queue")
           .update({ status: "sending" })
-          .eq("id", item.id);
+          .eq("id", item.id)
+          .in("status", ["scheduled", "pending"])
+          .select("id");
+        if (claimErr || !claimed || claimed.length === 0) {
+          console.warn(`[process-inmail-queue] item ${item.id} already claimed by a concurrent run — skipping`);
+          results.push({ id: item.id, success: false, error: "already claimed (concurrent run)" });
+          continue;
+        }
 
         try {
           // Determine message type based on network distance

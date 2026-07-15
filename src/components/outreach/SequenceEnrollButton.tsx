@@ -85,17 +85,30 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
     // Lazy-load steps only when the user actually picks a sequence
     if (sequence.steps.length === 0) {
       try {
-        const { data: stepsData } = await supabase
+        const { data: stepsData, error: stepsError } = await supabase
           .from('sequence_steps')
           .select('*')
           .eq('sequence_id', sequence.id)
           .order('step_order', { ascending: true });
 
+        if (stepsError) throw stepsError;
         sequence = { ...sequence, steps: stepsData || [] };
       } catch (err) {
+        // Ne PAS ouvrir le modal avec steps=[] : l'enrollment créerait des
+        // candidats « dormants » (actifs mais sans aucune exécution planifiée,
+        // jamais repris par le moteur — audit 2026-07, Frontend H3).
         console.error('Error fetching steps:', err);
+        toast.error('Impossible de charger les étapes de la séquence — réessaie.');
+        return;
       }
     }
+
+    // Séquence réellement vide → bloquer aussi (même risque de dormants).
+    if (sequence.steps.length === 0) {
+      toast.error('Cette séquence ne contient aucune étape — ajoute au moins une étape avant d’inscrire des candidats.');
+      return;
+    }
+
     setSelectedSequence(sequence);
     setShowEnrollModal(true);
   };

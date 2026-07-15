@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle, AlertCircle, Target, MapPin, Briefcase, TrendingUp, TrendingDown, DollarSign, AlertTriangle, Search, Ban, ChevronDown, Sparkles, Zap, Lightbulb, Shield } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScoringBreakdown } from './ScoringBreakdown';
@@ -142,12 +142,54 @@ export const SalaryBadge: React.FC<{ analysis?: SalaryAnalysis }> = ({ analysis 
   );
 };
 
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** Count-up du score affiché, synchronisé avec le tracé CSS 700ms de
+ *  l'anneau. Anime depuis la valeur courante quand le score change
+ *  (re-scoring). Valeur immédiate si prefers-reduced-motion. */
+function useAnimatedScore(score: number, duration = 700): number {
+  const [displayed, setDisplayed] = useState(() => (prefersReducedMotion() ? score : 0));
+  const displayedRef = useRef(displayed);
+  displayedRef.current = displayed;
+
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setDisplayed(score);
+      return;
+    }
+    const from = displayedRef.current;
+    if (from === score) return;
+    const start = performance.now();
+    let raf: number;
+    const step = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplayed(Math.round(from + (score - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [score, duration]);
+
+  return displayed;
+}
+
 // ── Score Ring ──
 const ScoreRing: React.FC<{ score: number; size?: number; label?: string; tone?: 'primary' | 'success' | 'amber' | 'muted' }> = ({ score, size = 64, label, tone = 'primary' }) => {
   const strokeWidth = 5;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
+  // L'anneau part de zéro au mount puis se remplit via la transition CSS
+  // 700ms déjà en place ; le chiffre compte en parallèle (même durée).
+  const [drawn, setDrawn] = useState(() => prefersReducedMotion());
+  useEffect(() => {
+    if (drawn) return;
+    const raf = requestAnimationFrame(() => setDrawn(true));
+    return () => cancelAnimationFrame(raf);
+  }, [drawn]);
+  const displayedScore = useAnimatedScore(score);
+  const offset = circumference - ((drawn ? score : 0) / 100) * circumference;
   // Couleur selon le tone (utilisé pour différencier fit / confidence / engagement)
   const strokeColor =
     tone === 'success' ? 'hsl(var(--success))' :
@@ -163,7 +205,7 @@ const ScoreRing: React.FC<{ score: number; size?: number; label?: string; tone?:
             strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="butt" className="transition-all duration-700 ease-out" />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className={size <= 40 ? "text-sm font-bold text-foreground tabular-nums" : "text-lg font-bold text-foreground tabular-nums"}>{score}</span>
+          <span className={size <= 40 ? "text-sm font-bold text-foreground tabular-nums" : "text-lg font-bold text-foreground tabular-nums"}>{displayedScore}</span>
         </div>
       </div>
       {label && <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>}

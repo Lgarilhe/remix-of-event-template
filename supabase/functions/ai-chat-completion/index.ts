@@ -54,7 +54,20 @@ Deno.serve(async (req) => {
         .maybeSingle();
       orgId = (prof?.active_organization_id as string) || null;
     }
-    const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
+    let aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
+
+    // Mémoire cross-session (P1.4) : les insights appris par le Copilot
+    // (style, préférences, secteur) profitent aussi à l'assistant inline
+    // (AiTextarea). Fail-soft.
+    if (userId && orgId) {
+      try {
+        const { getRelevantInsights, formatInsightsForPrompt } = await import("../_shared/user-memory.ts");
+        const insights = await getRelevantInsights(svc, { userId, organizationId: orgId, limit: 5 });
+        aiContext = (aiContext || "") + formatInsightsForPrompt(insights);
+      } catch (e) {
+        console.warn("[ai-chat-completion] user-memory injection skipped:", e);
+      }
+    }
 
     const result = await callClaudeCompat({
       messages,

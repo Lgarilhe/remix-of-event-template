@@ -339,6 +339,14 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const handleEnroll = async () => {
+    // Sans org résolue, les inserts partiraient avec organization_id null →
+    // refusés par RLS ou invisibles pour l'org (même garde que
+    // SequenceEnrollModal). On refuse plutôt que d'enrôler dans le vide.
+    if (!organizationId) {
+      toast.error("Organisation non résolue — recharge la page et réessaie.");
+      return;
+    }
+
     setIsEnrolling(true);
     setEnrollResults(null);
     const results = { success: 0, skipped: 0, errors: [] as string[] };
@@ -448,7 +456,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               + effDelayMinutes * 60000
             );
 
-            await supabase
+            const { error: execError } = await supabase
               .from('sequence_step_executions')
               .insert({
                 enrollment_id: enrollment.id,
@@ -458,6 +466,17 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 status: 'scheduled',
                 organization_id: organizationId, // RLS multi-tenant
               });
+
+            // Si l'insert de la 1re exécution échoue (RLS, contrainte…),
+            // l'enrollment serait « dormant » : actif mais sans aucune étape
+            // planifiée — le moteur ne le reprendra JAMAIS (il ne traite que
+            // des exécutions existantes). On remonte l'erreur au lieu de
+            // compter un faux succès (audit 2026-07, Frontend H2).
+            if (execError) {
+              results.errors.push(`${profile.name}: planification impossible (${execError.message})`);
+              await supabase.from('sequence_enrollments').delete().eq('id', enrollment.id);
+              continue;
+            }
           }
 
           results.success++;

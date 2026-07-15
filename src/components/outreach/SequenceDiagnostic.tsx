@@ -35,6 +35,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { formatSequenceError } from '@/lib/sequenceErrorMessages';
 
 interface SequenceDiagnosticProps {
   open: boolean;
@@ -409,9 +410,11 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                   <div className="space-y-1.5 max-h-48 overflow-y-auto">
                     {data.recentErrors.map(err => (
                       <div key={err.id} className="text-xs">
-                        <p className="text-destructive font-mono break-words">
-                          {err.error_message?.slice(0, 200) || 'Erreur inconnue'}
-                          {(err.error_message?.length || 0) > 200 && '…'}
+                        {/* formatSequenceError : traduit + strip les noms de
+                            vendors (le message brut du provider atteignait
+                            l'UI — audit 2026-07, Frontend M6 + règle branding) */}
+                        <p className="text-destructive break-words">
+                          {formatSequenceError(err.error_message) || 'Erreur inconnue'}
                         </p>
                         <p className="text-muted-foreground/70 text-[10px] mt-0.5">
                           <Clock className="w-2.5 h-2.5 inline mr-0.5" />

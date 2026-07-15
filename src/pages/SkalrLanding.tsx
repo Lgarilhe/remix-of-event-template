@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
-import landingDashboard from '@/assets/landing-dashboard.webp';
+import { LandingProductDemo } from '@/components/landing/LandingProductDemo';
 import { getValidatedSession } from '@/lib/authSession';
 import { withPreviewAccessToken, withPreviewAccessTokenFromSearch } from '@/lib/previewToken';
 
@@ -291,10 +291,10 @@ const SkalrLanding = () => {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.1 }}
-              className="font-editorial text-5xl sm:text-6xl md:text-7xl lg:text-[5.5rem] leading-[1.05] tracking-tight text-foreground mb-6"
+              className="font-brand font-extrabold text-5xl sm:text-6xl md:text-7xl lg:text-[5.25rem] leading-[1.0] tracking-[-0.035em] text-foreground mb-6"
             >
               Le recrutement,{' '}
-              <em className="italic">simplifié</em>{' '}
+              <em className="font-editorial italic font-normal">simplifié</em>{' '}
               et accéléré
             </motion.h1>
 
@@ -322,16 +322,14 @@ const SkalrLanding = () => {
               </BrutalButton>
             </motion.div>
 
-            {/* Dashboard Preview */}
+            {/* Démo produit vivante — l'app qui travaille, en boucle */}
             <motion.div
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
               className="max-w-3xl mx-auto"
             >
-              <div className="border-2 border-border shadow-md overflow-hidden bg-background">
-                <img src={landingDashboard} alt="Konekt dashboard preview" className="w-full" />
-              </div>
+              <LandingProductDemo />
             </motion.div>
           </div>
         </section>

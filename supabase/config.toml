@@ -16,7 +16,13 @@ project_id = "crckfywoyjxkawathdff"
 [functions.accept-invitation]
 verify_jwt = false
 
+[functions.accept-mission-invitation]
+verify_jwt = false
+
 [functions.add-to-shortlist]
+verify_jwt = false
+
+[functions.agent-daily-digest]
 verify_jwt = false
 
 [functions.ai-chat-completion]
@@ -137,6 +143,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ingest-context]
+verify_jwt = false
+
+[functions.ingest-user-file]
 verify_jwt = false
 
 [functions.live-coach]

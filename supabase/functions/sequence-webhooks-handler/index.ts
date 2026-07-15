@@ -416,7 +416,8 @@ async function handleMailTracking(
 // ============ MAIN HANDLER ============
 
 Deno.serve(async (req) => {
-  // Always return 200 to prevent Unipile retries
+  // 200 pour les cas traités/ignorés ; les échecs RÉELS répondent 500 (catch
+  // final) pour déclencher les retries du provider.
   const ok = (body: Record<string, unknown> = { received: true }) =>
     new Response(JSON.stringify(body), {
       status: 200,
@@ -493,6 +494,13 @@ Deno.serve(async (req) => {
     return ok();
   } catch (err) {
     console.error('[webhooks] Error processing webhook:', err);
-    return ok({ error: 'Processing error' });
+    // Échec réel de traitement → 500 pour déclencher les retries du provider
+    // au lieu de perdre l'event définitivement (audit 2026-07, Delivery M11).
+    // Les handlers sont idempotents (filtres status='active', upserts) donc un
+    // retraitement est inoffensif.
+    return new Response(JSON.stringify({ error: 'Processing error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 });

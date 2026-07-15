@@ -101,6 +101,10 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   live_coaching: { action: "live_coaching", label: "Coaching live (par minute)", floor: 5, typicalTokens: 10_000, routingTier: "default", category: "qualification" },
   agent_search_calibration: { action: "agent_search_calibration", label: "Agent — calibration", floor: 3, typicalTokens: 6_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
   agent_search_run: { action: "agent_search_run", label: "Agent — recherche", floor: 10, typicalTokens: 25_000, routingTier: "default", category: "agent", providers: ["anthropic"] },
+  agent_chat: { action: "agent_chat", label: "Copilot — chat (par message)", floor: 1, typicalTokens: 4_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
+  ai_chat: { action: "ai_chat", label: "Assistant texte inline", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
+  rag_rerank: { action: "rag_rerank", label: "Recherche sémantique — re-ranking", floor: 1, typicalTokens: 2_500, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
+  file_ingest: { action: "file_ingest", label: "Lecture de fichier joint", floor: 1, typicalTokens: 8_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
   filter_generation: { action: "filter_generation", label: "Filtres IA auto", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing" },
   filter_assistant_msg: { action: "filter_assistant_msg", label: "Chat filtres", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
   refine_search: { action: "refine_search", label: "Affiner recherche", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },
@@ -120,6 +124,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   // par requête (une page ≈ 20 profils) ; collect = 2 crédits par profil.
   coresignal_preview: { action: "coresignal_preview", label: "Base Konekt — aperçu", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
   coresignal_collect: { action: "coresignal_collect", label: "Base Konekt — fiche complète", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
+  web_search: { action: "web_search", label: "Recherche web", floor: 1, typicalTokens: 0, routingTier: "fast", category: "agent" },
 };
 
 // ─── Credit Calculation (frontend) ──────────────────────────────────────────

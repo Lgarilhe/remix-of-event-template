@@ -202,6 +202,41 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     category: "agent",
     providers: ["anthropic"],
   },
+  agent_chat: {
+    action: "agent_chat",
+    label: "Copilot — chat (par message)",
+    floor: 1,
+    typicalTokens: 4_000,
+    routingTier: "thinking",
+    category: "agent",
+    providers: ["anthropic"],
+  },
+  ai_chat: {
+    action: "ai_chat",
+    label: "Assistant texte inline",
+    floor: 1,
+    typicalTokens: 2_000,
+    routingTier: "fast",
+    category: "outreach",
+  },
+  rag_rerank: {
+    action: "rag_rerank",
+    label: "Recherche sémantique — re-ranking",
+    floor: 1,
+    typicalTokens: 2_500,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+  },
+  file_ingest: {
+    action: "file_ingest",
+    label: "Lecture de fichier joint",
+    floor: 1,
+    typicalTokens: 8_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+  },
   filter_generation: {
     action: "filter_generation",
     label: "Filtres IA automatiques",
@@ -355,6 +390,17 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 0,
     routingTier: "fast",
     category: "sourcing",
+  },
+  // ─── Recherche web de l'agent (P4.4) ────────────────────────────────────
+  // Facturée par l'API en sus des tokens (~1 cent/recherche). Réglée en
+  // transaction séparée via settleCredits({ flatCredits: nbRecherches }).
+  web_search: {
+    action: "web_search",
+    label: "Recherche web",
+    floor: 1,           // 1 crédit / recherche web
+    typicalTokens: 0,
+    routingTier: "fast",
+    category: "agent",
   },
 };
 
@@ -514,12 +560,25 @@ export async function callAnthropicWithRetry(
   const headers = getAnthropicHeaders(apiKey);
   let lastError: Error | null = null;
 
+  // Timeout 30s PAR TENTATIVE (convention repo : fetchWithTimeout 30s pour
+  // les appels LLM). Sans ça, un appel Anthropic qui hang consomme tout le
+  // budget 60s de l'edge function : l'isolate est tué, l'exécution reste en
+  // 'sending' et le janitor la passe 'failed' sans retry → outreach perdu.
+  const ATTEMPT_TIMEOUT_MS = 30000;
+  // Deadline TOTALE (tentatives + backoffs) : une edge function a 60s de budget,
+  // il faut laisser de la marge au reste du handler (DB, envoi, settle).
+  const TOTAL_DEADLINE_MS = 45000;
+  const startedAt = Date.now();
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ATTEMPT_TIMEOUT_MS);
     try {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers,
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
 
       if (response.ok) {
@@ -528,8 +587,8 @@ export async function callAnthropicWithRetry(
 
       const status = response.status;
 
-      // Rate limited (429) or overloaded (529) — retry with backoff
-      if ((status === 429 || status === 529) && attempt < maxRetries) {
+      // Rate limited (429) or overloaded (529) — retry with backoff (dans la deadline)
+      if ((status === 429 || status === 529) && attempt < maxRetries && Date.now() - startedAt < TOTAL_DEADLINE_MS - 5000) {
         const baseDelay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
         const jitter = Math.random() * 500;
         await new Promise((r) => setTimeout(r, baseDelay + jitter));
@@ -541,13 +600,18 @@ export async function callAnthropicWithRetry(
       throw new Error(`Anthropic API ${status}: ${errorBody}`);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      if (attempt < maxRetries && (lastError.message.includes("fetch") || lastError.message.includes("network"))) {
+      const isTimeout = lastError.name === "AbortError" || lastError.message.includes("abort");
+      const withinDeadline = Date.now() - startedAt < TOTAL_DEADLINE_MS - 5000; // 5s de marge mini pour retenter
+      if (attempt < maxRetries && withinDeadline && (isTimeout || lastError.message.includes("fetch") || lastError.message.includes("network"))) {
         const baseDelay = Math.pow(2, attempt) * 1000;
         const jitter = Math.random() * 500;
         await new Promise((r) => setTimeout(r, baseDelay + jitter));
         continue;
       }
+      if (isTimeout) throw new Error(`Anthropic API timeout after ${ATTEMPT_TIMEOUT_MS}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
       throw lastError;
+    } finally {
+      clearTimeout(timer);
     }
   }
 

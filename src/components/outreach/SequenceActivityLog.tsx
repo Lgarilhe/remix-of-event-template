@@ -219,14 +219,25 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   const handleCancelExecution = async (executionId: string) => {
     setCancellingId(executionId);
     try {
-      const { error } = await supabase
+      // Garde anti-race : n'annuler QUE si l'exécution est encore en attente.
+      // Sans le filtre statut, annuler une exécution déjà passée en 'sending'
+      // la marquait 'cancelled' alors que l'envoi partait quand même (puis le
+      // cron la repassait 'sent') — l'user croyait avoir stoppé un message
+      // qui est parti (audit 2026-07, Frontend H1).
+      const { data: cancelled, error } = await supabase
         .from('sequence_step_executions')
         .update({ status: 'cancelled', skip_reason: 'Annulé manuellement' })
-        .eq('id', executionId);
+        .eq('id', executionId)
+        .in('status', ['scheduled', 'waiting_event', 'quota_blocked'])
+        .select('id');
 
       if (error) throw error;
 
-      toast.success('Action annulée');
+      if (!cancelled || cancelled.length === 0) {
+        toast.error("Cette action est déjà en cours d'envoi ou traitée — annulation impossible.");
+      } else {
+        toast.success('Action annulée');
+      }
       fetchExecutions();
     } catch (err) {
       console.error('Error cancelling execution:', err);

@@ -36,6 +36,14 @@ export interface ToolContext {
   messageId: string | null;
   /** Service-role client (bypass RLS) — pour les mutations DB */
   adminClient: SupabaseClient;
+  /**
+   * JWT brut de l'utilisateur (sans le préfixe "Bearer "). Présent quand le
+   * tool est proposé (search-agent-chat) ou approuvé (agent-tool-action) —
+   * absent sur le chemin cron (process-scheduled-actions). Permet à un tool
+   * d'appeler une edge function interne AVEC l'identité user (ex :
+   * launch_search → run-agent-search), sans élargir l'auth de la cible.
+   */
+  userBearer?: string | null;
 }
 
 export interface DryRunResult {
@@ -104,6 +112,70 @@ export function getAnthropicToolDefinitions(): AnthropicToolDefinition[] {
 }
 
 // ============================================================================
+// Politiques d'autonomie (P2.1 audit 2026-07-14)
+// ============================================================================
+// Table agent_tool_policies : une row (org, tool) → 'auto' | 'approve' | 'off'.
+// Défaut sans row : reads → auto, mutations → approve (comportement historique).
+// GARDE-FOU : les tools mutation_external et la liste destructive ci-dessous ne
+// peuvent JAMAIS être 'auto' — le clamp est appliqué ICI, côté serveur, quelle
+// que soit la valeur en base (le frontend propose, le serveur tranche).
+
+export type ToolPolicy = 'auto' | 'approve' | 'off';
+
+const NEVER_AUTO_TOOLS = new Set([
+  'dismiss_candidate',
+  'bulk_dismiss',
+  'invite_team_member',
+  'update_member_quota',
+  'update_mission_status',
+]);
+
+const policyCache = new Map<string, { at: number; policies: Map<string, ToolPolicy> }>();
+const POLICY_CACHE_TTL_MS = 60_000;
+
+/** Politiques configurées de l'org (cache in-memory 60s par instance). */
+export async function getOrgToolPolicies(
+  adminClient: ToolContext['adminClient'],
+  organizationId: string,
+): Promise<Map<string, ToolPolicy>> {
+  const cached = policyCache.get(organizationId);
+  if (cached && Date.now() - cached.at < POLICY_CACHE_TTL_MS) return cached.policies;
+  const policies = new Map<string, ToolPolicy>();
+  try {
+    const { data } = await adminClient
+      .from('agent_tool_policies')
+      .select('tool_name, policy')
+      .eq('organization_id', organizationId);
+    for (const row of (data as Array<{ tool_name: string; policy: string }> | null) ?? []) {
+      if (row.policy === 'auto' || row.policy === 'approve' || row.policy === 'off') {
+        policies.set(row.tool_name, row.policy);
+      }
+    }
+  } catch (err) {
+    // Fail-soft : sans table/erreur DB, on retombe sur les défauts (approve).
+    console.warn('[agent-tools] getOrgToolPolicies failed (defaults apply):', err);
+  }
+  policyCache.set(organizationId, { at: Date.now(), policies });
+  return policies;
+}
+
+/** Politique effective d'un tool = configurée + clamp serveur. */
+export function resolveEffectivePolicy(tool: AgentTool, configured: ToolPolicy | undefined): ToolPolicy {
+  if (configured === 'off') return 'off';
+  if (!tool.requiresApproval) return 'auto'; // reads : toujours directs
+  if (configured === 'auto') {
+    if (tool.category === 'mutation_external' || NEVER_AUTO_TOOLS.has(tool.name)) return 'approve';
+    return 'auto';
+  }
+  return 'approve';
+}
+
+/** Exposé pour l'UI Settings : un tool peut-il être mis en auto ? */
+export function isAutoEligible(tool: AgentTool): boolean {
+  return tool.requiresApproval && tool.category !== 'mutation_external' && !NEVER_AUTO_TOOLS.has(tool.name);
+}
+
+// ============================================================================
 // Lifecycle helpers — appelés depuis search-agent-chat
 // ============================================================================
 
@@ -132,6 +204,17 @@ export async function handleProposedToolCall(
     return { outcome: 'denied', payload: { error: `Tool ${toolName} not found` } };
   }
 
+  // 0. Politique d'autonomie de l'org (P2.1) : off → refus net ; auto →
+  //    exécution directe (bloc 3) ; approve → bandeau (bloc 4).
+  const orgPolicies = await getOrgToolPolicies(ctx.adminClient, ctx.organizationId);
+  const effectivePolicy = resolveEffectivePolicy(tool, orgPolicies.get(tool.name));
+  if (effectivePolicy === 'off') {
+    return {
+      outcome: 'denied',
+      payload: { error: `L'action « ${tool.name} » est désactivée par l'administrateur de l'organisation (Réglages → Actions de l'agent).` },
+    };
+  }
+
   // 1. Verify access (RLS / role / membership)
   const access = await tool.verifyAccess(params, ctx);
   if (!access.allowed) {
@@ -149,8 +232,9 @@ export async function handleProposedToolCall(
     };
   }
 
-  // 3. If no approval needed, execute now
-  if (!tool.requiresApproval) {
+  // 3. Politique 'auto' (reads, et mutations autorisées en auto par l'org) :
+  //    exécution immédiate, loggée auto_executed dans l'audit.
+  if (effectivePolicy === 'auto') {
     let result: ExecuteResult;
     try {
       result = await tool.execute(params, ctx);
@@ -379,10 +463,13 @@ export async function confirmToolExecution(
     .update({ status: 'approved', approved_at: new Date().toISOString() })
     .eq('id', executionId);
 
-  // Execute
+  // Execute — le ctx d'approbation (agent-tool-action) n'a pas le
+  // conversation_id d'origine : on le réinjecte depuis la row pour que les
+  // tools qui en dépendent (launch_search) le voient à l'exécution.
+  const execCtx: ToolContext = { ...ctx, conversationId: row.conversation_id ?? ctx.conversationId };
   let result: ExecuteResult;
   try {
-    result = await tool.execute(row.params as Record<string, unknown>, ctx);
+    result = await tool.execute(row.params as Record<string, unknown>, execCtx);
   } catch (err) {
     result = { success: false, error: err instanceof Error ? err.message : String(err) };
   }

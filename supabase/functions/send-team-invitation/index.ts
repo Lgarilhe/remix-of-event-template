@@ -70,7 +70,13 @@ Deno.serve(async (req) => {
     if (!email || !organization_id) throw new Error("Missing email or organization_id");
 
     const normalizedEmail = String(email).trim().toLowerCase();
-    const normalizedRole = role || "member";
+    // Whitelist stricte : jamais "owner" ni valeur arbitraire via le body
+    // (escalade de privilège — accept-invitation insère ce rôle tel quel).
+    const ALLOWED_INVITE_ROLES = ["admin", "member", "collaborator"];
+    const normalizedRole = role ? String(role).trim().toLowerCase() : "member";
+    if (!ALLOWED_INVITE_ROLES.includes(normalizedRole)) {
+      throw new Error("Rôle d'invitation invalide");
+    }
     const isResend = Boolean(resend);
 
     const { data: callerMembership } = await supabase

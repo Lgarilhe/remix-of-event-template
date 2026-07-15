@@ -23,6 +23,12 @@ interface SkalrThreadProps {
   contextMode?: string | null;
   /** Notion-style: model selector rendered inside the composer toolbar */
   modelSlot?: React.ReactNode;
+  /**
+   * Pont fichiers joints (P1.2) : le composer y publie ses fichiers et une
+   * fonction clear ; l'adaptateur de chat les lit au moment de l'envoi
+   * (ingestion → injection dans le message) puis appelle clear().
+   */
+  filesBridge?: React.MutableRefObject<{ files: File[]; clear: () => void }>;
 }
 
 type Suggestion = { icon: React.ComponentType<{ className?: string }>; label: string; prompt: string };
@@ -702,7 +708,7 @@ const UserMessage = () => (
   </div>
 );
 
-export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot }) => {
+export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot, filesBridge }) => {
   const w = WELCOME[(contextMode as string) || 'free'] ?? WELCOME.free;
   const [files, setFiles] = useState<File[]>([]);
 
@@ -710,6 +716,12 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
     setFiles((prev) => [...prev, ...added].slice(0, 5));
   const removeFile = (idx: number) =>
     setFiles((prev) => prev.filter((_, i) => i !== idx));
+
+  // Publie l'état courant vers le pont — lu par l'adaptateur à l'envoi.
+  if (filesBridge) {
+    filesBridge.current.files = files;
+    filesBridge.current.clear = () => setFiles([]);
+  }
 
   return (
     <ThreadPrimitive.Root className="flex flex-col h-full bg-background">
@@ -756,9 +768,12 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
       </ThreadPrimitive.Viewport>
 
       {/* Composer — prompt-kit-style pill with Notion/Claude toolbar */}
-      <div className="shrink-0 px-3 pb-3 pt-1">
+      {/* Marge basse = max(0.75rem, safe-area) : évite que la barre de saisie
+          soit rognée par la barre de navigation système sur mobile. */}
+      <div className="shrink-0 px-3 pb-3 pt-1" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="mx-auto w-full max-w-2xl">
-          <FileUpload onFilesAdded={addFiles} multiple accept="image/*,.pdf,.doc,.docx,.txt,.csv">
+          {/* Formats alignés sur ingest-user-file (PDF, Word .docx, images, texte). */}
+          <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.docx,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
             <ComposerPrimitive.Root className="relative flex flex-col rounded-[1.75rem] border border-border bg-background p-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
               {/* Attached files */}
               {files.length > 0 && (
