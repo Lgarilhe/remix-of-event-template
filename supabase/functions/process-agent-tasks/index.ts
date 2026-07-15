@@ -42,18 +42,22 @@ const corsHeaders = {
 type Any = any;
 
 // ─── Bornage par tick (rester sous la limite edge ~150s wall-clock) ─────────
-// Leçon prod 2026-07-15 (1er scoring réel) : un lot de 10 profils prend 60-90s
-// côté LLM (batch Haiku + escalation Sonnet des borderline). L'ancien timeout
-// client de 50s coupait la connexion alors que score-profile-job TERMINAIT et
-// PERSISTAIT côté serveur → 5 « échecs » apparents → tâche en error à tort,
-// pendant que les scores s'écrivaient. D'où : timeout 100s, on ne DÉMARRE un
-// lot que dans les 30 premières secondes du tick (pire cas ≈ 130s < 150s), et
-// un timeout client n'est PAS un échec (le drain est mesuré au tick suivant).
-const BATCH_SIZE = 10;              // limite de score-profile-job (10 profils/appel)
+// Leçons prod 2026-07-15 (1er scoring réel, deux incidents successifs) :
+// 1. Un lot de 10 profils prend souvent >100s côté LLM (batch Haiku +
+//    escalation Sonnet des borderline + couches sémantiques).
+// 2. ⚠️ Quand le client coupe (timeout), le runtime edge TUE score-profile-job
+//    en plein travail : RIEN n'est persisté (les seules écritures qui
+//    survivent sont les KO hard-filter, écrits tôt au fil de l'eau). Un lot
+//    interrompu = crédit temps perdu, PAS un lot « qui finira tout seul ».
+// D'où : lots de 5 profils (≈35-70s, tiennent dans le délai), réduits à 3 en
+// mode rattrapage (attempts>0), timeout client 120s, et on ne DÉMARRE un lot
+// que dans les 20 premières secondes du tick (pire cas ≈ 140s < 150s).
+const BATCH_SIZE = 5;               // profils par appel scoring (10 = trop long, tué)
+const RETRY_BATCH_SIZE = 3;         // encore plus court après un cycle sans progrès
 const MAX_BATCHES_PER_TICK = 3;     // plafond dur (rarement atteint avec le budget)
-const BATCH_START_BUDGET_MS = 30_000;  // ne pas DÉMARRER de lot au-delà
-const BATCH_TIMEOUT_MS = 100_000;   // durée max d'UN lot côté client
-const MAX_ATTEMPTS = 5;             // ticks consécutifs SANS progrès avant abandon
+const BATCH_START_BUDGET_MS = 20_000;  // ne pas DÉMARRER de lot au-delà
+const BATCH_TIMEOUT_MS = 120_000;   // durée max d'UN lot côté client
+const MAX_ATTEMPTS = 5;             // cycles consécutifs SANS progrès avant abandon
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 50_000): Promise<Response> {
   const controller = new AbortController();
@@ -271,6 +275,10 @@ async function runScoreMissionProfiles(
     }
 
     // Lot suivant de profils non scorés — MÊME scope que countRemaining.
+    // Taille réduite en mode rattrapage : si le cycle précédent n'a rien
+    // drainé (souvent : lot trop long → tué par le timeout), un lot plus
+    // court passe sous le délai et débloque la situation.
+    const batchSize = (task.attempts || 0) > 0 ? RETRY_BATCH_SIZE : BATCH_SIZE;
     const { data: rows, error: rowsErr } = await supabase
       .from("job_candidate_status")
       .select("candidate_id, candidate_name, linkedin_profile_data")
@@ -279,7 +287,7 @@ async function runScoreMissionProfiles(
       .is("score", null)
       .not("linkedin_profile_data", "is", null)
       .order("created_at", { ascending: true })
-      .limit(BATCH_SIZE);
+      .limit(batchSize);
     if (rowsErr) throw new Error(`lecture profils : ${rowsErr.message}`);
     if (!rows || rows.length === 0) break; // plus rien → terminé
 
@@ -294,9 +302,9 @@ async function runScoreMissionProfiles(
     });
 
     // Appel score-profile-job (persiste job_candidate_status + settle crédits).
-    // ⚠️ Un timeout client n'est PAS un échec : la fonction cible continue et
-    // termine côté serveur. On clôt juste le tick ; le drain sera constaté au
-    // tick suivant via initial_remaining - remaining.
+    // ⚠️ Un timeout client TUE le travail côté serveur (rien n'est persisté,
+    // constaté en prod) : on clôt le tick sans throw, le garde anti-stall
+    // (attempts + lots réduits) prend le relais au cycle suivant.
     let resp: Response;
     try {
       resp = await fetchWithTimeout(
