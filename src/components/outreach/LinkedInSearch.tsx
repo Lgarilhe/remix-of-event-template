@@ -26,6 +26,7 @@ import { useState as useLocalState } from 'react';
 import { AppliedFiltersBar } from './search/AppliedFiltersBar';
 import { SearchHero, SearchPlan, FilterChipBar, chipsFromUpdate, type PlanChip, type PlanStage } from './search/SourcingFlow';
 import { buildAugmentedJob, generateFiltersFromJob } from './search/generateFiltersFromJob';
+import { nlFilterEdit } from './search/nlFilterEdit';
 import { FilterWizard } from './filter-wizard';
 import type { JobDetails } from '@/types/jobDetails';
 import { SKILL_SYNONYMS } from '@/hooks/linkedin/skillSynonyms';
@@ -975,6 +976,33 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.selectedJob, selectedAccount, searchSource, handleSuggestionsGenerated, handleSearch]);
 
+  // Affinage par phrase (barre de chips) : édition DIFF des filtres courants
+  // via nl-filter-edit — permet les retraits (« retire Lyon ») et les ajouts
+  // ciblés (« ajoute anglais courant ») sans régénérer depuis le brief.
+  const refineByPhrase = useCallback(async (phrase: string) => {
+    try {
+      const { next, note, changed } = await nlFilterEdit({
+        instruction: phrase,
+        filters: search.filtersRef.current,
+        accountId: selectedAccount,
+        searchSource: searchSource === 'database' ? 'database' : 'linkedin',
+      });
+      if (changed) {
+        search.setFilters(next);
+        search.filtersRef.current = next;
+        setChipsDirty(true);
+        toast.success(note || 'Filtres mis à jour — relance quand tu es prêt.');
+      } else {
+        toast.info(note || 'Aucun changement à appliquer pour cette instruction.');
+      }
+    } catch (error: any) {
+      const msg = error?.message || '';
+      toast.error(msg.includes('insufficient_credits') ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : "L'affinage a échoué, réessayez.");
+      throw error;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccount, searchSource]);
+
   const launchFlow = useCallback(async (phrase: string) => {
     if (flowBusyRef.current) return;
     flowBusyRef.current = true;
@@ -1118,7 +1146,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           dirty={chipsDirty}
           onRerun={() => { setChipsDirty(false); handleSearch(false); }}
           onOpenAdvanced={() => setFiltersOpen(true)}
-          onFollowUp={(phrase) => applyPhrase(phrase, false)}
+          onFollowUp={refineByPhrase}
           accountId={selectedAccount}
           searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
         />
