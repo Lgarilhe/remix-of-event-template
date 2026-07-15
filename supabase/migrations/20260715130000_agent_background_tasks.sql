@@ -88,6 +88,9 @@ CREATE POLICY "org_members_select" ON public.agent_background_tasks
 
 -- Annulation par le créateur : on ne peut que basculer une tâche encore active
 -- vers 'canceled' (le WITH CHECK borne la transition, l'USING borne la source).
+-- Le WITH CHECK re-valide aussi l'appartenance org sur la NOUVELLE ligne, et le
+-- GRANT UPDATE est scopé à LA SEULE colonne status : impossible de re-parenter
+-- (organization_id), renommer (title) ou altérer params/created_by au passage.
 DROP POLICY IF EXISTS "creator_cancel_update" ON public.agent_background_tasks;
 CREATE POLICY "creator_cancel_update" ON public.agent_background_tasks
   FOR UPDATE TO authenticated
@@ -98,11 +101,14 @@ CREATE POLICY "creator_cancel_update" ON public.agent_background_tasks
   )
   WITH CHECK (
     created_by = auth.uid()
+    AND public.is_org_member(auth.uid(), organization_id)
     AND status = 'canceled'
   );
 
 -- GRANTs (gotcha RLS 2026-04-21 : sans grant explicite → permission denied).
-GRANT SELECT, UPDATE ON public.agent_background_tasks TO authenticated;
+-- UPDATE limité à la colonne status (annulation uniquement).
+GRANT SELECT ON public.agent_background_tasks TO authenticated;
+GRANT UPDATE (status) ON public.agent_background_tasks TO authenticated;
 GRANT ALL ON public.agent_background_tasks TO service_role;
 
 -- ── Claim atomique (worker) ────────────────────────────────────────────────

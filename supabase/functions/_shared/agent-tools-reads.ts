@@ -2362,14 +2362,25 @@ const getBackgroundTasks: AgentTool = {
     const activeOnly = params.active_only === true;
     let q = ctx.adminClient
       .from('agent_background_tasks')
-      .select('id, kind, title, status, progress_total, progress_done, progress_failed, last_error, created_at, finished_at, params')
+      .select('id, kind, title, status, progress_total, progress_done, progress_failed, last_error, created_at, finished_at, params, created_by')
       .eq('organization_id', ctx.organizationId)
       .order('created_at', { ascending: false })
       .limit(limit);
     if (activeOnly) q = q.in('status', ['queued', 'running']);
     const { data, error } = await q;
     if (error) return { success: false, error: error.message };
-    const tasks = ((data as Array<Record<string, any>> | null) ?? []).map((t) => ({
+    // Scoping par rôle (même règle que get_my_missions) : un collaborateur ne
+    // voit que ses tâches et celles des missions où il est dans l'équipe.
+    let rows = ((data as Array<Record<string, any>> | null) ?? []);
+    const role = await resolveRole(ctx);
+    if (!isPrivileged(role)) {
+      const allowed = new Set(await collaboratorMissionIds(ctx));
+      rows = rows.filter((t) =>
+        t.created_by === ctx.userId ||
+        (t.params?.project_id && allowed.has(t.params.project_id)),
+      );
+    }
+    const tasks = rows.map((t) => ({
       id: t.id,
       mission: t.title,
       type: t.kind === 'score_mission_profiles' ? 'scoring' : t.kind,

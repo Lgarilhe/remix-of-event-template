@@ -176,7 +176,7 @@ export function buildProfileData(profile: Any): Any {
       const year = endYear ? ` (${endYear})` : "";
       return [school, degree, field].filter(Boolean).join(" - ") + year;
     }).filter((s: string) => s.trim().length > 0) || [],
-    yearsOfExperience: calculateYearsFromDiploma() ?? undefined,
+    yearsOfExperience: calculateYearsFromDiploma(),
     averageTenureMonths: calculateAverageTenure(),
     openToWork: isOpenToWork,
     openProfile: isOpenProfile,

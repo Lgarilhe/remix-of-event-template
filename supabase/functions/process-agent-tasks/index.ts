@@ -4,16 +4,26 @@
 // Invoqué chaque minute par cron (migration 20260715130000) avec Bearer
 // PROCESS_SEQUENCES_SECRET (même pattern qu'agent-daily-digest). Réclame UNE
 // tâche via claim_agent_background_task() puis en traite UN morceau borné
-// (timeout edge 60s → 1 lot/tick + re-tick), met à jour la progression (visible
-// en realtime), et à la fin notifie l'utilisateur.
+// (timeout edge 60s → quelques lots/tick + re-tick), met à jour la progression
+// (visible en realtime), et à la fin notifie l'utilisateur.
 //
 // v1 : kind 'score_mission_profiles' — score les profils sourcés NON scorés
-// d'une mission. Auto-drainant : score-profile-job écrit job_candidate_status.score
-// pour chaque profil traité → la requête "score IS NULL" rétrécit à chaque lot.
+// d'une mission. Auto-drainant : score-profile-job écrit job_candidate_status
+// .score pour chaque profil traité → la requête "score IS NULL" rétrécit.
 //
-// Fail-soft : une tâche en erreur ne bloque pas les autres (une tâche/tick).
-// Aucune donnée fournisseur exposée : ce worker n'émet aucun texte user-facing
-// (les libellés viennent de la notification/message, tous en français).
+// Invariants durcis (review adversariale 2026-07-15, 11 findings) :
+//  - TOUTES les requêtes profils sont scopées (project_id, job_id) — le même
+//    couple que score-profile-job utilise pour ÉCRIRE. Sinon des lignes
+//    sélectionnées mais jamais écrites bouclent à l'infini.
+//  - Progression mesurée par le DRAIN réel (remaining avant/après), pas par
+//    les envois : un profil envoyé mais non persisté compte en "failed".
+//  - Anti-boucle : un tick avec ≥1 lot envoyé mais AUCUN drain = stall →
+//    attempts++ ; au bout de MAX_ATTEMPTS sans progrès → fin partielle
+//    honnête (ou erreur si rien n'a jamais été scoré). Un tick AVEC progrès
+//    remet attempts à 0 (une tâche longue légitime n'est jamais tuée).
+//  - Toute écriture de statut du worker est gardée par .eq('status','running')
+//    → une annulation utilisateur concurrente gagne TOUJOURS (jamais
+//    ressuscitée en 'queued'/'done', jamais de fausse notification).
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
@@ -31,7 +41,7 @@ type Any = any;
 const BATCH_SIZE = 10;              // limite de score-profile-job (10 profils/appel)
 const MAX_BATCHES_PER_TICK = 3;     // jusqu'à 30 profils/tick
 const TICK_BUDGET_MS = 45_000;      // marge sous les 60s
-const MAX_ATTEMPTS = 5;             // échecs tolérés avant abandon (status='error')
+const MAX_ATTEMPTS = 5;             // ticks consécutifs SANS progrès avant abandon
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 50_000): Promise<Response> {
   const controller = new AbortController();
@@ -76,7 +86,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  console.log(`[agent-tasks] claimed task=${task.id} kind=${task.kind} status→running done=${task.progress_done}/${task.progress_total}`);
+  console.log(`[agent-tasks] claimed task=${task.id} kind=${task.kind} done=${task.progress_done}/${task.progress_total} attempts=${task.attempts}`);
 
   try {
     if (task.kind === "score_mission_profiles") {
@@ -96,6 +106,19 @@ Deno.serve(async (req) => {
     status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
+
+// ─── Update de statut gardé : n'écrase JAMAIS une annulation concurrente ────
+// Renvoie true si la ligne était encore 'running' (write appliqué), false si
+// le statut a changé sous nos pieds (ex. user → 'canceled') : on n'y touche pas.
+async function guardedStatusUpdate(supabase: Any, taskId: string, patch: Record<string, unknown>): Promise<boolean> {
+  const { data } = await supabase
+    .from("agent_background_tasks")
+    .update(patch)
+    .eq("id", taskId)
+    .eq("status", "running")
+    .select("id");
+  return Array.isArray(data) && data.length > 0;
+}
 
 // ─── kind: score_mission_profiles ───────────────────────────────────────────
 async function runScoreMissionProfiles(
@@ -131,36 +154,78 @@ async function runScoreMissionProfiles(
 
   const jd = project.job_details || {};
   // job.id DOIT correspondre au job_id RÉELLEMENT stocké sur les lignes
-  // job_candidate_status (score-profile-job réécrit par candidate_id + job_id).
-  // On le lit depuis une ligne existante (fallback 'project:{id}', format
-  // synthétique standard des missions).
+  // job_candidate_status : score-profile-job écrit par (candidate_id, job_id).
+  // TOUTES les requêtes de ce worker sont ensuite scopées sur CE job_id — on
+  // ne sélectionne jamais une ligne qu'on ne saurait pas mettre à jour (sinon
+  // elle resterait score IS NULL pour toujours → boucle infinie).
   const { data: sampleRow } = await supabase
     .from("job_candidate_status")
     .select("job_id")
     .eq("project_id", projectId)
     .not("job_id", "is", null)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   const jobId = sampleRow?.job_id || `project:${projectId}`;
-  const jobPayload = buildJobFromBrief(jd, {
-    id: jobId,
-    title: jd.title || project.name || "Mission sans titre",
-    client: project.client_name ? { name: project.client_name, sector: jd.client?.sector } : undefined,
-  });
 
-  // Total figé au premier tick (profils non scorés avec données exploitables).
-  let progressTotal = task.progress_total || 0;
-  if (progressTotal === 0) {
-    const { count, error: cntErr } = await supabase
+  // Compteur "restants" — le scope EXACT du travail de cette tâche.
+  const countRemaining = async (): Promise<number> => {
+    const { count, error } = await supabase
       .from("job_candidate_status")
       .select("id", { count: "exact", head: true })
       .eq("project_id", projectId)
+      .eq("job_id", jobId)
       .is("score", null)
       .not("linkedin_profile_data", "is", null);
-    if (cntErr) throw new Error(`comptage profils : ${cntErr.message}`);
-    progressTotal = count ?? 0;
-    await supabase.from("agent_background_tasks").update({ progress_total: progressTotal }).eq("id", task.id);
-    if (progressTotal === 0) {
+    if (error) throw new Error(`comptage profils : ${error.message}`);
+    return count ?? 0;
+  };
+
+  // Concurrents du client — même signal que le scoring premier plan
+  // (useLinkedInSearch::enabledCompetitors). Fail-soft : bonus, jamais bloquant.
+  let clientCompetitors: Any[] | undefined;
+  let restrictSearchToCompetitors = false;
+  try {
+    const clientName = (jd?.client?.name || project.client_name || "").toLowerCase().trim();
+    if (clientName) {
+      const { data: comps } = await supabase
+        .from("client_competitors")
+        .select("competitor_name, relation_kind, country, domain, linkedin_company_id, enabled")
+        .eq("organization_id", task.organization_id)
+        .eq("client_company_name_normalized", clientName);
+      const enabled = ((comps as Any[]) || []).filter((c) => c.enabled);
+      if (enabled.length > 0) {
+        clientCompetitors = enabled.slice(0, 20).map((c) => ({
+          name: c.competitor_name,
+          relationKind: c.relation_kind,
+          country: c.country,
+          domain: c.domain,
+          linkedinCompanyId: c.linkedin_company_id,
+        }));
+        restrictSearchToCompetitors = !!jd?.restrict_search_to_competitors;
+      }
+    }
+  } catch (e) {
+    console.warn("[agent-tasks] client_competitors skipped:", e instanceof Error ? e.message : e);
+  }
+
+  const jobPayload = {
+    ...buildJobFromBrief(jd, {
+      id: jobId,
+      title: jd.title || project.name || "Mission sans titre",
+      client: project.client_name ? { name: project.client_name, sector: jd.client?.sector } : undefined,
+    }),
+    ...(clientCompetitors ? { clientCompetitors, restrictSearchToCompetitors } : {}),
+  };
+
+  // Total (re)calculé au premier tick sur le scope RÉEL (project_id, job_id) —
+  // le tool insère un total project-wide qui peut être plus large.
+  let remaining = await countRemaining();
+  let progressTotal = task.progress_total || 0;
+  if ((task.progress_done || 0) === 0) {
+    progressTotal = remaining;
+    await guardedStatusUpdate(supabase, task.id, { progress_total: progressTotal });
+    if (remaining === 0) {
       await completeTask(supabase, task, { scored: 0, note: "Aucun profil à scorer." });
       return;
     }
@@ -169,21 +234,23 @@ async function runScoreMissionProfiles(
   let done = task.progress_done || 0;
   let failed = task.progress_failed || 0;
   let batchesThisTick = 0;
+  let drainedThisTick = 0;
 
-  while (batchesThisTick < MAX_BATCHES_PER_TICK && Date.now() - startedAt < TICK_BUDGET_MS) {
+  while (batchesThisTick < MAX_BATCHES_PER_TICK && remaining > 0 && Date.now() - startedAt < TICK_BUDGET_MS) {
     // Annulation utilisateur en cours de route → on s'arrête proprement.
     const { data: fresh } = await supabase
       .from("agent_background_tasks").select("status").eq("id", task.id).maybeSingle();
-    if (fresh?.status === "canceled") {
-      console.log(`[agent-tasks] task=${task.id} annulée par l'utilisateur → stop`);
+    if (fresh?.status !== "running") {
+      console.log(`[agent-tasks] task=${task.id} statut=${fresh?.status} (annulée ?) → stop`);
       return;
     }
 
-    // Lot suivant de profils non scorés (auto-drainant : les scorés sortent).
+    // Lot suivant de profils non scorés — MÊME scope que countRemaining.
     const { data: rows, error: rowsErr } = await supabase
       .from("job_candidate_status")
       .select("candidate_id, candidate_name, linkedin_profile_data")
       .eq("project_id", projectId)
+      .eq("job_id", jobId)
       .is("score", null)
       .not("linkedin_profile_data", "is", null)
       .order("created_at", { ascending: true })
@@ -191,12 +258,15 @@ async function runScoreMissionProfiles(
     if (rowsErr) throw new Error(`lecture profils : ${rowsErr.message}`);
     if (!rows || rows.length === 0) break; // plus rien → terminé
 
-    const profiles = (rows as Any[]).map((r) => ({
-      ...buildProfileData(r.linkedin_profile_data),
-      // id stable = candidate_id (clé de réécriture job_candidate_status).
-      id: r.candidate_id,
-      name: buildProfileData(r.linkedin_profile_data).name || r.candidate_name || "Candidat",
-    }));
+    const profiles = (rows as Any[]).map((r) => {
+      const pd = buildProfileData(r.linkedin_profile_data);
+      return {
+        ...pd,
+        // id stable = candidate_id (clé de réécriture job_candidate_status).
+        id: r.candidate_id,
+        name: pd.name || r.candidate_name || "Candidat",
+      };
+    });
 
     // Appel score-profile-job (persiste job_candidate_status + settle crédits).
     const resp = await fetchWithTimeout(
@@ -218,61 +288,101 @@ async function runScoreMissionProfiles(
     );
 
     if (resp.status === 429) {
-      // Rate limit : on relâche, le prochain tick reprendra (pas un échec dur).
-      console.warn(`[agent-tasks] task=${task.id} rate-limited → re-queue`);
+      // Rate limit : on sort du tick. Si RIEN n'a drainé sur ce tick, le bloc
+      // final route en stall (attempts++) → un 429 permanent (crédits épuisés)
+      // finit par s'arrêter au lieu de retenter chaque minute pour toujours.
+      console.warn(`[agent-tasks] task=${task.id} rate-limited → fin de tick`);
+      batchesThisTick++;
       break;
     }
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
       throw new Error(`score-profile-job ${resp.status}: ${body.slice(0, 300)}`);
     }
-    const payload = await resp.json().catch(() => ({}));
-    const results = Array.isArray(payload?.results) ? payload.results : [];
-    // Progression = profils réellement traités par ce lot.
-    const processedInBatch = rows.length;
-    done += processedInBatch;
-    // Un profil sans résultat exploitable est compté comme "échoué" (informatif).
-    if (results.length < processedInBatch) failed += processedInBatch - results.length;
+    await resp.json().catch(() => ({}));
     batchesThisTick++;
 
-    await supabase.from("agent_background_tasks")
-      .update({ progress_done: Math.min(done, progressTotal), progress_failed: failed })
-      .eq("id", task.id);
-    console.log(`[agent-tasks] task=${task.id} lot ${batchesThisTick} : +${processedInBatch} (${done}/${progressTotal})`);
+    // Progression = drain RÉEL (lignes passées de score NULL → non-NULL).
+    // Un profil envoyé mais non persisté (échec LLM, ligne non réécrite)
+    // compte en "failed" — et surtout ne compte PAS comme progrès.
+    const remainingAfter = await countRemaining();
+    const drained = Math.max(0, remaining - remainingAfter);
+    done += drained;
+    failed += Math.max(0, rows.length - drained);
+    drainedThisTick += drained;
+    remaining = remainingAfter;
+
+    await guardedStatusUpdate(supabase, task.id, {
+      progress_done: Math.min(done, progressTotal),
+      progress_failed: failed,
+    });
+    console.log(`[agent-tasks] task=${task.id} lot ${batchesThisTick} : ${drained}/${rows.length} drainés (${done}/${progressTotal}, reste ${remaining})`);
+
+    // Si ce lot n'a RIEN drainé, re-sélectionner immédiatement les mêmes
+    // lignes bloquées ne fera que re-payer du LLM pour rien → fin de tick.
+    if (drained === 0) break;
   }
 
-  // Reste-t-il des profils à scorer ?
-  const { count: remaining } = await supabase
-    .from("job_candidate_status")
-    .select("id", { count: "exact", head: true })
-    .eq("project_id", projectId)
-    .is("score", null)
-    .not("linkedin_profile_data", "is", null);
-
-  if ((remaining ?? 0) > 0) {
-    // Encore du travail → re-queue pour le prochain tick (pas un échec).
-    await supabase.from("agent_background_tasks")
-      .update({ status: "queued", locked_at: null })
-      .eq("id", task.id);
-    console.log(`[agent-tasks] task=${task.id} re-queue (${remaining} restants)`);
-  } else {
+  if (remaining === 0) {
     await completeTask(supabase, task, { scored: done, failed });
+    return;
   }
+
+  if (batchesThisTick > 0 && drainedThisTick === 0) {
+    // STALL : du travail envoyé, aucun drain. attempts++ ; au bout de
+    // MAX_ATTEMPTS ticks consécutifs sans progrès → fin honnête.
+    const attempts = (task.attempts || 0) + 1;
+    if (attempts >= MAX_ATTEMPTS) {
+      if (done > 0) {
+        // Fin partielle : on a scoré une partie, le reste est non-drainable.
+        await completeTask(supabase, task, { scored: done, failed, stuck: remaining, partial: true });
+      } else {
+        await failTask(supabase, task, `Aucun profil n'a pu être scoré (${remaining} restants non traitables)`, true);
+      }
+      return;
+    }
+    const ok = await guardedStatusUpdate(supabase, task.id, {
+      status: "queued",
+      locked_at: null,
+      attempts,
+      last_error: `Tick sans progression (${remaining} profils non drainés)`,
+    });
+    if (ok) console.warn(`[agent-tasks] task=${task.id} stall ${attempts}/${MAX_ATTEMPTS} → re-queue`);
+    return;
+  }
+
+  // Encore du travail, et ce tick a progressé (ou n'a rien envoyé : budget
+  // temps épuisé avant le 1er lot) → re-queue. Le progrès remet attempts à 0 :
+  // une tâche longue légitime n'est jamais tuée par le gate.
+  const ok = await guardedStatusUpdate(supabase, task.id, {
+    status: "queued",
+    locked_at: null,
+    ...(drainedThisTick > 0 ? { attempts: 0, last_error: null } : {}),
+  });
+  if (ok) console.log(`[agent-tasks] task=${task.id} re-queue (${remaining} restants)`);
+  else console.log(`[agent-tasks] task=${task.id} statut modifié pendant le tick (annulée ?) — pas de re-queue`);
 }
 
 // ─── Fin de tâche : notification + trace chat ───────────────────────────────
+// Gardé par status='running' : si l'utilisateur a annulé entre-temps, on ne
+// marque PAS 'done' et on n'émet AUCUNE notification.
 async function completeTask(supabase: Any, task: Any, result: Any): Promise<void> {
   const scored = result.scored ?? 0;
-  await supabase.from("agent_background_tasks").update({
+  const stuck = result.stuck ?? 0;
+  const ok = await guardedStatusUpdate(supabase, task.id, {
     status: "done",
     locked_at: null,
     finished_at: new Date().toISOString(),
     result,
-  }).eq("id", task.id);
+  });
+  if (!ok) {
+    console.log(`[agent-tasks] task=${task.id} annulée avant la clôture — pas de notification`);
+    return;
+  }
 
   const missionLabel = task.title || "ta mission";
   const body = scored > 0
-    ? `${scored} profil${scored > 1 ? "s" : ""} scoré${scored > 1 ? "s" : ""}. Ouvre le pipeline pour voir les meilleurs.`
+    ? `${scored} profil${scored > 1 ? "s" : ""} scoré${scored > 1 ? "s" : ""}${stuck > 0 ? ` (${stuck} n'ont pas pu être traités)` : ""}. Ouvre le pipeline pour voir les meilleurs.`
     : "Aucun profil à scorer.";
 
   // Notification cloche (canal existant, realtime).
@@ -292,24 +402,29 @@ async function completeTask(supabase: Any, task: Any, result: Any): Promise<void
       conversation_id: task.conversation_id,
       role: "assistant",
       content: `✅ Tâche de fond terminée : ${body}`,
-      metadata: { agent_background_task: { task_id: task.id, status: "done", scored } },
+      metadata: { agent_background_task: { task_id: task.id, status: "done", scored, stuck } },
     }).then(undefined, (e: Any) => console.warn("[agent-tasks] trace insert failed:", e?.message));
   }
-  console.log(`[agent-tasks] task=${task.id} DONE scored=${scored}`);
+  console.log(`[agent-tasks] task=${task.id} DONE scored=${scored} stuck=${stuck}`);
 }
 
 // ─── Échec : retry (transient) ou abandon (fatal / trop d'échecs) ────────────
+// Gardé par status='running' lui aussi : une annulation concurrente gagne.
 async function failTask(supabase: Any, task: Any, error: string, fatal: boolean): Promise<void> {
   const attempts = (task.attempts || 0) + 1;
   const giveUp = fatal || attempts >= MAX_ATTEMPTS;
 
-  await supabase.from("agent_background_tasks").update({
+  const ok = await guardedStatusUpdate(supabase, task.id, {
     status: giveUp ? "error" : "queued",
     locked_at: null,
     attempts,
     last_error: error.slice(0, 1000),
     ...(giveUp ? { finished_at: new Date().toISOString() } : {}),
-  }).eq("id", task.id);
+  });
+  if (!ok) {
+    console.log(`[agent-tasks] task=${task.id} statut modifié pendant le tick — échec non enregistré (annulée ?)`);
+    return;
+  }
 
   if (giveUp) {
     await supabase.from("notifications").insert({

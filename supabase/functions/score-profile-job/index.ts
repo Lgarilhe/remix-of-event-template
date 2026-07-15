@@ -2503,6 +2503,27 @@ async function setCachedScore(
     }
 
     // 2. Also update job_candidate_status with scoring data (for pipeline view)
+    await syncJobCandidateStatus(supabase, candidateId, jobId, result);
+  } catch (err) {
+    console.error("[cache] Write error:", err);
+  }
+}
+
+/**
+ * Réécrit job_candidate_status avec le résultat de scoring (vue pipeline).
+ * Appelé après un scoring frais (via setCachedScore) ET sur un cache hit :
+ * un candidat peut avoir une entrée match_scores valide (<48h) alors que SA
+ * ligne job_candidate_status a score NULL (ré-ajout au pipeline, ligne d'un
+ * autre membre de l'équipe sur la même mission…). Sans cette réécriture, le
+ * worker de fond (process-agent-tasks) re-sélectionnait ces lignes à l'infini.
+ */
+async function syncJobCandidateStatus(
+  supabase: SupabaseClient,
+  candidateId: string,
+  jobId: string,
+  result: ScoringResult,
+): Promise<void> {
+  try {
     const status = result.finalScore >= 60 ? 'scored' : 'dismissed';
     await supabase.from("job_candidate_status").update({
       score: result.finalScore,
@@ -2525,7 +2546,7 @@ async function setCachedScore(
       updated_at: new Date().toISOString(),
     }).eq('candidate_id', candidateId).eq('job_id', jobId);
   } catch (err) {
-    console.error("[cache] Write error:", err);
+    console.error("[jcs-sync] Write error:", err);
   }
 }
 
@@ -3440,9 +3461,14 @@ Deno.serve(async (req) => {
     // Les cached results ne consomment AUCUN token cette fois (bug fix :
     // avant on re-facturait les cache hits, ce qui faisait payer 2 fois).
     for (const ps of preScored) {
-      // Cached results — pas de tokens facturables (déjà settled à l'origine)
+      // Cached results — pas de tokens facturables (déjà settled à l'origine).
+      // On resynchronise quand même job_candidate_status : la ligne du
+      // demandeur peut avoir score NULL alors que le cache est frais (ré-ajout
+      // au pipeline, ligne d'un autre membre) — sans ça le worker de fond
+      // boucle sur ces profils.
       if (ps.cached) {
         results.push({ ...ps.cached, profile_id: ps.profile.id });
+        await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached);
         continue;
       }
 
