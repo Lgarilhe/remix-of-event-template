@@ -104,8 +104,24 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
   };
 
   const handleSelectTemplate = (template: Template) => {
+    // Remap des ids : chaque step reçoit un nouvel uuid, donc les refs de
+    // branchement (nextStepId, if_true/false, timeout_branch) qui pointaient
+    // vers les ANCIENS ids du template doivent être traduites — sinon elles
+    // sont pendantes et silencieusement nullées au save → routage
+    // « automatique » inattendu (audit 2026-07, Builder H4).
+    const idMap = new Map<string, string>();
+    for (const s of (template.steps_config || []) as any[]) {
+      const oldId = s.id;
+      if (oldId) idMap.set(String(oldId), crypto.randomUUID());
+    }
+    const remap = (ref: unknown): string | undefined => {
+      if (!ref) return undefined;
+      if (ref === '__end__') return '__end__';
+      return idMap.get(String(ref)); // ref inconnue → undefined (purge propre)
+    };
+
     const steps: SequenceStep[] = (template.steps_config || []).map((s: any, idx: number) => ({
-      id: crypto.randomUUID(),
+      id: (s.id && idMap.get(String(s.id))) || crypto.randomUUID(),
       order: idx,
       actionType: s.action_type || s.actionType || 'message',
       conditionType: s.condition_type || s.conditionType || 'always',
@@ -122,10 +138,10 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
       timeoutDays: s.timeout_days ?? s.timeoutDays ?? 3,
       waitForEvent: s.wait_for_event || s.waitForEvent,
       timeoutAction: s.timeout_action || s.timeoutAction || 'skip',
-      ifTrueGotoStep: s.if_true_goto_step || s.ifTrueGotoStep,
-      ifFalseGotoStep: s.if_false_goto_step || s.ifFalseGotoStep,
-      nextStepId: s.next_step_id || s.nextStepId,
-      timeoutBranchStepId: s.timeout_branch_step_id || s.timeoutBranchStepId,
+      ifTrueGotoStep: remap(s.if_true_goto_step || s.ifTrueGotoStep),
+      ifFalseGotoStep: remap(s.if_false_goto_step || s.ifFalseGotoStep),
+      nextStepId: remap(s.next_step_id || s.nextStepId),
+      timeoutBranchStepId: remap(s.timeout_branch_step_id || s.timeoutBranchStepId),
       variantGroup: s.variant_group || s.variantGroup,
       variantWeight: s.variant_weight ?? s.variantWeight,
       ccEmails: s.cc_emails || s.ccEmails,
@@ -361,10 +377,16 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
 
-      // Serialize steps to steps_config
-      const stepsConfig = steps.map(s => ({
+      // Serialize steps to steps_config — inclut id + refs de branchement +
+      // variantes + options email. Avant, un template créé depuis une séquence
+      // branchée perdait toute sa structure (branches, A/B, condition_value,
+      // timeout_action) — audit 2026-07, Builder H4. Les ids sont remappés
+      // vers de nouveaux uuids à l'instanciation (handleSelectTemplate).
+      const stepsConfig = steps.map((s: any) => ({
+        id: s.id,
         action_type: s.action_type,
         condition_type: s.condition_type,
+        condition_value: s.condition_value ?? null,
         delay_days: s.delay_days,
         delay_hours: s.delay_hours,
         delay_minutes: s.delay_minutes,
@@ -375,7 +397,18 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
         use_ai_personalization: s.use_ai_personalization,
         ai_tone: s.ai_tone,
         timeout_days: s.timeout_days,
+        timeout_action: s.timeout_action ?? null,
         wait_for_event: s.wait_for_event,
+        next_step_id: s.next_step_id ?? null,
+        if_true_goto_step: s.if_true_goto_step ?? null,
+        if_false_goto_step: s.if_false_goto_step ?? null,
+        timeout_branch_step_id: s.timeout_branch_step_id ?? null,
+        variant_group: s.variant_group ?? null,
+        variant_weight: s.variant_weight ?? null,
+        cc_emails: s.cc_emails ?? null,
+        bcc_emails: s.bcc_emails ?? null,
+        include_unsubscribe: s.include_unsubscribe ?? null,
+        signature_id: s.signature_id ?? null,
       }));
 
       const { error } = await (supabase

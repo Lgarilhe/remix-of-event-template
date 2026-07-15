@@ -529,15 +529,12 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
       }
     }
 
-    // Log analytics
-    const today = new Date().toISOString().split('T')[0];
-    await supabase
-      .from('sequence_analytics')
-      .upsert({
-        sequence_id: enrollment.sequence_id,
-        date: today,
-        invites_accepted: 1,
-      }, { onConflict: 'sequence_id,date' });
+    // Log analytics — RPC d'incrément atomique (l'ancien upsert REMETTAIT le
+    // compteur à 1 à partir du 2e événement du jour, faussant toutes les stats)
+    await supabase.rpc('increment_sequence_analytics', {
+      p_sequence_id: enrollment.sequence_id,
+      p_field: 'invites_accepted',
+    });
 
     console.log('[unipile-webhook] Updated enrollment:', enrollment.id, 'to connected');
   }
@@ -713,15 +710,11 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         .eq('enrollment_id', enrollment.id)
         .eq('status', 'scheduled');
 
-      // Log analytics
-      const today = new Date().toISOString().split('T')[0];
-      await supabase
-        .from('sequence_analytics')
-        .upsert({
-          sequence_id: enrollment.sequence_id,
-          date: today,
-          replies_received: 1,
-        }, { onConflict: 'sequence_id,date' });
+      // Log analytics — incrément atomique (cf. increment_sequence_analytics)
+      await supabase.rpc('increment_sequence_analytics', {
+        p_sequence_id: enrollment.sequence_id,
+        p_field: 'replies_received',
+      });
 
       console.log('[unipile-webhook] Enrollment', enrollment.id, 'marked as replied');
 
@@ -1006,7 +999,6 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
   console.log(`[unipile-webhook][mail] Matched ${enrollments.length} enrollment(s)`);
 
   // 2. Marquer chaque enrollment comme replied + canceller les étapes pending
-  const today = new Date().toISOString().split('T')[0];
   for (const enrollment of enrollments) {
     const { error: updErr } = await supabase
       .from('sequence_enrollments')
@@ -1032,13 +1024,11 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
       .eq('enrollment_id', enrollment.id)
       .eq('status', 'scheduled');
 
-    await supabase
-      .from('sequence_analytics')
-      .upsert({
-        sequence_id: enrollment.sequence_id,
-        date: today,
-        replies_received: 1,
-      }, { onConflict: 'sequence_id,date' });
+    // Incrément atomique (cf. increment_sequence_analytics)
+    await supabase.rpc('increment_sequence_analytics', {
+      p_sequence_id: enrollment.sequence_id,
+      p_field: 'replies_received',
+    });
 
     // Update job_candidate_status si on a un profile_id
     if (enrollment.profile_id) {
