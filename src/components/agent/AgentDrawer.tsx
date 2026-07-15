@@ -80,6 +80,11 @@ export const AgentDrawer: React.FC = () => {
         <SheetContent
           side="right"
           className="w-full sm:w-[420px] p-0 bg-background border-l border-border border-t-0 border-r-0 border-b-0 h-full flex flex-col [&>button]:hidden"
+          // Mobile : h-full (100vh) déborde sous la barre du navigateur et le
+          // clavier virtuel → le composer sortait de l'écran. 100dvh suit la
+          // hauteur RÉELLEMENT visible ; les navigateurs sans dvh ignorent le
+          // style inline et retombent sur h-full.
+          style={{ height: '100dvh', maxHeight: '100dvh' }}
         >
           <SheetTitle className="sr-only">Assistant IA</SheetTitle>
           <SheetDescription className="sr-only">
