@@ -76,21 +76,44 @@ async function getOrCreateUnsubscribeToken(supabase: any, email: string): Promis
   }
 }
 
-function wrapLinksForTracking(html: string, trackingId: string, baseUrl: string): string {
-  // Replace href="..." in anchor tags with tracking redirect
-  return html.replace(
-    /(<a\s[^>]*href=")([^"]+)("[^>]*>)/gi,
-    (match, prefix, url, suffix) => {
-      // Don't track mailto: / tel: / anchor links, nor the unsubscribe link
-      // (le réécrire en redirect de tracking compterait une désinscription
-      // comme un clic et casserait la sémantique du lien opt-out).
-      if (url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#') || url.includes('/unsubscribe?token=')) {
-        return match;
-      }
-      const trackUrl = `${baseUrl}/functions/v1/sequence-email-track?tid=${trackingId}&evt=click&url=${encodeURIComponent(url)}`;
-      return `${prefix}${trackUrl}${suffix}`;
-    }
+// Signature HMAC des liens trackés (anti open-redirect, audit 2026-07 M4) :
+// le endpoint public sequence-email-track ne redirige vers l'url demandée que
+// si sig = HMAC-SHA256(tid + '|' + url) est valide — sinon un phisher pourrait
+// utiliser notre domaine comme tremplin vers n'importe quel site.
+async function signTrackedUrl(trackingId: string, url: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(SUPABASE_SERVICE_ROLE_KEY),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${trackingId}|${url}`));
+  return Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
+
+async function wrapLinksForTracking(html: string, trackingId: string, baseUrl: string): Promise<string> {
+  const linkRegex = /(<a\s[^>]*href=")([^"]+)("[^>]*>)/gi;
+  const shouldSkip = (url: string) =>
+    url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#') || url.includes('/unsubscribe?token=');
+
+  // Passe 1 : collecter les urls à tracker et pré-calculer leur signature
+  // (String.replace ne supporte pas les callbacks async).
+  const sigs = new Map<string, string>();
+  for (const m of html.matchAll(linkRegex)) {
+    const url = m[2];
+    if (!shouldSkip(url) && !sigs.has(url)) {
+      sigs.set(url, await signTrackedUrl(trackingId, url));
+    }
+  }
+
+  // Passe 2 : réécriture
+  return html.replace(linkRegex, (match, prefix, url, suffix) => {
+    // Don't track mailto: / tel: / anchor links, nor the unsubscribe link
+    // (le réécrire en redirect de tracking compterait une désinscription
+    // comme un clic et casserait la sémantique du lien opt-out).
+    if (shouldSkip(url)) return match;
+    const sig = sigs.get(url) || '';
+    const trackUrl = `${baseUrl}/functions/v1/sequence-email-track?tid=${trackingId}&evt=click&url=${encodeURIComponent(url)}&sig=${sig}`;
+    return `${prefix}${trackUrl}${suffix}`;
+  });
 }
 
 function addTrackingPixel(html: string, trackingId: string, baseUrl: string): string {
@@ -347,10 +370,14 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Auth: service_role only
+  // Auth: service_role only — comparaison à temps constant (anti timing attack)
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
-  if (token !== SUPABASE_SERVICE_ROLE_KEY) {
+  const tokenBytes = new TextEncoder().encode(token);
+  const keyBytes = new TextEncoder().encode(SUPABASE_SERVICE_ROLE_KEY);
+  let tokenDiff = tokenBytes.length === keyBytes.length ? 0 : 1;
+  for (let i = 0; i < Math.min(tokenBytes.length, keyBytes.length); i++) tokenDiff |= tokenBytes[i] ^ keyBytes[i];
+  if (tokenDiff !== 0) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -390,6 +417,21 @@ Deno.serve(async (req) => {
     const step = stepRes.data;
     const sequence = enrollment.sequence;
 
+    // Garde d'idempotence (audit 2026-07, Delivery M2) : cette fonction peut
+    // être invoquée deux fois pour la même exécution (retry HTTP du caller
+    // dont le timeout est 30s alors qu'on peut dépasser, re-schedule janitor
+    // pendant qu'un premier appel lent est encore en vol). On ne traite que
+    // les exécutions encore en cours de traitement — un statut terminal
+    // (sent/opened/failed/cancelled/bounced…) signifie que quelqu'un est déjà
+    // passé : renvoyer succès sans ré-envoyer.
+    if (!['sending', 'scheduled'].includes(execution.status)) {
+      console.warn(`[sequence-send-email] Execution ${execution_id} already in status '${execution.status}' — skipping duplicate send`);
+      return new Response(JSON.stringify({ success: true, skipped: 'already_processed', status: execution.status }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // 2. Determine recipient email
     const recipientEmail = enrollment.email_used || null;
     if (!recipientEmail) {
@@ -411,6 +453,39 @@ Deno.serve(async (req) => {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // 2b. Suppression list — re-vérifiée AU MOMENT de l'envoi (audit 2026-07,
+    // Delivery M10). Avant, seul process-sequences la vérifiait, et uniquement
+    // si stop_conditions.on_unsubscribe était activé : un désabonnement ou un
+    // bounce enregistré entre la planification et l'envoi partait quand même
+    // (risque légal opt-out + réputation). Ici : jamais d'email vers une
+    // adresse supprimée, quel que soit le réglage de la séquence.
+    {
+      const { data: suppressed, error: supErr } = await supabase
+        .from('suppressed_emails')
+        .select('id, reason')
+        .eq('email', recipientEmail.toLowerCase().trim())
+        .maybeSingle();
+      if (supErr) {
+        console.warn('[sequence-send-email] suppression check failed (fail-open would risk opt-out violation) — aborting send:', supErr);
+        return new Response(JSON.stringify({ success: false, error: 'suppression_check_failed' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (suppressed) {
+        await supabase.from('sequence_step_executions').update({
+          status: 'skipped',
+          skip_reason: `Adresse en liste de suppression (${suppressed.reason || 'opt-out'})`,
+          executed_at: new Date().toISOString(),
+        }).eq('id', execution_id);
+        console.warn(`[sequence-send-email] Recipient suppressed (${suppressed.reason}) — skipping send for execution ${execution_id}`);
+        return new Response(JSON.stringify({ success: true, skipped: 'suppressed' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // 3. Resolve sender info
@@ -528,8 +603,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Wrap links for click tracking
-    htmlBody = wrapLinksForTracking(htmlBody, trackingId, SUPABASE_URL);
+    // Wrap links for click tracking (liens signés HMAC — anti open-redirect)
+    htmlBody = await wrapLinksForTracking(htmlBody, trackingId, SUPABASE_URL);
 
     // Add tracking pixel
     htmlBody = addTrackingPixel(htmlBody, trackingId, SUPABASE_URL);

@@ -32,6 +32,47 @@ const STATUS_PRIORITY: Record<string, number> = {
 
 const MAX_EVENTS_PER_TRACKING = 100;
 
+// ── Anti open-redirect (audit 2026-07, Delivery M4) ──────────────────────────
+// Ce endpoint est public (les clients mail doivent pouvoir le joindre) et
+// redirigeait vers N'IMPORTE QUELLE url passée en paramètre → un phisher
+// pouvait faire pointer un lien « de confiance » (domaine supabase.co présent
+// dans tous les emails Konekt) vers son site. Les liens sont désormais signés
+// à l'envoi (sequence-send-email) : sig = HMAC-SHA256(tid + '|' + url) avec la
+// service key. Sans signature valide, on redirige vers l'app (atterrissage
+// neutre) au lieu de l'url fournie — les liens des emails déjà partis (non
+// signés) restent cliquables mais ne peuvent plus servir de tremplin.
+const APP_URL = (Deno.env.get('APP_URL') || 'https://konekt-app-navy.vercel.app').replace(/\/+$/, '');
+
+async function verifyLinkSig(tid: string, targetUrl: string, sig: string | null): Promise<boolean> {
+  if (!sig) return false;
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(SUPABASE_SERVICE_ROLE_KEY),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    );
+    const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${tid}|${targetUrl}`));
+    const expected = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+    // Comparaison à temps constant
+    const a = new TextEncoder().encode(expected);
+    const b = new TextEncoder().encode(sig);
+    if (a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+    return diff === 0;
+  } catch {
+    return false;
+  }
+}
+
+function isHttpUrl(u: string): boolean {
+  try {
+    const p = new URL(u);
+    return p.protocol === 'http:' || p.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'GET') {
     return new Response('Method not allowed', { status: 405 });
@@ -40,7 +81,17 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const tid = url.searchParams.get('tid');
   const evt = url.searchParams.get('evt');
-  const redirectUrl = url.searchParams.get('url');
+  const rawRedirect = url.searchParams.get('url');
+  const sig = url.searchParams.get('sig');
+
+  // Résolution UNIQUE de la cible de redirection, appliquée partout plus bas :
+  // signature valide + scheme http(s) → url demandée ; sinon → app Konekt.
+  let redirectUrl: string | null = null;
+  if (evt === 'click' && rawRedirect) {
+    const decoded = decodeURIComponent(rawRedirect);
+    const sigOk = tid ? await verifyLinkSig(tid, decoded, sig) : false;
+    redirectUrl = (sigOk && isHttpUrl(decoded)) ? decoded : APP_URL;
+  }
 
   if (!tid || !evt) {
     // Return pixel anyway to avoid broken images
@@ -67,7 +118,7 @@ Deno.serve(async (req) => {
       if (evt === 'click' && redirectUrl) {
         return new Response(null, {
           status: 302,
-          headers: { 'Location': decodeURIComponent(redirectUrl) },
+          headers: { 'Location': redirectUrl },
         });
       }
       return new Response(TRANSPARENT_GIF, {
@@ -86,7 +137,7 @@ Deno.serve(async (req) => {
       if (evt === 'click' && redirectUrl) {
         return new Response(null, {
           status: 302,
-          headers: { 'Location': decodeURIComponent(redirectUrl) },
+          headers: { 'Location': redirectUrl },
         });
       }
       return new Response(TRANSPARENT_GIF, {
@@ -105,7 +156,7 @@ Deno.serve(async (req) => {
       if (evt === 'click' && redirectUrl) {
         return new Response(null, {
           status: 302,
-          headers: { 'Location': decodeURIComponent(redirectUrl) },
+          headers: { 'Location': redirectUrl },
         });
       }
       return new Response(TRANSPARENT_GIF, {
@@ -167,7 +218,7 @@ Deno.serve(async (req) => {
   if (evt === 'click' && redirectUrl) {
     return new Response(null, {
       status: 302,
-      headers: { 'Location': decodeURIComponent(redirectUrl) },
+      headers: { 'Location': redirectUrl },
     });
   }
 

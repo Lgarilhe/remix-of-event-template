@@ -369,6 +369,27 @@ Deno.serve(async (req: Request) => {
 
       const now = new Date();
 
+      // Janitor (audit 2026-07, Delivery M1) : un item resté en 'sending'
+      // > 15 min = la fonction a crashé/timeout entre le claim et l'issue.
+      // Sans ce nettoyage, l'item n'était ni envoyé ni ré-essayé, invisible
+      // pour l'utilisateur, pour toujours. → 'failed' (action VISIBLE : pas
+      // de retry auto, impossible de savoir si l'InMail est parti avant le
+      // crash — même logique anti double-envoi que process-sequences).
+      {
+        const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const { data: unstuck, error: unstuckErr } = await supabase
+          .from("inmail_queue")
+          .update({
+            status: "failed",
+            error_message: "Interrompu pendant l'envoi — relance auto désactivée pour éviter un double envoi. Re-planifiez manuellement si nécessaire.",
+          })
+          .eq("status", "sending")
+          .lt("updated_at", stuckCutoff)
+          .select("id");
+        if (unstuckErr) console.warn("[process-inmail-queue] stuck-sending janitor failed (non-blocking):", unstuckErr);
+        else if (unstuck?.length) console.warn(`[process-inmail-queue] Janitor: ${unstuck.length} stuck 'sending' item(s) → failed`);
+      }
+
       // Get items that are scheduled and ready to send.
       // Conformité LinkedIn (warning #260513-007211) : on limite à 3 InMails/cycle
       // pour rester cohérent avec MAX_VISIBLE_PER_CYCLE de process-sequences et

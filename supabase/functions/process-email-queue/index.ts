@@ -63,11 +63,21 @@ async function sendViaResend(
   if (Object.keys(customHeaders).length > 0) body.headers = customHeaders
   if (payload.label) body.tags = [{ name: 'label', value: payload.label.slice(0, 256) }]
 
-  const response = await fetch(RESEND_API_URL, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  })
+  // Timeout 15s (convention repo fetchWithTimeout) : un hang Resend bloquait
+  // tout le batch et pouvait consommer le budget 60s de la fonction.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  let response: Response
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
 
   if (response.ok) {
     const json = await response.json().catch(() => ({}))
@@ -291,14 +301,20 @@ Deno.serve(async (req) => {
           label: payload.label,
         })
 
-        // Log success
-        await supabase.from('email_send_log').insert({
+        // Log success — l'erreur de CET insert doit être vérifiée : c'est le
+        // log 'sent' qui protège du double-envoi via la garde alreadySent
+        // (audit 2026-07, Delivery M9). S'il échoue en silence, un retry VT
+        // renverrait le même email.
+        const { error: sentLogError } = await supabase.from('email_send_log').insert({
           message_id: payload.message_id,
           template_name: payload.label || queue,
           recipient_email: payload.to,
           status: 'sent',
           metadata: resendEmailId ? { provider: 'resend', resend_email_id: resendEmailId } : { provider: 'resend' },
         })
+        if (sentLogError) {
+          console.error('Failed to record sent log — deleting from queue anyway to avoid double-send on retry', { queue, msg_id: msg.msg_id, error: sentLogError })
+        }
 
         // Delete from queue
         const { error: delError } = await supabase.rpc('delete_email', {

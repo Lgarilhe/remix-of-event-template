@@ -335,6 +335,46 @@ async function handleProcess(supabase: any, force = false) {
       console.log(`[process] Re-armed ${rearmed.length} quota_blocked execution(s) → scheduled`);
     }
 
+    // Recovery: enrollments actifs SANS exécution pendante (audit 2026-07, M5).
+    // Deux origines : crash entre le marquage 'sent' et scheduleNextStep
+    // (3 écritures non transactionnelles), ou enrollment créé sans première
+    // exécution (ancien bug frontend). Sans ce janitor, ces enrollments
+    // restaient 'active' mais gelés à vie, invisibles. On re-planifie l'étape
+    // suivante depuis current_step_order (borné à 5/run pour le budget 60s).
+    try {
+      const staleCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: activeEnrollments } = await supabase
+        .from('sequence_enrollments')
+        .select('id, sequence_id, current_step_order, organization_id, tracking_data, connection_status, user_timezone, created_by, account_id')
+        .eq('status', 'active')
+        .lt('updated_at', staleCutoff)
+        .order('updated_at', { ascending: true })
+        .limit(200);
+
+      if (activeEnrollments?.length) {
+        const ids = activeEnrollments.map((e: { id: string }) => e.id);
+        const { data: pendingExecs } = await supabase
+          .from('sequence_step_executions')
+          .select('enrollment_id')
+          .in('enrollment_id', ids)
+          .in('status', ['scheduled', 'sending', 'waiting_event', 'quota_blocked']);
+        const withPending = new Set((pendingExecs || []).map((e: { enrollment_id: string }) => e.enrollment_id));
+        const dormant = activeEnrollments.filter((e: { id: string }) => !withPending.has(e.id)).slice(0, 5);
+        for (const enr of dormant) {
+          console.warn(`[process] 🩹 Dormant active enrollment ${enr.id} (no pending execution) — rescheduling from step_order ${enr.current_step_order}`);
+          // scheduleNextStep planifie l'étape à current_step_order (l'étape
+          // "après" current_step_order - 1). Si plus rien à planifier, il
+          // complete proprement l'enrollment au lieu de le laisser zombie.
+          await scheduleNextStep(supabase, enr, (enr.current_step_order || 0) - 1);
+          // touch updated_at pour ne pas re-traiter le même au prochain cycle
+          await supabase.from('sequence_enrollments').update({ updated_at: new Date().toISOString() }).eq('id', enr.id);
+        }
+        if (dormant.length) console.log(`[process] Recovered ${dormant.length} dormant enrollment(s)`);
+      }
+    } catch (dormantErr) {
+      console.warn('[process] Dormant enrollment recovery failed (non-blocking):', dormantErr);
+    }
+
     // Smart batching: fetch more candidates, then split by action visibility
     // Non-visible actions (profile_visit, check_connection) = safe to batch aggressively
     // Visible actions (message, inmail, connection_request) = keep conservative but maximized.
@@ -348,11 +388,15 @@ async function handleProcess(supabase: any, force = false) {
     const MAX_VISIBLE_PER_CYCLE = 3;
     const FETCH_LIMIT = 25; // Overfetch to compensate for dedup, skips, quota blocks
 
+    // .order('scheduled_at') : sans tri explicite, la sélection sous backlog
+    // (> FETCH_LIMIT exécutions dues) était arbitraire — certaines exécutions
+    // anciennes pouvaient ne JAMAIS être prises (famine, audit 2026-07 M3).
     const { data: executions, error: fetchError } = await supabase
       .from('sequence_step_executions')
       .select(`*, enrollment:sequence_enrollments(*, sequence:outreach_sequences(*)), step:sequence_steps(*)`)
       .eq('status', 'scheduled')
       .lte('scheduled_at', now)
+      .order('scheduled_at', { ascending: true })
       .limit(FETCH_LIMIT);
 
     if (fetchError) throw fetchError;
@@ -427,18 +471,36 @@ async function handleProcess(supabase: any, force = false) {
           if (suppressed?.length) { shouldStop = true; stopReason = 'Stop condition: unsubscribed'; }
         }
         if (!shouldStop && stopCond.on_meeting_booked) {
-          // Check if a Calendly meeting was booked for this candidate (qualification_sessions table)
-          const meetingFilters = [];
-          if (enrollment.email_used) meetingFilters.push(`invitee_email.eq.${enrollment.email_used}`);
-          if (enrollment.profile_id) meetingFilters.push(`candidate_profile_id.eq.${enrollment.profile_id}`);
-          if (enrollment.profile_url) {
+          // Check if a Calendly meeting was booked for this candidate.
+          // Requêtes .eq() SÉPARÉES (audit 2026-07, Engine M7) : l'ancien
+          // .or() interpolait email_used/profile_url dans le filtre PostgREST
+          // (injection possible via ',' ou '(') ET matchait les RDV de TOUTES
+          // les orgs (un Calendly d'une autre org avec le même email stoppait
+          // l'enrollment). Scope org systématique + échappement des jokers.
+          const meetingOrgId = enrollment.organization_id || enrollment.sequence?.organization_id || null;
+          const meetingBase = () => {
+            let q = supabase.from('qualification_sessions').select('id').limit(1);
+            if (meetingOrgId) q = q.eq('organization_id', meetingOrgId);
+            return q;
+          };
+          let meetingFound = false;
+          if (!meetingFound && enrollment.email_used) {
+            const { data } = await meetingBase().eq('invitee_email', enrollment.email_used);
+            meetingFound = !!data?.length;
+          }
+          if (!meetingFound && enrollment.profile_id) {
+            const { data } = await meetingBase().eq('candidate_profile_id', enrollment.profile_id);
+            meetingFound = !!data?.length;
+          }
+          if (!meetingFound && enrollment.profile_url) {
             const slugMatch = (enrollment.profile_url as string).match(/linkedin\.com\/in\/([^/?#]+)/i);
-            if (slugMatch) meetingFilters.push(`candidate_linkedin_url.ilike.%${slugMatch[1]}%`);
+            if (slugMatch) {
+              const escapedSlug = slugMatch[1].replace(/([%_\\])/g, '\\$1');
+              const { data } = await meetingBase().ilike('candidate_linkedin_url', `%${escapedSlug}%`);
+              meetingFound = !!data?.length;
+            }
           }
-          if (meetingFilters.length > 0) {
-            const { data: meetings } = await supabase.from('qualification_sessions').select('id').or(meetingFilters.join(',')).limit(1);
-            if (meetings?.length) { shouldStop = true; stopReason = 'Stop condition: meeting booked (Calendly)'; }
-          }
+          if (meetingFound) { shouldStop = true; stopReason = 'Stop condition: meeting booked (Calendly)'; }
         }
         if (shouldStop) {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: stopReason, executed_at: new Date().toISOString() }).eq('id', exec.id);
@@ -502,21 +564,40 @@ async function handleProcess(supabase: any, force = false) {
         // executeStepAction). Sert de clé pour le gate quota ET le health-check.
         const effectiveAccountId = ((step.sender_id || enrollment.assigned_sender_id || enrollment.account_id) as string | undefined) || null;
 
-        const quotaCheck = await checkQuotaForAction(
-          supabase,
-          step.action_type,
-          effectiveAccountId || enrollment.account_id,
-          uCreds.apiKey,
-          uCreds.dsn,
-          senderUserId,
-        );
-        if (!quotaCheck.allowed) {
-          await supabase.from('sequence_step_executions').update({
-            status: 'quota_blocked', skip_reason: quotaCheck.reason,
-            scheduled_at: new Date(Date.now() + 86400000).toISOString(),
-          }).eq('id', exec.id);
-          results.quota_blocked++;
-          continue;
+        // Mapping type de step → type du ledger LinkedIn (audit 2026-07, M4) :
+        //  - 'profile_visit' (séquences) ≠ 'profile_view' (ledger) → les
+        //    visites de profil n'étaient JAMAIS comptées contre le cap.
+        //  - email / whatsapp / condition / wait ne touchent PAS LinkedIn →
+        //    on ne passe plus par le gate (avant, un compte LinkedIn en pause
+        //    fournisseur bloquait aussi les steps EMAIL du même enrollment).
+        const LEDGER_TYPE_BY_STEP: Record<string, string> = {
+          connection_request: 'connection_request',
+          message: 'message',
+          inmail: 'inmail',
+          smart_message: 'smart_message',
+          profile_visit: 'profile_view',
+          check_connection: 'profile_view', // lit le profil via l'API LinkedIn
+        };
+        const stepChannelForQuota = step.step_channel || (step.action_type === 'email' ? 'email' : step.action_type === 'whatsapp_message' ? 'whatsapp' : 'linkedin');
+        const ledgerActionType = stepChannelForQuota === 'linkedin' ? (LEDGER_TYPE_BY_STEP[step.action_type] ?? null) : null;
+
+        if (ledgerActionType) {
+          const quotaCheck = await checkQuotaForAction(
+            supabase,
+            ledgerActionType,
+            effectiveAccountId || enrollment.account_id,
+            uCreds.apiKey,
+            uCreds.dsn,
+            senderUserId,
+          );
+          if (!quotaCheck.allowed) {
+            await supabase.from('sequence_step_executions').update({
+              status: 'quota_blocked', skip_reason: quotaCheck.reason,
+              scheduled_at: new Date(Date.now() + 86400000).toISOString(),
+            }).eq('id', exec.id);
+            results.quota_blocked++;
+            continue;
+          }
         }
 
         const userTimezone = enrollment.user_timezone || userQuotas.timezone || 'Europe/Paris';
@@ -648,13 +729,19 @@ async function handleProcess(supabase: any, force = false) {
                 }).eq('enrollment_id', enrollment.id).in('status', ['scheduled', 'sending']);
                 await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
                 
-                // Update job_candidate_status
+                // Update job_candidate_status — scopé par org (audit 2026-07,
+                // Delivery M7) : sans ce filtre, deux orgs qui suivent le même
+                // profil LinkedIn voyaient le candidat passer « Répondu » dans
+                // le pipeline de l'AUTRE org (fuite cross-tenant).
                 if (enrollment.profile_id) {
-                  const { data: jcsRows } = await supabase
+                  const jcsOrgId = enrollment.organization_id || enrollment.sequence?.organization_id || null;
+                  let jcsQuery = supabase
                     .from('job_candidate_status')
                     .select('id')
                     .eq('candidate_id', enrollment.profile_id)
                     .in('status', ['contacted', 'shortlisted', 'scored', 'new']);
+                  if (jcsOrgId) jcsQuery = jcsQuery.eq('organization_id', jcsOrgId);
+                  const { data: jcsRows } = await jcsQuery;
                   if (jcsRows && jcsRows.length > 0) {
                     await supabase
                       .from('job_candidate_status')
@@ -1111,8 +1198,12 @@ async function handleCheckTimeouts(supabase: any) {
   }
 
   try {
+  // !inner obligatoire : sans lui, .not('step.timeout_days','is',null) ne
+  // filtre PAS les lignes parentes (il vide juste l'embed) — le limit(50)
+  // était consommé par des exécutions sans timeout, jamais traitées ensuite
+  // (audit 2026-07, Engine M3).
   const { data: waitingExecutions } = await supabase.from('sequence_step_executions')
-    .select(`*, enrollment:sequence_enrollments(*), step:sequence_steps(*)`).eq('status', 'waiting_event').not('step.timeout_days', 'is', null).limit(50);
+    .select(`*, enrollment:sequence_enrollments(*), step:sequence_steps!inner(*)`).eq('status', 'waiting_event').not('step.timeout_days', 'is', null).limit(50);
 
   let branched = 0;
   for (const exec of waitingExecutions || []) {
@@ -1200,7 +1291,14 @@ async function handleCheckWaitEvents(supabase: any) {
 
     const weCreds = await resolveUnipileCreds(enrollment.organization_id, supabase);
     let eventOccurred = false;
-    if (step.wait_for_event === 'connection_accepted') {
+    // condition_type='wait_until_connected' n'a PAS de wait_for_event → il
+    // n'était re-testé par AUCUN polling : seul le webhook new_relation le
+    // libérait, et un webhook raté = enrollment gelé à vie (audit 2026-07,
+    // Engine M6). On le traite comme connection_accepted (même sémantique).
+    const waitsForConnection = step.wait_for_event === 'connection_accepted'
+      || step.condition_type === 'wait_until_connected'
+      || step.action_type === 'wait_connection';
+    if (waitsForConnection) {
       // Use DB-stored network_distance first → avoids Unipile API call
       if (enrollment.network_distance === 'FIRST_DEGREE' || enrollment.connection_status === 'connected') {
         eventOccurred = true;
@@ -1222,7 +1320,7 @@ async function handleCheckWaitEvents(supabase: any) {
 
     if (eventOccurred) {
       await supabase.from('sequence_step_executions').update({ status: 'scheduled', scheduled_at: new Date().toISOString() }).eq('id', exec.id);
-      if (step.wait_for_event === 'connection_accepted') {
+      if (waitsForConnection) {
         await supabase.from('sequence_enrollments').update({ connection_status: 'connected', network_distance: 'FIRST_DEGREE' }).eq('id', enrollment.id);
         await logAnalytics(supabase, enrollment.sequence_id, 'invites_accepted');
       }
