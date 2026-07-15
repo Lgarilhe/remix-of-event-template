@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { invokeUnipile } from '@/lib/invokeUnipile';
-import { LinkedInFiltersState } from '@/components/outreach/types';
+import { LinkedInFiltersState, SENIORITY_LEVELS, PROFILE_LANGUAGES } from '@/components/outreach/types';
 import { SearchHistoryEntry } from '@/hooks/useSearchHistory';
 
 /* ────────────────────────── Icônes géométriques (registre 1.5px) ────────────────────────── */
@@ -265,14 +265,28 @@ export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips }) =
 /* ══════════════════════════ 3. CHIP BAR ══════════════════════════ */
 
 type Weight = 'must' | 'should' | 'exclude';
+type FacetKey = 'poste' | 'lieu' | 'exp' | 'skills' | 'boite' | 'keywords' | 'seniorite' | 'langue';
 interface FacetChip {
-  key: 'poste' | 'lieu' | 'exp' | 'skills' | 'boite' | 'keywords';
+  key: FacetKey;
   field: string;
   op: string;
   values: string[];
   weight: Weight;
   canCycle: boolean;
 }
+
+/** Champs proposés par « + Filtre » — granularité directe sans passer par le
+ *  panneau avancé. `advanced: true` = nécessite l'autocomplete LinkedIn → modal. */
+const ADDABLE_FIELDS: { key: FacetKey | 'advanced'; label: string; hint?: string }[] = [
+  { key: 'lieu', label: 'Lieu' },
+  { key: 'poste', label: 'Poste' },
+  { key: 'exp', label: 'Expérience' },
+  { key: 'skills', label: 'Compétence' },
+  { key: 'boite', label: 'Entreprise' },
+  { key: 'seniorite', label: 'Séniorité' },
+  { key: 'langue', label: 'Langue du profil' },
+  { key: 'advanced', label: 'École, secteur, spotlights…', hint: 'panneau avancé' },
+];
 
 function buildChips(f: LinkedInFiltersState): FacetChip[] {
   const chips: FacetChip[] = [];
@@ -302,6 +316,16 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
     values: [...coIncl, ...coExcl.map(v => `⌀ ${v}`)],
     weight: coExcl.length && !coIncl.length ? 'exclude' : 'should', canCycle: false,
   });
+  if (f.seniority.length) chips.push({
+    key: 'seniorite', field: 'Séniorité', op: f.seniority.length > 1 ? "l'une de" : 'est',
+    values: f.seniority.map(s => SENIORITY_LEVELS.find(sl => sl.value === s)?.label || s),
+    weight: 'should', canCycle: false,
+  });
+  if (f.profile_language.length) chips.push({
+    key: 'langue', field: 'Langue', op: f.profile_language.length > 1 ? "l'une de" : 'est',
+    values: f.profile_language.map(l => PROFILE_LANGUAGES.find(pl => pl.value === l)?.label || l),
+    weight: 'should', canCycle: false,
+  });
   if (f.keywords?.trim()) chips.push({
     key: 'keywords', field: 'Mots-clés', op: 'booléen',
     values: [f.keywords.length > 34 ? f.keywords.slice(0, 34) + '…' : f.keywords],
@@ -311,8 +335,8 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
 }
 
 function advancedCount(f: LinkedInFiltersState): number {
-  return f.school.length + f.seniority.length + f.industry.length + f.function.length
-    + f.degree.length + f.groups.length + f.network_distance.length + f.profile_language.length
+  return f.school.length + f.industry.length + f.function.length
+    + f.degree.length + f.groups.length + f.network_distance.length
     + f.past_company.length + f.past_job_title.length + (f.spotlight ? 1 : 0)
     + (f.open_to_work === true ? 1 : 0) + f.company_headcount.length + f.company_type.length;
 }
@@ -337,6 +361,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
   const advCount = advancedCount(filters);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [fuValue, setFuValue] = useState('');
+  const [fuOpen, setFuOpen] = useState(false);
   const [fuLoading, setFuLoading] = useState(false);
   const [resolving, setResolving] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
@@ -381,6 +406,8 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         case 'skills': return { ...f, skills: [], skills_keywords: [] };
         case 'boite': return { ...f, company: [], company_keywords: [], exclude_consulting: false };
         case 'keywords': return { ...f, keywords: '' };
+        case 'seniorite': return { ...f, seniority: [] };
+        case 'langue': return { ...f, profile_language: [] };
         default: return f;
       }
     });
@@ -397,6 +424,14 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         case 'boite':
           if (raw === 'ESN / Conseil' && f.exclude_consulting) return { ...f, exclude_consulting: false };
           return { ...f, company: f.company.filter(c => c.name !== raw), company_keywords: f.company_keywords.filter(c => c.keywords !== raw) };
+        case 'seniorite': {
+          const sv = SENIORITY_LEVELS.find(sl => sl.label === raw)?.value ?? raw;
+          return { ...f, seniority: f.seniority.filter(s => s !== sv) };
+        }
+        case 'langue': {
+          const lv = PROFILE_LANGUAGES.find(pl => pl.label === raw)?.value ?? raw;
+          return { ...f, profile_language: f.profile_language.filter(l => l !== lv) };
+        }
         default: return f;
       }
     });
@@ -436,6 +471,15 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
     });
   }, [onFiltersEdit, accountId, searchSource]);
 
+  const toggleOption = useCallback((key: 'seniorite' | 'langue', value: string) => {
+    onFiltersEdit(f => key === 'seniorite'
+      ? { ...f, seniority: f.seniority.includes(value) ? f.seniority.filter(s => s !== value) : [...f.seniority, value] }
+      : { ...f, profile_language: f.profile_language.includes(value) ? f.profile_language.filter(l => l !== value) : [...f.profile_language, value] });
+  }, [onFiltersEdit]);
+
+  // « + Filtre » : champ choisi → éditeur inline (2e étage du même popover)
+  const [addField, setAddField] = useState<FacetKey | null>(null);
+
   const submitFollowUp = useCallback(async () => {
     const v = fuValue.trim();
     if (!v || fuLoading) return;
@@ -443,6 +487,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
     try {
       await onFollowUp(v);
       setFuValue('');
+      setFuOpen(false);
     } finally { setFuLoading(false); }
   }, [fuValue, fuLoading, onFollowUp]);
 
@@ -450,21 +495,27 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
 
   return (
     <div className="mb-2">
-      {/* Affinage en une phrase — mute les mêmes chips, jamais de filtre invisible */}
-      <div className="flex items-center gap-2.5 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] px-3 py-2 mb-2 focus-within:border-[var(--k-hairline-focus)] transition-colors">
-        <AiBurst className={cn('w-[15px] h-[15px] shrink-0', fuValue ? 'text-[var(--k-accent)]' : 'text-[var(--k-text-placeholder)]')} />
-        <input
-          value={fuValue}
-          onChange={e => setFuValue(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitFollowUp(); } }}
-          placeholder="Affiner en une phrase — ex. « ajoute anglais courant, retire Lyon » (⏎)"
-          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13.5px] text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)]"
-        />
-        {fuLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--k-text-muted)]" />}
-      </div>
-
-      {/* Barre de pilules 3-segments */}
+      {/* Barre unique : phrase d'affinage repliée + pilules + ajout + compteur */}
       <div ref={barRef} className="relative flex flex-wrap items-center gap-1.5">
+        {fuOpen && (
+          <span className="order-first basis-full inline-flex items-center gap-2 rounded-lg border border-[var(--k-hairline-focus)] bg-[var(--k-surface)] px-2.5 py-1.5 mb-0.5">
+            <AiBurst className="w-3.5 h-3.5 shrink-0 text-[var(--k-accent)]" />
+            <input
+              autoFocus
+              value={fuValue}
+              onChange={e => setFuValue(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); submitFollowUp(); }
+                if (e.key === 'Escape') { setFuOpen(false); setFuValue(''); }
+              }}
+              placeholder="Affiner en une phrase — ex. « ajoute anglais courant, retire Lyon » (⏎ · esc)"
+              className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px] text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)]"
+            />
+            {fuLoading
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--k-text-muted)]" />
+              : <button type="button" onClick={() => { setFuOpen(false); setFuValue(''); }} className="text-[var(--k-text-muted)] hover:text-[var(--k-text)]"><XIcon className="w-2.5 h-2.5" /></button>}
+          </span>
+        )}
         {chips.map(chip => (
           <span key={chip.key} className={cn(
             'relative inline-flex items-stretch rounded-lg border bg-[var(--k-surface)] overflow-visible text-xs font-medium transition-colors',
@@ -525,6 +576,27 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                     className="w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]">
                     Éditer la requête booléenne dans le panneau avancé →
                   </button>
+                ) : (chip.key === 'seniorite' || chip.key === 'langue') ? (
+                  <>
+                    {(chip.key === 'seniorite' ? SENIORITY_LEVELS : PROFILE_LANGUAGES).map(opt => {
+                      const checked = chip.key === 'seniorite'
+                        ? filters.seniority.includes(opt.value)
+                        : filters.profile_language.includes(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          role="checkbox"
+                          aria-checked={checked}
+                          onClick={() => toggleOption(chip.key as 'seniorite' | 'langue', opt.value)}
+                          className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                        >
+                          <span className="flex-1 min-w-0 truncate">{opt.label}</span>
+                          {checked && <span className="text-[var(--k-accent)]"><Check /></span>}
+                        </button>
+                      );
+                    })}
+                  </>
                 ) : (
                   <>
                     {chip.values.map(v => (
@@ -557,6 +629,105 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             )}
           </span>
         ))}
+
+        {/* + Filtre : granularité directe — champ puis éditeur inline */}
+        <span className="relative">
+          <button
+            type="button"
+            data-chip-seg
+            onClick={() => { setOpenKey(openKey === '__add' ? null : '__add'); setAddField(null); }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
+          >
+            <svg viewBox="0 0 24 24" {...svgProps} className="w-3 h-3"><circle cx="12" cy="12" r="8" /><path d="M12 8v8M8 12h8" /></svg>
+            Filtre
+          </button>
+          {openKey === '__add' && (
+            <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
+              {addField === null ? (
+                <>
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Ajouter un filtre</div>
+                  {ADDABLE_FIELDS.map(fd => (
+                    <button
+                      key={fd.key}
+                      type="button"
+                      onClick={() => {
+                        if (fd.key === 'advanced') { setOpenKey(null); onOpenAdvanced(); return; }
+                        setAddField(fd.key as FacetKey);
+                      }}
+                      className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                    >
+                      <span className="flex-1">{fd.label}</span>
+                      {fd.hint && <span className="font-mono text-[10px] text-[var(--k-text-muted)]">{fd.hint}</span>}
+                    </button>
+                  ))}
+                </>
+              ) : addField === 'exp' ? (
+                <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-[var(--k-text-muted)]">
+                  <input type="number" min={0} max={50} autoFocus placeholder="min"
+                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_min: v, years_of_experience_min: v })); }}
+                    className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                  →
+                  <input type="number" min={0} max={50} placeholder="max"
+                    onChange={e => { const v = e.target.value === '' ? null : Math.max(0, Math.min(50, parseInt(e.target.value, 10) || 0)); onFiltersEdit(f => ({ ...f, calculated_experience_max: v, years_of_experience_max: v })); }}
+                    className="h-7 w-14 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 font-mono text-xs text-center text-[var(--k-text-2)] outline-none focus:border-[var(--k-hairline-focus)]" />
+                  ans
+                </div>
+              ) : (addField === 'seniorite' || addField === 'langue') ? (
+                <>
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">{addField === 'seniorite' ? 'Séniorité' : 'Langue du profil'}</div>
+                  {(addField === 'seniorite' ? SENIORITY_LEVELS : PROFILE_LANGUAGES).map(opt => {
+                    const checked = addField === 'seniorite'
+                      ? filters.seniority.includes(opt.value)
+                      : filters.profile_language.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        onClick={() => toggleOption(addField as 'seniorite' | 'langue', opt.value)}
+                        className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]"
+                      >
+                        <span className="flex-1 min-w-0 truncate">{opt.label}</span>
+                        {checked && <span className="text-[var(--k-accent)]"><Check /></span>}
+                      </button>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">
+                    {ADDABLE_FIELDS.find(fd => fd.key === addField)?.label}
+                  </div>
+                  <input
+                    autoFocus
+                    placeholder={resolving ? 'Résolution…' : 'Valeur — ⏎'}
+                    disabled={resolving}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const v = (e.target as HTMLInputElement).value;
+                        (e.target as HTMLInputElement).value = '';
+                        if (addField) addValue(addField as FacetChip['key'], v);
+                      }
+                    }}
+                    className="w-[calc(100%-8px)] m-1 h-7 rounded-md border border-[var(--k-hairline)] bg-[var(--k-surface)] px-2 text-xs text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] outline-none focus:border-[var(--k-hairline-focus)]"
+                  />
+                </>
+              )}
+            </div>
+          )}
+        </span>
+
+        {/* Phrase d'affinage — repliée en bouton (dé-densification) */}
+        <button
+          type="button"
+          onClick={() => setFuOpen(o => !o)}
+          title="Affiner en une phrase — l'IA la traduit en chips visibles"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
+        >
+          <AiBurst className="w-3 h-3" />
+          Affiner
+        </button>
 
         {/* Avancé (l'ancien panneau complet, en échappatoire) */}
         <button
