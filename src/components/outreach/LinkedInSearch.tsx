@@ -912,15 +912,25 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [chipsDirty, setChipsDirty] = useState(false);
   const flowBusyRef = useRef(false);
 
-  // Pas encore de recherche ni de résultats (y compris après hydratation du
-  // cache mission) → état hero. Ne jamais interrompre un plan en cours.
+  // Initialisation par mission : hero si rien (recherche/résultats), sinon
+  // pilotage. Ensuite on ne fait que MONTER (hero → results, hydratation
+  // tardive du cache) — jamais redescendre : un échec de recherche doit
+  // laisser l'utilisateur sur la barre de chips pour corriger et relancer.
+  const flowInitProjectRef = useRef<string | null>(null);
+  const hasSearchedRef = useRef(search.hasSearched);
+  useEffect(() => { hasSearchedRef.current = search.hasSearched; }, [search.hasSearched]);
   useEffect(() => {
     if (!activeProject) return;
     if (flowMode === 'plan' || flowBusyRef.current) return;
     const empty = !search.hasSearched && search.results.length === 0 && !search.loading;
-    setFlowMode(empty ? 'hero' : 'results');
+    if (flowInitProjectRef.current !== activeProject.id) {
+      flowInitProjectRef.current = activeProject.id;
+      setFlowMode(empty ? 'hero' : 'results');
+    } else if (!empty && flowMode === 'hero') {
+      setFlowMode('results');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProject?.id, search.hasSearched, search.results.length, search.loading]);
+  }, [activeProject?.id, search.hasSearched, search.results.length, search.loading, flowMode]);
 
   // Édition de filtres depuis la barre de chips : synchronise le ref (lu par
   // handleSearch) et marque la vue « modifiée » — la recherche ne repart que
@@ -956,6 +966,9 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setPlanStage('search');
       await handleSearch(false);
       setChipsDirty(false);
+      // handleSearch avale ses erreurs (toast) : si hasSearched n'est pas
+      // passé à true, la recherche a échoué → marquer la vue « à relancer ».
+      setTimeout(() => { if (!hasSearchedRef.current) setChipsDirty(true); }, 150);
     } else {
       setChipsDirty(true);
     }
@@ -975,7 +988,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     } catch (error: any) {
       const msg = error?.message || '';
       toast.error(msg.includes('insufficient_credits') ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : 'La génération a échoué, réessayez.');
-      setFlowMode(search.results.length > 0 || search.hasSearched ? 'results' : 'hero');
+      setFlowMode(planChips.length > 0 || search.results.length > 0 || search.hasSearched ? 'results' : 'hero');
     } finally {
       flowBusyRef.current = false;
     }
