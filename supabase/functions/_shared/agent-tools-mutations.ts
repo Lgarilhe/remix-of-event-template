@@ -13,6 +13,7 @@
 import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
+import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -2958,6 +2959,857 @@ const applySearchFiltersToMission: AgentTool = {
   },
 };
 
+// ─── Tool — schedule_interview ──────────────────────────────────────────────
+// Programme un entretien / une session de qualification dans le calendrier
+// interne (table qualification_sessions — même insert que CreateEventModal).
+// P0.3 audit 2026-07-14 : le label UI existait déjà, le tool manquait.
+
+interface ResolvedInterviewCandidate {
+  candidateId: string | null;
+  candidateName: string;
+  candidateHeadline: string | null;
+  inPipeline: boolean;
+}
+
+async function resolveInterviewCandidate(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+): Promise<ResolvedInterviewCandidate> {
+  const explicitId = String(params.candidate_id || '').trim();
+  const name = String(params.candidate_name || '').trim();
+
+  if (explicitId) {
+    const { data } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_id, candidate_name, candidate_headline')
+      .eq('organization_id', ctx.organizationId)
+      .eq('candidate_id', explicitId)
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      return {
+        candidateId: data.candidate_id,
+        candidateName: data.candidate_name || name || explicitId,
+        candidateHeadline: data.candidate_headline ?? null,
+        inPipeline: true,
+      };
+    }
+  }
+  if (name) {
+    const { data } = await ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_id, candidate_name, candidate_headline')
+      .eq('organization_id', ctx.organizationId)
+      .ilike('candidate_name', `%${name.slice(0, 80)}%`)
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      return {
+        candidateId: data.candidate_id,
+        candidateName: data.candidate_name || name,
+        candidateHeadline: data.candidate_headline ?? null,
+        inPipeline: true,
+      };
+    }
+  }
+  return { candidateId: explicitId || null, candidateName: name || explicitId, candidateHeadline: null, inPipeline: false };
+}
+
+async function resolveInterviewMission(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+): Promise<{ id: string; name: string | null; job_title: string | null; client_name: string | null; job_id: string | null } | null> {
+  const missionId = String(params.mission_id || '').trim();
+  const missionName = String(params.mission_name || '').trim();
+  if (!missionId && !missionName) return null;
+  let q = ctx.adminClient
+    .from('sourcing_projects')
+    .select('id, name, job_title, client_name, job_id')
+    .eq('organization_id', ctx.organizationId);
+  q = missionId ? q.eq('id', missionId) : q.ilike('name', `%${missionName.slice(0, 80)}%`);
+  const { data } = await q.limit(1).maybeSingle();
+  return (data as { id: string; name: string | null; job_title: string | null; client_name: string | null; job_id: string | null } | null) ?? null;
+}
+
+function parseInterviewSlot(params: Record<string, unknown>): { startAt: Date; endAt: Date; duration: number } | { error: string } {
+  const startMs = Date.parse(String(params.start_at || ''));
+  if (Number.isNaN(startMs)) return { error: "start_at invalide — attendu un datetime ISO 8601 (ex : 2026-07-16T14:00:00+02:00)" };
+  if (startMs < Date.now() - 5 * 60_000) return { error: 'start_at est dans le passé' };
+  const duration = Math.min(Math.max(Math.round(Number(params.duration_minutes) || 45), 15), 240);
+  const startAt = new Date(startMs);
+  return { startAt, endAt: new Date(startMs + duration * 60_000), duration };
+}
+
+const frDate = (d: Date) =>
+  d.toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Europe/Paris' });
+
+const scheduleInterview: AgentTool = {
+  name: 'schedule_interview',
+  description:
+    "Schedule an interview / qualification session with a candidate in the Konekt calendar (visible in /calendar and via get_upcoming_interviews). " +
+    "Use when the user says 'programme un entretien avec X', 'cale un call avec Marie jeudi 14h', 'planifie la pré-qualif de Théo'. " +
+    "Pass start_at as full ISO 8601 datetime WITH timezone (Europe/Paris for French users). Default duration: 45 min. " +
+    "Optional mission_id/mission_name links the interview to a mission (recommended when known). " +
+    "This creates the calendar slot in Konekt only — it does NOT send any invitation email to the candidate. " +
+    "Always proposes the change for user approval — never executes silently.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      candidate_name: { type: 'string', description: "Full name of the candidate (ex : 'Marie Dupont')." },
+      candidate_id: { type: 'string', description: "Optional stable candidate id (LinkedIn provider_id 'ACoAA…') if known from a read tool. Never invent it." },
+      start_at: { type: 'string', description: "Interview start — ISO 8601 datetime with timezone (ex : '2026-07-16T14:00:00+02:00'). Must be in the future." },
+      duration_minutes: { type: 'number', description: 'Duration in minutes (default 45, min 15, max 240).' },
+      event_name: { type: 'string', description: "Optional title (default : 'Entretien — {candidate}')." },
+      location: { type: 'string', description: "Optional location : visio link, phone, address." },
+      mission_id: { type: 'string', description: 'Optional mission UUID to attach the interview to.' },
+      mission_name: { type: 'string', description: 'Optional mission name (resolved server-side) if the UUID is unknown.' },
+      notes: { type: 'string', description: 'Optional prep notes (free text, max 2000 chars).' },
+    },
+    required: ['candidate_name', 'start_at'],
+  },
+
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    if (!String(params.candidate_name || '').trim()) return { allowed: false, reason: 'candidate_name is required' };
+    const slot = parseInterviewSlot(params);
+    if ('error' in slot) return { allowed: false, reason: slot.error };
+    if ((params.mission_id || params.mission_name) && !(await resolveInterviewMission(ctx, params))) {
+      return { allowed: false, reason: 'Mission introuvable dans cette organisation' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const slot = parseInterviewSlot(params);
+    if ('error' in slot) throw new Error(slot.error);
+    const [candidate, mission] = await Promise.all([
+      resolveInterviewCandidate(ctx, params),
+      resolveInterviewMission(ctx, params),
+    ]);
+    const eventName = String(params.event_name || '').trim() || `Entretien — ${candidate.candidateName}`;
+    const missionLabel = mission ? (mission.name || mission.job_title || mission.id) : null;
+    return {
+      summary: `Programmer « ${eventName} » avec ${candidate.candidateName} le ${frDate(slot.startAt)} (${slot.duration} min)`,
+      details: {
+        candidate_name: candidate.candidateName,
+        candidate_in_pipeline: candidate.inPipeline,
+        event_name: eventName,
+        start_at: slot.startAt.toISOString(),
+        end_at: slot.endAt.toISOString(),
+        duration_minutes: slot.duration,
+        location: String(params.location || '').trim() || null,
+        mission: missionLabel,
+      },
+      warning: candidate.inPipeline
+        ? undefined
+        : "Candidat introuvable dans le pipeline : l'entretien sera créé quand même, mais sans lien vers une card candidat.",
+    };
+  },
+
+  async execute(params, ctx) {
+    const slot = parseInterviewSlot(params);
+    if ('error' in slot) return { success: false, error: slot.error };
+    const [candidate, mission] = await Promise.all([
+      resolveInterviewCandidate(ctx, params),
+      resolveInterviewMission(ctx, params),
+    ]);
+    const eventName = String(params.event_name || '').trim() || `Entretien — ${candidate.candidateName}`;
+
+    const insert: Record<string, unknown> = {
+      organization_id: ctx.organizationId,
+      created_by: ctx.userId,
+      manager_id: ctx.userId,
+      candidate_profile_id: candidate.candidateId || crypto.randomUUID(),
+      candidate_name: candidate.candidateName,
+      candidate_headline: candidate.candidateHeadline,
+      event_name: eventName,
+      event_start_at: slot.startAt.toISOString(),
+      event_end_at: slot.endAt.toISOString(),
+      event_location: String(params.location || '').trim() || null,
+      notes: String(params.notes || '').trim().slice(0, 2000) || null,
+      status: 'scheduled',
+    };
+    if (mission) {
+      insert.project_id = mission.id;
+      insert.client_name = mission.client_name || null;
+      insert.job_title = mission.job_title || mission.name;
+      if (mission.job_id) insert.job_id = mission.job_id;
+    }
+
+    const { data, error } = await ctx.adminClient
+      .from('qualification_sessions')
+      .insert(insert)
+      .select('id')
+      .single();
+    if (error) return { success: false, error: error.message };
+
+    return {
+      success: true,
+      data: {
+        session_id: data.id,
+        start_at: slot.startAt.toISOString(),
+        message: `Entretien programmé le ${frDate(slot.startAt)} (${slot.duration} min). Visible dans le calendrier Konekt. Aucune invitation n'a été envoyée au candidat.`,
+      },
+    };
+  },
+};
+
+// ─── Tool — launch_search ───────────────────────────────────────────────────
+// Pont chat → run-agent-search (P0.3 audit 2026-07-14). Avant ce tool, le
+// [SEARCH_PLAN] validé laissait la conversation en status='plan_proposed'
+// sans AUCUN déclencheur : la vraie recherche était inatteignable depuis le
+// chat. Exécution fire-and-forget : run-agent-search tourne jusqu'à ~140s et
+// poste sa progression dans agent_messages ; on ne bloque pas l'approbation.
+
+const launchSearch: AgentTool = {
+  name: 'launch_search',
+  description:
+    "Launch the REAL autonomous candidate search for this conversation's validated search plan (the [SEARCH_PLAN] you emitted earlier). " +
+    "Use when the user confirms they want the autonomous agent to actually run ('lance la recherche', 'go', 'lance l'agent autonome'). " +
+    "REQUIRES a search plan to already exist on this conversation — emit and validate the [SEARCH_PLAN] first. " +
+    "The search runs in the background (a few minutes) : it queries LinkedIn with the plan's filters, scores each profile against the brief, " +
+    "and adds the best matches to the mission pipeline. Progress messages appear in this conversation. " +
+    "Costs AI credits (per-profile scoring) and uses the user's LinkedIn account. " +
+    "Always proposes the launch for user approval — never executes silently.",
+  category: 'mutation_external',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      confirm: {
+        type: 'boolean',
+        description: 'Set to true to confirm the launch of the autonomous search.',
+      },
+    },
+    required: [],
+  },
+
+  async verifyAccess(_params, ctx) {
+    if (!ctx.conversationId) {
+      return { allowed: false, reason: "Aucune conversation active — le plan de recherche vit sur la conversation." };
+    }
+    const { data: conv } = await ctx.adminClient
+      .from('agent_conversations')
+      .select('organization_id, status, search_config')
+      .eq('id', ctx.conversationId)
+      .maybeSingle();
+    if (!conv) return { allowed: false, reason: 'Conversation introuvable' };
+    if (conv.organization_id && conv.organization_id !== ctx.organizationId) {
+      return { allowed: false, reason: 'Cette conversation appartient à une autre organisation' };
+    }
+    const cfg = (conv.search_config as Record<string, unknown> | null) ?? null;
+    if (!cfg || !cfg.filters) {
+      return { allowed: false, reason: "Aucun plan de recherche sur cette conversation — génère et valide d'abord un [SEARCH_PLAN]." };
+    }
+    if (conv.status === 'running') {
+      return { allowed: false, reason: 'Une recherche est déjà en cours sur cette conversation.' };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(_params, ctx) {
+    const { data: conv } = await ctx.adminClient
+      .from('agent_conversations')
+      .select('search_config, job_title')
+      .eq('id', ctx.conversationId as string)
+      .maybeSingle();
+    const cfg = ((conv?.search_config as Record<string, unknown> | null) ?? {});
+    const summary = typeof cfg.summary === 'string' ? cfg.summary : null;
+    const stop = (cfg.stop_conditions as Record<string, unknown> | null) ?? null;
+    return {
+      summary: `Lancer la recherche autonome${summary ? ` : ${summary.slice(0, 140)}` : ''}`,
+      details: {
+        plan_summary: summary,
+        job_title: conv?.job_title ?? null,
+        stop_conditions: stop,
+        filter_keys: Object.keys((cfg.filters as Record<string, unknown> | null) ?? {}),
+      },
+      warning:
+        "Consomme des crédits IA (scoring de chaque profil trouvé) et utilise ton compte LinkedIn pour la recherche. Durée : quelques minutes, progression affichée dans la conversation.",
+    };
+  },
+
+  async execute(_params, ctx) {
+    if (!ctx.conversationId) {
+      return { success: false, error: 'Aucune conversation active pour cette exécution.' };
+    }
+    if (!ctx.userBearer) {
+      // Chemin cron (process-scheduled-actions) : pas de JWT user disponible.
+      // launch_search ne programme jamais de scheduled_for, donc ce cas ne
+      // devrait pas arriver — garde-fou explicite plutôt qu'un 401 opaque.
+      return { success: false, error: "Lancement impossible hors session utilisateur (JWT absent). Relance depuis le chat." };
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+    // Fire-and-forget : run-agent-search tourne ~2 min et poste sa progression
+    // dans agent_messages. waitUntil garde l'invocation vivante côté runtime.
+    const searchPromise = fetchWithTimeout(
+      `${supabaseUrl}/functions/v1/run-agent-search`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ctx.userBearer}`,
+          apikey: anonKey,
+        },
+        body: JSON.stringify({ conversation_id: ctx.conversationId }),
+      },
+      150_000,
+    ).then(async (res) => {
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error(`[launch_search] run-agent-search ${res.status}: ${body.slice(0, 300)}`);
+      }
+    }).catch((e) => console.error('[launch_search] run-agent-search failed:', e));
+    try {
+      (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil?.(searchPromise);
+    } catch { /* no-op */ }
+
+    return {
+      success: true,
+      data: {
+        conversation_id: ctx.conversationId,
+        message:
+          'Recherche autonome lancée. La progression et les candidats trouvés arrivent dans cette conversation (et dans le pipeline de la mission) dans les prochaines minutes.',
+      },
+    };
+  },
+};
+
+// ─── Tools bulk — bulk_update_stage / bulk_dismiss (P2.2 audit 2026-07-14) ──
+// Actions multi-candidats (max 50) sur UNE mission. Le dry-run liste CHAQUE
+// candidat par son nom pour que l'utilisateur voie exactement ce qui va être
+// modifié avant d'approuver. Ne crée jamais de rows : les candidats absents
+// de job_candidate_status pour cette mission sont ignorés et signalés.
+
+const BULK_MAX = 50;
+
+interface BulkTarget {
+  candidate_id: string;
+  candidate_name: string | null;
+  current: string | null;
+}
+
+async function resolveBulkTargets(
+  ctx: ToolContext,
+  jobId: string,
+  candidateIds: string[],
+  field: 'pipeline_stage' | 'status',
+): Promise<{ found: BulkTarget[]; missing: string[] }> {
+  const { data } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select(`candidate_id, candidate_name, ${field}`)
+    .eq('organization_id', ctx.organizationId)
+    .eq('job_id', jobId)
+    .in('candidate_id', candidateIds);
+  const rows = (data as Array<Record<string, any>> | null) ?? [];
+  const foundIds = new Set(rows.map((r) => r.candidate_id));
+  return {
+    found: rows.map((r) => ({
+      candidate_id: r.candidate_id,
+      candidate_name: r.candidate_name ?? null,
+      current: r[field] ?? null,
+    })),
+    missing: candidateIds.filter((id) => !foundIds.has(id)),
+  };
+}
+
+function parseBulkIds(params: Record<string, unknown>): string[] {
+  const raw = Array.isArray(params.candidate_ids) ? params.candidate_ids : [];
+  return [...new Set(raw.map((x) => String(x || '').trim()).filter(Boolean))].slice(0, BULK_MAX);
+}
+
+const bulkUpdateStage: AgentTool = {
+  name: 'bulk_update_stage',
+  description:
+    "Move SEVERAL candidates (2-50) of one mission to a new pipeline stage in a single action. " +
+    "Use when the user says 'passe ces 5 candidats en Pressenti', 'déplace tous ceux que je t'ai listés en Contacté'. " +
+    "Resolve candidate_ids first via get_mission_candidates — never invent them. " +
+    "The approval preview lists every candidate by name. Candidates not in the mission pipeline are skipped and reported. " +
+    "For ONE candidate, use update_candidate_stage instead.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      job_id: { type: 'string', description: 'The mission id (same as used by get_mission_candidates / update_candidate_stage).' },
+      candidate_ids: {
+        type: 'array',
+        items: { type: 'string' },
+        description: `Candidate ids (2-${BULK_MAX}), from get_mission_candidates. Never invented.`,
+      },
+      new_stage: {
+        type: 'string',
+        enum: ALLOWED_STAGES as unknown as string[],
+        description: 'Target pipeline stage.',
+      },
+      reason: { type: 'string', description: 'Optional reason (logged).' },
+    },
+    required: ['job_id', 'candidate_ids', 'new_stage'],
+  },
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    const ids = parseBulkIds(params);
+    if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : update_candidate_stage)` };
+    if (!String(params.job_id || '').trim()) return { allowed: false, reason: 'job_id is required' };
+    const stage = String(params.new_stage || '');
+    if (!(ALLOWED_STAGES as readonly string[]).includes(stage)) {
+      return { allowed: false, reason: `new_stage must be one of: ${ALLOWED_STAGES.join(', ')}` };
+    }
+    return { allowed: true };
+  },
+  async dryRun(params, ctx) {
+    const ids = parseBulkIds(params);
+    const jobId = String(params.job_id);
+    const stage = String(params.new_stage);
+    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'pipeline_stage');
+    const toMove = found.filter((t) => t.current !== stage);
+    const noOps = found.length - toMove.length;
+    return {
+      summary: `Déplacer ${toMove.length} candidat(s) vers « ${stage} »`,
+      details: {
+        job_id: jobId,
+        new_stage: stage,
+        reason: String(params.reason || '') || null,
+        candidates: found.map((t) => ({
+          name: t.candidate_name || t.candidate_id,
+          from: t.current,
+          to: stage,
+          no_op: t.current === stage,
+        })),
+        skipped_not_in_pipeline: missing,
+        no_op_count: noOps,
+      },
+      warning: missing.length > 0
+        ? `${missing.length} candidat(s) introuvable(s) sur cette mission — ils seront ignorés.`
+        : noOps > 0
+        ? `${noOps} candidat(s) déjà au stade cible (aucun changement pour eux).`
+        : undefined,
+    };
+  },
+  async execute(params, ctx) {
+    const ids = parseBulkIds(params);
+    const jobId = String(params.job_id);
+    const stage = String(params.new_stage);
+    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'pipeline_stage');
+    if (found.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
+    const { data, error } = await ctx.adminClient
+      .from('job_candidate_status')
+      .update({ pipeline_stage: stage })
+      .eq('organization_id', ctx.organizationId)
+      .eq('job_id', jobId)
+      .in('candidate_id', found.map((t) => t.candidate_id))
+      .select('candidate_id');
+    if (error) return { success: false, error: error.message };
+    const updated = (data as Array<{ candidate_id: string }> | null)?.length ?? 0;
+    return {
+      success: true,
+      data: {
+        updated,
+        skipped: missing.length,
+        new_stage: stage,
+        message: `${updated} candidat(s) déplacé(s) vers « ${stage} »${missing.length ? ` (${missing.length} ignoré(s), hors pipeline)` : ''}.`,
+      },
+    };
+  },
+};
+
+const bulkDismiss: AgentTool = {
+  name: 'bulk_dismiss',
+  description:
+    "Dismiss SEVERAL candidates (2-50) of one mission in a single action (status='dismissed' — filtered out upfront, different from stage 'Perdu'). " +
+    "Use when the user says 'écarte tous les candidats sous 40 de score', 'dismiss ces 8 profils'. " +
+    "Resolve candidate_ids first via get_mission_candidates — never invent them. reason is REQUIRED (logged as skip_reason on each candidate). " +
+    "The approval preview lists every candidate by name. This action always requires user approval.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      job_id: { type: 'string', description: 'The mission id (same as used by get_mission_candidates / dismiss_candidate).' },
+      candidate_ids: {
+        type: 'array',
+        items: { type: 'string' },
+        description: `Candidate ids (2-${BULK_MAX}), from get_mission_candidates. Never invented.`,
+      },
+      reason: { type: 'string', description: 'Why these candidates are dismissed (required, French, logged).' },
+    },
+    required: ['job_id', 'candidate_ids', 'reason'],
+  },
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    const ids = parseBulkIds(params);
+    if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : dismiss_candidate)` };
+    if (!String(params.job_id || '').trim()) return { allowed: false, reason: 'job_id is required' };
+    if (!String(params.reason || '').trim()) return { allowed: false, reason: 'reason is required for bulk dismissal' };
+    return { allowed: true };
+  },
+  async dryRun(params, ctx) {
+    const ids = parseBulkIds(params);
+    const jobId = String(params.job_id);
+    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'status');
+    const toDismiss = found.filter((t) => t.current !== 'dismissed');
+    return {
+      summary: `Écarter ${toDismiss.length} candidat(s) de la mission`,
+      details: {
+        job_id: jobId,
+        reason: String(params.reason),
+        candidates: found.map((t) => ({
+          name: t.candidate_name || t.candidate_id,
+          current_status: t.current,
+          already_dismissed: t.current === 'dismissed',
+        })),
+        skipped_not_in_pipeline: missing,
+      },
+      warning: `Action destructive : ${toDismiss.length} candidat(s) seront marqués « écartés » sur cette mission.${missing.length ? ` ${missing.length} id(s) introuvable(s) seront ignorés.` : ''}`,
+    };
+  },
+  async execute(params, ctx) {
+    const ids = parseBulkIds(params);
+    const jobId = String(params.job_id);
+    const reason = String(params.reason).slice(0, 500);
+    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'status');
+    if (found.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
+    const { data, error } = await ctx.adminClient
+      .from('job_candidate_status')
+      .update({ status: 'dismissed', skip_reason: reason })
+      .eq('organization_id', ctx.organizationId)
+      .eq('job_id', jobId)
+      .in('candidate_id', found.map((t) => t.candidate_id))
+      .select('candidate_id');
+    if (error) return { success: false, error: error.message };
+    const updated = (data as Array<{ candidate_id: string }> | null)?.length ?? 0;
+    return {
+      success: true,
+      data: {
+        dismissed: updated,
+        skipped: missing.length,
+        message: `${updated} candidat(s) écarté(s)${missing.length ? ` (${missing.length} ignoré(s), hors pipeline)` : ''}. Motif : ${reason}`,
+      },
+    };
+  },
+};
+
+// ─── Tool — send_email (P2.4 audit 2026-07-14) ──────────────────────────────
+// Envoie un email depuis la BOÎTE CONNECTÉE du recruteur (member_email_accounts,
+// même transport que les étapes email de séquence : POST /api/v1/emails chez le
+// provider LinkedIn/email). mutation_external → approbation TOUJOURS obligatoire
+// (clamp serveur, jamais auto). Vérifie la liste de suppression — absent du
+// chemin séquences historique, ajouté ici.
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function textToHtml(s: string): string {
+  return `<div>${escapeHtml(s).replace(/\n/g, '<br>')}</div>`;
+}
+
+async function resolveSenderEmailAccount(
+  ctx: ToolContext,
+): Promise<{ email_account_id: string; email_address: string | null } | null> {
+  const { data } = await ctx.adminClient
+    .from('member_email_accounts')
+    .select('email_account_id, email_address, user_id, account_status')
+    .eq('organization_id', ctx.organizationId)
+    .limit(20);
+  const rows = (data as Array<{ email_account_id: string; email_address: string | null; user_id: string; account_status: string | null }> | null) ?? [];
+  const ok = rows.filter((r) => (r.account_status ?? 'OK') === 'OK');
+  return ok.find((r) => r.user_id === ctx.userId) ?? ok[0] ?? null;
+}
+
+const sendEmail: AgentTool = {
+  name: 'send_email',
+  description:
+    "Send an email to a candidate or contact FROM the user's connected email inbox (Gmail/Outlook). " +
+    "Use when the user says 'envoie un email à X', 'écris un mail à marie@…'. " +
+    "Requires to_email (ask the user or resolve via enrich_candidate_contact if unknown — NEVER invent an address). " +
+    "body is plain text (French, no markdown) — line breaks preserved. " +
+    "This is a REAL external send : always requires user approval, no exception. " +
+    "For LinkedIn messages use send_linkedin_message ; for multi-step campaigns use sequences.",
+  category: 'mutation_external',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      to_email: { type: 'string', description: "Recipient email address. Never invented — from the user, get_candidate_detail, or enrich_candidate_contact." },
+      recipient_name: { type: 'string', description: 'Recipient full name (shown in the approval banner and the email).' },
+      subject: { type: 'string', description: 'Email subject (French, concise).' },
+      body: { type: 'string', description: 'Email body, PLAIN TEXT French (no markdown, no HTML). Max 5000 chars.' },
+    },
+    required: ['to_email', 'subject', 'body'],
+  },
+
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    const to = String(params.to_email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(to)) return { allowed: false, reason: `Adresse email invalide : "${to}"` };
+    if (!String(params.subject || '').trim()) return { allowed: false, reason: 'subject is required' };
+    const body = String(params.body || '').trim();
+    if (!body) return { allowed: false, reason: 'body is required' };
+    if (body.length > 5000) return { allowed: false, reason: 'body too long (max 5000 chars)' };
+
+    // Liste de suppression (bounces / désabonnements)
+    const { data: suppressed } = await ctx.adminClient
+      .from('suppressed_emails')
+      .select('email')
+      .eq('email', to)
+      .maybeSingle();
+    if (suppressed) {
+      return { allowed: false, reason: `${to} est sur la liste de suppression (bounce ou désabonnement) — envoi interdit.` };
+    }
+
+    const sender = await resolveSenderEmailAccount(ctx);
+    if (!sender) {
+      return { allowed: false, reason: "Aucune boîte email connectée sur l'organisation (Réglages → Connecteurs) — impossible d'envoyer." };
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, ctx) {
+    const to = String(params.to_email).trim().toLowerCase();
+    const sender = await resolveSenderEmailAccount(ctx);
+    const body = String(params.body).trim();
+    return {
+      summary: `Envoyer un email à ${params.recipient_name ? `${params.recipient_name} <${to}>` : to} : « ${String(params.subject).slice(0, 80)} »`,
+      details: {
+        to_email: to,
+        recipient_name: String(params.recipient_name || '') || null,
+        from_account: sender?.email_address ?? sender?.email_account_id ?? null,
+        subject: String(params.subject),
+        body_full: body,
+        body_preview: body.length > 160 ? body.slice(0, 157) + '…' : body,
+      },
+      warning: 'Envoi externe RÉEL depuis ta boîte email connectée — irréversible une fois parti.',
+    };
+  },
+
+  async execute(params, ctx) {
+    const to = String(params.to_email).trim().toLowerCase();
+    const sender = await resolveSenderEmailAccount(ctx);
+    if (!sender) return { success: false, error: 'Aucune boîte email connectée.' };
+
+    let creds: { apiKey: string; dsn: string } | null = null;
+    try {
+      creds = await resolveUnipileCredentials(ctx.organizationId, ctx.adminClient);
+    } catch (e) {
+      console.error('[send_email] credentials error:', e);
+    }
+    if (!creds) return { success: false, error: 'Connexion au service email impossible (credentials indisponibles).' };
+    const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
+
+    const res = await fetchWithTimeout(`${baseDsn}/api/v1/emails`, {
+      method: 'POST',
+      headers: { 'X-API-KEY': creds.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_id: sender.email_account_id,
+        subject: String(params.subject),
+        body: textToHtml(String(params.body).trim()),
+        to: [{ display_name: String(params.recipient_name || '') || to, identifier: to }],
+      }),
+    }, 20000);
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      console.error('[send_email] provider error:', res.status, err.slice(0, 300));
+      return { success: false, error: `Échec de l'envoi (${res.status}). Vérifie que ta boîte email est bien connectée.` };
+    }
+
+    return {
+      success: true,
+      data: {
+        to_email: to,
+        from_account: sender.email_address ?? null,
+        message: `Email envoyé à ${to} depuis ${sender.email_address ?? 'ta boîte connectée'}.`,
+      },
+    };
+  },
+};
+
+// ─── Tool — create_sequence (P2.5 audit 2026-07-14) ─────────────────────────
+// Crée une séquence outreach multi-étapes (outreach_sequences + sequence_steps).
+// Ne déclenche AUCUN envoi : les envois partent à l'enrollment (enroll_in_sequence,
+// lui-même sous approbation). Types d'étapes exposés au modèle = sous-ensemble
+// sûr du CHECK action_type.
+
+const SEQ_STEP_TYPES: Record<string, { action_type: string; channel: 'linkedin' | 'email' }> = {
+  message: { action_type: 'message', channel: 'linkedin' },
+  inmail: { action_type: 'inmail', channel: 'linkedin' },
+  connection_request: { action_type: 'connection_request', channel: 'linkedin' },
+  email: { action_type: 'email', channel: 'email' },
+  wait_reply: { action_type: 'wait_reply', channel: 'linkedin' },
+};
+
+interface SeqStepInput {
+  type: string;
+  delay_days: number;
+  subject: string | null;
+  message: string | null;
+}
+
+function parseSequenceSteps(params: Record<string, unknown>): { steps: SeqStepInput[] } | { error: string } {
+  const raw = Array.isArray(params.steps) ? params.steps : [];
+  if (raw.length < 1 || raw.length > 8) return { error: 'steps doit contenir entre 1 et 8 étapes' };
+  const steps: SeqStepInput[] = [];
+  for (const [i, s] of raw.entries()) {
+    const st = (s ?? {}) as Record<string, unknown>;
+    const type = String(st.type || '').trim();
+    if (!SEQ_STEP_TYPES[type]) {
+      return { error: `Étape ${i + 1} : type "${type}" invalide (attendu : ${Object.keys(SEQ_STEP_TYPES).join(', ')})` };
+    }
+    const message = String(st.message || '').trim() || null;
+    const subject = String(st.subject || '').trim() || null;
+    if (type !== 'wait_reply' && !message) return { error: `Étape ${i + 1} (${type}) : message requis` };
+    if ((type === 'email' || type === 'inmail') && !subject) return { error: `Étape ${i + 1} (${type}) : subject requis` };
+    steps.push({
+      type,
+      delay_days: Math.min(Math.max(Math.round(Number(st.delay_days) || 0), 0), 30),
+      subject,
+      message,
+    });
+  }
+  return { steps };
+}
+
+const createSequence: AgentTool = {
+  name: 'create_sequence',
+  description:
+    "Create a multi-step outreach sequence (LinkedIn messages / InMails / connection requests / emails / wait-for-reply). " +
+    "Use when the user says 'crée une séquence de relance', 'monte-moi une séquence 3 touches pour la mission X'. " +
+    "Creating a sequence sends NOTHING — candidates are added later via enroll_in_sequence (separate approval). " +
+    "steps: 1-8 items {type: message|inmail|connection_request|email|wait_reply, delay_days (0-30, since previous step), " +
+    "subject (required for email/inmail), message (template text ; variables {{first_name}}, {{company}} supported)}. " +
+    "Optional mission_id links the sequence to a mission.",
+  category: 'mutation_safe',
+  requiresApproval: true,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Sequence name (French, ex : "Relance DevOps senior — 3 touches").' },
+      description: { type: 'string', description: 'Optional short description.' },
+      mission_id: { type: 'string', description: 'Optional sourcing_projects UUID to attach the sequence to.' },
+      steps: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: Object.keys(SEQ_STEP_TYPES) },
+            delay_days: { type: 'number', description: 'Days to wait after the previous step (0-30, default 0).' },
+            subject: { type: 'string', description: 'Subject — required for email and inmail steps.' },
+            message: { type: 'string', description: 'Message template (plain text French). Not needed for wait_reply.' },
+          },
+          required: ['type'],
+        },
+        description: '1-8 steps, in order.',
+      },
+    },
+    required: ['name', 'steps'],
+  },
+
+  async verifyAccess(params, ctx) {
+    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+    if (!String(params.name || '').trim()) return { allowed: false, reason: 'name is required' };
+    const parsed = parseSequenceSteps(params);
+    if ('error' in parsed) return { allowed: false, reason: parsed.error };
+    const missionId = String(params.mission_id || '').trim();
+    if (missionId) {
+      const { data: project } = await ctx.adminClient
+        .from('sourcing_projects')
+        .select('id, organization_id')
+        .eq('id', missionId)
+        .maybeSingle();
+      if (!project || project.organization_id !== ctx.organizationId) {
+        return { allowed: false, reason: 'Mission introuvable dans cette organisation' };
+      }
+    }
+    return { allowed: true };
+  },
+
+  async dryRun(params, _ctx) {
+    const parsed = parseSequenceSteps(params);
+    const steps = 'steps' in parsed ? parsed.steps : [];
+    const STEP_LABEL: Record<string, string> = {
+      message: 'Message LinkedIn',
+      inmail: 'InMail',
+      connection_request: 'Demande de connexion',
+      email: 'Email',
+      wait_reply: 'Attente de réponse',
+    };
+    return {
+      summary: `Créer la séquence « ${String(params.name).slice(0, 80)} » (${steps.length} étape(s))`,
+      details: {
+        name: String(params.name),
+        description: String(params.description || '') || null,
+        mission_id: String(params.mission_id || '') || null,
+        steps: steps.map((s, i) => ({
+          order: i + 1,
+          type: STEP_LABEL[s.type] ?? s.type,
+          delay: s.delay_days > 0 ? `J+${s.delay_days}` : 'immédiat',
+          subject: s.subject,
+          message_preview: s.message ? (s.message.length > 120 ? s.message.slice(0, 117) + '…' : s.message) : null,
+        })),
+      },
+      warning: "Aucun envoi ne part à la création : les candidats sont ajoutés ensuite via l'enrollment (validation séparée).",
+    };
+  },
+
+  async execute(params, ctx) {
+    const parsed = parseSequenceSteps(params);
+    if ('error' in parsed) return { success: false, error: parsed.error };
+
+    const { data: seq, error: seqErr } = await ctx.adminClient
+      .from('outreach_sequences')
+      .insert({
+        name: String(params.name).trim().slice(0, 200),
+        description: String(params.description || '').trim().slice(0, 1000) || null,
+        is_active: true,
+        created_by: ctx.userId,
+        organization_id: ctx.organizationId,
+        project_id: String(params.mission_id || '').trim() || null,
+      })
+      .select('id')
+      .single();
+    if (seqErr || !seq) return { success: false, error: seqErr?.message || 'sequence insert failed' };
+
+    const stepRows = parsed.steps.map((s, i) => ({
+      sequence_id: seq.id,
+      step_order: i + 1,
+      action_type: SEQ_STEP_TYPES[s.type].action_type,
+      step_channel: SEQ_STEP_TYPES[s.type].channel,
+      condition_type: 'always',
+      delay_days: s.delay_days,
+      delay_hours: 0,
+      subject_template: s.subject,
+      message_template: s.message,
+      use_ai_personalization: false,
+    }));
+    const { error: stepsErr } = await ctx.adminClient.from('sequence_steps').insert(stepRows);
+    if (stepsErr) {
+      // Cleanup best-effort : pas de séquence orpheline sans étapes
+      await ctx.adminClient.from('outreach_sequences').delete().eq('id', seq.id);
+      return { success: false, error: `steps insert failed: ${stepsErr.message}` };
+    }
+
+    return {
+      success: true,
+      data: {
+        sequence_id: seq.id,
+        steps_created: stepRows.length,
+        message: `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s). Pour y ajouter des candidats : enroll_in_sequence (validation séparée).`,
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -2989,7 +3841,14 @@ export function registerMutatingTools(): void {
   registerTool(updateMemberQuota);
   // Phase Calibration — Push de filtres de recherche depuis le chat
   registerTool(applySearchFiltersToMission);
-  // schedule_interview reporté : pas de calendar branché, table events
-  // existe mais le flow Google/Outlook arrive en Sprint 5 du plan.
+  // P0.3 audit 2026-07-14 — calendrier interne + pont vers run-agent-search
+  registerTool(scheduleInterview);
+  registerTool(launchSearch);
+  // P2.2 — actions multi-candidats
+  registerTool(bulkUpdateStage);
+  registerTool(bulkDismiss);
+  // P2.4/P2.5 — email sortant + création de séquences
+  registerTool(sendEmail);
+  registerTool(createSequence);
   registered = true;
 }

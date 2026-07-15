@@ -62,7 +62,9 @@ interface AgentToolApprovalCardProps {
 // a relu et patché les params → confirmation implicite).
 const SENSITIVE_TOOLS = new Set<string>([
   'send_linkedin_message',
+  'send_email',
   'dismiss_candidate',
+  'bulk_dismiss',
   'invite_team_member',
   'update_member_quota',
   // update_mission_status est sensible uniquement quand on archive/clôture
@@ -150,6 +152,11 @@ const TOOL_LABEL: Record<string, string> = {
   update_member_quota: 'Modifier les quotas d\'un membre',
   // Phase Calibration — Push de filtres de recherche
   apply_search_filters_to_mission: 'Appliquer les filtres de recherche LinkedIn',
+  launch_search: 'Lancer la recherche autonome',
+  bulk_update_stage: 'Déplacer plusieurs candidats',
+  bulk_dismiss: 'Écarter plusieurs candidats',
+  send_email: 'Envoyer un email',
+  create_sequence: 'Créer une séquence',
 };
 
 // ─── Editable fields configuration ─────────────────────────────────────────

@@ -37,11 +37,12 @@ const ChatThread: React.FC<{
   initialMessages: readonly ThreadMessageLike[];
   contextMode?: 'brief' | 'process' | 'sourcing' | 'outreach' | null;
   modelSlot: React.ReactNode;
-}> = ({ adapter, initialMessages, contextMode, modelSlot }) => {
+  filesBridge?: React.MutableRefObject<{ files: File[]; clear: () => void }>;
+}> = ({ adapter, initialMessages, contextMode, modelSlot, filesBridge }) => {
   const runtime = useLocalRuntime(adapter, { initialMessages });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SkalrThread contextMode={contextMode} modelSlot={modelSlot} />
+      <SkalrThread contextMode={contextMode} modelSlot={modelSlot} filesBridge={filesBridge} />
       <SearchCandidatesToolUI />
       <EnrichCompanyToolUI />
       <WebSearchToolUI />
@@ -61,7 +62,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   // conversationId lives in AgentContext (NOT local state): the Copilot panel
   // unmounts when the Sheet closes, so local state would be lost on reopen.
   // The context survives above the Sheet → reopening resumes the conversation.
-  const { appContext, initialMessage: agentCtxMessage, conversationId, setConversationId } = useAgent();
+  const { appContext, initialMessage: agentCtxMessage, conversationId, setConversationId, openRequestNonce } = useAgent();
   // Notion-AI-style: land directly in the chat. History/new conversation is
   // reachable from the header control, not a launcher screen.
   const [showList, setShowList] = useState(false);
@@ -101,6 +102,26 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const appContextRef = useRef(appContext);
   appContextRef.current = appContext;
 
+  // Mode contextuel dérivé de l'onglet mission actif (P0.1 audit 2026-07-14) :
+  // ouvrir le Copilot (FAB/Cmd+K) sur l'onglet brief/process/outreach d'une
+  // mission active le mode correspondant sans bouton dédié. Le sourcing reste
+  // déclenché explicitement (openContextualAgent, flow calibration).
+  const derivedTabMode: 'brief' | 'process' | 'outreach' | null =
+    !contextMode &&
+    appContext.missionId &&
+    (appContext.missionTab === 'brief' || appContext.missionTab === 'process' || appContext.missionTab === 'outreach')
+      ? appContext.missionTab
+      : null;
+  const effectiveContextMode = contextMode ?? derivedTabMode;
+  // Lu au moment de l'envoi (ref) : la navigation entre onglets ne recrée pas
+  // le runtime, mais le message suivant part avec le mode de l'onglet courant.
+  const effectiveContextModeRef = useRef(effectiveContextMode);
+  effectiveContextModeRef.current = effectiveContextMode;
+
+  // Pont fichiers joints (P1.2) : le composer (SkalrThread) publie ses
+  // fichiers ici ; l'adaptateur les lit à l'envoi puis vide les chips.
+  const filesBridge = useRef<{ files: File[]; clear: () => void }>({ files: [], clear: () => {} });
+
   // Lazily ensure a conversation row exists before the first message.
   // The backend 400s without a conversation_id and has no create path, so
   // we create it client-side (RLS-scoped) — same insert as useAgentChat.
@@ -134,6 +155,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         ensureConversationId,
         getAccessToken: () => accessTokenRef.current || '',
         getAppContext: () => appContextRef.current,
+        getContextMode: () => effectiveContextModeRef.current ?? null,
+        getPendingFiles: () => filesBridge.current.files,
+        consumePendingFiles: () => filesBridge.current.clear(),
         apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         modelOverride: selectedModel,
         contextMode,
@@ -185,6 +209,19 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     if (conversationId) seedFrom(conversationId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reprise explicite (openConversation depuis /agents ou ailleurs) : le nonce
+  // bump force le re-seed même si le panel est déjà monté. Le create-path lazy
+  // (ensureConversationId) ne touche pas au nonce → pas de reseed mid-stream.
+  const handledNonceRef = useRef(openRequestNonce);
+  useEffect(() => {
+    if (openRequestNonce !== handledNonceRef.current) {
+      handledNonceRef.current = openRequestNonce;
+      setShowList(false);
+      seedFrom(conversationId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequestNonce]);
 
   // List conversations for history
   const listConversations = useCallback(async () => {
@@ -294,13 +331,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </AnimatedOrb>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold truncate text-foreground">
-            {contextMode === 'sourcing' ? 'Sourcing Assistant'
-              : contextMode === 'brief' ? 'Brief Assistant'
-              : contextMode === 'outreach' ? 'Outreach Assistant'
+            {effectiveContextMode === 'sourcing' ? 'Sourcing Assistant'
+              : effectiveContextMode === 'brief' ? 'Brief Assistant'
+              : effectiveContextMode === 'process' ? 'Process Assistant'
+              : effectiveContextMode === 'outreach' ? 'Outreach Assistant'
               : 'Copilot IA'}
           </h3>
           <p className="text-[11px] text-muted-foreground">
-            {contextMode ? 'Mode contextuel' : 'Conversation libre'}
+            {effectiveContextMode ? 'Mode contextuel' : 'Conversation libre'}
           </p>
         </div>
         <button
@@ -326,10 +364,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           key={seedKey}
           adapter={adapter}
           initialMessages={initialMessages}
-          contextMode={contextMode}
+          contextMode={effectiveContextMode}
+          filesBridge={filesBridge}
           modelSlot={
             <ModelPicker
-              actionId="agent_search_calibration"
+              actionId={effectiveContextMode === 'sourcing' ? 'agent_search_calibration' : 'agent_chat'}
               value={selectedModel}
               onChange={setSelectedModel}
               compact

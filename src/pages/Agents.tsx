@@ -20,7 +20,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: typeof Play; cls: str
 const AgentsPage = () => {
   const navigate = useNavigate();
   const { organizationId } = useOrganization();
-  const { openAgent } = useAgent();
+  const { openConversation } = useAgent();
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['agent-conversations', organizationId],
@@ -83,7 +83,7 @@ const AgentsPage = () => {
               </p>
               <div className="space-y-2">
                 {activeAgents.map((agent: any) => (
-                  <AgentCard key={agent.id} agent={agent} onOpen={openAgent} />
+                  <AgentCard key={agent.id} agent={agent} onOpen={openConversation} />
                 ))}
               </div>
             </div>
@@ -97,7 +97,7 @@ const AgentsPage = () => {
               </p>
               <div className="space-y-2">
                 {otherAgents.map((agent: any) => (
-                  <AgentCard key={agent.id} agent={agent} onOpen={openAgent} />
+                  <AgentCard key={agent.id} agent={agent} onOpen={openConversation} />
                 ))}
               </div>
             </div>
@@ -126,7 +126,7 @@ const AgentsPage = () => {
   );
 };
 
-function AgentCard({ agent, onOpen }: { agent: any; onOpen: (jobId?: string) => void }) {
+function AgentCard({ agent, onOpen }: { agent: any; onOpen: (conversationId: string) => void }) {
   const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.calibrating;
   const Icon = config.icon;
   const results = agent.results_summary || {};
@@ -137,7 +137,7 @@ function AgentCard({ agent, onOpen }: { agent: any; onOpen: (jobId?: string) => 
 
   return (
     <button
-      onClick={() => onOpen(agent.job_id || undefined)}
+      onClick={() => onOpen(agent.id)}
       className="w-full flex items-center gap-4 p-4 border border-border bg-card hover:bg-muted/30 transition-colors text-left rounded-lg group"
     >
       <div className="w-10 h-10 flex items-center justify-center border border-border shrink-0 rounded-lg bg-muted/30">

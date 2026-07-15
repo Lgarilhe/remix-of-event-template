@@ -1390,7 +1390,8 @@ const searchKnowledge: AgentTool = {
   description:
     "Recherche SÉMANTIQUE (texte libre) dans la base de connaissance Konekt : notes internes, " +
     "commentaires d'équipe, comptes-rendus d'appel, évaluations d'entretien, profil/expériences " +
-    "LinkedIn, échanges. Par DÉFAUT cherche À TRAVERS TOUS les candidats accessibles (toute " +
+    "LinkedIn, échanges, ET les FICHIERS JOINTS uploadés dans le chat (CV, fiches de poste, " +
+    "notes — renvoyés dans le champ « documents »). Par DÉFAUT cherche À TRAVERS TOUS les candidats accessibles (toute " +
     "l'organisation pour owner/admin ; tes missions pour un collaborateur) — idéal pour les " +
     "questions TRANSVERSES qui ne nomment pas de candidat : « quels candidats ont parlé de " +
     "télétravail », « qui a des réserves sur leur dispo », « des retours mentionnant un préavis " +
@@ -1601,14 +1602,27 @@ const searchKnowledge: AgentTool = {
     }
 
     try {
-      const chunks = await callRetrieve({
-        organization_id: ctx.organizationId,
-        org_wide: true,
-        entity_type: 'candidate',
-        ...(allowList ? { entity_ids: allowList } : {}),
-        query,
-        limit,
-      });
+      // Candidats + documents uploadés (P1.2) en parallèle : les fichiers
+      // joints par les users (CV, fiches de poste, notes) vivent en
+      // entity_type='document' / chunk_type='user_upload'. Fail-soft sur les
+      // documents — leur absence ne casse pas la recherche candidats.
+      const [chunks, docChunks] = await Promise.all([
+        callRetrieve({
+          organization_id: ctx.organizationId,
+          org_wide: true,
+          entity_type: 'candidate',
+          ...(allowList ? { entity_ids: allowList } : {}),
+          query,
+          limit,
+        }),
+        callRetrieve({
+          organization_id: ctx.organizationId,
+          org_wide: true,
+          entity_type: 'document',
+          query,
+          limit: Math.min(limit, 5),
+        }).catch(() => [] as Array<Record<string, any>>),
+      ]);
       // Attribue chaque extrait à son candidat (résolution de noms en lot).
       const entIds = [...new Set(
         chunks.map((c) => c.entity_id).filter((x): x is string => typeof x === 'string' && x.length > 0),
@@ -1646,7 +1660,18 @@ const searchKnowledge: AgentTool = {
               similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 100) / 100 : undefined,
             };
           }),
-          ...(chunks.length === 0
+          // Extraits de documents uploadés (fichiers joints au chat)
+          ...(docChunks.length > 0
+            ? {
+                documents: docChunks.map((c) => ({
+                  filename: c.metadata?.filename ?? null,
+                  type: 'fichier joint',
+                  content: String(c.content || '').slice(0, 700),
+                  similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 100) / 100 : undefined,
+                })),
+              }
+            : {}),
+          ...(chunks.length === 0 && docChunks.length === 0
             ? { note: scope === 'missions'
                 ? 'Rien trouvé dans la base de connaissance sur tes missions pour cette requête.'
                 : "Rien trouvé dans la base de connaissance de l'organisation pour cette requête." }
@@ -2174,6 +2199,138 @@ const getRecentAgentActions: AgentTool = {
   },
 };
 
+// ─── Tool — get_inbox_overview (P1.3 audit 2026-07-14) ─────────────────────
+// Vue d'ensemble de la messagerie LinkedIn : chats récents + non lus, agrégés
+// sur les comptes connectés de l'org (celui du user en premier). Même pattern
+// que get_linkedin_thread : proxy unipile-search en Mode B (service role),
+// fail-soft. AUCUN nom de fournisseur dans le texte (règle branding).
+
+const getInboxOverview: AgentTool = {
+  name: 'get_inbox_overview',
+  description:
+    "Overview of the LinkedIn inbox : recent conversations and unread counts across the org's " +
+    "connected LinkedIn accounts. Use for « qui m'a répondu ? », « j'ai des messages non lus ? », " +
+    "« quoi de neuf dans ma messagerie », « des réponses en attente ? ». Optional : unread_only " +
+    "(bool, only conversations with unread messages), limit (default 15, max 30). " +
+    "For the FULL thread with one person, use get_linkedin_thread(person_name) instead.",
+  category: 'read',
+  requiresApproval: false,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      unread_only: { type: 'boolean', description: 'Ne renvoyer que les conversations avec des messages non lus.' },
+      limit: { type: 'number', description: 'Nombre max de conversations (défaut 15, max 30).' },
+    },
+    required: [],
+  },
+  async verifyAccess(_p, ctx) {
+    return ctx.organizationId ? { allowed: true } : { allowed: false, reason: 'No active organization' };
+  },
+  dryRun: trivialDryRun('Lecture : vue d\'ensemble messagerie LinkedIn'),
+  async execute(params, ctx) {
+    const unreadOnly = params.unread_only === true;
+    const limit = Math.min(Math.max(Number(params.limit) || 15, 1), 30);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceKey) return { success: false, error: 'Service indisponible.' };
+
+    const accounts = await resolveOrgLinkedInAccounts(ctx);
+    if (accounts.length === 0) {
+      return {
+        success: true,
+        data: { found: false, note: "Aucun compte LinkedIn connecté sur l'organisation." },
+      };
+    }
+
+    const callUnipile = async (body: Record<string, unknown>): Promise<any | null> => {
+      try {
+        const res = await ragFetchWithTimeout(`${supabaseUrl}/functions/v1/unipile-search`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }, 12000);
+        if (!res.ok) return null;
+        return await res.json();
+      } catch {
+        return null;
+      }
+    };
+
+    interface InboxChat {
+      chat_id: string;
+      account_id: string;
+      name: string | null;
+      unread: number;
+      last_activity: string | null;
+    }
+    const merged: InboxChat[] = [];
+    const seenChats = new Set<string>();
+    let accountsChecked = 0;
+
+    for (const accountId of accounts.slice(0, 3)) {
+      const resp = await callUnipile({
+        action: 'get_chats',
+        organization_id: ctx.organizationId,
+        account_id: accountId,
+        raw: true,
+        limit: 40,
+      });
+      const chats: any[] = Array.isArray(resp?.chats) ? resp.chats : [];
+      if (resp) accountsChecked++;
+      for (const chat of chats) {
+        const id = String(chat?.id || '');
+        if (!id || seenChats.has(id)) continue;
+        seenChats.add(id);
+        // Nom : attendee non-self prioritaire, sinon nom du chat
+        let name: string | null = null;
+        if (Array.isArray(chat?.attendees)) {
+          const other = chat.attendees.find((a: any) => a && !a.is_self && a.name);
+          if (other?.name) name = String(other.name);
+        }
+        if (!name && chat?.name) name = String(chat.name);
+        const unread = Number(chat?.unread_count ?? chat?.unread ?? 0) || 0;
+        const ts = chat?.timestamp ?? chat?.last_message_date ?? chat?.updated_at ?? null;
+        merged.push({
+          chat_id: id,
+          account_id: accountId,
+          name,
+          unread,
+          last_activity: ts ? String(ts) : null,
+        });
+      }
+    }
+
+    merged.sort((a, b) => {
+      const ta = a.last_activity ? Date.parse(a.last_activity) : 0;
+      const tb = b.last_activity ? Date.parse(b.last_activity) : 0;
+      return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
+    });
+
+    const unreadTotal = merged.reduce((sum, c) => sum + c.unread, 0);
+    const filtered = (unreadOnly ? merged.filter((c) => c.unread > 0) : merged).slice(0, limit);
+
+    return {
+      success: true,
+      data: {
+        accounts_checked: accountsChecked,
+        conversations_seen: merged.length,
+        unread_total: unreadTotal,
+        conversations: filtered.map((c) => ({
+          name: c.name ?? '(sans nom)',
+          unread: c.unread,
+          last_activity: c.last_activity,
+          chat_id: c.chat_id,
+          account_id: c.account_id,
+        })),
+        note:
+          filtered.length === 0
+            ? (unreadOnly ? 'Aucune conversation non lue.' : 'Aucune conversation récente trouvée.')
+            : 'Pour lire un fil complet : get_linkedin_thread(person_name). Les compteurs non-lus viennent de LinkedIn (40 conversations les plus récentes par compte, 3 comptes max).',
+      },
+    };
+  },
+};
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -2191,6 +2348,7 @@ export function registerReadTools(): void {
   registerTool(getUpcomingInterviews);
   registerTool(getCandidateOutreach);
   registerTool(getLinkedInThread);
+  registerTool(getInboxOverview);
   registerTool(searchKnowledge);
   registerTool(getVivierOverview);
   registerTool(getOrgAnalytics);
