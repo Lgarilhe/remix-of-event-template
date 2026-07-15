@@ -391,6 +391,17 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "sourcing",
   },
+  // ─── Recherche web de l'agent (P4.4) ────────────────────────────────────
+  // Facturée par l'API en sus des tokens (~1 cent/recherche). Réglée en
+  // transaction séparée via settleCredits({ flatCredits: nbRecherches }).
+  web_search: {
+    action: "web_search",
+    label: "Recherche web",
+    floor: 1,           // 1 crédit / recherche web
+    typicalTokens: 0,
+    routingTier: "fast",
+    category: "agent",
+  },
 };
 
 // ─── Routing Defaults ───────────────────────────────────────────────────────

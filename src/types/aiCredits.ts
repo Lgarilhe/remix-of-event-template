@@ -124,6 +124,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   // par requête (une page ≈ 20 profils) ; collect = 2 crédits par profil.
   coresignal_preview: { action: "coresignal_preview", label: "Base Konekt — aperçu", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
   coresignal_collect: { action: "coresignal_collect", label: "Base Konekt — fiche complète", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
+  web_search: { action: "web_search", label: "Recherche web", floor: 1, typicalTokens: 0, routingTier: "fast", category: "agent" },
 };
 
 // ─── Credit Calculation (frontend) ──────────────────────────────────────────

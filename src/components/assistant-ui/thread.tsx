@@ -772,8 +772,8 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
           soit rognée par la barre de navigation système sur mobile. */}
       <div className="shrink-0 px-3 pb-3 pt-1" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="mx-auto w-full max-w-2xl">
-          {/* Formats alignés sur ingest-user-file (PDF, images, texte). Word : pas encore supporté. */}
-          <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
+          {/* Formats alignés sur ingest-user-file (PDF, Word .docx, images, texte). */}
+          <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.docx,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
             <ComposerPrimitive.Root className="relative flex flex-col rounded-[1.75rem] border border-border bg-background p-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
               {/* Attached files */}
               {files.length > 0 && (
