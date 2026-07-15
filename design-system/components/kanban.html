@@ -1,0 +1,210 @@
+<!-- @dsCard group="Composants" name="Kanban pipeline" subtitle="Colonnes par étape, cartes candidat compactes" width="1100" height="640" -->
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kanban — Konekt DS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600;700&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Space+Mono&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Konekt Design System — "Grove" (inspiration Misso / Halo Lab)
+   Light-first, nature-inspired, playful.
+   Toutes les couleurs en HSL (convention du repo).
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --background: 40 43% 95%;          /* crème chaleureux #F7F3EB */
+  --foreground: 148 28% 13%;         /* encre vert profond #182B21 */
+  --card: 0 0% 100%;
+  --card-foreground: 148 28% 13%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 148 28% 13%;
+
+  /* Marque */
+  --primary: 148 48% 23%;            /* vert forêt #1E5638 */
+  --primary-hover: 148 50% 18%;
+  --primary-foreground: 40 43% 95%;
+  --accent-lime: 90 65% 55%;         /* feuille #8CD940 */
+  --accent-lime-foreground: 148 28% 13%;
+  --accent-sun: 43 94% 56%;          /* soleil #F9C32B */
+  --accent-peach: 15 89% 66%;        /* pêche #F87F52 */
+  --accent-lavender: 255 60% 85%;    /* lavande #CFC2F0 */
+  --accent-sky: 196 60% 80%;         /* ciel #ADD8E9 */
+
+  /* Neutres */
+  --secondary: 40 27% 91%;           /* crème foncé #EDE8DE */
+  --secondary-foreground: 148 28% 13%;
+  --muted: 40 27% 91%;
+  --muted-foreground: 148 8% 40%;
+  --accent: 40 30% 88%;
+  --accent-foreground: 148 28% 13%;
+  --border: 40 16% 84%;
+  --input: 40 16% 80%;
+  --ring: 148 48% 23%;
+
+  /* Statuts */
+  --destructive: 8 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --status-success: 148 48% 30%;
+  --status-success-muted: 110 45% 90%;
+  --status-warning: 43 94% 46%;
+  --status-warning-muted: 45 90% 90%;
+  --status-info: 200 70% 40%;
+  --status-info-muted: 196 60% 91%;
+
+  /* Pipeline (statuts candidats) */
+  --stage-sourcing: 255 60% 85%;
+  --stage-contacted: 196 60% 80%;
+  --stage-interview: 43 94% 66%;
+  --stage-offer: 15 89% 72%;
+  --stage-hired: 90 65% 55%;
+
+  /* Géométrie */
+  --radius: 1rem;                    /* base 16px */
+  --radius-sm: 0.625rem;
+  --radius-lg: 1.25rem;              /* cartes 20px */
+  --radius-pill: 999px;
+
+  /* Ombres (chaudes, douces) */
+  --shadow-sm: 0 1px 2px hsl(40 30% 20% / 0.05);
+  --shadow: 0 2px 8px hsl(40 30% 20% / 0.06);
+  --shadow-md: 0 6px 16px -4px hsl(40 30% 20% / 0.10);
+  --shadow-lg: 0 16px 40px -12px hsl(40 30% 20% / 0.16);
+
+  /* Typo */
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-heading: 'Bricolage Grotesque', 'Outfit', system-ui, sans-serif;
+  --font-body: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, monospace;
+}
+
+/* Mode sombre (secondaire — l'identité Grove est light-first) */
+.dark {
+  --background: 148 20% 9%;
+  --foreground: 40 43% 95%;
+  --card: 148 16% 12%;
+  --card-foreground: 40 43% 95%;
+  --primary: 90 65% 55%;
+  --primary-foreground: 148 28% 13%;
+  --secondary: 148 12% 16%;
+  --muted: 148 12% 16%;
+  --muted-foreground: 40 15% 65%;
+  --border: 148 10% 22%;
+  --input: 148 10% 26%;
+}
+
+
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--font-body);
+    background:hsl(var(--background));
+    color:hsl(var(--foreground));
+    font-size:15px;line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    padding:32px;
+  }
+  .ds-section{max-width:1080px;margin:0 auto}
+  .ds-title{font-family:var(--font-heading);font-weight:600;font-size:22px;letter-spacing:-0.01em;margin-bottom:4px}
+  .ds-sub{color:hsl(var(--muted-foreground));font-size:13.5px;margin-bottom:28px}
+  .ds-label{font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:hsl(var(--muted-foreground));margin:26px 0 12px}
+  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:12px}
+
+  /* Boutons */
+  .btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-body);font-weight:600;font-size:14.5px;
+    border:none;cursor:pointer;border-radius:var(--radius-pill);padding:12px 22px;transition:all .15s ease;line-height:1}
+  .btn:hover{transform:translateY(-1px)}
+  .btn-primary{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:var(--shadow)}
+  .btn-primary:hover{background:hsl(var(--primary-hover))}
+  .btn-lime{background:hsl(var(--accent-lime));color:hsl(var(--accent-lime-foreground));box-shadow:var(--shadow)}
+  .btn-secondary{background:hsl(var(--card));color:hsl(var(--foreground));border:1.5px solid hsl(var(--border))}
+  .btn-ghost{background:transparent;color:hsl(var(--foreground))}
+  .btn-ghost:hover{background:hsl(var(--accent))}
+  .btn-destructive{background:hsl(var(--destructive));color:hsl(var(--destructive-foreground))}
+  .btn-sm{padding:8px 16px;font-size:13px}
+  .btn-lg{padding:16px 30px;font-size:16px}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .btn-icon{width:42px;height:42px;padding:0;justify-content:center}
+
+  /* Cartes */
+  .card{background:hsl(var(--card));border-radius:var(--radius-lg);border:1px solid hsl(var(--border));box-shadow:var(--shadow);padding:22px}
+
+  /* Badges */
+  .badge{display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius-pill);padding:5px 12px;font-size:12.5px;font-weight:600;line-height:1}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+
+  /* Champs */
+  .field{display:flex;flex-direction:column;gap:7px;min-width:240px}
+  .field label{font-size:13px;font-weight:600}
+  .input{font-family:var(--font-body);font-size:14.5px;padding:12px 16px;border-radius:var(--radius);
+    border:1.5px solid hsl(var(--input));background:hsl(var(--card));color:hsl(var(--foreground));outline:none;transition:border .15s, box-shadow .15s}
+  .input::placeholder{color:hsl(var(--muted-foreground))}
+  .input:focus{border-color:hsl(var(--ring));box-shadow:0 0 0 3px hsl(var(--ring) / .18)}
+  .hint{font-size:12.5px;color:hsl(var(--muted-foreground))}
+
+  /* Avatars */
+  .avatar{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:13px;color:hsl(var(--foreground));flex:none}
+
+  /* Étoile Misso-like */
+  .spark{display:inline-block;width:18px;height:18px}
+
+  /* Switch & checkbox (partagés) */
+  .switch{width:46px;height:26px;border-radius:999px;background:hsl(var(--primary));position:relative;flex:none}
+  .switch::after{content:'';position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:#fff}
+  .switch.off{background:hsl(var(--input))}
+  .switch.off::after{right:auto;left:3px}
+  .check{width:20px;height:20px;border-radius:6px;background:hsl(var(--primary));display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .check.off{background:hsl(var(--card));border:1.5px solid hsl(var(--input))}
+
+
+  .kcol{width:196px;flex:none;display:flex;flex-direction:column;gap:10px}
+  .khead{display:flex;align-items:center;gap:8px;padding:4px 6px;font-weight:700;font-size:13.5px}
+  .kcount{font-family:var(--font-mono);font-size:11px;color:hsl(var(--muted-foreground));margin-left:auto}
+  .kcard{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:14px;padding:14px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:9px}
+  .kname{font-weight:650;font-size:14px}
+  .krole{font-size:12.5px;color:hsl(var(--muted-foreground))}
+  
+</style>
+</head>
+<body>
+
+<div class="ds-section">
+  <div class="ds-title">Kanban pipeline</div>
+  <div class="ds-sub">Chaque colonne reprend la couleur pastel de son étape en pastille.</div>
+  <div class="row" style="align-items:flex-start;gap:12px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px">
+
+    <div class="kcol">
+      <div class="khead"><span class="dot" style="width:10px;height:10px;background:hsl(var(--stage-sourcing))"></span> Sourcing <span class="kcount">12</span></div>
+      <div class="kcard"><span class="kname">Anna Lindqvist</span><span class="krole">Product Designer · Spendesk</span><div class="row" style="justify-content:space-between"><span class="badge" style="background:hsl(var(--accent-sun));color:hsl(38 80% 20%);font-family:var(--font-mono);padding:3px 9px;font-size:11px">61</span><span class="avatar" style="width:26px;height:26px;font-size:10px;background:hsl(var(--accent-lavender))">AL</span></div></div>
+      <div class="kcard"><span class="kname">Paul Mercier</span><span class="krole">UI Designer · Alan</span><div class="row" style="justify-content:space-between"><span class="badge" style="background:hsl(var(--secondary));color:hsl(var(--muted-foreground));font-family:var(--font-mono);padding:3px 9px;font-size:11px">—</span><span class="avatar" style="width:26px;height:26px;font-size:10px;background:hsl(var(--accent-sky))">PM</span></div></div>
+    </div>
+
+    <div class="kcol">
+      <div class="khead"><span class="dot" style="width:10px;height:10px;background:hsl(var(--stage-contacted))"></span> Contacté <span class="kcount">7</span></div>
+      <div class="kcard"><span class="kname">Mehdi Karoui</span><span class="krole">Senior PD · Qonto</span><div class="row" style="justify-content:space-between"><span class="badge" style="background:hsl(var(--accent-lime));color:hsl(var(--accent-lime-foreground));font-family:var(--font-mono);padding:3px 9px;font-size:11px">85</span><span class="avatar" style="width:26px;height:26px;font-size:10px;background:hsl(var(--accent-sky))">MK</span></div></div>
+      <div class="kcard" style="border:1.5px dashed hsl(var(--input));background:transparent;box-shadow:none;align-items:center;color:hsl(var(--muted-foreground));font-size:12.5px">Relance J+3 planifiée</div>
+    </div>
+
+    <div class="kcol">
+      <div class="khead"><span class="dot" style="width:10px;height:10px;background:hsl(var(--stage-interview))"></span> Entretien <span class="kcount">3</span></div>
+      <div class="kcard" style="border-color:hsl(var(--primary));box-shadow:0 0 0 3px hsl(var(--ring) / .12)"><span class="kname">Sarah Benali</span><span class="krole">Lead Designer · Doctolib</span><div class="row" style="justify-content:space-between"><span class="badge" style="background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-family:var(--font-mono);padding:3px 9px;font-size:11px">92</span><span style="font-family:var(--font-mono);font-size:10.5px;color:hsl(var(--muted-foreground))">JEU 14:00</span></div></div>
+    </div>
+
+    <div class="kcol">
+      <div class="khead"><span class="dot" style="width:10px;height:10px;background:hsl(var(--stage-offer))"></span> Offre <span class="kcount">1</span></div>
+      <div class="kcard"><span class="kname">Jules Renard</span><span class="krole">UX Designer · BlaBlaCar</span><div class="row" style="justify-content:space-between"><span class="badge" style="background:hsl(var(--stage-offer));color:hsl(15 70% 28%);padding:3px 9px;font-size:11px">Envoyée</span><span class="avatar" style="width:26px;height:26px;font-size:10px;background:hsl(var(--accent-sun))">JR</span></div></div>
+    </div>
+
+    <div class="kcol">
+      <div class="khead"><span class="dot" style="width:10px;height:10px;background:hsl(var(--stage-hired))"></span> Recruté <span class="kcount">2</span></div>
+      <div class="kcard" style="background:hsl(var(--status-success-muted));border-color:transparent"><span class="kname">Nadia Cherif</span><span class="krole">Design Manager · signée ✓</span></div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

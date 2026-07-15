@@ -1,0 +1,135 @@
+{
+  "generatedAt": "2026-07-15",
+  "cards": [
+    {
+      "path": "foundations/colors.html",
+      "group": "Fondations",
+      "name": "Couleurs",
+      "subtitle": "Palette Grove — crème, vert forêt, accents nature",
+      "viewport": {
+        "width": 1000,
+        "height": 760
+      }
+    },
+    {
+      "path": "foundations/typography.html",
+      "group": "Fondations",
+      "name": "Typographie",
+      "subtitle": "Instrument Serif · Bricolage Grotesque · Instrument Sans · Space Mono",
+      "viewport": {
+        "width": 1000,
+        "height": 720
+      }
+    },
+    {
+      "path": "foundations/spacing-radius.html",
+      "group": "Fondations",
+      "name": "Espacement & rayons",
+      "subtitle": "Échelle 4px · rayons généreux, pilules",
+      "viewport": {
+        "width": 1000,
+        "height": 640
+      }
+    },
+    {
+      "path": "foundations/shadows.html",
+      "group": "Fondations",
+      "name": "Ombres",
+      "subtitle": "Ombres chaudes et douces, 4 niveaux",
+      "viewport": {
+        "width": 1000,
+        "height": 420
+      }
+    },
+    {
+      "path": "components/buttons.html",
+      "group": "Composants",
+      "name": "Boutons",
+      "subtitle": "Primaire / lime / secondaire / ghost / destructif · 3 tailles",
+      "viewport": {
+        "width": 1000,
+        "height": 620
+      }
+    },
+    {
+      "path": "components/inputs.html",
+      "group": "Composants",
+      "name": "Champs de saisie",
+      "subtitle": "Texte / recherche / select / textarea / switch / checkbox · états",
+      "viewport": {
+        "width": 1000,
+        "height": 780
+      }
+    },
+    {
+      "path": "components/badges.html",
+      "group": "Composants",
+      "name": "Badges & statuts",
+      "subtitle": "Étapes pipeline · statuts sémantiques · score IA",
+      "viewport": {
+        "width": 1000,
+        "height": 520
+      }
+    },
+    {
+      "path": "components/cards.html",
+      "group": "Composants",
+      "name": "Cartes",
+      "subtitle": "Carte mission · carte KPI · carte candidat",
+      "viewport": {
+        "width": 1060,
+        "height": 600
+      }
+    },
+    {
+      "path": "components/navigation.html",
+      "group": "Composants",
+      "name": "Navigation",
+      "subtitle": "Sidebar · onglets mission · barre supérieure",
+      "viewport": {
+        "width": 1060,
+        "height": 700
+      }
+    },
+    {
+      "path": "components/table.html",
+      "group": "Composants",
+      "name": "Table candidats",
+      "subtitle": "Lignes aérées, score IA, statut pipeline",
+      "viewport": {
+        "width": 1060,
+        "height": 560
+      }
+    },
+    {
+      "path": "components/kanban.html",
+      "group": "Composants",
+      "name": "Kanban pipeline",
+      "subtitle": "Colonnes par étape, cartes candidat compactes",
+      "viewport": {
+        "width": 1100,
+        "height": 640
+      }
+    },
+    {
+      "path": "patterns/dashboard.html",
+      "group": "Patterns",
+      "name": "Dashboard bento",
+      "subtitle": "Vue d'ensemble mission — grille bento chaleureuse",
+      "viewport": {
+        "width": 1160,
+        "height": 780
+      }
+    },
+    {
+      "path": "patterns/landing.html",
+      "group": "Patterns",
+      "name": "Landing héro",
+      "subtitle": "Site vitrine — héro serif, CTA lime, preuves sociales",
+      "viewport": {
+        "width": 1160,
+        "height": 820
+      }
+    }
+  ]
+}
