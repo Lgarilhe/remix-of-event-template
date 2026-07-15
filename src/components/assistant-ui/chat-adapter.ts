@@ -47,30 +47,64 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+/** Limite serveur (ingest-user-file) : rejeter côté client sans upload inutile. */
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/** Extraction PDF/image via IA côté serveur : jusqu'à ~90s pour les gros docs. */
+const INGEST_TIMEOUT_MS = 90_000;
+
 /**
  * Envoie les fichiers joints à ingest-user-file et construit les blocs
  * [FICHIER JOINT] à injecter dans le message. Fail-soft par fichier : un
  * échec d'extraction devient une note visible par l'agent (pas un throw).
+ * Sur mobile, l'upload (body base64 volumineux) meurt parfois en route sans
+ * réponse : timeout explicite + 1 retry automatique sur erreur réseau.
  */
 async function ingestPendingFiles(config: SkalrAdapterConfig, files: File[]): Promise<string> {
   let blocks = '';
   for (const file of files.slice(0, 5)) {
+    if (file.size > MAX_FILE_BYTES) {
+      blocks += `\n\n[FICHIER JOINT : ${file.name} — lecture impossible : fichier trop volumineux (${(file.size / 1024 / 1024).toFixed(1)} Mo, maximum 10 Mo)]`;
+      continue;
+    }
     try {
-      const resp = await fetch(`${config.supabaseUrl}/functions/v1/ingest-user-file`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.getAccessToken()}`,
-          apikey: config.apiKey,
-        },
-        body: JSON.stringify({
-          organization_id: config.organizationId,
-          filename: file.name,
-          mime_type: file.type || undefined,
-          content_base64: await fileToBase64(file),
-          project_id: config.projectId || undefined,
-        }),
+      const body = JSON.stringify({
+        organization_id: config.organizationId,
+        filename: file.name,
+        mime_type: file.type || undefined,
+        content_base64: await fileToBase64(file),
+        project_id: config.projectId || undefined,
       });
+
+      let resp: Response | null = null;
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
+        try {
+          resp = await fetch(`${config.supabaseUrl}/functions/v1/ingest-user-file`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${config.getAccessToken()}`,
+              apikey: config.apiKey,
+            },
+            body,
+            signal: controller.signal,
+          });
+          break; // réponse reçue (même 4xx/5xx) → pas de retry réseau
+        } catch (e) {
+          lastErr = e;
+          resp = null;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+      if (!resp) {
+        const isAbort = lastErr instanceof DOMException && lastErr.name === 'AbortError';
+        blocks += `\n\n[FICHIER JOINT : ${file.name} — lecture impossible : ${isAbort ? "délai dépassé pendant l'envoi (connexion trop lente ?)" : 'erreur réseau pendant l\'envoi'}]`;
+        continue;
+      }
+
       const data = await resp.json().catch(() => null);
       if (resp.ok && data?.success && data.extracted_text) {
         blocks += `\n\n[FICHIER JOINT : ${file.name}]\n${String(data.extracted_text).slice(0, 8000)}\n[/FICHIER JOINT]`;
