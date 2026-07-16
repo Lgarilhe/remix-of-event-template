@@ -8,8 +8,11 @@
  * individuellement ; la recherche n'est relancée que via « Relancer »
  * (exploration éphémère, pattern Attio).
  */
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState } from '@/components/outreach/types';
 import {
   TOP_ENGINEERING_SCHOOLS, TOP_BUSINESS_SCHOOLS, ESN_BOOLEAN_GROUPS,
@@ -19,6 +22,38 @@ const TOP_SCHOOLS = [...TOP_ENGINEERING_SCHOOLS, ...TOP_BUSINESS_SCHOOLS];
 const TOP_SCHOOL_IDS = new Set(TOP_SCHOOLS.map(s => s.id));
 
 const norm = (s: string) => s.trim().toLowerCase();
+
+/* ── Levées de fonds : annuaire Konekt des sociétés financées (EU, rafraîchi
+ *    mensuellement), IDs LinkedIn résolus. LinkedIn n'a pas de filtre funding
+ *    natif — on injecte les sociétés du stade choisi en boîte ACTUELLE. ── */
+const FUNDING_STAGES = [
+  { value: 'seed', label: 'Seed' },
+  { value: 'series_a', label: 'Série A' },
+  { value: 'series_b', label: 'Série B' },
+  { value: 'series_c', label: 'Série C' },
+];
+// Cap par stade : au-delà, le payload LinkedIn devient trop lourd (erreurs
+// « combinaison de filtres trop lourde ») — on prend les mieux classées (tier).
+const FUNDED_CAP = 100;
+const fundedCache = new Map<string, { id: string; name: string }[]>();
+
+async function fetchFundedCompanies(stage: string): Promise<{ id: string; name: string }[]> {
+  const cached = fundedCache.get(stage);
+  if (cached) return cached;
+  const { data, error } = await supabase
+    .from('pedigree_company_directory' as never)
+    .select('canonical_name, linkedin_company_id, tier')
+    .eq('funding_stage', stage)
+    .not('linkedin_company_id', 'is', null)
+    .order('tier', { ascending: true })
+    .order('canonical_name', { ascending: true })
+    .limit(FUNDED_CAP);
+  if (error) throw error;
+  const list = ((data ?? []) as unknown as Array<{ canonical_name: string; linkedin_company_id: string }>)
+    .map(r => ({ id: String(r.linkedin_company_id), name: r.canonical_name }));
+  fundedCache.set(stage, list);
+  return list;
+}
 
 interface SmartOverlaysProps {
   filters: LinkedInFiltersState;
@@ -110,6 +145,56 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
 }) => {
   const vivier = suggestedCompanies.filter(c => c?.trim()).slice(0, 6);
 
+  /* ── Picker « A levé des fonds » ── */
+  const [stageOpen, setStageOpen] = useState(false);
+  const [stageLoading, setStageLoading] = useState<string | null>(null);
+  const [, bumpCache] = useState(0); // re-render quand fundedCache se remplit
+  const pickerRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!stageOpen) return;
+    const close = (e: MouseEvent) => { if (!pickerRef.current?.contains(e.target as Node)) setStageOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setStageOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [stageOpen]);
+
+  // Pré-charge les 4 stades à la 1re ouverture (états actifs + compteurs)
+  useEffect(() => {
+    if (!stageOpen) return;
+    const missing = FUNDING_STAGES.filter(s => !fundedCache.has(s.value));
+    if (!missing.length) return;
+    Promise.allSettled(missing.map(s => fetchFundedCompanies(s.value))).then(() => bumpCache(x => x + 1));
+  }, [stageOpen]);
+
+  const stageActive = (stage: string): boolean => {
+    const list = fundedCache.get(stage);
+    if (!list?.length) return false;
+    const present = list.filter(c => filters.company.some(fc => fc.id === c.id)).length;
+    return present >= Math.min(10, list.length);
+  };
+
+  const toggleStage = async (stage: string) => {
+    if (stageLoading) return;
+    setStageLoading(stage);
+    try {
+      const list = await fetchFundedCompanies(stage);
+      bumpCache(x => x + 1);
+      if (!list.length) { toast.info('Aucune société financée connue à ce stade'); return; }
+      const active = list.filter(c => filters.company.some(fc => fc.id === c.id)).length >= Math.min(10, list.length);
+      onFiltersEdit(f => active
+        ? { ...f, company: f.company.filter(c => !list.some(l => l.id === c.id)) }
+        : { ...f, company: [...f.company, ...list.filter(l => !f.company.some(c => c.id === l.id))] });
+    } catch {
+      toast.error('Annuaire des levées de fonds indisponible');
+    } finally {
+      setStageLoading(null);
+    }
+  };
+
+  const anyStageActive = FUNDING_STAGES.some(s => stageActive(s.value));
+
   const defs = OVERLAYS
     .filter(d => d.key !== 'vivier' || vivier.length > 0)
     .filter(d => !d.show || d.show(searchSource, filters))
@@ -165,6 +250,58 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
           </button>
         );
       })}
+
+      {/* A levé des fonds — sous-menu par stade, sociétés de l'annuaire Konekt */}
+      {searchSource === 'linkedin' && (
+        <span ref={pickerRef} className="relative">
+          <button
+            type="button"
+            title="Boîte actuelle parmi les sociétés financées connues (annuaire Konekt, EU, rafraîchi chaque mois) — choisis le stade de levée"
+            onClick={() => setStageOpen(o => !o)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150',
+              anyStageActive
+                ? 'bg-[var(--k-accent-tint)] border-[color-mix(in_srgb,var(--k-accent)_40%,var(--k-hairline))] text-[var(--k-text)]'
+                : 'border-[var(--k-hairline)] text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)]',
+            )}
+          >
+            {anyStageActive && (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className="w-2.5 h-2.5 text-[var(--k-accent)]"><path d="M20 7 10 17l-5-5" /></svg>
+            )}
+            A levé
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-2.5 h-2.5"><path d="m7 10 5 5 5-5" /></svg>
+          </button>
+          {stageOpen && (
+            <div className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
+              <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Stade de levée</div>
+              {FUNDING_STAGES.map(s => {
+                const list = fundedCache.get(s.value);
+                const active = stageActive(s.value);
+                return (
+                  <button
+                    key={s.value}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={active}
+                    disabled={stageLoading !== null}
+                    onClick={() => toggleStage(s.value)}
+                    className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] disabled:opacity-60"
+                  >
+                    <span className="flex-1 min-w-0 truncate">{s.label}</span>
+                    {list && <span className="font-mono text-[10px] text-[var(--k-text-muted)]">{list.length} boîtes</span>}
+                    {stageLoading === s.value
+                      ? <Loader2 className="w-3 h-3 animate-spin text-[var(--k-text-muted)]" />
+                      : active && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className="w-2.5 h-2.5 text-[var(--k-accent)]"><path d="M20 7 10 17l-5-5" /></svg>}
+                  </button>
+                );
+              })}
+              <p className="px-2 pt-1 pb-0.5 text-[11px] leading-snug text-[var(--k-text-muted)]">
+                Injecte ces sociétés comme boîte actuelle — visibles et élagables dans la pilule Boîte.
+              </p>
+            </div>
+          )}
+        </span>
+      )}
     </div>
   );
 };
