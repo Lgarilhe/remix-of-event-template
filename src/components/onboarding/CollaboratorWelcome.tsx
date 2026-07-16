@@ -31,9 +31,8 @@ export const CollaboratorWelcome: React.FC<Props> = ({ orgName, onCreateWorkspac
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.15, duration: 0.4 }}
         >
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight leading-tight">
-            Vous avez rejoint{' '}
-            <span className="skalr-gradient-text">{orgName}</span>
+          <h1 className="font-editorial font-normal italic text-3xl sm:text-4xl leading-tight">
+            Vous avez rejoint {orgName}.
           </h1>
           <p className="text-muted-foreground text-sm">
             en tant que collaborateur externe.
