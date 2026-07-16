@@ -1,11 +1,11 @@
 /**
- * Employer Brand Audit Edge Function — v2
+ * Employer Brand Audit Edge Function — v3
  * Architecture:
- *   - Direct fetch: website & careers page scraping
- *   - Perplexity Sonar: WTTJ, Glassdoor, social media, job ads (with search_domain_filter)
- *   - Lovable AI (Gemini): final scoring & analysis
- *
- * No more Firecrawl dependency.
+ *   - Direct fetch : scraping site web & page carrière (le plus riche quand ça passe)
+ *   - Claude + recherche web native (server tool web_search) : LinkedIn, Glassdoor,
+ *     WTTJ, réseaux sociaux, annonces — UNE seule passe de recherche, plus de
+ *     dépendance Perplexity (qui était optionnelle et cassait 5/7 sources si absente)
+ *   - Claude (call-claude.ts) : scoring & analyse finale (format de réponse inchangé)
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.75.1';
@@ -38,28 +38,26 @@ async function readResponseText(response: Response, timeoutMs = 5000): Promise<s
   }
 }
 
-/* ── Perplexity search with optional domain filter ── */
-async function perplexitySearch(apiKey: string, query: string, opts?: { domainFilter?: string[]; timeoutMs?: number }): Promise<string> {
-  const body: any = {
-    model: 'sonar',
-    messages: [
-      { role: 'system', content: 'Sois précis et factuel. Réponds en français.' },
-      { role: 'user', content: query },
-    ],
-  };
-  if (opts?.domainFilter?.length) {
-    body.search_domain_filter = opts.domainFilter;
+/* ── Parse la sortie du call recherche web en sections par source ──
+ * Format attendu :
+ *   ### SOURCE: linkedin
+ *   STATUS: found
+ *   <contenu factuel>
+ */
+function parseResearchOutput(text: string): Map<string, { status: 'success' | 'not_found'; content: string }> {
+  const sections = new Map<string, { status: 'success' | 'not_found'; content: string }>();
+  const regex = /###\s*SOURCE:\s*([a-z_]+)\s*\n\s*STATUS:\s*(found|not_found)\s*\n?([\s\S]*?)(?=###\s*SOURCE:|$)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const id = match[1].toLowerCase();
+    const found = match[2].toLowerCase() === 'found';
+    const content = match[3].trim();
+    sections.set(id, {
+      status: found && content.length > 50 ? 'success' : 'not_found',
+      content,
+    });
   }
-
-  const res = await fetchWithTimeout('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }, opts?.timeoutMs || 10000);
-
-  if (!res.ok) throw new Error(`Perplexity ${res.status}`);
-  const data = JSON.parse(await readResponseText(res));
-  return data.choices?.[0]?.message?.content || '';
+  return sections;
 }
 
 /* ── Direct page fetch → cleaned text ── */
@@ -116,177 +114,115 @@ Deno.serve(async (req) => {
       });
     }
 
-    const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
-
     if (!Deno.env.get('ANTHROPIC_API_KEY')) {
       return new Response(JSON.stringify({ success: false, error: 'AI not configured' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const scrapedSources: ScrapedSource[] = [];
-
     // ═══════════════════════════════════════════════════════
-    // All sources in parallel
+    // Phase 1 — collecte des sources, tout en parallèle :
+    //   fetchs directs (site + carrière) + UN call recherche web
     // ═══════════════════════════════════════════════════════
-    const tasks: Promise<void>[] = [];
-
-    // ── 1. Website (direct fetch → Perplexity fallback on 403/timeout) ──
-    if (domain) {
-      tasks.push((async () => {
-        let text: string | null = null;
-        try { text = await fetchPageAsText(`https://${domain}`); } catch (e) { console.warn('[audit] Website direct fetch failed:', e); }
-
-        if (text && text.length > 50) {
-          scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`, content: text, status: 'success' });
-        } else if (PERPLEXITY_API_KEY) {
-          try {
-            console.log('[audit] Website Perplexity fallback');
-            const content = await perplexitySearch(PERPLEXITY_API_KEY,
-              `Décris le site web de "${company_name}" (${domain}). Proposition de valeur employeur, page carrière, témoignages, valeurs affichées ?`,
-              { domainFilter: [domain], timeoutMs: 10000 });
-            scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`,
-              content: content?.length > 50 ? content : null, status: content?.length > 50 ? 'success' : 'not_found' });
-          } catch (e2) {
-            scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`, content: null, status: 'error' });
-          }
-        } else {
-          scrapedSources.push({ id: 'website', label: 'Site web', url: `https://${domain}`, content: null, status: 'error' });
-        }
-      })());
-    }
-
-    // ── 2. Careers page (direct fetch → Perplexity fallback) ──
     const careerUrl = careers_url || (domain ? `https://${domain}/careers` : null);
+
+    const directResults: { website: string | null; careers: string | null } = { website: null, careers: null };
+    const directTasks: Promise<void>[] = [];
+    if (domain) {
+      directTasks.push((async () => {
+        try {
+          const text = await fetchPageAsText(`https://${domain}`);
+          if (text && text.length > 50) directResults.website = text;
+        } catch (e) { console.warn('[audit] Website direct fetch failed:', e); }
+      })());
+    }
     if (careerUrl) {
-      tasks.push((async () => {
-        let text: string | null = null;
-        try { text = await fetchPageAsText(careerUrl); } catch (e) { console.warn('[audit] Careers direct fetch failed:', e); }
-
-        if (text && text.length > 50) {
-          scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl, content: text, status: 'success' });
-        } else if (PERPLEXITY_API_KEY) {
-          try {
-            console.log('[audit] Careers Perplexity fallback');
-            const content = await perplexitySearch(PERPLEXITY_API_KEY,
-              `Décris la page carrière / recrutement de "${company_name}" (${domain}). Postes ouverts, avantages, culture, témoignages employés ?`,
-              { domainFilter: domain ? [domain] : undefined, timeoutMs: 10000 });
-            scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl,
-              content: content?.length > 50 ? content : null, status: content?.length > 50 ? 'success' : 'not_found' });
-          } catch (e2) {
-            scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl, content: null, status: 'error' });
-          }
-        } else {
-          scrapedSources.push({ id: 'careers', label: 'Page carrière', url: careerUrl, content: null, status: 'error' });
-        }
+      directTasks.push((async () => {
+        try {
+          const text = await fetchPageAsText(careerUrl);
+          if (text && text.length > 50) directResults.careers = text;
+        } catch (e) { console.warn('[audit] Careers direct fetch failed:', e); }
       })());
     }
 
-    // ── 3. LinkedIn (always via Perplexity — direct fetch blocked by auth wall) ──
-    tasks.push((async () => {
-      if (!PERPLEXITY_API_KEY) {
-        if (linkedin_url) scrapedSources.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url || '', content: null, status: 'error' });
-        return;
-      }
+    // Recherche web native Claude — couvre les 7 sources en une passe.
+    // website/careers y sont inclus en filet de sécurité si le fetch direct échoue.
+    const researchPrompt = `Tu recherches des informations publiques sur l'entreprise "${company_name}"${domain ? ` (site : ${domain})` : ''}${linkedin_url ? ` (LinkedIn : ${linkedin_url})` : ''}.
+
+Utilise la recherche web pour documenter CHACUNE des sources ci-dessous. Pour chaque source, produis EXACTEMENT ce format :
+
+### SOURCE: <id>
+STATUS: found ou not_found
+<4-8 phrases factuelles, avec chiffres précis quand disponibles (notes, followers, nombre d'offres…)>
+
+Les 7 sources (ids) :
+1. website — le site web de l'entreprise : proposition de valeur employeur, valeurs affichées, témoignages
+2. careers — la page carrière : postes ouverts, avantages, culture, process de recrutement
+3. linkedin — la page LinkedIn entreprise : followers, fréquence de publication, type de contenu, engagement
+4. glassdoor — les avis employés Glassdoor : note globale, points positifs, points négatifs, note CEO
+5. wttj — la page Welcome to the Jungle : culture, offres, photos, vidéos, témoignages
+6. social — la présence réseaux sociaux (X/Twitter, Instagram, YouTube, TikTok) : followers, contenu, engagement
+7. ads — la qualité des offres d'emploi publiées : salaire affiché, avantages, niveau de détail
+
+Règles :
+- Mets STATUS: not_found quand tu ne trouves rien de fiable pour une source, avec une ligne d'explication.
+- N'invente JAMAIS de données. Attention aux homonymes : vérifie que les résultats concernent bien cette entreprise.
+- Réponds en français.`;
+
+    let research = new Map<string, { status: 'success' | 'not_found'; content: string }>();
+    const researchTask = (async () => {
       try {
-        console.log('[audit] LinkedIn Perplexity search');
-        const content = await perplexitySearch(PERPLEXITY_API_KEY,
-          `Décris la page LinkedIn de "${company_name}"${linkedin_url ? ` (${linkedin_url})` : ''}. Followers, fréquence de publication, type de contenu, engagement, nombre d'employés, marque employeur visible.`,
-          { domainFilter: ['linkedin.com'], timeoutMs: 10000 });
-        scrapedSources.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url || '',
-          content: content?.length > 50 ? content : null, status: content?.length > 50 ? 'success' : 'not_found' });
+        console.log('[audit] Web research via Claude web search...');
+        const result = await callClaudeCompat({
+          messages: [
+            { role: 'system', content: 'Tu es un chercheur factuel. Tu utilises la recherche web puis tu restitues UNIQUEMENT les sections au format demandé.' },
+            { role: 'user', content: researchPrompt },
+          ],
+          // Haiku 4.5 (défaut mapModel) → variante basique du tool web search
+          serverTools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
+          max_tokens: 3000,
+          timeoutMs: 35000,
+          maxRetries: 0,
+        });
+        research = parseResearchOutput(result.content);
+        console.log('[audit] Web research done, sections:', Array.from(research.keys()).join(','));
+        await settleClaudeUsage({ userId: user.id, aiAction: 'audit_employer_brand', usage: result.usage, modelId: result.model });
       } catch (e) {
-        console.warn('[audit] LinkedIn search failed:', e);
-        scrapedSources.push({ id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url || '', content: null, status: 'error' });
+        console.error('[audit] Web research failed:', e);
       }
-    })());
+    })();
 
-    // ── 4. Glassdoor via Perplexity (search_domain_filter) ──
-    if (PERPLEXITY_API_KEY) {
-      tasks.push((async () => {
-        try {
-          console.log('[audit] Perplexity Glassdoor search');
-          const content = await perplexitySearch(
-            PERPLEXITY_API_KEY,
-            `Quels sont les avis employés sur "${company_name}" sur Glassdoor ? Note globale, points positifs, points négatifs, note CEO. Donne des chiffres précis si disponibles.`,
-            { domainFilter: ['glassdoor.fr', 'glassdoor.com'], timeoutMs: 12000 },
-          );
-          scrapedSources.push({
-            id: 'glassdoor', label: 'Glassdoor', url: '',
-            content: content || 'Aucun résultat Glassdoor trouvé.',
-            status: content && content.length > 50 ? 'success' : 'not_found',
-          });
-        } catch (e) {
-          console.warn('[audit] Glassdoor search failed:', e);
-          scrapedSources.push({ id: 'glassdoor', label: 'Glassdoor', url: '', content: null, status: 'error' });
-        }
-      })());
-    }
+    await Promise.allSettled([...directTasks, researchTask]);
 
-    // ── 5. WTTJ via Perplexity (search_domain_filter) ──
-    if (PERPLEXITY_API_KEY) {
-      tasks.push((async () => {
-        try {
-          console.log('[audit] Perplexity WTTJ search');
-          const content = await perplexitySearch(
-            PERPLEXITY_API_KEY,
-            `Décris la page entreprise de "${company_name}" sur Welcome to the Jungle. Culture, offres d'emploi, avis, photos, vidéos. Donne des détails concrets.`,
-            { domainFilter: ['welcometothejungle.com'], timeoutMs: 12000 },
-          );
-          scrapedSources.push({
-            id: 'wttj', label: 'Welcome to the Jungle', url: '',
-            content: content || 'Aucune page WTTJ trouvée.',
-            status: content && content.length > 50 ? 'success' : 'not_found',
-          });
-        } catch (e) {
-          console.warn('[audit] WTTJ search failed:', e);
-          scrapedSources.push({ id: 'wttj', label: 'Welcome to the Jungle', url: '', content: null, status: 'error' });
-        }
-      })());
-    }
+    // Assemblage : fetch direct prioritaire pour website/careers, recherche
+    // web pour le reste. Section absente = la recherche a échoué → 'error'.
+    const SOURCE_DEFS: { id: string; label: string; url: string }[] = [
+      { id: 'website', label: 'Site web', url: domain ? `https://${domain}` : '' },
+      { id: 'careers', label: 'Page carrière', url: careerUrl || '' },
+      { id: 'linkedin', label: 'Page LinkedIn', url: linkedin_url || '' },
+      { id: 'glassdoor', label: 'Glassdoor', url: '' },
+      { id: 'wttj', label: 'Welcome to the Jungle', url: '' },
+      { id: 'social', label: 'Réseaux sociaux', url: '' },
+      { id: 'ads', label: 'Qualité des annonces', url: '' },
+    ];
 
-    // ── 6. Social media via Perplexity ──
-    if (PERPLEXITY_API_KEY) {
-      tasks.push((async () => {
-        try {
-          const content = await perplexitySearch(
-            PERPLEXITY_API_KEY,
-            `Analyse la présence de "${company_name}" (${domain || ''}) sur les réseaux sociaux : Twitter/X, Instagram, YouTube, TikTok. Nombre de followers, fréquence de publication, type de contenu, engagement.`,
-            { domainFilter: ['twitter.com', 'x.com', 'instagram.com', 'youtube.com', 'tiktok.com'], timeoutMs: 10000 },
-          );
-          scrapedSources.push({
-            id: 'social', label: 'Réseaux sociaux', url: '',
-            content: content || 'Aucune présence trouvée.',
-            status: content && content.length > 50 ? 'success' : 'not_found',
-          });
-        } catch (e) {
-          console.warn('[audit] Social search failed:', e);
-          scrapedSources.push({ id: 'social', label: 'Réseaux sociaux', url: '', content: null, status: 'error' });
-        }
-      })());
-    }
-
-    // ── 7. Job ads quality via Perplexity ──
-    if (PERPLEXITY_API_KEY) {
-      tasks.push((async () => {
-        try {
-          const content = await perplexitySearch(
-            PERPLEXITY_API_KEY,
-            `Analyse la qualité des offres d'emploi publiées par "${company_name}" (${domain || ''}). Sont-elles détaillées ? Mentionnent-elles le salaire, les avantages, la culture ? Compare avec les bonnes pratiques du marché.`,
-            { timeoutMs: 10000 },
-          );
-          scrapedSources.push({
-            id: 'ads', label: 'Qualité des annonces', url: '',
-            content: content || 'Aucune annonce trouvée.',
-            status: content && content.length > 50 ? 'success' : 'not_found',
-          });
-        } catch (e) {
-          console.warn('[audit] Ads search failed:', e);
-        }
-      })());
-    }
-
-    await Promise.allSettled(tasks);
+    const scrapedSources: ScrapedSource[] = SOURCE_DEFS.map((def) => {
+      const direct = def.id === 'website' ? directResults.website
+        : def.id === 'careers' ? directResults.careers
+        : null;
+      if (direct) {
+        return { ...def, content: direct, status: 'success' as const };
+      }
+      const section = research.get(def.id);
+      if (section) {
+        return {
+          ...def,
+          content: section.status === 'success' ? section.content : null,
+          status: section.status,
+        };
+      }
+      return { ...def, content: null, status: 'error' as const };
+    });
 
     // ═══════════════════════════════════════════════════════
     // AI Analysis
