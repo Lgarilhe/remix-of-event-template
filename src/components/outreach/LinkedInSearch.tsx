@@ -4,6 +4,7 @@ import { LinkedInAccount } from '@/pages/Outreach';
 import { SearchFiltersPanel, type FilterSuggestions } from './search/SearchFiltersPanel';
 import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { LinkedInReconnectBanner } from './search/LinkedInReconnectBanner';
+import { SmartOverlays } from './search/SmartOverlays';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
@@ -1138,18 +1139,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         <SearchPlan query={flowQuery} stage={planStage} chips={planChips} />
       )}
       {activeProject && flowMode === 'results' && (
-        <FilterChipBar
-          filters={search.filters}
-          onFiltersEdit={handleChipsEdit}
-          total={search.total}
-          loading={search.loading}
-          dirty={chipsDirty}
-          onRerun={() => { setChipsDirty(false); handleSearch(false); }}
-          onOpenAdvanced={() => setFiltersOpen(true)}
-          onFollowUp={refineByPhrase}
-          accountId={selectedAccount}
-          searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
-        />
+        <>
+          <FilterChipBar
+            filters={search.filters}
+            onFiltersEdit={handleChipsEdit}
+            total={search.total}
+            loading={search.loading}
+            dirty={chipsDirty}
+            onRerun={() => { setChipsDirty(false); handleSearch(false); }}
+            onOpenAdvanced={() => setFiltersOpen(true)}
+            onFollowUp={refineByPhrase}
+            accountId={selectedAccount}
+            searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
+          />
+          <SmartOverlays
+            filters={search.filters}
+            onFiltersEdit={handleChipsEdit}
+            suggestedCompanies={effectiveSuggestions?.alt_companies || []}
+            searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
+          />
+        </>
       )}
 
       {/* Bannière « compte à reconnecter » — conflits de session répétés
