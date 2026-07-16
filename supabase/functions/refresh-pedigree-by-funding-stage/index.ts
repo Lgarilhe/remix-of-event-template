@@ -187,6 +187,13 @@ async function upsertCompanies(
     const fundingDate = typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : null;
     const hc = Number(rawOrg.estimated_num_employees ?? rawOrg.num_employees ?? rawOrg.employee_count);
     const headcount = Number.isFinite(hc) && hc > 0 ? Math.round(hc) : null;
+    // Vérifié sur le payload réel : date de levée et effectif absolu sont
+    // ABSENTS des résultats de recherche — le seul signal de dynamique
+    // disponible est la croissance d'effectifs (6/12 mois). C'est le critère
+    // du « top » : boîte qui grossit = boîte qui recrute maintenant.
+    const growth = Number(rawOrg.organization_headcount_six_month_growth
+      ?? rawOrg.organization_headcount_twelve_month_growth);
+    const headcountGrowth6m = Number.isFinite(growth) ? growth : null;
 
     // Auto category : 'auto:funded_series_b'. Distinct des catégories manuelles
     // (gafam, big_tech_us, scale_up) — l'augmentation peut les requêter
@@ -226,6 +233,7 @@ async function upsertCompanies(
           country: existing.country === 'FR' ? 'FR' : country,
           latest_funding_date: fundingDate,
           headcount,
+          headcount_growth_6m: headcountGrowth6m,
           last_resolved_at: new Date().toISOString(),
         } as never)
         .eq('id', existing.id) as unknown as Promise<{ error: { message: string } | null }>);
@@ -250,6 +258,7 @@ async function upsertCompanies(
           domain,
           latest_funding_date: fundingDate,
           headcount,
+          headcount_growth_6m: headcountGrowth6m,
           source: 'cron_apollo',
           resolution_status: 'pending',
           // On stocke le slug LinkedIn brut dans linkedin_company_id même si
