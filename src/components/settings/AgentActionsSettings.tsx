@@ -268,10 +268,14 @@ export const AgentActionsSettings = () => {
     queryKey: ['agent-actions-members', organizationId, userIds.join(',')],
     queryFn: async () => {
       if (userIds.length === 0) return {};
-      const { data } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, display_name')
+        .in('user_id', userIds);
+      if (error) throw error;
       const map: Record<string, string> = {};
-      for (const p of (data as Array<{ id: string; full_name: string | null }> | null) ?? []) {
-        if (p.full_name) map[p.id] = p.full_name;
+      for (const profile of data ?? []) {
+        if (profile.display_name) map[profile.user_id] = profile.display_name;
       }
       return map;
     },

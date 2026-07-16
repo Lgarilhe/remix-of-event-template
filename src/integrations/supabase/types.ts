@@ -194,6 +194,44 @@ export type Database = {
           },
         ]
       }
+      agent_tool_policies: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          policy: string
+          tool_name: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          policy: string
+          tool_name: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          policy?: string
+          tool_name?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_tool_policies_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_credit_balances: {
         Row: {
           created_at: string
