@@ -105,43 +105,52 @@ async function searchApolloByFunding(
   apolloApiKey: string,
   bracket: FundingBracket,
   location: string,
+  pages = 1,
+  cap = RESULTS_PER_BRACKET_LOCATION,
 ): Promise<ApolloOrg[]> {
-  const payload: Record<string, unknown> = {
-    latest_funding_amount_range: {
-      min: bracket.minAmount,
-      max: bracket.maxAmount,
-    },
-    organization_locations: [location],
-    organization_num_employees_ranges: ['11,50', '51,200', '201,500', '501,1000', '1001,5000', '5001,10000', '10001,9999999'],
-    per_page: 100,
-    page: 1,
-  };
+  const all: ApolloOrg[] = [];
 
-  try {
-    const res = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'X-Api-Key': apolloApiKey,
+  for (let page = 1; page <= pages; page++) {
+    const payload: Record<string, unknown> = {
+      latest_funding_amount_range: {
+        min: bracket.minAmount,
+        max: bracket.maxAmount,
       },
-      body: JSON.stringify({ ...payload, api_key: apolloApiKey }),
-    }, 25000);
+      organization_locations: [location],
+      organization_num_employees_ranges: ['11,50', '51,200', '201,500', '501,1000', '1001,5000', '5001,10000', '10001,9999999'],
+      per_page: 100,
+      page,
+    };
 
-    if (!res.ok) {
-      console.warn(`[refresh-pedigree] Apollo ${bracket.stage}/${location} → ${res.status}`);
-      return [];
+    try {
+      const res = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'X-Api-Key': apolloApiKey,
+        },
+        body: JSON.stringify({ ...payload, api_key: apolloApiKey }),
+      }, 25000);
+
+      if (!res.ok) {
+        console.warn(`[refresh-pedigree] Apollo ${bracket.stage}/${location} p${page} → ${res.status}`);
+        break;
+      }
+
+      const data = await res.json();
+      const list = data.organizations || data.accounts || data.results || data.data || [];
+      if (!Array.isArray(list) || list.length === 0) break;
+
+      all.push(...(list as ApolloOrg[]));
+      if (all.length >= cap || list.length < 100) break; // dernière page atteinte
+    } catch (err) {
+      console.error(`[refresh-pedigree] Apollo error ${bracket.stage}/${location} p${page}:`, err);
+      break;
     }
-
-    const data = await res.json();
-    const list = data.organizations || data.accounts || data.results || data.data || [];
-    if (!Array.isArray(list)) return [];
-
-    return list.slice(0, RESULTS_PER_BRACKET_LOCATION) as ApolloOrg[];
-  } catch (err) {
-    console.error(`[refresh-pedigree] Apollo error ${bracket.stage}/${location}:`, err);
-    return [];
   }
+
+  return all.slice(0, cap);
 }
 
 async function upsertCompanies(
@@ -273,14 +282,24 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Body optionnel : {locations: ['France'], pages: 3} pour une collecte
+  // APPROFONDIE ciblée (défaut cron : tous les pays, 1 page, cap 50).
+  // Permet un annuaire France plus profond sans exploser le run mensuel.
+  let body: { locations?: string[]; pages?: number } = {};
+  try { body = await req.json(); } catch { /* empty body OK */ }
+  const locations = (body.locations?.length ? body.locations : TARGET_LOCATIONS)
+    .filter(l => TARGET_LOCATIONS.includes(l));
+  const pages = Math.max(1, Math.min(5, body.pages ?? 1));
+  const cap = pages * 100;
+
   const start = Date.now();
   const summary: Record<string, { inserted: number; updated: number; skipped: number; calls: number }> = {};
 
   for (const bracket of FUNDING_BRACKETS) {
     summary[bracket.stage] = { inserted: 0, updated: 0, skipped: 0, calls: 0 };
 
-    for (const location of TARGET_LOCATIONS) {
-      const orgs = await searchApolloByFunding(apolloApiKey, bracket, location);
+    for (const location of locations) {
+      const orgs = await searchApolloByFunding(apolloApiKey, bracket, location, pages, pages === 1 ? RESULTS_PER_BRACKET_LOCATION : cap);
       summary[bracket.stage].calls++;
       if (orgs.length === 0) continue;
 
