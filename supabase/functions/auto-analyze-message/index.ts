@@ -320,10 +320,27 @@ Deno.serve(async (req) => {
 
     const { chat_id, account_id, sender_id, organization_id } = _body;
 
-    // Verify org membership (skip for service_role — used by webhooks)
-    if (organization_id && userId) {
+    // Autorisation (appels JWT uniquement — service_role a userId=null et reste
+    // bypass, par design pour les appels internes). Les appelants ne passent
+    // qu'un account_id, jamais organization_id : on ANCRE donc l'autorisation
+    // sur l'org PROPRIÉTAIRE du compte LinkedIn. Un user ne peut auto-analyser
+    // que les chats d'un compte rattaché à une org dont il est membre.
+    // Ferme à la fois la lecture cross-org (chats arbitraires via créds
+    // partagées) et l'écriture cross-org (update job_candidate_status en aval).
+    if (userId) {
       const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
-      const isMember = await verifyOrgMembership(supabase, userId, organization_id);
+      let ownerOrgId: string | undefined = organization_id;
+      if (!ownerOrgId && account_id) {
+        const { data: acctMap } = await supabase
+          .from('member_linkedin_accounts')
+          .select('organization_id')
+          .eq('linkedin_account_id', account_id)
+          .limit(1);
+        ownerOrgId = acctMap?.[0]?.organization_id as string | undefined;
+      }
+      const isMember = ownerOrgId
+        ? await verifyOrgMembership(supabase, userId, ownerOrgId)
+        : false;
       if (!isMember) {
         return new Response(JSON.stringify({ error: 'Forbidden' }), {
           status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

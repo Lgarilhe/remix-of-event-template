@@ -110,7 +110,6 @@ Deno.serve(async (req) => {
       throw new HttpError(400, 'Aucune organisation active');
     }
 
-    const keyPrefix = supabaseServiceRoleKey.slice(0, 12);
     const { data: membership, error: membershipError } = await adminClient
       .from('organization_members')
       .select('id')
@@ -119,16 +118,16 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!membership) {
+      // Diagnostic RLS côté serveur UNIQUEMENT — ne jamais exposer d'info
+      // sensible (préfixe de clé service-role) au client dans la réponse.
       console.error('[unipile-accounts] Membership check failed', {
         requestedOrgId: organizationId,
         userId: user.id,
         authMethod: auth.method,
         errorMsg: membershipError?.message,
         errorCode: membershipError?.code,
-        keyPrefix,
-        sbSecretDefined: Boolean(Deno.env.get('SB_SECRET_KEY')),
       });
-      throw new HttpError(403, `Forbidden — user=${user.id} org=${organizationId} err=${membershipError?.message ?? 'no row'} keyPrefix=${keyPrefix} sbSecretDefined=${Boolean(Deno.env.get('SB_SECRET_KEY'))}`);
+      throw new HttpError(403, 'Accès non autorisé à cette organisation');
     }
 
     const credentials = await resolveUnipileCredentials(organizationId);

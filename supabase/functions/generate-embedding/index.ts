@@ -61,16 +61,34 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify user belongs to the organization if provided
-    if (organization_id) {
-      const { data: membership } = await supabase
-        .from('organization_members')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('organization_id', organization_id)
+    // Autorisation (appels JWT uniquement — service_role/interne a userId=null
+    // et reste bypass, ex. fetch-notion-jobs). On résout l'org de l'appelant
+    // CÔTÉ SERVEUR (jamais via l'omission de organization_id) et on interdit
+    // d'écraser l'embedding d'une ligne appartenant à une AUTRE org : sans ça, un
+    // user pouvait corrompre le matching sémantique d'un autre tenant (+ coût
+    // OpenAI) en forgeant un entityId arbitraire.
+    let callerOrgId: string | null = organization_id ?? null;
+    if (userId) {
+      const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
+      const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+      if (organization_id) {
+        if (!(await verifyOrgMembership(supabase, userId, organization_id))) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        callerOrgId = organization_id;
+      } else {
+        callerOrgId = await resolveOrgIdFromUser(userId, supabase);
+      }
+      // Garde anti-écrasement cross-tenant — AVANT l'appel OpenAI (coupe le coût).
+      const { data: existing } = await supabase
+        .from(type === 'candidate' ? 'candidate_profiles' : 'job_profiles')
+        .select('organization_id')
+        .eq(type === 'candidate' ? 'candidate_id' : 'job_id', entityId)
         .maybeSingle();
-      if (!membership) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (existing?.organization_id && existing.organization_id !== callerOrgId) {
+        if (!(await verifyOrgMembership(supabase, userId, existing.organization_id as string))) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
       }
     }
 
@@ -103,8 +121,8 @@ Deno.serve(async (req) => {
     // Build upsert payload with embedding as a pgvector-compatible string
     const embeddingStr = `[${embedding.join(',')}]`;
     const upsertPayload: Record<string, unknown> = { [idCol]: entityId, embedding: embeddingStr };
-    if (organization_id) {
-      upsertPayload.organization_id = organization_id;
+    if (callerOrgId) {
+      upsertPayload.organization_id = callerOrgId;
     }
 
     // Retry upsert up to 2 times to handle transient 502s

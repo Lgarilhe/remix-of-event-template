@@ -31,6 +31,24 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // Autorisation : cette fonction SUPPRIME puis recrée des workflows sur
+    // l'instance n8n partagée (clé/instance globales). Un simple JWT valide ne
+    // suffit pas — réservée aux admin/owner d'une organisation.
+    // NB (dette connue) : le DELETE ci-dessous n'est pas encore scopé par org
+    // (il matche tous les workflows 'Skalr') → un admin d'une org peut toujours
+    // toucher les workflows d'une autre. Le scoping multi-tenant (tag [org:id])
+    // est un chantier séparé car il change le comportement de l'instance live.
+    const admin = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
+    const { data: prof } = await admin.from('profiles').select('active_organization_id').eq('user_id', user.id).maybeSingle();
+    const activeOrgId = (prof as { active_organization_id?: string } | null)?.active_organization_id;
+    const { data: membership } = activeOrgId
+      ? await admin.from('organization_members').select('role').eq('user_id', user.id).eq('organization_id', activeOrgId).maybeSingle()
+      : { data: null };
+    const role = (membership as { role?: string } | null)?.role;
+    if (role !== 'admin' && role !== 'owner') {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const N8N_API_KEY = Deno.env.get("N8N_API_KEY");
     const N8N_INSTANCE_URL = Deno.env.get("N8N_INSTANCE_URL");
     if (!N8N_API_KEY) throw new Error("N8N_API_KEY not configured");
