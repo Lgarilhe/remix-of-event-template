@@ -7,6 +7,7 @@ export type SceneKey =
   | 'stack'
   | 'discovery'
   | 'specializations'
+  | 'icp'
   | 'org'
   | 'audit'
   | 'profile'
@@ -18,9 +19,9 @@ export type SceneKey =
   | 'launch';
 
 export const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'preparing', 'launch'],
-  agency:     ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'preparing', 'launch'],
-  freelance:  ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'profile', 'aitone', 'integrations', 'quotas', 'preparing', 'launch'],
+  enterprise: ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'icp', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'preparing', 'launch'],
+  agency:     ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'icp', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'preparing', 'launch'],
+  freelance:  ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'icp', 'profile', 'aitone', 'integrations', 'quotas', 'preparing', 'launch'],
 };
 
 export const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
@@ -37,7 +38,7 @@ export const CHAPTERS: ChapterDef[] = [
     id: 'activity',
     title: 'Votre activité',
     tagline: 'Quelques questions pour adapter Konekt à votre métier.',
-    scenes: ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations'],
+    scenes: ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'icp'],
   },
   {
     id: 'company',
@@ -73,6 +74,7 @@ export const STEP_DURATIONS: Record<Exclude<SceneKey, 'launch'>, number> = {
   stack: 15,
   discovery: 5,
   specializations: 20,
+  icp: 30,
   org: 45,
   audit: 60,
   profile: 60,

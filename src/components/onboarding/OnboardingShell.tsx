@@ -2,12 +2,15 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import skalrLogo from '@/assets/skalr-logo-concept-3.webp';
 import { OnboardingBackdrop } from './OnboardingBackdrop';
-import type { SceneKey } from './onboardingMeta';
+import type { ChapterDef, SceneKey } from './onboardingMeta';
 import { remainingSeconds } from './onboardingMeta';
+import { cn } from '@/lib/utils';
 
 interface Props {
   flow: SceneKey[];
   stepIndex: number;
+  chapters: ChapterDef[];
+  completedScenes: Set<SceneKey>;
   orgName?: string;
   children: React.ReactNode;
 }
@@ -17,11 +20,14 @@ interface Props {
  * (logo · compteur · temps restant), une seule colonne alignée à gauche.
  * Un seul indicateur de progression : le fil en haut de page.
  */
-export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, orgName, children }) => {
+export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, chapters, completedScenes, orgName, children }) => {
   const progress = ((stepIndex + 1) / flow.length) * 100;
   const currentScene = flow[stepIndex];
   const isFinale = currentScene === 'preparing' || currentScene === 'launch';
   const remainingMin = Math.max(1, Math.ceil(remainingSeconds(flow, stepIndex) / 60));
+  const currentChapterIdx = isFinale
+    ? chapters.length
+    : chapters.findIndex((c) => c.scenes.includes(currentScene));
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-x-clip bg-background">
@@ -76,9 +82,43 @@ export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, orgName, chi
         </motion.div>
       </header>
 
+      {/* Fil des chapitres — où on est, ce qui reste */}
+      <nav aria-label="Chapitres" className="relative z-10 mx-auto w-full max-w-2xl px-5 sm:px-8 pt-1">
+        <motion.ol
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.4 }}
+          className="flex items-center gap-x-2 gap-y-1 flex-wrap text-2xs font-mono uppercase tracking-wider"
+        >
+          {chapters.map((chapter, i) => {
+            const done = i < currentChapterIdx || chapter.scenes.every((s) => completedScenes.has(s));
+            const current = i === currentChapterIdx;
+            return (
+              <React.Fragment key={chapter.id}>
+                {i > 0 && <span aria-hidden="true" className="text-muted-foreground/25">·</span>}
+                <li
+                  className={cn(
+                    'flex items-center gap-1 transition-colors duration-300',
+                    current
+                      ? 'text-foreground underline decoration-emerald-500/70 decoration-2 underline-offset-4'
+                      : done
+                      ? 'text-muted-foreground'
+                      : 'text-muted-foreground/40'
+                  )}
+                  aria-current={current ? 'step' : undefined}
+                >
+                  {done && <span className="text-success">✓</span>}
+                  {chapter.title}
+                </li>
+              </React.Fragment>
+            );
+          })}
+        </motion.ol>
+      </nav>
+
       {/* Contenu — colonne éditoriale */}
       <main className="flex-1 relative z-10 w-full">
-        <div className="mx-auto w-full max-w-2xl px-5 sm:px-8 py-8 sm:py-14">
+        <div className="mx-auto w-full max-w-2xl px-5 sm:px-8 py-8 sm:py-12">
           {children}
         </div>
       </main>
