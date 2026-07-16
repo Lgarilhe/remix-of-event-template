@@ -232,16 +232,16 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
     return (
       <motion.div
-        className="w-full max-w-lg mx-auto flex flex-col gap-5"
+        className="w-full flex flex-col gap-5"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
         {/* Header */}
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Classez vos expériences</h2>
-          <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-            Pour chaque poste, indiquez le contexte de recrutement.
+        <div className="mb-2">
+          <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">Vos expériences, en contexte.</h2>
+          <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+            Pour chaque poste, dites-nous dans quel cadre vous recrutiez — ça affine votre bio.
           </p>
         </div>
 
@@ -378,26 +378,16 @@ export const SceneProfile: React.FC<Props> = ({ onNext, onBack, orgType, savedSt
 
   // --- RESULT / FORM STEP ---
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
+    <div className="w-full flex flex-col gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Faisons connaissance</h2>
-        <p className="text-muted-foreground text-sm">
+      <div className="mb-2">
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">Faisons connaissance.</h2>
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
           {isFreelance
-            ? 'Présentez-vous et connectez votre LinkedIn pour générer votre vitrine.'
-            : 'Comment souhaitez-vous apparaître auprès de votre équipe ?'}
+            ? 'Votre profil devient votre vitrine : il signe vos messages et l’IA Konekt en tire une bio qui vous ressemble.'
+            : 'Votre profil signe vos messages et alimente votre page recruteur — soignons-le.'}
         </p>
       </div>
-
-      {/* Avatar */}
-      <motion.div
-        className="mx-auto flex items-center justify-center w-20 h-20 text-2xl font-bold text-foreground rounded-xl border border-border bg-emerald-500/15"
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.3 }}
-      >
-        {initials || '?'}
-      </motion.div>
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">

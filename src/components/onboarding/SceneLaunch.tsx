@@ -38,25 +38,11 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
         transition={{ type: 'spring', stiffness: 200, damping: 18 }}
         className="relative flex items-center justify-center w-32 h-32"
       >
-        <motion.div
-          aria-hidden="true"
-          className="absolute inset-0 rounded-full"
-          style={{ background: 'radial-gradient(circle, hsl(var(--skalr-purple) / 0.18) 0%, transparent 70%)', filter: 'blur(12px)' }}
-          animate={{ scale: [1, 1.15, 1], opacity: [0.7, 1, 0.7] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        />
         <svg width="128" height="128" viewBox="0 0 100 100" className="absolute inset-0 rotate-[-90deg]">
-          <defs>
-            <linearGradient id="launch-score-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="hsl(var(--skalr-purple))" />
-              <stop offset="50%" stopColor="hsl(var(--skalr-pink))" />
-              <stop offset="100%" stopColor="hsl(var(--skalr-blue))" />
-            </linearGradient>
-          </defs>
           <circle cx="50" cy="50" r="44" fill="none" stroke="hsl(var(--foreground) / 0.08)" strokeWidth="3" />
           <motion.circle
             cx="50" cy="50" r="44" fill="none"
-            stroke="url(#launch-score-grad)" strokeWidth="3" strokeLinecap="round"
+            stroke="hsl(var(--success))" strokeWidth="3" strokeLinecap="round"
             strokeDasharray={circumference}
             initial={{ strokeDashoffset: circumference }}
             animate={{ strokeDashoffset }}
@@ -85,9 +71,9 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="text-2xl md:text-3xl font-bold tracking-tight text-foreground"
+          className="font-editorial font-normal italic text-4xl md:text-5xl leading-[1.08] text-foreground"
         >
-          {isHighScore ? 'Configuration parfaite !' : 'Votre espace est prêt'}
+          {isHighScore ? 'Configuration parfaite.' : 'Votre espace est prêt.'}
         </motion.h1>
         <motion.p
           initial={{ opacity: 0 }}
@@ -101,14 +87,14 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
       </div>
 
       {/* Récap checklist */}
-      <div className="w-full rounded-lg border border-border bg-card/60 backdrop-blur-sm divide-y divide-border/60 overflow-hidden">
+      <div className="w-full divide-y divide-border/40">
         {items.map((item, i) => (
           <motion.div
             key={item.key}
             initial={{ opacity: 0, x: -14 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.5 + i * 0.08, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="flex items-center gap-3 px-3.5 py-2.5"
+            className="flex items-center gap-3 py-2.5"
           >
             {item.done ? (
               <motion.span
@@ -158,7 +144,7 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
         whileHover={{ scale: 1.02, y: -1 }}
         whileTap={{ scale: 0.97 }}
         onClick={onFinish}
-        className="konekt-shine relative w-full py-4 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 overflow-hidden bg-foreground text-background hover:bg-foreground/90 transition-colors shadow-lg"
+        className="konekt-shine relative w-full py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 overflow-hidden bg-foreground text-background hover:bg-foreground/90 transition-colors"
       >
         <Rocket className="w-4 h-4" />
         Lancer Konekt

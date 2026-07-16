@@ -504,16 +504,86 @@ async function completeTask(supabase: Any, task: Any, result: Any): Promise<void
     metadata: { source: "agent_background_task", task_id: task.id, kind: task.kind },
   }).then(undefined, (e: Any) => console.warn("[agent-tasks] notif insert failed:", e?.message));
 
-  // Trace dans la conversation d'origine (si le chat est ouvert, elle apparaît).
+  // Compte rendu détaillé dans la conversation d'origine — 100 % déterministe
+  // (requêtes SQL, AUCUN appel IA) : répartition des scores, top 5 cliquable,
+  // profils non traités par nom. Fail-soft : en cas de pépin, on retombe sur
+  // le message court.
   if (task.conversation_id) {
+    let content = `✅ Tâche de fond terminée : ${body}`;
+    try {
+      const projectId = task.params?.project_id;
+      if (projectId && scored > 0) {
+        content = await buildScoringRecap(supabase, task, projectId, scored, stuck, result);
+      }
+    } catch (e) {
+      console.warn("[agent-tasks] recap build failed, fallback court:", e instanceof Error ? e.message : e);
+    }
     await supabase.from("agent_messages").insert({
       conversation_id: task.conversation_id,
       role: "assistant",
-      content: `✅ Tâche de fond terminée : ${body}`,
+      content,
       metadata: { agent_background_task: { task_id: task.id, status: "done", scored, stuck } },
     }).then(undefined, (e: Any) => console.warn("[agent-tasks] trace insert failed:", e?.message));
   }
   console.log(`[agent-tasks] task=${task.id} DONE scored=${scored} stuck=${stuck}`);
+}
+
+// ─── Compte rendu de scoring (markdown, rendu dans le chat du copilot) ──────
+async function buildScoringRecap(
+  supabase: Any,
+  task: Any,
+  projectId: string,
+  scored: number,
+  stuck: number,
+  result: Any,
+): Promise<string> {
+  const missionLabel = task.title || "la mission";
+
+  // Répartition + top 5 (une seule requête, triée par score).
+  const { data: scoredRows } = await supabase
+    .from("job_candidate_status")
+    .select("candidate_id, candidate_name, score")
+    .eq("project_id", projectId)
+    .not("score", "is", null)
+    .order("score", { ascending: false })
+    .limit(500);
+  const rows = (scoredRows as Array<{ candidate_id: string | null; candidate_name: string | null; score: number }>) ?? [];
+  const strong = rows.filter((r) => Number(r.score) >= 75).length;
+  const medium = rows.filter((r) => Number(r.score) >= 60 && Number(r.score) < 75).length;
+  const weak = rows.filter((r) => Number(r.score) < 60).length;
+
+  const top5 = rows.slice(0, 5).map((r, i) => {
+    const name = r.candidate_name || "Candidat";
+    const link = r.candidate_id ? `[${name}](/ats/scorecard/${r.candidate_id})` : name;
+    return `${i + 1}. ${link} — **${Math.round(Number(r.score))}/100**`;
+  }).join("\n");
+
+  // Profils non traités, par nom (fiches très denses isolées par le worker).
+  let stuckLine = "";
+  const skipIds: string[] = Array.isArray(result?.skip_candidate_ids) ? result.skip_candidate_ids : [];
+  if (skipIds.length > 0) {
+    const { data: skippedRows } = await supabase
+      .from("job_candidate_status")
+      .select("candidate_name")
+      .eq("project_id", projectId)
+      .in("candidate_id", skipIds.slice(0, 20));
+    const names = ((skippedRows as Array<{ candidate_name: string | null }>) ?? [])
+      .map((r) => r.candidate_name).filter(Boolean);
+    if (names.length > 0) {
+      stuckLine = `\n\n⚠️ **${skipIds.length} profil${skipIds.length > 1 ? "s" : ""} non traité${skipIds.length > 1 ? "s" : ""}** (fiches très détaillées, hors gabarit pour l'analyse groupée) : ${names.join(", ")}. Tu peux les scorer individuellement depuis l'écran de recherche.`;
+    }
+  } else if (stuck > 0) {
+    stuckLine = `\n\n⚠️ ${stuck} profil${stuck > 1 ? "s" : ""} n'ont pas pu être traités.`;
+  }
+
+  return (
+    `## ✅ Scoring terminé — ${missionLabel}\n\n` +
+    `**${scored} profil${scored > 1 ? "s" : ""} scoré${scored > 1 ? "s" : ""}.** ` +
+    `Répartition sur la mission : 🟢 ${strong} à 75+ · 🟡 ${medium} entre 60 et 74 · 🔴 ${weak} sous 60.\n\n` +
+    `**Top 5 :**\n${top5}` +
+    stuckLine +
+    `\n\n👉 [Voir le pipeline complet trié par score](/missions/${projectId}?tab=pipeline)`
+  );
 }
 
 // ─── Échec : retry (transient) ou abandon (fatal / trop d'échecs) ────────────

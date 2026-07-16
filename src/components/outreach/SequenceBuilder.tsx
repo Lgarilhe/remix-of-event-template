@@ -479,6 +479,21 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
           && (!s.timeoutDays || s.timeoutDays <= 0)) {
         errors.push(`${stepLabel}: un délai max (timeout) est requis pour les étapes d'attente`);
       }
+      // Délais hors-bornes (audit 2026-07, Builder M3) : le min={0} HTML
+      // n'empêche pas la saisie clavier d'un négatif, et heures>23/minutes>59
+      // donnent un scheduled_at incohérent (voire dans le passé = envoi
+      // immédiat). On valide au save.
+      const dDays = s.delayDays ?? 0, dHours = s.delayHours ?? 0, dMins = s.delayMinutes ?? 0;
+      if (dDays < 0 || dHours < 0 || dMins < 0) {
+        errors.push(`${stepLabel}: les délais ne peuvent pas être négatifs`);
+      }
+      if (dHours > 23) errors.push(`${stepLabel}: les heures de délai doivent être entre 0 et 23`);
+      if (dMins > 59) errors.push(`${stepLabel}: les minutes de délai doivent être entre 0 et 59`);
+      // Fenêtre horaire préférée incohérente (début après fin)
+      if (typeof s.preferredHourStart === 'number' && typeof s.preferredHourEnd === 'number'
+          && s.preferredHourStart >= s.preferredHourEnd) {
+        errors.push(`${stepLabel}: la plage horaire d'envoi est incohérente (début ≥ fin)`);
+      }
     });
 
     // A/B variants : poids total doit faire 100% par groupe d'order partagé
@@ -628,15 +643,15 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <Label>Jours</Label>
-                      <Input type="number" min={0} value={step.delayDays} onChange={(e) => updateStep(step.id, { delayDays: parseInt(e.target.value) || 0 })} className="mt-1.5" />
+                      <Input type="number" min={0} value={step.delayDays} onChange={(e) => updateStep(step.id, { delayDays: Math.max(0, parseInt(e.target.value) || 0) })} className="mt-1.5" />
                     </div>
                     <div>
                       <Label>Heures</Label>
-                      <Input type="number" min={0} max={23} value={step.delayHours} onChange={(e) => updateStep(step.id, { delayHours: parseInt(e.target.value) || 0 })} className="mt-1.5" />
+                      <Input type="number" min={0} max={23} value={step.delayHours} onChange={(e) => updateStep(step.id, { delayHours: Math.min(23, Math.max(0, parseInt(e.target.value) || 0)) })} className="mt-1.5" />
                     </div>
                     <div>
                       <Label>Minutes</Label>
-                      <Input type="number" min={0} max={59} value={step.delayMinutes || 0} onChange={(e) => updateStep(step.id, { delayMinutes: parseInt(e.target.value) || 0 })} className="mt-1.5" />
+                      <Input type="number" min={0} max={59} value={step.delayMinutes || 0} onChange={(e) => updateStep(step.id, { delayMinutes: Math.min(59, Math.max(0, parseInt(e.target.value) || 0)) })} className="mt-1.5" />
                     </div>
                   </div>
                 )}

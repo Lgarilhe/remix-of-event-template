@@ -1,24 +1,23 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { ArrowLeft } from 'lucide-react';
+import { EditorialChoiceList } from './EditorialChoiceList';
 
 const DISCOVERY_SOURCES = [
   { value: 'linkedin', label: 'LinkedIn (post / pub)' },
   { value: 'linkedin-dm', label: 'LinkedIn (message privé)' },
   { value: 'google', label: 'Recherche Google' },
-  { value: 'word-of-mouth', label: 'Bouche-à-oreille / Recommandation' },
+  { value: 'word-of-mouth', label: 'Bouche-à-oreille' },
   { value: 'community', label: 'Communauté Slack / Discord' },
   { value: 'podcast', label: 'Podcast' },
   { value: 'youtube', label: 'YouTube' },
   { value: 'newsletter', label: 'Newsletter' },
   { value: 'blog', label: 'Article / Blog' },
-  { value: 'event', label: 'Événement / Salon / Meetup' },
+  { value: 'event', label: 'Événement / Meetup' },
   { value: 'product-hunt', label: 'Product Hunt' },
   { value: 'appsumo', label: 'AppSumo' },
-  { value: 'comparison', label: 'Site de comparatifs (G2, Capterra…)' },
-  { value: 'referral', label: 'Programme de parrainage' },
+  { value: 'comparison', label: 'Comparatifs (G2, Capterra…)' },
+  { value: 'referral', label: 'Parrainage' },
   { value: 'social-twitter', label: 'X (Twitter)' },
   { value: 'social-instagram', label: 'Instagram / TikTok' },
   { value: 'partner', label: 'Partenaire / Intégrateur' },
@@ -33,67 +32,56 @@ interface Props {
 }
 
 export const SceneDiscovery: React.FC<Props> = ({ onSubmit, onSkip, onBack, savedValue }) => {
-  const [selected, setSelected] = useState(savedValue || '');
-  const firedRef = React.useRef(false);
+  const [selected, setSelected] = useState<string[]>(savedValue ? [savedValue] : []);
+  const firedRef = useRef(false);
 
   const handlePick = (value: string) => {
     if (firedRef.current) return;
     firedRef.current = true;
-    setSelected(value);
-    setTimeout(() => onSubmit(value), 380);
+    setSelected([value]);
+    setTimeout(() => onSubmit(value), 420);
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
+    <div className="w-full">
+      <div className="mb-8">
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">
           Comment nous avez-vous trouvé ?
         </h2>
-        <p className="text-muted-foreground text-sm">
-          Simple curiosité — ça nous aide à mieux vous connaître.
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+          Simple curiosité — ça nous aide à rendre Konekt visible au bon endroit.
         </p>
       </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className="flex flex-wrap gap-2 justify-center"
-      >
-        {DISCOVERY_SOURCES.map(s => (
-          <Badge
-            key={s.value}
-            variant={selected === s.value ? 'default' : 'outline'}
-            className={`cursor-pointer text-xs px-3 py-1.5 rounded-full transition-all ${
-              selected === s.value
-                ? 'bg-foreground text-background border-foreground'
-                : 'border-border text-muted-foreground hover:bg-accent/40 hover:text-foreground'
-            }`}
-            onClick={() => handlePick(s.value)}
-          >
-            {s.label}
-          </Badge>
-        ))}
-      </motion.div>
+      <EditorialChoiceList
+        options={DISCOVERY_SOURCES}
+        selected={selected}
+        mode="single"
+        onSelect={handlePick}
+        columns={2}
+        dense
+      />
 
-      {/* Navigation */}
       <motion.div
-        className="flex items-center justify-between pt-2"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
+        transition={{ delay: 0.6 }}
+        className="flex items-center gap-5 mt-8"
       >
-        <Button
-          variant="ghost"
+        <button
+          type="button"
           onClick={onBack}
-          className="gap-2 text-sm"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft className="w-4 h-4" /> Retour
-        </Button>
-        <Button variant="ghost" onClick={onSkip} className="text-sm text-muted-foreground">
-          Passer <ArrowRight className="w-3.5 h-3.5 ml-1" />
-        </Button>
+          <ArrowLeft className="w-3.5 h-3.5" /> Retour
+        </button>
+        <button
+          type="button"
+          onClick={onSkip}
+          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 decoration-border transition-colors"
+        >
+          Je préfère passer
+        </button>
       </motion.div>
     </div>
   );

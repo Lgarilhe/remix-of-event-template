@@ -5,16 +5,17 @@ name: CI
 # l'outil Bash de Claude Code — un git commit humain ou un push direct le
 # contourne). Ici, c'est GitHub qui fait foi.
 #
-# Philosophie RATCHET (comme le hook) : build bloquant (il passe déjà), mais
-# type-check et lint ne bloquent que si le nombre d'erreurs DÉPASSE la baseline
-# — la dette existante passe, une régression est refusée. Abaisser les baselines
-# au fur et à mesure de la résorption.
+# Philosophie RATCHET : build bloquant (il passe déjà), type-check et lint ne
+# bloquent que si la PR AUGMENTE le nombre d'erreurs — la dette existante
+# passe, une régression est refusée.
 #
-# Baselines au 2026-07-15 (recalées sur l'état de main après ses lots d'audit) :
-#   TSC_BASELINE  = 32    (npx tsc --noEmit -p tsconfig.app.json)
-#   LINT_BASELINE = 1819  (npm run lint — dérive +8 due aux commits de main)
-# Objectif : descendre ces deux nombres jusqu'à 0, puis passer les jobs en
-# "0 toléré" (remplacer la comparaison par un simple exit sur erreur).
+# ⚠️ 2026-07-16 : les baselines FIXES (TSC_BASELINE=32, LINT_BASELINE=1811)
+# ont été remplacées par une comparaison PR vs BASE calculée DANS LE MÊME JOB.
+# Raison : le compte tsc/eslint varie de ±3 selon l'environnement (version de
+# node, résolution des deps) — 32/1819 en local node 22, 34/1821-1822 sur les
+# runners GitHub. Un seuil absolu échouait donc aléatoirement, y compris sur
+# du code identique à main. En comptant main ET la PR sur le même runner avec
+# les mêmes deps, la comparaison est déterministe.
 
 on:
   pull_request:
@@ -25,10 +26,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  TSC_BASELINE: 32
-  LINT_BASELINE: 1819
-
 jobs:
   build:
     name: Build (bloquant)
@@ -38,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: Vite production build
@@ -47,57 +44,98 @@ jobs:
   typecheck:
     name: Type-check (ratchet)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
-      - name: tsc --noEmit -p tsconfig.app.json
+      - name: tsc PR vs base (même environnement)
         # shell sans -e/-o pipefail : on gère les codes de sortie à la main.
         shell: bash --noprofile --norc {0}
         run: |
-          npx tsc --noEmit -p tsconfig.app.json > tsc.log 2>&1
-          ERRS=$(grep -c 'error TS' tsc.log)
-          [ -z "$ERRS" ] && ERRS=0
-          echo "TypeScript : $ERRS erreurs (baseline $TSC_BASELINE)"
-          tail -40 tsc.log
-          if [ "$ERRS" -gt "$TSC_BASELINE" ]; then
-            echo "::error::$ERRS erreurs TypeScript > baseline $TSC_BASELINE — nouvelles erreurs introduites. Corrigez-les ou régénérez src/integrations/supabase/types.ts."
+          count_tsc() {
+            npx tsc --noEmit -p tsconfig.app.json > tsc.log 2>&1
+            local n
+            n=$(grep -c 'error TS' tsc.log)
+            [ -z "$n" ] && n=0
+            echo "$n"
+          }
+
+          ERRS_PR=$(count_tsc)
+          echo "TypeScript (PR) : $ERRS_PR erreurs"
+          tail -20 tsc.log
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE_SHA" ]; then
+            echo "::notice::Pas de base (workflow_dispatch) — rapport informatif uniquement."
+            exit 0
+          fi
+
+          # Compter la base sur LE MÊME runner avec LES MÊMES deps → déterministe.
+          git -c advice.detachedHead=false checkout "$BASE_SHA"
+          npm ci > /dev/null 2>&1
+          ERRS_BASE=$(count_tsc)
+          echo "TypeScript (base main) : $ERRS_BASE erreurs"
+
+          if [ "$ERRS_PR" -gt "$ERRS_BASE" ]; then
+            echo "::error::$ERRS_PR erreurs TypeScript sur la PR > $ERRS_BASE sur main — nouvelles erreurs introduites. Corrigez-les ou régénérez src/integrations/supabase/types.ts."
             exit 1
           fi
-          if [ "$ERRS" -lt "$TSC_BASELINE" ]; then
-            echo "::notice::$ERRS < baseline $TSC_BASELINE — pensez à abaisser TSC_BASELINE dans .github/workflows/ci.yml."
+          if [ "$ERRS_PR" -lt "$ERRS_BASE" ]; then
+            echo "::notice::La PR résorbe de la dette TypeScript ($ERRS_BASE → $ERRS_PR). 👏"
           fi
           exit 0
 
   lint:
     name: Lint (ratchet)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
-      - name: eslint
+      - name: eslint PR vs base (même environnement)
         shell: bash --noprofile --norc {0}
         run: |
-          npm run lint > lint.log 2>&1
-          # eslint imprime "✖ N problems (E errors, W warnings)" ; 0 problème => pas de ligne.
-          PROBLEMS=$(grep -oE '[0-9]+ problems' lint.log | head -1 | grep -oE '^[0-9]+')
-          [ -z "$PROBLEMS" ] && PROBLEMS=0
-          echo "ESLint : $PROBLEMS problèmes (baseline $LINT_BASELINE)"
-          tail -30 lint.log
-          if [ "$PROBLEMS" -gt "$LINT_BASELINE" ]; then
-            echo "::error::$PROBLEMS problèmes ESLint > baseline $LINT_BASELINE — nouvelles erreurs introduites."
+          count_lint() {
+            npm run lint > lint.log 2>&1
+            # eslint imprime "✖ N problems (E errors, W warnings)" ; 0 problème => pas de ligne.
+            local n
+            n=$(grep -oE '[0-9]+ problems' lint.log | head -1 | grep -oE '^[0-9]+')
+            [ -z "$n" ] && n=0
+            echo "$n"
+          }
+
+          PROBLEMS_PR=$(count_lint)
+          echo "ESLint (PR) : $PROBLEMS_PR problèmes"
+          tail -15 lint.log
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE_SHA" ]; then
+            echo "::notice::Pas de base (workflow_dispatch) — rapport informatif uniquement."
+            exit 0
+          fi
+
+          git -c advice.detachedHead=false checkout "$BASE_SHA"
+          npm ci > /dev/null 2>&1
+          PROBLEMS_BASE=$(count_lint)
+          echo "ESLint (base main) : $PROBLEMS_BASE problèmes"
+
+          if [ "$PROBLEMS_PR" -gt "$PROBLEMS_BASE" ]; then
+            echo "::error::$PROBLEMS_PR problèmes ESLint sur la PR > $PROBLEMS_BASE sur main — nouvelles erreurs introduites."
             exit 1
           fi
-          if [ "$PROBLEMS" -lt "$LINT_BASELINE" ]; then
-            echo "::notice::$PROBLEMS < baseline $LINT_BASELINE — pensez à abaisser LINT_BASELINE dans .github/workflows/ci.yml."
+          if [ "$PROBLEMS_PR" -lt "$PROBLEMS_BASE" ]; then
+            echo "::notice::La PR résorbe de la dette ESLint ($PROBLEMS_BASE → $PROBLEMS_PR). 👏"
           fi
           exit 0
