@@ -180,8 +180,13 @@ async function upsertCompanies(
     const linkedinSlug = extractLinkedInId(org.linkedin_url);
     // Critères de classement du « top » côté surcouche : levée la plus
     // récente d'abord, puis effectif estimé (candidats disponibles).
-    const fundingDate = org.latest_funding_date?.slice(0, 10) || null;
-    const headcount = Number.isFinite(org.estimated_num_employees) ? org.estimated_num_employees : null;
+    // Noms de champs variables selon les payloads → replis multiples,
+    // et l'effectif arrive parfois en chaîne → coercition Number().
+    const rawOrg = org as Record<string, unknown>;
+    const rawDate = (rawOrg.latest_funding_date ?? rawOrg.latest_funding_round_date) as string | undefined;
+    const fundingDate = typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : null;
+    const hc = Number(rawOrg.estimated_num_employees ?? rawOrg.num_employees ?? rawOrg.employee_count);
+    const headcount = Number.isFinite(hc) && hc > 0 ? Math.round(hc) : null;
 
     // Auto category : 'auto:funded_series_b'. Distinct des catégories manuelles
     // (gafam, big_tech_us, scale_up) — l'augmentation peut les requêter
@@ -311,6 +316,8 @@ Deno.serve(async (req) => {
 
   const start = Date.now();
   const summary: Record<string, { inserted: number; updated: number; skipped: number; calls: number }> = {};
+  // Diagnostic : forme réelle du premier résultat (noms de champs funding/effectif)
+  let debugFirstOrg: Record<string, unknown> | null = null;
 
   for (const bracket of FUNDING_BRACKETS) {
     summary[bracket.stage] = { inserted: 0, updated: 0, skipped: 0, calls: 0 };
@@ -319,6 +326,16 @@ Deno.serve(async (req) => {
       const orgs = await searchApolloByFunding(apolloApiKey, bracket, location, pages, pages === 1 ? RESULTS_PER_BRACKET_LOCATION : cap);
       summary[bracket.stage].calls++;
       if (orgs.length === 0) continue;
+      if (!debugFirstOrg && orgs[0]) {
+        const o = orgs[0] as Record<string, unknown>;
+        debugFirstOrg = {
+          keys: Object.keys(o),
+          name: o.name,
+          latest_funding_date: o.latest_funding_date,
+          latest_funding_round_date: o.latest_funding_round_date,
+          estimated_num_employees: o.estimated_num_employees,
+        };
+      }
 
       const { inserted, updated, skipped } = await upsertCompanies(admin, bracket, orgs, location);
       summary[bracket.stage].inserted += inserted;
@@ -334,5 +351,6 @@ Deno.serve(async (req) => {
     success: true,
     elapsed_ms: elapsedMs,
     summary,
+    debug_first_org: debugFirstOrg,
   });
 });
