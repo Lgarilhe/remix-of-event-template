@@ -178,6 +178,10 @@ async function upsertCompanies(
     const country = org.country?.trim() || LOCATION_TO_COUNTRY[searchLocation] || null;
     const domain = org.primary_domain?.trim() || null;
     const linkedinSlug = extractLinkedInId(org.linkedin_url);
+    // Critères de classement du « top » côté surcouche : levée la plus
+    // récente d'abord, puis effectif estimé (candidats disponibles).
+    const fundingDate = org.latest_funding_date?.slice(0, 10) || null;
+    const headcount = Number.isFinite(org.estimated_num_employees) ? org.estimated_num_employees : null;
 
     // Auto category : 'auto:funded_series_b'. Distinct des catégories manuelles
     // (gafam, big_tech_us, scale_up) — l'augmentation peut les requêter
@@ -215,6 +219,8 @@ async function upsertCompanies(
           // backfill pays — FR prioritaire : une boîte multi-pays matchée par la
           // recherche France reste taguée FR (les pays suivants n'écrasent pas)
           country: existing.country === 'FR' ? 'FR' : country,
+          latest_funding_date: fundingDate,
+          headcount,
           last_resolved_at: new Date().toISOString(),
         } as never)
         .eq('id', existing.id) as unknown as Promise<{ error: { message: string } | null }>);
@@ -237,6 +243,8 @@ async function upsertCompanies(
           funding_stage: bracket.stage,
           tier: bracket.tier,
           domain,
+          latest_funding_date: fundingDate,
+          headcount,
           source: 'cron_apollo',
           resolution_status: 'pending',
           // On stocke le slug LinkedIn brut dans linkedin_company_id même si

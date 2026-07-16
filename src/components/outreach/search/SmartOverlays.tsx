@@ -45,12 +45,15 @@ async function fetchFundedCompanies(stage: string, scope: FundedScope): Promise<
   if (cached) return cached;
   let query = supabase
     .from('pedigree_company_directory' as never)
-    .select('canonical_name, linkedin_company_id, tier')
+    .select('canonical_name, linkedin_company_id, latest_funding_date, headcount')
     .eq('funding_stage', stage)
     .not('linkedin_company_id', 'is', null);
   if (scope === 'FR') query = query.eq('country', 'FR');
+  // « Top » = levée la plus RÉCENTE d'abord (boîte en phase active de
+  // recrutement), à égalité le plus gros effectif (pool de candidats).
   const { data, error } = await query
-    .order('tier', { ascending: true })
+    .order('latest_funding_date', { ascending: false, nullsFirst: false })
+    .order('headcount', { ascending: false, nullsFirst: false })
     .order('canonical_name', { ascending: true });
   if (error) throw error;
   // IDs NUMÉRIQUES uniquement : le schéma LinkedIn Recruiter rejette les slugs
@@ -382,8 +385,9 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                 );
               })}
               <p className="px-2 pt-1 pb-0.5 text-[11px] leading-snug text-[var(--k-text-muted)]">
-                Les {FUNDED_CAP} sociétés les mieux classées du stade sont injectées comme boîte actuelle
-                (au-delà, LinkedIn rejette la recherche). Élagables une à une dans la pilule Boîte.
+                Top = les {FUNDED_CAP} levées les plus récentes du stade (boîtes en phase active de
+                recrutement), injectées comme boîte actuelle — LinkedIn rejette au-delà.
+                Élagables une à une dans la pilule Boîte.
               </p>
             </div>
           )}
