@@ -25,6 +25,11 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -34,8 +39,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plug, Plus, Trash2, AlertTriangle, Loader2, Pencil } from 'lucide-react';
+import { Plug, Plus, Trash2, AlertTriangle, Loader2, Pencil, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { NotionConnectionCard } from './NotionConnectionCard';
 
 interface McpServerRow {
   id: string;
@@ -80,6 +87,7 @@ export function AgentConnectorsSettings() {
   const [editingToolsId, setEditingToolsId] = useState<string | null>(null);
   const [editingToolsText, setEditingToolsText] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<McpServerRow | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const { data: servers = [] } = useQuery({
     queryKey: ['org-mcp-servers', organizationId],
@@ -195,7 +203,24 @@ export function AgentConnectorsSettings() {
   };
 
   return (
-    <Card>
+    <div className="space-y-3">
+      <NotionConnectionCard />
+
+      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-lg border border-border/70 bg-muted/20 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/40"
+          >
+            <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Options avancées pour développeurs
+            </span>
+            <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', advancedOpen && 'rotate-180')} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2">
+          <Card>
       <CardContent className="p-4 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -228,20 +253,30 @@ export function AgentConnectorsSettings() {
         {isAdmin && showForm && (
           <div className="rounded-lg border border-border p-3 space-y-2.5">
             <div className="grid sm:grid-cols-2 gap-2.5">
-              <Input
-                placeholder="Nom court (ex : notion)"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="h-8 text-xs"
-              />
-              <Input
-                placeholder="URL du serveur MCP (https://…)"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className="h-8 text-xs"
-              />
+              <div>
+                <label htmlFor="mcp-connector-name" className="sr-only">Nom court du connecteur</label>
+                <Input
+                  id="mcp-connector-name"
+                  placeholder="Nom court (ex : notion)"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div>
+                <label htmlFor="mcp-connector-url" className="sr-only">URL du serveur MCP</label>
+                <Input
+                  id="mcp-connector-url"
+                  placeholder="URL du serveur MCP (https://…)"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
             </div>
+            <label htmlFor="mcp-connector-token" className="sr-only">Token d’autorisation</label>
             <Input
+              id="mcp-connector-token"
               type="password"
               placeholder="Token d'autorisation (optionnel — jamais réaffiché)"
               value={token}
@@ -250,7 +285,9 @@ export function AgentConnectorsSettings() {
               autoComplete="off"
             />
             <div className="space-y-1">
+              <label htmlFor="mcp-connector-tools" className="sr-only">Outils autorisés en lecture seule</label>
               <Input
+                id="mcp-connector-tools"
                 placeholder="Outils autorisés en lecture seule (ex : search read_page)"
                 value={allowedToolsText}
                 onChange={(e) => setAllowedToolsText(e.target.value)}
@@ -290,11 +327,16 @@ export function AgentConnectorsSettings() {
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-1 shrink-0">
-                      <Switch checked={s.enabled} onCheckedChange={(v) => handleToggle(s, v)} />
+                      <Switch
+                        checked={s.enabled}
+                        onCheckedChange={(v) => handleToggle(s, v)}
+                        aria-label={`${s.enabled ? 'Désactiver' : 'Activer'} le connecteur ${s.name}`}
+                      />
                       <Button
                         size="sm"
                         variant="ghost"
                         title="Modifier la liste blanche"
+                        aria-label={`Modifier les outils autorisés pour ${s.name}`}
                         className="h-7 w-7 p-0 text-muted-foreground"
                         onClick={() => {
                           setEditingToolsId(s.id);
@@ -307,6 +349,7 @@ export function AgentConnectorsSettings() {
                         size="sm"
                         variant="ghost"
                         className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        aria-label={`Supprimer le connecteur ${s.name}`}
                         onClick={() => setDeleteTarget(s)}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -316,7 +359,11 @@ export function AgentConnectorsSettings() {
                 </div>
                 {isAdmin && editingToolsId === s.id && (
                   <div className="flex flex-col sm:flex-row gap-2 rounded-md bg-muted/30 p-2">
+                    <label htmlFor={`mcp-tools-${s.id}`} className="sr-only">
+                      Outils autorisés pour {s.name}
+                    </label>
                     <Input
+                      id={`mcp-tools-${s.id}`}
                       value={editingToolsText}
                       onChange={(e) => setEditingToolsText(e.target.value)}
                       placeholder="search read_page"
@@ -357,6 +404,9 @@ export function AgentConnectorsSettings() {
           </AlertDialogContent>
         </AlertDialog>
       </CardContent>
-    </Card>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   );
 }

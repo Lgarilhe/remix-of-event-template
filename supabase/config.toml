@@ -280,6 +280,11 @@ verify_jwt = false
 [functions.update-notion-job]
 verify_jwt = false
 
+# OAuth callback is a public GET from Notion. POST actions still enforce the
+# user JWT and organization role inside the function via requireOrgAccess.
+[functions.notion-mcp-oauth]
+verify_jwt = false
+
 # Chrome extension Konekt — ajoutés 2026-04-23
 # verify_jwt = false car les functions gèrent l'auth elles-mêmes :
 # - extension-token : requireAuth JWT Konekt (gestion tokens extension)

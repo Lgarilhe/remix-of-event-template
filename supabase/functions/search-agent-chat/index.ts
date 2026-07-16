@@ -21,6 +21,7 @@ import {
 } from "../_shared/conversation-compaction.ts";
 import { buildSafeMcpConfiguration } from "../_shared/mcp-policy.mjs";
 import { UNTRUSTED_CONTENT_SAFETY_PROMPT } from "../_shared/prompt-safety.mjs";
+import { resolveNotionMcpConnectorRow } from "../_shared/notion-mcp-connection.ts";
 
 // Register tools at module load (idempotent)
 registerMutatingTools();
@@ -1195,13 +1196,24 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             }> = [];
             if (orgId) {
               try {
-                const { data: mcpRows } = await supabase
-                  .from("organization_mcp_servers")
-                  .select("name, url, authorization_token, allowed_tools, enabled")
-                  .eq("organization_id", orgId)
-                  .eq("enabled", true)
-                  .limit(5);
-                mcpConfigurations = ((mcpRows ?? []) as Array<Record<string, unknown>>)
+                const [{ data: mcpRows }, notionConnector] = await Promise.all([
+                  supabase
+                    .from("organization_mcp_servers")
+                    .select("name, url, authorization_token, allowed_tools, enabled")
+                    .eq("organization_id", orgId)
+                    .eq("enabled", true)
+                    .limit(5),
+                  resolveNotionMcpConnectorRow(supabase, orgId, user.id),
+                ]);
+                // The managed OAuth connection wins over a legacy connector
+                // named "notion" so Anthropic never receives duplicate names.
+                const connectorRows = [
+                  ...(notionConnector ? [notionConnector] : []),
+                  ...((mcpRows ?? []) as Array<Record<string, unknown>>).filter(
+                    (row) => !notionConnector || row.name !== "notion",
+                  ),
+                ];
+                mcpConfigurations = connectorRows
                   .map((row) => buildSafeMcpConfiguration(row))
                   .filter((configuration): configuration is {
                     server: Record<string, unknown>;
