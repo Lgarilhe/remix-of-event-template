@@ -41,18 +41,21 @@ const fundedCache = new Map<string, FundedStage>();
 async function fetchFundedCompanies(stage: string): Promise<FundedStage> {
   const cached = fundedCache.get(stage);
   if (cached) return cached;
-  const { data, error, count } = await supabase
+  const { data, error } = await supabase
     .from('pedigree_company_directory' as never)
-    .select('canonical_name, linkedin_company_id, tier', { count: 'exact' })
+    .select('canonical_name, linkedin_company_id, tier')
     .eq('funding_stage', stage)
     .not('linkedin_company_id', 'is', null)
     .order('tier', { ascending: true })
-    .order('canonical_name', { ascending: true })
-    .limit(FUNDED_CAP);
+    .order('canonical_name', { ascending: true });
   if (error) throw error;
-  const list = ((data ?? []) as unknown as Array<{ canonical_name: string; linkedin_company_id: string }>)
+  // IDs NUMÉRIQUES uniquement : le schéma LinkedIn Recruiter rejette les slugs
+  // ("21-invest") avec un 400 invalid_parameters — les entrées slug sont celles
+  // que le cron de résolution n'a pas encore converties.
+  const numeric = ((data ?? []) as unknown as Array<{ canonical_name: string; linkedin_company_id: string }>)
+    .filter(r => /^\d+$/.test(String(r.linkedin_company_id)))
     .map(r => ({ id: String(r.linkedin_company_id), name: r.canonical_name }));
-  const entry = { list, total: count ?? list.length };
+  const entry = { list: numeric.slice(0, FUNDED_CAP), total: numeric.length };
   fundedCache.set(stage, entry);
   return entry;
 }
@@ -88,6 +91,56 @@ const sizeOverlay = (key: 'startup' | 'scaleup' | 'enterprise', label: string, t
 });
 
 const OVERLAYS: OverlayDef[] = [
+  /* ── Timing & engagement (signaux LinkedIn Recruiter natifs) ── */
+  {
+    key: 'prets-a-bouger',
+    label: 'Prêts à bouger',
+    title: "À l'écoute (open to work) OU actifs récemment sur LinkedIn — les plus susceptibles de répondre",
+    active: f => f.open_to_work === true && f.spotlight === 'ACTIVE_TALENT',
+    toggle: (f, active) => active
+      ? { ...f, open_to_work: null, spotlight: '' as LinkedInFiltersState['spotlight'] }
+      : { ...f, open_to_work: true, spotlight: 'ACTIVE_TALENT' as LinkedInFiltersState['spotlight'] },
+    show: (_src, f) => f.api === 'recruiter',
+  },
+  {
+    key: 'murs-bouger',
+    label: 'Mûrs pour bouger',
+    title: '3 ans ou plus dans le poste actuel sans évolution — la fenêtre de départ classique',
+    active: f => f.tenure_at_role_min != null && f.tenure_at_role_min >= 3,
+    toggle: (f, active) => active
+      ? { ...f, tenure_at_role_min: null, tenure_at_role_max: null }
+      : { ...f, tenure_at_role_min: 3, tenure_at_role_max: null },
+    show: (_src, f) => f.api === 'recruiter' || f.api === 'sales_navigator',
+  },
+  {
+    key: 'jamais-contactes',
+    label: 'Jamais contactés · 12 mois',
+    title: "Exclut les profils déjà messagés par l'équipe sur le contrat Recruiter ces 12 derniers mois",
+    active: f => f.activity_messages === 'without_message' && f.activity_messages_days === 365,
+    toggle: (f, active) => active
+      ? { ...f, activity_messages: null, activity_messages_days: null }
+      : { ...f, activity_messages: 'without_message' as LinkedInFiltersState['activity_messages'], activity_messages_days: 365 },
+    show: (_src, f) => f.api === 'recruiter',
+  },
+  {
+    key: 'deja-croises',
+    label: 'Déjà croisés',
+    title: "Candidats déjà apparus dans d'anciennes recherches de l'équipe — le stock dormant à requalifier",
+    active: f => f.spotlight === 'REDISCOVERED_CANDIDATES',
+    toggle: (f, active) => ({ ...f, spotlight: (active ? '' : 'REDISCOVERED_CANDIDATES') as LinkedInFiltersState['spotlight'] }),
+    show: (_src, f) => f.api === 'recruiter',
+  },
+  {
+    key: 'warm-intro',
+    label: 'Warm intro',
+    title: 'Réseau 1er et 2e degré du compte connecté — une connexion commune peut faire l\'intro',
+    active: f => f.network_distance.length > 0 && f.network_distance.every(d => d === 1 || d === 2),
+    toggle: (f, active) => active
+      ? { ...f, network_distance: [] }
+      : { ...f, network_distance: [1, 2] },
+    show: src => src === 'linkedin',
+  },
+  /* ── Profil & parcours ── */
   {
     key: 'top-ecoles',
     label: 'Top écoles',
@@ -183,7 +236,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
     try {
       const { list } = await fetchFundedCompanies(stage);
       bumpCache(x => x + 1);
-      if (!list.length) { toast.info('Aucune société financée connue à ce stade'); return; }
+      if (!list.length) { toast.info('Annuaire en cours de résolution pour ce stade — réessaie dans quelques minutes'); return; }
       const active = list.filter(c => filters.company.some(fc => fc.id === c.id)).length >= Math.min(10, list.length);
       onFiltersEdit(f => active
         ? { ...f, company: f.company.filter(c => !list.some(l => l.id === c.id)) }
@@ -292,7 +345,9 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                     <span className="flex-1 min-w-0 truncate">{s.label}</span>
                     {entry && (
                       <span className="font-mono text-[10px] text-[var(--k-text-muted)]">
-                        {entry.total > entry.list.length ? `top ${entry.list.length} / ${entry.total}` : `${entry.list.length} boîtes`}
+                        {entry.list.length === 0 ? 'en résolution…'
+                          : entry.total > entry.list.length ? `top ${entry.list.length} / ${entry.total}`
+                          : `${entry.list.length} boîtes`}
                       </span>
                     )}
                     {stageLoading === s.value
