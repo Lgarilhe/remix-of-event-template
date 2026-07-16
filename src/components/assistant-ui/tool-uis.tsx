@@ -1,5 +1,6 @@
 import React from 'react';
 import { makeAssistantToolUI } from '@assistant-ui/react';
+import { FileText, Search } from 'lucide-react';
 
 /** Labels français des tools du copilot (reads + mutations + sourcing) */
 const TOOL_CHIP_LABELS: Record<string, string> = {
@@ -47,8 +48,19 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   enrich_candidate_contact: 'Enrichissement contact',
 };
 
-const toolChipLabel = (toolName: string) =>
-  TOOL_CHIP_LABELS[toolName] ?? toolName.replace(/_/g, ' ');
+const notionToolKind = (toolName: string): 'search' | 'fetch' | null => {
+  const normalized = toolName.toLowerCase().replace(/\s+/g, '');
+  if (normalized.includes('notion-search')) return 'search';
+  if (normalized.includes('notion-fetch')) return 'fetch';
+  return null;
+};
+
+const toolChipLabel = (toolName: string) => {
+  const notionKind = notionToolKind(toolName);
+  if (notionKind === 'search') return 'Recherche dans Notion';
+  if (notionKind === 'fetch') return "Lecture d’une page Notion";
+  return TOOL_CHIP_LABELS[toolName] ?? toolName.replace(/_/g, ' ');
+};
 
 /**
  * Fallback générique : chip discrète de progression pour TOUT tool sans UI
@@ -63,13 +75,25 @@ export const ToolFallbackChip: React.FC<{
   status?: { type: string };
 }> = ({ toolName, result, status }) => {
   const outcome = (result as { outcome?: string } | undefined)?.outcome;
+  const notionKind = notionToolKind(toolName);
   // "en cours" UNIQUEMENT pendant le run actif : un message annulé/interrompu
   // (status incomplete — nouvel envoi pendant l'exécution, erreur réseau) ne
   // doit pas laisser une chip animée à vie.
   const running = result === undefined && status?.type === 'running';
   const unresolved = result === undefined && !running;
+  const successful = !running && !unresolved && (
+    outcome === undefined || outcome === 'ok' || outcome === 'executed_inline'
+  );
+
+  // Les appels Notion réussis servent uniquement de progression pendant le
+  // stream. Une fois terminés, on les retire pour laisser toute la place au
+  // résultat final ; les erreurs et interruptions restent visibles.
+  if (notionKind && successful) return null;
+
+  const NotionIcon = notionKind === 'fetch' ? FileText : Search;
   return (
     <div className="my-1 inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">
+      {notionKind && <NotionIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
       <span className="font-medium text-foreground/80">{toolChipLabel(toolName)}</span>
       {running && <span className="animate-pulse">en cours…</span>}
       {unresolved && <span className="text-muted-foreground/60">interrompu</span>}

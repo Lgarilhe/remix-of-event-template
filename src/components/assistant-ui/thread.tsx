@@ -14,6 +14,7 @@ import {
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useNavigate } from 'react-router-dom';
 import { useAgent } from '@/contexts/AgentContext';
 import { ToolFallbackChip } from './tool-uis';
@@ -304,7 +305,7 @@ const MarkdownText = ({ text }: { text: string }) => {
             'text-[14px] leading-[1.7] text-foreground',
             '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
             '[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_ul]:list-disc [&_ol]:list-decimal',
-            '[&_li]:my-1 [&_li]:marker:text-muted-foreground',
+            '[&_li]:my-1 [&_li]:break-words [&_li]:marker:text-muted-foreground [&_li>p]:my-0.5',
             '[&_strong]:font-semibold [&_strong]:text-foreground',
             '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_a]:cursor-pointer hover:[&_a]:text-primary/80',
             '[&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-[12.5px] [&_code]:font-mono',
@@ -317,7 +318,29 @@ const MarkdownText = ({ text }: { text: string }) => {
           )}
         >
           <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
             components={{
+              table: ({ children }) => (
+                <div
+                  className="my-3 w-full max-w-full overflow-x-auto rounded-xl border border-border/70 bg-card/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  role="region"
+                  aria-label="Tableau de résultats — faire défiler horizontalement si nécessaire"
+                  tabIndex={0}
+                >
+                  <table className="w-full min-w-[520px] border-collapse text-left text-[12.5px] leading-relaxed">
+                    {children}
+                  </table>
+                </div>
+              ),
+              thead: ({ children }) => <thead className="bg-muted/60 text-foreground">{children}</thead>,
+              tbody: ({ children }) => <tbody className="divide-y divide-border/60">{children}</tbody>,
+              tr: ({ children }) => <tr className="transition-colors hover:bg-muted/25">{children}</tr>,
+              th: ({ children }) => (
+                <th className="whitespace-nowrap px-3 py-2 font-semibold text-foreground">{children}</th>
+              ),
+              td: ({ children }) => (
+                <td className="min-w-[5rem] px-3 py-2 align-top text-foreground/85">{children}</td>
+              ),
               a: ({ href, children, ...props }) => {
                 const raw = String(href ?? '');
                 // Détermine si c'est un lien INTERNE app → navigation SPA. On gère :

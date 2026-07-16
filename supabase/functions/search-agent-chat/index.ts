@@ -997,6 +997,12 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `N'essaie JAMAIS d'écrire, créer, modifier, supprimer ou envoyer quoi que ce soit via un ` +
         `connecteur MCP. Toute action d'écriture doit passer par un outil Konekt avec sa politique ` +
         `d'approbation serveur ; si aucun outil Konekt équivalent n'existe, explique la limite. ` +
+        `Pour les outils de LECTURE, n'écris aucun texte avant ou entre les appels : exécute-les ` +
+        `silencieusement, puis donne une seule réponse finale synthétique. N'annonce jamais ` +
+        `« je vais ouvrir », « je vais chercher » ou « je vais maintenant récupérer ». ` +
+        `L'interface du chat est étroite : pour une liste de résultats, n'utilise JAMAIS de tableau ` +
+        `Markdown. Préfère une liste numérotée aérée avec le nom en gras ou en lien, puis une ` +
+        `courte information clé sur la ligne suivante. ` +
         `Pour CONNAÎTRE LE STATUT d'une action IA (envoi LinkedIn, modif candidat, ` +
         `etc.) — « tu as bien envoyé ? », « c'est planifié ? », « où en est ma ` +
         `demande ? » : appelle get_recent_agent_actions (filtres optionnels : ` +
@@ -1365,12 +1371,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                         const chipName = cb.server_name ? `${cb.server_name} · ${cb.name || "outil"}` : (cb.name || "connecteur");
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.id, name: chipName, state: "running" } })}\n\n`));
                       } else if (typeof cb.type === "string" && cb.type.endsWith("_tool_result")) {
-                        // Résultat de server tool (web_search_tool_result…) :
+                        // Résultat de server/MCP tool (web_search_tool_result,
+                        // mcp_tool_result…) :
                         // arrive complet dans le start — on le conserve tel quel
                         // (il DOIT être ré-émis avec le contenu assistant).
                         partials.set(event.index, { ...cb });
                         if (cb.tool_use_id) {
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.tool_use_id, name: "web_search", state: "done", outcome: "ok" } })}\n\n`));
+                          const toolOutcome = cb.is_error === true ? "error" : "ok";
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.tool_use_id, name: "tool", state: "done", outcome: toolOutcome } })}\n\n`));
                         }
                       } else {
                         partials.set(event.index, { type: "text", text: "" });
@@ -1393,8 +1401,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                         try { p.input = p._json ? JSON.parse(p._json) : {}; } catch { p.input = {}; }
                         delete p._json;
                       }
-                      roundBlocks[event.index] = p;
-                      partials.delete(event.index);
+                        roundBlocks[event.index] = p;
+                        partials.delete(event.index);
                     } else if (event.type === "message_delta") {
                       if (event.delta?.stop_reason) stopReason = event.delta.stop_reason;
                       // output_tokens est CUMULATIF au sein d'un message → on
