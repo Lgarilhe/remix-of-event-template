@@ -22,7 +22,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
-import { recordGdprErasure, normalizeEmail, normalizeLinkedInUrl } from "../_shared/get-or-fetch-contact.ts";
+import { recordGdprErasure, normalizeEmail, normalizeLinkedInUrl, sha256Hex } from "../_shared/get-or-fetch-contact.ts";
 import { requireAuth } from "../_shared/require-auth.ts";
 
 const corsHeaders = {
@@ -84,16 +84,16 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
 
-    // The public unsubscribe LINK is a GET (clicked from outreach emails) and
-    // stays open. Programmatic POST erasure must be authenticated (a logged-in
-    // Konekt user or the service role) — otherwise anyone could script this
-    // destructive endpoint to erase arbitrary contacts.
-    if (req.method === "POST") {
-      try {
-        await requireAuth(req, corsHeaders);
-      } catch (authResp) {
-        return authResp as Response;
-      }
+    // Effacement RGPD = opération DESTRUCTIVE. On exige une authentification pour
+    // TOUTES les méthodes (POST programmatique ET GET). Le GET était public et
+    // effaçait un contact arbitraire par `?email=` sans aucune preuve de
+    // propriété ; aucun lien email réel ne pointe ici (le vrai désabonnement
+    // passe par handle-email-unsubscribe, à token) → le fermer ne casse rien.
+    // Un self-service à token signé pourra rouvrir un GET public plus tard (TODO).
+    try {
+      await requireAuth(req, corsHeaders);
+    } catch (authResp) {
+      return authResp as Response;
     }
 
     // Lecture des params : POST body OR query string
@@ -139,6 +139,12 @@ Deno.serve(async (req) => {
 
     // Rate limit basique par IP (header X-Forwarded-For)
     const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    // check_rate_limit attend un uuid (p_user_id uuid) : passer l'IP en clair
+    // faisait échouer le cast → rlError → fail-closed → 429 PERMANENT sur cet
+    // endpoint RGPD. On dérive un uuid déterministe et stable depuis l'IP pour
+    // garder un rate-limit PAR IP sans casser le cast.
+    const ipHash = await sha256Hex(`rgpd_erase_ip:${clientIp}`);
+    const rateLimitKey = `${ipHash.slice(0, 8)}-${ipHash.slice(8, 12)}-${ipHash.slice(12, 16)}-${ipHash.slice(16, 20)}-${ipHash.slice(20, 32)}`;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceClient = createClient(
@@ -148,7 +154,7 @@ Deno.serve(async (req) => {
 
     try {
       const { data: rlAllowed, error: rlError } = await serviceClient.rpc("check_rate_limit", {
-        p_user_id: clientIp, // utilise l'IP comme clé
+        p_user_id: rateLimitKey, // uuid déterministe dérivé de l'IP
         p_action: "rgpd_erase",
         p_max_requests: 30,
         p_window_seconds: 3600,

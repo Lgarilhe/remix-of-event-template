@@ -61,6 +61,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // NB (dette de sécurité connue, NON corrigée ici) : candidate_profiles.candidate_id
+    // et job_profiles.job_id sont UNIQUE *global* → une seule ligne d'embedding
+    // par entité pour TOUTE la plateforme (cache partagé cross-org, embedding
+    // déterministe). Impossible d'imposer une propriété par-org au niveau applicatif
+    // sans casser le ré-embed cross-org LÉGITIME (viviers de candidats qui se
+    // recoupent entre agences). Le vrai correctif = schéma per-org
+    // (UNIQUE(entityId, organization_id)), à traiter séparément. En attendant,
+    // requireAuth + rate-limit (30/min) bornent l'abus ; l'embedding se répare de
+    // lui-même au prochain scoring légitime.
     // Verify user belongs to the organization if provided
     if (organization_id) {
       const { data: membership } = await supabase

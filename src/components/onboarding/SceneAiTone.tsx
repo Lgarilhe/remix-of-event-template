@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Loader2, MessageSquareQuote } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useUserAiContext, type AiContextTone } from '@/hooks/useAiContext';
+import { EditorialChoiceList } from './EditorialChoiceList';
+import { cn } from '@/lib/utils';
 
 interface Props {
   onNext: () => void;
@@ -16,32 +19,28 @@ const TONES: { value: AiContextTone; label: string; description: string; example
     value: 'tu',
     label: 'Tutoiement',
     description: 'Direct et proche, comme entre collègues.',
-    example: '« Salut Marie, ton profil a retenu mon attention pour un poste qui pourrait vraiment te plaire… »',
+    example: 'Salut Marie, ton profil a retenu mon attention pour un poste qui pourrait vraiment te plaire…',
   },
   {
     value: 'vous',
     label: 'Vouvoiement',
     description: 'Professionnel et respectueux, le classique.',
-    example: '« Bonjour Marie, votre parcours a retenu mon attention pour une opportunité à la hauteur de votre expérience… »',
+    example: 'Bonjour Marie, votre parcours a retenu mon attention pour une opportunité à la hauteur de votre expérience…',
   },
   {
     value: 'casual',
     label: 'Décontracté',
     description: 'Léger et spontané, sans formalisme.',
-    example: '« Hello Marie ! Je suis tombé sur ton profil et franchement, il fallait que je t’écrive… »',
+    example: 'Hello Marie ! Je suis tombé sur ton profil et franchement, il fallait que je t’écrive…',
   },
   {
     value: 'formal',
     label: 'Formel',
     description: 'Soutenu et institutionnel, pour les profils seniors.',
-    example: '« Madame, je me permets de vous contacter au sujet d’une opportunité correspondant à votre expertise… »',
+    example: 'Madame, je me permets de vous contacter au sujet d’une opportunité correspondant à votre expertise…',
   },
 ];
 
-/**
- * Étape onboarding : personnalisation du ton de l'IA Konekt.
- * Écrit profiles.ai_context via useUserAiContext (même cible que Réglages > Contexte IA).
- */
 const DO_SUGGESTIONS = [
   'Mentionner le télétravail dès le 1er message',
   'Annoncer la fourchette de salaire',
@@ -56,9 +55,51 @@ const DONT_SUGGESTIONS = [
   'Jamais plus de 2 relances',
 ];
 
+const TextToggle: React.FC<{
+  label: string;
+  active: boolean;
+  tone: 'do' | 'dont';
+  onToggle: () => void;
+}> = ({ label, active, tone, onToggle }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    aria-pressed={active}
+    className={cn(
+      'group flex items-baseline gap-2 w-full text-left py-1 transition-transform duration-200 hover:translate-x-1'
+    )}
+  >
+    <span
+      className={cn(
+        'shrink-0 w-4 text-center font-mono text-sm transition-colors',
+        active
+          ? tone === 'do' ? 'text-success' : 'text-destructive'
+          : 'text-muted-foreground/40 group-hover:text-foreground'
+      )}
+      aria-hidden="true"
+    >
+      {tone === 'do' ? '+' : '−'}
+    </span>
+    <span
+      className={cn(
+        'text-sm transition-colors leading-relaxed',
+        active
+          ? cn(
+              'text-foreground underline decoration-2 underline-offset-4',
+              tone === 'do' ? 'decoration-emerald-500/70' : 'decoration-destructive/60'
+            )
+          : 'text-muted-foreground group-hover:text-foreground'
+      )}
+    >
+      {label}
+    </span>
+  </button>
+);
+
 export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
   const { aiContext, save, isSaving } = useUserAiContext();
   const [tone, setTone] = useState<AiContextTone | null>(null);
+  const [specialty, setSpecialty] = useState('');
   const [freeText, setFreeText] = useState('');
   const [doList, setDoList] = useState<Set<string>>(new Set());
   const [dontList, setDontList] = useState<Set<string>>(new Set());
@@ -66,8 +107,9 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
 
   useEffect(() => {
     if (hydrated) return;
-    if (aiContext.tone || aiContext.free_text || aiContext.do.length || aiContext.dont.length) {
+    if (aiContext.tone || aiContext.specialty || aiContext.free_text || aiContext.do.length || aiContext.dont.length) {
       setTone(aiContext.tone);
+      setSpecialty(aiContext.specialty);
       setFreeText(aiContext.free_text);
       setDoList(new Set(aiContext.do));
       setDontList(new Set(aiContext.dont));
@@ -90,6 +132,7 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
     save({
       ...aiContext,
       tone,
+      specialty: specialty.trim(),
       free_text: freeText.trim(),
       do: Array.from(doList),
       dont: Array.from(dontList),
@@ -98,161 +141,148 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Comment écrivez-vous ?</h2>
-        <p className="text-muted-foreground text-sm">
-          L’IA Konekt rédige vos messages d’approche. Donnez-lui votre ton — vous pourrez l’ajuster à tout moment dans les Réglages.
+    <div className="w-full">
+      <div className="mb-8">
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">
+          Comment écrivez-vous ?
+        </h2>
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+          L'IA Konekt rédige vos messages d'approche. Donnez-lui votre ton une fois —
+          chaque message sonnera comme vous, pas comme un robot.
         </p>
       </div>
 
-      {/* Tone cards */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {TONES.map((t, index) => {
-          const isSelected = tone === t.value;
-          return (
-            <motion.button
-              key={t.value}
-              type="button"
-              onClick={() => setTone(t.value)}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + index * 0.07, duration: 0.35 }}
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              className={`text-left p-3 rounded-lg border transition-all duration-200 ${
-                isSelected ? 'border-foreground/40 bg-accent/60 shadow-sm' : 'border-border hover:bg-accent/30'
-              }`}
-              aria-pressed={isSelected}
-            >
-              <span className="text-sm font-semibold block">{t.label}</span>
-              <span className="text-xs text-muted-foreground mt-0.5 block leading-relaxed">{t.description}</span>
-            </motion.button>
-          );
-        })}
-      </div>
+      <EditorialChoiceList
+        options={TONES.map(({ value, label, description }) => ({ value, label, description }))}
+        selected={tone ? [tone] : []}
+        mode="single"
+        onSelect={(v) => setTone(v as AiContextTone)}
+      />
 
-      {/* Aperçu du ton */}
+      {/* Aperçu du ton — citation */}
       <AnimatePresence mode="wait">
         {selectedTone && (
-          <motion.div
+          <motion.blockquote
             key={selectedTone.value}
-            initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="rounded-lg border border-border bg-card/60 backdrop-blur-sm p-3.5 flex gap-3"
+            className="border-l-2 border-emerald-500/50 pl-4 my-6"
           >
-            <span className="w-6 h-6 flex items-center justify-center rounded-md bg-emerald-500/15 shrink-0">
-              <MessageSquareQuote className="w-3.5 h-3.5 text-foreground" />
-            </span>
-            <p className="text-xs text-muted-foreground italic leading-relaxed">{selectedTone.example}</p>
-          </motion.div>
+            <p className="font-editorial italic text-lg text-foreground/80 leading-relaxed">
+              «&nbsp;{selectedTone.example}&nbsp;»
+            </p>
+          </motion.blockquote>
         )}
       </AnimatePresence>
 
-      {/* Consignes do / don't */}
+      {/* Spécialité */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="space-y-3"
+        className="mt-8"
       >
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            À faire systématiquement
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {DO_SUGGESTIONS.map((item) => {
-              const active = doList.has(item);
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => toggleIn(setDoList)(item)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-all duration-200 ${
-                    active
-                      ? 'border-emerald-500/40 bg-emerald-500/15 text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-accent/40 hover:text-foreground'
-                  }`}
-                  aria-pressed={active}
-                >
-                  {item}
-                </button>
-              );
-            })}
-          </div>
+        <label htmlFor="aitone-specialty" className="block text-sm font-semibold text-foreground mb-2">
+          Votre spécialité, en une phrase
+        </label>
+        <Input
+          id="aitone-specialty"
+          value={specialty}
+          onChange={(e) => setSpecialty(e.target.value)}
+          placeholder="Ex : recruteur tech spécialisé data & IA, postes senior, région parisienne"
+          maxLength={200}
+          className="border border-border text-sm bg-background/50 h-11"
+        />
+        <p className="text-xs text-muted-foreground mt-1.5">
+          L'IA la glisse naturellement dans vos messages pour asseoir votre crédibilité.
+        </p>
+      </motion.div>
+
+      {/* Consignes */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+        className="grid sm:grid-cols-2 gap-x-8 gap-y-5 mt-8"
+      >
+        <div>
+          <p className="text-sm font-semibold text-foreground mb-2">À faire, toujours</p>
+          {DO_SUGGESTIONS.map((item) => (
+            <TextToggle
+              key={item}
+              label={item}
+              tone="do"
+              active={doList.has(item)}
+              onToggle={() => toggleIn(setDoList)(item)}
+            />
+          ))}
         </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            À éviter absolument
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {DONT_SUGGESTIONS.map((item) => {
-              const active = dontList.has(item);
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => toggleIn(setDontList)(item)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-all duration-200 ${
-                    active
-                      ? 'border-destructive/40 bg-destructive/10 text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-accent/40 hover:text-foreground'
-                  }`}
-                  aria-pressed={active}
-                >
-                  {item}
-                </button>
-              );
-            })}
-          </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground mb-2">À éviter, absolument</p>
+          {DONT_SUGGESTIONS.map((item) => (
+            <TextToggle
+              key={item}
+              label={item}
+              tone="dont"
+              active={dontList.has(item)}
+              onToggle={() => toggleIn(setDontList)(item)}
+            />
+          ))}
         </div>
       </motion.div>
 
       {/* Contexte libre */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35 }}
-        className="space-y-1.5"
+        transition={{ delay: 0.45 }}
+        className="mt-8"
       >
-        <label htmlFor="aitone-free-text" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Autre chose à savoir ? <span className="font-normal normal-case">(facultatif)</span>
+        <label htmlFor="aitone-free-text" className="block text-sm font-semibold text-foreground mb-2">
+          Autre chose à savoir ? <span className="font-normal text-muted-foreground">(facultatif)</span>
         </label>
         <Textarea
           id="aitone-free-text"
           value={freeText}
           onChange={(e) => setFreeText(e.target.value)}
-          placeholder="Ex : je signe toujours « À très vite », j’évite les emojis, je mentionne le télétravail dès le premier message…"
+          placeholder="Ex : je signe toujours « À très vite », je mentionne le télétravail dès le premier message…"
           maxLength={1000}
           rows={3}
-          className="border border-border text-sm resize-none bg-background/60"
+          className="border border-border text-sm resize-none bg-background/50"
         />
       </motion.div>
 
       {/* Navigation */}
       <motion.div
-        className="flex items-center justify-between pt-2"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
+        transition={{ delay: 0.5 }}
+        className="flex items-center justify-between mt-8"
       >
-        <Button variant="ghost" onClick={onBack} className="gap-2 text-sm">
-          <ArrowLeft className="w-4 h-4" /> Retour
-        </Button>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={onSkip} className="text-sm text-muted-foreground">
-            Passer
-          </Button>
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Retour
+        </button>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 decoration-border transition-colors"
+          >
+            Je préfère passer
+          </button>
           <Button
             onClick={handleSubmit}
             disabled={!tone || isSaving}
-            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            className="gap-2 bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
           >
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-            Suivant
+            Continuer
           </Button>
         </div>
       </motion.div>

@@ -14,13 +14,13 @@ interface Particle {
   drag: number;
 }
 
+// Palette sobre : émeraude, blanc, doré — pas de violet/rose
 const COLORS = [
-  'hsl(271 81% 56%)', // skalr-purple
-  'hsl(330 81% 60%)', // skalr-pink
-  'hsl(217 91% 60%)', // skalr-blue
-  'hsl(187 85% 53%)', // skalr-cyan
-  'hsl(142 71% 45%)', // skalr-green
-  'hsl(50 100% 60%)', // accent-yellow
+  'hsl(142 71% 45%)', // success
+  'hsl(142 60% 60%)', // success clair
+  'hsl(0 0% 98%)',    // blanc
+  'hsl(0 0% 75%)',    // gris clair
+  'hsl(45 90% 55%)',  // doré
 ];
 
 const GRAVITY = 0.18;

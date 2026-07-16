@@ -81,6 +81,7 @@ export const useMissionInvitations = (projectId: string | undefined) => {
         await invokeEdgeFunction('send-transactional-email', {
           templateName: 'mission-invitation',
           recipientEmail: input.email.toLowerCase().trim(),
+          invitationId: invitation.id,
           idempotencyKey: `mission-invite-${invitation.id}`,
           templateData: {
             inviterName: profile?.display_name || user.email,

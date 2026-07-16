@@ -190,11 +190,15 @@ Deno.serve(async (req) => {
 
     const { action, account_id, organization_id, ...params } = await req.json();
 
-    if (isInternal) {
-      if (!organization_id) {
-        return new Response(JSON.stringify({ error: 'organization_id required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-    } else if (organization_id) {
+    // organization_id OBLIGATOIRE pour tous les modes, ET membership vérifié pour
+    // tout appel user : sinon un user qui OMETTAIT organization_id sautait le
+    // check et resolveUnipileCredentials(undefined) retombait sur la clé Unipile
+    // partagée (env). Le fallback env reste légitime (org sans créds propres)
+    // mais n'est plus accessible sans appartenance vérifiée.
+    if (!organization_id) {
+      return new Response(JSON.stringify({ error: 'organization_id required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (!isInternal) {
       const sb = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
       const { data: membership } = await sb.from('organization_members').select('id').eq('user_id', userId).eq('organization_id', organization_id).maybeSingle();
       if (!membership) {

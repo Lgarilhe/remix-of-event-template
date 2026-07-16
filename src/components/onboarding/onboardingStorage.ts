@@ -4,13 +4,14 @@ import type { OrgDetailsData } from './SceneOrgDetails';
 // ⚠️ Bumper la version à chaque changement de forme du flow (ajout/retrait
 // d'étapes) : un step index persisté sur l'ancien flow pointerait sur la
 // mauvaise scène et ferait sauter les nouvelles étapes.
-const STORAGE_KEY = 'konekt_onboarding_progress_v3';
+const STORAGE_KEY = 'konekt_onboarding_progress_v4';
 
 export interface PersistedProgress {
   step: number;
   orgType: OrgType | null;
   goal?: string;
   stack?: string[];
+  icp?: { roles: string; seniorities: string[]; locations: string };
   orgDetails: OrgDetailsData | null;
   discoverySource: string;
   specializations: string[];
