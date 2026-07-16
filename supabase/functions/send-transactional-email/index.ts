@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
   const isServiceRoleCaller =
     apiKey === supabaseServiceKey || bearerToken === supabaseServiceKey
 
+  let callerUserId: string | null = null
   if (!isServiceRoleCaller) {
     if (!bearerToken) {
       return new Response(
@@ -74,6 +75,7 @@ Deno.serve(async (req) => {
         }
       )
     }
+    callerUserId = authData.user.id
   }
 
   // Parse request body
@@ -81,11 +83,13 @@ Deno.serve(async (req) => {
   let recipientEmail: string
   let idempotencyKey: string
   let messageId: string
+  let invitationId: string | null = null
   let templateData: Record<string, any> = {}
   try {
     const body = await req.json()
     templateName = body.templateName || body.template_name
     recipientEmail = body.recipientEmail || body.recipient_email
+    invitationId = body.invitationId || body.invitation_id || null
     messageId = crypto.randomUUID()
     idempotencyKey = body.idempotencyKey || body.idempotency_key || messageId
     if (body.templateData && typeof body.templateData === 'object') {
@@ -125,6 +129,50 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
+  }
+
+  // Verrou anti-abus pour les callers user-JWT : sans ça, n'importe quel user
+  // authentifié pouvait relayer N'IMPORTE QUEL template vers N'IMPORTE QUELLE
+  // adresse (spam depuis noreply@konekt.fr), avec un inviteUrl de phishing.
+  // Un caller user ne peut envoyer QUE 'mission-invitation', et destinataire +
+  // URL sont reconstruits CÔTÉ SERVEUR depuis l'invitation (jamais le body).
+  if (!isServiceRoleCaller) {
+    if (templateName !== 'mission-invitation') {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    if (!invitationId) {
+      return new Response(JSON.stringify({ error: 'invitationId is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    const { data: inv } = await supabase
+      .from('mission_invitations')
+      .select('token, email, organization_id, role')
+      .eq('id', invitationId)
+      .maybeSingle()
+    if (!inv) {
+      return new Response(JSON.stringify({ error: 'Invitation not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('id')
+      .eq('user_id', callerUserId)
+      .eq('organization_id', inv.organization_id)
+      .maybeSingle()
+    if (!membership) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    // 60/h : marge pour un onboarding d'équipe/mission volumineux (l'anti-abus
+    // réel = restriction au template mission-invitation + membership + destinataire
+    // et URL reconstruits serveur ; le rate-limit n'est qu'une défense secondaire).
+    const { data: rlAllowed, error: rlError } = await supabase.rpc('check_rate_limit', {
+      p_user_id: callerUserId, p_action: 'send_transactional_email', p_max_requests: 60, p_window_seconds: 3600,
+    })
+    if (rlError || rlAllowed === false) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    // Anti-phishing : destinataire ET URL viennent de la DB, jamais du body.
+    const appUrl = (Deno.env.get('APP_URL') || 'https://konekt-app-navy.vercel.app').replace(/\/+$/, '')
+    recipientEmail = inv.email
+    templateData = { ...templateData, inviteUrl: `${appUrl}/mission-invite/${inv.token}`, role: inv.role ?? templateData.role }
   }
 
   // Resolve effective recipient: template-level `to` takes precedence over

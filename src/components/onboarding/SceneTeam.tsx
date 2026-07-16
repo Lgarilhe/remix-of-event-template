@@ -81,12 +81,15 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
         })
       );
 
-      // LinkedIn search if connected
-      if (hasLinkedIn && accounts[0]) {
+      // LinkedIn search if connected. organization_id est passé explicitement
+      // (et requis côté serveur) : en onboarding l'org active n'est pas toujours
+      // encore résolue par l'auto-injection d'invokeEdgeFunction.
+      if (hasLinkedIn && accounts[0] && organizationId) {
         searches.push(
           invokeEdgeFunction('unipile-search', {
             action: 'search',
             account_id: accounts[0].id,
+            organization_id: organizationId,
             keywords: `${orgName} RH Recruteur Manager`,
             limit: 10,
           }).then(({ data }) => {
@@ -123,7 +126,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
       toast.error('Erreur lors du scan. Réessayez ou invitez manuellement.');
       setScanPhase('idle');
     }
-  }, [organization, hasLinkedIn, accounts]);
+  }, [organization, organizationId, hasLinkedIn, accounts]);
   const toggleProfile = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);

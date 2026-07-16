@@ -201,7 +201,12 @@ Deno.serve(async (req) => {
         throw new Error("API keys not configured (UNIPILE + ANTHROPIC required)");
       }
 
-      if (!account_id || !user_id) {
+      // Un caller JWT ne peut attribuer les opportunités qu'à LUI-MÊME — jamais
+      // un user_id arbitraire du body (IDOR d'écriture cross-user : injection de
+      // nurturing_opportunities dans le dashboard d'une victime). Les callers
+      // service-role (cron/interne) retombent sur le user_id demandé.
+      const targetUserId = authUserId ?? user_id;
+      if (!account_id || !targetUserId) {
         throw new Error("account_id and user_id are required");
       }
 
@@ -223,7 +228,7 @@ Deno.serve(async (req) => {
           conv,
           jobs || [],
           account_id,
-          user_id,
+          targetUserId,
         );
         if (opportunity) {
           opportunities.push(opportunity);
