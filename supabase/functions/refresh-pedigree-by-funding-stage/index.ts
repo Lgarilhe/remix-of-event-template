@@ -139,11 +139,20 @@ async function searchApolloByFunding(
       }
 
       const data = await res.json();
-      const list = data.organizations || data.accounts || data.results || data.data || [];
-      if (!Array.isArray(list) || list.length === 0) break;
+      // Les résultats arrivent dans DEUX tableaux (organizations + accounts) —
+      // n'en lire qu'un faisait croire à une dernière page (97 < 100) et
+      // cassait la pagination dès la page 1.
+      const orgsArr = Array.isArray(data.organizations) ? data.organizations : [];
+      const accountsArr = Array.isArray(data.accounts) ? data.accounts : [];
+      const list = [...orgsArr, ...accountsArr] as ApolloOrg[];
+      if (list.length === 0) break;
 
-      all.push(...(list as ApolloOrg[]));
-      if (all.length >= cap || list.length < 100) break; // dernière page atteinte
+      all.push(...list);
+      if (all.length >= cap) break;
+      // total_entries est parfois top-level, parfois dans pagination
+      const totalEntries = Number(data.total_entries ?? data.pagination?.total_entries) || null;
+      if (totalEntries !== null && page * 100 >= totalEntries) break;
+      if (totalEntries === null && list.length < 100) break; // heuristique de repli
     } catch (err) {
       console.error(`[refresh-pedigree] Apollo error ${bracket.stage}/${location} p${page}:`, err);
       break;
