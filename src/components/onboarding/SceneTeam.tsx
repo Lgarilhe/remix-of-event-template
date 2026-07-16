@@ -11,7 +11,6 @@ import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
-import teamIcon from '@/assets/icon-team-3d.webp';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
 
 interface Props {
@@ -188,22 +187,14 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
+    <div className="w-full flex flex-col gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Invitez vos collaborateurs</h2>
-        <p className="text-muted-foreground text-sm">Le recrutement est un sport d'équipe.</p>
+      <div className="mb-2">
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">Qui recrute avec vous ?</h2>
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+          Invitez vos collègues : missions, candidats et statistiques partagés dans un seul espace.
+        </p>
       </div>
-
-      <motion.img
-        src={teamIcon}
-        alt=""
-        aria-hidden="true"
-        className="mx-auto w-14 h-14 drop-shadow-md"
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.4 }}
-      />
 
       {/* LinkedIn scan section */}
       {hasLinkedIn && scanPhase === 'idle' && (

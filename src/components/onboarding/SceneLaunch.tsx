@@ -85,9 +85,9 @@ export const SceneLaunch: React.FC<Props> = ({ items, scorePercent, orgName, onF
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="text-2xl md:text-3xl font-bold tracking-tight text-foreground"
+          className="font-editorial font-normal italic text-4xl md:text-5xl leading-[1.08] text-foreground"
         >
-          {isHighScore ? 'Configuration parfaite !' : 'Votre espace est prêt'}
+          {isHighScore ? 'Configuration parfaite.' : 'Votre espace est prêt.'}
         </motion.h1>
         <motion.p
           initial={{ opacity: 0 }}

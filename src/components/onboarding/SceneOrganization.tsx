@@ -305,11 +305,13 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   ];
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5">
+    <div className="w-full flex flex-col gap-4 sm:gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Parlez-nous de vous</h2>
-        <p className="text-muted-foreground text-sm">Entrez le nom de votre société, on récupère tout automatiquement.</p>
+      <div className="mb-2">
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">Votre société, en un mot.</h2>
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+          Donnez-nous son nom — on récupère logo, description et postes ouverts, et votre espace se construit tout seul.
+        </p>
       </div>
 
       {/* Search input */}

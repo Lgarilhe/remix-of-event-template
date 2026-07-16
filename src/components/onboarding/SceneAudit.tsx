@@ -212,11 +212,13 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const improvementCount = categories.filter(c => c.score <= 3).length;
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col gap-4 sm:gap-5 px-1">
+    <div className="w-full flex flex-col gap-4 sm:gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Votre image employeur</h2>
-        <p className="text-muted-foreground text-sm">On analyse votre présence en ligne pour identifier vos forces et axes d'amélioration.</p>
+      <div className="mb-2">
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">Ce que les candidats voient de vous.</h2>
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+          Votre image employeur pèse directement sur vos taux de réponse. On analyse votre présence en ligne avant votre premier message.
+        </p>
       </div>
 
       <AnimatePresence mode="wait">

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { Check, Loader2, Sparkles } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 
 export interface PreparingLine {
   key: string;
@@ -37,40 +37,24 @@ export const ScenePreparing: React.FC<Props> = ({ lines, onDone }) => {
   }, [doneCount, lines.length, onDone, reduceMotion]);
 
   return (
-    <div className="w-full max-w-md mx-auto flex flex-col items-center gap-6 py-4" role="status" aria-live="polite">
-      {/* Pastille pulsante */}
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-        className="relative w-12 h-12 flex items-center justify-center rounded-xl bg-emerald-500/15 border border-border"
-      >
-        <motion.span
-          aria-hidden="true"
-          className="absolute inset-0 rounded-xl bg-emerald-500/20"
-          animate={{ scale: [1, 1.35, 1], opacity: [0.6, 0, 0.6] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <Sparkles className="w-5 h-5 text-foreground relative" />
-      </motion.div>
-
+    <div className="w-full flex flex-col gap-8 py-4" role="status" aria-live="polite">
       {/* Titre */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
-          Konekt prépare votre espace
+      <div>
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">
+          On prépare votre espace.
         </h2>
-        <p className="text-muted-foreground text-sm">
-          L’IA Konekt assemble votre configuration à partir de vos réponses.
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+          L'IA Konekt assemble votre configuration à partir de vos réponses.
         </p>
       </div>
 
       {/* Checklist séquencée */}
-      <div className="w-full rounded-lg border border-border bg-card/60 backdrop-blur-sm divide-y divide-border/60 overflow-hidden">
+      <div className="w-full max-w-md">
         {lines.map((line, i) => {
           const done = i < doneCount;
           const active = i === doneCount;
           return (
-            <div key={line.key} className="flex items-center gap-3 px-4 py-2.5">
+            <div key={line.key} className="flex items-center gap-3 py-2">
               <span className="w-5 h-5 flex items-center justify-center shrink-0">
                 <AnimatePresence mode="wait" initial={false}>
                   {done ? (
@@ -93,8 +77,8 @@ export const ScenePreparing: React.FC<Props> = ({ lines, onDone }) => {
                 </AnimatePresence>
               </span>
               <span
-                className={`text-sm transition-colors duration-300 ${
-                  done ? 'text-foreground' : active ? 'text-foreground/90 konekt-shimmer-text' : 'text-muted-foreground/50'
+                className={`text-[15px] transition-colors duration-300 ${
+                  done ? 'text-foreground' : active ? 'text-foreground/90 konekt-shimmer-text' : 'text-muted-foreground/40'
                 }`}
               >
                 {line.label}
@@ -104,9 +88,7 @@ export const ScenePreparing: React.FC<Props> = ({ lines, onDone }) => {
         })}
       </div>
 
-      <p className="text-2xs font-mono text-muted-foreground/60 uppercase tracking-wider">
-        Quelques secondes…
-      </p>
+      <p className="text-xs text-muted-foreground/60">Quelques secondes…</p>
     </div>
   );
 };
