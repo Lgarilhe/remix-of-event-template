@@ -1235,7 +1235,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               // Connecteurs MCP actifs pour CE round (désactivés après un 400)
               const activeMcpConfigurations = mcpDisabledForRequest ? [] : mcpConfigurations;
               const activeMcpServers = activeMcpConfigurations.map((configuration) => configuration.server);
-              const apiBody: any = {
+              const apiBody: Record<string, unknown> = {
                 model: resolvedModel,
                 max_tokens: 16000,
                 system: [
