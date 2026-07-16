@@ -79,13 +79,13 @@ export function AgentPoliciesSettings() {
     queryKey: ['agent-tool-policies', organizationId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('agent_tool_policies' as any)
+        .from('agent_tool_policies')
         .select('tool_name, policy')
         .eq('organization_id', organizationId);
       if (error) throw error;
       const map = new Map<string, ToolPolicy>();
-      for (const row of (data ?? []) as Array<{ tool_name: string; policy: ToolPolicy }>) {
-        map.set(row.tool_name, row.policy);
+      for (const row of data ?? []) {
+        map.set(row.tool_name, row.policy as ToolPolicy);
       }
       return map;
     },
@@ -98,7 +98,7 @@ export function AgentPoliciesSettings() {
       if (!organizationId) return;
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase
-        .from('agent_tool_policies' as any)
+        .from('agent_tool_policies')
         .upsert(
           {
             organization_id: organizationId,

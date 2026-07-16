@@ -27,6 +27,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  agent-safety:
+    name: Agent safety tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Agent security regression tests
+        run: npm run test:agent
+
   build:
     name: Build (bloquant)
     runs-on: ubuntu-latest

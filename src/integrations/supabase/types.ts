@@ -194,6 +194,44 @@ export type Database = {
           },
         ]
       }
+      agent_tool_policies: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          policy: string
+          tool_name: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          policy: string
+          tool_name: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          policy?: string
+          tool_name?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_tool_policies_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_credit_balances: {
         Row: {
           created_at: string
@@ -4058,6 +4096,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "organization_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_mcp_servers: {
+        Row: {
+          allowed_tools: string[]
+          authorization_token: string | null
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          id: string
+          name: string
+          organization_id: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          allowed_tools?: string[]
+          authorization_token?: string | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          name: string
+          organization_id: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          allowed_tools?: string[]
+          authorization_token?: string | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          name?: string
+          organization_id?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_mcp_servers_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"

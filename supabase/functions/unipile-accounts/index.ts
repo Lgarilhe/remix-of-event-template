@@ -13,6 +13,18 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+async function hmacSha256Hex(secret: string, value: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 /**
  * Resolve Unipile credentials for a specific organization only.
  * No global fallback to avoid cross-tenant data leaks.
@@ -337,7 +349,8 @@ Deno.serve(async (req) => {
         const { data: memberEmailAccounts, error: memberEmailAccountsError } = await adminClient
           .from('member_email_accounts')
           .select('email_account_id')
-          .eq('organization_id', organizationId);
+          .eq('organization_id', organizationId)
+          .eq('user_id', user.id);
 
         if (memberEmailAccountsError) {
           console.error('[unipile-accounts] Failed to load org email account IDs:', memberEmailAccountsError);
@@ -355,7 +368,11 @@ Deno.serve(async (req) => {
         });
 
         const emailData = await emailResponse.json();
-        const EMAIL_TYPES = new Set(['GOOGLE', 'OUTLOOK', 'IMAP', 'MAIL', 'GMAIL']);
+        const EMAIL_TYPES = new Set([
+          'GOOGLE', 'GOOGLE_OAUTH', 'GMAIL',
+          'OUTLOOK', 'MICROSOFT', 'EXCHANGE',
+          'IMAP', 'MAIL', 'ICLOUD',
+        ]);
         const emailAccounts = (emailData.items || [])
           .filter((acc: { type: string; id: string }) => EMAIL_TYPES.has(acc.type?.toUpperCase()) && allowedEmailAccountIds.has(acc.id))
           .map((acc: { id: string; name: string; type: string; sources: Array<{ status: string }>; connection_params?: { mail?: { imap_user?: string; smtp_user?: string } } }) => {
@@ -382,7 +399,7 @@ Deno.serve(async (req) => {
 
       case 'hosted_auth_link': {
         // Generate a hosted auth link for white-label account connection (LinkedIn, WhatsApp, or Email)
-        const { success_redirect_url, failure_redirect_url, notify_url, org_name, providers: requestedProviders, reconnect_account_id } = params;
+        const { success_redirect_url, failure_redirect_url, org_name, providers: requestedProviders, reconnect_account_id } = params;
 
         // Allow caller to specify provider(s), default to LinkedIn
         const resolvedProviders = Array.isArray(requestedProviders) && requestedProviders.length > 0
@@ -408,9 +425,21 @@ Deno.serve(async (req) => {
         // account_connected puisse upsert dans member_linkedin_accounts avec la bonne
         // paire (user_id, organization_id, linkedin_account_id).
         // Format : 'user:{userId}|org:{orgId}[|reconnect:{accountId}]'
+        const providerState = resolvedProviders
+          .map((provider) => String(provider).trim().toUpperCase())
+          .filter(Boolean)
+          .join(',');
+        const stateExpiresAt = Date.now() + 30 * 60 * 1000;
         const stateName = reconnect_account_id
-          ? `user:${user.id}|org:${organizationId}|reconnect:${reconnect_account_id}`
-          : `user:${user.id}|org:${organizationId}`;
+          ? `user:${user.id}|org:${organizationId}|providers:${providerState}|expires:${stateExpiresAt}|reconnect:${reconnect_account_id}`
+          : `user:${user.id}|org:${organizationId}|providers:${providerState}|expires:${stateExpiresAt}`;
+        const webhookSecret = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
+        const callbackBaseUrl = Deno.env.get('SUPABASE_URL');
+        if (!webhookSecret || !callbackBaseUrl) {
+          throw new HttpError(503, 'Connexion de compte temporairement indisponible');
+        }
+        const hostedSignature = await hmacSha256Hex(webhookSecret, stateName);
+        const trustedNotifyUrl = `${callbackBaseUrl}/functions/v1/unipile-webhook?hosted_sig=${hostedSignature}`;
 
         const hostedBody: Record<string, unknown> = {
           type: reconnect_account_id ? 'reconnect' : 'create',
@@ -420,6 +449,9 @@ Deno.serve(async (req) => {
           bypass_success_screen: false,
           disabled_options: disabledOptions,
           name: stateName, // user+org encoding pour webhook identification
+          // URL imposÃ©e cÃ´tÃ© serveur : le navigateur ne peut pas rediriger le
+          // callback contenant le mapping vers une destination arbitraire.
+          notify_url: trustedNotifyUrl,
         };
 
         // Si reconnect, Unipile attend aussi le account_id (doc hosted-auth)
@@ -429,7 +461,6 @@ Deno.serve(async (req) => {
 
         if (success_redirect_url) hostedBody.success_redirect_url = success_redirect_url;
         if (failure_redirect_url) hostedBody.failure_redirect_url = failure_redirect_url;
-        if (notify_url) hostedBody.notify_url = notify_url;
         // Note : `org_name` est legacy/ignoré maintenant car `name` contient user:org encoding.
         // Si un caller veut un display name, il faut ajouter un champ custom séparé.
         if (org_name) hostedBody.organization_display_name = org_name;

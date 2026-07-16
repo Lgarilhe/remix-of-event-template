@@ -9,6 +9,10 @@ import {
 import { registerMutatingTools } from "../_shared/agent-tools-mutations.ts";
 import { registerReadTools } from "../_shared/agent-tools-reads.ts";
 import {
+  isEmailToolName,
+  registerEmailTools,
+} from "../_shared/agent-tools-email.ts";
+import {
   getRelevantInsights,
   formatInsightsForPrompt,
   bumpInsightUsage,
@@ -19,10 +23,19 @@ import {
   formatSummaryForPrompt,
   HISTORY_WINDOW,
 } from "../_shared/conversation-compaction.ts";
+import { buildSafeMcpConfiguration } from "../_shared/mcp-policy.mjs";
+import {
+  connectorSelectedForRequest,
+  isReservedConnectorName,
+  normalizeEnabledConnectorNames,
+} from "../_shared/connector-selection.mjs";
+import { UNTRUSTED_CONTENT_SAFETY_PROMPT } from "../_shared/prompt-safety.mjs";
+import { resolveNotionMcpConnectorRow } from "../_shared/notion-mcp-connection.ts";
 
 // Register tools at module load (idempotent)
 registerMutatingTools();
 registerReadTools();
+registerEmailTools();
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -481,7 +494,22 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { conversation_id: bodyConversationId, message, job_context, context_mode, brief_context, project_id, app_context } = body;
+    const {
+      conversation_id: bodyConversationId,
+      message,
+      job_context,
+      context_mode,
+      brief_context,
+      project_id,
+      app_context,
+      enabled_connectors,
+    } = body;
+    // New clients send an explicit per-request selection. A missing field keeps
+    // older deployed clients compatible during rollout; malformed values fail
+    // closed. Connector credentials and tool allowlists remain server-owned.
+    const enabledConnectorNames = enabled_connectors === undefined
+      ? null
+      : normalizeEnabledConnectorNames(enabled_connectors);
     let conversation_id: string | undefined = bodyConversationId;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "agent_search_calibration", modelId: "claude-sonnet-4-6", description: null,
@@ -989,10 +1017,17 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `personne publique. Utilise-la quand la réponse dépend d'infos hors de Konekt et ` +
         `cite tes sources (liens). Max 3 recherches par réponse — sois précis dans tes requêtes. ` +
         `Des CONNECTEURS EXTERNES configurés par l'organisation (Notion, Slack, calendrier, ` +
-        `outils internes…) peuvent exposer des outils supplémentaires : utilise-les comme les ` +
-        `autres. ⚠️ Leurs actions d'ÉCRITURE s'exécutent DIRECTEMENT (pas de bandeau ` +
-        `d'approbation) — avant tout appel d'écriture sur un connecteur, ANNONCE en une phrase ` +
-        `ce que tu vas faire, et en cas de doute demande confirmation à l'utilisateur d'abord. ` +
+        `outils internes…) peuvent exposer des outils supplémentaires. Ces connecteurs sont ` +
+        `STRICTEMENT EN LECTURE SEULE et limités à une liste blanche validée par un administrateur. ` +
+        `N'essaie JAMAIS d'écrire, créer, modifier, supprimer ou envoyer quoi que ce soit via un ` +
+        `connecteur MCP. Toute action d'écriture doit passer par un outil Konekt avec sa politique ` +
+        `d'approbation serveur ; si aucun outil Konekt équivalent n'existe, explique la limite. ` +
+        `Pour les outils de LECTURE, n'écris aucun texte avant ou entre les appels : exécute-les ` +
+        `silencieusement, puis donne une seule réponse finale synthétique. N'annonce jamais ` +
+        `« je vais ouvrir », « je vais chercher » ou « je vais maintenant récupérer ». ` +
+        `L'interface du chat est étroite : pour une liste de résultats, n'utilise JAMAIS de tableau ` +
+        `Markdown. Préfère une liste numérotée aérée avec le nom en gras ou en lien, puis une ` +
+        `courte information clé sur la ligne suivante. ` +
         `Pour CONNAÎTRE LE STATUT d'une action IA (envoi LinkedIn, modif candidat, ` +
         `etc.) — « tu as bien envoyé ? », « c'est planifié ? », « où en est ma ` +
         `demande ? » : appelle get_recent_agent_actions (filtres optionnels : ` +
@@ -1176,7 +1211,30 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             // (dynamically registered via registerMutatingTools()) + le server
             // tool web_search (exécuté côté API — jamais dispatché ici).
             // Constant across rounds — computed once, outside the loop.
-            const registryTools = getAnthropicToolDefinitions();
+            // Personal email is opt-in per request. In particular, a missing
+            // enabled_connectors field from an older client keeps these tools
+            // hidden; only the canonical explicit `email` selection enables
+            // them. Execution is gated again below as defense in depth.
+            const emailToolsEnabled = enabledConnectorNames !== null
+              && connectorSelectedForRequest("email", enabledConnectorNames);
+            let emailToolProvider: 'gmail' | 'outlook' | 'email' = 'email';
+            if (emailToolsEnabled && orgId) {
+              const { data: emailMapping } = await supabase
+                .from('member_email_accounts')
+                .select('provider')
+                .eq('organization_id', orgId)
+                .eq('user_id', user.id)
+                .or('account_status.is.null,account_status.in.(OK,CONNECTED)')
+                .order('linked_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              const rawProvider = String(emailMapping?.provider ?? '').toLowerCase();
+              if (rawProvider.includes('google') || rawProvider.includes('gmail')) emailToolProvider = 'gmail';
+              else if (rawProvider.includes('microsoft') || rawProvider.includes('outlook') || rawProvider.includes('exchange')) emailToolProvider = 'outlook';
+            }
+            const registryTools = getAnthropicToolDefinitions().filter(
+              (tool) => emailToolsEnabled || !isEmailToolName(tool.name),
+            );
             const allTools = [...sourcingTools, ...registryTools, buildWebSearchTool(resolvedModel)];
 
             // ── Connecteurs MCP de l'org (P3.1) ────────────────────────────
@@ -1186,30 +1244,62 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             // des blocs mcp_tool_use/mcp_tool_result dans le stream. Fail-soft
             // intégral : erreur de chargement → pas de MCP ; 400 API (serveur
             // injoignable/invalide) → retry du round sans MCP.
-            let mcpServers: Array<Record<string, unknown>> = [];
+            let mcpConfigurations: Array<{
+              server: Record<string, unknown>;
+              toolset: Record<string, unknown>;
+            }> = [];
             if (orgId) {
               try {
-                const { data: mcpRows } = await supabase
-                  .from("organization_mcp_servers")
-                  .select("name, url, authorization_token")
-                  .eq("organization_id", orgId)
-                  .eq("enabled", true)
-                  .limit(5);
-                mcpServers = ((mcpRows ?? []) as Array<{ name: string; url: string; authorization_token: string | null }>)
-                  .filter((r) => r.name && r.url && r.url.startsWith("https://"))
-                  .map((r) => ({
-                    type: "url",
-                    name: r.name,
-                    url: r.url,
-                    ...(r.authorization_token ? { authorization_token: r.authorization_token } : {}),
-                  }));
+                const notionSelected = enabledConnectorNames === null
+                  || connectorSelectedForRequest("notion", enabledConnectorNames);
+                const notionConnectorPromise = notionSelected
+                  ? resolveNotionMcpConnectorRow(supabase, orgId, user.id)
+                  : Promise.resolve(null);
+                const selectedOrganizationConnectors = enabledConnectorNames?.filter(
+                  (name) => !isReservedConnectorName(name),
+                ) ?? null;
+                const organizationConnectorsPromise = selectedOrganizationConnectors?.length === 0
+                  ? Promise.resolve({ data: [] as Array<Record<string, unknown>> })
+                  : (() => {
+                    let query = supabase
+                      .from("organization_mcp_servers")
+                      .select("name, url, authorization_token, allowed_tools, enabled")
+                      .eq("organization_id", orgId)
+                      .eq("enabled", true)
+                      .limit(5);
+                    if (selectedOrganizationConnectors) {
+                      query = query.in("name", selectedOrganizationConnectors);
+                    }
+                    return query;
+                  })();
+                const [{ data: mcpRows }, notionConnector] = await Promise.all([
+                  organizationConnectorsPromise,
+                  notionConnectorPromise,
+                ]);
+                // Built-in names are reserved for managed personal
+                // connections. A legacy organization MCP server can never
+                // impersonate Notion, email, Gmail or Outlook.
+                const connectorRows = [
+                  ...(notionConnector ? [notionConnector] : []),
+                  ...((mcpRows ?? []) as Array<Record<string, unknown>>).filter(
+                    (row) => !isReservedConnectorName(row.name)
+                      && (enabledConnectorNames === null
+                        || connectorSelectedForRequest(row.name, enabledConnectorNames)),
+                  ),
+                ];
+                mcpConfigurations = connectorRows
+                  .map((row) => buildSafeMcpConfiguration(row))
+                  .filter((configuration): configuration is {
+                    server: Record<string, unknown>;
+                    toolset: Record<string, unknown>;
+                  } => configuration !== null);
               } catch (e) {
                 console.warn("[search-agent-chat] MCP servers load skipped:", e);
               }
             }
             let mcpDisabledForRequest = false;
-            if (mcpServers.length > 0) {
-              console.log(`[search-agent-chat] MCP connectors attached: ${mcpServers.map((s) => s.name).join(", ")}`);
+            if (mcpConfigurations.length > 0) {
+              console.log(`[search-agent-chat] MCP connectors attached: ${mcpConfigurations.map((c) => c.server.name).join(", ")}`);
             }
 
             // Tool-calling loop
@@ -1229,8 +1319,9 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               console.log(`[search-agent-chat] Tool loop round ${roundNumber}, elapsed ${elapsedMs}ms, messages: ${currentMessages.length}`);
 
               // Connecteurs MCP actifs pour CE round (désactivés après un 400)
-              const activeMcpServers = mcpDisabledForRequest ? [] : mcpServers;
-              const apiBody: any = {
+              const activeMcpConfigurations = mcpDisabledForRequest ? [] : mcpConfigurations;
+              const activeMcpServers = activeMcpConfigurations.map((configuration) => configuration.server);
+              const apiBody: Record<string, unknown> = {
                 model: resolvedModel,
                 max_tokens: 16000,
                 system: [
@@ -1240,12 +1331,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   // et les messages suivants relisent ce préfixe au tarif cache.
                   { type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } },
                   ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
+                  { type: "text", text: UNTRUSTED_CONTENT_SAFETY_PROMPT },
                 ],
                 messages: currentMessages,
                 // Chaque serveur MCP DOIT être référencé par un mcp_toolset.
                 tools: [
                   ...allTools,
-                  ...activeMcpServers.map((s) => ({ type: "mcp_toolset", mcp_server_name: s.name })),
+                  ...activeMcpConfigurations.map((configuration) => configuration.toolset),
                 ],
                 ...(activeMcpServers.length > 0 ? { mcp_servers: activeMcpServers } : {}),
                 // Streaming par round : l'user voit le texte arriver au fil de
@@ -1347,12 +1439,14 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                         const chipName = cb.server_name ? `${cb.server_name} · ${cb.name || "outil"}` : (cb.name || "connecteur");
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.id, name: chipName, state: "running" } })}\n\n`));
                       } else if (typeof cb.type === "string" && cb.type.endsWith("_tool_result")) {
-                        // Résultat de server tool (web_search_tool_result…) :
+                        // Résultat de server/MCP tool (web_search_tool_result,
+                        // mcp_tool_result…) :
                         // arrive complet dans le start — on le conserve tel quel
                         // (il DOIT être ré-émis avec le contenu assistant).
                         partials.set(event.index, { ...cb });
                         if (cb.tool_use_id) {
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.tool_use_id, name: "web_search", state: "done", outcome: "ok" } })}\n\n`));
+                          const toolOutcome = cb.is_error === true ? "error" : "ok";
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: cb.tool_use_id, name: "tool", state: "done", outcome: toolOutcome } })}\n\n`));
                         }
                       } else {
                         partials.set(event.index, { type: "text", text: "" });
@@ -1375,8 +1469,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                         try { p.input = p._json ? JSON.parse(p._json) : {}; } catch { p.input = {}; }
                         delete p._json;
                       }
-                      roundBlocks[event.index] = p;
-                      partials.delete(event.index);
+                        roundBlocks[event.index] = p;
+                        partials.delete(event.index);
                     } else if (event.type === "message_delta") {
                       if (event.delta?.stop_reason) stopReason = event.delta.stop_reason;
                       // output_tokens est CUMULATIF au sein d'un message → on
@@ -1457,11 +1551,27 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
 
                   // Progression visible côté UI : chip « outil en cours » dans
                   // le fil (adapter → part tool-call → tool UIs / Fallback).
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: tc.id, name: tc.name, state: "running" } })}\n\n`));
+                  const progressToolName = isEmailToolName(tc.name)
+                    ? `${emailToolProvider} \u00b7 ${tc.name}`
+                    : tc.name;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: tc.id, name: progressToolName, state: "running" } })}\n\n`));
 
                   let outcomeForUi = "ok";
                   const registryTool = getRegistryTool(tc.name);
-                  if (registryTool) {
+                  if (isEmailToolName(tc.name) && !emailToolsEnabled) {
+                    // Do not rely solely on model tool exposure. A forged or
+                    // replayed tool call is rejected unless this request
+                    // explicitly selected the personal email connector.
+                    outcomeForUi = "error";
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: tc.id,
+                      content: JSON.stringify({
+                        outcome: 'denied',
+                        error: 'Le connecteur email personnel n’est pas activé pour cette requête.',
+                      }),
+                    });
+                  } else if (registryTool) {
                     // Mutation via registry — propose, don't execute
                     const ctx: ToolContext = {
                       userId: user.id,
@@ -1634,6 +1744,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
           ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
           { type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } },
           ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
+          { type: "text", text: UNTRUSTED_CONTENT_SAFETY_PROMPT },
         ],
         messages,
         stream: true,

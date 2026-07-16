@@ -22,6 +22,18 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+async function hmacSha256Hex(secret: string, value: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 // Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -46,15 +58,25 @@ async function resolveCredsForAccount(accountId: string, supabase: SupabaseClien
   if (!accountId) return fallback;
 
   try {
-    const { data: account } = await supabase
+    const { data: linkedInAccount } = await supabase
       .from('member_linkedin_accounts')
       .select('organization_id')
       .eq('linkedin_account_id', accountId)
       .maybeSingle();
 
-    if (!account?.organization_id) return fallback;
+    let organizationId = linkedInAccount?.organization_id as string | undefined;
+    if (!organizationId) {
+      const { data: emailAccount } = await supabase
+        .from('member_email_accounts')
+        .select('organization_id')
+        .eq('email_account_id', accountId)
+        .maybeSingle();
+      organizationId = emailAccount?.organization_id as string | undefined;
+    }
 
-    const creds = await resolveUnipileCredentials(account.organization_id, supabase);
+    if (!organizationId) return fallback;
+
+    const creds = await resolveUnipileCredentials(organizationId, supabase);
     if (creds) {
       return { apiKey: creds.apiKey, dsn: creds.dsn };
     }
@@ -68,6 +90,7 @@ async function resolveCredsForAccount(accountId: string, supabase: SupabaseClien
 interface WebhookPayload {
   event: string;
   account_id: string;
+  account_type?: string;
   data?: Record<string, unknown>;
   // hosted_auth flow : le `name` qu'on passe à /hosted/accounts/link revient ici.
   // On encode "user:{uuid}|org:{uuid}[|reconnect:{acc}]" pour tracer qui a initié
@@ -118,6 +141,8 @@ function parseHostedAuthState(name: string | undefined): {
   userId: string;
   organizationId: string;
   reconnectAccountId: string | null;
+  providers: string[];
+  expiresAtMs: number | null;
 } | null {
   if (!name || typeof name !== 'string') return null;
   const parts = name.split('|');
@@ -135,7 +160,73 @@ function parseHostedAuthState(name: string | undefined): {
     userId: map.user,
     organizationId: map.org,
     reconnectAccountId: map.reconnect || null,
+    providers: (map.providers || '')
+      .split(',')
+      .map((provider) => provider.trim().toUpperCase())
+      .filter(Boolean),
+    expiresAtMs: /^\d{13}$/.test(map.expires || '') ? Number(map.expires) : null,
   };
+}
+
+const EMAIL_ACCOUNT_TYPES = new Set([
+  'GOOGLE', 'GOOGLE_OAUTH', 'GMAIL',
+  'OUTLOOK', 'MICROSOFT', 'EXCHANGE',
+  'IMAP', 'MAIL', 'ICLOUD',
+]);
+
+function normalizeAccountType(payload: WebhookPayload, hostedProviders: string[] = []): string {
+  const raw = payload.account_type
+    || payload.AccountStatus?.account_type
+    || (payload.data as Record<string, unknown> | undefined)?.account_type
+    || (payload.data as Record<string, unknown> | undefined)?.type
+    || hostedProviders[0]
+    || '';
+  return String(raw).trim().toUpperCase();
+}
+
+async function resolveConnectedAccountMetadata(
+  payload: WebhookPayload,
+  organizationId: string,
+  supabase: SupabaseClient,
+  hostedProviders: string[],
+): Promise<{ accountType: string; emailAddress: string | null; displayName: string | null }> {
+  let accountType = normalizeAccountType(payload, hostedProviders);
+  let emailAddress: string | null = null;
+  let displayName: string | null = null;
+  const payloadData = (payload.data as Record<string, unknown> | undefined) || {};
+  if (typeof payloadData.name === 'string') displayName = payloadData.name;
+  if (typeof payloadData.identifier === 'string') emailAddress = payloadData.identifier;
+
+  if (accountType && (displayName || !EMAIL_ACCOUNT_TYPES.has(accountType))) {
+    return { accountType, emailAddress, displayName };
+  }
+
+  try {
+    const credentials = await resolveUnipileCredentials(organizationId, supabase);
+    if (!credentials || !payload.account_id) return { accountType, emailAddress, displayName };
+    const response = await fetchWithTimeout(
+      `${credentials.dsn}/api/v1/accounts/${encodeURIComponent(payload.account_id)}`,
+      { headers: { 'X-API-KEY': credentials.apiKey, Accept: 'application/json' } },
+    );
+    if (!response.ok) return { accountType, emailAddress, displayName };
+    const account = await response.json() as {
+      type?: unknown;
+      account_type?: unknown;
+      name?: unknown;
+      identifier?: unknown;
+      connection_params?: {
+        mail?: { imap_user?: unknown; smtp_user?: unknown };
+      };
+    };
+    accountType = String(account.type || account.account_type || accountType).trim().toUpperCase();
+    displayName = typeof account.name === 'string' ? account.name : displayName;
+    const mail = account.connection_params?.mail;
+    const resolvedAddress = mail?.imap_user || mail?.smtp_user || account.identifier;
+    emailAddress = typeof resolvedAddress === 'string' ? resolvedAddress : emailAddress || displayName;
+  } catch (error) {
+    console.warn('[unipile-webhook] Could not resolve connected account metadata:', error);
+  }
+  return { accountType, emailAddress, displayName };
 }
 
 interface SequenceEnrollment {
@@ -158,6 +249,7 @@ Deno.serve(async (req) => {
   let supabaseForCleanup: SupabaseClient | null = null;
 
   try {
+    const rawPayload = await req.json() as Partial<WebhookPayload>;
     // Verify webhook authenticity
     const authHeader = req.headers.get('unipile-auth');
     if (!WEBHOOK_SECRET) {
@@ -167,15 +259,48 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    if (!authHeader || !timingSafeEqual(authHeader, WEBHOOK_SECRET)) {
-      console.error('[unipile-webhook] Invalid or missing auth header');
+    const headerAuthenticated = Boolean(authHeader && timingSafeEqual(authHeader, WEBHOOK_SECRET));
+    const hostedSignature = new URL(req.url).searchParams.get('hosted_sig');
+    const hostedState = parseHostedAuthState(rawPayload.name);
+    const hostedStateFresh = Boolean(
+      hostedState?.expiresAtMs
+      && hostedState.expiresAtMs > Date.now()
+      && hostedState.expiresAtMs <= Date.now() + 31 * 60 * 1000,
+    );
+    const expectedHostedSignature = hostedSignature && rawPayload.name && hostedStateFresh
+      ? await hmacSha256Hex(WEBHOOK_SECRET, rawPayload.name)
+      : null;
+    const hostedAuthenticated = Boolean(
+      hostedSignature
+      && expectedHostedSignature
+      && timingSafeEqual(hostedSignature, expectedHostedSignature),
+    );
+    if (!headerAuthenticated && !hostedAuthenticated) {
+      console.error('[unipile-webhook] Invalid webhook authentication');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const payload: WebhookPayload = await req.json();
+    const hostedAuthSucceeded = Boolean(
+      rawPayload.name
+      && rawPayload.account_id
+      && (rawPayload.status === 'CREATION_SUCCESS' || rawPayload.status === 'RECONNECTED'),
+    );
+    if (hostedAuthenticated && !headerAuthenticated && (!hostedAuthSucceeded || rawPayload.event)) {
+      return new Response(JSON.stringify({ error: 'Invalid hosted auth callback' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const payload: WebhookPayload = {
+      ...rawPayload,
+      event: rawPayload.event
+        || (rawPayload.AccountStatus ? 'account_status_updated' : '')
+        || (hostedAuthSucceeded ? 'account_connected' : ''),
+      account_id: rawPayload.account_id || rawPayload.AccountStatus?.account_id || '',
+    };
     // Conformité LinkedIn (warning #260513-007211) : ne JAMAIS logger le payload
     // brut — il peut contenir du contenu de messages, PII destinataires, et
     // potentiellement des identifiants de session. On loggue uniquement les
@@ -265,20 +390,56 @@ Deno.serve(async (req) => {
           // C'est le FIX du dead-end où un nouveau compte Unipile était créé
           // mais jamais lié à un user -> invisible dans Settings.
           try {
-            await supabase
-              .from('member_linkedin_accounts')
-              .upsert({
-                user_id: hostedState.userId,
-                organization_id: hostedState.organizationId,
-                linkedin_account_id: payload.account_id,
-                linkedin_account_name: (payload.data as any)?.name || 'Compte LinkedIn',
-                account_status: 'OK',
-                last_checked_at: new Date().toISOString(),
-                failure_reason: null,
-              }, {
-                onConflict: 'user_id,organization_id',
-              });
-            console.log('[unipile-webhook] Upserted via hosted_auth for user', hostedState.userId, 'org', hostedState.organizationId);
+            const metadata = await resolveConnectedAccountMetadata(
+              payload,
+              hostedState.organizationId,
+              supabase,
+              hostedState.providers,
+            );
+
+            if (EMAIL_ACCOUNT_TYPES.has(metadata.accountType)) {
+              const { data: existing } = await supabase
+                .from('member_email_accounts')
+                .select('id, user_id')
+                .eq('organization_id', hostedState.organizationId)
+                .eq('email_account_id', payload.account_id)
+                .maybeSingle();
+
+              if (existing && existing.user_id !== hostedState.userId) {
+                console.error('[unipile-webhook] Refusing to reassign an email account to another user');
+              } else {
+                const emailRow = {
+                  organization_id: hostedState.organizationId,
+                  user_id: hostedState.userId,
+                  email_account_id: payload.account_id,
+                  email_address: metadata.emailAddress,
+                  provider: metadata.accountType,
+                  account_status: 'OK',
+                  linked_by: hostedState.userId,
+                };
+                const { error } = existing
+                  ? await supabase.from('member_email_accounts').update(emailRow).eq('id', existing.id)
+                  : await supabase.from('member_email_accounts').insert(emailRow);
+                if (error) throw error;
+                console.log('[unipile-webhook] Mapped email account via hosted_auth for current user');
+              }
+            } else {
+              const { error } = await supabase
+                .from('member_linkedin_accounts')
+                .upsert({
+                  user_id: hostedState.userId,
+                  organization_id: hostedState.organizationId,
+                  linkedin_account_id: payload.account_id,
+                  linkedin_account_name: metadata.displayName || 'Compte LinkedIn',
+                  account_status: 'OK',
+                  last_checked_at: new Date().toISOString(),
+                  failure_reason: null,
+                }, {
+                  onConflict: 'user_id,organization_id',
+                });
+              if (error) throw error;
+              console.log('[unipile-webhook] Mapped LinkedIn account via hosted_auth for current user');
+            }
           } catch (e) {
             console.error('[unipile-webhook] Upsert via hosted_auth failed:', e);
           }
@@ -320,6 +481,13 @@ Deno.serve(async (req) => {
               ? 'OK'
               : newStatus;
           if (accId) {
+            const accountType = normalizeAccountType(payload);
+            if (EMAIL_ACCOUNT_TYPES.has(accountType)) {
+              await supabase
+                .from('member_email_accounts')
+                .update({ account_status: normalizedStatus })
+                .eq('email_account_id', accId);
+            } else {
             await supabase
               .from('member_linkedin_accounts')
               .update({
@@ -329,6 +497,7 @@ Deno.serve(async (req) => {
                 ...(normalizedStatus === 'OK' ? { failure_reason: null } : {}),
               })
               .eq('linkedin_account_id', accId);
+            }
           }
         } catch (e) {
           console.warn('[unipile-webhook] status_updated handler failed:', e);
@@ -360,6 +529,10 @@ Deno.serve(async (req) => {
               failure_reason: reasonText,
             })
             .eq('linkedin_account_id', payload.account_id);
+          await supabase
+            .from('member_email_accounts')
+            .update({ account_status: reason === 'disconnected' ? 'CREDENTIALS' : 'ERROR' })
+            .eq('email_account_id', payload.account_id);
         } catch (e) {
           console.warn('[unipile-webhook] Could not update account status:', e);
         }
