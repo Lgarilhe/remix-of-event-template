@@ -322,15 +322,18 @@ Deno.serve(async (req) => {
 
     // Autorisation (appels JWT uniquement — service_role a userId=null et reste
     // bypass, par design pour les appels internes). Les appelants ne passent
-    // qu'un account_id, jamais organization_id : on ANCRE donc l'autorisation
-    // sur l'org PROPRIÉTAIRE du compte LinkedIn. Un user ne peut auto-analyser
-    // que les chats d'un compte rattaché à une org dont il est membre.
-    // Ferme à la fois la lecture cross-org (chats arbitraires via créds
-    // partagées) et l'écriture cross-org (update job_candidate_status en aval).
+    // qu'un account_id : on ANCRE TOUJOURS l'autorisation sur l'org PROPRIÉTAIRE
+    // du compte LinkedIn (résolue depuis account_id), JAMAIS sur organization_id
+    // du body — sinon un membre de l'org A enverrait {account_id:<compte de B>,
+    // organization_id:A}, passerait le check, puis lirait/écrirait les données de
+    // B via les créds partagées. Ferme lecture ET écriture cross-org.
+    // accountOrgId (= org du compte pour un user ; org du body pour un appel
+    // service_role interne trusted) sert ensuite à résoudre les créds.
+    let accountOrgId: string | undefined = organization_id;
     if (userId) {
       const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
-      let ownerOrgId: string | undefined = organization_id;
-      if (!ownerOrgId && account_id) {
+      let ownerOrgId: string | undefined;
+      if (account_id) {
         const { data: acctMap } = await supabase
           .from('member_linkedin_accounts')
           .select('organization_id')
@@ -346,6 +349,7 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      accountOrgId = ownerOrgId;
     }
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "auto_analyze_message", modelId: "claude-sonnet-4-6", description: null,
@@ -357,8 +361,9 @@ Deno.serve(async (req) => {
       console.warn("[auto-analyze-message] Failed to load settle-credits:", e);
     }
 
-    // Resolve org-specific credentials (Unipile + Notion)
-    const creds = await resolveOrgCredentials(organization_id);
+    // Resolve org-specific credentials (Unipile + Notion) pour l'org du compte
+    // (résolue/vérifiée ci-dessus), jamais l'organization_id brut du body.
+    const creds = await resolveOrgCredentials(accountOrgId);
 
     if (!chat_id || !account_id) {
       throw new Error('chat_id and account_id are required');

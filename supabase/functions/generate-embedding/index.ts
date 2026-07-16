@@ -61,34 +61,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Autorisation (appels JWT uniquement — service_role/interne a userId=null
-    // et reste bypass, ex. fetch-notion-jobs). On résout l'org de l'appelant
-    // CÔTÉ SERVEUR (jamais via l'omission de organization_id) et on interdit
-    // d'écraser l'embedding d'une ligne appartenant à une AUTRE org : sans ça, un
-    // user pouvait corrompre le matching sémantique d'un autre tenant (+ coût
-    // OpenAI) en forgeant un entityId arbitraire.
-    let callerOrgId: string | null = organization_id ?? null;
-    if (userId) {
-      const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
-      const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      if (organization_id) {
-        if (!(await verifyOrgMembership(supabase, userId, organization_id))) {
-          return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        callerOrgId = organization_id;
-      } else {
-        callerOrgId = await resolveOrgIdFromUser(userId, supabase);
-      }
-      // Garde anti-écrasement cross-tenant — AVANT l'appel OpenAI (coupe le coût).
-      const { data: existing } = await supabase
-        .from(type === 'candidate' ? 'candidate_profiles' : 'job_profiles')
-        .select('organization_id')
-        .eq(type === 'candidate' ? 'candidate_id' : 'job_id', entityId)
+    // NB (dette de sécurité connue, NON corrigée ici) : candidate_profiles.candidate_id
+    // et job_profiles.job_id sont UNIQUE *global* → une seule ligne d'embedding
+    // par entité pour TOUTE la plateforme (cache partagé cross-org, embedding
+    // déterministe). Impossible d'imposer une propriété par-org au niveau applicatif
+    // sans casser le ré-embed cross-org LÉGITIME (viviers de candidats qui se
+    // recoupent entre agences). Le vrai correctif = schéma per-org
+    // (UNIQUE(entityId, organization_id)), à traiter séparément. En attendant,
+    // requireAuth + rate-limit (30/min) bornent l'abus ; l'embedding se répare de
+    // lui-même au prochain scoring légitime.
+    // Verify user belongs to the organization if provided
+    if (organization_id) {
+      const { data: membership } = await supabase
+        .from('organization_members')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('organization_id', organization_id)
         .maybeSingle();
-      if (existing?.organization_id && existing.organization_id !== callerOrgId) {
-        if (!(await verifyOrgMembership(supabase, userId, existing.organization_id as string))) {
-          return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
+      if (!membership) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
@@ -121,8 +112,8 @@ Deno.serve(async (req) => {
     // Build upsert payload with embedding as a pgvector-compatible string
     const embeddingStr = `[${embedding.join(',')}]`;
     const upsertPayload: Record<string, unknown> = { [idCol]: entityId, embedding: embeddingStr };
-    if (callerOrgId) {
-      upsertPayload.organization_id = callerOrgId;
+    if (organization_id) {
+      upsertPayload.organization_id = organization_id;
     }
 
     // Retry upsert up to 2 times to handle transient 502s

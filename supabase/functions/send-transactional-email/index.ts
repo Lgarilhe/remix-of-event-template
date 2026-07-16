@@ -160,8 +160,11 @@ Deno.serve(async (req) => {
     if (!membership) {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
+    // 60/h : marge pour un onboarding d'équipe/mission volumineux (l'anti-abus
+    // réel = restriction au template mission-invitation + membership + destinataire
+    // et URL reconstruits serveur ; le rate-limit n'est qu'une défense secondaire).
     const { data: rlAllowed, error: rlError } = await supabase.rpc('check_rate_limit', {
-      p_user_id: callerUserId, p_action: 'send_transactional_email', p_max_requests: 20, p_window_seconds: 3600,
+      p_user_id: callerUserId, p_action: 'send_transactional_email', p_max_requests: 60, p_window_seconds: 3600,
     })
     if (rlError || rlAllowed === false) {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
