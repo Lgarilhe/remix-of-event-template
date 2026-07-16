@@ -35,14 +35,15 @@ const FUNDING_STAGES = [
 // Cap par stade : au-delà, le payload LinkedIn devient trop lourd (erreurs
 // « combinaison de filtres trop lourde ») — on prend les mieux classées (tier).
 const FUNDED_CAP = 100;
-const fundedCache = new Map<string, { id: string; name: string }[]>();
+interface FundedStage { list: { id: string; name: string }[]; total: number }
+const fundedCache = new Map<string, FundedStage>();
 
-async function fetchFundedCompanies(stage: string): Promise<{ id: string; name: string }[]> {
+async function fetchFundedCompanies(stage: string): Promise<FundedStage> {
   const cached = fundedCache.get(stage);
   if (cached) return cached;
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from('pedigree_company_directory' as never)
-    .select('canonical_name, linkedin_company_id, tier')
+    .select('canonical_name, linkedin_company_id, tier', { count: 'exact' })
     .eq('funding_stage', stage)
     .not('linkedin_company_id', 'is', null)
     .order('tier', { ascending: true })
@@ -51,8 +52,9 @@ async function fetchFundedCompanies(stage: string): Promise<{ id: string; name: 
   if (error) throw error;
   const list = ((data ?? []) as unknown as Array<{ canonical_name: string; linkedin_company_id: string }>)
     .map(r => ({ id: String(r.linkedin_company_id), name: r.canonical_name }));
-  fundedCache.set(stage, list);
-  return list;
+  const entry = { list, total: count ?? list.length };
+  fundedCache.set(stage, entry);
+  return entry;
 }
 
 interface SmartOverlaysProps {
@@ -169,7 +171,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
   }, [stageOpen]);
 
   const stageActive = (stage: string): boolean => {
-    const list = fundedCache.get(stage);
+    const list = fundedCache.get(stage)?.list;
     if (!list?.length) return false;
     const present = list.filter(c => filters.company.some(fc => fc.id === c.id)).length;
     return present >= Math.min(10, list.length);
@@ -179,7 +181,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
     if (stageLoading) return;
     setStageLoading(stage);
     try {
-      const list = await fetchFundedCompanies(stage);
+      const { list } = await fetchFundedCompanies(stage);
       bumpCache(x => x + 1);
       if (!list.length) { toast.info('Aucune société financée connue à ce stade'); return; }
       const active = list.filter(c => filters.company.some(fc => fc.id === c.id)).length >= Math.min(10, list.length);
@@ -275,7 +277,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
             <div className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
               <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Stade de levée</div>
               {FUNDING_STAGES.map(s => {
-                const list = fundedCache.get(s.value);
+                const entry = fundedCache.get(s.value);
                 const active = stageActive(s.value);
                 return (
                   <button
@@ -288,7 +290,11 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                     className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] disabled:opacity-60"
                   >
                     <span className="flex-1 min-w-0 truncate">{s.label}</span>
-                    {list && <span className="font-mono text-[10px] text-[var(--k-text-muted)]">{list.length} boîtes</span>}
+                    {entry && (
+                      <span className="font-mono text-[10px] text-[var(--k-text-muted)]">
+                        {entry.total > entry.list.length ? `top ${entry.list.length} / ${entry.total}` : `${entry.list.length} boîtes`}
+                      </span>
+                    )}
                     {stageLoading === s.value
                       ? <Loader2 className="w-3 h-3 animate-spin text-[var(--k-text-muted)]" />
                       : active && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className="w-2.5 h-2.5 text-[var(--k-accent)]"><path d="M20 7 10 17l-5-5" /></svg>}
@@ -296,7 +302,8 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                 );
               })}
               <p className="px-2 pt-1 pb-0.5 text-[11px] leading-snug text-[var(--k-text-muted)]">
-                Injecte ces sociétés comme boîte actuelle — visibles et élagables dans la pilule Boîte.
+                Les {FUNDED_CAP} sociétés les mieux classées du stade sont injectées comme boîte actuelle
+                (au-delà, LinkedIn rejette la recherche). Élagables une à une dans la pilule Boîte.
               </p>
             </div>
           )}
