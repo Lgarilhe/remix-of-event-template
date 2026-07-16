@@ -3519,12 +3519,14 @@ async function resolveSenderEmailAccount(
 ): Promise<{ email_account_id: string; email_address: string | null } | null> {
   const { data } = await ctx.adminClient
     .from('member_email_accounts')
-    .select('email_account_id, email_address, user_id, account_status')
+    .select('email_account_id, email_address, account_status')
     .eq('organization_id', ctx.organizationId)
-    .limit(20);
-  const rows = (data as Array<{ email_account_id: string; email_address: string | null; user_id: string; account_status: string | null }> | null) ?? [];
-  const ok = rows.filter((r) => (r.account_status ?? 'OK') === 'OK');
-  return ok.find((r) => r.user_id === ctx.userId) ?? ok[0] ?? null;
+    .eq('user_id', ctx.userId)
+    .or('account_status.is.null,account_status.in.(OK,CONNECTED)')
+    .order('linked_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { email_account_id: string; email_address: string | null } | null) ?? null;
 }
 
 const sendEmail: AgentTool = {

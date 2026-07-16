@@ -3,6 +3,7 @@ import { Loader2, Paperclip, Plug, Plus, Settings2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import notionLogo from '@/assets/notion-logo.webp';
+import { EmailProviderLogo } from '@/components/assistant-ui/connector-logos';
 import { FileUploadTrigger } from '@/components/prompt-kit/file-upload';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
@@ -11,10 +12,12 @@ import { useAgent } from '@/contexts/AgentContext';
 export interface ChatConnectorOption {
   name: string;
   label: string;
-  kind: 'notion' | 'mcp';
+  kind: 'notion' | 'gmail' | 'outlook' | 'email' | 'mcp';
   connected: boolean;
   enabled: boolean;
+  description?: string | null;
   status?: 'connected' | 'disconnected' | 'checking' | 'unavailable';
+  manageHref?: string;
 }
 
 interface ConnectorMenuProps {
@@ -32,9 +35,9 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
     ? `Ajouter un fichier ou gérer les connecteurs — ${activeCount} actif${activeCount > 1 ? 's' : ''}`
     : 'Ajouter un fichier ou gérer les connecteurs — aucun actif';
 
-  const manageConnectors = () => {
+  const manageConnectors = (href = '/settings?tab=agent-actions') => {
     setOpen(false);
-    navigate('/settings?tab=agent-actions');
+    navigate(href);
     closeAgent();
   };
 
@@ -88,45 +91,71 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
         </div>
 
         <div className="space-y-1">
-          {connectors.map((connector) => (
-            <div
-              key={connector.name}
-              className="flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-muted/60"
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-white shadow-sm">
-                {connector.kind === 'notion' ? (
-                  <img src={notionLogo} alt="" className="h-5 w-5 object-contain" />
-                ) : (
-                  <Plug className="h-4 w-4 text-slate-700" aria-hidden="true" />
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-medium text-foreground">{connector.label}</span>
-                <span className="block text-[10px] text-muted-foreground">
-                  {connector.status === 'checking'
-                    ? 'Vérification…'
-                    : connector.status === 'unavailable'
-                      ? 'Statut indisponible'
-                      : !connector.connected
-                        ? 'Non connecté'
-                        : connector.enabled
-                          ? 'Actif dans le chat'
-                          : 'En pause'}
+          {connectors.map((connector) => {
+            const isEmailConnector = connector.kind === 'gmail'
+              || connector.kind === 'outlook'
+              || connector.kind === 'email';
+            const canConnectEmail = isEmailConnector
+              && !connector.connected
+              && connector.status !== 'checking';
+
+            return (
+              <div
+                key={connector.name}
+                className="flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-muted/60"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-white shadow-sm">
+                  {connector.kind === 'notion' ? (
+                    <img src={notionLogo} alt="" className="h-5 w-5 object-contain" />
+                  ) : isEmailConnector ? (
+                    <EmailProviderLogo provider={connector.kind} className="h-5 w-5" aria-hidden="true" />
+                  ) : (
+                    <Plug className="h-4 w-4 text-slate-700" aria-hidden="true" />
+                  )}
                 </span>
-              </span>
-              <Switch
-                checked={connector.connected && connector.enabled}
-                disabled={!connector.connected || connector.status === 'checking' || connector.status === 'unavailable'}
-                onCheckedChange={(enabled) => onToggle(connector.name, enabled)}
-                aria-label={`Utiliser ${connector.label} dans le chat`}
-              />
-            </div>
-          ))}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-foreground">{connector.label}</span>
+                  {connector.description && (
+                    <span className="block truncate text-[10px] text-muted-foreground" title={connector.description}>
+                      {connector.description}
+                    </span>
+                  )}
+                  <span className="block text-[10px] text-muted-foreground">
+                    {connector.status === 'checking'
+                      ? 'Vérification…'
+                      : connector.status === 'unavailable'
+                        ? 'Statut indisponible'
+                        : !connector.connected
+                          ? 'Non connecté'
+                          : connector.enabled
+                            ? 'Actif dans le chat'
+                            : 'En pause'}
+                  </span>
+                </span>
+                {canConnectEmail ? (
+                  <button
+                    type="button"
+                    onClick={() => manageConnectors(connector.manageHref ?? '/settings?tab=account')}
+                    className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-background"
+                  >
+                    Connecter
+                  </button>
+                ) : (
+                  <Switch
+                    checked={connector.connected && connector.enabled}
+                    disabled={!connector.connected || connector.status === 'checking' || connector.status === 'unavailable'}
+                    onCheckedChange={(enabled) => onToggle(connector.name, enabled)}
+                    aria-label={`Utiliser ${connector.label} dans le chat`}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <button
           type="button"
-          onClick={manageConnectors}
+          onClick={() => manageConnectors()}
           className="mt-1.5 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Settings2 className="h-3.5 w-3.5" />

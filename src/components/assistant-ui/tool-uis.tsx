@@ -2,6 +2,8 @@ import React from 'react';
 import { makeAssistantToolUI } from '@assistant-ui/react';
 
 import notionLogo from '@/assets/notion-logo.webp';
+import { EmailProviderLogo } from '@/components/assistant-ui/connector-logos';
+import type { EmailConnectorProvider } from '@/hooks/useEmailConnectorStatus';
 
 /** Labels français des tools du copilot (reads + mutations + sourcing) */
 const TOOL_CHIP_LABELS: Record<string, string> = {
@@ -21,6 +23,9 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   get_org_analytics: 'Lecture des statistiques',
   get_team_overview: "Lecture de l'équipe",
   get_recent_agent_actions: 'Vérification des actions',
+  search_email_threads: 'Recherche dans les e-mails',
+  search_emails: 'Recherche dans les e-mails',
+  get_email_thread: "Lecture d'un échange e-mail",
   // Mutations (propose → bandeau d'approbation)
   add_candidate_note: 'Note candidat',
   dismiss_candidate: 'Écarter un candidat',
@@ -56,6 +61,32 @@ const notionToolKind = (toolName: string): 'search' | 'fetch' | null => {
   return null;
 };
 
+interface EmailToolInfo {
+  kind: 'search' | 'thread';
+  provider: EmailConnectorProvider;
+}
+
+const emailToolInfo = (toolName: string): EmailToolInfo | null => {
+  const normalizedName = toolName.trim().toLowerCase();
+  const providerMatch = normalizedName.match(/^(gmail|outlook|email)\s*[·:|]\s*/);
+  const provider = (providerMatch?.[1] ?? 'email') as EmailConnectorProvider;
+  const baseName = normalizedName
+    .replace(/^(gmail|outlook|email)\s*[·:|]\s*/, '')
+    .replace(/\s+/g, '');
+
+  if (baseName.includes('search_email_threads') || baseName.includes('search_emails')) {
+    return { kind: 'search', provider };
+  }
+  if (baseName.includes('get_email_thread')) return { kind: 'thread', provider };
+  return null;
+};
+
+const emailProviderLabel = (provider: EmailConnectorProvider): string => {
+  if (provider === 'gmail') return 'Gmail';
+  if (provider === 'outlook') return 'Outlook';
+  return 'vos e-mails';
+};
+
 const toolChipLabel = (toolName: string) => {
   const notionKind = notionToolKind(toolName);
   if (notionKind === 'search') return 'Recherche dans Notion';
@@ -77,6 +108,7 @@ export const ToolFallbackChip: React.FC<{
 }> = ({ toolName, result, status }) => {
   const outcome = (result as { outcome?: string } | undefined)?.outcome;
   const notionKind = notionToolKind(toolName);
+  const emailInfo = emailToolInfo(toolName);
   // "en cours" UNIQUEMENT pendant le run actif : un message annulé/interrompu
   // (status incomplete — nouvel envoi pendant l'exécution, erreur réseau) ne
   // doit pas laisser une chip animée à vie.
@@ -86,10 +118,11 @@ export const ToolFallbackChip: React.FC<{
     outcome === undefined || outcome === 'ok' || outcome === 'executed_inline'
   );
 
-  // Les appels Notion réussis servent uniquement de progression pendant le
+  // Les appels aux connecteurs réussis servent uniquement de progression pendant le
   // stream. Une fois terminés, on les retire pour laisser toute la place au
   // résultat final ; les erreurs et interruptions restent visibles.
   if (notionKind && successful) return null;
+  if (emailInfo && successful) return null;
 
   if (notionKind) {
     const failed = !running && !unresolved && outcome === 'error';
@@ -113,6 +146,50 @@ export const ToolFallbackChip: React.FC<{
           {running && (
             <span
               className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-background bg-foreground"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs font-medium text-foreground">{title}</span>
+          <span className="block text-[11px] text-muted-foreground">
+            {running && 'En cours…'}
+            {unresolved && interruptedLabel}
+            {failed && failedLabel}
+            {!running && !unresolved && !failed && outcome === 'denied' && 'Accès refusé'}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
+  if (emailInfo) {
+    const failed = !running && !unresolved && outcome === 'error';
+    const providerLabel = emailProviderLabel(emailInfo.provider);
+    const title = emailInfo.kind === 'search'
+      ? `Recherche dans ${providerLabel}`
+      : emailInfo.provider === 'email'
+        ? "Lecture d'un échange e-mail"
+        : `Lecture d'un échange ${providerLabel}`;
+    const interruptedLabel = emailInfo.kind === 'search' ? 'Recherche interrompue' : 'Lecture interrompue';
+    const failedLabel = emailInfo.kind === 'search' ? 'La recherche a échoué' : 'La lecture a échoué';
+
+    return (
+      <div
+        role={failed ? 'alert' : 'status'}
+        aria-live="polite"
+        className="my-2 flex w-fit max-w-full items-center gap-2.5 rounded-xl border border-border/60 bg-muted/25 px-3 py-2"
+      >
+        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-white shadow-sm">
+          <EmailProviderLogo
+            provider={emailInfo.provider}
+            aria-hidden="true"
+            data-testid={`${emailInfo.provider}-tool-logo`}
+            className="h-[18px] w-[18px]"
+          />
+          {running && (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-background bg-primary"
               aria-hidden="true"
             />
           )}

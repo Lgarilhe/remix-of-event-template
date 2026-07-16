@@ -18,6 +18,7 @@ import { AgentToolApprovalCard } from './AgentToolApprovalCard';
 import { AgentBackgroundTasksBar } from './AgentBackgroundTasksBar';
 import { useQuery } from '@tanstack/react-query';
 import { isUsableNotionConnection, useNotionMcpStatus } from '@/hooks/useNotionMcpStatus';
+import { useEmailConnectorStatus, type EmailConnectorProvider } from '@/hooks/useEmailConnectorStatus';
 
 interface AgentChatPanelProps {
   onClose?: () => void;
@@ -58,6 +59,7 @@ const ChatThread: React.FC<{
 
 const CONNECTOR_PREFERENCES_KEY = 'konekt:assistant:disabled-connectors:v2';
 const CONNECTOR_NAME_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+const RESERVED_BUILTIN_CONNECTORS = new Set(['notion', 'email', 'gmail', 'outlook']);
 
 type ConnectorPreferences = Record<string, string[]>;
 
@@ -85,6 +87,12 @@ function connectorLabel(name: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function emailConnectorLabel(provider: EmailConnectorProvider): string {
+  if (provider === 'gmail') return 'Gmail';
+  if (provider === 'outlook') return 'Outlook';
+  return 'E-mail';
 }
 
 export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
@@ -118,6 +126,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const { organizationId } = useOrganization();
   const { user } = useAuthReady();
   const notionStatusQuery = useNotionMcpStatus(organizationId, user?.id);
+  const emailStatusQuery = useEmailConnectorStatus(organizationId, user?.id);
   const { data: organizationMcpServers = [], isLoading: mcpServersLoading } = useQuery({
     // Keep this cache separate from AgentConnectorsSettings, whose rows have a
     // different (full management) shape.
@@ -161,6 +170,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   }, [connectorPreferenceScope]);
 
   const notionConnected = isUsableNotionConnection(notionStatusQuery.data?.connection);
+  const emailConnection = emailStatusQuery.data?.connection ?? null;
+  const emailConnected = emailConnection?.connected === true;
+  const emailProvider = emailConnection?.provider ?? 'email';
   const connectorOptions = useMemo<ChatConnectorOption[]>(() => {
     const disabled = new Set(disabledConnectors);
     return [
@@ -178,8 +190,24 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               ? 'connected'
               : 'disconnected',
       },
+      {
+        name: 'email',
+        label: emailConnectorLabel(emailProvider),
+        kind: emailProvider,
+        description: emailConnection?.emailAddress,
+        connected: emailConnected,
+        enabled: emailConnected && !disabled.has('email'),
+        status: emailStatusQuery.isLoading
+          ? 'checking'
+          : emailStatusQuery.isError
+            ? 'unavailable'
+            : emailConnected
+              ? 'connected'
+              : 'disconnected',
+        manageHref: '/settings?tab=account',
+      },
       ...organizationMcpServers
-        .filter((server) => server.name !== 'notion')
+        .filter((server) => !RESERVED_BUILTIN_CONNECTORS.has(server.name.toLowerCase()))
         .map((server) => ({
           name: server.name,
           label: connectorLabel(server.name),
@@ -189,7 +217,18 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           status: server.enabled ? 'connected' as const : 'disconnected' as const,
         })),
     ];
-  }, [disabledConnectors, notionConnected, notionStatusQuery.isError, notionStatusQuery.isLoading, organizationMcpServers]);
+  }, [
+    disabledConnectors,
+    emailConnected,
+    emailConnection?.emailAddress,
+    emailProvider,
+    emailStatusQuery.isError,
+    emailStatusQuery.isLoading,
+    notionConnected,
+    notionStatusQuery.isError,
+    notionStatusQuery.isLoading,
+    organizationMcpServers,
+  ]);
   const enabledConnectorNames = useMemo(
     () => connectorOptions
       .filter((connector) => connector.connected && connector.enabled)
@@ -492,7 +531,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           toolsSlot={
             <ConnectorMenu
               connectors={connectorOptions}
-              loading={notionStatusQuery.isLoading || mcpServersLoading}
+              loading={notionStatusQuery.isLoading || emailStatusQuery.isLoading || mcpServersLoading}
               onToggle={setConnectorEnabled}
             />
           }

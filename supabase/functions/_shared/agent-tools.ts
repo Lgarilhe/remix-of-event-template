@@ -71,6 +71,8 @@ export interface AgentTool {
   inputSchema: AnthropicToolDefinition['input_schema'];
   /** true = passe par la review user (toutes les mutations). false = exécute direct (read-only). */
   requiresApproval: boolean;
+  /** Avoid persisting sensitive tool output (for example personal email bodies) in the audit log. */
+  redactResultInAudit?: boolean;
   /** Catégorie pour grouper dans l'UI */
   category: 'read' | 'mutation_safe' | 'mutation_destructive' | 'mutation_external';
   /** Vérifie que l'user a le droit de faire cette action (RLS, role, etc.) */
@@ -241,6 +243,9 @@ export async function handleProposedToolCall(
     } catch (err) {
       result = { success: false, error: err instanceof Error ? err.message : String(err) };
     }
+    const auditResult: ExecuteResult = tool.redactResultInAudit
+      ? { success: result.success, data: { redacted: true } }
+      : result;
 
     // Log execution (status auto_executed = no review needed, executed inline)
     const { data: row } = await ctx.adminClient
@@ -254,7 +259,7 @@ export async function handleProposedToolCall(
         params,
         status: result.success ? 'auto_executed' : 'failed',
         dry_run_result: dryRunResult as unknown as Record<string, unknown>,
-        real_result: result as unknown as Record<string, unknown>,
+        real_result: auditResult as unknown as Record<string, unknown>,
         executed_at: new Date().toISOString(),
       })
       .select('id')

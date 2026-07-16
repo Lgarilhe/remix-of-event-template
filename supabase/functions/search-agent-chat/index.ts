@@ -9,6 +9,10 @@ import {
 import { registerMutatingTools } from "../_shared/agent-tools-mutations.ts";
 import { registerReadTools } from "../_shared/agent-tools-reads.ts";
 import {
+  isEmailToolName,
+  registerEmailTools,
+} from "../_shared/agent-tools-email.ts";
+import {
   getRelevantInsights,
   formatInsightsForPrompt,
   bumpInsightUsage,
@@ -22,6 +26,7 @@ import {
 import { buildSafeMcpConfiguration } from "../_shared/mcp-policy.mjs";
 import {
   connectorSelectedForRequest,
+  isReservedConnectorName,
   normalizeEnabledConnectorNames,
 } from "../_shared/connector-selection.mjs";
 import { UNTRUSTED_CONTENT_SAFETY_PROMPT } from "../_shared/prompt-safety.mjs";
@@ -30,6 +35,7 @@ import { resolveNotionMcpConnectorRow } from "../_shared/notion-mcp-connection.t
 // Register tools at module load (idempotent)
 registerMutatingTools();
 registerReadTools();
+registerEmailTools();
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -1205,7 +1211,30 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             // (dynamically registered via registerMutatingTools()) + le server
             // tool web_search (exécuté côté API — jamais dispatché ici).
             // Constant across rounds — computed once, outside the loop.
-            const registryTools = getAnthropicToolDefinitions();
+            // Personal email is opt-in per request. In particular, a missing
+            // enabled_connectors field from an older client keeps these tools
+            // hidden; only the canonical explicit `email` selection enables
+            // them. Execution is gated again below as defense in depth.
+            const emailToolsEnabled = enabledConnectorNames !== null
+              && connectorSelectedForRequest("email", enabledConnectorNames);
+            let emailToolProvider: 'gmail' | 'outlook' | 'email' = 'email';
+            if (emailToolsEnabled && orgId) {
+              const { data: emailMapping } = await supabase
+                .from('member_email_accounts')
+                .select('provider')
+                .eq('organization_id', orgId)
+                .eq('user_id', user.id)
+                .or('account_status.is.null,account_status.in.(OK,CONNECTED)')
+                .order('linked_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              const rawProvider = String(emailMapping?.provider ?? '').toLowerCase();
+              if (rawProvider.includes('google') || rawProvider.includes('gmail')) emailToolProvider = 'gmail';
+              else if (rawProvider.includes('microsoft') || rawProvider.includes('outlook') || rawProvider.includes('exchange')) emailToolProvider = 'outlook';
+            }
+            const registryTools = getAnthropicToolDefinitions().filter(
+              (tool) => emailToolsEnabled || !isEmailToolName(tool.name),
+            );
             const allTools = [...sourcingTools, ...registryTools, buildWebSearchTool(resolvedModel)];
 
             // ── Connecteurs MCP de l'org (P3.1) ────────────────────────────
@@ -1227,7 +1256,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   ? resolveNotionMcpConnectorRow(supabase, orgId, user.id)
                   : Promise.resolve(null);
                 const selectedOrganizationConnectors = enabledConnectorNames?.filter(
-                  (name) => name !== "notion",
+                  (name) => !isReservedConnectorName(name),
                 ) ?? null;
                 const organizationConnectorsPromise = selectedOrganizationConnectors?.length === 0
                   ? Promise.resolve({ data: [] as Array<Record<string, unknown>> })
@@ -1247,13 +1276,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   organizationConnectorsPromise,
                   notionConnectorPromise,
                 ]);
-                // "notion" is reserved for the managed personal OAuth
-                // connection. A legacy organization connector with that name
-                // must never silently replace a disconnected personal one.
+                // Built-in names are reserved for managed personal
+                // connections. A legacy organization MCP server can never
+                // impersonate Notion, email, Gmail or Outlook.
                 const connectorRows = [
                   ...(notionConnector ? [notionConnector] : []),
                   ...((mcpRows ?? []) as Array<Record<string, unknown>>).filter(
-                    (row) => row.name !== "notion"
+                    (row) => !isReservedConnectorName(row.name)
                       && (enabledConnectorNames === null
                         || connectorSelectedForRequest(row.name, enabledConnectorNames)),
                   ),
@@ -1522,11 +1551,27 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
 
                   // Progression visible côté UI : chip « outil en cours » dans
                   // le fil (adapter → part tool-call → tool UIs / Fallback).
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: tc.id, name: tc.name, state: "running" } })}\n\n`));
+                  const progressToolName = isEmailToolName(tc.name)
+                    ? `${emailToolProvider} \u00b7 ${tc.name}`
+                    : tc.name;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ tool_status: { id: tc.id, name: progressToolName, state: "running" } })}\n\n`));
 
                   let outcomeForUi = "ok";
                   const registryTool = getRegistryTool(tc.name);
-                  if (registryTool) {
+                  if (isEmailToolName(tc.name) && !emailToolsEnabled) {
+                    // Do not rely solely on model tool exposure. A forged or
+                    // replayed tool call is rejected unless this request
+                    // explicitly selected the personal email connector.
+                    outcomeForUi = "error";
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool_use_id: tc.id,
+                      content: JSON.stringify({
+                        outcome: 'denied',
+                        error: 'Le connecteur email personnel n’est pas activé pour cette requête.',
+                      }),
+                    });
+                  } else if (registryTool) {
                     // Mutation via registry — propose, don't execute
                     const ctx: ToolContext = {
                       userId: user.id,

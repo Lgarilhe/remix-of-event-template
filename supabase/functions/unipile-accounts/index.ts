@@ -110,7 +110,6 @@ Deno.serve(async (req) => {
       throw new HttpError(400, 'Aucune organisation active');
     }
 
-    const keyPrefix = supabaseServiceRoleKey.slice(0, 12);
     const { data: membership, error: membershipError } = await adminClient
       .from('organization_members')
       .select('id')
@@ -125,10 +124,9 @@ Deno.serve(async (req) => {
         authMethod: auth.method,
         errorMsg: membershipError?.message,
         errorCode: membershipError?.code,
-        keyPrefix,
         sbSecretDefined: Boolean(Deno.env.get('SB_SECRET_KEY')),
       });
-      throw new HttpError(403, `Forbidden — user=${user.id} org=${organizationId} err=${membershipError?.message ?? 'no row'} keyPrefix=${keyPrefix} sbSecretDefined=${Boolean(Deno.env.get('SB_SECRET_KEY'))}`);
+      throw new HttpError(403, 'Forbidden');
     }
 
     const credentials = await resolveUnipileCredentials(organizationId);
@@ -338,7 +336,8 @@ Deno.serve(async (req) => {
         const { data: memberEmailAccounts, error: memberEmailAccountsError } = await adminClient
           .from('member_email_accounts')
           .select('email_account_id')
-          .eq('organization_id', organizationId);
+          .eq('organization_id', organizationId)
+          .eq('user_id', user.id);
 
         if (memberEmailAccountsError) {
           console.error('[unipile-accounts] Failed to load org email account IDs:', memberEmailAccountsError);
@@ -356,7 +355,11 @@ Deno.serve(async (req) => {
         });
 
         const emailData = await emailResponse.json();
-        const EMAIL_TYPES = new Set(['GOOGLE', 'OUTLOOK', 'IMAP', 'MAIL', 'GMAIL']);
+        const EMAIL_TYPES = new Set([
+          'GOOGLE', 'GOOGLE_OAUTH', 'GMAIL',
+          'OUTLOOK', 'MICROSOFT', 'EXCHANGE',
+          'IMAP', 'MAIL', 'ICLOUD',
+        ]);
         const emailAccounts = (emailData.items || [])
           .filter((acc: { type: string; id: string }) => EMAIL_TYPES.has(acc.type?.toUpperCase()) && allowedEmailAccountIds.has(acc.id))
           .map((acc: { id: string; name: string; type: string; sources: Array<{ status: string }>; connection_params?: { mail?: { imap_user?: string; smtp_user?: string } } }) => {
@@ -409,9 +412,13 @@ Deno.serve(async (req) => {
         // account_connected puisse upsert dans member_linkedin_accounts avec la bonne
         // paire (user_id, organization_id, linkedin_account_id).
         // Format : 'user:{userId}|org:{orgId}[|reconnect:{accountId}]'
+        const providerState = resolvedProviders
+          .map((provider) => String(provider).trim().toUpperCase())
+          .filter(Boolean)
+          .join(',');
         const stateName = reconnect_account_id
-          ? `user:${user.id}|org:${organizationId}|reconnect:${reconnect_account_id}`
-          : `user:${user.id}|org:${organizationId}`;
+          ? `user:${user.id}|org:${organizationId}|providers:${providerState}|reconnect:${reconnect_account_id}`
+          : `user:${user.id}|org:${organizationId}|providers:${providerState}`;
 
         const hostedBody: Record<string, unknown> = {
           type: reconnect_account_id ? 'reconnect' : 'create',

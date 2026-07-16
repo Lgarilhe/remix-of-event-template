@@ -63,7 +63,7 @@ test('connector selection accepts only explicit safe connector slugs', () => {
   );
   assert.deepEqual(
     normalizeEnabledConnectorNames(['aa', 'bb', 'cc', 'dd', 'ee', 'ff', 'gg']),
-    ['aa', 'bb', 'cc', 'dd', 'ee', 'ff'],
+    ['aa', 'bb', 'cc', 'dd', 'ee', 'ff', 'gg'],
   );
   assert.equal(connectorSelectedForRequest('Notion', ['notion']), true);
   assert.equal(connectorSelectedForRequest('slack', ['notion']), false);
@@ -81,6 +81,6 @@ test('the composer sends an explicit selection and exposes accessible connector 
 test('the server resolves only selected connectors and never falls back to legacy Notion', () => {
   assert.match(chatFunction, /normalizeEnabledConnectorNames\(enabled_connectors\)/);
   assert.match(chatFunction, /const notionConnectorPromise = notionSelected/);
-  assert.match(chatFunction, /row\.name !== "notion"/);
+  assert.match(chatFunction, /!isReservedConnectorName\(row\.name\)/);
   assert.match(chatFunction, /connectorSelectedForRequest\(row\.name, enabledConnectorNames\)/);
 });
