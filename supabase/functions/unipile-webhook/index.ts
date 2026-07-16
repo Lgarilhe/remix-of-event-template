@@ -22,6 +22,18 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+async function hmacSha256Hex(secret: string, value: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 // Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -130,6 +142,7 @@ function parseHostedAuthState(name: string | undefined): {
   organizationId: string;
   reconnectAccountId: string | null;
   providers: string[];
+  expiresAtMs: number | null;
 } | null {
   if (!name || typeof name !== 'string') return null;
   const parts = name.split('|');
@@ -151,6 +164,7 @@ function parseHostedAuthState(name: string | undefined): {
       .split(',')
       .map((provider) => provider.trim().toUpperCase())
       .filter(Boolean),
+    expiresAtMs: /^\d{13}$/.test(map.expires || '') ? Number(map.expires) : null,
   };
 }
 
@@ -235,6 +249,7 @@ Deno.serve(async (req) => {
   let supabaseForCleanup: SupabaseClient | null = null;
 
   try {
+    const rawPayload = await req.json() as Partial<WebhookPayload>;
     // Verify webhook authenticity
     const authHeader = req.headers.get('unipile-auth');
     if (!WEBHOOK_SECRET) {
@@ -244,19 +259,41 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    if (!authHeader || !timingSafeEqual(authHeader, WEBHOOK_SECRET)) {
-      console.error('[unipile-webhook] Invalid or missing auth header');
+    const headerAuthenticated = Boolean(authHeader && timingSafeEqual(authHeader, WEBHOOK_SECRET));
+    const hostedSignature = new URL(req.url).searchParams.get('hosted_sig');
+    const hostedState = parseHostedAuthState(rawPayload.name);
+    const hostedStateFresh = Boolean(
+      hostedState?.expiresAtMs
+      && hostedState.expiresAtMs > Date.now()
+      && hostedState.expiresAtMs <= Date.now() + 31 * 60 * 1000,
+    );
+    const expectedHostedSignature = hostedSignature && rawPayload.name && hostedStateFresh
+      ? await hmacSha256Hex(WEBHOOK_SECRET, rawPayload.name)
+      : null;
+    const hostedAuthenticated = Boolean(
+      hostedSignature
+      && expectedHostedSignature
+      && timingSafeEqual(hostedSignature, expectedHostedSignature),
+    );
+    if (!headerAuthenticated && !hostedAuthenticated) {
+      console.error('[unipile-webhook] Invalid webhook authentication');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const rawPayload = await req.json() as Partial<WebhookPayload>;
     const hostedAuthSucceeded = Boolean(
       rawPayload.name
+      && rawPayload.account_id
       && (rawPayload.status === 'CREATION_SUCCESS' || rawPayload.status === 'RECONNECTED'),
     );
+    if (hostedAuthenticated && !headerAuthenticated && (!hostedAuthSucceeded || rawPayload.event)) {
+      return new Response(JSON.stringify({ error: 'Invalid hosted auth callback' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     const payload: WebhookPayload = {
       ...rawPayload,
       event: rawPayload.event
