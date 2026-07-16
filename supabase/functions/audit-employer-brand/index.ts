@@ -39,19 +39,26 @@ async function readResponseText(response: Response, timeoutMs = 5000): Promise<s
 }
 
 /* ── Parse la sortie du call recherche web en sections par source ──
- * Format attendu :
+ * Format attendu (tolérant : gras markdown, casse, espaces autour du ':') :
  *   ### SOURCE: linkedin
  *   STATUS: found
  *   <contenu factuel>
  */
 function parseResearchOutput(text: string): Map<string, { status: 'success' | 'not_found'; content: string }> {
   const sections = new Map<string, { status: 'success' | 'not_found'; content: string }>();
-  const regex = /###\s*SOURCE:\s*([a-z_]+)\s*\n\s*STATUS:\s*(found|not_found)\s*\n?([\s\S]*?)(?=###\s*SOURCE:|$)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const id = match[1].toLowerCase();
-    const found = match[2].toLowerCase() === 'found';
-    const content = match[3].trim();
+  // Découpe sur les headings SOURCE (###, ##, gras, avec ou sans espace avant ':')
+  const chunks = text.split(/(?:^|\n)\s*#{0,4}\s*\*{0,2}\s*SOURCE\s*:\s*/i).slice(1);
+  for (const chunk of chunks) {
+    const idMatch = chunk.match(/^\**\s*([a-z_]+)/i);
+    if (!idMatch) continue;
+    const id = idMatch[1].toLowerCase();
+    const statusMatch = chunk.match(/STATUS\s*:?\s*\**\s*(found|not_found)/i);
+    const found = statusMatch ? statusMatch[1].toLowerCase() === 'found' : false;
+    // Contenu = tout ce qui suit la ligne STATUS (ou le chunk entier sinon)
+    const content = (statusMatch
+      ? chunk.slice((statusMatch.index ?? 0) + statusMatch[0].length)
+      : chunk
+    ).replace(/^\**\s*/, '').trim();
     sections.set(id, {
       status: found && content.length > 50 ? 'success' : 'not_found',
       content,
@@ -171,6 +178,7 @@ Règles :
 
     let research = new Map<string, { status: 'success' | 'not_found'; content: string }>();
     const researchTask = (async () => {
+      const t0 = Date.now();
       try {
         console.log('[audit] Web research via Claude web search...');
         const result = await callClaudeCompat({
@@ -179,16 +187,27 @@ Règles :
             { role: 'user', content: researchPrompt },
           ],
           // Haiku 4.5 (défaut mapModel) → variante basique du tool web search
-          serverTools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
-          max_tokens: 3000,
-          timeoutMs: 35000,
+          serverTools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }],
+          max_tokens: 4500,
+          // Le client (invokeEdgeFunction) laisse 90s à cette fonction :
+          // recherche 45s max + scoring 20s max, ça tient. Pas de retry —
+          // en cas d'échec on dégrade en "analyse partielle" plutôt que
+          // de doubler la latence.
+          timeoutMs: 45000,
           maxRetries: 0,
         });
         research = parseResearchOutput(result.content);
-        console.log('[audit] Web research done, sections:', Array.from(research.keys()).join(','));
+        console.log(`[audit] Web research done in ${Date.now() - t0}ms — stop=${result.stop_reason} tokens=${result.usage.input_tokens}+${result.usage.output_tokens} chars=${result.content.length} sections=[${Array.from(research.keys()).join(',')}]`);
+        if (research.size === 0 && result.content.length > 0) {
+          console.warn('[audit] Research parse yielded 0 sections. Content head:', result.content.slice(0, 400));
+        }
         await settleClaudeUsage({ userId: user.id, aiAction: 'audit_employer_brand', usage: result.usage, modelId: result.model });
       } catch (e) {
-        console.error('[audit] Web research failed:', e);
+        if (e instanceof ClaudeCompatError) {
+          console.error(`[audit] Web research API error after ${Date.now() - t0}ms — status=${e.status} body=${e.body.slice(0, 500)}`);
+        } else {
+          console.error(`[audit] Web research failed after ${Date.now() - t0}ms:`, e);
+        }
       }
     })();
 
