@@ -28,6 +28,12 @@ const STATUS_PRIORITY: Record<string, number> = {
   'clicked': 4,
   'replied': 5,
   'bounced': 2, // same as sent (bounce can happen after send)
+  // États TERMINAUX (audit 2026-07, Delivery L2) : priorité haute pour qu'un
+  // open/click tardif (préfetch, scanner de liens) ne les « upgrade » PAS en
+  // opened/clicked dans le fallback JS. Le timestamp est quand même
+  // enregistré, seul le STATUS reste figé. (La RPC SQL gère déjà ce cas.)
+  'cancelled': 6,
+  'failed': 6,
 };
 
 const MAX_EVENTS_PER_TRACKING = 100;
