@@ -590,11 +590,12 @@ function formatFollowers(n: number | null | undefined): string {
 const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
   const rolesCount = dedupeRoles(company.openRoles).length || company.jobPostingsCount || 0;
 
-  const INSIGHT_CONFIG: Record<string, { icon: typeof Target; accent: string }> = {
-    difficulty: { icon: Target, accent: 'hsl(0, 72%, 51%)' },
-    salary: { icon: DollarSign, accent: 'hsl(142, 71%, 45%)' },
-    attractivity: { icon: Heart, accent: 'hsl(var(--skalr-purple))' },
-    timing: { icon: Zap, accent: 'hsl(45, 93%, 47%)' },
+  // Icônes neutres, couleur unique — pas d'arc-en-ciel
+  const INSIGHT_CONFIG: Record<string, { icon: typeof Target }> = {
+    difficulty: { icon: Target },
+    salary: { icon: DollarSign },
+    attractivity: { icon: Heart },
+    timing: { icon: Zap },
   };
 
   const structuredInsights = company.structuredInsights || [];
@@ -605,13 +606,13 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
       {/* Structured AI Recruitment Insights */}
       {structuredInsights.length > 0 ? (
         <div className="space-y-2">
-          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skalr-purple))' }}>
+          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
             <Sparkles className="w-3.5 h-3.5" />
             Analyse recrutement
           </h4>
           <div className="space-y-2">
             {structuredInsights.map((insight, i) => {
-              const config = INSIGHT_CONFIG[insight.key] || { icon: Sparkles, accent: 'hsl(var(--skalr-purple))' };
+              const config = INSIGHT_CONFIG[insight.key] || { icon: Sparkles };
               const Icon = config.icon;
               return (
                 <motion.div
@@ -619,13 +620,10 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.08 }}
-                  className="border border-border p-3 hover:border-border transition-colors flex gap-2.5"
+                  className="rounded-lg border border-border p-3 flex gap-2.5"
                 >
-                  <div
-                    className="w-6 h-6 flex items-center justify-center shrink-0 mt-0.5"
-                    style={{ backgroundColor: config.accent + '15' }}
-                  >
-                    <Icon className="w-3.5 h-3.5" style={{ color: config.accent }} />
+                  <div className="w-6 h-6 flex items-center justify-center shrink-0 mt-0.5 rounded-md bg-foreground/[0.06]">
+                    <Icon className="w-3.5 h-3.5 text-foreground/70" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-foreground uppercase tracking-wide leading-snug mb-0.5">
@@ -642,11 +640,8 @@ const TabOverview: React.FC<{ company: CompanyData }> = ({ company }) => {
         </div>
       ) : company.insights.length > 0 ? (
         /* Fallback: flat insights */
-        <div
-          className="border border-border p-4 space-y-3"
-          style={{ borderLeftWidth: '3px', borderLeftColor: 'hsl(var(--skalr-purple))' }}
-        >
-          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skalr-purple))' }}>
+        <div className="rounded-lg border border-border border-l-2 border-l-emerald-500/50 p-4 space-y-3">
+          <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
             <Sparkles className="w-3.5 h-3.5" />
             Analyse recrutement
           </h4>

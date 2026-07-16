@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Globe, Briefcase, Star, MessageSquare, Linkedin, Share2, FileText, Cpu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import analyticsIcon from '@/assets/icon-analytics-3d.webp';
 import type { OnboardingCompanyData } from '@/pages/Onboarding';
 
 interface Props {
@@ -64,8 +63,8 @@ const AGENT_MESSAGES = [
   "Analyse de votre page LinkedIn entreprise...",
   "Évaluation de votre présence sur les réseaux...",
   "Évaluation de la qualité de vos annonces...",
-  "Analyse IA en cours... 🧠",
-  "Calcul du score final... 🎯",
+  "Analyse IA en cours...",
+  "Calcul du score final...",
 ];
 
 /* ─── Component ─── */
@@ -149,7 +148,8 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           icon: ICON_MAP[cat.id] || Globe,
           score: cat.score,
           maxScore: cat.maxScore || 5,
-          color: cat.color || 'hsl(var(--skalr-blue))',
+          // Couleur unique — le rendu ignore la couleur suggérée par l'IA (pas d'arc-en-ciel)
+          color: 'hsl(var(--success))',
           summary: cat.summary,
           findings: cat.findings || [],
         }));
@@ -244,12 +244,11 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                     className="flex items-center gap-2"
                   >
                     <div
-                      className={`w-6 h-6 flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
-                        s.done ? 'border-transparent text-foreground' : 'border-border text-muted-foreground'
+                      className={`w-6 h-6 flex items-center justify-center text-2xs font-mono rounded-md border transition-all duration-300 ${
+                        s.done ? 'bg-success/15 border-transparent text-success' : 'border-border text-muted-foreground/60'
                       }`}
-                      style={s.done ? { background: 'hsl(var(--primary))' } : {}}
                     >
-                      {s.done ? <Check className="w-3 h-3" /> : String(i + 1).padStart(2, '0')}
+                      {s.done ? <Check className="w-3 h-3" strokeWidth={3} /> : String(i + 1).padStart(2, '0')}
                     </div>
                     <span className={`text-xs transition-colors ${s.done ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
                       {s.label}
@@ -261,15 +260,17 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
             {/* Agent bubbles */}
             <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto no-scrollbar pr-1">
-              {bubbles.map((b) => (
-                <motion.div
+              {bubbles.map((b, idx) => (
+                <motion.p
                   key={b.id}
-                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  className="bg-muted/60 border border-border/5 px-3 py-2 text-xs text-foreground/80 rounded-sm"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`text-[13px] leading-relaxed ${
+                    idx === bubbles.length - 1 ? 'konekt-shimmer-text' : 'text-muted-foreground/70'
+                  }`}
                 >
                   {b.text}
-                </motion.div>
+                </motion.p>
               ))}
               <div ref={bubblesEndRef} />
             </div>
@@ -311,25 +312,14 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
             className="space-y-5"
           >
             {/* Score card */}
-            <div
-              className="border border-border/80 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6"
-              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
-            >
-              <img src={analyticsIcon} alt="" aria-hidden="true" className="w-10 h-10 sm:w-14 sm:h-14 shrink-0" />
-
+            <div className="rounded-lg border border-border p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
               {/* Score ring */}
               <div className="relative w-20 h-20 sm:w-24 sm:h-24 shrink-0">
                 <svg width="96" height="96" viewBox="0 0 96 96" className="rotate-[-90deg]">
-                  <defs>
-                    <linearGradient id="audit-score-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="hsl(var(--skalr-purple))" />
-                      <stop offset="100%" stopColor="hsl(var(--skalr-pink))" />
-                    </linearGradient>
-                  </defs>
                   <circle cx="48" cy="48" r="42" fill="none" stroke="hsl(var(--foreground) / 0.08)" strokeWidth="5" />
                   <motion.circle
                     cx="48" cy="48" r="42" fill="none"
-                    stroke="url(#audit-score-grad)"
+                    stroke="hsl(var(--success))"
                     strokeWidth="5" strokeLinecap="round"
                     strokeDasharray={circumference}
                     initial={{ strokeDashoffset: circumference }}
@@ -376,7 +366,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                 const isExpanded = expandedCat === cat.id;
                 const pct = (cat.score / cat.maxScore) * 100;
                 return (
-                  <div key={cat.id} className="border border-border overflow-hidden">
+                  <div key={cat.id} className="rounded-lg border border-border overflow-hidden">
                     <button
                       onClick={() => setExpandedCat(isExpanded ? null : cat.id)}
                       className="w-full flex items-center gap-3 p-3 text-left hover:bg-muted/30 transition-colors"
@@ -385,14 +375,13 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm font-medium truncate">{cat.label}</span>
-                          <span className="text-xs font-bold ml-2 shrink-0" style={{ color: cat.color }}>
+                          <span className="text-xs font-mono font-bold ml-2 shrink-0 text-foreground/80 tabular-nums">
                             {cat.score}/{cat.maxScore}
                           </span>
                         </div>
-                        <div className="w-full h-1.5 bg-accent/50 overflow-hidden">
+                        <div className="w-full h-1 rounded-full bg-foreground/10 overflow-hidden">
                           <motion.div
-                            className="h-full"
-                            style={{ background: cat.color }}
+                            className="h-full rounded-full bg-success"
                             initial={{ width: 0 }}
                             animate={{ width: `${pct}%` }}
                             transition={{ duration: 0.6, delay: 0.2 }}
@@ -429,7 +418,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
 
             {/* Quick wins */}
             {quickWins.length > 0 && (
-              <div className="border border-border p-4 space-y-3">
+              <div className="rounded-lg border border-border p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Actions prioritaires</h4>
                   <span
@@ -448,13 +437,8 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
               </div>
             )}
 
-            {/* Skalr insight card */}
-            <div
-              className="border border-border p-4"
-              style={{
-                background: 'linear-gradient(135deg, hsl(var(--skalr-purple) / 0.04), hsl(var(--skalr-pink) / 0.04))',
-              }}
-            >
+            {/* Insight Konekt */}
+            <div className="rounded-lg border border-border bg-foreground/[0.03] p-4">
               <p className="text-xs text-foreground/70 leading-relaxed">
                 <strong className="text-foreground">{improvementCount} axes d'amélioration identifiés.</strong>{' '}
                 Konekt vous aide à travailler ces piliers en profondeur pour atteindre en moyenne{' '}

@@ -19,6 +19,8 @@ interface Props {
  */
 export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, orgName, children }) => {
   const progress = ((stepIndex + 1) / flow.length) * 100;
+  const currentScene = flow[stepIndex];
+  const isFinale = currentScene === 'preparing' || currentScene === 'launch';
   const remainingMin = Math.max(1, Math.ceil(remainingSeconds(flow, stepIndex) / 60));
 
   return (
@@ -68,7 +70,9 @@ export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, orgName, chi
             {String(stepIndex + 1).padStart(2, '0')}
             <span className="text-muted-foreground/50"> / {flow.length}</span>
           </span>
-          <span className="hidden sm:inline text-muted-foreground/60">≈ {remainingMin} min</span>
+          {!isFinale && (
+            <span className="hidden sm:inline text-muted-foreground/60">≈ {remainingMin} min</span>
+          )}
         </motion.div>
       </header>
 

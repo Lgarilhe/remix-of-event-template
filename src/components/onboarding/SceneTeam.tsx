@@ -238,7 +238,7 @@ export const SceneTeam: React.FC<Props> = ({ organizationId, onFinish, onBack })
             <div className="w-32 h-1 bg-accent/50 overflow-hidden">
               <motion.div
                 className="h-full"
-                style={{ background: 'linear-gradient(90deg, hsl(var(--skalr-purple)), hsl(var(--skalr-pink)))' }}
+                style={{ background: 'hsl(var(--success))' }}
                 animate={{ x: ['-100%', '100%'] }}
                 transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
               />
