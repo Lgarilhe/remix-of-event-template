@@ -199,6 +199,9 @@ verify_jwt = false
 [functions.refine-search-filters]
 verify_jwt = false
 
+[functions.nl-filter-edit]
+verify_jwt = false
+
 [functions.resolve-pedigree-directory]
 verify_jwt = false
 

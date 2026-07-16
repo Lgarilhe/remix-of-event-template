@@ -89,6 +89,30 @@
     /* Fonts — gérés par tailwind.config.ts (Instrument Sans / Outfit / Instrument Serif).
        Les variables CSS ci-dessus pour fontFamily ont été retirées car redondantes. */
 
+    /* ── Search redesign tokens (--k-*) — Linear/Qonto register, dark ──
+       Valeurs complètes (hsl()/rgba()) pour usage direct via var() dans les
+       classes Tailwind arbitraires (bg-[var(--k-surface)]). Un seul accent
+       indigo désaturé, rationné : focus, sélection, priorité, action. */
+    --k-bg: hsl(40 4% 8.5%);
+    --k-surface: hsl(40 3.5% 11%);
+    --k-surface-2: hsl(40 3% 14%);
+    --k-surface-3: hsl(40 3% 16.5%);
+    --k-hairline: rgba(255,255,255,0.06);
+    --k-hairline-hover: rgba(255,255,255,0.10);
+    --k-hairline-focus: rgba(255,255,255,0.14);
+    --k-text: hsl(40 6% 97%);
+    --k-text-2: hsl(40 4% 74%);
+    --k-text-muted: hsl(40 4% 55%);
+    --k-text-placeholder: hsl(40 3% 40%);
+    --k-accent: hsl(250 42% 70%);
+    --k-accent-hover: hsl(250 45% 76%);
+    --k-accent-press: hsl(250 40% 64%);
+    --k-accent-ring: rgba(154,144,221,0.34);
+    --k-accent-tint: rgba(154,144,221,0.14);
+    --k-on-accent: hsl(250 28% 12%);
+    --k-success: hsl(145 55% 48%);
+    --k-warn: hsl(38 92% 55%);
+
     /* Shadows (subtle for dark theme) */
     --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.15);
     --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.15);
@@ -147,6 +171,27 @@
     --chart-3: 142 50% 45%;
     --chart-4: 330 60% 55%;
     --chart-5: 45 80% 55%;
+
+    /* ── Search redesign tokens (--k-*) — Qonto register, light ── */
+    --k-bg: hsl(40 14% 98%);
+    --k-surface: hsl(40 20% 100%);
+    --k-surface-2: hsl(40 16% 99%);
+    --k-surface-3: hsl(40 20% 100%);
+    --k-hairline: hsl(40 8% 90%);
+    --k-hairline-hover: hsl(40 8% 84%);
+    --k-hairline-focus: hsl(40 8% 76%);
+    --k-text: hsl(40 6% 12%);
+    --k-text-2: hsl(40 5% 38%);
+    --k-text-muted: hsl(40 4% 52%);
+    --k-text-placeholder: hsl(40 4% 62%);
+    --k-accent: hsl(250 46% 58%);
+    --k-accent-hover: hsl(250 48% 52%);
+    --k-accent-press: hsl(250 46% 46%);
+    --k-accent-ring: rgba(111,99,196,0.30);
+    --k-accent-tint: rgba(111,99,196,0.10);
+    --k-on-accent: hsl(0 0% 100%);
+    --k-success: hsl(145 50% 38%);
+    --k-warn: hsl(35 85% 45%);
 
     --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.04);
     --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.06);

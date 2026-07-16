@@ -39,38 +39,36 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
       <button
         type="button"
         onClick={onToggle}
-        className={`flex flex-col items-start w-full p-4 border-b border-border hover:bg-muted/50 transition-colors text-left ${bgColorClass}`}
+        className={`flex flex-col items-start w-full px-3 py-3 border-b border-[var(--k-hairline)] hover:bg-[var(--k-surface-2)] transition-colors text-left ${bgColorClass}`}
       >
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 [&_svg]:text-[var(--k-text-muted)]">
             {icon}
-            <span className="text-sm font-semibold text-foreground uppercase tracking-wide">{title}</span>
+            <span className="text-[11px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">{title}</span>
             {badge !== undefined && badge > 0 && (
-              <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
+              <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-[var(--k-surface-2)] text-[var(--k-text-muted)] border border-[var(--k-hairline)]">
                 {badge}
               </Badge>
             )}
           </div>
-          <ChevronRight className="w-4 h-4 text-foreground/40" />
+          <ChevronRight className="w-4 h-4 text-[var(--k-text-muted)]" />
         </div>
         {activeFiltersPreview && activeFiltersPreview.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2 w-full">
+          <div className="flex flex-wrap gap-1.5 mt-2 w-full">
             {activeFiltersPreview.filter(Boolean).slice(0, 5).map((filter, index) => (
-              <Badge
+              <span
                 key={index}
-                variant="outline"
-                className="text-xs h-5 px-1.5 bg-background/60 text-foreground/70 border-border font-normal"
+                className="inline-flex items-center text-[12.5px] h-6 px-2.5 rounded-full bg-transparent text-[var(--k-text-2)] border border-[var(--k-hairline)]"
               >
                 {String(filter).length > 20 ? `${String(filter).slice(0, 20)}...` : String(filter)}
-              </Badge>
+              </span>
             ))}
             {activeFiltersPreview.length > 5 && (
-              <Badge
-                variant="outline"
-                className="text-xs h-5 px-1.5 bg-accent/50 text-foreground border-border font-normal"
+              <span
+                className="inline-flex items-center text-[12.5px] h-6 px-2.5 rounded-full bg-transparent text-[var(--k-text-muted)] border border-[var(--k-hairline)]"
               >
                 +{activeFiltersPreview.length - 5}
-              </Badge>
+              </span>
             )}
           </div>
         )}
@@ -78,12 +76,12 @@ export const FilterSection: React.FC<FilterSectionProps> = ({
 
       {/* Expanded content — rendered inline (no portal needed, already inside a Dialog) */}
       {isOpen && (
-        <div className="border border-border bg-background mb-2">
+        <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] mb-2 overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--k-hairline)]">
             <div className="flex items-center gap-2">
               {icon}
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wide">{title}</span>
+              <span className="text-[11px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">{title}</span>
               {badge !== undefined && badge > 0 && (
                 <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-foreground/10 text-foreground">
                   {badge}
@@ -127,10 +125,10 @@ export const FilterGroup: React.FC<FilterGroupProps> = ({
   unsupported = false,
   unsupportedTooltip,
 }) => (
-  <div className={`border border-border bg-muted/30 p-2 ${unsupported ? 'opacity-50 pointer-events-none select-none' : ''}`}>
+  <div className={`rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface-2)] p-2.5 ${unsupported ? 'opacity-50 pointer-events-none select-none' : ''}`}>
     <div className="flex items-center gap-1.5 mb-1.5">
       {icon && icon}
-      <span className="text-xs font-medium text-foreground/70 uppercase tracking-wide">{title}</span>
+      <span className="text-[11px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.05em]">{title}</span>
       {badge !== undefined && badge > 0 && (
         <Badge variant="outline" className="h-4 px-1 text-xs bg-foreground/10 text-foreground border-border">{badge}</Badge>
       )}
@@ -199,7 +197,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         )}
       </div>
       {options.length > 0 && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-background border border-border shadow-lg max-h-48 overflow-auto">
+        <div className="absolute z-50 w-full mt-1 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface-3)] shadow-lg max-h-48 overflow-auto">
           {options.map((option, index) => (
             <button
               key={`${option.id}-${index}`}
@@ -231,7 +229,7 @@ export const SelectedBadges: React.FC<SelectedBadgesProps> = ({ items, onRemove 
         <Badge
           key={item.id}
           variant="secondary"
-          className="gap-1 pr-1 bg-foreground/10 text-foreground hover:bg-foreground/20 text-xs"
+          className="gap-1 pr-1 rounded-full bg-transparent border border-[var(--k-hairline)] text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] text-xs font-medium"
         >
           <span className="max-w-[150px] truncate">{item.name}</span>
           <button type="button" onClick={() => onRemove(item.id)} className="ml-0.5 hover:bg-foreground/30 p-0.5">
@@ -261,7 +259,7 @@ export const PriorityBadges: React.FC<PriorityBadgesProps> = ({
       {items.map((item) => {
         const priorityConfig = PRIORITY_OPTIONS.find((p) => p.value === item.priority);
         return (
-          <div key={item.id} className="flex items-center gap-2 p-2 bg-muted/50">
+          <div key={item.id} className="flex items-center gap-2 p-2 rounded-[8px] border border-[var(--k-hairline)] bg-[var(--k-surface)]">
             <span className="text-sm flex-1 truncate">{item.name}</span>
             <Select
               value={item.priority}
@@ -281,7 +279,7 @@ export const PriorityBadges: React.FC<PriorityBadgesProps> = ({
                 ))}
               </SelectContent>
             </Select>
-            <button type="button" onClick={() => onRemove(item.id)} className="text-red-400 hover:text-red-600 p-0.5">
+            <button type="button" onClick={() => onRemove(item.id)} className="text-[var(--k-text-muted)] hover:text-[var(--k-text)] p-0.5">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -314,7 +312,7 @@ export const LocationBadges: React.FC<LocationBadgesProps> = ({
         return (
           <div 
             key={item.id} 
-            className="bg-muted/30 border border-border p-3"
+            className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-3"
           >
             {/* Location name and remove button */}
             <div className="flex items-center justify-between mb-2">

@@ -230,9 +230,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem('konekt_search_view_mode');
-      return stored === 'compact' ? 'compact' : 'detailed';
+      // Défaut : vue compacte (dé-densification) ; le choix user persiste.
+      return stored === 'detailed' ? 'detailed' : 'compact';
     } catch {
-      return 'detailed';
+      return 'compact';
     }
   });
   const setViewMode = useCallback((mode: ViewMode) => {
@@ -479,9 +480,9 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       {/* HEADER: count clarifié + Pool toggle. Affiché uniquement quand il
           y a quelque chose à montrer (count après search, ou pool toggle).
           Avant : toujours rendu — 45px de chrome vide avant les résultats. */}
-      {(hasSearched || (poolCount > 0 && onSetShowPoolView)) && (
+      {((hasSearched && !activeProject) || (poolCount > 0 && onSetShowPoolView)) && (
         <div className="flex items-center gap-3 px-4 py-2 border-b border-border shrink-0 min-w-0">
-          {hasSearched && (
+          {hasSearched && !activeProject && (
             <div className="flex items-baseline gap-1.5 text-[12.5px] whitespace-nowrap">
               <span className="font-display font-bold text-foreground tabular-nums">{displayResults.length}</span>
               <span className="text-muted-foreground">candidat{displayResults.length > 1 ? 's' : ''} affiché{displayResults.length > 1 ? 's' : ''}</span>
@@ -882,7 +883,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             {/* Batch workflow banner — compact single row + thin progress
                 bar. Réduit de ~130px (titre 4xl + sous-titre + boutons) à
                 ~40px pour faire remonter les résultats. */}
-            {hasSearched && total !== null && total > 0 && (
+            {hasSearched && total !== null && total > 0 && !activeProject && (
               <div className="border border-border bg-accent/15 mb-2 overflow-hidden rounded-md">
                 <div className="px-3 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                   {/* Count */}

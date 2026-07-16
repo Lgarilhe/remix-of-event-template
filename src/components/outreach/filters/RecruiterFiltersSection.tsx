@@ -37,12 +37,12 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
     <FilterSection
       id="recruiter"
       title="Filtres avancés (Recruiter)"
-      icon={<Target className="w-4 h-4 text-rose-500/80" />}
+      icon={<Target className="w-4 h-4 text-muted-foreground" />}
       badge={countRecruiterFilters}
       isOpen={isOpen}
       onToggle={onToggle}
       activeFiltersPreview={activeFiltersPreview}
-      bgColorClass="bg-destructive/5"
+      bgColorClass=""
     >
       {/* Open to Work */}
       <FilterGroup

@@ -52,20 +52,32 @@ interface FundingBracket {
   minAmount: number;
   maxAmount: number;
   tier: 1 | 2 | 3;
+  /** Garde-fous de cohérence : le montant de levée seul laisse passer des
+   *  groupes établis (Canal+, Sephora…) dont une transaction mineure traîne
+   *  chez le fournisseur. Une seed est jeune et petite, point. */
+  maxAgeYears: number;
+  employeeRanges: string[];
 }
 
 const FUNDING_BRACKETS: FundingBracket[] = [
-  { stage: 'seed',           minAmount: 0,           maxAmount: 5_000_000,    tier: 3 },
-  { stage: 'series_a',       minAmount: 5_000_000,   maxAmount: 25_000_000,   tier: 2 },
-  { stage: 'series_b',       minAmount: 25_000_000,  maxAmount: 75_000_000,   tier: 2 },
-  { stage: 'series_c',       minAmount: 75_000_000,  maxAmount: 200_000_000,  tier: 1 },
-  { stage: 'series_d_plus',  minAmount: 200_000_000, maxAmount: 5_000_000_000, tier: 1 },
+  { stage: 'seed',           minAmount: 0,           maxAmount: 5_000_000,    tier: 3, maxAgeYears: 12, employeeRanges: ['11,50', '51,200'] },
+  { stage: 'series_a',       minAmount: 5_000_000,   maxAmount: 25_000_000,   tier: 2, maxAgeYears: 15, employeeRanges: ['11,50', '51,200', '201,500'] },
+  { stage: 'series_b',       minAmount: 25_000_000,  maxAmount: 75_000_000,   tier: 2, maxAgeYears: 20, employeeRanges: ['11,50', '51,200', '201,500', '501,1000'] },
+  { stage: 'series_c',       minAmount: 75_000_000,  maxAmount: 200_000_000,  tier: 1, maxAgeYears: 25, employeeRanges: ['51,200', '201,500', '501,1000', '1001,5000'] },
+  { stage: 'series_d_plus',  minAmount: 200_000_000, maxAmount: 5_000_000_000, tier: 1, maxAgeYears: 30, employeeRanges: ['201,500', '501,1000', '1001,5000', '5001,10000'] },
 ];
 
 const TARGET_LOCATIONS = [
   'France', 'Germany', 'United Kingdom', 'Spain',
   'Netherlands', 'Belgium', 'Switzerland', 'Italy',
 ];
+
+// Le pays des orgs est rarement présent dans les réponses de recherche — mais
+// on interroge PAR pays, donc le contexte de recherche fait foi (code ISO).
+const LOCATION_TO_COUNTRY: Record<string, string> = {
+  France: 'FR', Germany: 'DE', 'United Kingdom': 'GB', Spain: 'ES',
+  Netherlands: 'NL', Belgium: 'BE', Switzerland: 'CH', Italy: 'IT',
+};
 
 // Cap par bracket × pays pour éviter de saturer le directory (et le cron de
 // résolution Unipile derrière). 50 × 5 stages × 8 pays = max 2000 entrées /
@@ -98,60 +110,104 @@ async function searchApolloByFunding(
   apolloApiKey: string,
   bracket: FundingBracket,
   location: string,
+  pages = 1,
+  cap = RESULTS_PER_BRACKET_LOCATION,
 ): Promise<ApolloOrg[]> {
-  const payload: Record<string, unknown> = {
-    latest_funding_amount_range: {
-      min: bracket.minAmount,
-      max: bracket.maxAmount,
-    },
-    organization_locations: [location],
-    organization_num_employees_ranges: ['11,50', '51,200', '201,500', '501,1000', '1001,5000', '5001,10000', '10001,9999999'],
-    per_page: 100,
-    page: 1,
-  };
+  const all: ApolloOrg[] = [];
 
-  try {
-    const res = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'X-Api-Key': apolloApiKey,
+  for (let page = 1; page <= pages; page++) {
+    const payload: Record<string, unknown> = {
+      latest_funding_amount_range: {
+        min: bracket.minAmount,
+        max: bracket.maxAmount,
       },
-      body: JSON.stringify({ ...payload, api_key: apolloApiKey }),
-    }, 25000);
+      organization_locations: [location],
+      organization_num_employees_ranges: bracket.employeeRanges,
+      per_page: 100,
+      page,
+    };
 
-    if (!res.ok) {
-      console.warn(`[refresh-pedigree] Apollo ${bracket.stage}/${location} → ${res.status}`);
-      return [];
+    try {
+      const res = await fetchWithTimeout('https://api.apollo.io/api/v1/mixed_companies/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'X-Api-Key': apolloApiKey,
+        },
+        body: JSON.stringify({ ...payload, api_key: apolloApiKey }),
+      }, 25000);
+
+      if (!res.ok) {
+        console.warn(`[refresh-pedigree] Apollo ${bracket.stage}/${location} p${page} → ${res.status}`);
+        break;
+      }
+
+      const data = await res.json();
+      // Les résultats arrivent dans DEUX tableaux (organizations + accounts) —
+      // n'en lire qu'un faisait croire à une dernière page (97 < 100) et
+      // cassait la pagination dès la page 1.
+      const orgsArr = Array.isArray(data.organizations) ? data.organizations : [];
+      const accountsArr = Array.isArray(data.accounts) ? data.accounts : [];
+      const list = [...orgsArr, ...accountsArr] as ApolloOrg[];
+      if (list.length === 0) break;
+
+      all.push(...list);
+      if (all.length >= cap) break;
+      // total_entries est parfois top-level, parfois dans pagination
+      const totalEntries = Number(data.total_entries ?? data.pagination?.total_entries) || null;
+      if (totalEntries !== null && page * 100 >= totalEntries) break;
+      if (totalEntries === null && list.length < 100) break; // heuristique de repli
+    } catch (err) {
+      console.error(`[refresh-pedigree] Apollo error ${bracket.stage}/${location} p${page}:`, err);
+      break;
     }
-
-    const data = await res.json();
-    const list = data.organizations || data.accounts || data.results || data.data || [];
-    if (!Array.isArray(list)) return [];
-
-    return list.slice(0, RESULTS_PER_BRACKET_LOCATION) as ApolloOrg[];
-  } catch (err) {
-    console.error(`[refresh-pedigree] Apollo error ${bracket.stage}/${location}:`, err);
-    return [];
   }
+
+  return all.slice(0, cap);
 }
 
 async function upsertCompanies(
   admin: SupabaseClient,
   bracket: FundingBracket,
   orgs: ApolloOrg[],
+  searchLocation: string,
 ): Promise<{ inserted: number; updated: number; skipped: number }> {
   let inserted = 0;
   let updated = 0;
   let skipped = 0;
 
+  const minFoundedYear = new Date().getFullYear() - bracket.maxAgeYears;
+
   for (const org of orgs) {
     if (!org.name?.trim()) { skipped++; continue; }
+    // Garde-fous anti-« Canal+ en seed » :
+    // - trop vieille (ou année de création inconnue) pour le stade → dehors
+    // - cotée en bourse ou filiale d'un groupe → pas une startup financée
+    const g = org as Record<string, unknown>;
+    const foundedYear = Number(g.founded_year);
+    if (!Number.isFinite(foundedYear) || foundedYear < minFoundedYear) { skipped++; continue; }
+    if (g.publicly_traded_symbol || g.owned_by_organization_id) { skipped++; continue; }
     const canonicalName = org.name.trim();
-    const country = org.country?.trim() || null;
+    const country = org.country?.trim() || LOCATION_TO_COUNTRY[searchLocation] || null;
     const domain = org.primary_domain?.trim() || null;
     const linkedinSlug = extractLinkedInId(org.linkedin_url);
+    // Critères de classement du « top » côté surcouche : levée la plus
+    // récente d'abord, puis effectif estimé (candidats disponibles).
+    // Noms de champs variables selon les payloads → replis multiples,
+    // et l'effectif arrive parfois en chaîne → coercition Number().
+    const rawOrg = org as Record<string, unknown>;
+    const rawDate = (rawOrg.latest_funding_date ?? rawOrg.latest_funding_round_date) as string | undefined;
+    const fundingDate = typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : null;
+    const hc = Number(rawOrg.estimated_num_employees ?? rawOrg.num_employees ?? rawOrg.employee_count);
+    const headcount = Number.isFinite(hc) && hc > 0 ? Math.round(hc) : null;
+    // Vérifié sur le payload réel : date de levée et effectif absolu sont
+    // ABSENTS des résultats de recherche — le seul signal de dynamique
+    // disponible est la croissance d'effectifs (6/12 mois). C'est le critère
+    // du « top » : boîte qui grossit = boîte qui recrute maintenant.
+    const growth = Number(rawOrg.organization_headcount_six_month_growth
+      ?? rawOrg.organization_headcount_twelve_month_growth);
+    const headcountGrowth6m = Number.isFinite(growth) ? growth : null;
 
     // Auto category : 'auto:funded_series_b'. Distinct des catégories manuelles
     // (gafam, big_tech_us, scale_up) — l'augmentation peut les requêter
@@ -161,10 +217,10 @@ async function upsertCompanies(
     // Vérif existence pour décider insert vs update.
     const { data: existing, error: selectErr } = await (admin
       .from('pedigree_company_directory' as never)
-      .select('id, source, funding_stage')
+      .select('id, source, funding_stage, country')
       .eq('canonical_name', canonicalName)
       .maybeSingle() as unknown as Promise<{
-        data: { id: string; source: string; funding_stage: string | null } | null;
+        data: { id: string; source: string; funding_stage: string | null; country: string | null } | null;
         error: { message: string } | null;
       }>);
 
@@ -186,6 +242,12 @@ async function upsertCompanies(
           funding_stage: bracket.stage,
           category,
           tier: bracket.tier,
+          // backfill pays — FR prioritaire : une boîte multi-pays matchée par la
+          // recherche France reste taguée FR (les pays suivants n'écrasent pas)
+          country: existing.country === 'FR' ? 'FR' : country,
+          latest_funding_date: fundingDate,
+          headcount,
+          headcount_growth_6m: headcountGrowth6m,
           last_resolved_at: new Date().toISOString(),
         } as never)
         .eq('id', existing.id) as unknown as Promise<{ error: { message: string } | null }>);
@@ -208,6 +270,9 @@ async function upsertCompanies(
           funding_stage: bracket.stage,
           tier: bracket.tier,
           domain,
+          latest_funding_date: fundingDate,
+          headcount,
+          headcount_growth_6m: headcountGrowth6m,
           source: 'cron_apollo',
           resolution_status: 'pending',
           // On stocke le slug LinkedIn brut dans linkedin_company_id même si
@@ -262,18 +327,40 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Body optionnel : {locations: ['France'], pages: 3} pour une collecte
+  // APPROFONDIE ciblée (défaut cron : tous les pays, 1 page, cap 50).
+  // Permet un annuaire France plus profond sans exploser le run mensuel.
+  let body: { locations?: string[]; pages?: number } = {};
+  try { body = await req.json(); } catch { /* empty body OK */ }
+  const locations = (body.locations?.length ? body.locations : TARGET_LOCATIONS)
+    .filter(l => TARGET_LOCATIONS.includes(l));
+  const pages = Math.max(1, Math.min(5, body.pages ?? 1));
+  const cap = pages * 100;
+
   const start = Date.now();
   const summary: Record<string, { inserted: number; updated: number; skipped: number; calls: number }> = {};
+  // Diagnostic : forme réelle du premier résultat (noms de champs funding/effectif)
+  let debugFirstOrg: Record<string, unknown> | null = null;
 
   for (const bracket of FUNDING_BRACKETS) {
     summary[bracket.stage] = { inserted: 0, updated: 0, skipped: 0, calls: 0 };
 
-    for (const location of TARGET_LOCATIONS) {
-      const orgs = await searchApolloByFunding(apolloApiKey, bracket, location);
+    for (const location of locations) {
+      const orgs = await searchApolloByFunding(apolloApiKey, bracket, location, pages, pages === 1 ? RESULTS_PER_BRACKET_LOCATION : cap);
       summary[bracket.stage].calls++;
       if (orgs.length === 0) continue;
+      if (!debugFirstOrg && orgs[0]) {
+        const o = orgs[0] as Record<string, unknown>;
+        debugFirstOrg = {
+          keys: Object.keys(o),
+          name: o.name,
+          latest_funding_date: o.latest_funding_date,
+          latest_funding_round_date: o.latest_funding_round_date,
+          estimated_num_employees: o.estimated_num_employees,
+        };
+      }
 
-      const { inserted, updated, skipped } = await upsertCompanies(admin, bracket, orgs);
+      const { inserted, updated, skipped } = await upsertCompanies(admin, bracket, orgs, location);
       summary[bracket.stage].inserted += inserted;
       summary[bracket.stage].updated += updated;
       summary[bracket.stage].skipped += skipped;
@@ -287,5 +374,6 @@ Deno.serve(async (req) => {
     success: true,
     elapsed_ms: elapsedMs,
     summary,
+    debug_first_org: debugFirstOrg,
   });
 });

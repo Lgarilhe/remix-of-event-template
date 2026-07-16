@@ -208,10 +208,18 @@ export function buildSearchParams(
         baseParams.location_within_area = filters.location_within_area;
       }
     } else if (filters.api === 'database') {
-      // Database mode: send name + id so Apollo gets text locations
-      baseParams.location = filters.location.map(f => ({ id: f.id, name: f.name }));
+      // Database mode: send name + id so the backend gets text locations.
+      // DOESNT_HAVE dropped: the mapping puts every location in an inclusive
+      // clause — an "excluded" location would flip into a positive criterion.
+      baseParams.location = filters.location
+        .filter(f => f.priority !== 'DOESNT_HAVE')
+        .map(f => ({ id: f.id, name: f.name }));
     } else {
-      baseParams.location = filters.location.map(f => f.id);
+      // classic / sales_nav: bare IDs, priority not supported — drop exclusions
+      // rather than inverting them into includes.
+      baseParams.location = filters.location
+        .filter(f => f.priority !== 'DOESNT_HAVE')
+        .map(f => f.id);
     }
   }
 
@@ -252,7 +260,11 @@ export function buildSearchParams(
       // Database: send names (Apollo rejects numeric IDs)
       baseParams.school = effectiveSchool.map(f => ({ id: f.id, name: f.name || f.id }));
     } else {
-      baseParams.school = effectiveSchool.map(f => f.id);
+      // classic / sales_nav: bare IDs wrapped in {include} by the edge —
+      // a DOESNT_HAVE school would become an INCLUDE criterion. Drop them.
+      baseParams.school = effectiveSchool
+        .filter(f => f.priority !== 'DOESNT_HAVE')
+        .map(f => f.id);
     }
   }
 
@@ -493,12 +505,14 @@ export function buildSearchParams(
     }
   }
 
-  // Tenure filters
+  // Tenure filters — clé dédiée tenure_at_company : l'edge la mappe en
+  // tenure_in_company (Recruiter) / tenure_at_company (SN). L'ancienne clé
+  // `tenure` signifie expérience TOTALE côté edge et écrasait years_of_experience.
   if (filters.tenure_at_company_min !== null || filters.tenure_at_company_max !== null) {
     const tenure: Record<string, number> = {};
     if (filters.tenure_at_company_min !== null) tenure.min = filters.tenure_at_company_min;
     if (filters.tenure_at_company_max !== null) tenure.max = filters.tenure_at_company_max;
-    baseParams.tenure = [tenure];
+    baseParams.tenure_at_company = [tenure];
   }
 
   // Boolean filters
@@ -645,6 +659,14 @@ export function buildSearchParams(
   if (filters.api === 'recruiter' || filters.api === 'database') {
     if (filters.tenure_at_role_min != null) baseParams.tenure_at_role_min = filters.tenure_at_role_min;
     if (filters.tenure_at_role_max != null) baseParams.tenure_at_role_max = filters.tenure_at_role_max;
+    // Recruiter : l'edge ne lit que la forme array tenure_at_role[{min,max}]
+    // (mappée en tenure_in_position) — les clés plates ci-dessus sont ignorées.
+    if (filters.api === 'recruiter' && (filters.tenure_at_role_min != null || filters.tenure_at_role_max != null)) {
+      const range: Record<string, number> = {};
+      if (filters.tenure_at_role_min != null) range.min = filters.tenure_at_role_min;
+      if (filters.tenure_at_role_max != null) range.max = filters.tenure_at_role_max;
+      baseParams.tenure_at_role = [range];
+    }
   }
 
   // ── Sales Navigator signal filters ──
@@ -654,11 +676,20 @@ export function buildSearchParams(
     if (filters.following_your_company === true) baseParams.following_your_company = true;
     if (filters.viewed_your_profile === true) baseParams.viewed_your_profile_recently = true;
     if (filters.past_colleague === true) baseParams.past_colleague = true;
-    // Sales Nav tenure_at_role (array format)
+    // Sales Nav tenure_at_role (array format) — le schéma n'accepte que des
+    // paliers fixes (min ∈ {0,1,3,6,10}, max ∈ {1,2,5,10}) : on arrondit de
+    // façon conservatrice (min au palier inférieur, max au palier supérieur)
+    // au lieu d'envoyer une valeur libre qui invaliderait toute la requête.
     if (filters.tenure_at_role_min != null || filters.tenure_at_role_max != null) {
+      const SN_TENURE_MIN_BUCKETS = [10, 6, 3, 1, 0];
+      const SN_TENURE_MAX_BUCKETS = [1, 2, 5, 10];
       const range: Record<string, number> = {};
-      if (filters.tenure_at_role_min != null) range.min = filters.tenure_at_role_min;
-      if (filters.tenure_at_role_max != null) range.max = filters.tenure_at_role_max;
+      if (filters.tenure_at_role_min != null) {
+        range.min = SN_TENURE_MIN_BUCKETS.find(b => b <= filters.tenure_at_role_min!) ?? 0;
+      }
+      if (filters.tenure_at_role_max != null) {
+        range.max = SN_TENURE_MAX_BUCKETS.find(b => b >= filters.tenure_at_role_max!) ?? 10;
+      }
       baseParams.tenure_at_role = [range];
     }
   }
