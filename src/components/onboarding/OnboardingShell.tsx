@@ -4,6 +4,7 @@ import skalrLogo from '@/assets/skalr-logo-concept-3.webp';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { OnboardingBackdrop } from './OnboardingBackdrop';
 import { ChapterRail } from './ChapterRail';
+import { ChapterStepper } from './ChapterStepper';
 import { StepExplainer } from './StepExplainer';
 import type { ChapterDef, SceneKey } from './onboardingMeta';
 import { STEP_META, chapterIndexOfScene, remainingSeconds } from './onboardingMeta';
@@ -109,29 +110,6 @@ export const OnboardingShell: React.FC<Props> = ({
           )}
         </div>
 
-        {/* Chapitres (pills desktop) */}
-        {!isLaunch && (
-          <div className="hidden md:flex items-center gap-1.5" aria-hidden="true">
-            {chapters.map((c, i) => (
-              <motion.span
-                key={c.id}
-                className="h-1.5 rounded-full transition-all duration-500"
-                style={{
-                  width: i === chapterIdx ? 26 : 12,
-                  background:
-                    i < chapterIdx
-                      ? 'hsl(var(--success) / 0.55)'
-                      : i === chapterIdx
-                      ? 'hsl(var(--success))'
-                      : 'hsl(var(--foreground) / 0.12)',
-                }}
-                animate={i === chapterIdx ? { scaleY: [1, 1.5, 1] } : {}}
-                transition={{ duration: 0.4 }}
-              />
-            ))}
-          </div>
-        )}
-
         <ScoreRing percent={scorePercent} />
       </header>
 
@@ -155,6 +133,9 @@ export const OnboardingShell: React.FC<Props> = ({
 
           {/* Contenu principal */}
           <main className="flex flex-col items-center w-full min-w-0">
+            {/* Stepper chapitres (compressé) */}
+            <ChapterStepper chapters={chapters} currentScene={currentScene} completedScenes={completedScenes} />
+
             {/* Eyebrow d'étape */}
             {!isLaunch && chapter && meta && (
               <motion.div
@@ -183,13 +164,12 @@ export const OnboardingShell: React.FC<Props> = ({
               </div>
             )}
 
-            {children}
-
-            {/* Compteur bas */}
-            <div className="text-center pt-8 pb-2">
-              <span className="text-xs font-mono text-muted-foreground/70 tracking-wider">
-                {String(stepIndex + 1).padStart(2, '0')} / {String(flow.length).padStart(2, '0')}
+            {/* Carte centrale */}
+            <div className="relative w-full rounded-2xl border border-border bg-card/70 backdrop-blur-md shadow-xl overflow-hidden px-4 sm:px-8 py-8 sm:py-10">
+              <span className="absolute top-4 right-4 sm:right-5 text-3xs font-mono uppercase tracking-wider text-muted-foreground/50">
+                Étape {stepIndex + 1} / {flow.length}
               </span>
+              {children}
             </div>
           </main>
 
