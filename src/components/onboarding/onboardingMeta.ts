@@ -17,12 +17,13 @@ export type SceneKey =
   | 'integrations'
   | 'quotas'
   | 'team'
+  | 'preparing'
   | 'launch';
 
 export const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'launch'],
-  agency:     ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'launch'],
-  freelance:  ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'profile', 'aitone', 'integrations', 'quotas', 'launch'],
+  enterprise: ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'preparing', 'launch'],
+  agency:     ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'org', 'audit', 'profile', 'aitone', 'integrations', 'quotas', 'team', 'preparing', 'launch'],
+  freelance:  ['orgtype', 'goal', 'orgdetails', 'stack', 'discovery', 'specializations', 'profile', 'aitone', 'integrations', 'quotas', 'preparing', 'launch'],
 };
 
 export const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
@@ -168,6 +169,12 @@ export const STEP_META: Record<Exclude<SceneKey, 'launch'>, StepMeta> = {
     why: 'Le recrutement est un sport d’équipe : invitez vos collègues pour partager missions, candidats et statistiques dans un seul espace.',
     unlocks: ['Missions partagées', 'Stats consolidées'],
     skippable: true,
+  },
+  preparing: {
+    railLabel: 'Préparation',
+    durationSec: 8,
+    why: 'Konekt assemble votre espace à partir de vos réponses.',
+    unlocks: ['Espace prêt à l’emploi'],
   },
 };
 

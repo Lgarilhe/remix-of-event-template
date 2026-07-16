@@ -17,7 +17,7 @@ interface Props {
  * fonds subtils en alpha — accent unique, pas d'arc-en-ciel.
  */
 export const ChapterRail: React.FC<Props> = ({ chapters, currentScene, completedScenes }) => {
-  const isLaunch = currentScene === 'launch';
+  const isLaunch = currentScene === 'launch' || currentScene === 'preparing';
 
   return (
     <nav aria-label="Progression de l'onboarding" className="flex flex-col gap-1">

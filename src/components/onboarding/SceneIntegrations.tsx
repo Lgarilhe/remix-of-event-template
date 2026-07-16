@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, Loader2, ExternalLink, RefreshCw, Mail } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, ExternalLink, RefreshCw, Mail, Lock, Unplug } from 'lucide-react';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
 import { Button } from '@/components/ui/button';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
@@ -10,7 +10,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
-import integrationsIcon from '@/assets/icon-integrations-3d.webp';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
 
 interface Props {
@@ -26,6 +25,12 @@ interface UnipileEmailAccount {
   name?: string;
   type?: string;
 }
+
+const LINKEDIN_BENEFITS = [
+  'Invitations, messages et relances entièrement automatisés',
+  'Fonctionne 24h/24, même ordinateur éteint',
+  'Connexion sécurisée, déconnectable à tout moment',
+];
 
 export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
   const { accounts, loading: linkedInLoading, reload: reloadLinkedIn } = useLinkedInAccounts();
@@ -106,176 +111,195 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
     }
   }, [reloadLinkedIn, claimEmailAccount]);
 
-  const rows: {
-    id: string;
-    name: string;
-    description: string;
-    logo?: string;
-    icon?: React.ReactNode;
-    essential?: boolean;
-    connected: boolean;
-    actions: { label: string; provider: HostedProvider }[];
-  }[] = [
-    {
-      id: 'linkedin',
-      name: 'LinkedIn',
-      description: 'Sourcing, messages et InMails directement depuis la plateforme.',
-      logo: linkedinLogo,
-      essential: true,
-      connected: linkedInConnected,
-      actions: [{ label: 'Connecter', provider: 'LINKEDIN' }],
-    },
-    {
-      id: 'email',
-      name: 'Email professionnel',
-      description: 'Envoyez et suivez vos séquences email depuis votre adresse.',
-      icon: <Mail className="w-4 h-4 text-foreground" strokeWidth={2} />,
-      connected: emailConnected,
-      actions: [
-        { label: 'Gmail', provider: 'GOOGLE' },
-        { label: 'Outlook', provider: 'OUTLOOK' },
-      ],
-    },
-    {
-      id: 'whatsapp',
-      name: 'WhatsApp',
-      description: 'Envoyez des messages WhatsApp dans vos séquences multicanales.',
-      logo: whatsappLogo,
-      connected: whatsappConnected,
-      actions: [{ label: 'Connecter', provider: 'WHATSAPP' }],
-    },
-  ];
-
   return (
     <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Connectez vos comptes</h2>
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Automatisez votre sourcing</h2>
         <p className="text-muted-foreground text-sm">
-          LinkedIn est essentiel pour le sourcing. L'email et WhatsApp démultiplient vos séquences multicanales.
+          Connectez vos canaux : LinkedIn d’abord, l’email et WhatsApp démultiplient ensuite vos séquences.
         </p>
       </div>
 
-      <motion.img
-        src={integrationsIcon}
-        alt=""
-        aria-hidden="true"
-        className="mx-auto w-16 h-16 drop-shadow-md"
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
+      {/* Hero LinkedIn */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-      />
+        className={`rounded-xl border p-4 sm:p-5 transition-colors duration-300 ${
+          linkedInConnected ? 'border-success/40 bg-success/5' : 'border-border bg-background/40'
+        }`}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <img src={linkedinLogo} alt="LinkedIn" className="w-9 h-9 object-contain shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold">LinkedIn</span>
+              <span className="text-2xs uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-foreground">
+                Recommandé
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">Le moteur de votre sourcing.</p>
+          </div>
+          {linkedInConnected && (
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+              className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-success shrink-0"
+            >
+              <Check className="w-3.5 h-3.5" /> Connecté
+            </motion.div>
+          )}
+        </div>
 
-      {/* Compteur de connexions */}
+        <ul className="space-y-1.5 mb-4">
+          {LINKEDIN_BENEFITS.map((benefit, i) => (
+            <motion.li
+              key={benefit}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15 + i * 0.08 }}
+              className="flex items-start gap-2 text-xs text-foreground/85"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-px" />
+              {benefit}
+            </motion.li>
+          ))}
+        </ul>
+
+        {!linkedInConnected && (
+          <Button
+            onClick={() => handleHostedConnect('linkedin', 'LINKEDIN')}
+            disabled={connectingId === 'linkedin'}
+            className="w-full h-10 text-sm font-semibold text-white bg-linkedin hover:bg-linkedin-hover"
+          >
+            {connectingId === 'linkedin' ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <ExternalLink className="w-4 h-4 mr-2" />
+            )}
+            Connecter LinkedIn
+          </Button>
+        )}
+      </motion.div>
+
+      {/* Canaux secondaires */}
+      <div className="grid sm:grid-cols-2 gap-2.5">
+        {/* Email */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className={`rounded-lg border p-3 transition-colors duration-300 ${
+            emailConnected ? 'border-success/40 bg-success/5' : 'border-border'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="w-7 h-7 flex items-center justify-center rounded-lg bg-emerald-500/15 shrink-0">
+              <Mail className="w-3.5 h-3.5 text-foreground" strokeWidth={2} />
+            </div>
+            <span className="text-sm font-semibold flex-1">Email pro</span>
+            {emailConnected && <Check className="w-3.5 h-3.5 text-success shrink-0" />}
+          </div>
+          <p className="text-xs text-muted-foreground mb-2.5">Séquences email depuis votre adresse.</p>
+          {!emailConnected && (
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleHostedConnect('email', 'GOOGLE')}
+                disabled={connectingId === 'email'}
+                className="flex-1 h-8 text-xs"
+              >
+                Gmail
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleHostedConnect('email', 'OUTLOOK')}
+                disabled={connectingId === 'email'}
+                className="flex-1 h-8 text-xs"
+              >
+                Outlook
+              </Button>
+            </div>
+          )}
+        </motion.div>
+
+        {/* WhatsApp */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.26 }}
+          className={`rounded-lg border p-3 transition-colors duration-300 ${
+            whatsappConnected ? 'border-success/40 bg-success/5' : 'border-border'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 mb-2">
+            <img src={whatsappLogo} alt="WhatsApp" className="w-7 h-7 object-contain shrink-0" />
+            <span className="text-sm font-semibold flex-1">WhatsApp</span>
+            {whatsappConnected && <Check className="w-3.5 h-3.5 text-success shrink-0" />}
+          </div>
+          <p className="text-xs text-muted-foreground mb-2.5">Le canal au meilleur taux de lecture.</p>
+          {!whatsappConnected && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleHostedConnect('whatsapp', 'WHATSAPP')}
+              disabled={connectingId === 'whatsapp'}
+              className="w-full h-8 text-xs"
+            >
+              {connectingId === 'whatsapp' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Scanner le QR code'}
+            </Button>
+          )}
+        </motion.div>
+      </div>
+
+      {/* Confiance + refresh */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.15 }}
-        className="flex items-center justify-center gap-2"
+        transition={{ delay: 0.35 }}
+        className="flex items-center justify-center gap-4 flex-wrap"
       >
-        <div className="flex items-center gap-1" aria-hidden="true">
-          {rows.map((r) => (
-            <motion.span
-              key={r.id}
-              className="w-6 h-1 rounded-full"
-              animate={{ background: r.connected ? 'hsl(var(--success))' : 'hsl(var(--foreground) / 0.12)' }}
-              transition={{ duration: 0.4 }}
-            />
-          ))}
-        </div>
-        <span className="text-2xs font-mono text-muted-foreground">
-          {totalConnected}/{rows.length} canaux connectés
+        <span className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
+          <Lock className="w-3 h-3" /> Chiffré de bout en bout
         </span>
-        <Button
-          size="sm"
-          variant="ghost"
+        <span className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
+          <Unplug className="w-3 h-3" /> Déconnectable à tout moment
+        </span>
+        <button
+          type="button"
           onClick={handleRefresh}
           disabled={refreshing || linkedInLoading}
-          className="h-6 w-6 p-0"
+          className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Actualiser les connexions"
         >
           <RefreshCw className={`w-3 h-3 ${(refreshing || linkedInLoading) ? 'animate-spin' : ''}`} />
-        </Button>
+          {totalConnected}/3 connectés — actualiser
+        </button>
       </motion.div>
-
-      {/* Integration cards */}
-      <div className="space-y-3">
-        {rows.map((def, i) => {
-          const isLoading = connectingId === def.id;
-
-          return (
-            <motion.div
-              key={def.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.08 }}
-              className={`rounded-lg border overflow-hidden transition-colors duration-300 ${
-                def.connected ? 'border-success/40 bg-success/5' : 'border-border'
-              }`}
-            >
-              <div className="flex items-center gap-3 p-3">
-                {def.logo ? (
-                  <img src={def.logo} alt={def.name} className="w-8 h-8 object-contain shrink-0" />
-                ) : (
-                  <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-500/15 shrink-0">
-                    {def.icon}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">{def.name}</span>
-                    {def.essential && (
-                      <span className="text-xs uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-foreground">
-                        Essentiel
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate">{def.description}</p>
-                </div>
-
-                {def.connected ? (
-                  <motion.div
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider shrink-0 text-success"
-                  >
-                    <Check className="w-3.5 h-3.5" /> Connecté
-                  </motion.div>
-                ) : (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {def.actions.map((action) => (
-                      <Button
-                        key={action.provider}
-                        size="sm"
-                        onClick={() => handleHostedConnect(def.id, action.provider)}
-                        disabled={isLoading}
-                        className="text-xs uppercase tracking-wider font-bold border border-border bg-foreground text-background hover:bg-foreground/90 h-8 px-3"
-                      >
-                        {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5 mr-1" />}
-                        {action.label}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
 
       {/* Navigation */}
       <div className="flex items-center justify-between pt-2">
-        <Button variant="outline" onClick={onBack} className="gap-2 border border-border text-sm">
+        <Button variant="ghost" onClick={onBack} className="gap-2 text-sm">
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
-        <Button
-          onClick={() => onNext(totalConnected)}
-          className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-        >
-          <ArrowRight className="w-4 h-4" />
-          {totalConnected > 0 ? 'Continuer' : 'Passer'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {totalConnected === 0 && (
+            <Button variant="ghost" onClick={() => onNext(0)} className="text-sm text-muted-foreground">
+              Connecter plus tard
+            </Button>
+          )}
+          <Button
+            onClick={() => onNext(totalConnected)}
+            disabled={totalConnected === 0}
+            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+          >
+            Continuer <ArrowRight className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
