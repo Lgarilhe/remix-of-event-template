@@ -67,6 +67,13 @@ const TARGET_LOCATIONS = [
   'Netherlands', 'Belgium', 'Switzerland', 'Italy',
 ];
 
+// Le pays des orgs est rarement présent dans les réponses de recherche — mais
+// on interroge PAR pays, donc le contexte de recherche fait foi (code ISO).
+const LOCATION_TO_COUNTRY: Record<string, string> = {
+  France: 'FR', Germany: 'DE', 'United Kingdom': 'GB', Spain: 'ES',
+  Netherlands: 'NL', Belgium: 'BE', Switzerland: 'CH', Italy: 'IT',
+};
+
 // Cap par bracket × pays pour éviter de saturer le directory (et le cron de
 // résolution Unipile derrière). 50 × 5 stages × 8 pays = max 2000 entrées /
 // run, mais en pratique les buckets EU dépassent rarement 50 résultats.
@@ -141,6 +148,7 @@ async function upsertCompanies(
   admin: SupabaseClient,
   bracket: FundingBracket,
   orgs: ApolloOrg[],
+  searchLocation: string,
 ): Promise<{ inserted: number; updated: number; skipped: number }> {
   let inserted = 0;
   let updated = 0;
@@ -149,7 +157,7 @@ async function upsertCompanies(
   for (const org of orgs) {
     if (!org.name?.trim()) { skipped++; continue; }
     const canonicalName = org.name.trim();
-    const country = org.country?.trim() || null;
+    const country = org.country?.trim() || LOCATION_TO_COUNTRY[searchLocation] || null;
     const domain = org.primary_domain?.trim() || null;
     const linkedinSlug = extractLinkedInId(org.linkedin_url);
 
@@ -161,10 +169,10 @@ async function upsertCompanies(
     // Vérif existence pour décider insert vs update.
     const { data: existing, error: selectErr } = await (admin
       .from('pedigree_company_directory' as never)
-      .select('id, source, funding_stage')
+      .select('id, source, funding_stage, country')
       .eq('canonical_name', canonicalName)
       .maybeSingle() as unknown as Promise<{
-        data: { id: string; source: string; funding_stage: string | null } | null;
+        data: { id: string; source: string; funding_stage: string | null; country: string | null } | null;
         error: { message: string } | null;
       }>);
 
@@ -186,6 +194,9 @@ async function upsertCompanies(
           funding_stage: bracket.stage,
           category,
           tier: bracket.tier,
+          // backfill pays — FR prioritaire : une boîte multi-pays matchée par la
+          // recherche France reste taguée FR (les pays suivants n'écrasent pas)
+          country: existing.country === 'FR' ? 'FR' : country,
           last_resolved_at: new Date().toISOString(),
         } as never)
         .eq('id', existing.id) as unknown as Promise<{ error: { message: string } | null }>);
@@ -273,7 +284,7 @@ Deno.serve(async (req) => {
       summary[bracket.stage].calls++;
       if (orgs.length === 0) continue;
 
-      const { inserted, updated, skipped } = await upsertCompanies(admin, bracket, orgs);
+      const { inserted, updated, skipped } = await upsertCompanies(admin, bracket, orgs, location);
       summary[bracket.stage].inserted += inserted;
       summary[bracket.stage].updated += updated;
       summary[bracket.stage].skipped += skipped;

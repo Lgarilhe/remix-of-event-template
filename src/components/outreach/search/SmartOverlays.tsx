@@ -35,17 +35,21 @@ const FUNDING_STAGES = [
 // Cap par stade : au-delà, le payload LinkedIn devient trop lourd (erreurs
 // « combinaison de filtres trop lourde ») — on prend les mieux classées (tier).
 const FUNDED_CAP = 100;
+type FundedScope = 'FR' | 'EU';
 interface FundedStage { list: { id: string; name: string }[]; total: number }
 const fundedCache = new Map<string, FundedStage>();
 
-async function fetchFundedCompanies(stage: string): Promise<FundedStage> {
-  const cached = fundedCache.get(stage);
+async function fetchFundedCompanies(stage: string, scope: FundedScope): Promise<FundedStage> {
+  const cacheKey = `${stage}:${scope}`;
+  const cached = fundedCache.get(cacheKey);
   if (cached) return cached;
-  const { data, error } = await supabase
+  let query = supabase
     .from('pedigree_company_directory' as never)
     .select('canonical_name, linkedin_company_id, tier')
     .eq('funding_stage', stage)
-    .not('linkedin_company_id', 'is', null)
+    .not('linkedin_company_id', 'is', null);
+  if (scope === 'FR') query = query.eq('country', 'FR');
+  const { data, error } = await query
     .order('tier', { ascending: true })
     .order('canonical_name', { ascending: true });
   if (error) throw error;
@@ -56,7 +60,7 @@ async function fetchFundedCompanies(stage: string): Promise<FundedStage> {
     .filter(r => /^\d+$/.test(String(r.linkedin_company_id)))
     .map(r => ({ id: String(r.linkedin_company_id), name: r.canonical_name }));
   const entry = { list: numeric.slice(0, FUNDED_CAP), total: numeric.length };
-  fundedCache.set(stage, entry);
+  fundedCache.set(cacheKey, entry);
   return entry;
 }
 
@@ -203,6 +207,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
   /* ── Picker « A levé des fonds » ── */
   const [stageOpen, setStageOpen] = useState(false);
   const [stageLoading, setStageLoading] = useState<string | null>(null);
+  const [fundedScope, setFundedScope] = useState<FundedScope>('FR');
   const [, bumpCache] = useState(0); // re-render quand fundedCache se remplit
   const pickerRef = useRef<HTMLSpanElement>(null);
 
@@ -218,13 +223,13 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
   // Pré-charge les 4 stades à la 1re ouverture (états actifs + compteurs)
   useEffect(() => {
     if (!stageOpen) return;
-    const missing = FUNDING_STAGES.filter(s => !fundedCache.has(s.value));
+    const missing = FUNDING_STAGES.filter(s => !fundedCache.has(`${s.value}:${fundedScope}`));
     if (!missing.length) return;
-    Promise.allSettled(missing.map(s => fetchFundedCompanies(s.value))).then(() => bumpCache(x => x + 1));
-  }, [stageOpen]);
+    Promise.allSettled(missing.map(s => fetchFundedCompanies(s.value, fundedScope))).then(() => bumpCache(x => x + 1));
+  }, [stageOpen, fundedScope]);
 
   const stageActive = (stage: string): boolean => {
-    const list = fundedCache.get(stage)?.list;
+    const list = fundedCache.get(`${stage}:${fundedScope}`)?.list;
     if (!list?.length) return false;
     const present = list.filter(c => filters.company.some(fc => fc.id === c.id)).length;
     return present >= Math.min(10, list.length);
@@ -234,7 +239,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
     if (stageLoading) return;
     setStageLoading(stage);
     try {
-      const { list } = await fetchFundedCompanies(stage);
+      const { list } = await fetchFundedCompanies(stage, fundedScope);
       bumpCache(x => x + 1);
       if (!list.length) { toast.info('Annuaire en cours de résolution pour ce stade — réessaie dans quelques minutes'); return; }
       const active = list.filter(c => filters.company.some(fc => fc.id === c.id)).length >= Math.min(10, list.length);
@@ -328,9 +333,29 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
           </button>
           {stageOpen && (
             <div className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
-              <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Stade de levée</div>
+              <div className="flex items-center justify-between gap-2 px-2 pt-1 pb-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)]">Stade de levée</span>
+                <span className="inline-flex rounded-md border border-[var(--k-hairline)] overflow-hidden">
+                  {(['FR', 'EU'] as const).map(sc => (
+                    <button
+                      key={sc}
+                      type="button"
+                      onClick={() => setFundedScope(sc)}
+                      title={sc === 'FR' ? 'Sociétés collectées via la recherche France' : 'Toute la collecte européenne (FR, DE, UK, ES, NL, BE, CH, IT)'}
+                      className={cn(
+                        'px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+                        fundedScope === sc
+                          ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                          : 'text-[var(--k-text-muted)] hover:text-[var(--k-text-2)]',
+                      )}
+                    >
+                      {sc === 'FR' ? 'France' : 'Europe'}
+                    </button>
+                  ))}
+                </span>
+              </div>
               {FUNDING_STAGES.map(s => {
-                const entry = fundedCache.get(s.value);
+                const entry = fundedCache.get(`${s.value}:${fundedScope}`);
                 const active = stageActive(s.value);
                 return (
                   <button
