@@ -11,6 +11,8 @@
  *   par colonne en base) — le champ reste vide à l'affichage.
  * - ⚠️ SELECT toujours en colonnes explicites (jamais '*') : la colonne token
  *   n'est pas lisible par authenticated, un '*' ferait une permission denied.
+ * - Chaque connecteur est fail-closed : il n'est actif qu'avec une liste
+ *   blanche explicite d'outils MCP en lecture seule.
  * - Max 5 connecteurs actifs par organisation (limite backend).
  */
 import { useState } from 'react';
@@ -32,18 +34,39 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plug, Plus, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Plug, Plus, Trash2, AlertTriangle, Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface McpServerRow {
   id: string;
   name: string;
   url: string;
+  allowed_tools: string[];
   enabled: boolean;
   created_at: string;
 }
 
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+const TOOL_NAME_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
+const MUTATING_TOOL_SEGMENT_RE = /(?:^|[_.:-])(create|write|update|delete|remove|send|patch|edit|modify|move|rename|archive|invite|add|upload|execute|run|trigger|publish|approve|reject|assign|enroll|dismiss|cancel|reply)(?:[_.:-]|$)/i;
+
+function parseAllowedTools(raw: string): string[] {
+  return [...new Set(
+    raw
+      .split(/[\s,]+/)
+      .map((name) => name.trim())
+      .filter((name) => TOOL_NAME_RE.test(name) && !MUTATING_TOOL_SEGMENT_RE.test(name)),
+  )].slice(0, 50);
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return 'erreur';
+}
 
 export function AgentConnectorsSettings() {
   const { organizationId, isAdmin } = useOrganization();
@@ -52,7 +75,10 @@ export function AgentConnectorsSettings() {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [token, setToken] = useState('');
+  const [allowedToolsText, setAllowedToolsText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingToolsId, setEditingToolsId] = useState<string | null>(null);
+  const [editingToolsText, setEditingToolsText] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<McpServerRow | null>(null);
 
   const { data: servers = [] } = useQuery({
@@ -60,12 +86,12 @@ export function AgentConnectorsSettings() {
     queryFn: async () => {
       // Colonnes explicites obligatoires (token write-only, cf. en-tête)
       const { data, error } = await supabase
-        .from('organization_mcp_servers' as any)
-        .select('id, name, url, enabled, created_at')
+        .from('organization_mcp_servers')
+        .select('id, name, url, allowed_tools, enabled, created_at')
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as unknown as McpServerRow[];
+      return data ?? [];
     },
     enabled: !!organizationId,
     staleTime: 30_000,
@@ -76,12 +102,17 @@ export function AgentConnectorsSettings() {
 
   const handleAdd = async () => {
     const slug = name.trim().toLowerCase();
+    const allowedTools = parseAllowedTools(allowedToolsText);
     if (!NAME_RE.test(slug)) {
       toast.error('Nom invalide : 2-40 caractères, minuscules/chiffres/tirets (ex : notion, slack-recrutement).');
       return;
     }
     if (!url.trim().startsWith('https://')) {
       toast.error("L'URL du connecteur doit commencer par https://");
+      return;
+    }
+    if (allowedTools.length === 0) {
+      toast.error('Ajoutez au moins un nom d’outil MCP en lecture seule à la liste blanche.');
       return;
     }
     if (servers.length >= 5) {
@@ -91,40 +122,70 @@ export function AgentConnectorsSettings() {
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('organization_mcp_servers' as any).insert({
+      const { error } = await supabase.from('organization_mcp_servers').insert({
         organization_id: organizationId,
         name: slug,
         url: url.trim(),
         authorization_token: token.trim() || null,
+        allowed_tools: allowedTools,
         enabled: true,
         created_by: user?.id ?? null,
       });
       if (error) throw error;
       toast.success(`Connecteur « ${slug} » ajouté. Actif dans le chat immédiatement.`);
-      setName(''); setUrl(''); setToken(''); setShowForm(false);
+      setName(''); setUrl(''); setToken(''); setAllowedToolsText(''); setShowForm(false);
       invalidate();
-    } catch (e: any) {
-      toast.error(e?.message?.includes('unique')
+    } catch (e: unknown) {
+      const errorMessage = getErrorMessage(e);
+      toast.error(errorMessage.includes('unique')
         ? 'Un connecteur porte déjà ce nom.'
-        : `Ajout impossible : ${e?.message || 'erreur'}`);
+        : `Ajout impossible : ${errorMessage}`);
     } finally {
       setSaving(false);
     }
   };
 
   const handleToggle = async (row: McpServerRow, enabled: boolean) => {
+    if (enabled && row.allowed_tools.length === 0) {
+      toast.error('Définissez d’abord les outils en lecture seule autorisés.');
+      return;
+    }
     const { error } = await supabase
-      .from('organization_mcp_servers' as any)
+      .from('organization_mcp_servers')
       .update({ enabled })
       .eq('id', row.id);
     if (error) { toast.error(error.message); return; }
     invalidate();
   };
 
+  const handleSaveAllowedTools = async (row: McpServerRow) => {
+    const allowedTools = parseAllowedTools(editingToolsText);
+    if (allowedTools.length === 0) {
+      toast.error('Ajoutez au moins un nom d’outil MCP en lecture seule.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('organization_mcp_servers')
+        .update({ allowed_tools: allowedTools })
+        .eq('id', row.id);
+      if (error) throw error;
+      toast.success('Liste blanche mise à jour. Vous pouvez activer le connecteur.');
+      setEditingToolsId(null);
+      setEditingToolsText('');
+      invalidate();
+    } catch (e: unknown) {
+      toast.error(`Mise à jour impossible : ${getErrorMessage(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     const { error } = await supabase
-      .from('organization_mcp_servers' as any)
+      .from('organization_mcp_servers')
       .delete()
       .eq('id', deleteTarget.id);
     if (error) { toast.error(error.message); return; }
@@ -158,9 +219,9 @@ export function AgentConnectorsSettings() {
         <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-[11px] text-muted-foreground">
           <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" />
           <span>
-            Les outils d'un connecteur s'exécutent <b>sans bandeau d'approbation</b> (contrairement
-            aux actions Konekt). Ne connectez que des services de confiance, avec des tokens aux
-            droits minimaux.
+            Sécurité renforcée : seuls les outils en lecture seule inscrits dans la liste blanche
+            sont exposés au copilot. Les écritures via MCP sont interdites ; utilisez les actions
+            Konekt avec approbation pour modifier ou envoyer des données.
           </span>
         </div>
 
@@ -188,6 +249,18 @@ export function AgentConnectorsSettings() {
               className="h-8 text-xs"
               autoComplete="off"
             />
+            <div className="space-y-1">
+              <Input
+                placeholder="Outils autorisés en lecture seule (ex : search read_page)"
+                value={allowedToolsText}
+                onChange={(e) => setAllowedToolsText(e.target.value)}
+                className="h-8 text-xs"
+                autoComplete="off"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Noms exacts fournis par le serveur MCP, séparés par des espaces ou des virgules. 50 maximum.
+              </p>
+            </div>
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={() => setShowForm(false)}>Annuler</Button>
               <Button size="sm" onClick={handleAdd} disabled={saving}>
@@ -203,25 +276,61 @@ export function AgentConnectorsSettings() {
         ) : (
           <div className="divide-y divide-border rounded-lg border border-border">
             {servers.map((s) => (
-              <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium flex items-center gap-2">
-                    {s.name}
-                    {!s.enabled && <Badge variant="outline" className="text-[10px]">désactivé</Badge>}
+              <div key={s.id} className="px-3 py-2 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium flex items-center gap-2">
+                      {s.name}
+                      {!s.enabled && <Badge variant="outline" className="text-[10px]">désactivé</Badge>}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate">{s.url}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {s.allowed_tools.length} outil{s.allowed_tools.length > 1 ? 's' : ''} autorisé{s.allowed_tools.length > 1 ? 's' : ''} en lecture
+                    </div>
                   </div>
-                  <div className="text-[11px] text-muted-foreground truncate">{s.url}</div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Switch checked={s.enabled} onCheckedChange={(v) => handleToggle(s, v)} />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        title="Modifier la liste blanche"
+                        className="h-7 w-7 p-0 text-muted-foreground"
+                        onClick={() => {
+                          setEditingToolsId(s.id);
+                          setEditingToolsText(s.allowed_tools.join(' '));
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteTarget(s)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                {isAdmin && (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Switch checked={s.enabled} onCheckedChange={(v) => handleToggle(s, v)} />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteTarget(s)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                {isAdmin && editingToolsId === s.id && (
+                  <div className="flex flex-col sm:flex-row gap-2 rounded-md bg-muted/30 p-2">
+                    <Input
+                      value={editingToolsText}
+                      onChange={(e) => setEditingToolsText(e.target.value)}
+                      placeholder="search read_page"
+                      className="h-8 text-xs flex-1"
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => setEditingToolsId(null)}>
+                        Annuler
+                      </Button>
+                      <Button size="sm" disabled={saving} onClick={() => handleSaveAllowedTools(s)}>
+                        Enregistrer
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

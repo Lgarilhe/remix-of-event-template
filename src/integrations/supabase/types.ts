@@ -4065,6 +4065,53 @@ export type Database = {
           },
         ]
       }
+      organization_mcp_servers: {
+        Row: {
+          allowed_tools: string[]
+          authorization_token: string | null
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          id: string
+          name: string
+          organization_id: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          allowed_tools?: string[]
+          authorization_token?: string | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          name: string
+          organization_id: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          allowed_tools?: string[]
+          authorization_token?: string | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          name?: string
+          organization_id?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_mcp_servers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_subscriptions: {
         Row: {
           billing_cycle: string

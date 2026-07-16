@@ -19,6 +19,8 @@ import {
   formatSummaryForPrompt,
   HISTORY_WINDOW,
 } from "../_shared/conversation-compaction.ts";
+import { buildSafeMcpConfiguration } from "../_shared/mcp-policy.mjs";
+import { UNTRUSTED_CONTENT_SAFETY_PROMPT } from "../_shared/prompt-safety.mjs";
 
 // Register tools at module load (idempotent)
 registerMutatingTools();
@@ -989,10 +991,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `personne publique. Utilise-la quand la réponse dépend d'infos hors de Konekt et ` +
         `cite tes sources (liens). Max 3 recherches par réponse — sois précis dans tes requêtes. ` +
         `Des CONNECTEURS EXTERNES configurés par l'organisation (Notion, Slack, calendrier, ` +
-        `outils internes…) peuvent exposer des outils supplémentaires : utilise-les comme les ` +
-        `autres. ⚠️ Leurs actions d'ÉCRITURE s'exécutent DIRECTEMENT (pas de bandeau ` +
-        `d'approbation) — avant tout appel d'écriture sur un connecteur, ANNONCE en une phrase ` +
-        `ce que tu vas faire, et en cas de doute demande confirmation à l'utilisateur d'abord. ` +
+        `outils internes…) peuvent exposer des outils supplémentaires. Ces connecteurs sont ` +
+        `STRICTEMENT EN LECTURE SEULE et limités à une liste blanche validée par un administrateur. ` +
+        `N'essaie JAMAIS d'écrire, créer, modifier, supprimer ou envoyer quoi que ce soit via un ` +
+        `connecteur MCP. Toute action d'écriture doit passer par un outil Konekt avec sa politique ` +
+        `d'approbation serveur ; si aucun outil Konekt équivalent n'existe, explique la limite. ` +
         `Pour CONNAÎTRE LE STATUT d'une action IA (envoi LinkedIn, modif candidat, ` +
         `etc.) — « tu as bien envoyé ? », « c'est planifié ? », « où en est ma ` +
         `demande ? » : appelle get_recent_agent_actions (filtres optionnels : ` +
@@ -1186,30 +1189,31 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             // des blocs mcp_tool_use/mcp_tool_result dans le stream. Fail-soft
             // intégral : erreur de chargement → pas de MCP ; 400 API (serveur
             // injoignable/invalide) → retry du round sans MCP.
-            let mcpServers: Array<Record<string, unknown>> = [];
+            let mcpConfigurations: Array<{
+              server: Record<string, unknown>;
+              toolset: Record<string, unknown>;
+            }> = [];
             if (orgId) {
               try {
                 const { data: mcpRows } = await supabase
                   .from("organization_mcp_servers")
-                  .select("name, url, authorization_token")
+                  .select("name, url, authorization_token, allowed_tools, enabled")
                   .eq("organization_id", orgId)
                   .eq("enabled", true)
                   .limit(5);
-                mcpServers = ((mcpRows ?? []) as Array<{ name: string; url: string; authorization_token: string | null }>)
-                  .filter((r) => r.name && r.url && r.url.startsWith("https://"))
-                  .map((r) => ({
-                    type: "url",
-                    name: r.name,
-                    url: r.url,
-                    ...(r.authorization_token ? { authorization_token: r.authorization_token } : {}),
-                  }));
+                mcpConfigurations = ((mcpRows ?? []) as Array<Record<string, unknown>>)
+                  .map((row) => buildSafeMcpConfiguration(row))
+                  .filter((configuration): configuration is {
+                    server: Record<string, unknown>;
+                    toolset: Record<string, unknown>;
+                  } => configuration !== null);
               } catch (e) {
                 console.warn("[search-agent-chat] MCP servers load skipped:", e);
               }
             }
             let mcpDisabledForRequest = false;
-            if (mcpServers.length > 0) {
-              console.log(`[search-agent-chat] MCP connectors attached: ${mcpServers.map((s) => s.name).join(", ")}`);
+            if (mcpConfigurations.length > 0) {
+              console.log(`[search-agent-chat] MCP connectors attached: ${mcpConfigurations.map((c) => c.server.name).join(", ")}`);
             }
 
             // Tool-calling loop
@@ -1229,7 +1233,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               console.log(`[search-agent-chat] Tool loop round ${roundNumber}, elapsed ${elapsedMs}ms, messages: ${currentMessages.length}`);
 
               // Connecteurs MCP actifs pour CE round (désactivés après un 400)
-              const activeMcpServers = mcpDisabledForRequest ? [] : mcpServers;
+              const activeMcpConfigurations = mcpDisabledForRequest ? [] : mcpConfigurations;
+              const activeMcpServers = activeMcpConfigurations.map((configuration) => configuration.server);
               const apiBody: any = {
                 model: resolvedModel,
                 max_tokens: 16000,
@@ -1240,12 +1245,13 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                   // et les messages suivants relisent ce préfixe au tarif cache.
                   { type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } },
                   ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
+                  { type: "text", text: UNTRUSTED_CONTENT_SAFETY_PROMPT },
                 ],
                 messages: currentMessages,
                 // Chaque serveur MCP DOIT être référencé par un mcp_toolset.
                 tools: [
                   ...allTools,
-                  ...activeMcpServers.map((s) => ({ type: "mcp_toolset", mcp_server_name: s.name })),
+                  ...activeMcpConfigurations.map((configuration) => configuration.toolset),
                 ],
                 ...(activeMcpServers.length > 0 ? { mcp_servers: activeMcpServers } : {}),
                 // Streaming par round : l'user voit le texte arriver au fil de
@@ -1634,6 +1640,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
           ...(aiContextBlock ? [{ type: "text", text: aiContextBlock, cache_control: { type: "ephemeral" } }] : []),
           { type: "text", text: activeSystemPrompt, cache_control: { type: "ephemeral" } },
           ...(appContextBlock ? [{ type: "text", text: appContextBlock }] : []),
+          { type: "text", text: UNTRUSTED_CONTENT_SAFETY_PROMPT },
         ],
         messages,
         stream: true,
