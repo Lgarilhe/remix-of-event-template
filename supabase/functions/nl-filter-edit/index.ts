@@ -27,15 +27,23 @@ const json = (status: number, body: unknown) =>
 
 interface CurrentFilters {
   keywords?: string;
-  role?: Array<{ keywords: string; priority: string }>;
+  role?: Array<{ keywords: string; priority: string; scope?: string }>;
   location?: string[];
+  location_radius_miles?: number | null;
   experience_min?: number | null;
   experience_max?: number | null;
+  tenure_at_role_min?: number | null;
+  tenure_at_role_max?: number | null;
   skills?: string[];
-  company_keywords?: Array<{ keywords: string; priority: string }>;
+  company_keywords?: Array<{ keywords: string; priority: string; scope?: string }>;
+  industry?: string[];
+  company_headcount?: string[];
+  school?: string[];
   seniority?: string[];
   profile_language?: string[];
   open_to_work?: boolean | null;
+  contacted_filter?: string | null;
+  contacted_days?: number | null;
 }
 
 const SYSTEM_PROMPT = `Tu es un éditeur de filtres de recherche LinkedIn. On te donne les FILTRES ACTUELS d'une recherche de candidats et une INSTRUCTION utilisateur en langage naturel. Tu renvoies un DIFF à appliquer — jamais une régénération complète.
@@ -46,34 +54,52 @@ RÈGLES :
 3. Pour retirer, recopie EXACTEMENT la valeur telle qu'elle apparaît dans les filtres actuels.
 4. Langues du profil : codes LinkedIn ("fr", "en", "de", "es", "it", "pt", "nl", "ar", "zh").
 5. Séniorité : échelle LinkedIn "1" (stagiaire) à "10" (dirigeant) — senior ≈ ["5","6"], manager ≈ ["6","7"], directeur ≈ ["8","9"].
-6. Expérience : years min/max en années (nombres).
-7. Titres de poste (role) : regroupe les synonymes en UN item avec OR (ex "Account Manager OR AM OR Key Account Manager"), priority "MUST_HAVE" ou "CAN_HAVE", scope "CURRENT" ou "CURRENT_OR_PAST".
-8. Exclusions d'entreprises : company_keywords avec priority "DOESNT_HAVE".
-9. Si l'instruction est hors périmètre (ex : « trie par score ») ou incompréhensible, renvoie set/remove vides et explique dans "note".
-10. "note" : une phrase courte en français résumant ce qui a été fait (ex : « Anglais courant ajouté, Lyon retiré »).
+6. Expérience : years min/max en années (nombres). Ancienneté DANS LE POSTE ACTUEL : tenure_at_role_min/max (ex « fraîchement promu » ≈ max 1 ; « stable » ≈ min 3).
+7. Titres de poste (role) : regroupe les synonymes en UN item avec OR (ex "Account Manager OR AM OR Key Account Manager"), priority "MUST_HAVE"|"CAN_HAVE"|"DOESNT_HAVE", scope "CURRENT"|"PAST"|"CURRENT_OR_PAST" (« poste actuel uniquement » → CURRENT).
+8. Exclusions d'entreprises : company_keywords avec priority "DOESNT_HAVE". « Ex-employés de X » → scope "PAST_NOT_CURRENT".
+9. Taille d'entreprise : codes tranches company_headcount — A=1, B=2-10, C=11-50, D=51-200, E=201-500, F=501-1000, G=1001-5000, H=5001-10000, I=10001+ (startup ≈ ["B","C","D"], grand groupe ≈ ["G","H","I"]).
+10. Secteurs : industry_keywords = noms de secteurs LinkedIn en anglais (ex "Software Development", "Financial Services"). Écoles : school_keywords = noms d'établissements.
+11. Rayon géographique : location_within_area en miles, valeurs autorisées 10/25/35/50/75/100 (≈16/40/56/80/120/160 km). Pour retirer le rayon : remove.radius_clear.
+12. Candidats déjà contactés : contacted_filter "without_message" (exclure les contactés) ou "with_message" (seulement les contactés) + contacted_days (30/90/180/365, null = depuis toujours). Pour ne plus filtrer : remove.contacted_clear.
+13. Si l'instruction est hors périmètre (ex : « trie par score ») ou incompréhensible, renvoie set/remove vides et explique dans "note".
+14. "note" : une phrase courte en français résumant ce qui a été fait (ex : « Anglais courant ajouté, Lyon retiré »).
 
 FORMAT DE RÉPONSE — UNIQUEMENT ce JSON, sans markdown :
 {
   "set": {
     "keywords": string | null,
-    "role": [{ "keywords": string, "priority": "MUST_HAVE"|"CAN_HAVE", "scope": "CURRENT"|"CURRENT_OR_PAST" }] | null,
+    "role": [{ "keywords": string, "priority": "MUST_HAVE"|"CAN_HAVE"|"DOESNT_HAVE", "scope": "CURRENT"|"PAST"|"CURRENT_OR_PAST" }] | null,
     "seniority": string[] | null,
     "years_of_experience_min": number | null,
     "years_of_experience_max": number | null,
+    "tenure_at_role_min": number | null,
+    "tenure_at_role_max": number | null,
     "skills_keywords": string[] | null,
     "location_keywords": string[] | null,
-    "company_keywords": [{ "keywords": string, "priority": "MUST_HAVE"|"CAN_HAVE"|"DOESNT_HAVE", "scope": "CURRENT"|"CURRENT_OR_PAST" }] | null,
+    "location_within_area": number | null,
+    "company_keywords": [{ "keywords": string, "priority": "MUST_HAVE"|"CAN_HAVE"|"DOESNT_HAVE", "scope": "CURRENT"|"PAST"|"CURRENT_OR_PAST"|"PAST_NOT_CURRENT" }] | null,
+    "industry_keywords": string[] | null,
+    "company_headcount": string[] | null,
+    "school_keywords": string[] | null,
     "profile_language": string[] | null,
-    "open_to_work": boolean | null
+    "open_to_work": boolean | null,
+    "contacted_filter": "without_message" | "with_message" | null,
+    "contacted_days": number | null
   },
   "remove": {
     "role_keywords": string[],
     "location_names": string[],
     "skills": string[],
     "company_keywords": string[],
+    "industry_names": string[],
+    "school_names": string[],
+    "company_headcount": string[],
     "seniority": string[],
     "profile_language": string[],
-    "keywords_clear": boolean
+    "keywords_clear": boolean,
+    "tenure_at_role_clear": boolean,
+    "radius_clear": boolean,
+    "contacted_clear": boolean
   },
   "note": string
 }

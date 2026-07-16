@@ -493,12 +493,14 @@ export function buildSearchParams(
     }
   }
 
-  // Tenure filters
+  // Tenure filters — clé dédiée tenure_at_company : l'edge la mappe en
+  // tenure_in_company (Recruiter) / tenure_at_company (SN). L'ancienne clé
+  // `tenure` signifie expérience TOTALE côté edge et écrasait years_of_experience.
   if (filters.tenure_at_company_min !== null || filters.tenure_at_company_max !== null) {
     const tenure: Record<string, number> = {};
     if (filters.tenure_at_company_min !== null) tenure.min = filters.tenure_at_company_min;
     if (filters.tenure_at_company_max !== null) tenure.max = filters.tenure_at_company_max;
-    baseParams.tenure = [tenure];
+    baseParams.tenure_at_company = [tenure];
   }
 
   // Boolean filters
@@ -645,6 +647,14 @@ export function buildSearchParams(
   if (filters.api === 'recruiter' || filters.api === 'database') {
     if (filters.tenure_at_role_min != null) baseParams.tenure_at_role_min = filters.tenure_at_role_min;
     if (filters.tenure_at_role_max != null) baseParams.tenure_at_role_max = filters.tenure_at_role_max;
+    // Recruiter : l'edge ne lit que la forme array tenure_at_role[{min,max}]
+    // (mappée en tenure_in_position) — les clés plates ci-dessus sont ignorées.
+    if (filters.api === 'recruiter' && (filters.tenure_at_role_min != null || filters.tenure_at_role_max != null)) {
+      const range: Record<string, number> = {};
+      if (filters.tenure_at_role_min != null) range.min = filters.tenure_at_role_min;
+      if (filters.tenure_at_role_max != null) range.max = filters.tenure_at_role_max;
+      baseParams.tenure_at_role = [range];
+    }
   }
 
   // ── Sales Navigator signal filters ──

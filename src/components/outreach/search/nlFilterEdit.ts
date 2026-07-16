@@ -22,23 +22,40 @@ interface EditOps {
     seniority?: string[] | null;
     years_of_experience_min?: number | null;
     years_of_experience_max?: number | null;
+    tenure_at_role_min?: number | null;
+    tenure_at_role_max?: number | null;
     skills_keywords?: string[] | null;
     location_keywords?: string[] | null;
+    location_within_area?: number | null;
     company_keywords?: Array<{ keywords: string; priority: string; scope: string }> | null;
+    industry_keywords?: string[] | null;
+    company_headcount?: string[] | null;
+    school_keywords?: string[] | null;
     profile_language?: string[] | null;
     open_to_work?: boolean | null;
+    contacted_filter?: 'without_message' | 'with_message' | null;
+    contacted_days?: number | null;
   };
   remove?: {
     role_keywords?: string[];
     location_names?: string[];
     skills?: string[];
     company_keywords?: string[];
+    industry_names?: string[];
+    school_names?: string[];
+    company_headcount?: string[];
     seniority?: string[];
     profile_language?: string[];
     keywords_clear?: boolean;
+    tenure_at_role_clear?: boolean;
+    radius_clear?: boolean;
+    contacted_clear?: boolean;
   };
   note?: string;
 }
+
+const HEADCOUNT_CODES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+const RADIUS_VALUES = [10, 25, 35, 50, 75, 100];
 
 const norm = (s: string) => s.trim().toLowerCase();
 
@@ -59,15 +76,23 @@ export async function nlFilterEdit(params: {
   // Résumé compact des filtres courants — assez pour éditer, léger en tokens.
   const current_filters = {
     keywords: filters.keywords || undefined,
-    role: filters.role.map(r => ({ keywords: r.keywords, priority: r.priority })),
+    role: filters.role.map(r => ({ keywords: r.keywords, priority: r.priority, scope: r.scope })),
     location: filters.location.map(l => l.name),
+    location_radius_miles: filters.location_within_area,
     experience_min: filters.calculated_experience_min,
     experience_max: filters.calculated_experience_max,
+    tenure_at_role_min: filters.tenure_at_role_min,
+    tenure_at_role_max: filters.tenure_at_role_max,
     skills: [...filters.skills.map(s => s.name), ...(filters.skills_keywords || [])],
-    company_keywords: filters.company_keywords.map(c => ({ keywords: c.keywords, priority: c.priority })),
+    company_keywords: filters.company_keywords.map(c => ({ keywords: c.keywords, priority: c.priority, scope: c.scope })),
+    industry: filters.industry.map(i => i.name),
+    company_headcount: filters.company_headcount,
+    school: filters.school.map(s => s.name),
     seniority: filters.seniority,
     profile_language: filters.profile_language,
     open_to_work: filters.open_to_work,
+    contacted_filter: filters.activity_messages,
+    contacted_days: filters.activity_messages_days,
   };
 
   const { data, error } = await invokeWithCredits<{ success?: boolean; ops?: EditOps; error?: string }>(
@@ -121,6 +146,29 @@ export async function nlFilterEdit(params: {
     const profile_language = next.profile_language.filter(l => !rm.profile_language!.includes(l));
     if (profile_language.length !== next.profile_language.length) { next = { ...next, profile_language }; changed = true; }
   }
+  if (rm.industry_names?.length) {
+    const targets = rm.industry_names.map(norm);
+    const industry = next.industry.filter(i => !targets.some(t => norm(i.name).includes(t) || t.includes(norm(i.name))));
+    if (industry.length !== next.industry.length) { next = { ...next, industry }; changed = true; }
+  }
+  if (rm.school_names?.length) {
+    const targets = rm.school_names.map(norm);
+    const school = next.school.filter(s => !targets.some(t => norm(s.name).includes(t) || t.includes(norm(s.name))));
+    if (school.length !== next.school.length) { next = { ...next, school }; changed = true; }
+  }
+  if (rm.company_headcount?.length) {
+    const company_headcount = next.company_headcount.filter(h => !rm.company_headcount!.includes(h));
+    if (company_headcount.length !== next.company_headcount.length) { next = { ...next, company_headcount }; changed = true; }
+  }
+  if (rm.tenure_at_role_clear && (next.tenure_at_role_min !== null || next.tenure_at_role_max !== null)) {
+    next = { ...next, tenure_at_role_min: null, tenure_at_role_max: null }; changed = true;
+  }
+  if (rm.radius_clear && next.location_within_area !== null) {
+    next = { ...next, location_within_area: null }; changed = true;
+  }
+  if (rm.contacted_clear && next.activity_messages) {
+    next = { ...next, activity_messages: null, activity_messages_days: null }; changed = true;
+  }
   if (rm.keywords_clear && next.keywords) {
     next = { ...next, keywords: '' }; changed = true;
   }
@@ -136,8 +184,8 @@ export async function nlFilterEdit(params: {
       .filter(r => r.keywords?.trim() && !existing.has(norm(r.keywords)))
       .map(r => ({
         keywords: r.keywords,
-        priority: (r.priority === 'MUST_HAVE' ? 'MUST_HAVE' : 'CAN_HAVE') as RoleFilter['priority'],
-        scope: (r.scope === 'CURRENT' ? 'CURRENT' : 'CURRENT_OR_PAST') as RoleFilter['scope'],
+        priority: (['MUST_HAVE', 'CAN_HAVE', 'DOESNT_HAVE'].includes(r.priority) ? r.priority : 'CAN_HAVE') as RoleFilter['priority'],
+        scope: (['CURRENT', 'PAST', 'CURRENT_OR_PAST'].includes(r.scope) ? r.scope : 'CURRENT_OR_PAST') as RoleFilter['scope'],
       }));
     if (added.length) { next = { ...next, role: [...next.role, ...added] }; changed = true; }
   }
@@ -162,6 +210,30 @@ export async function nlFilterEdit(params: {
       changed = true;
     }
   }
+  if (typeof st.tenure_at_role_min === 'number' || typeof st.tenure_at_role_max === 'number') {
+    const min = typeof st.tenure_at_role_min === 'number' ? st.tenure_at_role_min : next.tenure_at_role_min;
+    const max = typeof st.tenure_at_role_max === 'number' ? st.tenure_at_role_max : next.tenure_at_role_max;
+    if (min !== next.tenure_at_role_min || max !== next.tenure_at_role_max) {
+      next = { ...next, tenure_at_role_min: min, tenure_at_role_max: max }; changed = true;
+    }
+  }
+  if (typeof st.location_within_area === 'number') {
+    // Valeurs fixes LinkedIn : arrondi à la plus proche
+    const nearest = RADIUS_VALUES.reduce((a, b) => Math.abs(b - st.location_within_area!) < Math.abs(a - st.location_within_area!) ? b : a);
+    if (nearest !== next.location_within_area) { next = { ...next, location_within_area: nearest }; changed = true; }
+  }
+  if (st.company_headcount?.length) {
+    const added = st.company_headcount.filter(h => HEADCOUNT_CODES.includes(h) && !next.company_headcount.includes(h));
+    if (added.length) { next = { ...next, company_headcount: [...next.company_headcount, ...added] }; changed = true; }
+  }
+  if (st.contacted_filter === 'without_message' || st.contacted_filter === 'with_message') {
+    const days = typeof st.contacted_days === 'number' ? st.contacted_days : next.activity_messages_days;
+    if (st.contacted_filter !== next.activity_messages || days !== next.activity_messages_days) {
+      next = { ...next, activity_messages: st.contacted_filter, activity_messages_days: days }; changed = true;
+    }
+  } else if (typeof st.contacted_days === 'number' && next.activity_messages && st.contacted_days !== next.activity_messages_days) {
+    next = { ...next, activity_messages_days: st.contacted_days }; changed = true;
+  }
   if (st.company_keywords?.length) {
     const existing = new Set(next.company_keywords.map(c => norm(c.keywords)));
     const added = st.company_keywords
@@ -177,32 +249,59 @@ export async function nlFilterEdit(params: {
     next = { ...next, open_to_work: st.open_to_work }; changed = true;
   }
 
-  // Localisation : résolution geo ID LinkedIn si possible, sinon nom brut (Base Konekt)
+  // Facettes à IDs LinkedIn (lieu, secteur, école) : résolution autocomplete
+  // si compte connecté, sinon nom brut (Base Konekt).
+  const resolveParam = async (type: 'LOCATION' | 'INDUSTRY' | 'SCHOOL', kw: string): Promise<{ id: string; name: string } | null> => {
+    if (searchSource === 'linkedin' && accountId) {
+      try {
+        const { data: paramData } = await invokeUnipile({
+          body: { action: 'get_parameters', account_id: accountId, type, keywords: kw, service: 'RECRUITER' },
+        });
+        const items = Array.isArray(paramData?.items) ? (paramData.items as any[]) : [];
+        const n = norm(kw);
+        const best = items.find((it: any) => norm(String(it.title || '')) === n)
+          || items.find((it: any) => norm(String(it.title || '')).includes(n)) || items[0];
+        return best?.id && best?.title ? { id: String(best.id), name: String(best.title) } : null;
+      } catch (e) {
+        console.warn('[nlFilterEdit] resolve failed:', type, kw, e);
+        return null;
+      }
+    }
+    return { id: kw, name: kw };
+  };
+
   if (st.location_keywords?.length) {
     const existingNames = new Set(next.location.map(l => norm(l.name)));
     for (const kw of st.location_keywords.slice(0, 3)) {
       if (!kw?.trim() || existingNames.has(norm(kw))) continue;
-      let item: LocationFilterItem | null = null;
-      if (searchSource === 'linkedin' && accountId) {
-        try {
-          const { data: paramData } = await invokeUnipile({
-            body: { action: 'get_parameters', account_id: accountId, type: 'LOCATION', keywords: kw, service: 'RECRUITER' },
-          });
-          const items = Array.isArray(paramData?.items) ? (paramData.items as any[]) : [];
-          const n = norm(kw);
-          const best = items.find((it: any) => norm(String(it.title || '')) === n)
-            || items.find((it: any) => norm(String(it.title || '')).includes(n)) || items[0];
-          if (best?.id && best?.title) {
-            item = { id: String(best.id), name: String(best.title), priority: 'MUST_HAVE', scope: 'CURRENT_OR_OPEN_TO_RELOCATE' };
-          }
-        } catch (e) {
-          console.warn('[nlFilterEdit] location resolve failed:', kw, e);
-        }
-      } else {
-        item = { id: kw, name: kw, priority: 'MUST_HAVE', scope: 'CURRENT_OR_OPEN_TO_RELOCATE' };
-      }
-      if (item && !next.location.some(l => l.id === item!.id)) {
+      const it = await resolveParam('LOCATION', kw);
+      if (it && !next.location.some(l => l.id === it.id)) {
+        const item: LocationFilterItem = { ...it, priority: 'MUST_HAVE', scope: 'CURRENT_OR_OPEN_TO_RELOCATE' };
         next = { ...next, location: [...next.location, item] };
+        changed = true;
+      }
+    }
+  }
+
+  if (st.industry_keywords?.length) {
+    const existingNames = new Set(next.industry.map(i => norm(i.name)));
+    for (const kw of st.industry_keywords.slice(0, 3)) {
+      if (!kw?.trim() || existingNames.has(norm(kw))) continue;
+      const it = await resolveParam('INDUSTRY', kw);
+      if (it && !next.industry.some(i => i.id === it.id)) {
+        next = { ...next, industry: [...next.industry, it] };
+        changed = true;
+      }
+    }
+  }
+
+  if (st.school_keywords?.length) {
+    const existingNames = new Set(next.school.map(s => norm(s.name)));
+    for (const kw of st.school_keywords.slice(0, 5)) {
+      if (!kw?.trim() || existingNames.has(norm(kw))) continue;
+      const it = await resolveParam('SCHOOL', kw);
+      if (it && !next.school.some(s => s.id === it.id)) {
+        next = { ...next, school: [...next.school, { ...it, priority: 'MUST_HAVE' }] };
         changed = true;
       }
     }
