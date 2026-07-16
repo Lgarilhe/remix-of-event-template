@@ -90,11 +90,11 @@ const SCAN_SOURCES: Source[] = [
 
 const AGENT_MESSAGES = [
   "Je recherche des infos sur cette société...",
-  "Enrichissement des données 🎯",
-  "Scraping du site web en cours...",
+  "Enrichissement des données...",
+  "Lecture du site web en cours...",
   "Recherche des décideurs clés...",
   "Analyse des postes ouverts...",
-  "Enrichissement terminé ! Voici ce que j'ai trouvé 👇",
+  "Enrichissement terminé. Voici ce que j'ai trouvé.",
 ];
 
 /* ─── Component ─── */
@@ -362,14 +362,13 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
                   className="flex items-center gap-2"
                 >
                   <div
-                    className={`w-6 h-6 flex items-center justify-center text-xs font-bold border transition-all duration-300 ${
+                    className={`w-6 h-6 flex items-center justify-center text-2xs font-mono rounded-md border transition-all duration-300 ${
                       s.done
-                        ? 'border-transparent text-foreground'
-                        : 'border-border text-muted-foreground'
+                        ? 'bg-success/15 border-transparent text-success'
+                        : 'border-border text-muted-foreground/60'
                     }`}
-                    style={s.done ? { background: 'hsl(var(--primary))' } : {}}
                   >
-                    {s.done ? <Check className="w-3 h-3" /> : String(i + 1).padStart(2, '0')}
+                    {s.done ? <Check className="w-3 h-3" strokeWidth={3} /> : String(i + 1).padStart(2, '0')}
                   </div>
                   <span className={`text-xs transition-colors ${s.done ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
                     {s.label}
@@ -380,15 +379,17 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
 
             {/* Agent bubbles */}
             <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto no-scrollbar pr-1">
-              {bubbles.map((b) => (
-                <motion.div
+              {bubbles.map((b, idx) => (
+                <motion.p
                   key={b.id}
-                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  className="bg-muted/60 border border-border/5 px-3 py-2 text-xs text-foreground/80 rounded-sm"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`text-[13px] leading-relaxed ${
+                    idx === bubbles.length - 1 ? 'konekt-shimmer-text' : 'text-muted-foreground/70'
+                  }`}
                 >
                   {b.text}
-                </motion.div>
+                </motion.p>
               ))}
               <div ref={bubblesEndRef} />
             </div>
@@ -458,10 +459,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             className="space-y-4"
           >
             {/* Company card */}
-            <div
-              className="border border-border/80 p-3 sm:p-4 flex flex-col sm:flex-row items-start gap-3 sm:gap-4"
-              style={{ boxShadow: '4px 4px 0px 0px hsl(var(--primary))' }}
-            >
+            <div className="rounded-lg border border-border p-3 sm:p-4 flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
               <img
                 src={company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(company.name)}&background=random&size=48`)}
                 alt={company.name}
@@ -734,7 +732,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
             <Users className="w-3.5 h-3.5" />
             Répartition des équipes
           </h4>
-          <div className="space-y-2 border border-border p-3" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
+          <div className="space-y-2 rounded-lg border border-border p-3">
             {headcountEntries.map(([dept, count]) => (
               <div key={dept} className="space-y-0.5">
                 <div className="flex items-center justify-between text-xs">
@@ -746,8 +744,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
                     initial={{ width: 0 }}
                     animate={{ width: `${(count / maxHeadcount) * 100}%` }}
                     transition={{ duration: 0.6, delay: 0.1 }}
-                    className="h-full"
-                    style={{ backgroundColor: 'hsl(var(--primary))' }}
+                    className="h-full rounded-full bg-success"
                   />
                 </div>
               </div>
@@ -763,7 +760,7 @@ const TabInsights: React.FC<{ company: CompanyData }> = ({ company }) => {
             <TrendingUp className="w-3.5 h-3.5" />
             Historique de levées
           </h4>
-          <div className="border border-border p-3 space-y-0" style={{ boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
+          <div className="rounded-lg border border-border p-3 space-y-0">
             {fundingEvents.map((ev, i) => (
               <div key={i} className="flex gap-3 relative">
                 {/* Vertical line */}

@@ -20,6 +20,7 @@ import { SceneDiscovery } from '@/components/onboarding/SceneDiscovery';
 import { SceneSpecializations } from '@/components/onboarding/SceneSpecializations';
 import { SceneAiTone } from '@/components/onboarding/SceneAiTone';
 import { SceneQuotas } from '@/components/onboarding/SceneQuotas';
+import { SceneICP, SENIORITY_OPTIONS, type IcpData } from '@/components/onboarding/SceneICP';
 import { ScenePreparing, type PreparingLine } from '@/components/onboarding/ScenePreparing';
 import { EMPTY_AI_CONTEXT } from '@/hooks/useAiContext';
 import { SceneTeam } from '@/components/onboarding/SceneTeam';
@@ -63,6 +64,7 @@ const Onboarding = () => {
   const [orgDetailsData, setOrgDetailsData] = useState<OrgDetailsData | null>(restored?.orgDetails ?? null);
   const [goal, setGoal] = useState(restored?.goal ?? '');
   const [stack, setStack] = useState<string[]>(restored?.stack ?? []);
+  const [icp, setIcp] = useState<IcpData | null>(restored?.icp ?? null);
   const [discoverySource, setDiscoverySource] = useState(restored?.discoverySource ?? '');
   const [specializations, setSpecializations] = useState<string[]>(restored?.specializations ?? []);
   const [profileState, setProfileState] = useState<ProfileFormState | undefined>(
@@ -117,6 +119,7 @@ const Onboarding = () => {
       orgType,
       goal,
       stack,
+      icp: icp ?? undefined,
       orgDetails: orgDetailsData,
       discoverySource,
       specializations,
@@ -129,7 +132,7 @@ const Onboarding = () => {
           }
         : null,
     });
-  }, [step, orgType, goal, stack, orgDetailsData, discoverySource, specializations, completedScenes, profileState]);
+  }, [step, orgType, goal, stack, icp, orgDetailsData, discoverySource, specializations, completedScenes, profileState]);
 
   useEffect(() => {
     if (organization && !orgCreated) {
@@ -175,9 +178,17 @@ const Onboarding = () => {
       const labels = stack.map((v) => STACK_OPTIONS.find((o) => o.value === v)?.label ?? v);
       parts.push(`Outils déjà utilisés : ${labels.join(', ')}.`);
     }
+    if (icp) {
+      if (icp.roles) parts.push(`Postes recrutés le plus souvent : ${icp.roles}.`);
+      if (icp.seniorities.length > 0) {
+        const labels = icp.seniorities.map((v) => SENIORITY_OPTIONS.find((o) => o.value === v)?.label ?? v);
+        parts.push(`Séniorités visées : ${labels.join(', ')}.`);
+      }
+      if (icp.locations) parts.push(`Zones de recrutement : ${icp.locations}.`);
+    }
     if (parts.length === 0) return null;
     return { ...EMPTY_AI_CONTEXT, free_text: parts.join(' ') };
-  }, [goal, stack]);
+  }, [goal, stack, icp]);
 
   // ─── Handlers ───
   const handleOrgTypeSelected = useCallback(
@@ -202,6 +213,14 @@ const Onboarding = () => {
     (values: string[]) => {
       setStack(values);
       completeAndNext('stack');
+    },
+    [completeAndNext]
+  );
+
+  const handleIcpSubmitted = useCallback(
+    (data: IcpData) => {
+      setIcp(data);
+      completeAndNext('icp');
     },
     [completeAndNext]
   );
@@ -371,7 +390,13 @@ const Onboarding = () => {
       };
 
   return (
-    <OnboardingShell flow={flow} stepIndex={step} orgName={organization?.name}>
+    <OnboardingShell
+      flow={flow}
+      stepIndex={step}
+      chapters={chapters}
+      completedScenes={completedScenes}
+      orgName={organization?.name}
+    >
       <div className="w-full max-w-lg mx-auto mb-4 empty:mb-0">
         <InvitationBanner />
       </div>
@@ -413,6 +438,14 @@ const Onboarding = () => {
                 onSubmit={handleSpecializationsSubmitted}
                 onBack={goBack}
                 savedSpecializations={specializations}
+              />
+            )}
+            {currentScene === 'icp' && (
+              <SceneICP
+                onSubmit={handleIcpSubmitted}
+                onSkip={goNext}
+                onBack={goBack}
+                savedIcp={icp ?? undefined}
               />
             )}
             {currentScene === 'org' && (

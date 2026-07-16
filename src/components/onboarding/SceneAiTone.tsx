@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useUserAiContext, type AiContextTone } from '@/hooks/useAiContext';
 import { EditorialChoiceList } from './EditorialChoiceList';
@@ -98,6 +99,7 @@ const TextToggle: React.FC<{
 export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
   const { aiContext, save, isSaving } = useUserAiContext();
   const [tone, setTone] = useState<AiContextTone | null>(null);
+  const [specialty, setSpecialty] = useState('');
   const [freeText, setFreeText] = useState('');
   const [doList, setDoList] = useState<Set<string>>(new Set());
   const [dontList, setDontList] = useState<Set<string>>(new Set());
@@ -105,8 +107,9 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
 
   useEffect(() => {
     if (hydrated) return;
-    if (aiContext.tone || aiContext.free_text || aiContext.do.length || aiContext.dont.length) {
+    if (aiContext.tone || aiContext.specialty || aiContext.free_text || aiContext.do.length || aiContext.dont.length) {
       setTone(aiContext.tone);
+      setSpecialty(aiContext.specialty);
       setFreeText(aiContext.free_text);
       setDoList(new Set(aiContext.do));
       setDontList(new Set(aiContext.dont));
@@ -129,6 +132,7 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
     save({
       ...aiContext,
       tone,
+      specialty: specialty.trim(),
       free_text: freeText.trim(),
       do: Array.from(doList),
       dont: Array.from(dontList),
@@ -172,6 +176,29 @@ export const SceneAiTone: React.FC<Props> = ({ onNext, onBack, onSkip }) => {
           </motion.blockquote>
         )}
       </AnimatePresence>
+
+      {/* Spécialité */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="mt-8"
+      >
+        <label htmlFor="aitone-specialty" className="block text-sm font-semibold text-foreground mb-2">
+          Votre spécialité, en une phrase
+        </label>
+        <Input
+          id="aitone-specialty"
+          value={specialty}
+          onChange={(e) => setSpecialty(e.target.value)}
+          placeholder="Ex : recruteur tech spécialisé data & IA, postes senior, région parisienne"
+          maxLength={200}
+          className="border border-border text-sm bg-background/50 h-11"
+        />
+        <p className="text-xs text-muted-foreground mt-1.5">
+          L'IA la glisse naturellement dans vos messages pour asseoir votre crédibilité.
+        </p>
+      </motion.div>
 
       {/* Consignes */}
       <motion.div

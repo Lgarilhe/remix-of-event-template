@@ -76,6 +76,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const [overallScore, setOverallScore] = useState(0);
   const [categories, setCategories] = useState<Category[]>([]);
   const [quickWins, setQuickWins] = useState<string[]>([]);
+  const [failedSources, setFailedSources] = useState(0);
   const bubblesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -158,6 +159,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           score: data.overall_score || 0,
           categories: mappedCategories,
           quickWins: data.quick_wins || [],
+          failedSources: (data.sources_scraped || []).filter((s: any) => s.status !== 'success').length,
         };
       } catch (err) {
         console.error('[SceneAudit] Error:', err);
@@ -192,6 +194,7 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
           setOverallScore(apiResult.score);
           setCategories(apiResult.categories);
           setQuickWins(apiResult.quickWins);
+          setFailedSources(apiResult.failedSources);
           setPhase('results');
         } else {
           setPhase('error');
@@ -210,6 +213,8 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
   const circumference = 2 * Math.PI * 42;
   const scoreOffset = circumference - (overallScore / 100) * circumference;
   const improvementCount = categories.filter(c => c.score <= 3).length;
+  // Trop de sources inaccessibles → le score ne veut rien dire, on l'annonce honnêtement
+  const isPartial = failedSources >= 3;
 
   return (
     <div className="w-full flex flex-col gap-4 sm:gap-5">
@@ -346,15 +351,17 @@ export const SceneAudit: React.FC<Props> = ({ companyData, onNext, onBack }) => 
                   <span
                     className="text-xs uppercase tracking-wider font-bold px-2 py-0.5 rounded-md"
                     style={{
-                      background: overallScore >= 70 ? 'hsl(var(--success) / 0.15)' : 'hsl(var(--warning) / 0.15)',
-                      color: overallScore >= 70 ? 'hsl(var(--success))' : 'hsl(var(--warning))',
+                      background: !isPartial && overallScore >= 70 ? 'hsl(var(--success) / 0.15)' : 'hsl(var(--warning) / 0.15)',
+                      color: !isPartial && overallScore >= 70 ? 'hsl(var(--success))' : 'hsl(var(--warning))',
                     }}
                   >
-                    {overallScore >= 70 ? 'Bon' : 'À améliorer'}
+                    {isPartial ? 'Analyse partielle' : overallScore >= 70 ? 'Bon' : 'À améliorer'}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {improvementCount} axes d'amélioration détectés sur {categories.length} catégories analysées.
+                  {isPartial
+                    ? `${failedSources} sources n'ont pas pu être consultées — ce score ne reflète que ce qui était accessible.`
+                    : `${improvementCount} axes d'amélioration détectés sur ${categories.length} catégories analysées.`}
                 </p>
               </div>
             </div>
