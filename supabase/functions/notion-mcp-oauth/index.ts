@@ -192,9 +192,6 @@ async function discoverOAuth(): Promise<{
     ? protectedResource.scopes_supported
     : metadata.scopes_supported;
   const scopes = selectNotionReadScopes(advertisedScopes);
-  if (scopes.length === 0) {
-    throw new HttpError(502, 'Notion did not advertise an explicit read-only OAuth scope');
-  }
 
   return {
     metadata,

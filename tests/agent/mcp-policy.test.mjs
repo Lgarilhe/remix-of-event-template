@@ -86,7 +86,7 @@ test('builds provider payloads with a deny-by-default toolset allowlist', () => 
 
 test('the database migration enforces the same fail-closed boundary', () => {
   const migration = readFileSync(
-    new URL('../../supabase/migrations/20260716120000_mcp_connector_allowlists.sql', import.meta.url),
+    new URL('../../supabase/migrations/20260716122520_mcp_connector_allowlists.sql', import.meta.url),
     'utf8',
   );
 

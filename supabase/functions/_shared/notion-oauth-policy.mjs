@@ -61,8 +61,10 @@ export function normalizeNotionReturnUrl(rawUrl, appUrl, extraOrigins) {
 }
 
 /**
- * Request only scopes whose names explicitly describe read access.
- * The MCP tool allowlist remains the final fail-closed enforcement layer.
+ * When the server advertises scopes, request only names that explicitly
+ * describe read access. Notion currently omits scopes_supported, in which
+ * case the OAuth request omits scope and the MCP tool allowlist remains the
+ * final fail-closed enforcement layer.
  *
  * @param {unknown} advertisedScopes
  * @returns {string[]}

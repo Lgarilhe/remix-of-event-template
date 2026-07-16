@@ -65,6 +65,20 @@ test('Notion authorization URL contains PKCE and never the verifier', () => {
   assert.equal(url.searchParams.has('code_verifier'), false);
 });
 
+test('Notion authorization omits scope when discovery advertises none', () => {
+  const url = new URL(buildNotionAuthorizationUrl({
+    authorizationEndpoint: 'https://mcp.notion.com/oauth/authorize',
+    clientId: 'client-123',
+    redirectUri: 'https://project.supabase.co/functions/v1/notion-oauth',
+    codeChallenge: 'challenge-123',
+    state: 'state-123',
+    scopes: selectNotionReadScopes(undefined),
+    resource: 'https://mcp.notion.com/mcp',
+  }));
+
+  assert.equal(url.searchParams.has('scope'), false);
+});
+
 test('Notion callback outcome is appended without losing the settings tab', () => {
   const success = new URL(buildNotionReturnUrl(
     'https://konekt-app-navy.vercel.app/settings?tab=agent-actions',
@@ -81,7 +95,7 @@ test('Notion callback outcome is appended without losing the settings tab', () =
 
 test('Notion OAuth tokens stay server-only and refreshes are serialized', () => {
   const migration = readFileSync(
-    new URL('../../supabase/migrations/20260716113136_notion_oauth_connections.sql', import.meta.url),
+    new URL('../../supabase/migrations/20260716122458_notion_oauth_connections.sql', import.meta.url),
     'utf8',
   );
   assert.match(migration, /ALTER TABLE public\.organization_notion_connections ENABLE ROW LEVEL SECURITY/);
