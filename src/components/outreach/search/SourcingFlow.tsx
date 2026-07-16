@@ -342,10 +342,18 @@ const tokState = (p?: string): Weight => p === 'MUST_HAVE' ? 'must' : p === 'DOE
 
 function buildChips(f: LinkedInFiltersState): FacetChip[] {
   const chips: FacetChip[] = [];
+  // Le tri-état par token n'est offert QUE là où le payload honore réellement
+  // la priority — sinon une « exclusion » partirait comme inclusion (classic/
+  // Sales Nav envoient des IDs nus pour lieu/école, skills est Recruiter-only).
+  const isRecruiter = f.api === 'recruiter';
+  const posteMutable = f.api !== 'classic';
+  const lieuMutable = isRecruiter;
+  const skillsMutable = isRecruiter;
+  const ecoleMutable = isRecruiter || f.api === 'database';
 
   const roleTokens: ChipToken[] = [
-    ...f.role.map(r => ({ label: r.keywords, state: tokState(r.priority), mutable: true })),
-    ...f.job_title.map(j => ({ label: j.name, state: tokState(j.priority), mutable: true })),
+    ...f.role.map(r => ({ label: r.keywords, state: tokState(r.priority), mutable: posteMutable })),
+    ...f.job_title.map(j => ({ label: j.name, state: tokState(j.priority), mutable: posteMutable })),
   ];
   if (roleTokens.length) chips.push({
     key: 'poste', field: 'Poste', op: roleTokens.length > 1 ? "l'un de" : 'est', tokens: roleTokens,
@@ -356,7 +364,7 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
 
   if (f.location.length) chips.push({
     key: 'lieu', field: 'Lieu', op: f.location.length > 1 ? "l'un de" : 'est',
-    tokens: f.location.map(l => ({ label: l.name, state: tokState(l.priority), mutable: true })),
+    tokens: f.location.map(l => ({ label: l.name, state: tokState(l.priority), mutable: lieuMutable })),
     weight: f.location.some(l => l.priority === 'MUST_HAVE') ? 'must' : 'should', canCycle: true,
   });
 
@@ -366,14 +374,14 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
     weight: 'should', canCycle: false,
   });
 
-  if (f.api !== 'database' && (f.tenure_at_role_min != null || f.tenure_at_role_max != null)) chips.push({
+  if ((f.api === 'recruiter' || f.api === 'sales_navigator') && (f.tenure_at_role_min != null || f.tenure_at_role_max != null)) chips.push({
     key: 'anciennete', field: 'Ancienneté', op: 'poste actuel',
     tokens: [{ label: `${f.tenure_at_role_min ?? 0}–${f.tenure_at_role_max ?? '∞'} ans`, state: 'plain', mutable: false }],
     weight: 'should', canCycle: false,
   });
 
   const skillTokens: ChipToken[] = [
-    ...f.skills.map(s => ({ label: s.name, state: tokState(s.priority), mutable: true })),
+    ...f.skills.map(s => ({ label: s.name, state: tokState(s.priority), mutable: skillsMutable })),
     ...(f.skills_keywords || []).map(s => ({ label: s, state: 'plain' as const, mutable: false })),
   ];
   if (skillTokens.length) chips.push({
@@ -415,7 +423,7 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
 
   if (f.school.length) chips.push({
     key: 'ecole', field: 'École', op: 'parmi',
-    tokens: f.school.map(s => ({ label: s.name, state: s.priority === 'DOESNT_HAVE' ? 'exclude' as const : 'plain' as const, mutable: true })),
+    tokens: f.school.map(s => ({ label: s.name, state: s.priority === 'DOESNT_HAVE' ? 'exclude' as const : 'plain' as const, mutable: ecoleMutable })),
     weight: f.school.every(s => s.priority === 'DOESNT_HAVE') ? 'exclude' : 'should', canCycle: false,
   });
 
@@ -502,12 +510,12 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         return {
           ...f,
           role: f.role.map(r => r.priority === 'DOESNT_HAVE' ? r : { ...r, priority: toMust ? 'MUST_HAVE' as const : 'CAN_HAVE' as const }),
-          job_title: f.job_title.map(j => ({ ...j, priority: toMust ? 'MUST_HAVE' as const : 'CAN_HAVE' as const })),
+          job_title: f.job_title.map(j => j.priority === 'DOESNT_HAVE' ? j : { ...j, priority: toMust ? 'MUST_HAVE' as const : 'CAN_HAVE' as const }),
         };
       }
       if (key === 'lieu') {
         const toMust = !f.location.some(l => l.priority === 'MUST_HAVE');
-        return { ...f, location: f.location.map(l => ({ ...l, priority: toMust ? 'MUST_HAVE' as const : 'CAN_HAVE' as const })) };
+        return { ...f, location: f.location.map(l => l.priority === 'DOESNT_HAVE' ? l : ({ ...l, priority: toMust ? 'MUST_HAVE' as const : 'CAN_HAVE' as const })) };
       }
       return f;
     });
@@ -946,7 +954,14 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
               {addField === null ? (
                 <>
                   <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Ajouter un filtre</div>
-                  {ADDABLE_FIELDS.filter(fd => searchSource === 'linkedin' || (fd.key !== 'contact' && fd.key !== 'anciennete')).map(fd => (
+                  {ADDABLE_FIELDS.filter(fd => {
+                    // Aligné sur ce que le payload honore réellement par licence :
+                    // contact = recruiting_activity (Recruiter only), ancienneté =
+                    // tenure_in_position / tenure_at_role (Recruiter + Sales Nav).
+                    if (fd.key === 'contact') return filters.api === 'recruiter';
+                    if (fd.key === 'anciennete') return filters.api === 'recruiter' || filters.api === 'sales_navigator';
+                    return true;
+                  }).map(fd => (
                     <button
                       key={fd.key}
                       type="button"
