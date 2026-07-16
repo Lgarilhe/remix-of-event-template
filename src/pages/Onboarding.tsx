@@ -371,15 +371,7 @@ const Onboarding = () => {
       };
 
   return (
-    <OnboardingShell
-      chapters={chapters}
-      flow={flow}
-      currentScene={currentScene}
-      stepIndex={step}
-      completedScenes={completedScenes}
-      scorePercent={scorePercent}
-      orgName={organization?.name}
-    >
+    <OnboardingShell flow={flow} stepIndex={step} orgName={organization?.name}>
       <div className="w-full max-w-lg mx-auto mb-4 empty:mb-0">
         <InvitationBanner />
       </div>

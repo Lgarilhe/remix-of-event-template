@@ -112,12 +112,13 @@ export const SceneIntegrations: React.FC<Props> = ({ onNext, onBack }) => {
   }, [reloadLinkedIn, claimEmailAccount]);
 
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
+    <div className="w-full flex flex-col gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Automatisez votre sourcing</h2>
-        <p className="text-muted-foreground text-sm">
-          Connectez vos canaux : LinkedIn d’abord, l’email et WhatsApp démultiplient ensuite vos séquences.
+      <div className="mb-2">
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">Branchez le moteur.</h2>
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+          Sans LinkedIn connecté, pas de sourcing ni de messages. L'email et WhatsApp
+          démultiplient ensuite la portée de vos séquences.
         </p>
       </div>
 

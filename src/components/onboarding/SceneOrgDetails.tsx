@@ -106,14 +106,14 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   
 
   return (
-    <div className="w-full max-w-lg mx-auto flex flex-col gap-5">
+    <div className="w-full flex flex-col gap-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
-          {isFreelance ? 'Votre activité indépendante' : 'Votre équipe recrutement'}
+      <div className="mb-3">
+        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">
+          {isFreelance ? 'Votre activité, concrètement.' : 'Votre équipe, concrètement.'}
         </h2>
-        <p className="text-muted-foreground text-sm">
-          Ces infos nous aident à personnaliser votre expérience.
+        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+          Taille et volume calibrent vos quotas d'envoi et ce que l'IA Konekt vous recommande.
         </p>
       </div>
 
