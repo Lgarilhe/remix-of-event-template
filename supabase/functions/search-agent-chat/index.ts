@@ -20,6 +20,10 @@ import {
   HISTORY_WINDOW,
 } from "../_shared/conversation-compaction.ts";
 import { buildSafeMcpConfiguration } from "../_shared/mcp-policy.mjs";
+import {
+  connectorSelectedForRequest,
+  normalizeEnabledConnectorNames,
+} from "../_shared/connector-selection.mjs";
 import { UNTRUSTED_CONTENT_SAFETY_PROMPT } from "../_shared/prompt-safety.mjs";
 import { resolveNotionMcpConnectorRow } from "../_shared/notion-mcp-connection.ts";
 
@@ -484,7 +488,22 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { conversation_id: bodyConversationId, message, job_context, context_mode, brief_context, project_id, app_context } = body;
+    const {
+      conversation_id: bodyConversationId,
+      message,
+      job_context,
+      context_mode,
+      brief_context,
+      project_id,
+      app_context,
+      enabled_connectors,
+    } = body;
+    // New clients send an explicit per-request selection. A missing field keeps
+    // older deployed clients compatible during rollout; malformed values fail
+    // closed. Connector credentials and tool allowlists remain server-owned.
+    const enabledConnectorNames = enabled_connectors === undefined
+      ? null
+      : normalizeEnabledConnectorNames(enabled_connectors);
     let conversation_id: string | undefined = bodyConversationId;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "agent_search_calibration", modelId: "claude-sonnet-4-6", description: null,
@@ -1202,21 +1221,41 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             }> = [];
             if (orgId) {
               try {
+                const notionSelected = enabledConnectorNames === null
+                  || connectorSelectedForRequest("notion", enabledConnectorNames);
+                const notionConnectorPromise = notionSelected
+                  ? resolveNotionMcpConnectorRow(supabase, orgId, user.id)
+                  : Promise.resolve(null);
+                const selectedOrganizationConnectors = enabledConnectorNames?.filter(
+                  (name) => name !== "notion",
+                ) ?? null;
+                const organizationConnectorsPromise = selectedOrganizationConnectors?.length === 0
+                  ? Promise.resolve({ data: [] as Array<Record<string, unknown>> })
+                  : (() => {
+                    let query = supabase
+                      .from("organization_mcp_servers")
+                      .select("name, url, authorization_token, allowed_tools, enabled")
+                      .eq("organization_id", orgId)
+                      .eq("enabled", true)
+                      .limit(5);
+                    if (selectedOrganizationConnectors) {
+                      query = query.in("name", selectedOrganizationConnectors);
+                    }
+                    return query;
+                  })();
                 const [{ data: mcpRows }, notionConnector] = await Promise.all([
-                  supabase
-                    .from("organization_mcp_servers")
-                    .select("name, url, authorization_token, allowed_tools, enabled")
-                    .eq("organization_id", orgId)
-                    .eq("enabled", true)
-                    .limit(5),
-                  resolveNotionMcpConnectorRow(supabase, orgId, user.id),
+                  organizationConnectorsPromise,
+                  notionConnectorPromise,
                 ]);
-                // The managed OAuth connection wins over a legacy connector
-                // named "notion" so Anthropic never receives duplicate names.
+                // "notion" is reserved for the managed personal OAuth
+                // connection. A legacy organization connector with that name
+                // must never silently replace a disconnected personal one.
                 const connectorRows = [
                   ...(notionConnector ? [notionConnector] : []),
                   ...((mcpRows ?? []) as Array<Record<string, unknown>>).filter(
-                    (row) => !notionConnector || row.name !== "notion",
+                    (row) => row.name !== "notion"
+                      && (enabledConnectorNames === null
+                        || connectorSelectedForRequest(row.name, enabledConnectorNames)),
                   ),
                 ];
                 mcpConfigurations = connectorRows

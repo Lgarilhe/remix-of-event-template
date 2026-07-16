@@ -1,6 +1,7 @@
 import React from 'react';
 import { makeAssistantToolUI } from '@assistant-ui/react';
-import { FileText, Search } from 'lucide-react';
+
+import notionLogo from '@/assets/notion-logo.webp';
 
 /** Labels français des tools du copilot (reads + mutations + sourcing) */
 const TOOL_CHIP_LABELS: Record<string, string> = {
@@ -90,10 +91,47 @@ export const ToolFallbackChip: React.FC<{
   // résultat final ; les erreurs et interruptions restent visibles.
   if (notionKind && successful) return null;
 
-  const NotionIcon = notionKind === 'fetch' ? FileText : Search;
+  if (notionKind) {
+    const failed = !running && !unresolved && outcome === 'error';
+    const title = notionKind === 'search' ? 'Recherche dans Notion' : 'Lecture dans Notion';
+    const interruptedLabel = notionKind === 'search' ? 'Recherche interrompue' : 'Lecture interrompue';
+    const failedLabel = notionKind === 'search' ? 'La recherche a échoué' : 'La lecture a échoué';
+
+    return (
+      <div
+        role={failed ? 'alert' : 'status'}
+        aria-live="polite"
+        className="my-2 flex w-fit max-w-full items-center gap-2.5 rounded-xl border border-border/60 bg-muted/25 px-3 py-2"
+      >
+        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-white shadow-sm">
+          <img
+            src={notionLogo}
+            alt=""
+            data-testid="notion-tool-logo"
+            className="h-[18px] w-[18px] object-contain"
+          />
+          {running && (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full border-2 border-background bg-foreground"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-xs font-medium text-foreground">{title}</span>
+          <span className="block text-[11px] text-muted-foreground">
+            {running && 'En cours…'}
+            {unresolved && interruptedLabel}
+            {failed && failedLabel}
+            {!running && !unresolved && !failed && outcome === 'denied' && 'Accès refusé'}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="my-1 inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">
-      {notionKind && <NotionIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
       <span className="font-medium text-foreground/80">{toolChipLabel(toolName)}</span>
       {running && <span className="animate-pulse">en cours…</span>}
       {unresolved && <span className="text-muted-foreground/60">interrompu</span>}

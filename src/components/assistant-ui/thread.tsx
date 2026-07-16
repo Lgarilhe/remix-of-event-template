@@ -24,6 +24,8 @@ interface SkalrThreadProps {
   contextMode?: string | null;
   /** Notion-style: model selector rendered inside the composer toolbar */
   modelSlot?: React.ReactNode;
+  /** Menu + : fichiers joints et connecteurs disponibles pour le chat. */
+  toolsSlot?: React.ReactNode;
   /**
    * Pont fichiers joints (P1.2) : le composer y publie ses fichiers et une
    * fonction clear ; l'adaptateur de chat les lit au moment de l'envoi
@@ -731,7 +733,7 @@ const UserMessage = () => (
   </div>
 );
 
-export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot, filesBridge }) => {
+export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot, toolsSlot, filesBridge }) => {
   const w = WELCOME[(contextMode as string) || 'free'] ?? WELCOME.free;
   const [files, setFiles] = useState<File[]>([]);
 
@@ -836,15 +838,17 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
 
               {/* Toolbar */}
               <div className="flex items-center gap-1 pl-1 pr-0.5 pt-1">
-                <FileUploadTrigger asChild>
-                  <button
-                    type="button"
-                    title="Joindre un fichier"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <Paperclip className="h-4 w-4" />
-                  </button>
-                </FileUploadTrigger>
+                {toolsSlot ?? (
+                  <FileUploadTrigger asChild>
+                    <button
+                      type="button"
+                      title="Joindre un fichier"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                    </button>
+                  </FileUploadTrigger>
+                )}
 
                 {modelSlot}
 

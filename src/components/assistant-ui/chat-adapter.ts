@@ -33,6 +33,8 @@ interface SkalrAdapterConfig {
    */
   getPendingFiles?: () => File[];
   consumePendingFiles?: () => void;
+  /** Connector slugs explicitly enabled for the next message. */
+  getEnabledConnectors?: () => string[];
   apiKey: string;
   modelOverride?: string | null;
   contextMode?: string | null;
@@ -187,6 +189,7 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
           project_id: config.projectId || undefined,
           account_id: config.accountId || undefined,
           app_context: appContext,
+          enabled_connectors: config.getEnabledConnectors?.() ?? [],
         }),
         signal: abortSignal,
       });

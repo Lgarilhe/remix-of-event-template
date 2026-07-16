@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { CheckCircle2, ExternalLink, Loader2, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,24 +20,13 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import {
+  isUsableNotionConnection,
+  notionMcpStatusQueryKey,
+  useNotionMcpStatus,
+} from '@/hooks/useNotionMcpStatus';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-
-interface NotionConnectionStatus {
-  connected: boolean;
-  needs_reauthorization: boolean;
-  workspace_id: string | null;
-  email_domain: string | null;
-  connected_at: string | null;
-  expires_at: string | null;
-  has_error: boolean;
-}
-
-interface StatusResponse extends Record<string, unknown> {
-  success?: boolean;
-  can_manage?: boolean;
-  connection?: NotionConnectionStatus | null;
-  error?: string;
-}
 
 interface StartResponse extends Record<string, unknown> {
   success?: boolean;
@@ -57,25 +46,14 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 export function NotionConnectionCard() {
   const { organizationId } = useOrganization();
+  const { user } = useAuthReady();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const handledOAuthResult = useRef<string | null>(null);
 
-  const statusQuery = useQuery({
-    queryKey: ['notion-mcp-status', organizationId],
-    queryFn: async () => {
-      const { data, error } = await invokeEdgeFunction<StatusResponse>('notion-mcp-oauth', {
-        action: 'status',
-      });
-      if (error || data.success === false) throw error ?? new Error(data.error || 'Statut Notion indisponible');
-      return data;
-    },
-    enabled: Boolean(organizationId),
-    staleTime: 30_000,
-    retry: 1,
-  });
+  const statusQuery = useNotionMcpStatus(organizationId, user?.id);
 
   const oauthOutcome = searchParams.get('notion_oauth');
   const oauthError = searchParams.get('notion_error');
@@ -87,7 +65,7 @@ export function NotionConnectionCard() {
 
     if (oauthOutcome === 'connected') {
       toast.success('Notion est connecté à l’assistant IA.');
-      queryClient.invalidateQueries({ queryKey: ['notion-mcp-status', organizationId] });
+      queryClient.invalidateQueries({ queryKey: notionMcpStatusQueryKey(organizationId, user?.id) });
     } else {
       toast.error(OAUTH_ERROR_MESSAGES[oauthError || ''] || 'La connexion Notion a échoué. Réessaie.');
     }
@@ -96,12 +74,10 @@ export function NotionConnectionCard() {
     next.delete('notion_oauth');
     next.delete('notion_error');
     setSearchParams(next, { replace: true });
-  }, [oauthError, oauthOutcome, organizationId, queryClient, searchParams, setSearchParams]);
+  }, [oauthError, oauthOutcome, organizationId, queryClient, searchParams, setSearchParams, user?.id]);
 
   const connection = statusQuery.data?.connection ?? null;
-  const connected = connection?.connected === true
-    && !connection.needs_reauthorization
-    && !connection.has_error;
+  const connected = isUsableNotionConnection(connection);
   const needsReconnect = connection?.needs_reauthorization === true
     || (connection?.connected === true && connection.has_error);
   const canManage = statusQuery.data?.can_manage === true;
@@ -131,7 +107,7 @@ export function NotionConnectionCard() {
     try {
       const { data, error } = await invokeEdgeFunction('notion-mcp-oauth', { action: 'disconnect' });
       if (error || data.success === false) throw error ?? new Error(data.error || 'Déconnexion impossible');
-      await queryClient.invalidateQueries({ queryKey: ['notion-mcp-status', organizationId] });
+      await queryClient.invalidateQueries({ queryKey: notionMcpStatusQueryKey(organizationId, user?.id) });
       toast.success('Notion est déconnecté de l’assistant IA.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Déconnexion impossible.');

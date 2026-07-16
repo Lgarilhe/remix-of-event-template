@@ -6,14 +6,18 @@ import { AgentConversationsList } from './AgentConversationsList';
 import { Job } from '@/types/jobs';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
 import { useLocalRuntime, AssistantRuntimeProvider, type ChatModelAdapter, type ThreadMessageLike } from '@assistant-ui/react';
 import { createSkalrChatAdapter } from '@/components/assistant-ui/chat-adapter';
 import { SkalrThread } from '@/components/assistant-ui/thread';
 import { SearchCandidatesToolUI, EnrichCompanyToolUI, WebSearchToolUI } from '@/components/assistant-ui/tool-uis';
+import { ConnectorMenu, type ChatConnectorOption } from '@/components/assistant-ui/connector-menu';
 import type { AgentConversation } from '@/types/agentChat';
 import { AgentToolApprovalCard } from './AgentToolApprovalCard';
 import { AgentBackgroundTasksBar } from './AgentBackgroundTasksBar';
+import { useQuery } from '@tanstack/react-query';
+import { isUsableNotionConnection, useNotionMcpStatus } from '@/hooks/useNotionMcpStatus';
 
 interface AgentChatPanelProps {
   onClose?: () => void;
@@ -38,18 +42,50 @@ const ChatThread: React.FC<{
   initialMessages: readonly ThreadMessageLike[];
   contextMode?: 'brief' | 'process' | 'sourcing' | 'outreach' | null;
   modelSlot: React.ReactNode;
+  toolsSlot: React.ReactNode;
   filesBridge?: React.MutableRefObject<{ files: File[]; clear: () => void }>;
-}> = ({ adapter, initialMessages, contextMode, modelSlot, filesBridge }) => {
+}> = ({ adapter, initialMessages, contextMode, modelSlot, toolsSlot, filesBridge }) => {
   const runtime = useLocalRuntime(adapter, { initialMessages });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SkalrThread contextMode={contextMode} modelSlot={modelSlot} filesBridge={filesBridge} />
+      <SkalrThread contextMode={contextMode} modelSlot={modelSlot} toolsSlot={toolsSlot} filesBridge={filesBridge} />
       <SearchCandidatesToolUI />
       <EnrichCompanyToolUI />
       <WebSearchToolUI />
     </AssistantRuntimeProvider>
   );
 };
+
+const CONNECTOR_PREFERENCES_KEY = 'konekt:assistant:disabled-connectors:v2';
+const CONNECTOR_NAME_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+
+type ConnectorPreferences = Record<string, string[]>;
+
+function loadConnectorPreferences(): ConnectorPreferences {
+  if (typeof window === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(CONNECTOR_PREFERENCES_KEY) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).map(([scope, names]) => [
+        scope,
+        Array.isArray(names)
+          ? [...new Set(names.filter((name): name is string => typeof name === 'string' && CONNECTOR_NAME_RE.test(name)))].slice(0, 50)
+          : [],
+      ]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function connectorLabel(name: string): string {
+  return name
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
 
 export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   onClose,
@@ -80,6 +116,88 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [seeding, setSeeding] = useState<boolean>(Boolean(conversationId));
 
   const { organizationId } = useOrganization();
+  const { user } = useAuthReady();
+  const notionStatusQuery = useNotionMcpStatus(organizationId, user?.id);
+  const { data: organizationMcpServers = [], isLoading: mcpServersLoading } = useQuery({
+    // Keep this cache separate from AgentConnectorsSettings, whose rows have a
+    // different (full management) shape.
+    queryKey: ['assistant-chat-mcp-servers', organizationId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organization_mcp_servers')
+        .select('name, enabled')
+        .eq('organization_id', organizationId)
+        .eq('enabled', true)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: Boolean(organizationId),
+    staleTime: 0,
+  });
+  const [connectorPreferences, setConnectorPreferences] = useState<ConnectorPreferences>(loadConnectorPreferences);
+  const connectorPreferenceScope = user?.id && organizationId ? `${user.id}:${organizationId}` : null;
+
+  const disabledConnectors = useMemo(
+    () => (connectorPreferenceScope ? connectorPreferences[connectorPreferenceScope] ?? [] : []),
+    [connectorPreferenceScope, connectorPreferences],
+  );
+
+  const setConnectorEnabled = useCallback((name: string, enabled: boolean) => {
+    if (!connectorPreferenceScope || !CONNECTOR_NAME_RE.test(name)) return;
+    setConnectorPreferences((previous) => {
+      const current = previous[connectorPreferenceScope] ?? [];
+      const nextForScope = enabled
+        ? current.filter((connectorName) => connectorName !== name)
+        : [...new Set([name, ...current])].slice(0, 50);
+      const next = { ...previous, [connectorPreferenceScope]: nextForScope };
+      try {
+        window.localStorage.setItem(CONNECTOR_PREFERENCES_KEY, JSON.stringify(next));
+      } catch {
+        // Preference remains active for this browser session.
+      }
+      return next;
+    });
+  }, [connectorPreferenceScope]);
+
+  const notionConnected = isUsableNotionConnection(notionStatusQuery.data?.connection);
+  const connectorOptions = useMemo<ChatConnectorOption[]>(() => {
+    const disabled = new Set(disabledConnectors);
+    return [
+      {
+        name: 'notion',
+        label: 'Notion',
+        kind: 'notion',
+        connected: notionConnected,
+        enabled: notionConnected && !disabled.has('notion'),
+        status: notionStatusQuery.isLoading
+          ? 'checking'
+          : notionStatusQuery.isError
+            ? 'unavailable'
+            : notionConnected
+              ? 'connected'
+              : 'disconnected',
+      },
+      ...organizationMcpServers
+        .filter((server) => server.name !== 'notion')
+        .map((server) => ({
+          name: server.name,
+          label: connectorLabel(server.name),
+          kind: 'mcp' as const,
+          connected: server.enabled,
+          enabled: server.enabled && !disabled.has(server.name),
+          status: server.enabled ? 'connected' as const : 'disconnected' as const,
+        })),
+    ];
+  }, [disabledConnectors, notionConnected, notionStatusQuery.isError, notionStatusQuery.isLoading, organizationMcpServers]);
+  const enabledConnectorNames = useMemo(
+    () => connectorOptions
+      .filter((connector) => connector.connected && connector.enabled)
+      .map((connector) => connector.name),
+    [connectorOptions],
+  );
+  const enabledConnectorNamesRef = useRef(enabledConnectorNames);
+  enabledConnectorNamesRef.current = enabledConnectorNames;
 
   // Keep access token fresh
   useEffect(() => {
@@ -147,7 +265,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     setConversationId(data.id);
     setShowList(false);
     return data.id;
-  }, [organizationId, selectedJob, autoJob]);
+  }, [organizationId, selectedJob, autoJob, setConversationId]);
 
   const adapter = useMemo(
     () =>
@@ -159,6 +277,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         getContextMode: () => effectiveContextModeRef.current ?? null,
         getPendingFiles: () => filesBridge.current.files,
         consumePendingFiles: () => filesBridge.current.clear(),
+        getEnabledConnectors: () => enabledConnectorNamesRef.current,
         apiKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         modelOverride: selectedModel,
         contextMode,
@@ -370,6 +489,13 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           initialMessages={initialMessages}
           contextMode={effectiveContextMode}
           filesBridge={filesBridge}
+          toolsSlot={
+            <ConnectorMenu
+              connectors={connectorOptions}
+              loading={notionStatusQuery.isLoading || mcpServersLoading}
+              onToggle={setConnectorEnabled}
+            />
+          }
           modelSlot={
             <ModelPicker
               actionId={effectiveContextMode === 'sourcing' ? 'agent_search_calibration' : 'agent_chat'}
