@@ -52,14 +52,19 @@ interface FundingBracket {
   minAmount: number;
   maxAmount: number;
   tier: 1 | 2 | 3;
+  /** Garde-fous de cohérence : le montant de levée seul laisse passer des
+   *  groupes établis (Canal+, Sephora…) dont une transaction mineure traîne
+   *  chez le fournisseur. Une seed est jeune et petite, point. */
+  maxAgeYears: number;
+  employeeRanges: string[];
 }
 
 const FUNDING_BRACKETS: FundingBracket[] = [
-  { stage: 'seed',           minAmount: 0,           maxAmount: 5_000_000,    tier: 3 },
-  { stage: 'series_a',       minAmount: 5_000_000,   maxAmount: 25_000_000,   tier: 2 },
-  { stage: 'series_b',       minAmount: 25_000_000,  maxAmount: 75_000_000,   tier: 2 },
-  { stage: 'series_c',       minAmount: 75_000_000,  maxAmount: 200_000_000,  tier: 1 },
-  { stage: 'series_d_plus',  minAmount: 200_000_000, maxAmount: 5_000_000_000, tier: 1 },
+  { stage: 'seed',           minAmount: 0,           maxAmount: 5_000_000,    tier: 3, maxAgeYears: 12, employeeRanges: ['11,50', '51,200'] },
+  { stage: 'series_a',       minAmount: 5_000_000,   maxAmount: 25_000_000,   tier: 2, maxAgeYears: 15, employeeRanges: ['11,50', '51,200', '201,500'] },
+  { stage: 'series_b',       minAmount: 25_000_000,  maxAmount: 75_000_000,   tier: 2, maxAgeYears: 20, employeeRanges: ['11,50', '51,200', '201,500', '501,1000'] },
+  { stage: 'series_c',       minAmount: 75_000_000,  maxAmount: 200_000_000,  tier: 1, maxAgeYears: 25, employeeRanges: ['51,200', '201,500', '501,1000', '1001,5000'] },
+  { stage: 'series_d_plus',  minAmount: 200_000_000, maxAmount: 5_000_000_000, tier: 1, maxAgeYears: 30, employeeRanges: ['201,500', '501,1000', '1001,5000', '5001,10000'] },
 ];
 
 const TARGET_LOCATIONS = [
@@ -117,7 +122,7 @@ async function searchApolloByFunding(
         max: bracket.maxAmount,
       },
       organization_locations: [location],
-      organization_num_employees_ranges: ['11,50', '51,200', '201,500', '501,1000', '1001,5000', '5001,10000', '10001,9999999'],
+      organization_num_employees_ranges: bracket.employeeRanges,
       per_page: 100,
       page,
     };
@@ -172,8 +177,17 @@ async function upsertCompanies(
   let updated = 0;
   let skipped = 0;
 
+  const minFoundedYear = new Date().getFullYear() - bracket.maxAgeYears;
+
   for (const org of orgs) {
     if (!org.name?.trim()) { skipped++; continue; }
+    // Garde-fous anti-« Canal+ en seed » :
+    // - trop vieille (ou année de création inconnue) pour le stade → dehors
+    // - cotée en bourse ou filiale d'un groupe → pas une startup financée
+    const g = org as Record<string, unknown>;
+    const foundedYear = Number(g.founded_year);
+    if (!Number.isFinite(foundedYear) || foundedYear < minFoundedYear) { skipped++; continue; }
+    if (g.publicly_traded_symbol || g.owned_by_organization_id) { skipped++; continue; }
     const canonicalName = org.name.trim();
     const country = org.country?.trim() || LOCATION_TO_COUNTRY[searchLocation] || null;
     const domain = org.primary_domain?.trim() || null;
