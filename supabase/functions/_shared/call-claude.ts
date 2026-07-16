@@ -80,6 +80,15 @@ export interface ClaudeCompatOptions {
    * n'est configuré.
    */
   aiContext?: string;
+  /**
+   * Server tools Anthropic (recherche web, etc.) passés TELS QUELS à l'API,
+   * au format natif Anthropic — ex :
+   *   { type: "web_search_20250305", name: "web_search", max_uses: 8 }
+   * ⚠️ Le type du tool dépend du modèle : `web_search_20250305` pour
+   * Haiku 4.5 (le défaut de mapModel), `web_search_20260209` pour
+   * Sonnet 4.6+ / Opus 4.6+. Cumulables avec les function tools `tools`.
+   */
+  serverTools?: Array<Record<string, unknown>>;
 }
 
 export interface ClaudeCompatResult {
@@ -182,6 +191,13 @@ export async function callClaudeCompat(opts: ClaudeCompatOptions): Promise<Claud
       // choisit librement, mais on enlève les tools pour forcer text only.
       delete body.tools;
     }
+  }
+
+  // Server tools (web search…) — ajoutés après les function tools, jamais
+  // affectés par tool_choice "none" (ils s'exécutent côté Anthropic).
+  if (opts.serverTools && opts.serverTools.length > 0) {
+    const existingTools = (body.tools as Array<Record<string, unknown>> | undefined) ?? [];
+    body.tools = [...existingTools, ...opts.serverTools];
   }
 
   const headers: Record<string, string> = {
