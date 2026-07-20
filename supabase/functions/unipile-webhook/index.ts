@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
+import { deriveV2WebhookToken } from "../_shared/unipile-v2.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -130,6 +131,9 @@ interface WebhookPayload {
   date?: string;
   // account_status webhook : payload peut arriver wrappé en AccountStatus
   AccountStatus?: { account_id?: string; account_type?: string; message?: string };
+  // API v2 (account.add / account.reconnect) : le state du hosted auth arrive
+  // dans un champ dédié `state` au lieu d'être encodé dans `name` comme en v1.
+  state?: string;
 }
 
 /**
@@ -260,6 +264,12 @@ Deno.serve(async (req) => {
       });
     }
     const headerAuthenticated = Boolean(authHeader && timingSafeEqual(authHeader, WEBHOOK_SECRET));
+    // Webhooks API v2 : l'enregistrement v2 n'accepte pas de headers custom →
+    // le token dérivé voyage en query param, posé par unipile-manage-webhooks
+    // (action register + api_version v2). Même niveau de confiance que le header.
+    const v2Token = new URL(req.url).searchParams.get('v2_token');
+    const v2Authenticated = Boolean(v2Token && timingSafeEqual(v2Token, await deriveV2WebhookToken(WEBHOOK_SECRET)));
+    const fullyAuthenticated = headerAuthenticated || v2Authenticated;
     const hostedSignature = new URL(req.url).searchParams.get('hosted_sig');
     const hostedState = parseHostedAuthState(rawPayload.name);
     const hostedStateFresh = Boolean(
@@ -275,7 +285,7 @@ Deno.serve(async (req) => {
       && expectedHostedSignature
       && timingSafeEqual(hostedSignature, expectedHostedSignature),
     );
-    if (!headerAuthenticated && !hostedAuthenticated) {
+    if (!fullyAuthenticated && !hostedAuthenticated) {
       console.error('[unipile-webhook] Invalid webhook authentication');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -288,7 +298,7 @@ Deno.serve(async (req) => {
       && rawPayload.account_id
       && (rawPayload.status === 'CREATION_SUCCESS' || rawPayload.status === 'RECONNECTED'),
     );
-    if (hostedAuthenticated && !headerAuthenticated && (!hostedAuthSucceeded || rawPayload.event)) {
+    if (hostedAuthenticated && !fullyAuthenticated && (!hostedAuthSucceeded || rawPayload.event)) {
       return new Response(JSON.stringify({ error: 'Invalid hosted auth callback' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -301,11 +311,40 @@ Deno.serve(async (req) => {
         || (hostedAuthSucceeded ? 'account_connected' : ''),
       account_id: rawPayload.account_id || rawPayload.AccountStatus?.account_id || '',
     };
+
+    // ─── Aliases API v2 (BETA) ─────────────────────────────────────────────
+    // La v2 renomme les événements — on les remappe sur les handlers v1
+    // existants (dont le parsing est défensif multi-format). Particularité :
+    // account.status.{running|paused} portent le statut dans le NOM de l'event
+    // → on l'injecte dans payload.status avant remap. relation.request.accept
+    // (invitation envoyée acceptée) a la même sémantique que new_relation ;
+    // le handler est idempotent, les deux peuvent pointer dessus.
+    const V2_EVENT_ALIASES: Record<string, string> = {
+      'relation.new': 'new_relation',
+      'relation.request.accept': 'new_relation',
+      'message.new': 'new_message',
+      'email.new': 'mail_received',
+      'account.add': 'account_connected',
+      'account.reconnect': 'account_connected',
+      'account.remove': 'account_disconnected',
+      'account.status.disconnected': 'account_disconnected',
+      'account.status.errored': 'account_error',
+      'account.status.running': 'account_status_updated',
+      'account.status.paused': 'account_status_updated',
+    };
+    const v2OriginEvent = V2_EVENT_ALIASES[payload.event] ? payload.event : null;
+    if (v2OriginEvent) {
+      if (v2OriginEvent === 'account.status.running') payload.status = payload.status || 'OK';
+      if (v2OriginEvent === 'account.status.paused') payload.status = payload.status || 'PAUSED';
+      payload.event = V2_EVENT_ALIASES[v2OriginEvent];
+    }
+
     // Conformité LinkedIn (warning #260513-007211) : ne JAMAIS logger le payload
     // brut — il peut contenir du contenu de messages, PII destinataires, et
     // potentiellement des identifiants de session. On loggue uniquement les
     // métadonnées structurelles de l'event.
     console.log('[unipile-webhook] event:', payload.event,
+      'v2_origin:', v2OriginEvent,
       'account:', payload.account_id,
       'chat:', (payload as any).chat_id ?? null,
       'msg:', (payload as any).message_id ?? null,
@@ -381,8 +420,9 @@ Deno.serve(async (req) => {
       case 'account_connected': {
         console.log('[unipile-webhook] Account connected:', payload.account_id, 'name:', payload.name);
 
-        // Parse le state encodé dans `name` par hosted_auth (user + org)
-        const hostedState = parseHostedAuthState(payload.name);
+        // Parse le state encodé dans `name` par hosted_auth (user + org).
+        // API v2 : le state arrive dans un champ dédié `state` (même encodage).
+        const hostedState = parseHostedAuthState(payload.name || payload.state);
 
         if (hostedState) {
           // Flow hosted_auth moderne : UPSERT avec user_id + org_id pour garantir

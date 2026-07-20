@@ -1,6 +1,7 @@
 ﻿// Deno.serve used directly
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { requireOrgAccess } from "../_shared/require-auth.ts";
+import { resolveUnipileV2Credentials, unipileV2Fetch, V2_TRIGGER_EVENTS, deriveV2WebhookToken } from "../_shared/unipile-v2.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -115,6 +116,86 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
   return null;
 }
 
+/**
+ * Actions API v2 (BETA) — opt-in via body { api_version: 'v2' }.
+ * La v2 gère les webhooks au niveau application : UN endpoint avec un tableau
+ * `trigger_events` unifié (plus de notion de `source` par webhook comme en v1).
+ * La création v2 n'accepte pas de headers custom → le secret est porté par un
+ * token dérivé en query param (voir deriveV2WebhookToken).
+ */
+async function handleV2Action(action: string | undefined, body: Record<string, unknown>): Promise<Response> {
+  const jsonResponse = (payload: unknown) => new Response(JSON.stringify(payload), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+  const v2 = resolveUnipileV2Credentials();
+  if (!v2) {
+    return jsonResponse({ success: false, error: 'Unipile v2 not configured (secret UNIPILE_V2_API_KEY manquant)' });
+  }
+
+  switch (action) {
+    case 'list': {
+      const resp = await unipileV2Fetch(v2, '/webhooks/endpoints/');
+      if (!resp.ok) throw new Error(`Failed to list v2 webhook endpoints: ${resp.status} ${await resp.text()}`);
+      const data = await resp.json();
+      return jsonResponse({ success: true, api_version: 'v2', webhooks: data });
+    }
+
+    case 'register': {
+      if (!WEBHOOK_SECRET) throw new Error('UNIPILE_WEBHOOK_SECRET must be set before registering v2 webhooks');
+      const token = await deriveV2WebhookToken(WEBHOOK_SECRET);
+      const receiverBase = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
+      const targetUrl = `${receiverBase}?v2_token=${token}`;
+
+      // Idempotent : skip si un endpoint complet pointe déjà vers notre receiver.
+      const listResp = await unipileV2Fetch(v2, '/webhooks/endpoints/');
+      if (listResp.ok) {
+        const listJson = await listResp.json();
+        const items: Array<{ id: string; url?: string; trigger_events?: string[] }> =
+          listJson?.data ?? listJson?.items ?? [];
+        const existing = items.find((e) => (e.url || '').startsWith(receiverBase));
+        if (existing) {
+          const missing = V2_TRIGGER_EVENTS.filter((ev) => !(existing.trigger_events || []).includes(ev));
+          if (missing.length === 0 && (existing.url || '').includes('v2_token=')) {
+            return jsonResponse({ success: true, api_version: 'v2', skipped: true, id: existing.id, webhook_url: existing.url });
+          }
+          // Endpoint incomplet (events manquants ou token absent) → recréé proprement
+          await unipileV2Fetch(v2, `/webhooks/endpoints/${existing.id}`, { method: 'DELETE' });
+        }
+      }
+
+      const createResp = await unipileV2Fetch(v2, '/webhooks/endpoints/', {
+        method: 'POST',
+        body: JSON.stringify({
+          trigger_events: V2_TRIGGER_EVENTS,
+          url: targetUrl,
+          description: 'Konekt — webhook unifié (messaging, relations, comptes, email, tracking)',
+        }),
+      });
+      if (!createResp.ok) throw new Error(`Failed to create v2 webhook endpoint: ${createResp.status} ${await createResp.text()}`);
+      const created = await createResp.json();
+      return jsonResponse({
+        success: true,
+        api_version: 'v2',
+        id: created?.id ?? created?.data?.id,
+        webhook_url: targetUrl,
+        trigger_events: V2_TRIGGER_EVENTS,
+      });
+    }
+
+    case 'delete': {
+      const webhookId = body.webhook_id as string | undefined;
+      if (!webhookId) throw new Error('webhook_id is required');
+      const resp = await unipileV2Fetch(v2, `/webhooks/endpoints/${webhookId}`, { method: 'DELETE' });
+      if (!resp.ok) throw new Error(`Failed to delete v2 webhook endpoint: ${resp.status} ${await resp.text()}`);
+      return jsonResponse({ success: true, api_version: 'v2' });
+    }
+
+    default:
+      throw new Error(`Unknown v2 action: ${action}`);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -133,6 +214,11 @@ Deno.serve(async (req) => {
       organizationId = access.organizationId;
     } catch (resp) {
       return resp as Response;
+    }
+
+    // Branche v2 (BETA) — ne touche pas au chemin v1 ci-dessous.
+    if ((body as { api_version?: string }).api_version === 'v2') {
+      return await handleV2Action(action, body as Record<string, unknown>);
     }
 
     const credentials = await resolveUnipileCredentials(organizationId);
