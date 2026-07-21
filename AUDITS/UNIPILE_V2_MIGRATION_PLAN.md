@@ -64,6 +64,29 @@ faudra **observer les logs des premiers events v2 réels** (`v2_origin:` dans le
    noms d'événements v2 sur les handlers v1 (table `V2_EVENT_ALIASES`). Le champ `state`
    (hosted auth v2) est accepté en fallback de `name`.
 
+## Mapping réel constaté (2026-07-20, GET /v2/accounts/ sur l'app de production)
+
+La migration Unipile a préservé la correspondance dans `metadata.v1_account_id` de chaque
+compte v2 → **le remapping est déterministe**. Constat sur l'application v2 de production :
+
+| Compte | ID v1 (en base Konekt) | ID v2 | Statut v2 |
+|---|---|---|---|
+| LinkedIn Laurent GARILHE | `U0Cfy5DeRuG6gHFSGUk5Sg` | `acc_01kxnygph1e4fbp1shppg85as3` | running |
+| Outlook l.garilhe@konekt.fr | `BJMqT1aKSBerrkX8lbO1lQ` | `acc_01kxnygmxwencssf1vz63t7ntk` | running |
+| Outlook (doublon, inconnu de Konekt) | `8_Dq-UL0TfmrWPPDLOTbTA` | `acc_01kxnygk59e8q8299hkqz5ty42` | running — à supprimer côté Dashboard V2 ? |
+| WhatsApp +33675255464 | `1GXocJWEQGa-8VLe-ikPWQ` | `acc_01kxnyghw9encssf19qv7dpj02` | **disconnected** |
+| LinkedIn Guillaume Valladier | `PUYMa3xqQxivuNbIC4N_PA` | **ABSENT de la v2** | à migrer/reconnecter |
+| LinkedIn Tiago BRITO | `NBEk5nHpTxCX63LwzPS0lw` | **ABSENT de la v2** | à migrer/reconnecter |
+
+Notes :
+- Le LinkedIn de Laurent expose `products_connection_status: { classic: running, company:
+  running }` — **pas de produit recruiter/sales_navigator listé**. À vérifier dans le
+  Dashboard V2 si la licence Recruiter doit être (re)connectée (impacte la recherche
+  Recruiter et les InMails).
+- ⚠️ Ne PAS remapper les IDs en base tant que les fonctions v1 tournent (elles utilisent
+  les IDs v1). Stratégie transition : table de correspondance `v1_id → v2_id` consommée
+  par les fonctions migrées, puis UPDATE final des colonnes `*_account_id` au cutover.
+
 ## Checklist d'activation (actions Laurent)
 
 1. Dashboard V2 → Application → API keys → créer une clé, puis :
