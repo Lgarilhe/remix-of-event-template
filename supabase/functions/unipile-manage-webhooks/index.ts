@@ -1,7 +1,7 @@
 ﻿// Deno.serve used directly
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { requireOrgAccess } from "../_shared/require-auth.ts";
-import { resolveUnipileV2Credentials, unipileV2Fetch, V2_TRIGGER_EVENTS, deriveV2WebhookToken } from "../_shared/unipile-v2.ts";
+import { resolveUnipileV2Credentials, unipileV2Fetch, V2_TRIGGER_EVENTS, resolveV2WebhookToken } from "../_shared/unipile-v2.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -142,8 +142,8 @@ async function handleV2Action(action: string | undefined, body: Record<string, u
     }
 
     case 'register': {
-      if (!WEBHOOK_SECRET) throw new Error('UNIPILE_WEBHOOK_SECRET must be set before registering v2 webhooks');
-      const token = await deriveV2WebhookToken(WEBHOOK_SECRET);
+      const token = await resolveV2WebhookToken();
+      if (!token) throw new Error('UNIPILE_V2_WEBHOOK_TOKEN (or UNIPILE_WEBHOOK_SECRET) must be set before registering v2 webhooks');
       const receiverBase = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
       const targetUrl = `${receiverBase}?v2_token=${token}`;
 

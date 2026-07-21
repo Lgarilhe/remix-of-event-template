@@ -128,3 +128,18 @@ export async function deriveV2WebhookToken(secret: string): Promise<string> {
   );
   return Array.from(new Uint8Array(signature), (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/**
+ * Résout le token attendu dans `?v2_token=` : le secret dédié
+ * `UNIPILE_V2_WEBHOOK_TOKEN` en priorité (valeur brute — introduit car
+ * UNIPILE_WEBHOOK_SECRET est illisible après création côté dashboard, donc
+ * impossible d'en dériver le token hors des edge functions), sinon dérivation
+ * HMAC depuis `UNIPILE_WEBHOOK_SECRET`. Null si aucun des deux n'est configuré.
+ */
+export async function resolveV2WebhookToken(): Promise<string | null> {
+  const dedicated = Deno.env.get("UNIPILE_V2_WEBHOOK_TOKEN");
+  if (dedicated) return dedicated;
+  const legacy = Deno.env.get("UNIPILE_WEBHOOK_SECRET");
+  if (legacy) return deriveV2WebhookToken(legacy);
+  return null;
+}

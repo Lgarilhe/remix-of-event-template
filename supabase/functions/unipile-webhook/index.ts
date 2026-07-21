@@ -1,7 +1,7 @@
 // Deno.serve used directly
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
-import { deriveV2WebhookToken } from "../_shared/unipile-v2.ts";
+import { resolveV2WebhookToken } from "../_shared/unipile-v2.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -268,7 +268,8 @@ Deno.serve(async (req) => {
     // le token dérivé voyage en query param, posé par unipile-manage-webhooks
     // (action register + api_version v2). Même niveau de confiance que le header.
     const v2Token = new URL(req.url).searchParams.get('v2_token');
-    const v2Authenticated = Boolean(v2Token && timingSafeEqual(v2Token, await deriveV2WebhookToken(WEBHOOK_SECRET)));
+    const expectedV2Token = v2Token ? await resolveV2WebhookToken() : null;
+    const v2Authenticated = Boolean(v2Token && expectedV2Token && timingSafeEqual(v2Token, expectedV2Token));
     const fullyAuthenticated = headerAuthenticated || v2Authenticated;
     const hostedSignature = new URL(req.url).searchParams.get('hosted_sig');
     const hostedState = parseHostedAuthState(rawPayload.name);
