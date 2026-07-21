@@ -79,14 +79,18 @@ compte v2 → **le remapping est déterministe**. Constat sur l'application v2 d
 | LinkedIn Tiago BRITO | `NBEk5nHpTxCX63LwzPS0lw` | **ABSENT de la v2** | à migrer/reconnecter |
 
 Notes (mises à jour 2026-07-21 après vérifications complémentaires) :
-- **Recruiter NON connecté en v2 — confirmé fonctionnellement** : `GET
-  /v2/{acc}/linkedin/inmail-credits` renvoie `{"credits":{"classic":0}}` (aucun bucket
-  `recruiter` ni `sales_navigator`), cohérent avec `products_connection_status:
-  { classic, company }`. En v2 chaque produit LinkedIn (classic / recruiter /
-  sales_navigator / company) se connecte séparément → il faut activer le produit
-  Recruiter sur le compte depuis le Dashboard V2 (reconnexion du MÊME compte de
-  préférence, pour conserver l'account_id). Bloquant pour la recherche Recruiter et
-  les InMails à la bascule.
+- **Recruiter : RÉSOLU le 2026-07-21.** En v2 chaque produit LinkedIn (classic /
+  recruiter / sales_navigator / company) se connecte séparément, et la migration n'avait
+  activé que classic+company. Fix appliqué : lien de reconnexion hébergé généré via
+  `POST /v2/auth/link` avec `config.linkedin.products = ["classic","recruiter","company"]`
+  (⚠️ sans ce champ, le wizard ne propose QUE les produits déjà connectés), flow complété
+  par Laurent, contrat **KONEKT-RPS** (`RECRUITER_269193796`) sélectionné. Vérifié
+  fonctionnellement : `POST /v2/{acc}/linkedin/recruiter/search/people` renvoie de vrais
+  profils `product: "recruiter"` en visibilité full. Notes : (1) la métadonnée
+  `products_connection_status` du compte peut rester en retard sur l'état réel — se fier
+  aux appels fonctionnels ; (2) recruiter et sales_navigator sont EXCLUSIFS sur un même
+  compte en v2 ; (3) les liens hosted auth sont à usage/instance unique — toujours
+  regénérer plutôt que réutiliser.
 - **Correction mapping Outlook** : le doublon supprimé par Laurent (2026-07-21) était
   `acc_01kxnygmxwencssf1vz63t7ntk` — celui dont le `v1_account_id` (`BJMqT1aKSBerrkX8lbO1lQ`)
   correspondait à la ligne `member_email_accounts`. Le survivant est
