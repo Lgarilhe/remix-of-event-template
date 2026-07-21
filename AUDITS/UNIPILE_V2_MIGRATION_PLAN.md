@@ -78,11 +78,22 @@ compte v2 → **le remapping est déterministe**. Constat sur l'application v2 d
 | LinkedIn Guillaume Valladier | `PUYMa3xqQxivuNbIC4N_PA` | **ABSENT de la v2** | à migrer/reconnecter |
 | LinkedIn Tiago BRITO | `NBEk5nHpTxCX63LwzPS0lw` | **ABSENT de la v2** | à migrer/reconnecter |
 
-Notes :
-- Le LinkedIn de Laurent expose `products_connection_status: { classic: running, company:
-  running }` — **pas de produit recruiter/sales_navigator listé**. À vérifier dans le
-  Dashboard V2 si la licence Recruiter doit être (re)connectée (impacte la recherche
-  Recruiter et les InMails).
+Notes (mises à jour 2026-07-21 après vérifications complémentaires) :
+- **Recruiter NON connecté en v2 — confirmé fonctionnellement** : `GET
+  /v2/{acc}/linkedin/inmail-credits` renvoie `{"credits":{"classic":0}}` (aucun bucket
+  `recruiter` ni `sales_navigator`), cohérent avec `products_connection_status:
+  { classic, company }`. En v2 chaque produit LinkedIn (classic / recruiter /
+  sales_navigator / company) se connecte séparément → il faut activer le produit
+  Recruiter sur le compte depuis le Dashboard V2 (reconnexion du MÊME compte de
+  préférence, pour conserver l'account_id). Bloquant pour la recherche Recruiter et
+  les InMails à la bascule.
+- **Correction mapping Outlook** : le doublon supprimé par Laurent (2026-07-21) était
+  `acc_01kxnygmxwencssf1vz63t7ntk` — celui dont le `v1_account_id` (`BJMqT1aKSBerrkX8lbO1lQ`)
+  correspondait à la ligne `member_email_accounts`. Le survivant est
+  `acc_01kxnygk59e8q8299hkqz5ty42` (même boîte l.garilhe@konekt.fr, running, mais
+  `v1_account_id` = `8_Dq-UL0...` inconnu de la base). → Au cutover, mapper l'Outlook
+  **par adresse email**, pas par metadata : `BJMqT1aKSBerrkX8lbO1lQ` →
+  `acc_01kxnygk59e8q8299hkqz5ty42`.
 - ⚠️ Ne PAS remapper les IDs en base tant que les fonctions v1 tournent (elles utilisent
   les IDs v1). Stratégie transition : table de correspondance `v1_id → v2_id` consommée
   par les fonctions migrées, puis UPDATE final des colonnes `*_account_id` au cutover.
