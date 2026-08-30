@@ -367,7 +367,9 @@ const Auth = () => {
             </span>
           </button>
         </form>
-        {!isResettingPassword && !isForgotPassword && (
+        {/* Provider Google désactivé côté Supabase (2026-08-30) : bouton masqué
+            tant que VITE_ENABLE_GOOGLE_AUTH n'est pas à 'true' dans Vercel. */}
+        {!isResettingPassword && !isForgotPassword && import.meta.env.VITE_ENABLE_GOOGLE_AUTH === 'true' && (
           <>
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
