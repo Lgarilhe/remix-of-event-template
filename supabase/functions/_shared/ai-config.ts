@@ -415,6 +415,22 @@ const ROUTING_DEFAULTS: Record<RoutingTier, string> = {
 // ─── Credit Calculation ─────────────────────────────────────────────────────
 
 /**
+ * Ramène un identifiant de modèle vers la clé du catalogue.
+ * Le settle est appelé partout avec l'id renvoyé par l'API (ex.
+ * "claude-haiku-4-5-20251001", cf. call-claude.ts mapModel) alors que
+ * MODEL_CATALOG est indexé par id interne ("claude-haiku-4-5"). Sans cette
+ * normalisation, Haiku était facturé au multiplicateur par défaut 1.0
+ * (tarif Sonnet, soit 2,86 fois trop) et cost_usd valait 0.
+ */
+export function normalizeModelId(modelId: string): string {
+  if (!modelId) return modelId;
+  if (MODEL_CATALOG[modelId]) return modelId;
+  const stripped = modelId.replace(/-\d{8}$/, "");
+  if (MODEL_CATALOG[stripped]) return stripped;
+  return modelId;
+}
+
+/**
  * Calculate credits from actual token usage.
  * Formula: max(floor, ceil(totalTokens / 1000 × multiplier))
  * Thinking tokens count as output tokens (per Anthropic billing).
@@ -425,7 +441,7 @@ export function calculateTokenCredits(
   modelId: string,
   actionId: string
 ): { credits: number; breakdown: { totalTokens: number; multiplier: number; floor: number; raw: number } } {
-  const model = MODEL_CATALOG[modelId];
+  const model = MODEL_CATALOG[normalizeModelId(modelId)];
   const action = ACTION_COSTS[actionId];
 
   const multiplier = model?.multiplier ?? 1.0;
@@ -447,7 +463,7 @@ export function calculateTokenCredits(
  */
 export function estimateCredits(actionId: string, modelId: string): number {
   const action = ACTION_COSTS[actionId];
-  const model = MODEL_CATALOG[modelId];
+  const model = MODEL_CATALOG[normalizeModelId(modelId)];
 
   if (!action) return 1;
 
@@ -464,7 +480,7 @@ export function calculateUSDCost(
   tokensOutput: number,
   modelId: string
 ): number {
-  const model = MODEL_CATALOG[modelId];
+  const model = MODEL_CATALOG[normalizeModelId(modelId)];
   if (!model) return 0;
 
   const inputCost = (tokensInput / 1_000_000) * model.inputPricePerMTok;

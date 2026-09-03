@@ -17,7 +17,9 @@ type PlausibleOptions = {
 
 declare global {
   interface Window {
-    plausible?: (eventName: string, options?: PlausibleOptions) => void;
+    // `q` : file d'attente des événements émis avant le chargement du script
+    // (shim officiel Plausible).
+    plausible?: ((eventName: string, options?: PlausibleOptions) => void) & { q?: unknown[] };
   }
 }
 
@@ -50,7 +52,7 @@ export function loadAnalytics(): void {
   // Shim Plausible (queue events avant que le script soit chargé)
   window.plausible = window.plausible || function (...args: unknown[]) {
     (window.plausible!.q = window.plausible!.q || []).push(args);
-  } as typeof window.plausible & { q?: unknown[] };
+  } as NonNullable<typeof window.plausible>;
 
   loaded = true;
 }

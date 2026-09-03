@@ -3564,7 +3564,7 @@ Deno.serve(async (req) => {
       // sur la même card). Le LLM est parfois optimiste sur le potentiel,
       // mais les recruteurs préfèrent un Maybe explicite à un Go trompeur.
       if (weighted.experienceMatchKind === 'trop_junior' || weighted.experienceMatchKind === 'trop_senior') {
-        const xp = profile.yearsOfExperience ?? 0;
+        const xp = ps.profile.yearsOfExperience ?? 0;
         const xpMin = job.xpMin || 0;
         const xpMax = job.xpMax || xpMin + 5;
         const gap = weighted.experienceMatchKind === 'trop_junior'

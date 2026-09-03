@@ -638,13 +638,19 @@ async function fetchCandidateCounts(jobIds: string[], creds: NotionCreds): Promi
   return countsMap;
 }
 
-// Helper to get/set jobs cache
-async function getJobsCache(): Promise<{ payload: any | null; ageMs: number | null }> {
+// Helper to get/set jobs cache.
+// Clé PAR ORGANISATION : la clé globale 'notion:jobs:v1' servait la liste des
+// postes Notion d'une org à toutes les autres (audit 2026-09-01, cache cross-org).
+function jobsCacheKey(organizationId: string): string {
+  return `notion:jobs:v2:${organizationId}`;
+}
+
+async function getJobsCache(organizationId: string): Promise<{ payload: any | null; ageMs: number | null }> {
   try {
     const { data, error } = await supabase
       .from('notion_api_cache')
       .select('cache_key, payload, updated_at')
-      .eq('cache_key', 'notion:jobs:v1')
+      .eq('cache_key', jobsCacheKey(organizationId))
       .maybeSingle();
 
     if (error || !data) return { payload: null, ageMs: null };
@@ -656,12 +662,12 @@ async function getJobsCache(): Promise<{ payload: any | null; ageMs: number | nu
   }
 }
 
-async function setJobsCache(payload: unknown): Promise<void> {
+async function setJobsCache(organizationId: string, payload: unknown): Promise<void> {
   try {
     await supabase
       .from('notion_api_cache')
       .upsert({
-        cache_key: 'notion:jobs:v1',
+        cache_key: jobsCacheKey(organizationId),
         payload,
         updated_at: new Date().toISOString(),
       });
@@ -717,6 +723,8 @@ async function generateJobEmbeddings(jobs: any[]): Promise<void> {
 }
 
 Deno.serve(async (req) => {
+  // Organisation vérifiée, pour le repli cache du bloc catch.
+  let cacheOrganizationId: string | null = null;
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -747,6 +755,7 @@ Deno.serve(async (req) => {
     if (!organizationId) {
       throw new Error('organization_id est requis');
     }
+    cacheOrganizationId = String(organizationId);
     const { data: membership } = await supabase.from('organization_members').select('id').eq('user_id', user.id).eq('organization_id', organizationId).maybeSingle();
     if (!membership) {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -796,7 +805,7 @@ Deno.serve(async (req) => {
     const forceRefresh = url.searchParams.get('refresh') === 'true' || body.refresh === true;
 
     // STALE-WHILE-REVALIDATE: Return cached data immediately if available
-    const cached = await getJobsCache();
+    const cached = await getJobsCache(organizationId);
     const isFresh = cached.payload && cached.ageMs !== null && cached.ageMs < JOBS_CACHE_TTL_MS;
     
     if (cached.payload && !forceRefresh) {
@@ -1016,7 +1025,7 @@ Deno.serve(async (req) => {
 
     // Cache the response (full jobs list for maximum cache efficiency)
     if (skipPagination || page === 1) {
-      await setJobsCache({ success: true, jobs: transformedJobs, pagination: { total, totalPages: 1 } });
+      await setJobsCache(organizationId, { success: true, jobs: transformedJobs, pagination: { total, totalPages: 1 } });
     }
 
     // Generate embeddings for jobs that don't have one yet (fire-and-forget)
@@ -1037,8 +1046,9 @@ Deno.serve(async (req) => {
     console.error('Error fetching Notion jobs:', errorMessage);
 
     // Fallback: return stale cache if available to prevent blank screen
+    // (uniquement si l'organisation a été résolue et vérifiée avant l'erreur).
     try {
-      const staleCache = await getJobsCache();
+      const staleCache = cacheOrganizationId ? await getJobsCache(cacheOrganizationId) : { payload: null, ageMs: null };
       if (staleCache.payload) {
         return new Response(
           JSON.stringify({ ...staleCache.payload, cached: true, stale: true, error: errorMessage }),

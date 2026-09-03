@@ -62,6 +62,13 @@ async function fetchWithRetry(input: string, init: RequestInit, attempt = 0): Pr
 
 type CacheRow = { cache_key: string; payload: unknown; updated_at: string };
 
+// Clé PAR ORGANISATION : les clés globales 'notion:candidates:v1' et
+// 'notion:shortlist:v1' servaient les candidats Notion (emails, téléphones)
+// d'une org à toutes les autres (audit 2026-09-01, cache cross-org).
+function notionCacheKey(type: string, organizationId: string): string {
+  return `notion:${type === 'candidates' ? 'candidates' : 'shortlist'}:v2:${organizationId}`;
+}
+
 async function getCache(cacheKey: string): Promise<{ payload: any | null; ageMs: number | null }> {
   try {
     const { data, error } = await supabase
@@ -277,6 +284,9 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Organisation vérifiée, pour le repli cache du bloc catch.
+  let cacheOrgId: string | null = null;
+
   try {
     // --- Auth: validate JWT and org membership ---
     const authHeader = req.headers.get('Authorization');
@@ -309,12 +319,13 @@ Deno.serve(async (req) => {
     if (!orgId) {
       throw new Error('organization_id est requis');
     }
+    cacheOrgId = orgId;
     const creds = await resolveOrgNotionCredentials(orgId);
 
     const type = url.searchParams.get('type') || 'shortlist';
     const forceRefresh = url.searchParams.get('refresh') === 'true';
 
-    const cacheKey = type === 'candidates' ? 'notion:candidates:v1' : 'notion:shortlist:v1';
+    const cacheKey = notionCacheKey(type, orgId);
     const cached = await getCache(cacheKey);
 
     // STALE-WHILE-REVALIDATE pattern:
@@ -499,7 +510,8 @@ Deno.serve(async (req) => {
     try {
       const url = new URL(req.url);
       const type = url.searchParams.get('type') || 'shortlist';
-      const cacheKey = type === 'candidates' ? 'notion:candidates:v1' : 'notion:shortlist:v1';
+      if (!cacheOrgId) throw new Error('organisation non résolue : pas de repli cache');
+      const cacheKey = notionCacheKey(type, cacheOrgId);
       const cached = await getCache(cacheKey);
       if (cached.payload) {
         return new Response(
