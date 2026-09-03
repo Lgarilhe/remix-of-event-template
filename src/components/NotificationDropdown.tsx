@@ -36,7 +36,10 @@ export const NotificationDropdown: React.FC = () => {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative overflow-hidden bg-background text-foreground h-8 w-8 flex items-center justify-center text-xs font-medium uppercase border border-border rounded-lg leading-none hover:bg-accent transition-colors"
+        aria-label="Notifications"
+        aria-expanded={open}
+        aria-haspopup="true"
+        className="relative overflow-hidden bg-background text-foreground h-11 w-11 flex items-center justify-center text-xs font-medium uppercase border border-border rounded-lg leading-none hover:bg-accent transition-colors"
       >
         <img src={iconBell3d} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
         {unreadCount > 0 && (
