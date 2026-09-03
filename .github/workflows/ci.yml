@@ -39,6 +39,23 @@ jobs:
       - name: Agent security regression tests
         run: npm run test:agent
 
+  migrations:
+    name: Migrations (versions uniques)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aucune version de migration dupliquée
+        # Deux fichiers avec la même version cassent `supabase db push` et le
+        # CI e2e (duplicate key sur schema_migrations_pkey). Cas réel : 20260716130000.
+        run: |
+          dups=$(ls supabase/migrations/*.sql | xargs -n1 basename | cut -d_ -f1 | sort | uniq -d)
+          if [ -n "$dups" ]; then
+            echo "::error::Versions de migration dupliquées : $dups"
+            exit 1
+          fi
+          echo "OK : $(ls supabase/migrations/*.sql | wc -l) migrations, versions uniques."
+
   build:
     name: Build (bloquant)
     runs-on: ubuntu-latest
