@@ -218,7 +218,7 @@ async function handleV2Action(action: string | undefined, body: Record<string, u
 
     case 'delete': {
       const webhookId = body.webhook_id as string | undefined;
-      if (!webhookId || /[\/\\?#]/.test(webhookId) || webhookId.includes('..')) throw new Error('webhook_id is required');
+      if (!webhookId || /[/\\?#]/.test(webhookId) || webhookId.includes('..')) throw new Error('webhook_id is required');
       const resp = await unipileV2Fetch(v2, `/webhooks/endpoints/${encodeURIComponent(webhookId)}`, { method: 'DELETE' });
       if (!resp.ok) throw new Error(`Failed to delete v2 webhook endpoint: ${resp.status} ${await resp.text()}`);
       return jsonResponse({ success: true, api_version: 'v2' });
@@ -406,7 +406,7 @@ Deno.serve(async (req) => {
       case 'delete': {
         const webhook_id = (body as { webhook_id?: string }).webhook_id;
 
-        if (!webhook_id || typeof webhook_id !== 'string' || /[\/\\?#]/.test(webhook_id) || webhook_id.includes('..')) {
+        if (!webhook_id || typeof webhook_id !== 'string' || /[/\\?#]/.test(webhook_id) || webhook_id.includes('..')) {
           throw new Error('webhook_id is required');
         }
 

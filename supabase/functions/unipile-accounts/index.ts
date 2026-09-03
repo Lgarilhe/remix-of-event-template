@@ -116,7 +116,7 @@ async function assertAccountInOrg(
 ): Promise<AccountOwnership> {
   const id = typeof accountId === 'string' ? accountId.trim() : '';
   if (!id) throw new HttpError(400, 'Account ID requis');
-  if (id.length > 512 || id.includes('..') || /[\/\\?#]/.test(id)) throw new HttpError(400, 'Account ID invalide');
+  if (id.length > 512 || id.includes('..') || /[/\\?#]/.test(id)) throw new HttpError(400, 'Account ID invalide');
   const ownership = await lookupAccountOwnership(adminClient, organizationId, id);
   if (ownership.mapped === 'org') return ownership;
   if (ownership.mapped === 'foreign' || !opts.allowOrphan) {
@@ -154,7 +154,7 @@ async function assertCanManageAccount(
 /** Segment d'URL Unipile : identifiant encodé, jamais de traversée de chemin. */
 function pathId(value: unknown, label: string): string {
   const s = typeof value === 'string' ? value.trim() : '';
-  if (!s || s.length > 512 || s.includes('..') || /[\/\\?#]/.test(s)) throw new HttpError(400, `${label} invalide`);
+  if (!s || s.length > 512 || s.includes('..') || /[/\\?#]/.test(s)) throw new HttpError(400, `${label} invalide`);
   return encodeURIComponent(s);
 }
 

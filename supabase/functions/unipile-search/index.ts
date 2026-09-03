@@ -176,7 +176,7 @@ function unipileId(value: unknown, label: string): string {
   if (s.includes('%')) {
     try { s = decodeURIComponent(s); } catch { /* valeur brute conservée */ }
   }
-  if (!s || s.length > 512 || s === '.' || s.includes('..') || /[\/\\?#]/.test(s)) {
+  if (!s || s.length > 512 || s === '.' || s.includes('..') || /[/\\?#]/.test(s)) {
     throw new UnipileInputError(`${label} invalide`);
   }
   return encodeURIComponent(s);
