@@ -119,7 +119,7 @@ const Pricing = () => {
           >
             Le bon plan pour
             <br />
-            <span className="skalr-gradient-text">votre recrutement</span>
+            votre recrutement
           </h1>
 
           <p
@@ -167,7 +167,7 @@ const Pricing = () => {
 
             <span className={cn('text-xs font-bold uppercase tracking-wider flex items-center gap-2', yearly ? 'text-foreground' : 'text-muted-foreground')}>
               Annuel
-              <span className="px-1.5 py-0.5 text-xs font-bold skalr-gradient-bg text-white leading-none">
+              <span className="px-1.5 py-0.5 text-xs font-bold bg-foreground text-background leading-none">
                 -20%
               </span>
             </span>
@@ -220,15 +220,9 @@ const Pricing = () => {
                       e.currentTarget.style.boxShadow = 'none';
                     }}
                   >
-                    {/* Gradient bar for Pro */}
+                    {/* Barre d'accent pour Pro */}
                     {isPopular && (
-                      <div
-                        className="h-[3px] w-full skalr-gradient-bg"
-                        style={{
-                          backgroundSize: '200% 100%',
-                          animation: 'gradientShift 3s ease infinite',
-                        }}
-                      />
+                      <div className="h-[3px] w-full bg-[hsl(var(--skalr-purple))]" />
                     )}
 
                     {/* Popular badge */}
@@ -322,7 +316,7 @@ const Pricing = () => {
                           isCurrent
                             ? 'border-border text-muted-foreground cursor-default bg-transparent'
                             : isPopular
-                              ? 'skalr-gradient-bg text-white border-transparent hover:brightness-110'
+                              ? 'bg-[hsl(var(--skalr-purple))] text-white border-transparent hover:opacity-90'
                               : 'border-border bg-transparent text-foreground hover:bg-foreground hover:text-background'
                         )}
                       >
