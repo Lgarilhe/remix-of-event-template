@@ -84,7 +84,7 @@ function isWebhookBroken(w: UnipileWebhook): boolean {
 /**
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
  */
-async function resolveUnipileCredentials(organizationId?: string): Promise<{ apiKey: string; dsn: string } | null> {
+async function resolveUnipileCredentials(organizationId?: string): Promise<{ apiKey: string; dsn: string; source: 'org' | 'env' } | null> {
   if (organizationId) {
     try {
       const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
@@ -100,7 +100,7 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
         const rawDsn = data.unipile_dsn;
         const dsn = rawDsn.startsWith('http') ? rawDsn.replace(/^https?:\/\//, '') : rawDsn;
         console.log(`[unipile-manage-webhooks] Using org-specific credentials for org ${organizationId}`);
-        return { apiKey: data.unipile_api_key, dsn: `https://${dsn}` };
+        return { apiKey: data.unipile_api_key, dsn: `https://${dsn}`, source: 'org' };
       }
     } catch (e) {
       console.warn('[unipile-manage-webhooks] Failed to resolve org credentials:', e);
@@ -111,9 +111,33 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
   const rawDsn = Deno.env.get('UNIPILE_DSN') || '';
   if (apiKey && rawDsn) {
     const dsn = rawDsn.startsWith('http') ? rawDsn : `https://${rawDsn}`;
-    return { apiKey, dsn };
+    return { apiKey, dsn, source: 'env' };
   }
   return null;
+}
+
+/** Réponse JSON sans jamais renvoyer un token dans une URL (query retirée). */
+function stripQuery(url: unknown): string | null {
+  if (typeof url !== 'string' || !url) return null;
+  const i = url.indexOf('?');
+  return i === -1 ? url : url.slice(0, i);
+}
+
+/**
+ * Mutations sur la clé Unipile PLATEFORME (fallback env partagé par toutes
+ * les orgs, et toute la branche v2) : réservées aux user ids listés dans le
+ * secret KONEKT_PLATFORM_ADMIN_USER_IDS (séparés par des virgules) quand il
+ * est défini. Sans ce secret, owner/admin de l'org suffit (comportement
+ * historique) ; le poser est recommandé (SEC-031).
+ */
+function platformAdminDenied(userId: string, corsHeadersForResponse: Record<string, string>): Response | null {
+  const raw = Deno.env.get('KONEKT_PLATFORM_ADMIN_USER_IDS') ?? '';
+  const allow = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (allow.length === 0 || allow.includes(userId)) return null;
+  return new Response(JSON.stringify({
+    success: false,
+    error: 'Action réservée aux administrateurs de la plateforme',
+  }), { status: 403, headers: { ...corsHeadersForResponse, 'Content-Type': 'application/json' } });
 }
 
 /**
@@ -138,7 +162,16 @@ async function handleV2Action(action: string | undefined, body: Record<string, u
       const resp = await unipileV2Fetch(v2, '/webhooks/endpoints/');
       if (!resp.ok) throw new Error(`Failed to list v2 webhook endpoints: ${resp.status} ${await resp.text()}`);
       const data = await resp.json();
-      return jsonResponse({ success: true, api_version: 'v2', webhooks: data });
+      // Projection : l'URL porte le token d'authentification en query (SEC-005).
+      const rawItems = (data?.data ?? data?.items ?? (Array.isArray(data) ? data : [])) as Array<Record<string, unknown>>;
+      const items = rawItems.map((e) => ({
+        id: e.id,
+        url: stripQuery(e.url),
+        trigger_events: e.trigger_events,
+        description: e.description,
+        created_at: e.created_at,
+      }));
+      return jsonResponse({ success: true, api_version: 'v2', webhooks: { items } });
     }
 
     case 'register': {
@@ -157,7 +190,7 @@ async function handleV2Action(action: string | undefined, body: Record<string, u
         if (existing) {
           const missing = V2_TRIGGER_EVENTS.filter((ev) => !(existing.trigger_events || []).includes(ev));
           if (missing.length === 0 && (existing.url || '').includes('v2_token=')) {
-            return jsonResponse({ success: true, api_version: 'v2', skipped: true, id: existing.id, webhook_url: existing.url });
+            return jsonResponse({ success: true, api_version: 'v2', skipped: true, id: existing.id, webhook_url: receiverBase });
           }
           // Endpoint incomplet (events manquants ou token absent) → recréé proprement
           await unipileV2Fetch(v2, `/webhooks/endpoints/${existing.id}`, { method: 'DELETE' });
@@ -178,15 +211,15 @@ async function handleV2Action(action: string | undefined, body: Record<string, u
         success: true,
         api_version: 'v2',
         id: created?.id ?? created?.data?.id,
-        webhook_url: targetUrl,
+        webhook_url: receiverBase,
         trigger_events: V2_TRIGGER_EVENTS,
       });
     }
 
     case 'delete': {
       const webhookId = body.webhook_id as string | undefined;
-      if (!webhookId) throw new Error('webhook_id is required');
-      const resp = await unipileV2Fetch(v2, `/webhooks/endpoints/${webhookId}`, { method: 'DELETE' });
+      if (!webhookId || /[\/\\?#]/.test(webhookId) || webhookId.includes('..')) throw new Error('webhook_id is required');
+      const resp = await unipileV2Fetch(v2, `/webhooks/endpoints/${encodeURIComponent(webhookId)}`, { method: 'DELETE' });
       if (!resp.ok) throw new Error(`Failed to delete v2 webhook endpoint: ${resp.status} ${await resp.text()}`);
       return jsonResponse({ success: true, api_version: 'v2' });
     }
@@ -209,15 +242,43 @@ Deno.serve(async (req) => {
     // (it is NOT a webhook receiver). Previously it had no auth at all, so any
     // caller could list/register/delete another org's webhooks by passing its id.
     let organizationId: string;
+    let userId: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let adminClient: any;
     try {
       const access = await requireOrgAccess(req, body as Record<string, unknown>, corsHeaders);
       organizationId = access.organizationId;
+      userId = access.userId;
+      adminClient = access.adminClient;
     } catch (resp) {
       return resp as Response;
     }
 
+    // Rôle owner/admin exigé pour toutes les actions (SEC-031) : la gestion des
+    // webhooks agit sur la clé plateforme partagée. L'UI est déjà admin-only.
+    const { data: membership } = await adminClient
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', organizationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    const callerRole = (membership as { role?: string } | null)?.role;
+    if (callerRole !== 'owner' && callerRole !== 'admin') {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Action réservée aux administrateurs de l'organisation",
+      }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const isMutation = action === 'register' || action === 'delete' || action === 'bootstrap-prod';
+
     // Branche v2 (BETA) — ne touche pas au chemin v1 ci-dessous.
+    // Les credentials v2 sont toujours ceux de la plateforme.
     if ((body as { api_version?: string }).api_version === 'v2') {
+      if (isMutation) {
+        const denied = platformAdminDenied(userId, corsHeaders);
+        if (denied) return denied;
+      }
       return await handleV2Action(action, body as Record<string, unknown>);
     }
 
@@ -234,6 +295,11 @@ Deno.serve(async (req) => {
 
     const { apiKey, dsn: UNIPILE_DSN } = credentials;
 
+    if (isMutation && credentials.source === 'env') {
+      const denied = platformAdminDenied(userId, corsHeaders);
+      if (denied) return denied;
+    }
+
     switch (action) {
       case 'list': {
         const response = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks`, {
@@ -245,8 +311,19 @@ Deno.serve(async (req) => {
           throw new Error(`Failed to list webhooks: ${response.status} ${errorText}`);
         }
 
-        const webhooks = await response.json();
-        return new Response(JSON.stringify({ success: true, webhooks }), {
+        const raw = await response.json();
+        // Projection (SEC-005) : la réponse brute contient headers[].value, soit
+        // UNIPILE_WEBHOOK_SECRET en clair. WebhookManager ne lit que
+        // id / request_url / source.
+        const rawItems = (raw?.items ?? (Array.isArray(raw) ? raw : [])) as UnipileWebhook[];
+        const items = rawItems.map((w) => ({
+          id: w.id,
+          request_url: w.request_url,
+          source: w.source,
+          events: w.events ?? [],
+          has_secret: (w.headers || []).some((h) => (h?.key || '').toLowerCase() === 'unipile-auth' && !!h?.value),
+        }));
+        return new Response(JSON.stringify({ success: true, webhooks: { items } }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -329,11 +406,11 @@ Deno.serve(async (req) => {
       case 'delete': {
         const webhook_id = (body as { webhook_id?: string }).webhook_id;
 
-        if (!webhook_id) {
+        if (!webhook_id || typeof webhook_id !== 'string' || /[\/\\?#]/.test(webhook_id) || webhook_id.includes('..')) {
           throw new Error('webhook_id is required');
         }
 
-        const response = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks/${webhook_id}`, {
+        const response = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks/${encodeURIComponent(webhook_id)}`, {
           method: 'DELETE',
           headers: { 'X-API-KEY': apiKey },
         });
@@ -356,7 +433,9 @@ Deno.serve(async (req) => {
         //
         // Pass `dry_run: true` in body to preview without modifying anything.
         const dryRun = !!(body as { dry_run?: boolean }).dry_run;
-        const keepUrlPattern = ((body as { keep_url_contains?: string }).keep_url_contains || 'leadmagnet-worker').toLowerCase();
+        // Motif de conservation fixé côté serveur : un client ne doit pas
+        // pouvoir choisir ce qui survit au nettoyage de la clé plateforme.
+        const keepUrlPattern = 'leadmagnet-worker';
         const targetUrl = `${SUPABASE_URL}/functions/v1/unipile-webhook`;
 
         const listResp = await fetchWithTimeout(`${UNIPILE_DSN}/api/v1/webhooks`, { headers: { 'X-API-KEY': apiKey } });

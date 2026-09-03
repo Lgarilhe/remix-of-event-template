@@ -86,13 +86,21 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Rôle borné côté serveur (SEC-018) : l'insert se fait sous service_role,
+    // enforce_role_hierarchy ne s'applique donc pas. Jamais 'owner' par invitation.
+    const ALLOWED_INVITE_ROLES = ["admin", "member", "collaborator"];
+    const invitedRole = String(invitation.role ?? "member").trim().toLowerCase();
+    if (!ALLOWED_INVITE_ROLES.includes(invitedRole)) {
+      throw new Error("Rôle d'invitation invalide");
+    }
+
     // Add as member
     const { error: memberError } = await supabase
       .from("organization_members")
       .insert({
         organization_id: invitation.organization_id,
         user_id: user.id,
-        role: invitation.role,
+        role: invitedRole,
       });
 
     if (memberError) throw memberError;

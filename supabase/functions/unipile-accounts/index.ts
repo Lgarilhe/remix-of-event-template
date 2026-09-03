@@ -73,6 +73,114 @@ class HttpError extends Error {
   }
 }
 
+type AccountOwnership = { mapped: 'org' | 'foreign' | 'none'; userId: string | null };
+
+/**
+ * Appartenance d'un account_id Unipile (LinkedIn ou email) à l'organisation
+ * appelante. La clé Unipile plateforme est partagée entre les orgs : sans ce
+ * contrôle, un account_id d'une autre org pouvait être déconnecté, reconfiguré
+ * (proxy), lu, ou voir ses invitations traitées (SEC-004).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function lookupAccountOwnership(adminClient: any, organizationId: string, accountId: string): Promise<AccountOwnership> {
+  const tables: Array<[string, string]> = [
+    ['member_linkedin_accounts', 'linkedin_account_id'],
+    ['member_email_accounts', 'email_account_id'],
+  ];
+  let foreign = false;
+  for (const [table, column] of tables) {
+    const { data, error } = await adminClient
+      .from(table)
+      .select('organization_id, user_id')
+      .eq(column, accountId);
+    if (error) throw new HttpError(500, `Vérification du compte impossible (${table})`);
+    const rows = (data ?? []) as Array<{ organization_id: string; user_id: string | null }>;
+    const own = rows.find((r) => r.organization_id === organizationId);
+    if (own) return { mapped: 'org', userId: own.user_id ?? null };
+    if (rows.length > 0) foreign = true;
+  }
+  return { mapped: foreign ? 'foreign' : 'none', userId: null };
+}
+
+/**
+ * Refuse tout compte mappé à une autre org. Un compte orphelin (non mappé)
+ * n'est toléré que pour les flux de connexion (checkpoint, reconnexion), où
+ * le mapping n'existe pas encore ou pointe sur un id mort.
+ */
+async function assertAccountInOrg(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adminClient: any,
+  organizationId: string,
+  accountId: unknown,
+  opts: { allowOrphan?: boolean } = {},
+): Promise<AccountOwnership> {
+  const id = typeof accountId === 'string' ? accountId.trim() : '';
+  if (!id) throw new HttpError(400, 'Account ID requis');
+  if (id.length > 512 || id.includes('..') || /[\/\\?#]/.test(id)) throw new HttpError(400, 'Account ID invalide');
+  const ownership = await lookupAccountOwnership(adminClient, organizationId, id);
+  if (ownership.mapped === 'org') return ownership;
+  if (ownership.mapped === 'foreign' || !opts.allowOrphan) {
+    throw new HttpError(403, "Ce compte n'est pas rattaché à votre organisation");
+  }
+  return ownership;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getCallerOrgRole(adminClient: any, organizationId: string, userId: string): Promise<string | null> {
+  const { data } = await adminClient
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', organizationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  return (data as { role?: string } | null)?.role ?? null;
+}
+
+/** Déconnexion, proxy, reconnexion : le propriétaire du compte ou un owner/admin de l'org. */
+async function assertCanManageAccount(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adminClient: any,
+  organizationId: string,
+  userId: string,
+  ownership: AccountOwnership,
+): Promise<void> {
+  if (ownership.mapped !== 'org') return; // orphelin toléré en amont : aucun propriétaire à protéger
+  if (ownership.userId === userId) return;
+  const role = await getCallerOrgRole(adminClient, organizationId, userId);
+  if (role === 'owner' || role === 'admin') return;
+  throw new HttpError(403, "Seul le propriétaire du compte ou un administrateur de l'organisation peut effectuer cette action");
+}
+
+/** Segment d'URL Unipile : identifiant encodé, jamais de traversée de chemin. */
+function pathId(value: unknown, label: string): string {
+  const s = typeof value === 'string' ? value.trim() : '';
+  if (!s || s.length > 512 || s.includes('..') || /[\/\\?#]/.test(s)) throw new HttpError(400, `${label} invalide`);
+  return encodeURIComponent(s);
+}
+
+/**
+ * Compte propriétaire d'un message ou d'une conversation. Le front n'envoie
+ * que message_id / chat_id (useMessageActions) : on le résout côté Unipile
+ * avant de vérifier l'appartenance à l'organisation.
+ */
+async function resolveAccountFromUnipile(
+  baseUrl: string,
+  apiKey: string,
+  kind: 'chats' | 'messages',
+  idEncoded: string,
+): Promise<string> {
+  const res = await fetchWithTimeout(`${baseUrl}/${kind}/${idEncoded}`, {
+    headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+  });
+  if (!res.ok) throw new HttpError(404, kind === 'chats' ? 'Conversation introuvable' : 'Message introuvable');
+  const data = await res.json().catch(() => ({}));
+  if (typeof data?.account_id === 'string' && data.account_id) return data.account_id;
+  if (kind === 'messages' && typeof data?.chat_id === 'string' && data.chat_id) {
+    return resolveAccountFromUnipile(baseUrl, apiKey, 'chats', pathId(data.chat_id, 'chat_id'));
+  }
+  throw new HttpError(502, 'Compte propriétaire introuvable');
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -328,6 +436,8 @@ Deno.serve(async (req) => {
               name: acc.name,
               identifier: acc.name,
               status: mainStatus,
+              // false = orphelin visible en mode claim : à associer avant usage
+              mapped: allowedAccountIds.has(acc.id),
               profile_picture_url: profilePictureUrl,
               subscriptions: {
                 classic: true,
@@ -400,6 +510,11 @@ Deno.serve(async (req) => {
       case 'hosted_auth_link': {
         // Generate a hosted auth link for white-label account connection (LinkedIn, WhatsApp, or Email)
         const { success_redirect_url, failure_redirect_url, org_name, providers: requestedProviders, reconnect_account_id } = params;
+
+        if (typeof reconnect_account_id === 'string' && reconnect_account_id.length > 0) {
+          const ownership = await assertAccountInOrg(adminClient, organizationId, reconnect_account_id, { allowOrphan: true });
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
 
         // Allow caller to specify provider(s), default to LinkedIn
         const resolvedProviders = Array.isArray(requestedProviders) && requestedProviders.length > 0
@@ -519,6 +634,12 @@ Deno.serve(async (req) => {
         }
 
         const isReconnect = typeof reconnect_account_id === 'string' && reconnect_account_id.length > 0;
+        if (isReconnect) {
+          // Remplacer la session LinkedIn d'un compte : jamais celui d'une autre org,
+          // et seulement son propre compte (ou owner/admin).
+          const ownership = await assertAccountInOrg(adminClient, organizationId, reconnect_account_id, { allowOrphan: true });
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
         const endpoint = isReconnect
           ? `${baseUrl}/accounts/${encodeURIComponent(reconnect_account_id)}`
           : `${baseUrl}/accounts`;
@@ -722,6 +843,8 @@ Deno.serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+        // Compte en cours de création : pas encore forcément mappé (orphelin toléré).
+        await assertAccountInOrg(adminClient, organizationId, account_id, { allowOrphan: true });
 
         const response = await fetchWithTimeout(`${baseUrl}/accounts/checkpoint`, {
           method: 'POST',
@@ -763,7 +886,12 @@ Deno.serve(async (req) => {
           );
         }
 
-        const response = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+        {
+          const ownership = await assertAccountInOrg(adminClient, organizationId, account_id);
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
+
+        const response = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           method: 'DELETE',
           headers: {
             'X-API-KEY': apiKey,
@@ -802,7 +930,9 @@ Deno.serve(async (req) => {
           );
         }
 
-        const response = await fetchWithTimeout(`${baseUrl}/linkedin/inmail_balance?account_id=${account_id}`, {
+        await assertAccountInOrg(adminClient, organizationId, account_id);
+
+        const response = await fetchWithTimeout(`${baseUrl}/linkedin/inmail_balance?account_id=${encodeURIComponent(String(account_id))}`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
@@ -848,7 +978,9 @@ Deno.serve(async (req) => {
           );
         }
 
-        const accountResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+        await assertAccountInOrg(adminClient, organizationId, account_id);
+
+        const accountResponse = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
@@ -882,7 +1014,6 @@ Deno.serve(async (req) => {
             f.toLowerCase().includes('sales') || f.toLowerCase().includes('navigator')
           ),
           premium_features: premiumFeatures,
-          raw_connection_params: connectionParams,
         };
 
         return new Response(
@@ -986,9 +1117,14 @@ Deno.serve(async (req) => {
             throw new HttpError(400, 'Mode proxy invalide. Valeurs acceptées : country, ip, custom');
         }
 
+        {
+          const ownership = await assertAccountInOrg(adminClient, organizationId, account_id);
+          await assertCanManageAccount(adminClient, organizationId, user.id, ownership);
+        }
+
         console.log(`[update_proxy] Patching account ${account_id} (mode: ${proxy_mode}) with body:`, JSON.stringify(patchBody));
 
-        const patchResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+        const patchResponse = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           method: 'PATCH',
           headers: {
             'X-API-KEY': apiKey,
@@ -1073,8 +1209,10 @@ Deno.serve(async (req) => {
         if (!message_id || !reaction) {
           throw new HttpError(400, 'message_id et reaction requis');
         }
+        const reactionMessageId = pathId(message_id, 'message_id');
+        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'messages', reactionMessageId));
         console.log(`[add_reaction] Adding "${reaction}" to message ${message_id}`);
-        const reactionRes = await fetchWithTimeout(`${baseUrl}/messages/${message_id}/reaction`, {
+        const reactionRes = await fetchWithTimeout(`${baseUrl}/messages/${reactionMessageId}/reaction`, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
@@ -1102,8 +1240,10 @@ Deno.serve(async (req) => {
         if (!message_id) {
           throw new HttpError(400, 'message_id requis');
         }
+        const delMessageId = pathId(message_id, 'message_id');
+        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'messages', delMessageId));
         console.log(`[delete_message] Deleting message ${message_id}`);
-        const delMsgRes = await fetchWithTimeout(`${baseUrl}/messages/${message_id}`, {
+        const delMsgRes = await fetchWithTimeout(`${baseUrl}/messages/${delMessageId}`, {
           method: 'DELETE',
           headers: {
             'X-API-KEY': apiKey,
@@ -1129,8 +1269,10 @@ Deno.serve(async (req) => {
         if (!chat_id) {
           throw new HttpError(400, 'chat_id requis');
         }
+        const delChatId = pathId(chat_id, 'chat_id');
+        await assertAccountInOrg(adminClient, organizationId, await resolveAccountFromUnipile(baseUrl, apiKey, 'chats', delChatId));
         console.log(`[delete_chat] Deleting chat ${chat_id}`);
-        const delChatRes = await fetchWithTimeout(`${baseUrl}/chats/${chat_id}`, {
+        const delChatRes = await fetchWithTimeout(`${baseUrl}/chats/${delChatId}`, {
           method: 'DELETE',
           headers: {
             'X-API-KEY': apiKey,
@@ -1156,8 +1298,9 @@ Deno.serve(async (req) => {
         if (!account_id) {
           throw new HttpError(400, 'Account ID requis');
         }
-        let invUrl = `${baseUrl}/users/invite/received?account_id=${account_id}&limit=${invLimit || 20}`;
-        if (invCursor) invUrl += `&cursor=${invCursor}`;
+        await assertAccountInOrg(adminClient, organizationId, account_id);
+        let invUrl = `${baseUrl}/users/invite/received?account_id=${encodeURIComponent(String(account_id))}&limit=${Math.min(Math.max(Number(invLimit) || 20, 1), 100)}`;
+        if (invCursor) invUrl += `&cursor=${encodeURIComponent(String(invCursor))}`;
 
         console.log(`[list_invitations_received] GET ${invUrl}`);
         const invRes = await fetchWithTimeout(invUrl, {
@@ -1214,8 +1357,9 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'invitation_action doit être "accept" ou "decline"');
         }
 
+        await assertAccountInOrg(adminClient, organizationId, account_id);
         console.log(`[handle_invitation_received] ${finalAction} invitation ${invitation_id}`);
-        const handleRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${invitation_id}`, {
+        const handleRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${pathId(invitation_id, 'invitation_id')}`, {
           method: 'POST',
           headers: {
             'X-API-KEY': apiKey,
@@ -1251,13 +1395,14 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'account_id et invitations[] requis');
         }
 
+        await assertAccountInOrg(adminClient, organizationId, account_id);
         console.log(`[bulk_handle_invitations] Processing ${bulkInvitations.length} invitations`);
         const results: Array<{ invitation_id: string; status: string; error?: string }> = [];
 
         for (const inv of bulkInvitations) {
           const { invitation_id, shared_secret, action: bulkAction } = inv as { invitation_id: string; shared_secret: string; action: string };
           try {
-            const bulkRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${invitation_id}`, {
+            const bulkRes = await fetchWithTimeout(`${baseUrl}/users/invite/received/${pathId(invitation_id, 'invitation_id')}`, {
               method: 'POST',
               headers: {
                 'X-API-KEY': apiKey,
@@ -1308,7 +1453,9 @@ Deno.serve(async (req) => {
           throw new HttpError(400, 'Account ID requis');
         }
 
-        const detailResponse = await fetchWithTimeout(`${baseUrl}/accounts/${account_id}`, {
+        await assertAccountInOrg(adminClient, organizationId, account_id);
+
+        const detailResponse = await fetchWithTimeout(`${baseUrl}/accounts/${pathId(account_id, 'Account ID')}`, {
           headers: {
             'X-API-KEY': apiKey,
             'Accept': 'application/json',
@@ -1325,6 +1472,16 @@ Deno.serve(async (req) => {
 
         const detailData = await detailResponse.json();
 
+        // Projection : jamais les identifiants proxy ni les connection_params
+        // bruts (cookies/session) vers le navigateur.
+        const proxyInfo = detailData.proxy && typeof detailData.proxy === 'object'
+          ? { ...(detailData.proxy as Record<string, unknown>) }
+          : null;
+        if (proxyInfo) {
+          delete proxyInfo.username;
+          delete proxyInfo.password;
+        }
+
         return new Response(
           JSON.stringify({ 
             success: true,
@@ -1333,8 +1490,8 @@ Deno.serve(async (req) => {
               name: detailData.name,
               type: detailData.type,
               status: detailData.sources?.[0]?.status || 'UNKNOWN',
-              proxy: detailData.proxy || null,
-              connection_params: detailData.connection_params || null,
+              proxy: proxyInfo,
+              premium_features: detailData.connection_params?.im?.premiumFeatures ?? [],
             },
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1348,7 +1505,7 @@ Deno.serve(async (req) => {
         }
 
         try {
-          const pictureRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${attendee_id}/picture`, {
+          const pictureRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${pathId(attendee_id, 'attendee_id')}/picture`, {
             headers: { 'X-API-KEY': apiKey, 'Accept': 'image/*' },
           }, 10000);
 
@@ -1380,7 +1537,7 @@ Deno.serve(async (req) => {
 
         // Fallback: try metadata endpoint for picture_url
         try {
-          const metaRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${attendee_id}`, {
+          const metaRes = await fetchWithTimeout(`${baseUrl}/chat_attendees/${pathId(attendee_id, 'attendee_id')}`, {
             headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
           }, 10000);
           if (metaRes.ok) {

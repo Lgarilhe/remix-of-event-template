@@ -154,6 +154,87 @@ async function resolveUnipileCredentials(organizationId?: string): Promise<{ api
   return null;
 }
 
+/** Erreur d'entrée client → réponse 4xx (jamais 500). */
+class UnipileInputError extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * Identifiant destiné à un segment de chemin ou un paramètre d'URL Unipile
+ * (profile_id, chat_id, account_id). Sans encodage, profile_id = "../accounts"
+ * transformait GET /users/../accounts en GET /accounts sur la clé plateforme
+ * (SEC-007). Les slugs LinkedIn %-encodés envoyés par le front sont décodés
+ * puis ré-encodés à l'identique.
+ */
+function unipileId(value: unknown, label: string): string {
+  let s = typeof value === 'string' ? value : value == null ? '' : String(value);
+  s = s.trim();
+  if (s.includes('%')) {
+    try { s = decodeURIComponent(s); } catch { /* valeur brute conservée */ }
+  }
+  if (!s || s.length > 512 || s === '.' || s.includes('..') || /[\/\\?#]/.test(s)) {
+    throw new UnipileInputError(`${label} invalide`);
+  }
+  return encodeURIComponent(s);
+}
+
+/** Comptes LinkedIn rattachés à l'organisation (member_linkedin_accounts). */
+async function loadOrgLinkedInAccountIds(organizationId: string): Promise<Set<string>> {
+  const sb = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
+  );
+  const { data, error } = await sb
+    .from('member_linkedin_accounts')
+    .select('linkedin_account_id')
+    .eq('organization_id', organizationId);
+  if (error) throw new Error(`member_linkedin_accounts lookup failed: ${error.message}`);
+  return new Set(
+    ((data ?? []) as Array<{ linkedin_account_id: string | null }>)
+      .map((r) => r.linkedin_account_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  );
+}
+
+const CHAT_ACCOUNT_CACHE_TTL_MS = 15 * 60 * 1000;
+const chatAccountCache = new Map<string, { accountId: string; expiresAt: number }>();
+
+/**
+ * Compte propriétaire d'une conversation (GET /chats/{id} renvoie account_id),
+ * vérifié contre les comptes de l'organisation : chat_id n'était lié à rien
+ * (SEC-006). Cache mémoire 15 min par isolate pour ne pas doubler les appels
+ * du polling inbox.
+ */
+async function resolveChatAccount(
+  baseUrl: string,
+  apiKey: string,
+  organizationId: string,
+  chatIdEncoded: string,
+  orgAccountIds: Set<string>,
+): Promise<string> {
+  const cacheKey = `${organizationId}:${chatIdEncoded}`;
+  const now = Date.now();
+  const hit = chatAccountCache.get(cacheKey);
+  if (hit && hit.expiresAt > now && orgAccountIds.has(hit.accountId)) return hit.accountId;
+
+  const res = await fetchWithTimeout(`${baseUrl}/chats/${chatIdEncoded}`, {
+    headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+  });
+  if (!res.ok) throw new UnipileInputError('Conversation introuvable', 404);
+  const chat = await res.json().catch(() => ({}));
+  const accountId = typeof chat?.account_id === 'string' ? chat.account_id : '';
+  if (!accountId || !orgAccountIds.has(accountId)) {
+    throw new UnipileInputError("Cette conversation n'appartient pas à un compte LinkedIn de votre organisation", 403);
+  }
+  if (chatAccountCache.size > 5000) chatAccountCache.clear();
+  chatAccountCache.set(cacheKey, { accountId, expiresAt: now + CHAT_ACCOUNT_CACHE_TTL_MS });
+  return accountId;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -247,6 +328,31 @@ Deno.serve(async (req) => {
 
     const baseUrl = `https://${dsn}/api/v1`;
 
+    // ─── Rattachement du compte LinkedIn à l'organisation (SEC-006) ────────
+    // La clé Unipile est partagée entre les orgs sans créds propres : sans ce
+    // contrôle, un account_id d'une autre org donnait accès à sa boîte, à ses
+    // recherches et à ses envois. Vaut aussi pour les appels internes
+    // (organization_id est requis dans tous les modes).
+    const accountIdRaw = String(account_id).trim();
+    unipileId(accountIdRaw, 'account_id');
+    const orgAccountIds = await loadOrgLinkedInAccountIds(organization_id);
+    if (!orgAccountIds.has(accountIdRaw)) {
+      return new Response(JSON.stringify({
+        success: false,
+        errorType: 'ACCOUNT_NOT_LINKED',
+        error: "Ce compte LinkedIn n'est pas rattaché à votre organisation. Associez-le depuis Paramètres > Connecteurs.",
+      }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Actions sur une conversation : le compte propriétaire du chat doit lui
+    // aussi appartenir à l'organisation. C'est ce compte qui porte le quota.
+    const chatScopedActions = new Set(['get_messages', 'send_message', 'mark_as_read', 'sync_chat_history']);
+    let gateAccountId = accountIdRaw;
+    if (chatScopedActions.has(action) && params?.chat_id) {
+      const chatIdEncoded = unipileId(params.chat_id, 'chat_id');
+      gateAccountId = await resolveChatAccount(baseUrl, apiKey, organization_id, chatIdEncoded, orgAccountIds);
+    }
+
     // ─── Gate quota LinkedIn (actions manuelles user) ─────────────────────
     // Conformité #260513-007211 : les vues de profil / recherches / envois
     // déclenchés depuis l'app comptent désormais dans le MÊME plafond que
@@ -265,7 +371,7 @@ Deno.serve(async (req) => {
         const sbGate = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-version supabase-js client type mismatch (different import specifier than linkedin-quotas.ts)
         const gate = await enforceLinkedInAction(sbGate as any, {
-          accountId: account_id,
+          accountId: gateAccountId,
           actionType: gatedType,
           userId: userId || null,
           organizationId: organization_id || null,
@@ -301,15 +407,15 @@ Deno.serve(async (req) => {
       }
 
       case 'get_messages': {
-        return await handleGetMessages(baseUrl, apiKey, account_id, params);
+        return await handleGetMessages(baseUrl, apiKey, gateAccountId, params);
       }
 
       case 'sync_chat_history': {
-        return await handleSyncChatHistory(baseUrl, apiKey, account_id, params);
+        return await handleSyncChatHistory(baseUrl, apiKey, gateAccountId, params);
       }
 
       case 'send_message': {
-        return await handleSendMessage(baseUrl, apiKey, account_id, params);
+        return await handleSendMessage(baseUrl, apiKey, gateAccountId, params);
       }
 
       case 'mark_as_read': {
@@ -332,6 +438,12 @@ Deno.serve(async (req) => {
     }
   } catch (error) {
     console.error('Error:', error);
+    if (error instanceof UnipileInputError) {
+      return new Response(
+        JSON.stringify({ success: false, error: error.message }),
+        { status: error.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur interne' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1017,7 +1129,7 @@ async function handleSearch(
     }
   }
 
-  const searchUrl = `${baseUrl}/linkedin/search?account_id=${accountId}`;
+  const searchUrl = `${baseUrl}/linkedin/search?account_id=${encodeURIComponent(accountId)}`;
   console.log('Search URL:', searchUrl);
   console.log('Search body:', JSON.stringify(searchBody));
 
@@ -1250,7 +1362,7 @@ async function handleGetProfile(
     );
   }
 
-  const response = await fetchWithTimeout(`${baseUrl}/users/${profile_id}?account_id=${accountId}`, {
+  const response = await fetchWithTimeout(`${baseUrl}/users/${unipileId(profile_id, 'profile_id')}?account_id=${encodeURIComponent(accountId)}`, {
     headers: {
       'X-API-KEY': apiKey,
       'Accept': 'application/json',
@@ -1625,7 +1737,7 @@ async function handleGetMessages(
   }
   queryParams.set('limit', String(limit));
 
-  const url = `${baseUrl}/chats/${chat_id}/messages?${queryParams.toString()}`;
+  const url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}/messages?${queryParams.toString()}`;
   console.log('Get messages URL:', url);
 
   const response = await fetchWithTimeout(url, {
@@ -1696,7 +1808,7 @@ async function handleSendMessage(
 
   if (chat_id) {
     // Send to existing chat
-    url = `${baseUrl}/chats/${chat_id}/messages`;
+    url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}/messages`;
   } else {
     // Create new chat/message to recipient
     // For InMails (2nd/3rd degree), we need to use the LinkedIn Recruiter API format
@@ -1852,7 +1964,7 @@ async function handleMarkAsRead(
   }
 
   try {
-    const url = `${baseUrl}/chats/${chat_id}`;
+    const url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}`;
     console.log('Mark as read URL:', url);
 
     const response = await fetchWithTimeout(url, {
@@ -1909,7 +2021,7 @@ async function handleGetUserPosts(
       );
     }
 
-    const url = `${baseUrl}/users/${encodeURIComponent(identifier)}/posts?account_id=${accountId}&limit=${limit}`;
+    const url = `${baseUrl}/users/${unipileId(identifier, 'identifier')}/posts?account_id=${encodeURIComponent(accountId)}&limit=${Math.min(Math.max(Number(limit) || 5, 1), 50)}`;
     console.log('Fetching user posts:', url);
 
     const response = await fetchWithTimeout(url, {

@@ -382,6 +382,26 @@ export async function recordActionOutcomeMessage(
  * on N'EXÉCUTE PAS. Le cron process-scheduled-actions s'en charge quand
  * la plage horaire s'ouvre. Évite que l'user reste collé hors 8h-16h.
  */
+/**
+ * Rejoue tool.verifyAccess juste avant execute (SEC-002). Les params relus
+ * en base sont ceux réellement exécutés : l'UI peut les avoir édités entre
+ * proposition et approbation, et la policy RLS autorise le propriétaire de la
+ * ligne à les réécrire. Renvoie le motif de refus, ou null.
+ */
+async function recheckAccess(
+  tool: AgentTool,
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<string | null> {
+  try {
+    const access = await tool.verifyAccess(params, ctx);
+    if (!access.allowed) return `Accès refusé à l'exécution : ${access.reason ?? 'non autorisé'}`;
+    return null;
+  } catch (err) {
+    return `Vérification d'accès impossible : ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
 export async function confirmToolExecution(
   executionId: string,
   ctx: ToolContext,
@@ -436,7 +456,8 @@ export async function confirmToolExecution(
           approved_at: new Date().toISOString(),
           scheduled_for: scheduledIso,
         })
-        .eq('id', executionId);
+        .eq('id', executionId)
+        .is('executed_at', null);
       const scheduledResult: ExecuteResult = {
         success: true,
         data: {
@@ -462,21 +483,37 @@ export async function confirmToolExecution(
   }
 
   // ── Path standard : exécution immédiate
-  // Mark as approved (transitionnel, traçable)
-  await ctx.adminClient
+  // Réservation atomique (BUG-016) : une seule approbation concurrente passe
+  // (double clic, deux onglets, carte chat + page Settings). executed_at sert
+  // de verrou jusqu'à l'écriture du statut final.
+  const reservedAtIso = new Date().toISOString();
+  const { data: reservedRows, error: reserveError } = await ctx.adminClient
     .from('agent_tool_executions')
-    .update({ status: 'approved', approved_at: new Date().toISOString() })
-    .eq('id', executionId);
+    .update({ status: 'approved', approved_at: reservedAtIso, executed_at: reservedAtIso })
+    .eq('id', executionId)
+    .in('status', ['proposed', 'approved'])
+    .is('executed_at', null)
+    .select('params, conversation_id');
+  const reserved = ((reservedRows ?? []) as Array<{ params: Record<string, unknown> | null; conversation_id: string | null }>)[0];
+  if (reserveError || !reserved) {
+    return { success: false, error: 'Action déjà en cours ou déjà traitée', executionId };
+  }
 
   // Execute — le ctx d'approbation (agent-tool-action) n'a pas le
   // conversation_id d'origine : on le réinjecte depuis la row pour que les
   // tools qui en dépendent (launch_search) le voient à l'exécution.
-  const execCtx: ToolContext = { ...ctx, conversationId: row.conversation_id ?? ctx.conversationId };
+  const execParams = (reserved.params ?? {}) as Record<string, unknown>;
+  const execCtx: ToolContext = { ...ctx, conversationId: reserved.conversation_id ?? row.conversation_id ?? ctx.conversationId };
+  const denied = await recheckAccess(tool, execParams, execCtx);
   let result: ExecuteResult;
-  try {
-    result = await tool.execute(row.params as Record<string, unknown>, execCtx);
-  } catch (err) {
-    result = { success: false, error: err instanceof Error ? err.message : String(err) };
+  if (denied) {
+    result = { success: false, error: denied };
+  } else {
+    try {
+      result = await tool.execute(execParams, execCtx);
+    } catch (err) {
+      result = { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   // Update final status
@@ -565,11 +602,32 @@ export async function executeScheduledAction(
     messageId: row.message_id,
   };
 
+  // Réservation atomique (BUG-016) : deux ticks de cron concurrents ne
+  // doivent exécuter qu'une fois. executed_at posé avant l'exécution.
+  const { data: reservedRows, error: reserveError } = await ctx.adminClient
+    .from('agent_tool_executions')
+    .update({ executed_at: new Date().toISOString() })
+    .eq('id', executionId)
+    .eq('status', 'approved')
+    .is('executed_at', null)
+    .select('params');
+  const reserved = ((reservedRows ?? []) as Array<{ params: Record<string, unknown> | null }>)[0];
+  if (reserveError || !reserved) {
+    return { success: false, error: 'Already executing', executionId };
+  }
+
+  // Les params relus sont ceux exécutés ; verifyAccess rejoué (SEC-002).
+  const execParams = (reserved.params ?? {}) as Record<string, unknown>;
+  const denied = await recheckAccess(tool, execParams, scopedCtx);
   let result: ExecuteResult;
-  try {
-    result = await tool.execute(row.params as Record<string, unknown>, scopedCtx);
-  } catch (err) {
-    result = { success: false, error: err instanceof Error ? err.message : String(err) };
+  if (denied) {
+    result = { success: false, error: denied };
+  } else {
+    try {
+      result = await tool.execute(execParams, scopedCtx);
+    } catch (err) {
+      result = { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   await ctx.adminClient
