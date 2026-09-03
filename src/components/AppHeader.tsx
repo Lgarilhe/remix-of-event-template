@@ -1,6 +1,7 @@
 import React from 'react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { PanelLeft } from 'lucide-react';
+import { NotificationDropdown } from '@/components/NotificationDropdown';
 
 export const AppHeader: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   return (
@@ -9,6 +10,11 @@ export const AppHeader: React.FC<{ children?: React.ReactNode }> = ({ children }
         <PanelLeft className="h-4 w-4" />
       </SidebarTrigger>
       {children}
+      {/* Notifications à droite : le composant existait mais n'était câblé
+          nulle part. ml-auto le pousse au bout quoi que contiennent children. */}
+      <div className="ml-auto flex items-center gap-2">
+        <NotificationDropdown />
+      </div>
     </header>
   );
 };
