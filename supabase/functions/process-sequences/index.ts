@@ -18,6 +18,24 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const NOTION_API_KEY = Deno.env.get('NOTION_API_KEY');
 const WEEKLY_INVITE_LIMIT = 100;
 
+// Statuts d'exécution non terminaux : une étape dans un de ces états est
+// « en cours » et ne doit pas être re-planifiée.
+const PENDING_EXECUTION_STATUSES = ['scheduled', 'sending', 'waiting_event', 'quota_blocked'];
+// Statuts d'exécution « déjà traitée » : l'étape est partie (sent / opened /
+// clicked / replied) ou a été volontairement sautée. Le janitor et
+// scheduleNextStep ne doivent jamais la rejouer hors saut de branche explicite
+// (BUG-022, BUG-007).
+const DONE_EXECUTION_STATUSES = ['sent', 'opened', 'clicked', 'replied', 'skipped'];
+
+// Actions qui balaient TOUTES les organisations : réservées au cron et aux
+// appels internes en clé de service (SEC-041).
+const INTERNAL_ONLY_ACTIONS = new Set([
+  'process', 'check_replies', 'check_timeouts', 'check_wait_events', 'force_reschedule',
+]);
+// Actions déclenchables par un membre depuis l'UI, toujours bornées à son
+// organisation, vérifiée dans le handler (MQ-002).
+const MEMBER_ACTIONS = new Set(['skip_execution']);
+
 // Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -118,7 +136,16 @@ Deno.serve(async (req) => {
   profileInfoCache.clear();
 
   // ===== AUTH CHECK =====
-  // Accept: (1) service_role key (internal/cron), (2) PROCESS_SEQUENCES_SECRET, or (3) valid admin JWT (frontend)
+  // Trois appelants :
+  //   1. cron et appels internes — clé de service ou PROCESS_SEQUENCES_SECRET :
+  //      accès à toutes les actions, y compris celles qui balaient tous les
+  //      tenants (process, force_reschedule…).
+  //   2. administrateur plateforme (has_role 'admin') : idem, pour le support.
+  //   3. membre d'une organisation depuis l'UI : uniquement les actions de
+  //      MEMBER_ACTIONS, bornées à son organisation par le handler. Avant, le
+  //      seul chemin JWT exigeait le rôle plateforme 'admin' (table user_roles
+  //      vide en production) : les boutons manuels de l'UI répondaient 401 à
+  //      tous les clients (MQ-002).
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   const serviceRoleKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
@@ -127,10 +154,24 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  // Le corps est lu AVANT le contrôle d'accès : l'action décide de ce qu'un
+  // membre a le droit de déclencher.
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await req.json()) ?? {};
+  } catch {
+    body = {};
+  }
+  const action = typeof body.action === 'string' ? body.action : '';
+  const force = !!body.force;
+
   console.log(`[auth] Token length: ${token.length}, cronSecret length: ${cronSecret.length}, hasServiceRole: ${!!serviceRoleKey}`);
 
   let isAuthorized = false;
   let authMethod = 'none';
+  // Renseigné uniquement pour un appel utilisateur : les handlers membres
+  // s'en servent pour vérifier l'appartenance à l'organisation visée.
+  let callerUserId: string | null = null;
 
   if (token === serviceRoleKey) {
     isAuthorized = true;
@@ -145,8 +186,18 @@ Deno.serve(async (req) => {
     const { data: { user }, error } = await authClient.auth.getUser();
     if (!error && user) {
       const { data: hasAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
-      isAuthorized = !!hasAdmin;
-      authMethod = hasAdmin ? 'admin_jwt' : 'jwt_no_admin';
+      if (hasAdmin) {
+        isAuthorized = true;
+        authMethod = 'admin_jwt';
+      } else if (MEMBER_ACTIONS.has(action)) {
+        isAuthorized = true;
+        authMethod = 'member_jwt';
+        callerUserId = user.id;
+      } else {
+        authMethod = INTERNAL_ONLY_ACTIONS.has(action)
+          ? `jwt_action_reserved:${action}`
+          : 'jwt_no_admin';
+      }
     } else {
       authMethod = `jwt_failed: ${error?.message || 'no user'}`;
     }
@@ -155,7 +206,7 @@ Deno.serve(async (req) => {
   console.log(`[auth] Result: ${authMethod}, authorized: ${isAuthorized}`);
 
   if (!isAuthorized) {
-    console.warn(`[auth] ❌ Unauthorized request rejected (method: ${authMethod})`);
+    console.warn(`[auth] ❌ Unauthorized request rejected (method: ${authMethod}, action: ${action || 'none'})`);
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -164,11 +215,17 @@ Deno.serve(async (req) => {
 
   let heartbeatAction: string | null = null;
   try {
-    const { action, force } = await req.json();
     heartbeatAction = action;
 
     let response: Response;
     switch (action) {
+      case 'skip_execution':
+        response = await handleSkipExecution(
+          supabase,
+          typeof body.execution_id === 'string' ? body.execution_id : '',
+          callerUserId,
+        );
+        break;
       case 'process':
         response = await handleProcess(supabase, !!force);
         break;
@@ -215,6 +272,106 @@ Deno.serve(async (req) => {
 });
 
 // ============ ACTION HANDLERS ============
+
+/**
+ * Saute une exécution à la demande du recruteur, ET fait avancer la séquence
+ * (BUG-007).
+ *
+ * Avant, le front passait l'exécution en 'skipped' par PostgREST puis appelait
+ * `process` avec force. Le moteur ne planifie la suite qu'après avoir exécuté
+ * une étape : rien n'avançait, `current_step_order` restait sur l'étape sautée
+ * et le janitor re-créait une exécution pour cette même étape une heure plus
+ * tard. L'InMail que le recruteur venait d'écarter partait quand même.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function handleSkipExecution(supabase: any, executionId: string, callerUserId: string | null): Promise<Response> {
+  const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), {
+    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+  if (!executionId) return json({ success: false, error: 'execution_id requis' }, 400);
+
+  const { data: exec, error: execErr } = await supabase
+    .from('sequence_step_executions')
+    .select('id, status, step_id, step_order, enrollment_id, organization_id, enrollment:sequence_enrollments(*), step:sequence_steps(*)')
+    .eq('id', executionId)
+    .maybeSingle();
+  if (execErr) {
+    console.error('[skip_execution] lookup failed:', execErr);
+    return json({ success: false, error: 'Erreur serveur' }, 500);
+  }
+  if (!exec) return json({ success: false, error: 'Étape introuvable' }, 404);
+
+  const enrollment = exec.enrollment;
+  const step = exec.step;
+  if (!enrollment || !step) return json({ success: false, error: 'Étape orpheline (enrollment ou step supprimé)' }, 409);
+
+  // Appel utilisateur : l'étape doit appartenir à son organisation.
+  const orgId = enrollment.organization_id ?? exec.organization_id ?? null;
+  if (callerUserId) {
+    if (!orgId) return json({ success: false, error: 'Organisation introuvable pour cette étape' }, 403);
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('user_id', callerUserId)
+      .maybeSingle();
+    if (!membership) {
+      console.warn(`[skip_execution] user ${callerUserId} refusé sur l'organisation ${orgId}`);
+      return json({ success: false, error: 'Accès refusé' }, 403);
+    }
+  }
+
+  if (!PENDING_EXECUTION_STATUSES.includes(exec.status)) {
+    return json({ success: false, error: `Étape déjà « ${exec.status} » — rien à sauter`, status: exec.status }, 409);
+  }
+
+  // Transition conditionnée au statut relu : deux clics concurrents ne sautent
+  // l'étape qu'une fois.
+  const { data: skippedRows, error: skipErr } = await supabase
+    .from('sequence_step_executions')
+    .update({
+      status: 'skipped',
+      skip_reason: 'Manuellement sautée par le recruteur',
+      executed_at: new Date().toISOString(),
+    })
+    .eq('id', executionId)
+    .in('status', PENDING_EXECUTION_STATUSES)
+    .select('id');
+  if (skipErr) {
+    console.error('[skip_execution] update failed:', skipErr);
+    return json({ success: false, error: 'Impossible de sauter cette étape' }, 500);
+  }
+  if (!skippedRows || skippedRows.length === 0) {
+    return json({ success: false, error: 'Étape déjà traitée entre-temps' }, 409);
+  }
+
+  const nextOrder = (step.step_order ?? 0) + 1;
+  const { error: enrErr } = await supabase
+    .from('sequence_enrollments')
+    .update({ current_step_order: nextOrder, updated_at: new Date().toISOString() })
+    .eq('id', enrollment.id);
+  if (enrErr) {
+    // L'étape est sautée mais la position n'a pas bougé : on le dit au lieu de
+    // laisser le janitor re-planifier l'étape sautée en silence.
+    console.error('[skip_execution] enrollment update failed:', enrErr);
+    return json({ success: false, error: 'Étape sautée, mais la position de la séquence n\'a pas pu être enregistrée' }, 500);
+  }
+
+  await scheduleNextStep(
+    supabase,
+    { ...enrollment, current_step_order: nextOrder },
+    step.step_order ?? 0,
+    undefined,
+    undefined,
+    0,
+    step.id,
+  );
+
+  console.log(`[skip_execution] ✅ exécution ${executionId} sautée (étape ${step.step_order}), enrollment ${enrollment.id} avancé à ${nextOrder}`);
+  return json({ success: true, execution_id: executionId, skipped_step_order: step.step_order, next_step_order: nextOrder });
+}
 
 // deno-lint-ignore no-explicit-any
 
@@ -357,15 +514,54 @@ async function handleProcess(supabase: any, force = false) {
           .from('sequence_step_executions')
           .select('enrollment_id')
           .in('enrollment_id', ids)
-          .in('status', ['scheduled', 'sending', 'waiting_event', 'quota_blocked']);
+          .in('status', PENDING_EXECUTION_STATUSES);
         const withPending = new Set((pendingExecs || []).map((e: { enrollment_id: string }) => e.enrollment_id));
         const dormant = activeEnrollments.filter((e: { id: string }) => !withPending.has(e.id)).slice(0, 5);
         for (const enr of dormant) {
-          console.warn(`[process] 🩹 Dormant active enrollment ${enr.id} (no pending execution) — rescheduling from step_order ${enr.current_step_order}`);
-          // scheduleNextStep planifie l'étape à current_step_order (l'étape
-          // "après" current_step_order - 1). Si plus rien à planifier, il
-          // complete proprement l'enrollment au lieu de le laisser zombie.
-          await scheduleNextStep(supabase, enr, (enr.current_step_order || 0) - 1);
+          // Reprendre à `current_step_order` était faux (BUG-022) : cette
+          // colonne n'est incrémentée qu'APRÈS le marquage 'sent' et jamais
+          // sur un échec. Une exécution partie dont l'incrément a échoué, ou
+          // une exécution 'failed', laissait le janitor recréer la MÊME étape
+          // une heure plus tard : message envoyé deux fois, ou échec définitif
+          // rejoué chaque heure jusqu'à l'auto-pause de la séquence entière.
+          // On repart donc de la dernière exécution réellement terminée, et
+          // pas du tout quand la dernière tentative est en échec.
+          const { data: execHistory } = await supabase
+            .from('sequence_step_executions')
+            .select('id, step_id, step_order, status, executed_at, created_at')
+            .eq('enrollment_id', enr.id)
+            .order('step_order', { ascending: false })
+            .limit(50);
+          const history = (execHistory || []) as Array<{
+            id: string; step_id: string | null; step_order: number | null;
+            status: string; executed_at: string | null; created_at: string | null;
+          }>;
+
+          const lastAttempt = [...history].sort((a, b) =>
+            new Date(b.executed_at || b.created_at || 0).getTime() -
+            new Date(a.executed_at || a.created_at || 0).getTime())[0];
+          if (lastAttempt?.status === 'failed') {
+            console.warn(`[process] ⏸️ Dormant enrollment ${enr.id}: dernière exécution en échec (${lastAttempt.id}) — mise en pause au lieu d'un rejeu horaire`);
+            await supabase.from('sequence_enrollments').update({
+              status: 'paused', updated_at: new Date().toISOString(),
+            }).eq('id', enr.id);
+            continue;
+          }
+
+          // history est trié par step_order décroissant : la première terminée
+          // est la plus avancée.
+          const lastDone = history.find((e) => DONE_EXECUTION_STATUSES.includes(e.status));
+          if (lastDone) {
+            console.warn(`[process] 🩹 Dormant active enrollment ${enr.id} — reprise après l'étape ${lastDone.step_order} (exécution ${lastDone.status})`);
+            await scheduleNextStep(supabase, enr, lastDone.step_order ?? 0, undefined, undefined, 0, lastDone.step_id ?? undefined);
+          } else {
+            // Aucune exécution terminée : enrollment créé sans première
+            // exécution (ancien bug frontend). scheduleNextStep planifie
+            // l'étape à current_step_order, ou complete l'enrollment s'il n'y
+            // a plus rien, au lieu de le laisser zombie.
+            console.warn(`[process] 🩹 Dormant active enrollment ${enr.id} sans exécution terminée — planification depuis step_order ${enr.current_step_order}`);
+            await scheduleNextStep(supabase, enr, (enr.current_step_order || 0) - 1);
+          }
           // touch updated_at pour ne pas re-traiter le même au prochain cycle
           await supabase.from('sequence_enrollments').update({ updated_at: new Date().toISOString() }).eq('id', enr.id);
         }
@@ -957,6 +1153,20 @@ async function handleProcess(supabase: any, force = false) {
           if (effectiveActionType === 'email') {
             const { data: freshExec } = await supabase.from('sequence_step_executions').select('status').eq('id', exec.id).single();
             if (freshExec && freshExec.status !== 'sending') {
+              // sequence-send-email a déjà écrit un statut plus précis. S'il
+              // est terminal-succès, l'email EST parti (cas fréquent : le
+              // timeout de 30 s renvoie une erreur au processeur alors que
+              // l'envoi a abouti). Le compter en échec laissait l'enrollment
+              // sans incrément ni étape suivante, donc rejoué par le janitor —
+              // deuxième email au candidat (BUG-022).
+              if (DONE_EXECUTION_STATUSES.includes(freshExec.status)) {
+                console.log(`[process] Email execution ${exec.id} déjà '${freshExec.status}' — traité comme un envoi réussi`);
+                await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
+                await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
+                results.processed++;
+                visibleActionsExecuted++;
+                continue;
+              }
               console.log(`[process] Email execution ${exec.id} already updated to '${freshExec.status}' by sequence-send-email — skipping error handling`);
               results.failed++;
               continue;
@@ -2387,10 +2597,18 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     }
   }
 
-  // Guard: prevent duplicate executions for the same enrollment+step (any non-terminal status)
-  const { data: existing } = await supabase.from('sequence_step_executions').select('id, status').eq('enrollment_id', enrollment.id).eq('step_id', nextStep.id).in('status', ['scheduled', 'sending', 'waiting_event', 'quota_blocked']);
+  // Garde anti-doublon. Les statuts pendants ont toujours été couverts ; on y
+  // ajoute les statuts terminaux (BUG-022) pour qu'une étape déjà partie ou
+  // volontairement sautée ne soit jamais re-planifiée. Exception : un saut de
+  // branche explicite (forceBranchStepId, ou routage par conditionResult) peut
+  // légitimement ramener sur une étape déjà exécutée dans une boucle.
+  const isExplicitBranchJump = !!forceBranchStepId || !!conditionResult;
+  const blockingStatuses = isExplicitBranchJump
+    ? PENDING_EXECUTION_STATUSES
+    : [...PENDING_EXECUTION_STATUSES, ...DONE_EXECUTION_STATUSES];
+  const { data: existing } = await supabase.from('sequence_step_executions').select('id, status').eq('enrollment_id', enrollment.id).eq('step_id', nextStep.id).in('status', blockingStatuses);
   if (existing && existing.length > 0) {
-    console.log(`[scheduleNextStep] Skipping duplicate: enrollment=${enrollment.id} step=${nextStep.id} (existing status=${existing[0].status})`);
+    console.log(`[scheduleNextStep] Skipping duplicate: enrollment=${enrollment.id} step=${nextStep.id} (existing status=${existing[0].status}, branchJump=${isExplicitBranchJump})`);
     return;
   }
 
