@@ -48,6 +48,31 @@ function sanitizeFilterId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_\-:]/g, '');
 }
 
+/**
+ * Exécute une recherche d'enrollments deux fois : sur `account_id` (compte
+ * d'enrôlement) puis sur `assigned_sender_id` (compte réellement utilisé en
+ * rotation multi-sender), et fusionne sans doublon.
+ *
+ * Sans le second passage, une réponse ou une acceptation reçue sur le compte
+ * qui a réellement envoyé n'était rattachée à aucun enrollment : relances
+ * envoyées après la réponse du candidat, wait_connection bloqué jusqu'au
+ * timeout (BUG-023). Deux requêtes plutôt qu'un `or` : les appelants combinent
+ * déjà un `or` sur le profil, et deux `or` dans une même requête PostgREST se
+ * lisent mal.
+ */
+async function findEnrollmentsBySenderAccount<T extends { id: string }>(
+  runQuery: (column: 'account_id' | 'assigned_sender_id') => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<{ rows: T[]; error: unknown }> {
+  const byAccount = await runQuery('account_id');
+  if (byAccount.error) return { rows: [], error: byAccount.error };
+  const bySender = await runQuery('assigned_sender_id');
+  if (bySender.error) return { rows: byAccount.data ?? [], error: null };
+
+  const merged = new Map<string, T>();
+  for (const row of [...(byAccount.data ?? []), ...(bySender.data ?? [])]) merged.set(row.id, row);
+  return { rows: [...merged.values()], error: null };
+}
+
 // Resolve Unipile credentials for the org that owns the given Unipile account_id.
 // Falls back to global env vars if no per-org credentials are found.
 async function resolveCredsForAccount(accountId: string, supabase: SupabaseClient): Promise<{ apiKey: string; dsn: string }> {
@@ -660,13 +685,15 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
 
   // Find enrollments waiting for this connection
   // Match on profile_id OR resolved_profile_id to handle Recruiter IDs (AEM -> ACo)
-  const { data: enrollments, error: enrollError } = await supabase
-    .from('sequence_enrollments')
-    .select('*')
-    .eq('account_id', account_id)
-    .eq('status', 'active')
-    .in('connection_status', ['pending_invite', 'unknown', 'not_connected'])
-    .or(`profile_id.eq.${sanitizeFilterId(profileId)},resolved_profile_id.eq.${sanitizeFilterId(profileId)},provider_id.eq.${sanitizeFilterId(profileId)}`);
+  const { rows: enrollments, error: enrollError } = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+    (column) => supabase
+      .from('sequence_enrollments')
+      .select('*')
+      .eq(column, account_id)
+      .eq('status', 'active')
+      .in('connection_status', ['pending_invite', 'unknown', 'not_connected'])
+      .or(`profile_id.eq.${sanitizeFilterId(profileId)},resolved_profile_id.eq.${sanitizeFilterId(profileId)},provider_id.eq.${sanitizeFilterId(profileId)}`),
+  );
 
   if (enrollError) {
     console.error('[unipile-webhook] Error fetching enrollments:', enrollError);
@@ -853,12 +880,14 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   let enrollments: SequenceEnrollment[] = [];
   
   // Try exact match first (profile_id or resolved_profile_id)
-  const { data: exactMatch, error: exactError } = await supabase
-    .from('sequence_enrollments')
-    .select('*')
-    .eq('account_id', account_id)
-    .eq('status', 'active')
-    .or(`profile_id.eq.${sanitizeFilterId(senderId)},resolved_profile_id.eq.${sanitizeFilterId(senderId)}`);
+  const { rows: exactMatch, error: exactError } = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+    (column) => supabase
+      .from('sequence_enrollments')
+      .select('*')
+      .eq(column, account_id)
+      .eq('status', 'active')
+      .or(`profile_id.eq.${sanitizeFilterId(senderId)},resolved_profile_id.eq.${sanitizeFilterId(senderId)}`),
+  );
 
   if (exactError) {
     console.error('[unipile-webhook] Error fetching enrollments (exact):', exactError);
@@ -866,18 +895,20 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   }
 
   if (exactMatch && exactMatch.length > 0) {
-    enrollments = exactMatch as SequenceEnrollment[];
+    enrollments = exactMatch;
   } else {
     // Try matching by profile URL containing the sender ID (for cases where format differs)
-    const { data: urlMatch, error: urlError } = await supabase
-      .from('sequence_enrollments')
-      .select('*')
-      .eq('account_id', account_id)
-      .eq('status', 'active')
-      .like('profile_url', `%${sanitizeFilterId(senderId)}%`);
+    const { rows: urlMatch, error: urlError } = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+      (column) => supabase
+        .from('sequence_enrollments')
+        .select('*')
+        .eq(column, account_id)
+        .eq('status', 'active')
+        .like('profile_url', `%${sanitizeFilterId(senderId)}%`),
+    );
 
     if (!urlError && urlMatch && urlMatch.length > 0) {
-      enrollments = urlMatch as SequenceEnrollment[];
+      enrollments = urlMatch;
       console.log('[unipile-webhook] Matched via profile_url fallback');
     }
   }
@@ -1199,12 +1230,17 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
   //    account_id. ilike avec jokers ÉCHAPPÉS (audit 2026-07, L5) : '_' et '%'
   //    sont des jokers SQL — sans échappement, jo_n@x.com matchait jon@x.com.
   const escapedSender = senderEmail.replace(/([%_\\])/g, '\\$1');
-  const { data: enrollments, error: enrErr } = await supabase
-    .from('sequence_enrollments')
-    .select('id, sequence_id, profile_id, account_id, email_used, organization_id')
-    .eq('account_id', account_id)
-    .eq('status', 'active')
-    .ilike('email_used', escapedSender);
+  const { rows: enrollments, error: enrErr } = await findEnrollmentsBySenderAccount<{
+    id: string; sequence_id: string; profile_id: string; account_id: string;
+    email_used: string | null; organization_id: string | null;
+  }>(
+    (column) => supabase
+      .from('sequence_enrollments')
+      .select('id, sequence_id, profile_id, account_id, email_used, organization_id')
+      .eq(column, account_id)
+      .eq('status', 'active')
+      .ilike('email_used', escapedSender),
+  );
 
   if (enrErr) {
     console.error('[unipile-webhook][mail] Error fetching enrollments:', enrErr);
@@ -1318,11 +1354,13 @@ async function handleBounce(supabase: SupabaseClient, accountId: string, payload
   for (const addr of candidates) {
     // On ne suppress QUE les adresses qu'on a réellement séquencées depuis ce
     // compte — sinon un NDR bruité pourrait blacklister une adresse au hasard.
-    const { data: enrs, error: enrErr } = await supabase
-      .from('sequence_enrollments')
-      .select('id, status')
-      .eq('account_id', accountId)
-      .ilike('email_used', escapeLike(addr));
+    const { rows: enrs, error: enrErr } = await findEnrollmentsBySenderAccount<{ id: string; status: string }>(
+      (column) => supabase
+        .from('sequence_enrollments')
+        .select('id, status')
+        .eq(column, accountId)
+        .ilike('email_used', escapeLike(addr)),
+    );
     if (enrErr) {
       console.error('[unipile-webhook][bounce] enrollment lookup failed:', enrErr);
       continue;

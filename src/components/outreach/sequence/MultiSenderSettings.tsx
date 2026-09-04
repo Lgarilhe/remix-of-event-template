@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Users, Mail, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import linkedinLogo from '@/assets/linkedin-logo.svg';
@@ -109,7 +110,16 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   }, [senderAccounts, teamMembers]);
 
   const handleSelectMember = (member: typeof teamMembers[number]) => {
-    const accountId = member.linkedInAccountId || member.emailAccountId || member.userId;
+    // Un expéditeur doit être un compte d'envoi. Le repli sur userId plaçait un
+    // identifiant d'utilisateur là où le moteur attend un identifiant de compte
+    // (assigned_sender_id) : tous les envois de ce sender échouaient (BUG-023).
+    // La liste désactive déjà ces membres ; ce garde-fou empêche la valeur
+    // d'entrer en base par un autre chemin.
+    const accountId = member.linkedInAccountId || member.emailAccountId;
+    if (!accountId) {
+      toast.error('Ce membre n\'a aucun compte LinkedIn ou email connecté');
+      return;
+    }
     onSenderAccountsChange([
       ...senderAccounts,
       { account_id: accountId, email: member.email, daily_limit: 50 },

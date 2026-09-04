@@ -832,7 +832,7 @@ async function handleProcess(supabase: any, force = false) {
           }
         }
 
-        const conditionResult = await checkStepCondition(step.condition_type, enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url, supabase, enrollment.id, enrollment, step.condition_value, uCreds.apiKey, uCreds.dsn);
+        const conditionResult = await checkStepCondition(step.condition_type, effectiveAccountId || enrollment.account_id, enrollment.profile_id, step.wait_for_event, enrollment.profile_url, supabase, enrollment.id, enrollment, step.condition_value, uCreds.apiKey, uCreds.dsn);
         if (conditionResult === 'wait') {
           await supabase.from('sequence_step_executions').update({ status: 'waiting_event' }).eq('id', exec.id);
           results.skipped++;
@@ -970,7 +970,7 @@ async function handleProcess(supabase: any, force = false) {
               // Use last sent date if available, otherwise fall back to 7 days ago
               const replyCheckDate = lastSentDate || new Date(Date.now() - 7 * 24 * 3600000).toISOString();
               const hasReplied = await checkForReplyAfterDate(
-                enrollment.account_id,
+                effectiveAccountId || enrollment.account_id,
                 enrollment.resolved_profile_id || enrollment.profile_id,
                 replyCheckDate,
                 enrollment.profile_url,
@@ -1261,8 +1261,9 @@ async function handleProcess(supabase: any, force = false) {
           // pas un 429 transitoire) → on met TOUT le compte en pause jusqu'à
           // demain, pas seulement ce step, pour que tous les chemins d'envoi
           // reculent. Conformité #260513-007211.
-          if (enrollment.account_id && /limit_exceeded|cannot_resend_yet|cannot_resend_within_24hrs/i.test(errorStr)) {
-            await recordUsageSignal(supabase, enrollment.account_id, 100, enrollment.user_timezone);
+          const limitedAccountId = effectiveAccountId || enrollment.account_id;
+          if (limitedAccountId && /limit_exceeded|cannot_resend_yet|cannot_resend_within_24hrs/i.test(errorStr)) {
+            await recordUsageSignal(supabase, limitedAccountId, 100, enrollment.user_timezone);
           }
 
           if (isAccountDisconnectedError(errorStr)) {
@@ -1426,7 +1427,7 @@ async function handleCheckReplies(supabase: any) {
     const afterDate = lastSentExec.executed_at;
 
     const rCreds = await resolveUnipileCreds(enrollment.organization_id, supabase);
-    if (await checkForReplyAfterDate(enrollment.account_id, enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase, rCreds.apiKey, rCreds.dsn)) {
+    if (await checkForReplyAfterDate(senderAccountFor(enrollment), enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase, rCreds.apiKey, rCreds.dsn)) {
       await supabase.from('sequence_enrollments').update({ status: 'replied', replied_at: new Date().toISOString() }).eq('id', enrollment.id);
       await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: 'Reply detected' }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
       await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
@@ -1598,7 +1599,7 @@ async function handleCheckWaitEvents(supabase: any) {
         eventOccurred = true;
         console.log(`[handleCheckWaitEvents] DB hit: ${enrollment.profile_name} already FIRST_DEGREE/connected`);
       } else {
-        const profile = await getProfileInfo(enrollment.account_id, enrollment.profile_id, enrollment.profile_url, weCreds.apiKey, weCreds.dsn);
+        const profile = await getProfileInfo(senderAccountFor(enrollment, step), enrollment.profile_id, enrollment.profile_url, weCreds.apiKey, weCreds.dsn);
         eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
         // Persist network_distance + provider_id to DB for future lookups
         if (profile) {
@@ -1609,7 +1610,7 @@ async function handleCheckWaitEvents(supabase: any) {
         }
       }
     } else if (step.wait_for_event === 'reply_received') {
-      eventOccurred = await checkHasProspectReplied(enrollment.account_id, enrollment.profile_id, weCreds.apiKey, weCreds.dsn);
+      eventOccurred = await checkHasProspectReplied(senderAccountFor(enrollment, step), enrollment.profile_id, weCreds.apiKey, weCreds.dsn);
     }
 
     if (eventOccurred) {
@@ -1688,6 +1689,23 @@ async function pickSenderForRotation(supabase: any, sequence: any): Promise<{ ac
 }
 
 function needsMessage(actionType: string): boolean { return ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message'].includes(actionType); }
+
+/**
+ * Compte LinkedIn réellement utilisé pour cet enrollment : celui qui envoie
+ * (rotation multi-sender), donc celui sur lequel LinkedIn doit être interrogé
+ * pour les conditions, la détection de réponse et la personnalisation.
+ * Les lire sur `enrollment.account_id` alors que l'envoi partait d'un autre
+ * compte rendait les réponses et les acceptations d'invitation invisibles :
+ * relances envoyées après une réponse, wait_connection bloqué jusqu'au
+ * timeout (BUG-023). Même ordre de résolution que l'envoi dans
+ * executeStepAction.
+ */
+function senderAccountFor(
+  enrollment: { assigned_sender_id?: string | null; account_id?: string | null },
+  step?: { sender_id?: string | null } | null,
+): string {
+  return (step?.sender_id || enrollment.assigned_sender_id || enrollment.account_id || '') as string;
+}
 
 // Smart truncation that respects sentence/word boundaries instead of
 // hard-cutting mid-word. Used for the LinkedIn invitation note (300 char
@@ -3451,8 +3469,15 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
   const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   try {
     // Fetch profile and posts in parallel
-    const profilePromise = fetchWithTimeout(`${effectiveDsn}/api/v1/users/${enrollment.profile_id}?account_id=${enrollment.account_id}`, { headers: { 'X-API-KEY': effectiveApiKey } }).then(r => r.ok ? r.json() : null).catch(() => null);
-    const postsPromise = fetchRecentPostsForSequence(enrollment.account_id as string, enrollment.profile_id as string, 3, 90, effectiveApiKey, effectiveDsn);
+    // Vue du profil depuis le compte qui enverra le message : en rotation
+    // multi-sender, lire depuis un autre compte donne une vue différente
+    // (degré de relation, posts visibles) de celle du destinataire réel.
+    const personalizationAccountId = senderAccountFor(
+      enrollment as { assigned_sender_id?: string | null; account_id?: string | null },
+      step as { sender_id?: string | null },
+    );
+    const profilePromise = fetchWithTimeout(`${effectiveDsn}/api/v1/users/${enrollment.profile_id}?account_id=${encodeURIComponent(personalizationAccountId)}`, { headers: { 'X-API-KEY': effectiveApiKey } }).then(r => r.ok ? r.json() : null).catch(() => null);
+    const postsPromise = fetchRecentPostsForSequence(personalizationAccountId, enrollment.profile_id as string, 3, 90, effectiveApiKey, effectiveDsn);
 
     // Fetch job context from sourcing_projects.job_details (universal, not tied to any specific ATS)
     // Falls back to Notion API if job_details is empty and NOTION_API_KEY is configured (legacy)
