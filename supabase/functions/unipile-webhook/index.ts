@@ -711,67 +711,27 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
       // Verify this is indeed a wait_connection step
       const { data: stepDef } = await supabase
         .from('sequence_steps')
-        .select('action_type, if_true_goto_step')
+        .select('action_type')
         .eq('id', waitStep.step_id)
         .single();
 
       if (stepDef?.action_type === 'wait_connection') {
-        // Mark as sent (connection accepted)
-        await supabase
+        // Re-arme l'étape d'attente et laisse process-sequences la franchir au
+        // prochain cycle (moins d'une minute). Avant, le webhook marquait
+        // l'exécution 'sent' puis ne planifiait la suite QUE si le step portait
+        // un if_true_goto_step : les séquences linéaires restaient bloquées
+        // jusqu'au timeout, et cette planification maison ignorait les heures
+        // ouvrées, les variantes A/B et la résolution de branche. Une seule
+        // logique de progression, celle du moteur (BUG-024).
+        const { error: rearmError } = await supabase
           .from('sequence_step_executions')
-          .update({
-            status: 'sent',
-            executed_at: new Date().toISOString(),
-          })
+          .update({ status: 'scheduled', scheduled_at: new Date().toISOString() })
           .eq('id', waitStep.id);
-
-        // Determine next step (if_true_goto_step = connection accepted path)
-        const nextStepId = stepDef.if_true_goto_step;
-        if (nextStepId) {
-          // Get the next step details to schedule it
-          const { data: nextStep } = await supabase
-            .from('sequence_steps')
-            .select('*')
-            .eq('id', nextStepId)
-            .single();
-
-          if (nextStep) {
-            // Schedule next step with appropriate delay
-            const delayMs = ((nextStep.delay_days || 0) * 86400 + (nextStep.delay_hours || 0) * 3600 + (nextStep.delay_minutes || 0) * 60) * 1000;
-            const scheduledAt = new Date(Date.now() + delayMs);
-            
-            // Check for duplicates first
-            const { data: existing } = await supabase
-              .from('sequence_step_executions')
-              .select('id')
-              .eq('enrollment_id', enrollment.id)
-              .eq('step_id', nextStepId)
-              .in('status', ['scheduled', 'sent', 'waiting_event'])
-              .limit(1);
-
-            if (!existing || existing.length === 0) {
-              await supabase
-                .from('sequence_step_executions')
-                .insert({
-                  enrollment_id: enrollment.id,
-                  step_id: nextStepId,
-                  step_order: nextStep.step_order,
-                  status: 'scheduled',
-                  scheduled_at: scheduledAt.toISOString(),
-                });
-
-              // Update enrollment current step
-              await supabase
-                .from('sequence_enrollments')
-                .update({ current_step_order: nextStep.step_order })
-                .eq('id', enrollment.id);
-
-              console.log(`[unipile-webhook] Scheduled next step ${nextStep.action_type} (order ${nextStep.step_order}) for enrollment ${enrollment.id}`);
-            }
-          }
+        if (rearmError) {
+          console.error('[unipile-webhook] Failed to re-arm wait_connection execution:', rearmError);
+        } else {
+          console.log(`[unipile-webhook] Re-armed wait_connection step for enrollment ${enrollment.id}`);
         }
-
-        console.log(`[unipile-webhook] Resolved wait_connection step for enrollment ${enrollment.id}`);
       }
     }
 

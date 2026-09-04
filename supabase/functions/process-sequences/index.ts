@@ -406,7 +406,14 @@ async function handleProcess(supabase: any, force = false) {
 
     // Actions qui ne laissent AUCUNE trace visible côté candidat — retry
     // toujours sans risque. Utilisé par le janitor ci-dessous ET le batching.
-    const INVISIBLE_ACTIONS = new Set(['profile_visit', 'check_connection', 'wait_connection']);
+    // Actions sans envoi visible par le candidat : elles ne consomment pas un
+    // des 3 slots visibles du cycle. wait_reply / wait_profile_visit /
+    // condition_branch en faisaient partie de fait mais étaient absents de la
+    // liste, donc plafonnés comme des envois (BUG-025).
+    const INVISIBLE_ACTIONS = new Set([
+      'profile_visit', 'check_connection', 'wait_connection',
+      'wait_reply', 'wait_profile_visit', 'condition_branch',
+    ]);
 
     // Recovery: unstick executions stuck in 'sending' for more than 5 minutes
     // This happens when sequence-send-email times out or crashes mid-execution
@@ -856,6 +863,67 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
+        // ─── Étapes d'attente et de condition franchies ──────────────────
+        // Ces étapes n'ont rien à envoyer : quand leur condition est vraie,
+        // elles sont franchies ICI. Avant, wait_connection renvoyait toujours
+        // '__WAIT_EVENT__' depuis executeStepAction (boucle waiting_event ↔
+        // scheduled toutes les 15 min, message suivant envoyé seulement par la
+        // branche timeout — BUG-024), et wait_reply / wait_profile_visit /
+        // condition_branch sans enfant tombaient dans le `default`
+        // (« Unknown action ») donc en échec définitif (BUG-025).
+        // Liste fermée : une étape qui ENVOIE quelque chose (message, InMail,
+        // email, invitation, visite, check_connection) n'est jamais franchie
+        // ici, même si elle porte un wait_for_event — sinon elle serait
+        // marquée envoyée sans que le candidat reçoive rien.
+        const WAIT_ONLY_ACTIONS = new Set(['wait_connection', 'wait_reply', 'wait_profile_visit', 'condition_branch']);
+        const EXECUTABLE_ACTIONS = new Set([
+          'message', 'smart_message', 'inmail', 'email', 'whatsapp_message',
+          'connection_request', 'profile_visit', 'check_connection',
+        ]);
+        const isWaitStep = WAIT_ONLY_ACTIONS.has(step.action_type)
+          || (!EXECUTABLE_ACTIONS.has(step.action_type)
+              && (!!step.wait_for_event || step.condition_type === 'wait_until_connected'));
+        if (isWaitStep) {
+          const waitedForReply = step.action_type === 'wait_reply' || step.wait_for_event === 'reply_received';
+          const waitedForConnection = step.action_type === 'wait_connection'
+            || step.wait_for_event === 'connection_accepted'
+            || step.condition_type === 'wait_until_connected';
+
+          if (waitedForReply) {
+            // Le candidat a répondu : la séquence s'arrête là, sinon la
+            // relance « sans réponse » partait après sa réponse.
+            console.log(`[process] ✅ ${enrollment.profile_name} a répondu (étape ${step.step_order}) — clôture de l'enrollment`);
+            await closeEnrollmentAsReplied(supabase, enrollment, exec.id, 'Réponse détectée sur une étape d\'attente');
+            results.processed++;
+            continue;
+          }
+
+          console.log(`[process] ➡️ Étape d'attente ${step.action_type} franchie pour ${enrollment.profile_name} (étape ${step.step_order})`);
+          const { error: waitExecErr } = await supabase.from('sequence_step_executions').update({
+            status: 'sent',
+            executed_at: new Date().toISOString(),
+            final_message: `Attente franchie : ${step.action_type}`,
+          }).eq('id', exec.id);
+          if (waitExecErr) console.error(`[process] étape d'attente ${exec.id} non marquée:`, waitExecErr);
+
+          const waitEnrollmentUpdate: Record<string, unknown> = {
+            current_step_order: step.step_order + 1,
+            updated_at: new Date().toISOString(),
+          };
+          if (waitedForConnection) waitEnrollmentUpdate.connection_status = 'connected';
+          const { error: waitEnrErr } = await supabase.from('sequence_enrollments')
+            .update(waitEnrollmentUpdate).eq('id', enrollment.id);
+          if (waitEnrErr) console.error(`[process] enrollment ${enrollment.id} non avancé après attente:`, waitEnrErr);
+
+          // Condition vraie → chemin « oui » du step quand il en définit un
+          // (if_true_goto_step), sinon progression linéaire. C'est le routage
+          // qu'appliquait le webhook new_relation pour wait_connection.
+          const trueBranchStepId = (step.if_true_goto_step as string | null) || undefined;
+          await scheduleNextStep(supabase, enrollment, step.step_order, trueBranchStepId, undefined, 0, step.id);
+          results.processed++;
+          continue;
+        }
+
         // Guard: prevent follow-up messages from being sent if no prior message was sent in this enrollment
         // BUT only if there ARE prior message-type steps that SHOULD have been sent (i.e., this is truly a follow-up)
         if (needsMessage(step.action_type) && step.step_order > 0) {
@@ -1114,6 +1182,19 @@ async function handleProcess(supabase: any, force = false) {
 
         const executeResult = await executeStepAction(effectiveActionType, enrollment, step,
           { ...exec, final_message: finalMessage, final_subject: finalSubject }, supabase, uCreds.apiKey, uCreds.dsn);
+
+        if (executeResult.error === '__SKIP_UNSUPPORTED__') {
+          console.warn(`[process] Action « ${effectiveActionType} » non implémentée — étape ${step.step_order} sautée pour ${enrollment.profile_name}`);
+          await supabase.from('sequence_step_executions').update({
+            status: 'skipped',
+            skip_reason: `Type d'action non supporté : ${effectiveActionType}`,
+            executed_at: new Date().toISOString(),
+          }).eq('id', exec.id);
+          await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
+          results.skipped++;
+          continue;
+        }
 
         if (executeResult.error === '__WAIT_EVENT__') {
           // Special case: wait_connection — transition to waiting_event
@@ -1463,7 +1544,10 @@ async function handleCheckWaitEvents(supabase: any) {
     const enrollment = exec.enrollment;
     if (!enrollment) continue;
     await supabase.from('sequence_step_executions').update({ status: 'scheduled', scheduled_at: new Date().toISOString() }).eq('id', exec.id);
-    await logAnalytics(supabase, enrollment.sequence_id, 'invites_accepted');
+    // Pas de logAnalytics('invites_accepted') ici : l'acceptation est déjà
+    // comptée par le webhook new_relation et par la phase 2. Tant que
+    // wait_connection rebouclait (BUG-024), ce compteur montait de 1 toutes
+    // les 15 minutes par enrollment.
     fastUnblocked++;
     console.log(`[handleCheckWaitEvents] Fast unblock: ${enrollment.profile_name}`);
   }
@@ -1529,6 +1613,14 @@ async function handleCheckWaitEvents(supabase: any) {
     }
 
     if (eventOccurred) {
+      if (step.wait_for_event === 'reply_received' || step.action_type === 'wait_reply') {
+        // Une réponse est terminale : re-planifier l'étape faisait repasser
+        // l'enrollment par le moteur sans jamais le clore, et la relance
+        // « sans réponse » partait après la réponse du candidat (BUG-025).
+        await closeEnrollmentAsReplied(supabase, enrollment, exec.id, 'Réponse détectée (polling)');
+        eventsTriggered++;
+        continue;
+      }
       await supabase.from('sequence_step_executions').update({ status: 'scheduled', scheduled_at: new Date().toISOString() }).eq('id', exec.id);
       if (waitsForConnection) {
         await supabase.from('sequence_enrollments').update({ connection_status: 'connected', network_distance: 'FIRST_DEGREE' }).eq('id', enrollment.id);
@@ -2973,9 +3065,47 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         await supabase.from('sequence_enrollments').update({ connection_status: 'pending_invite' }).eq('id', enrollment.id);
         return { success: true };
       }
-      default: return { success: false, error: `Unknown action: ${actionType}` };
+      // Type d'action non implémenté (ex. wait_profile_visit persisté par le
+      // builder) : sauter l'étape et poursuivre. En échec, l'enrollment était
+      // rejoué chaque heure par le janitor et les échecs cumulés pouvaient
+      // auto-pauser toute la séquence (BUG-025).
+      default: return { success: false, error: '__SKIP_UNSUPPORTED__' };
     }
   } catch (err) { return { success: false, error: err instanceof Error ? err.message : 'Failed' }; }
+}
+
+/**
+ * Clôture un enrollment parce que le candidat a répondu, depuis n'importe quel
+ * point de détection (étape d'attente franchie, polling). Marque l'exécution
+ * qui portait l'attente comme satisfaite, annule TOUTES les exécutions encore
+ * pendantes — y compris waiting_event et quota_blocked, jusque-là laissées
+ * orphelines — et compte la réponse une fois.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function closeEnrollmentAsReplied(supabase: any, enrollment: { id: string; sequence_id?: string | null }, fulfilledExecutionId: string | null, reason: string) {
+  const nowIso = new Date().toISOString();
+
+  if (fulfilledExecutionId) {
+    const { error } = await supabase.from('sequence_step_executions').update({
+      status: 'sent', executed_at: nowIso, final_message: reason,
+    }).eq('id', fulfilledExecutionId);
+    if (error) console.error(`[closeAsReplied] exécution ${fulfilledExecutionId} non marquée:`, error);
+  }
+
+  const { error: enrErr } = await supabase.from('sequence_enrollments').update({
+    status: 'replied', replied_at: nowIso, updated_at: nowIso,
+  }).eq('id', enrollment.id);
+  if (enrErr) console.error(`[closeAsReplied] enrollment ${enrollment.id} non clôturé:`, enrErr);
+
+  let cancelQuery = supabase.from('sequence_step_executions').update({
+    status: 'cancelled', skip_reason: reason, executed_at: nowIso,
+  }).eq('enrollment_id', enrollment.id).in('status', PENDING_EXECUTION_STATUSES);
+  if (fulfilledExecutionId) cancelQuery = cancelQuery.neq('id', fulfilledExecutionId);
+  const { error: cancelErr } = await cancelQuery;
+  if (cancelErr) console.error(`[closeAsReplied] exécutions pendantes de ${enrollment.id} non annulées:`, cancelErr);
+
+  if (enrollment.sequence_id) await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
 }
 
 // deno-lint-ignore no-explicit-any
