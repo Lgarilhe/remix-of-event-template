@@ -225,22 +225,26 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
   const handleRunCycle = async () => {
     setRunning(true);
     try {
+      // Avance les actions en attente de MON organisation ; le cron les envoie
+      // au cycle suivant. Déclencher un cycle complet (`process` avec force)
+      // touchait toutes les organisations et était refusé à tout utilisateur
+      // sans rôle plateforme.
       const { data: result, error } = await invokeEdgeFunction('process-sequences', {
-        action: 'process',
-        force: true,
+        action: 'nudge_sequences',
       });
       if (error) throw error;
-      const skipped = (result as any)?.skipped_reason;
-      if (skipped) {
-        toast.info(`Cycle ignoré : ${skipped === 'lock_held' ? 'un autre cycle tourne déjà' : skipped}`);
-      } else {
-        const processed = (result as any)?.processed || 0;
-        toast.success(`Cycle terminé — ${processed} action(s) traitée(s)`);
-      }
+      const payload = result as { success?: boolean; rescheduled?: number; error?: string } | null;
+      if (!payload?.success) throw new Error(payload?.error || 'Échec');
+      const count = payload.rescheduled || 0;
+      toast.success(count > 0
+        ? `${count} action(s) avancée(s) — envoi dans la minute qui vient`
+        : 'Aucune action à avancer');
       await refresh();
     } catch (err) {
       console.error('[SequenceDiagnostic] runCycle error:', err);
-      toast.error('Erreur lors du cycle manuel');
+      toast.error('Erreur lors du déclenchement', {
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setRunning(false);
     }

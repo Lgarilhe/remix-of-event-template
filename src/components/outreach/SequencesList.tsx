@@ -119,21 +119,29 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const handleForceReschedule = async () => {
     setForceRescheduling(true);
     try {
+      // `nudge_sequences` avance les actions de MON organisation et laisse le
+      // cron les envoyer avec ses garde-fous. Avant, l'UI appelait
+      // `force_reschedule` puis `process` avec force : deux actions qui
+      // balayaient toutes les organisations et que le serveur refusait à tout
+      // utilisateur sans rôle plateforme (401).
       const { data, error } = await invokeEdgeFunction('process-sequences', {
-        action: 'force_reschedule',
+        action: 'nudge_sequences',
+        organization_id: organizationId,
       });
       if (error) throw error;
-      const count = (data as any)?.rescheduled || 0;
+      const payload = data as { success?: boolean; rescheduled?: number; error?: string } | null;
+      if (!payload?.success) throw new Error(payload?.error || 'Échec de l\'accélération');
+      const count = payload.rescheduled || 0;
       if (count > 0) {
-        toast.success(`${count} action(s) avancée(s) à maintenant — elles partent dans les prochaines minutes !`);
-        // Trigger process immediately after reschedule
-        await invokeEdgeFunction('process-sequences', { action: 'process', force: true });
+        toast.success(`${count} action(s) avancée(s) — elles partent dans la minute qui vient.`);
       } else {
-        toast.info('Aucune action en attente à avancer pour aujourd\'hui');
+        toast.info('Aucune action à avancer pour le moment');
       }
     } catch (err) {
       console.error('Force reschedule error:', err);
-      toast.error('Erreur lors de l\'accélération');
+      toast.error('Erreur lors de l\'accélération', {
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setForceRescheduling(false);
     }

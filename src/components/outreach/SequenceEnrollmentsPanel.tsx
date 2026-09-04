@@ -430,28 +430,28 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
   const skipStep = async (executionId: string) => {
     try {
-      // Skip : marque l'étape skipped, le cron passera à la suivante automatiquement
-      const { error } = await supabase
-        .from('sequence_step_executions')
-        .update({
-          status: 'skipped',
-          skip_reason: 'Manuellement sautée par le recruteur',
-          executed_at: new Date().toISOString(),
-        })
-        .eq('id', executionId);
+      // Une seule opération serveur : elle marque l'étape sautée, avance la
+      // position de l'enrollment et planifie la suivante. Avant, le front
+      // écrivait 'skipped' puis déclenchait un cycle : rien n'avançait et le
+      // janitor re-planifiait l'étape sautée une heure plus tard — l'InMail
+      // écarté partait quand même.
+      const { data, error } = await invokeEdgeFunction('process-sequences', {
+        action: 'skip_execution',
+        execution_id: executionId,
+      });
       if (error) throw error;
-
-      // Trigger un cycle pour scheduler la suivante immédiatement
-      await invokeEdgeFunction('process-sequences', { action: 'process', force: true })
-        .catch(() => {}); // non-bloquant
+      const payload = data as { success?: boolean; error?: string } | null;
+      if (!payload?.success) throw new Error(payload?.error || 'Échec du saut d\'étape');
 
       toast.success('Étape sautée', {
-        description: 'La séquence passera à l\'étape suivante.',
+        description: 'La séquence passe à l\'étape suivante.',
       });
       await fetchEnrollments();
     } catch (err) {
       console.error('[EnrollmentsPanel] skipStep failed:', err);
-      toast.error('Erreur lors du saut d\'étape');
+      toast.error('Erreur lors du saut d\'étape', {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 
@@ -505,38 +505,36 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const processSequencesNow = async () => {
     try {
       setProcessingSequences(true);
-      toast.info('Traitement des séquences en cours...');
-      
-      // Call all sequence processing actions sequentially to avoid lock contention
-      const processRes = await invokeEdgeFunction('process-sequences', { action: 'process' });
-      
-      if (processRes.error) {
-        console.error('[processSequencesNow] process error:', processRes.error);
-        toast.error(`Erreur: ${processRes.error.message || 'Échec du traitement'}`);
+
+      // Avance les actions de CETTE séquence ; le cron les envoie au cycle
+      // suivant avec ses garde-fous (heures ouvrées, quotas, santé du compte,
+      // vérification de réponse). Avant, l'UI déclenchait un cycle complet
+      // toutes organisations confondues, refusé à tout utilisateur sans rôle
+      // plateforme, et les deux vérifications globales qui suivaient
+      // (check_replies, check_wait_events) tournent de toute façon par cron.
+      const { data, error } = await invokeEdgeFunction('process-sequences', {
+        action: 'nudge_sequences',
+        sequence_id: sequenceId,
+      });
+
+      if (error) {
+        console.error('[processSequencesNow] error:', error);
+        toast.error(`Erreur : ${error.message || 'Échec du traitement'}`);
         return;
       }
-      
-      const processResult = processRes.data as any;
-      
-      if (processResult?.success) {
-        const { processed = 0, failed = 0, skipped = 0, quota_blocked = 0 } = processResult.results || {};
-        let message = `Traitement terminé: ${processed} action(s) exécutée(s)`;
-        if (failed > 0) message += `, ${failed} échouée(s)`;
-        if (skipped > 0) message += `, ${skipped} ignorée(s)`;
-        if (quota_blocked > 0) message += `, ${quota_blocked} bloquée(s) (quota)`;
-        
-        toast.success(message);
-      } else {
-        console.error('[processSequencesNow] Unexpected response:', processResult);
-        toast.error(processResult?.error || 'Erreur lors du traitement');
+
+      const payload = data as { success?: boolean; rescheduled?: number; error?: string } | null;
+      if (!payload?.success) {
+        console.error('[processSequencesNow] Unexpected response:', payload);
+        toast.error(payload?.error || 'Erreur lors du traitement');
+        return;
       }
 
-      // Run secondary checks (non-blocking)
-      await Promise.allSettled([
-        invokeEdgeFunction('process-sequences', { action: 'check_replies' }),
-        invokeEdgeFunction('process-sequences', { action: 'check_wait_events' }),
-      ]);
-      
+      const count = payload.rescheduled || 0;
+      toast.success(count > 0
+        ? `${count} action(s) avancée(s) — elles partent dans la minute qui vient.`
+        : 'Aucune action à avancer : tout est déjà en file ou terminé.');
+
       await fetchEnrollments();
     } catch (error) {
       console.error('[processSequencesNow] Exception:', error);

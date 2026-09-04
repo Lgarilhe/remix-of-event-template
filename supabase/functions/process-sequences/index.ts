@@ -34,7 +34,7 @@ const INTERNAL_ONLY_ACTIONS = new Set([
 ]);
 // Actions déclenchables par un membre depuis l'UI, toujours bornées à son
 // organisation, vérifiée dans le handler (MQ-002).
-const MEMBER_ACTIONS = new Set(['skip_execution']);
+const MEMBER_ACTIONS = new Set(['skip_execution', 'nudge_sequences']);
 
 // Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -226,6 +226,14 @@ Deno.serve(async (req) => {
           callerUserId,
         );
         break;
+      case 'nudge_sequences':
+        response = await handleNudgeSequences(
+          supabase,
+          typeof body.organization_id === 'string' ? body.organization_id : null,
+          typeof body.sequence_id === 'string' ? body.sequence_id : null,
+          callerUserId,
+        );
+        break;
       case 'process':
         response = await handleProcess(supabase, !!force);
         break;
@@ -272,6 +280,89 @@ Deno.serve(async (req) => {
 });
 
 // ============ ACTION HANDLERS ============
+
+/**
+ * Avance à maintenant les actions déjà planifiées d'une organisation (ou d'une
+ * seule séquence), pour le bouton « Envoyer tout » / « Traiter maintenant ».
+ *
+ * Remplace côté UI `force_reschedule` et `process` avec force, qui balayaient
+ * TOUTES les organisations depuis un fuseau codé en dur, et qui étaient de
+ * toute façon refusés à tout client (rôle plateforme exigé — SEC-041, MQ-002).
+ * L'envoi lui-même reste au cron, avec ses garde-fous (heures ouvrées, quotas,
+ * santé du compte, vérification de réponse) : les actions avancées partent au
+ * cycle suivant, moins d'une minute plus tard.
+ *
+ * Les invitations LinkedIn sont exclues, comme dans l'ancien
+ * `force_reschedule` : leur quota hebdomadaire ne supporte pas une avance en
+ * masse.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function handleNudgeSequences(supabase: any, organizationId: string | null, sequenceId: string | null, callerUserId: string | null): Promise<Response> {
+  const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), {
+    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+  let orgId = organizationId;
+  if (callerUserId) {
+    if (!orgId) {
+      const { data: profile } = await supabase
+        .from('profiles').select('active_organization_id').eq('user_id', callerUserId).maybeSingle();
+      orgId = profile?.active_organization_id ?? null;
+    }
+    if (!orgId) return json({ success: false, error: 'Aucune organisation active' }, 400);
+    const { data: membership } = await supabase
+      .from('organization_members').select('id')
+      .eq('organization_id', orgId).eq('user_id', callerUserId).maybeSingle();
+    if (!membership) return json({ success: false, error: 'Accès refusé' }, 403);
+  }
+  if (!orgId) return json({ success: false, error: 'organization_id requis' }, 400);
+
+  let enrollmentQuery = supabase
+    .from('sequence_enrollments')
+    .select('id')
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .limit(500);
+  if (sequenceId) enrollmentQuery = enrollmentQuery.eq('sequence_id', sequenceId);
+  const { data: enrollmentRows, error: enrollErr } = await enrollmentQuery;
+  if (enrollErr) {
+    console.error('[nudge_sequences] enrollment lookup failed:', enrollErr);
+    return json({ success: false, error: 'Erreur serveur' }, 500);
+  }
+  const enrollmentIds = (enrollmentRows ?? []).map((e: { id: string }) => e.id);
+  if (enrollmentIds.length === 0) return json({ success: true, rescheduled: 0, reason: 'no_active_enrollment' });
+
+  const nowIso = new Date().toISOString();
+  const { data: execs, error: execErr } = await supabase
+    .from('sequence_step_executions')
+    .select('id, scheduled_at, step:sequence_steps!inner(action_type)')
+    .in('enrollment_id', enrollmentIds)
+    .eq('status', 'scheduled')
+    .gt('scheduled_at', nowIso)
+    .neq('step.action_type', 'connection_request')
+    .limit(500);
+  if (execErr) {
+    console.error('[nudge_sequences] execution lookup failed:', execErr);
+    return json({ success: false, error: 'Erreur serveur' }, 500);
+  }
+  const ids = (execs ?? []).map((e: { id: string }) => e.id);
+  if (ids.length === 0) return json({ success: true, rescheduled: 0, reason: 'nothing_scheduled_ahead' });
+
+  const { data: updated, error: updateErr } = await supabase
+    .from('sequence_step_executions')
+    .update({ scheduled_at: nowIso })
+    .in('id', ids)
+    .eq('status', 'scheduled')
+    .select('id');
+  if (updateErr) {
+    console.error('[nudge_sequences] update failed:', updateErr);
+    return json({ success: false, error: 'Impossible d\'avancer les actions' }, 500);
+  }
+
+  console.log(`[nudge_sequences] org=${orgId} sequence=${sequenceId ?? 'toutes'} → ${updated?.length ?? 0} action(s) avancée(s)`);
+  return json({ success: true, rescheduled: updated?.length ?? 0 });
+}
 
 /**
  * Saute une exécution à la demande du recruteur, ET fait avancer la séquence
