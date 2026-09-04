@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { useOrganization } from '@/hooks/useOrganization';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -94,6 +95,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   isVisible = true,
   projectId,
 }) => {
+  // organization_id est exigé par la policy INSERT d'outreach_sequences
+  // (WITH CHECK organization_id = get_user_org_id(auth.uid())) : sans lui, la
+  // création et la duplication étaient refusées par RLS.
+  const { organizationId } = useOrganization();
   const [sequences, setSequences] = useState<SequenceWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -220,6 +225,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
+      if (!organizationId) throw new Error('Organisation introuvable — rechargez la page');
 
       // Payload de steps envoyé à la RPC transactionnelle `save_sequence_steps`.
       // On garde `id` = id CLIENT (= id DB pour un step existant, id généré pour
@@ -287,6 +293,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             description: sequence.description,
             is_active: sequence.isActive,
             created_by: user.id,
+            organization_id: organizationId,
             project_id: projectId || null,
           } as any)
           .select()
@@ -312,8 +319,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       setShowBuilder(false);
       setEditingSequence(null);
     } catch (err) {
+      // Relancé pour que SequenceBuilder.handleSave n'affiche pas
+      // « Séquence enregistrée » et ne ferme pas le builder sur un échec
+      // (les modifications étaient perdues).
       console.error('Error saving sequence:', err);
-      toast.error('Erreur lors de la sauvegarde');
+      throw err;
     }
   };
 
@@ -404,6 +414,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      if (!organizationId) throw new Error('Organisation introuvable — rechargez la page');
 
       // 1. Charge les steps réelles depuis la DB
       const { data: steps, error: stepsErr } = await (supabase
@@ -421,6 +432,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           description: seq.description,
           is_active: false, // toujours inactive par défaut, l'user choisit quand activer
           created_by: user.id,
+          organization_id: organizationId,
           ...(projectId ? { project_id: projectId } : {}),
         } as any)
         .select()
