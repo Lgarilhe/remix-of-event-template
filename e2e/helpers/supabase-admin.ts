@@ -120,6 +120,106 @@ export async function seedMission(
   return data.id as string;
 }
 
+export interface SeededStep {
+  id: string;
+  step_order: number;
+  action_type: string;
+}
+
+/**
+ * Séquence + ses étapes. `steps` accepte n'importe quel type d'action réel
+ * ('message', 'wait_connection', 'connection_request'…) pour rejouer les
+ * scénarios du moteur.
+ */
+export async function seedSequence(
+  orgId: string,
+  createdBy: string,
+  steps: Array<{ action_type: string; wait_for_event?: string | null; condition_type?: string | null; delay_days?: number }> = [
+    { action_type: 'message' },
+    { action_type: 'message' },
+  ],
+): Promise<{ sequenceId: string; steps: SeededStep[] }> {
+  const { data: seq, error: seqErr } = await admin()
+    .from('outreach_sequences')
+    .insert({
+      name: `Séquence e2e ${rand()}`,
+      organization_id: orgId,
+      created_by: createdBy,
+      is_active: true,
+    })
+    .select('id')
+    .single();
+  if (seqErr || !seq) throw new Error(`seedSequence: ${seqErr?.message}`);
+
+  const payload = steps.map((s, i) => ({
+    sequence_id: seq.id,
+    step_order: i,
+    action_type: s.action_type,
+    wait_for_event: s.wait_for_event ?? null,
+    condition_type: s.condition_type ?? null,
+    delay_days: s.delay_days ?? 0,
+    message_template: s.action_type === 'message' ? 'Bonjour {{firstName}}' : null,
+  }));
+  const { data: inserted, error: stepErr } = await admin()
+    .from('sequence_steps')
+    .insert(payload)
+    .select('id, step_order, action_type');
+  if (stepErr || !inserted) throw new Error(`seedSequence(steps): ${stepErr?.message}`);
+
+  const ordered = (inserted as SeededStep[]).sort((a, b) => a.step_order - b.step_order);
+  return { sequenceId: seq.id as string, steps: ordered };
+}
+
+/** Enrollment actif sur une séquence, positionné sur `currentStepOrder`. */
+export async function seedEnrollment(
+  orgId: string,
+  sequenceId: string,
+  createdBy: string,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
+  const { data, error } = await admin()
+    .from('sequence_enrollments')
+    .insert({
+      sequence_id: sequenceId,
+      organization_id: orgId,
+      created_by: createdBy,
+      profile_id: `e2e_profile_${rand()}`,
+      profile_name: 'Candidat E2E',
+      account_id: `acc_${rand()}`,
+      status: 'active',
+      current_step_order: 0,
+      ...overrides,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`seedEnrollment: ${error?.message}`);
+  return data.id as string;
+}
+
+/** Exécution d'étape (par défaut 'scheduled' dans 2 heures). */
+export async function seedExecution(
+  orgId: string,
+  enrollmentId: string,
+  step: SeededStep,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
+  const { data, error } = await admin()
+    .from('sequence_step_executions')
+    .insert({
+      enrollment_id: enrollmentId,
+      organization_id: orgId,
+      step_id: step.id,
+      step_order: step.step_order,
+      status: 'scheduled',
+      scheduled_at: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
+      ...overrides,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`seedExecution: ${error?.message}`);
+  return data.id as string;
+}
+
 /** Rattache un compte LinkedIn fictif au user (pour les tests quota sans Unipile réel). */
 export async function seedLinkedInAccount(
   orgId: string,
@@ -145,7 +245,9 @@ export async function deleteOrg(org: TestOrg, extraUsers: TestUser[] = []): Prom
   // quelques unes sans cascade par sécurité).
   for (const table of [
     'linkedin_action_log',
+    'sequence_step_executions',
     'sequence_enrollments',
+    'outreach_sequences',
     'sourcing_projects',
     'member_linkedin_accounts',
     'organization_members',
