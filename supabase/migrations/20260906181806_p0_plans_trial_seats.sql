@@ -102,7 +102,10 @@ AS $$
 DECLARE
   v_trial boolean := false;
 BEGIN
-  IF NEW.created_by IS NOT NULL
+  -- organizations.created_by n'a pas de clé étrangère : on vérifie que le
+  -- créateur existe avant de lui accorder un essai (la table des essais, elle,
+  -- référence auth.users).
+  IF EXISTS (SELECT 1 FROM auth.users u WHERE u.id = NEW.created_by)
      AND NOT EXISTS (SELECT 1 FROM public.subscription_trial_grants g WHERE g.user_id = NEW.created_by)
      AND EXISTS (SELECT 1 FROM public.subscription_plans p WHERE p.id = 'cabinet' AND p.is_active) THEN
     v_trial := true;
@@ -184,7 +187,7 @@ DECLARE
   v_plan public.subscription_plans;
   v_effective_plan_id text;
   v_seat_count integer;
-  v_is_service boolean := coalesce(current_setting('request.jwt.claim.role', true), '') = 'service_role';
+  v_is_service boolean := coalesce(auth.role(), '') = 'service_role';
 BEGIN
   IF NOT v_is_service AND NOT public.is_org_member(auth.uid(), p_organization_id) THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
@@ -247,12 +250,20 @@ WHERE s.plan_id = 'free'
   AND s.status = 'active'
   AND s.stripe_subscription_id IS NULL
   AND s.trial_ends_at IS NULL
-  AND EXISTS (SELECT 1 FROM public.subscription_plans p WHERE p.id = 'cabinet' AND p.is_active);
+  AND EXISTS (SELECT 1 FROM public.subscription_plans p WHERE p.id = 'cabinet' AND p.is_active)
+  -- Un essai par créateur : sa première organisation, s'il n'en a pas déjà eu un.
+  AND s.organization_id IN (
+    SELECT DISTINCT ON (o.created_by) o.id
+    FROM public.organizations o
+    WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = o.created_by)
+      AND NOT EXISTS (SELECT 1 FROM public.subscription_trial_grants g WHERE g.user_id = o.created_by)
+    ORDER BY o.created_by, o.created_at
+  );
 
 INSERT INTO public.subscription_trial_grants (user_id, organization_id)
 SELECT o.created_by, o.id
 FROM public.organizations o
 JOIN public.organization_subscriptions s ON s.organization_id = o.id
 WHERE s.status = 'trialing'
-  AND o.created_by IS NOT NULL
+  AND EXISTS (SELECT 1 FROM auth.users u WHERE u.id = o.created_by)
 ON CONFLICT (user_id) DO NOTHING;

@@ -1,6 +1,10 @@
 /**
  * Feature gating by organization type (enterprise / agency / freelance).
  * Based on the product architecture doc section 1.3.
+ *
+ * Second axe (lot P0-C) : gating par plan d'abonnement, voir hasPlanFeature.
+ * Les deux gardes se combinent (ET) : une feature est ouverte si le type
+ * d'organisation ET le plan effectif l'autorisent.
  */
 
 export type OrgType = 'enterprise' | 'agency' | 'freelance';
@@ -47,6 +51,47 @@ export function hasFeature(orgType: OrgType | null | undefined, feature: Feature
   // features par défaut dans cette fenêtre.
   if (!orgType) return false;
   return FEATURE_MATRIX[feature]?.[orgType] ?? false;
+}
+
+// ─── Gating par plan d'abonnement (docs/p0-plan-2026-09-06.md, section 2) ───
+
+/** Identifiants de subscription_plans. pro et enterprise sont désactivés mais
+ *  restent référencés par d'anciens abonnements : pro = cabinet, enterprise = entreprise. */
+export type PlanId = 'free' | 'solo' | 'cabinet' | 'entreprise' | 'pro' | 'enterprise';
+
+export type PlanFeature =
+  | 'sequences_send'
+  | 'contact_enrichment'
+  | 'team'
+  | 'client_portal'
+  | 'agency_settings'
+  | 'marketplace_publish';
+
+const CABINET_FEATURES: Record<PlanFeature, boolean> = {
+  sequences_send: true, contact_enrichment: true, team: true, client_portal: true, agency_settings: true, marketplace_publish: false,
+};
+const ENTREPRISE_FEATURES: Record<PlanFeature, boolean> = {
+  sequences_send: true, contact_enrichment: true, team: true, client_portal: true, agency_settings: true, marketplace_publish: true,
+};
+
+const PLAN_FEATURES: Record<PlanId, Record<PlanFeature, boolean>> = {
+  // Palier d'atterrissage après essai : les données restent lisibles, le portail client aussi.
+  free:       { sequences_send: false, contact_enrichment: false, team: false, client_portal: true, agency_settings: false, marketplace_publish: false },
+  solo:       { sequences_send: true,  contact_enrichment: true,  team: false, client_portal: true, agency_settings: false, marketplace_publish: false },
+  cabinet:    CABINET_FEATURES,
+  entreprise: ENTREPRISE_FEATURES,
+  pro:        CABINET_FEATURES,
+  enterprise: ENTREPRISE_FEATURES,
+};
+
+/**
+ * Check if a feature is included in the given subscription plan.
+ * `planId` est le plan effectif (useSubscriptionState().effectivePlanId).
+ * Fail-closed : null, undefined ou identifiant inconnu → false.
+ */
+export function hasPlanFeature(planId: string | null | undefined, feature: PlanFeature): boolean {
+  if (!planId) return false;
+  return PLAN_FEATURES[planId as PlanId]?.[feature] ?? false;
 }
 
 /** Human-readable label for org type */

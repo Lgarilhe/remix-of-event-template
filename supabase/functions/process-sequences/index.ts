@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 import { interpolateAndStrip, buildSequenceContext } from "../_shared/template-interpolation.ts";
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
 import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from "../_shared/linkedin-quotas.ts";
+import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
 
 // No wildcard CORS — this function is called by cron (service role) and frontend (authenticated users)
 const corsHeaders = {
@@ -26,6 +27,11 @@ const PENDING_EXECUTION_STATUSES = ['scheduled', 'sending', 'waiting_event', 'qu
 // scheduleNextStep ne doivent jamais la rejouer hors saut de branche explicite
 // (BUG-022, BUG-007).
 const DONE_EXECUTION_STATUSES = ['sent', 'opened', 'clicked', 'replied', 'skipped'];
+
+// Raison posée sur l'exécution (skip_reason) et sur l'inscription
+// (tracking_data.pause_reason) quand l'organisation n'a ni abonnement actif ni
+// essai en cours (lot P0-C, docs/p0-plan-2026-09-06.md).
+const SUBSCRIPTION_REQUIRED_REASON = "Abonnement requis pour l'envoi de séquences";
 
 // Actions qui balaient TOUTES les organisations : réservées au cron et aux
 // appels internes en clé de service (SEC-041).
@@ -695,8 +701,27 @@ async function handleProcess(supabase: any, force = false) {
 
     if (fetchError) throw fetchError;
 
-    const results = { processed: 0, skipped: 0, failed: 0, retried: 0, quota_blocked: 0 };
+    const results = { processed: 0, skipped: 0, failed: 0, retried: 0, quota_blocked: 0, subscription_blocked: 0 };
     const failedSequenceIds = new Set<string>();
+
+    // Gate d'abonnement (lot P0-C) : une organisation dont le plan effectif est
+    // free (plan free, abonnement annulé ou impayé, essai expiré) n'envoie pas
+    // de séquences. Résolu une fois par organisation et par cycle. Si la
+    // lecture échoue, le gate n'est pas appliqué pour ce cycle (null) : une
+    // mise en pause est définitive côté utilisateur, le cycle suivant
+    // re-vérifiera.
+    const subscriptionGates = new Map<string, SubscriptionGate | null>();
+    const getSubscriptionGateFor = async (orgId: string): Promise<SubscriptionGate | null> => {
+      if (!subscriptionGates.has(orgId)) {
+        try {
+          subscriptionGates.set(orgId, await getSubscriptionGate(supabase, orgId));
+        } catch (gateErr) {
+          console.warn(`[process] Subscription gate unavailable for org=${orgId} (not blocking this cycle):`, gateErr);
+          subscriptionGates.set(orgId, null);
+        }
+      }
+      return subscriptionGates.get(orgId) ?? null;
+    };
 
     // Deduplicate: only process one execution per profile per batch to preserve natural spacing
     const seenProfiles = new Set<string>();
@@ -802,6 +827,37 @@ async function handleProcess(supabase: any, force = false) {
           await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: stopReason }).eq('enrollment_id', enrollment.id).eq('status', 'scheduled');
           console.log(`[process] ⛔ ${enrollment.profile_name} — ${stopReason}`);
           results.skipped++;
+          continue;
+        }
+
+        // === SUBSCRIPTION GATE (lot P0-C) ===
+        // Avant tout envoi : sans abonnement actif ni essai en cours, l'action
+        // est annulée avec sa raison et l'inscription passe en pause. Même
+        // pattern que l'arrêt manuel côté front (inscription paused +
+        // exécutions cancelled) : la reprise re-planifie la première exécution
+        // annulée, l'étape n'est pas perdue. 'skipped' est terminal (l'étape
+        // serait sautée à la reprise) et 'quota_blocked' est ré-armé au bout
+        // de 24h puis sauté « Enrollment inactive » une fois l'inscription en
+        // pause. Les autres règles (quotas, heures ouvrées, rotation) restent
+        // inchangées et s'appliquent après.
+        const gateOrgId = (enrollment.organization_id || enrollment.sequence?.organization_id || null) as string | null;
+        if (!gateOrgId) {
+          console.warn(`[process] Enrollment ${enrollment.id} sans organisation : gate d'abonnement non applicable`);
+        }
+        const subscriptionGate = gateOrgId ? await getSubscriptionGateFor(gateOrgId) : null;
+        if (subscriptionGate && !subscriptionGate.canSendSequences) {
+          const gateNowIso = new Date().toISOString();
+          await supabase.from('sequence_step_executions').update({
+            status: 'cancelled', skip_reason: SUBSCRIPTION_REQUIRED_REASON, updated_at: gateNowIso,
+          }).eq('id', exec.id);
+          const gateTrackingData = (enrollment.tracking_data ?? null) as Record<string, unknown> | null;
+          await supabase.from('sequence_enrollments').update({
+            status: 'paused',
+            tracking_data: { ...(gateTrackingData ?? {}), pause_reason: SUBSCRIPTION_REQUIRED_REASON },
+            updated_at: gateNowIso,
+          }).eq('id', enrollment.id);
+          console.warn(`[process] ${enrollment.profile_name} : org=${gateOrgId} plan effectif '${subscriptionGate.effectivePlanId}' (${subscriptionGate.status}), ${SUBSCRIPTION_REQUIRED_REASON}`);
+          results.subscription_blocked++;
           continue;
         }
 

@@ -1,32 +1,70 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSubscriptionPlans, useSubscription } from '@/hooks/useSubscription';
+import { toast } from 'sonner';
+import { useSubscriptionPlans, type SubscriptionPlan } from '@/hooks/useSubscription';
+import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 import { SEOHead } from '@/components/SEOHead';
+import { KonektLogo } from '@/components/KonektLogo';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { cn } from '@/lib/utils';
-import { Check, Plus } from 'lucide-react';
+import { Check, Plus, Loader2 } from 'lucide-react';
+
+/** Plan mis en avant dans la grille (essai gratuit sur ce plan). */
+const RECOMMENDED_PLAN_ID = 'cabinet';
+const TRIAL_DAYS = 14;
 
 const FAQS = [
   {
-    q: 'Puis-je changer de plan à tout moment ?',
-    a: 'Oui. Le passage à un plan supérieur est immédiat. Le downgrade prend effet à la fin de la période en cours.',
+    q: "Comment fonctionne l'essai gratuit ?",
+    a: `Vous disposez de ${TRIAL_DAYS} jours d'essai sur le plan Cabinet, sans carte bancaire. À la fin de l'essai, votre espace passe sur le plan Gratuit : vos missions, candidats et recherches restent accessibles, sans envoi de séquences.`,
   },
   {
-    q: 'Que se passe-t-il si je dépasse mes crédits IA ?',
-    a: 'Les fonctionnalités IA sont temporairement désactivées. Vos données et recherches restent accessibles.',
+    q: 'Comment sont comptés les sièges ?',
+    a: "Chaque membre de votre espace occupe un siège, quel que soit son rôle. Les prix s'entendent par siège et par mois. Pour inviter au-delà des sièges facturés, ajustez la quantité depuis Paramètres, Abonnement.",
   },
   {
-    q: "Le plan Enterprise inclut-il un engagement ?",
-    a: 'Non. Engagement mensuel ou annuel, sans durée minimum. Annulable à tout moment.',
+    q: 'Les crédits IA sont-ils inclus ?',
+    a: "Oui. Chaque plan inclut un volume mensuel de crédits IA pour le scoring des profils, la rédaction des messages et l'assistant. Au-delà, des packs de crédits sont disponibles depuis Paramètres, Crédits IA.",
+  },
+  {
+    q: 'Puis-je changer de plan ou résilier ?',
+    a: "Oui, à tout moment et sans engagement de durée. Le changement de plan, le moyen de paiement, les factures et la résiliation se gèrent depuis Paramètres, Abonnement.",
   },
 ];
 
-const COMPARISON_ROWS: { label: string; key: string }[] = [
-  { label: 'Postes actifs', key: 'max_jobs' },
-  { label: 'Recherches / mois', key: 'max_searches' },
+const COMPARISON_ROWS: { label: string; key: keyof SubscriptionPlan['limits'] }[] = [
+  { label: 'Missions actives', key: 'max_jobs' },
   { label: 'Membres', key: 'max_members' },
-  { label: 'Crédits IA', key: 'ai_credits' },
+  { label: 'Crédits IA / mois', key: 'ai_credits' },
+  { label: 'Contacts enrichis / mois', key: 'contacts_included' },
 ];
+
+const euroFormatter = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+const formatEuros = (cents: number) => euroFormatter.format(cents / 100);
+
+/** Remise annuelle en pourcentage, calculée depuis les prix du plan. */
+const yearlyDiscountPercent = (plan: SubscriptionPlan) => {
+  if (plan.price_monthly <= 0 || plan.price_yearly <= 0) return 0;
+  return Math.max(0, Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100));
+};
+
+const formatLimit = (value: number | undefined) => {
+  if (value === undefined || value === null) return 'Non inclus';
+  if (value === -1) return 'Illimité';
+  return value.toLocaleString('fr-FR');
+};
+
+const formatDaysLeft = (days: number) => (days <= 1 ? `${days} jour restant` : `${days} jours restants`);
 
 function FAQItem({ item }: { item: typeof FAQS[0] }) {
   const [open, setOpen] = useState(false);
@@ -60,34 +98,209 @@ function FAQItem({ item }: { item: typeof FAQS[0] }) {
 
 const Pricing = () => {
   const navigate = useNavigate();
-  const { data: plans = [], isLoading } = useSubscriptionPlans();
-  const { planId, isLoading: isLoadingSub } = useSubscription();
+  // Page publique : pas de ProtectedRoute ni d'OrganizationGuard. La session
+  // vient du store auth global ; l'organisation et l'état d'abonnement ne sont
+  // interrogés que si une session existe (requêtes désactivées sinon).
+  const { isReady, session } = useAuthReady();
+  const { organizationId, isAdmin, isLoading: isLoadingOrg, isError: isOrgError } = useOrganization();
+  const { data: plans = [], isLoading, isError: isPlansError } = useSubscriptionPlans();
+  const { state, effectivePlanId, isPaid, isTrialing, trialDaysLeft, isLoading: isLoadingState } = useSubscriptionState();
   const [yearly, setYearly] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
+  const [openingPortal, setOpeningPortal] = useState(false);
+
+  const isSignedIn = !!session;
+  // Le plan Gratuit n'est pas une colonne : c'est le palier d'atterrissage après l'essai.
+  const paidPlans = useMemo(() => plans.filter((plan) => plan.id !== 'free'), [plans]);
+
+  const discountLabel = useMemo(() => {
+    const discounts = paidPlans.map(yearlyDiscountPercent).filter((d) => d > 0);
+    if (discounts.length === 0) return null;
+    const max = Math.max(...discounts);
+    const min = Math.min(...discounts);
+    return min === max ? `-${max} %` : `jusqu'à -${max} %`;
+  }, [paidPlans]);
 
   useEffect(() => {
     const t = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(t);
   }, []);
 
-  const formatPrice = (cents: number) => {
-    if (cents === 0) return '0€';
-    return `${(cents / 100).toFixed(0)}€`;
+  const goToAuth = () => {
+    // Auth.tsx lit location.state.from pour revenir ici après connexion.
+    navigate(withPreviewAccessToken('/auth'), { state: { from: '/pricing' } });
   };
 
-  const formatLimit = (value: number) => {
-    if (value === -1) return '∞';
-    return value.toString();
+  const startCheckout = async (planId: string) => {
+    if (!organizationId || checkoutPlanId) return;
+    setCheckoutPlanId(planId);
+    try {
+      const { data, error } = await invokeEdgeFunction<{ url?: string }>('create-checkout-session', {
+        mode: 'subscription',
+        plan_id: planId,
+        billing_cycle: yearly ? 'yearly' : 'monthly',
+        organization_id: organizationId,
+      });
+      if (error || !data?.url) {
+        toast.error("Impossible d'ouvrir le paiement. Réessayez.");
+        setCheckoutPlanId(null);
+        return;
+      }
+      window.location.assign(data.url);
+    } catch (err) {
+      console.error('[Pricing] checkout error:', err);
+      toast.error("Impossible d'ouvrir le paiement. Réessayez.");
+      setCheckoutPlanId(null);
+    }
+  };
+
+  // Abonnement déjà en place : le changement de plan passe par le portail de
+  // gestion, jamais par un second paiement.
+  const openPortal = async () => {
+    if (!organizationId || openingPortal) return;
+    setOpeningPortal(true);
+    try {
+      const { data, error } = await invokeEdgeFunction<{ url?: string }>('create-portal-session', {
+        organization_id: organizationId,
+      });
+      if (error || !data?.url) {
+        toast.error("Impossible d'ouvrir la gestion de l'abonnement. Réessayez.");
+        setOpeningPortal(false);
+        return;
+      }
+      window.location.assign(data.url);
+    } catch (err) {
+      console.error('[Pricing] portal error:', err);
+      toast.error("Impossible d'ouvrir la gestion de l'abonnement. Réessayez.");
+      setOpeningPortal(false);
+    }
+  };
+
+  // État connecté encore en cours de résolution (session, organisation, abonnement)
+  const isResolvingAccount = !isReady || (isSignedIn && (isLoadingOrg || (!!organizationId && isLoadingState)));
+
+  const renderCta = (plan: SubscriptionPlan, isRecommended: boolean) => {
+    const isCurrent = isPaid && effectivePlanId === plan.id;
+    const isCheckingOut = checkoutPlanId === plan.id;
+
+    const buttonClass = cn(
+      'w-full h-12 text-xs uppercase tracking-wider font-bold border-2 transition-all active:translate-y-[1px] inline-flex items-center justify-center gap-2',
+      isCurrent
+        ? 'border-border text-muted-foreground cursor-default bg-transparent'
+        : isRecommended
+          ? 'skalr-gradient-bg text-white border-transparent hover:brightness-110'
+          : 'border-border bg-transparent text-foreground hover:bg-foreground hover:text-background',
+      'disabled:opacity-60 disabled:cursor-default'
+    );
+
+    if (isResolvingAccount) {
+      return (
+        <button type="button" disabled className={buttonClass}>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Chargement
+        </button>
+      );
+    }
+
+    if (!isSignedIn) {
+      return (
+        <button type="button" onClick={goToAuth} className={buttonClass}>
+          Commencer l'essai gratuit
+        </button>
+      );
+    }
+
+    // F3 : erreur de chargement de l'espace, on n'envoie jamais vers /onboarding
+    if (isOrgError && !organizationId) {
+      return (
+        <p className="h-12 flex items-center justify-center text-center text-xs text-muted-foreground border-2 border-dashed border-border px-3">
+          Impossible de charger votre espace. Réessayez plus tard.
+        </p>
+      );
+    }
+
+    if (!organizationId) {
+      return (
+        <button type="button" onClick={() => navigate(withPreviewAccessToken('/onboarding'))} className={buttonClass}>
+          Créer mon espace
+        </button>
+      );
+    }
+
+    if (isCurrent) {
+      return (
+        <button type="button" disabled className={buttonClass}>
+          Plan actuel
+        </button>
+      );
+    }
+
+    if (!isAdmin) {
+      return (
+        <p className="h-12 flex items-center justify-center text-center text-xs text-muted-foreground border-2 border-dashed border-border px-3">
+          Demandez à un administrateur de votre espace
+        </p>
+      );
+    }
+
+    if (state?.has_stripe_subscription) {
+      return (
+        <button
+          type="button"
+          disabled={openingPortal}
+          onClick={() => { void openPortal(); }}
+          className={buttonClass}
+        >
+          {openingPortal && <Loader2 className="w-4 h-4 animate-spin" />}
+          {openingPortal ? 'Ouverture de la gestion' : 'Changer de plan'}
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        disabled={!!checkoutPlanId}
+        onClick={() => { void startCheckout(plan.id); }}
+        className={buttonClass}
+      >
+        {isCheckingOut && <Loader2 className="w-4 h-4 animate-spin" />}
+        {isCheckingOut ? 'Redirection vers le paiement' : `Choisir ${plan.name}`}
+      </button>
+    );
   };
 
   return (
     <div className="min-h-screen bg-background">
       <SEOHead
         title="Tarifs"
-        description="Découvrez les plans Konekt : Starter gratuit, Pro pour les équipes ambitieuses, Enterprise sur mesure."
+        description={`Plans Konekt par siège et par mois : Solo, Cabinet et Entreprise. ${TRIAL_DAYS} jours d'essai gratuit, sans carte bancaire, crédits IA inclus.`}
         keywords="pricing, tarifs, recrutement, ATS, sourcing"
       />
-      
+
+      {/* Barre publique : logo + retour vers l'application ou connexion */}
+      <header className="border-b border-border bg-background">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => navigate(withPreviewAccessToken(isSignedIn ? '/dashboard' : '/'))}
+            aria-label="Konekt, accueil"
+            className="flex items-center"
+          >
+            <KonektLogo variant="full" theme="dark" size={28} />
+          </button>
+          {isReady && (
+            <button
+              type="button"
+              onClick={() => (isSignedIn ? navigate(withPreviewAccessToken('/dashboard')) : goToAuth())}
+              className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
+            >
+              {isSignedIn ? "Retour à l'application" : 'Se connecter'}
+            </button>
+          )}
+        </div>
+      </header>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-20">
         {/* ── Hero ── */}
@@ -131,8 +344,16 @@ const Pricing = () => {
               transitionDelay: '160ms',
             }}
           >
-            Commencez gratuitement, passez à Pro quand vous êtes prêt.
+            {TRIAL_DAYS} jours d'essai gratuit, sans carte bancaire. Ensuite, un prix par siège et par mois, crédits IA inclus.
           </p>
+
+          {/* Bandeau essai en cours */}
+          {isSignedIn && isTrialing && trialDaysLeft !== null && (
+            <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 border-2 border-[hsl(var(--skalr-purple))] bg-muted/30 text-xs font-bold uppercase tracking-wider text-foreground">
+              <span className="w-1.5 h-1.5 bg-[hsl(var(--skalr-purple))] shrink-0" />
+              Essai en cours : {formatDaysLeft(trialDaysLeft)}
+            </div>
+          )}
 
           {/* Toggle */}
           <div
@@ -148,7 +369,11 @@ const Pricing = () => {
               Mensuel
             </span>
 
-            <div
+            <button
+              type="button"
+              role="switch"
+              aria-checked={yearly}
+              aria-label="Facturation annuelle"
               onClick={() => setYearly(!yearly)}
               className={cn(
                 'relative w-14 h-7 border-2 border-border cursor-pointer transition-colors',
@@ -163,13 +388,15 @@ const Pricing = () => {
                     : 'bg-background border border-border'
                 )}
               />
-            </div>
+            </button>
 
             <span className={cn('text-xs font-bold uppercase tracking-wider flex items-center gap-2', yearly ? 'text-foreground' : 'text-muted-foreground')}>
               Annuel
-              <span className="px-1.5 py-0.5 text-xs font-bold skalr-gradient-bg text-white leading-none">
-                -20%
-              </span>
+              {discountLabel && (
+                <span className="px-1.5 py-0.5 text-xs font-bold skalr-gradient-bg text-white leading-none normal-case">
+                  {discountLabel}
+                </span>
+              )}
             </span>
           </div>
         </div>
@@ -177,22 +404,26 @@ const Pricing = () => {
         {/* ── Plan cards ── */}
         {isLoading ? (
           <BrutalLoader />
+        ) : (isPlansError || paidPlans.length === 0) ? (
+          <p className="border-2 border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground mb-6">
+            Impossible de charger les tarifs. Réessayez plus tard.
+          </p>
         ) : (
           <>
-            {/* Cards — collées */}
-            <div className="flex flex-col md:flex-row mb-16 sm:mb-20">
-              {plans.map((plan, i) => {
-                const isCurrent = planId === plan.id;
-                const isPopular = plan.id === 'pro';
-                const isEnterprise = plan.id === 'enterprise';
-                const price = yearly ? plan.price_yearly : plan.price_monthly;
+            {/* Cards : bordures partagées */}
+            <div className="flex flex-col md:flex-row mb-6">
+              {paidPlans.map((plan, i) => {
+                const isRecommended = plan.id === RECOMMENDED_PLAN_ID;
+                const isCurrent = isPaid && effectivePlanId === plan.id;
+                const discount = yearlyDiscountPercent(plan);
+                const displayedPrice = yearly ? plan.price_yearly / 12 : plan.price_monthly;
 
                 return (
                   <div
                     key={plan.id}
                     className={cn(
                       'relative flex flex-col flex-1 border-2 transition-all duration-200 group',
-                      isPopular
+                      isRecommended
                         ? 'border-[hsl(var(--skalr-purple))] bg-muted/30 z-10'
                         : 'border-border',
                       // collapse shared borders
@@ -207,21 +438,18 @@ const Pricing = () => {
                       transitionDelay: `${i * 120 + 400}ms`,
                     }}
                     onMouseEnter={(e) => {
-                      if (isPopular) {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 20px hsl(var(--skalr-purple) / 0.15)';
-                      } else {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 20px hsl(var(--foreground) / 0.1)';
-                      }
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = isRecommended
+                        ? '0 4px 20px hsl(var(--skalr-purple) / 0.15)'
+                        : '0 4px 20px hsl(var(--foreground) / 0.1)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = mounted ? 'translateY(0)' : '';
                       e.currentTarget.style.boxShadow = 'none';
                     }}
                   >
-                    {/* Gradient bar for Pro */}
-                    {isPopular && (
+                    {/* Gradient bar for the recommended plan */}
+                    {isRecommended && (
                       <div
                         className="h-[3px] w-full skalr-gradient-bg"
                         style={{
@@ -231,11 +459,16 @@ const Pricing = () => {
                       />
                     )}
 
-                    {/* Popular badge */}
-                    {isPopular && (
+                    {/* Badges */}
+                    {(isRecommended || isCurrent) && (
                       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
-                        <span className="px-3 py-1 text-xs uppercase tracking-wider font-bold bg-[hsl(var(--skalr-purple))] text-white">
-                          Populaire
+                        <span
+                          className={cn(
+                            'px-3 py-1 text-xs uppercase tracking-wider font-bold text-white',
+                            isCurrent ? 'bg-foreground text-background' : 'bg-[hsl(var(--skalr-purple))]'
+                          )}
+                        >
+                          {isCurrent ? 'Plan actuel' : 'Recommandé'}
                         </span>
                       </div>
                     )}
@@ -253,27 +486,20 @@ const Pricing = () => {
 
                       {/* Price */}
                       <div className="mb-6">
-                        {isEnterprise ? (
-                          <span className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
-                            Sur devis
-                          </span>
-                        ) : (
-                          <>
-                            <span
-                              className={cn(
-                                'font-display text-4xl sm:text-5xl font-extrabold',
-                                isPopular ? 'text-[hsl(var(--skalr-purple))]' : 'text-foreground'
-                              )}
-                            >
-                              {formatPrice(price)}
-                            </span>
-                            {price > 0 && (
-                              <span className="text-sm text-muted-foreground ml-1">
-                                /{yearly ? 'an' : 'mois'}
-                              </span>
-                            )}
-                          </>
-                        )}
+                        <span
+                          className={cn(
+                            'font-display text-4xl sm:text-5xl font-extrabold',
+                            isRecommended ? 'text-[hsl(var(--skalr-purple))]' : 'text-foreground'
+                          )}
+                        >
+                          {formatEuros(displayedPrice)}
+                        </span>
+                        <span className="text-sm text-muted-foreground ml-1">/ siège / mois</span>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {yearly
+                            ? `facturé ${formatEuros(plan.price_yearly)} par an${discount > 0 ? `, soit -${discount} %` : ''}`
+                            : 'sans engagement'}
+                        </p>
                       </div>
 
                       {/* Features */}
@@ -292,13 +518,13 @@ const Pricing = () => {
                             <span
                               className={cn(
                                 'w-4 h-4 mt-0.5 shrink-0 flex items-center justify-center border',
-                                isPopular ? 'border-[hsl(var(--skalr-purple))]' : 'border-border'
+                                isRecommended ? 'border-[hsl(var(--skalr-purple))]' : 'border-border'
                               )}
                             >
                               <Check
                                 className={cn(
                                   'w-2.5 h-2.5',
-                                  isPopular ? 'text-[hsl(var(--skalr-purple))]' : 'text-foreground/40'
+                                  isRecommended ? 'text-[hsl(var(--skalr-purple))]' : 'text-foreground/40'
                                 )}
                               />
                             </span>
@@ -308,40 +534,28 @@ const Pricing = () => {
                       </ul>
 
                       {/* CTA */}
-                      <button
-                        disabled={isCurrent || isLoadingSub}
-                        onClick={() => {
-                          if (isEnterprise) {
-                            window.open('mailto:contact@skalr.io?subject=Plan Enterprise', '_blank');
-                          } else {
-                            navigate('/settings?tab=billing');
-                          }
-                        }}
-                        className={cn(
-                          'w-full h-12 text-xs uppercase tracking-wider font-bold border-2 transition-all active:translate-y-[1px]',
-                          isCurrent
-                            ? 'border-border text-muted-foreground cursor-default bg-transparent'
-                            : isPopular
-                              ? 'skalr-gradient-bg text-white border-transparent hover:brightness-110'
-                              : 'border-border bg-transparent text-foreground hover:bg-foreground hover:text-background'
-                        )}
-                      >
-                        {isCurrent
-                          ? 'Plan actuel'
-                          : isEnterprise
-                            ? 'Nous contacter'
-                            : price === 0
-                              ? 'Commencer gratuitement'
-                              : 'Passer à Pro'}
-                      </button>
+                      {renderCta(plan, isRecommended)}
                     </div>
                   </div>
                 );
               })}
             </div>
 
+            {paidPlans.length > 0 && (
+              <p
+                className="text-center text-xs text-muted-foreground mb-16 sm:mb-20"
+                style={{
+                  opacity: mounted ? 1 : 0,
+                  transition: 'opacity 0.6s ease',
+                  transitionDelay: '500ms',
+                }}
+              >
+                Après l'essai de {TRIAL_DAYS} jours, le plan Gratuit conserve vos données.
+              </p>
+            )}
+
             {/* ── Comparison table ── */}
-            {plans.length > 0 && (
+            {paidPlans.length > 0 && (
               <div
                 className="mb-16 sm:mb-20"
                 style={{
@@ -362,12 +576,12 @@ const Pricing = () => {
                         <th className="text-left p-3 text-xs uppercase tracking-wider text-muted-foreground font-bold">
                           Fonctionnalité
                         </th>
-                        {plans.map((plan) => (
+                        {paidPlans.map((plan) => (
                           <th
                             key={plan.id}
                             className={cn(
                               'p-3 text-center text-xs uppercase tracking-wider font-bold',
-                              plan.id === 'pro' ? 'text-[hsl(var(--skalr-purple))]' : 'text-muted-foreground'
+                              plan.id === RECOMMENDED_PLAN_ID ? 'text-[hsl(var(--skalr-purple))]' : 'text-muted-foreground'
                             )}
                           >
                             {plan.name}
@@ -386,20 +600,19 @@ const Pricing = () => {
                           <td className="p-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                             {row.label}
                           </td>
-                          {plans.map((plan) => {
-                            const val = (plan.limits as Record<string, number>)[row.key];
-                            const isPro = plan.id === 'pro';
+                          {paidPlans.map((plan) => {
+                            const isRecommended = plan.id === RECOMMENDED_PLAN_ID;
                             return (
                               <td key={plan.id} className="p-3 text-center">
                                 <span
                                   className={cn(
                                     'font-display font-bold',
-                                    isPro
+                                    isRecommended
                                       ? 'text-[hsl(var(--skalr-purple))] text-base'
                                       : 'text-foreground text-sm'
                                   )}
                                 >
-                                  {formatLimit(val)}
+                                  {formatLimit(plan.limits?.[row.key])}
                                 </span>
                               </td>
                             );

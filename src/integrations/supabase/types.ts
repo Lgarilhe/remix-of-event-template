@@ -1465,6 +1465,56 @@ export type Database = {
           },
         ]
       }
+      candidate_enrichment_cache: {
+        Row: {
+          created_at: string
+          enriched_by: string | null
+          enriched_data: Json
+          expires_at: string
+          id: string
+          last_enriched_at: string
+          linkedin_url: string | null
+          organization_id: string
+          provider_id: string | null
+          sections_filled: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enriched_by?: string | null
+          enriched_data?: Json
+          expires_at?: string
+          id?: string
+          last_enriched_at?: string
+          linkedin_url?: string | null
+          organization_id: string
+          provider_id?: string | null
+          sections_filled?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enriched_by?: string | null
+          enriched_data?: Json
+          expires_at?: string
+          id?: string
+          last_enriched_at?: string
+          linkedin_url?: string | null
+          organization_id?: string
+          provider_id?: string | null
+          sections_filled?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_enrichment_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_enrichments: {
         Row: {
           company: string | null
@@ -1475,6 +1525,7 @@ export type Database = {
           contact_phone: string | null
           contact_phone_type: string | null
           credits_consumed: number
+          included: boolean
           email_provider_source: string | null
           error_message: string | null
           expires_at: string
@@ -1500,6 +1551,7 @@ export type Database = {
           contact_phone?: string | null
           contact_phone_type?: string | null
           credits_consumed?: number
+          included?: boolean
           email_provider_source?: string | null
           error_message?: string | null
           expires_at?: string
@@ -1525,6 +1577,7 @@ export type Database = {
           contact_phone?: string | null
           contact_phone_type?: string | null
           credits_consumed?: number
+          included?: boolean
           email_provider_source?: string | null
           error_message?: string | null
           expires_at?: string
@@ -3623,6 +3676,10 @@ export type Database = {
           interviewer_type: string | null
           interviewer_user_id: string | null
           is_eliminatory: boolean | null
+          location_address: string | null
+          meeting_format: string | null
+          meeting_link: string | null
+          meeting_provider: string | null
           name: string
           objectives: string[] | null
           organization_id: string
@@ -3641,6 +3698,10 @@ export type Database = {
           interviewer_type?: string | null
           interviewer_user_id?: string | null
           is_eliminatory?: boolean | null
+          location_address?: string | null
+          meeting_format?: string | null
+          meeting_link?: string | null
+          meeting_provider?: string | null
           name: string
           objectives?: string[] | null
           organization_id: string
@@ -3659,6 +3720,10 @@ export type Database = {
           interviewer_type?: string | null
           interviewer_user_id?: string | null
           is_eliminatory?: boolean | null
+          location_address?: string | null
+          meeting_format?: string | null
+          meeting_link?: string | null
+          meeting_provider?: string | null
           name?: string
           objectives?: string[] | null
           organization_id?: string
@@ -4160,9 +4225,11 @@ export type Database = {
           id: string
           organization_id: string
           plan_id: string
+          seats: number
           status: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
+          trial_ends_at: string | null
           updated_at: string
         }
         Insert: {
@@ -4174,9 +4241,11 @@ export type Database = {
           id?: string
           organization_id: string
           plan_id: string
+          seats?: number
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -4188,9 +4257,11 @@ export type Database = {
           id?: string
           organization_id?: string
           plan_id?: string
+          seats?: number
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -5154,7 +5225,7 @@ export type Database = {
           completed_at: string | null
           connection_status: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           current_step_order: number
           email_used: string | null
           id: string
@@ -5165,6 +5236,7 @@ export type Database = {
           network_distance: string | null
           organization_id: string | null
           phone_used: string | null
+          pause_reason: string | null
           profile_headline: string | null
           profile_id: string
           profile_name: string | null
@@ -5185,7 +5257,7 @@ export type Database = {
           completed_at?: string | null
           connection_status?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           current_step_order?: number
           email_used?: string | null
           id?: string
@@ -5196,6 +5268,7 @@ export type Database = {
           network_distance?: string | null
           organization_id?: string | null
           phone_used?: string | null
+          pause_reason?: string | null
           profile_headline?: string | null
           profile_id: string
           profile_name?: string | null
@@ -5216,7 +5289,7 @@ export type Database = {
           completed_at?: string | null
           connection_status?: string | null
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           current_step_order?: number
           email_used?: string | null
           id?: string
@@ -5227,6 +5300,7 @@ export type Database = {
           network_distance?: string | null
           organization_id?: string | null
           phone_used?: string | null
+          pause_reason?: string | null
           profile_headline?: string | null
           profile_id?: string
           profile_name?: string | null
@@ -5784,6 +5858,32 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_trial_grants: {
+        Row: {
+          granted_at: string
+          organization_id: string | null
+          user_id: string
+        }
+        Insert: {
+          granted_at?: string
+          organization_id?: string | null
+          user_id: string
+        }
+        Update: {
+          granted_at?: string
+          organization_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_trial_grants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppressed_emails: {
         Row: {
           created_at: string
@@ -6074,6 +6174,18 @@ export type Database = {
       get_subscription_state: {
         Args: { p_organization_id: string }
         Returns: Json
+      }
+      get_linkedin_quota_status: {
+        Args: { p_account_id: string }
+        Returns: Json
+      }
+      get_org_contact_usage: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      linkedin_ramp_factor: {
+        Args: { p_linked_at: string }
+        Returns: number
       }
       expire_subscription_trials: { Args: never; Returns: number }
       set_integration_secret: {

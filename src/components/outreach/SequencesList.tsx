@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import { hasPlanFeature } from '@/lib/featureGates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -99,6 +102,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // (WITH CHECK organization_id = get_user_org_id(auth.uid())) : sans lui, la
   // création et la duplication étaient refusées par RLS.
   const { organizationId } = useOrganization();
+  const navigate = useNavigate();
+  // Gating par plan (lot P0-C) : l'activation d'une séquence est refusée sur le
+  // plan gratuit. Tant que l'état d'abonnement charge, on ne refuse rien (le
+  // moteur d'envoi côté serveur reste la référence).
+  const { effectivePlanId, isLoading: isPlanLoading } = useSubscriptionState();
+  const canSendSequences = isPlanLoading || hasPlanFeature(effectivePlanId, 'sequences_send');
   const [sequences, setSequences] = useState<SequenceWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -336,6 +345,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   };
 
   const handleToggleActive = async (sequenceId: string, isActive: boolean) => {
+    // Activer (pas désactiver) exige un plan qui autorise l'envoi de séquences.
+    if (!isActive && !canSendSequences) {
+      toast.error("L'envoi de séquences nécessite un abonnement", {
+        action: { label: 'Voir les plans', onClick: () => navigate('/pricing') },
+      });
+      return;
+    }
     try {
       const newActive = !isActive;
       

@@ -46,3 +46,6 @@ supabase/.temp/
 # Harnais de vérification jetables des sessions Claude (app réelle + Supabase
 # intercepté) — recréés à la demande, jamais committés
 /.verify-*.mjs
+
+# Lockfile généré par les vérifications deno locales (les fonctions sont bundlées par la CLI Supabase)
+deno.lock

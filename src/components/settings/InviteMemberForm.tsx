@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,7 +15,8 @@ interface InviteMemberFormProps {
 export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps) => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('member');
-  const { canAddMember, limits, isLoading: isQuotaLoading } = useQuotaGate();
+  const { canInviteMember, seatLimitMessage, isLoading: isQuotaLoading } = useQuotaGate();
+  const seatsExhausted = !isQuotaLoading && !canInviteMember;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,8 +25,8 @@ export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps)
       toast.info('Vérification des limites en cours...');
       return;
     }
-    if (!canAddMember) {
-      toast.error(`Limite de ${limits.max_members} membre${limits.max_members > 1 ? 's' : ''} atteinte. Passez au plan supérieur.`);
+    if (!canInviteMember) {
+      toast.error(seatLimitMessage);
       return;
     }
     await onInvite(email.trim().toLowerCase(), role);
@@ -32,35 +34,50 @@ export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps)
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2 pt-4 border-t border-border">
-      <div className="flex-1 space-y-1">
-        <label className="text-xs text-muted-foreground">Email</label>
-        <Input
-          type="email"
-          placeholder="collegue@entreprise.com"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          className="h-9 text-sm"
-          required
-        />
+    <form onSubmit={handleSubmit} className="pt-4 border-t border-border space-y-2">
+      <div className="flex items-end gap-2">
+        <div className="flex-1 space-y-1">
+          <label className="text-xs text-muted-foreground">Email</label>
+          <Input
+            type="email"
+            placeholder="collegue@entreprise.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            className="h-9 text-sm"
+            required
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Rôle</label>
+          <Select value={role} onValueChange={setRole}>
+            <SelectTrigger className="w-28 h-9 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="member">Membre</SelectItem>
+              <SelectItem value="collaborator">Collaborateur externe</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          type="submit"
+          size="sm"
+          className="h-9 gap-1.5"
+          disabled={isLoading || isQuotaLoading || seatsExhausted || !email.trim()}
+        >
+          {isLoading || isQuotaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+          Inviter
+        </Button>
       </div>
-      <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Rôle</label>
-        <Select value={role} onValueChange={setRole}>
-          <SelectTrigger className="w-28 h-9 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="admin">Admin</SelectItem>
-            <SelectItem value="member">Membre</SelectItem>
-            <SelectItem value="collaborator">Collaborateur externe</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <Button type="submit" size="sm" className="h-9 gap-1.5" disabled={isLoading || isQuotaLoading || !email.trim()}>
-        {isLoading || isQuotaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-        Inviter
-      </Button>
+      {seatsExhausted && (
+        <p className="text-xs text-muted-foreground">
+          {seatLimitMessage}{' '}
+          <Link to="/settings?tab=billing" className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/80">
+            Ajouter un siège
+          </Link>
+        </p>
+      )}
     </form>
   );
 };

@@ -19,6 +19,11 @@ import {
 import { toast } from 'sonner';
 import { LinkedInProfile } from './types';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
+import { UpgradePrompt } from '@/components/ui/UpgradePrompt';
+import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import { hasPlanFeature } from '@/lib/featureGates';
+
+const SEQUENCES_PLAN_REQUIRED = "L'envoi de séquences nécessite un abonnement";
 
 interface SequenceOption {
   id: string;
@@ -50,6 +55,11 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   const [selectedSequence, setSelectedSequence] = useState<SequenceOption | null>(null);
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+
+  // Gating par plan (lot P0-C) : pas d'inscription sur le plan gratuit. Tant que
+  // l'état d'abonnement charge, on ne refuse rien (le serveur reste la référence).
+  const { effectivePlanId, isLoading: isPlanLoading } = useSubscriptionState();
+  const canSendSequences = isPlanLoading || hasPlanFeature(effectivePlanId, 'sequences_send');
 
   const fetchSequences = async (force = false) => {
     if (hasFetched && !force) return; // Use cache unless forced
@@ -125,7 +135,16 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
 
   return (
     <>
-      <DropdownMenu onOpenChange={(open) => open && fetchSequences()}>
+      <DropdownMenu
+        onOpenChange={(open) => {
+          if (!open) return;
+          if (!canSendSequences) {
+            toast.error(SEQUENCES_PLAN_REQUIRED);
+            return;
+          }
+          fetchSequences();
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
@@ -139,7 +158,13 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="bg-card w-64 z-[9999]">
-          {loading ? (
+          {!canSendSequences ? (
+            <UpgradePrompt
+              title="Séquences"
+              description={`${SEQUENCES_PLAN_REQUIRED}. Passez à un plan payant pour inscrire des candidats.`}
+              className="border-0 bg-transparent"
+            />
+          ) : loading ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
             </div>

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSubscriptionGate } from "../_shared/subscription-gate.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -114,6 +115,30 @@ Deno.serve(async (req) => {
     let invitationToken = existingInvitation?.token;
 
     if (!invitationId) {
+      // Sièges (lot P0-C) : un siège = une ligne organization_members, et une
+      // invitation en attente réserve un siège. Le renvoi d'une invitation déjà
+      // en attente n'en consomme pas de nouveau, d'où le contrôle ici seulement.
+      const gate = await getSubscriptionGate(supabase, organization_id);
+      const { count: pendingCount, error: pendingError } = await supabase
+        .from("organization_invitations")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organization_id)
+        .eq("status", "pending");
+      if (pendingError) {
+        console.error("[send-team-invitation] pending invitations count failed:", pendingError.message);
+        throw new Error("Impossible de vérifier les sièges disponibles");
+      }
+      if (gate.seatCount + (pendingCount ?? 0) >= gate.seatLimit) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: "seats_exceeded",
+            error: "Tous vos sièges sont utilisés. Ajoutez un siège dans Abonnement.",
+          }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
       // expires_at + token + status explicits car la table organization_invitations
       // a une contrainte NOT NULL sur "token" sans default value en BDD.
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();

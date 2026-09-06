@@ -1,6 +1,7 @@
 ﻿// Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { enforceLinkedInAction, recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
+import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +23,11 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 // déclencher multiple_sessions (cf. LOGBOOK 2026-07-06).
 const INTERACTIVE_COOLDOWN_MS = 5 * 60 * 1000;
 
+// Lot P0-C : une organisation sans abonnement actif ni essai en cours n'envoie
+// pas d'InMails. L'item est reporté d'une heure avec cette raison et repart de
+// lui-même une fois l'abonnement souscrit.
+const SUBSCRIPTION_REQUIRED_REASON = "Abonnement requis pour l'envoi d'InMails";
+
 interface InMailQueueItem {
   id: string;
   account_id: string;
@@ -33,6 +39,7 @@ interface InMailQueueItem {
   scheduled_at: string | null;
   user_timezone: string;
   created_by: string;
+  organization_id?: string | null;
   network_distance: number | null; // 1=1st degree, 2=2nd degree, 3=3rd degree
 }
 
@@ -367,6 +374,38 @@ Deno.serve(async (req: Request) => {
         return resolved;
       };
 
+      // Gate d'abonnement (lot P0-C), résolu une fois par organisation et par
+      // run. Organisation de l'item : colonne organization_id, sinon
+      // organisation active du créateur (comme les credentials). Si la lecture
+      // échoue, le gate n'est pas appliqué pour ce run, le cycle suivant
+      // re-vérifie.
+      const subscriptionGates = new Map<string, SubscriptionGate | null>();
+      const orgIdByUser = new Map<string, string | null>();
+      const canSendForSubscription = async (item: InMailQueueItem): Promise<boolean> => {
+        let orgId: string | null = item.organization_id ?? null;
+        if (!orgId) {
+          if (!orgIdByUser.has(item.created_by)) {
+            const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
+            orgIdByUser.set(item.created_by, await resolveOrgIdFromUser(item.created_by, supabase));
+          }
+          orgId = orgIdByUser.get(item.created_by) ?? null;
+        }
+        if (!orgId) {
+          console.warn(`[process-inmail-queue] item ${item.id} sans organisation résolue : gate d'abonnement non applicable`);
+          return true;
+        }
+        if (!subscriptionGates.has(orgId)) {
+          try {
+            subscriptionGates.set(orgId, await getSubscriptionGate(supabase, orgId));
+          } catch (gateErr) {
+            console.warn(`[process-inmail-queue] subscription gate unavailable for org=${orgId} (not blocking this run):`, gateErr);
+            subscriptionGates.set(orgId, null);
+          }
+        }
+        const gate = subscriptionGates.get(orgId) ?? null;
+        return gate ? gate.canSendSequences : true;
+      };
+
       const now = new Date();
 
       // Janitor (audit 2026-07, Delivery M1) : un item resté en 'sending'
@@ -417,6 +456,24 @@ Deno.serve(async (req: Request) => {
       const results: { id: string; success: boolean; error?: string }[] = [];
 
       for (const item of pendingItems as InMailQueueItem[]) {
+        // Gate d'abonnement (lot P0-C) : sans abonnement actif ni essai en
+        // cours, report d'une heure avec la raison, même pattern que le quota
+        // LinkedIn atteint. Les autres règles (heures ouvrées, statut du
+        // compte, cooldown, solde InMail, quota) restent inchangées.
+        if (!(await canSendForSubscription(item))) {
+          console.warn(`[process-inmail-queue] item ${item.id} reporté : ${SUBSCRIPTION_REQUIRED_REASON}`);
+          await supabase
+            .from("inmail_queue")
+            .update({
+              status: "scheduled",
+              scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+              error_message: `${SUBSCRIPTION_REQUIRED_REASON} (prochaine tentative dans 1h)`,
+            })
+            .eq("id", item.id);
+          results.push({ id: item.id, success: false, error: "subscription required" });
+          continue;
+        }
+
         // Check if we're within business hours (per-user configurable via member_quotas)
         const itemQuotas = await getQuotasFor(item.created_by);
         const itemTz = item.user_timezone || itemQuotas.timezone;

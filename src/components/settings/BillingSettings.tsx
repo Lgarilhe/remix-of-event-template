@@ -1,22 +1,110 @@
-import { useNavigate } from 'react-router-dom';
-import { useSubscription } from '@/hooks/useSubscription';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSubscriptionState, SUBSCRIPTION_STATE_QUERY_KEY, type SubscriptionState } from '@/hooks/useSubscriptionState';
 import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { CreditCard, ArrowUpRight, Calendar, Sparkles, Download, Loader2 } from 'lucide-react';
+import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { CreditCard, ArrowUpRight, Calendar, Sparkles, Download, Loader2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { toast } from 'sonner';
-import { useState } from 'react';
+
+/** Requêtes à rafraîchir au retour du paiement (le webhook met la base à jour). */
+const CHECKOUT_REFRESH_KEYS = [
+  SUBSCRIPTION_STATE_QUERY_KEY,
+  'org-subscription',
+  'subscription-plan',
+  'ai-credits',
+  'ai-credit-history',
+];
+/** Second rafraîchissement : le webhook peut arriver quelques secondes après le retour. */
+const CHECKOUT_REFRESH_DELAY_MS = 5000;
+
+const formatDate = (iso: string) => format(new Date(iso), 'dd/MM/yyyy');
+
+const formatLimit = (value: number | undefined) => {
+  if (value === undefined || value === null) return null;
+  if (value === -1) return 'Illimité';
+  return value.toLocaleString('fr-FR');
+};
+
+const plural = (count: number, singular: string, pluralForm: string) => `${count} ${count > 1 ? pluralForm : singular}`;
+
+const statusBadge = (state: SubscriptionState, isFree: boolean): { label: string; variant: BadgeProps['variant'] } => {
+  if (state.status === 'trialing') {
+    const days = state.trial_days_left ?? 0;
+    return { label: `Essai : ${plural(days, 'jour restant', 'jours restants')}`, variant: 'info' };
+  }
+  if (state.status === 'canceled') return { label: 'Résilié', variant: 'muted' };
+  if (state.status === 'past_due' || state.status === 'incomplete' || state.status === 'unpaid') {
+    return { label: 'Paiement en attente', variant: 'warning' };
+  }
+  if (state.cancel_at_period_end && state.current_period_end) {
+    return { label: `Résiliation programmée le ${formatDate(state.current_period_end)}`, variant: 'warning' };
+  }
+  if (isFree) return { label: 'Gratuit', variant: 'secondary' };
+  return { label: 'Actif', variant: 'success' };
+};
 
 export const BillingSettings = () => {
   const navigate = useNavigate();
-  const { subscription, currentPlan, isFree, isLoading } = useSubscription();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const { state, isLoading, isFree, isPaid, isTrialing, seatLimit, seatCount } = useSubscriptionState();
   const { organizationId } = useOrganization();
   const [exporting, setExporting] = useState(false);
+  const [openingPortal, setOpeningPortal] = useState(false);
+
+  // Retour du paiement : ?checkout=success | cancel (URL nettoyée ensuite).
+  // Le ref évite un double traitement (double montage en développement,
+  // réécriture asynchrone de l'URL).
+  const handledCheckoutRef = useRef<string | null>(null);
+  useEffect(() => {
+    const checkout = searchParams.get('checkout');
+    if (!checkout) return;
+    if (handledCheckoutRef.current === checkout) return;
+    handledCheckoutRef.current = checkout;
+
+    if (checkout === 'success') {
+      toast.success('Abonnement activé');
+      const refresh = () => {
+        CHECKOUT_REFRESH_KEYS.forEach((key) => {
+          void queryClient.invalidateQueries({ queryKey: [key] });
+        });
+      };
+      refresh();
+      window.setTimeout(refresh, CHECKOUT_REFRESH_DELAY_MS);
+    } else if (checkout === 'cancel') {
+      toast.info('Paiement annulé, votre plan reste inchangé.');
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('checkout');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, queryClient]);
+
+  const handleManageSubscription = async () => {
+    if (!organizationId || openingPortal) return;
+    setOpeningPortal(true);
+    try {
+      const { data, error } = await invokeEdgeFunction<{ url?: string }>('create-portal-session', {
+        organization_id: organizationId,
+      });
+      if (error || !data?.url) {
+        toast.error("Impossible d'ouvrir la gestion de l'abonnement. Réessayez.");
+        setOpeningPortal(false);
+        return;
+      }
+      window.location.assign(data.url);
+    } catch (err) {
+      console.error('[BillingSettings] portal error:', err);
+      toast.error("Impossible d'ouvrir la gestion de l'abonnement. Réessayez.");
+      setOpeningPortal(false);
+    }
+  };
 
   const handleExportData = async () => {
     if (!organizationId) return;
@@ -54,6 +142,19 @@ export const BillingSettings = () => {
     );
   }
 
+  const badge = state ? statusBadge(state, isFree) : { label: 'Gratuit', variant: 'secondary' as const };
+  const seatsOverLimit = !!state && state.has_stripe_subscription && state.seat_count > state.seats;
+
+  const limitRows = state
+    ? [
+        { label: 'Missions actives', value: formatLimit(state.limits.max_jobs) },
+        { label: 'Recherches / mois', value: formatLimit(state.limits.max_searches) },
+        { label: 'Membres', value: formatLimit(state.limits.max_members) },
+        { label: 'Crédits IA / mois', value: formatLimit(state.limits.ai_credits) },
+        { label: 'Contacts enrichis / mois', value: formatLimit(state.limits.contacts_included) },
+      ].filter((row) => row.value !== null)
+    : [];
+
   return (
     <div className="space-y-6">
       {/* Current Plan */}
@@ -65,46 +166,100 @@ export const BillingSettings = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-lg font-semibold text-foreground">
-                  {currentPlan?.name || 'Free'}
+                  {state?.plan_name || 'Gratuit'}
                 </p>
-                <Badge variant={isFree ? 'secondary' : 'default'}>
-                  {subscription?.status === 'active' ? 'Actif' : subscription?.status || 'Actif'}
-                </Badge>
+                <Badge variant={badge.variant}>{badge.label}</Badge>
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                {currentPlan?.description || 'Plan gratuit'}
+                {isTrialing
+                  ? "Essai gratuit, sans carte bancaire. Choisissez un plan pour continuer après l'essai."
+                  : isFree
+                    ? 'Vos données restent accessibles, sans envoi de séquences.'
+                    : 'Facturé par siège et par mois.'}
               </p>
             </div>
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate('/pricing')}>
-              {isFree ? 'Passer à Pro' : 'Changer de plan'}
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={openingPortal}
+                onClick={() => {
+                  // Abonnement en place : le changement passe par le portail, pas par un second paiement.
+                  if (state?.has_stripe_subscription) void handleManageSubscription();
+                  else navigate('/pricing');
+                }}
+              >
+                {isPaid ? 'Changer de plan' : 'Choisir un plan'}
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Button>
+              {state?.has_stripe_subscription && (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => { void handleManageSubscription(); }}
+                  disabled={openingPortal}
+                >
+                  {openingPortal ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                  Gérer l'abonnement
+                </Button>
+              )}
+            </div>
           </div>
 
-          {subscription?.current_period_end && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t border-border">
-              <Calendar className="w-4 h-4" />
+          {state && (
+            <div className="space-y-2 pt-2 border-t border-border text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                <span>
+                  {state.has_stripe_subscription
+                    ? `${plural(state.seats, 'siège facturé', 'sièges facturés')}, ${plural(state.seat_count, 'membre', 'membres')}`
+                    : `${plural(seatCount, 'membre', 'membres')}, ${plural(seatLimit, 'siège inclus', 'sièges inclus')}`}
+                </span>
+              </div>
+
+              {isTrialing && state.trial_ends_at && (
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  <span>Fin de l'essai le {formatDate(state.trial_ends_at)}</span>
+                </div>
+              )}
+
+              {!isTrialing && state.current_period_end && (
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  <span>
+                    {state.cancel_at_period_end ? "Accès jusqu'au" : 'Prochaine échéance le'}{' '}
+                    {formatDate(state.current_period_end)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {seatsOverLimit && (
+            <div className="flex items-start gap-2 bg-destructive/10 text-destructive text-sm p-3 rounded-md">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
-                {subscription.cancel_at_period_end ? 'Expire le' : 'Renouvellement le'}{' '}
-                {format(new Date(subscription.current_period_end), 'dd MMMM yyyy', { locale: fr })}
+                Votre espace compte plus de membres que de sièges facturés. Ajoutez un siège depuis « Gérer l'abonnement ».
               </span>
             </div>
           )}
 
-          {subscription?.cancel_at_period_end && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
-              Votre abonnement sera annulé à la fin de la période en cours.
-            </div>
+          {state?.has_stripe_subscription && (
+            <p className="text-xs text-muted-foreground">
+              Moyen de paiement, factures et annulation se gèrent depuis « Gérer l'abonnement ».
+            </p>
           )}
         </CardContent>
       </Card>
 
       {/* Limits / Usage */}
-      {currentPlan && (
+      {limitRows.length > 0 && (
         <Card>
           <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
@@ -114,12 +269,7 @@ export const BillingSettings = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Postes actifs', value: currentPlan.limits.max_jobs === -1 ? 'Illimité' : currentPlan.limits.max_jobs },
-                { label: 'Recherches / mois', value: currentPlan.limits.max_searches === -1 ? 'Illimité' : currentPlan.limits.max_searches },
-                { label: 'Membres', value: currentPlan.limits.max_members === -1 ? 'Illimité' : currentPlan.limits.max_members },
-                { label: 'Crédits IA', value: currentPlan.limits.ai_credits === -1 ? 'Illimité' : currentPlan.limits.ai_credits },
-              ].map((item) => (
+              {limitRows.map((item) => (
                 <div key={item.label} className="p-3 bg-muted/50 rounded-lg">
                   <p className="text-xs text-muted-foreground">{item.label}</p>
                   <p className="text-sm font-semibold text-foreground mt-0.5">{item.value}</p>

@@ -190,6 +190,12 @@ const SkalrLanding = () => {
                   {item.label}
                 </button>
               ))}
+              <button
+                onClick={() => navigate(withPreviewAccessToken('/pricing'))}
+                className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
+              >
+                Tarifs
+              </button>
             </div>
 
             <div className="flex items-center gap-3">
@@ -257,6 +263,16 @@ const SkalrLanding = () => {
                     {item.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setTimeout(() => navigate(withPreviewAccessToken('/pricing')), 200);
+                  }}
+                  className="text-left py-4 text-base font-display font-bold uppercase tracking-wide text-foreground hover:text-foreground/70 transition-colors border-b border-border"
+                >
+                  Tarifs
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -329,7 +345,7 @@ const SkalrLanding = () => {
                 Réserver une démo
               </BrutalButton>
               <BrutalButton variant="outline" onClick={() => navigate(withPreviewAccessToken('/auth'))}>
-                Commencer gratuitement
+                Essai gratuit 14 jours, sans carte
                 <ArrowRight className="h-3.5 w-3.5" />
               </BrutalButton>
             </motion.div>
@@ -585,7 +601,7 @@ const SkalrLanding = () => {
               </p>
               <div className="flex flex-wrap justify-center gap-3">
                 <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))}>
-                  Commencer gratuitement
+                  Essai gratuit 14 jours, sans carte
                   <ArrowRight className="h-3.5 w-3.5" />
                 </BrutalButton>
                 <BrutalButton variant="outline" onClick={() => setShowCalendly(true)}>
@@ -601,6 +617,7 @@ const SkalrLanding = () => {
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <KonektLogo variant="full" theme="dark" size={24} />
             <div className="flex items-center gap-6 text-xs uppercase tracking-wider text-muted-foreground font-medium">
+              <button onClick={() => navigate(withPreviewAccessToken('/pricing'))} className="uppercase hover:text-foreground transition-colors">Tarifs</button>
               <a href="/privacy#mentions" className="hover:text-foreground transition-colors">Mentions légales</a>
               <a href="/privacy" className="hover:text-foreground transition-colors">Confidentialité</a>
               <button onClick={() => setShowContact(true)} className="hover:text-foreground transition-colors">Contact</button>

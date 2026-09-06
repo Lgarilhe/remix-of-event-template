@@ -62,7 +62,7 @@ export const AICreditsSettings = () => {
       window.location.href = data.url;
     } catch (err) {
       console.error('Checkout error:', err);
-      toast.error('Erreur de connexion à Stripe.');
+      toast.error('Impossible d\'ouvrir le paiement. Réessayez.');
     } finally {
       setBuyingPack(null);
     }

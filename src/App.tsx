@@ -49,7 +49,7 @@ const RecruiterPublicProfile = lazy(() => import("./pages/RecruiterPublicProfile
 const AgentsPage = lazy(() => import("./pages/Agents"));
 const CalendarPage = lazy(() => import("./pages/Calendar"));
 const TasksPage = lazy(() => import("./pages/Tasks"));
-const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client'];
+const PUBLIC_ROUTES = ['/', '/index', '/auth', '/portal', '/client', '/pricing'];
 
 const AppContent = () => {
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -185,7 +185,8 @@ const AppContent = () => {
           <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/pricing" element={<ProtectedRoute><OrganizationGuard><AppLayout><Pricing /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          {/* Tarifs : page publique (sans session ni organisation), la page gère elle-même l'état connecté */}
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/marketplace" element={<ProtectedRoute><OrganizationGuard><AppLayout><Marketplace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
