@@ -6036,12 +6036,44 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      organization_integrations_public: {
+        Row: {
+          aircall_api_id: string | null
+          aircall_api_token_hint: string | null
+          aircall_connected: boolean
+          airtable_api_key_hint: string | null
+          airtable_base_id: string | null
+          airtable_base_id_2: string | null
+          airtable_connected: boolean
+          calendly_api_key_hint: string | null
+          calendly_connected: boolean
+          coresignal_enabled: boolean
+          created_at: string
+          id: string
+          notion_api_key_hint: string | null
+          notion_candidats_db_id: string | null
+          notion_connected: boolean
+          notion_postes_db_id: string | null
+          notion_shortlist_db_id: string | null
+          organization_id: string
+          unipile_connected: boolean
+          updated_at: string
+        }
+        Relationships: []
+      }
     }
     Functions: {
       acquire_sequence_lock: {
         Args: { p_run_id: string; p_ttl_minutes?: number }
         Returns: boolean
+      }
+      set_integration_secret: {
+        Args: { p_field: string; p_organization_id: string; p_value: string }
+        Returns: undefined
+      }
+      update_integration_settings: {
+        Args: { p_organization_id: string; p_updates: Json }
+        Returns: undefined
       }
       archive_old_agent_conversations: { Args: never; Returns: number }
       atomic_tracking_append: {

@@ -136,6 +136,14 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
 
+    // Mode B (appel edge→edge avec la clé service-role, ex. auto-analyze-message) :
+    // pas de user JWT → l'appelant interne (trusted) fournit organization_id /
+    // user_id pour le décompte de crédits. Ignorés pour un appel JWT (anti-IDOR).
+    const settleUserId: string | null = userId
+      ?? (auth.method === 'service_role' && typeof body?.user_id === 'string' ? body.user_id : null);
+    const settleOrgId: string | null =
+      auth.method === 'service_role' && typeof body?.organization_id === 'string' ? body.organization_id : null;
+
     // Warmup ping — short-circuit pour éviter cold start sans consommer de crédits
     if (body?.warmup === true) {
       return new Response(
@@ -424,7 +432,7 @@ Analyse cette conversation et retourne le JSON.`;
         antiAiStyle: "full", // les suggestions de réponse sont user-facing
       });
       content = result.content;
-      await settleClaudeUsage({ userId, aiAction: "analyze_response", usage: result.usage, modelId: result.model });
+      await settleClaudeUsage({ userId: settleUserId, organizationId: settleOrgId, aiAction: "analyze_response", usage: result.usage, modelId: result.model });
     } catch (e) {
       console.error("[analyze-response] Claude API error:", e);
       // Return fallback analysis instead of crashing

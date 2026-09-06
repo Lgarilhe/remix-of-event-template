@@ -15,7 +15,16 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Sparkles, Loader2, Clock, Zap, Target, Users, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { useOrganizationMembers } from '@/hooks/useOrganization';
@@ -35,7 +44,7 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
   const {
     steps, team, loadingSteps, loadingTeam,
     addStep, updateStep, deleteStep, reorderSteps,
-    initializeDefaultSteps, initializeFromTemplate,
+    initializeDefaultSteps, initializeFromTemplate, countCandidatesOnSteps,
     addTeamMember, removeTeamMember, isAdding,
   } = useMissionProcess(project.id);
 
@@ -64,6 +73,18 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
   const [addingStep, setAddingStep] = useState(false);
   const [newStepName, setNewStepName] = useState('');
   const [suggestingAI, setSuggestingAI] = useState(false);
+  // Remplacement d'un process existant : template en attente de confirmation + nb candidats impactés
+  const [pendingTemplateKey, setPendingTemplateKey] = useState<string | null>(null);
+  const [impactedCandidates, setImpactedCandidates] = useState(0);
+
+  const applyTemplate = async (templateKey: string) => {
+    setSuggestingAI(true);
+    try {
+      await initializeFromTemplate(PROCESS_TEMPLATES[templateKey].steps, PROCESS_TEMPLATES[templateKey].label);
+    } finally {
+      setSuggestingAI(false);
+    }
+  };
 
   // AI suggestion based on job details (rule-based)
   const handleAISuggestion = async () => {
@@ -83,13 +104,13 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
       templateKey = 'executive';
     }
 
-    setSuggestingAI(true);
-    try {
-      await initializeFromTemplate(PROCESS_TEMPLATES[templateKey].steps);
-      toast.success(`Process "${PROCESS_TEMPLATES[templateKey].label}" suggéré par l'IA`);
-    } finally {
-      setSuggestingAI(false);
+    if (steps.length === 0) {
+      await applyTemplate(templateKey);
+      return;
     }
+    // Des étapes existent : c'est un REMPLACEMENT → confirmation explicite
+    setImpactedCandidates(await countCandidatesOnSteps());
+    setPendingTemplateKey(templateKey);
   };
 
   const handleDragEnd = () => {
@@ -117,6 +138,35 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 pb-8">
+      <AlertDialog open={!!pendingTemplateKey} onOpenChange={(open) => !open && setPendingTemplateKey(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {steps.length > 1 ? `Remplacer les ${steps.length} étapes actuelles ?` : 'Remplacer l\'étape actuelle ?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingTemplateKey && `Le process « ${PROCESS_TEMPLATES[pendingTemplateKey].label} » remplacera les étapes existantes. `}
+              {impactedCandidates > 0
+                ? `${impactedCandidates} candidat${impactedCandidates > 1 ? 's' : ''} positionné${impactedCandidates > 1 ? 's' : ''} sur une étape actuelle ${impactedCandidates > 1 ? 'seront repositionnés' : 'sera repositionné'} sur l'étape de même nom, ou sur la première étape. `
+                : 'Aucun candidat n\'est positionné sur une étape actuelle. '}
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => {
+                const key = pendingTemplateKey;
+                setPendingTemplateKey(null);
+                if (key) void applyTemplate(key);
+              }}
+            >
+              Remplacer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Form principal */}
       <div className="min-w-0">
         {/* Header */}
@@ -169,7 +219,7 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
               isAdding={isAdding}
               suggestingAI={suggestingAI}
               onAISuggestion={handleAISuggestion}
-              onTemplate={(key) => initializeFromTemplate(PROCESS_TEMPLATES[key].steps)}
+              onTemplate={(key) => initializeFromTemplate(PROCESS_TEMPLATES[key].steps, PROCESS_TEMPLATES[key].label)}
             />
           ) : (
             <div className="relative">

@@ -152,6 +152,24 @@ async function updateNotionPage(pageId: string, notionApiKey: string, properties
 // UPDATE par égalité stricte d'URL qui ne matchait jamais (formats d'URL
 // différents entre le stockage et le payload) → 0 ligne 'shortlisted' en base
 // et la pill Shortlist du sourcing restait vide.
+
+// Stages qu'un simple « message envoyé » (etape Contacté) a le droit d'écraser.
+// Tout autre stage (Répondu, Pré-qualif, CV envoyé, ITW en cours, Offre, Gagné,
+// Perdu, ou valeur Notion inconnue type « Qualification ») est considéré plus
+// avancé → intouchable. Complément de la liste advancedStages
+// d'auto-analyze-message. Pressenti reste écrasable : c'est la progression
+// normale « shortlisté depuis le sourcing → premier message ».
+const CONTACT_OVERWRITABLE_STAGES = new Set<string>(['Nouveau', 'Pressenti', 'Contacté']);
+function canOverwriteWithContact(stage: string | null | undefined): boolean {
+  return !stage || CONTACT_OVERWRITABLE_STAGES.has(stage);
+}
+
+/** Lit la valeur courante de « Etape » d'une page Notion (status sur Candidat, select sur Shortlist). */
+function readNotionEtape(page: Record<string, any> | undefined): string | null {
+  const prop = page?.properties?.['Etape'];
+  return prop?.status?.name ?? prop?.select?.name ?? null;
+}
+
 interface JcsSyncInput {
   organizationId: string;
   userId: string;
@@ -178,13 +196,14 @@ async function syncCandidateStatus(input: JcsSyncInput): Promise<void> {
       notionFields.notion_synced_at = new Date().toISOString();
     }
 
+    // job_id normalisé sans préfixe "project:" (même convention que
+    // l'inscription en séquence ; le sourcing lit les 2 formes).
+    const normalizedJobId = input.jobId?.startsWith('project:')
+      ? input.jobId.slice('project:'.length)
+      : input.jobId;
+
     // 1. Voie fiable : upsert par (job_id, candidate_id, created_by).
-    //    job_id normalisé sans préfixe "project:" (même convention que
-    //    l'inscription en séquence ; le sourcing lit les 2 formes).
-    if (isShortlistIntent && input.jobId && input.linkedinId) {
-      const normalizedJobId = input.jobId.startsWith('project:')
-        ? input.jobId.slice('project:'.length)
-        : input.jobId;
+    if (isShortlistIntent && normalizedJobId && input.linkedinId) {
       const { error } = await supabase
         .from('job_candidate_status')
         .upsert({
@@ -209,27 +228,48 @@ async function syncCandidateStatus(input: JcsSyncInput): Promise<void> {
 
     // 2. Fallback : update des lignes existantes par slug LinkedIn (les URLs
     //    varient — www/locale/trailing slash — l'égalité stricte ne matche pas).
+    //    Restreint au job fourni quand il existe (sinon toutes les missions de
+    //    l'org étaient touchées) et, dans le flux Contacté, aux lignes dont le
+    //    stage courant n'est pas déjà plus avancé.
     if (!input.linkedinUrl) return;
     const slug = input.linkedinUrl.match(/\/in\/([^/?#]+)/i)?.[1];
+    let lookup = supabase
+      .from('job_candidate_status')
+      .select('id, pipeline_stage')
+      .eq('organization_id', input.organizationId);
+    if (input.jobId) {
+      // Les 2 formes coexistent en base (avec/sans préfixe project:)
+      lookup = lookup.in('job_id', Array.from(new Set([input.jobId, normalizedJobId])));
+    }
+    if (slug && !/[%_]/.test(slug)) {
+      lookup = lookup.ilike('linkedin_profile_url', `%/in/${slug}%`);
+    } else {
+      lookup = lookup.eq('linkedin_profile_url', input.linkedinUrl);
+    }
+    const { data: rows, error: lookupErr } = await lookup;
+    if (lookupErr) {
+      console.warn('[add-to-shortlist] jcs lookup failed:', lookupErr.message);
+      return;
+    }
+    const targets = (rows || []).filter((r: { id: string; pipeline_stage: string | null }) =>
+      isShortlistIntent || canOverwriteWithContact(r.pipeline_stage));
+    if (targets.length === 0) {
+      console.log(`[add-to-shortlist] jcs: ${rows?.length || 0} rows matched, 0 to update (url match)`);
+      return;
+    }
     const updatePayload: Record<string, unknown> = {
       ...(isShortlistIntent ? { status: 'shortlisted' } : {}),
       pipeline_stage: input.etape || 'Pressenti',
       ...notionFields,
     };
-    let query = supabase
+    const { error: updErr } = await supabase
       .from('job_candidate_status')
       .update(updatePayload)
-      .eq('organization_id', input.organizationId);
-    if (slug && !/[%_]/.test(slug)) {
-      query = query.ilike('linkedin_profile_url', `%/in/${slug}%`);
-    } else {
-      query = query.eq('linkedin_profile_url', input.linkedinUrl);
-    }
-    const { data: updated, error: updErr } = await query.select('id');
+      .in('id', targets.map((r: { id: string }) => r.id));
     if (updErr) {
       console.warn('[add-to-shortlist] jcs update failed:', updErr.message);
     } else {
-      console.log(`[add-to-shortlist] jcs updated ${updated?.length || 0} rows (url match)`);
+      console.log(`[add-to-shortlist] jcs updated ${targets.length} rows (url match)`);
     }
   } catch (syncErr) {
     // Best-effort, non bloquant
@@ -239,23 +279,31 @@ async function syncCandidateStatus(input: JcsSyncInput): Promise<void> {
 
 // ── Search helpers ──────────────────────────────────────────────────
 
-async function searchCandidateByLinkedIn(linkedinUrl: string, creds: NotionCreds): Promise<string | null> {
+/** Page Notion trouvée : id + valeur courante de « Etape » (pour ne pas rétrograder). */
+interface NotionHit { id: string; etape: string | null }
+
+function firstHit(data: any): NotionHit | null {
+  const page = data?.results?.[0];
+  return page?.id ? { id: page.id, etape: readNotionEtape(page) } : null;
+}
+
+async function searchCandidateByLinkedIn(linkedinUrl: string, creds: NotionCreds): Promise<NotionHit | null> {
   const data = await notionQuery(creds.candidatsDatabaseId, creds.notionApiKey, {
     property: 'URL Linkedin',
     url: { equals: linkedinUrl },
   });
-  return data?.results?.[0]?.id ?? null;
+  return firstHit(data);
 }
 
-async function searchCandidateByName(name: string, creds: NotionCreds): Promise<string | null> {
+async function searchCandidateByName(name: string, creds: NotionCreds): Promise<NotionHit | null> {
   const data = await notionQuery(creds.candidatsDatabaseId, creds.notionApiKey, {
     property: 'Nom',
     title: { equals: name },
   });
-  return data?.results?.[0]?.id ?? null;
+  return firstHit(data);
 }
 
-async function checkExistingShortlist(candidateId: string, creds: NotionCreds, jobId?: string): Promise<string | null> {
+async function checkExistingShortlist(candidateId: string, creds: NotionCreds, jobId?: string): Promise<NotionHit | null> {
   const filters: unknown[] = [
     { property: 'Candidats', relation: { contains: candidateId } },
   ];
@@ -263,7 +311,7 @@ async function checkExistingShortlist(candidateId: string, creds: NotionCreds, j
     filters.push({ property: '💼 Postes', relation: { contains: jobId } });
   }
   const data = await notionQuery(creds.shortlistDatabaseId, creds.notionApiKey, { and: filters });
-  return data?.results?.[0]?.id ?? null;
+  return firstHit(data);
 }
 
 // ── Seniority mapper ────────────────────────────────────────────────
@@ -338,18 +386,24 @@ Deno.serve(async (req) => {
 
     console.log('Adding to shortlist:', data.name, 'for job:', data.jobTitle);
 
+    // Flux « message envoyé » (inbox, OutreachMessageModal) : ne doit jamais
+    // rétrograder un candidat déjà avancé ni créer de Shortlist sans job.
+    const isContactFlow = data.etape === 'Contacté';
+
     // ── 1. Anti-doublon candidat ─────────────────────────────────
     let candidateId: string | null = null;
     let candidateExisted = false;
 
+    let candidateHit: NotionHit | null = null;
     if (data.linkedinUrl) {
-      candidateId = await searchCandidateByLinkedIn(data.linkedinUrl, creds);
+      candidateHit = await searchCandidateByLinkedIn(data.linkedinUrl, creds);
     }
-    if (!candidateId) {
-      candidateId = await searchCandidateByName(data.name, creds);
+    if (!candidateHit) {
+      candidateHit = await searchCandidateByName(data.name, creds);
     }
 
-    if (candidateId) {
+    if (candidateHit) {
+      candidateId = candidateHit.id;
       candidateExisted = true;
       console.log('Found existing candidate:', candidateId);
 
@@ -363,13 +417,39 @@ Deno.serve(async (req) => {
         // Add job relation (append, Notion handles dedup)
         updates['💼 Postes'] = { relation: [{ id: data.jobId }] };
       }
-      // Update etape & etat if provided
-      if (data.etape) updates['Etape'] = { status: { name: data.etape } };
-      if (data.etat) updates['Etat'] = { select: { name: data.etat } };
+      // Update etape & etat if provided — sauf flux Contacté sur un candidat
+      // déjà plus avancé (Répondu, Pré-qualif, ITW…, ou valeur inconnue).
+      const canWriteStage = !isContactFlow || canOverwriteWithContact(candidateHit.etape);
+      if (canWriteStage) {
+        if (data.etape) updates['Etape'] = { status: { name: data.etape } };
+        if (data.etat) updates['Etat'] = { select: { name: data.etat } };
+      } else {
+        console.log(`[add-to-shortlist] Notion candidate Etape kept (${candidateHit.etape})`);
+      }
 
       if (Object.keys(updates).length > 0) {
         await updateNotionPage(candidateId, creds.notionApiKey, updates);
       }
+    }
+
+    // Flux Contacté sans job : on ne crée ni Candidat ni Shortlist Notion
+    // (n'importe quel interlocuteur LinkedIn devenait un candidat).
+    if (isContactFlow && !data.jobId) {
+      await syncCandidateStatus({
+        organizationId: data.organization_id,
+        userId: user.id,
+        jobId: data.jobId,
+        linkedinId: data.linkedinId,
+        linkedinUrl: data.linkedinUrl,
+        name: data.name,
+        headline: data.headline,
+        etape: data.etape,
+        notionCandidateId: candidateId,
+      });
+      return new Response(
+        JSON.stringify({ success: true, skipped_shortlist: true, reason: 'contact_without_job', candidateId, candidateExisted }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
     }
 
     // ── 2. Créer le candidat si nécessaire ───────────────────────
@@ -441,13 +521,17 @@ Deno.serve(async (req) => {
     }
 
     // ── 3. Anti-doublon shortlist ────────────────────────────────
-    const existingShortlistId = await checkExistingShortlist(candidateId!, creds, data.jobId);
+    const existingShortlist = await checkExistingShortlist(candidateId!, creds, data.jobId);
+    const existingShortlistId = existingShortlist?.id ?? null;
     if (existingShortlistId) {
-      // Update existing shortlist etape if needed
-      if (data.etape) {
+      // Update existing shortlist etape if needed — jamais de rétrogradation
+      // depuis le flux Contacté.
+      if (data.etape && (!isContactFlow || canOverwriteWithContact(existingShortlist!.etape))) {
         await updateNotionPage(existingShortlistId, creds.notionApiKey, {
           'Etape': { select: { name: data.etape } },
         });
+      } else if (data.etape) {
+        console.log(`[add-to-shortlist] Notion shortlist Etape kept (${existingShortlist!.etape})`);
       }
 
       // Sync vers job_candidate_status même en cas de doublon

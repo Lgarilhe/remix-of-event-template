@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { emitQuotaAction } from '@/lib/quotaEvents';
+import { autoAnalyzeKey, hasAutoAnalyzed, markAutoAnalyzed } from '@/lib/autoAnalyzeGuard';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
@@ -1098,27 +1099,56 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       const jobTitle = enrollment?.job_title || null;
       const job = jobId ? availableJobs.find(j => j.id === jobId) : null;
 
-      // 1. Update job_candidate_status to 'messaged' if we have a candidate id + job
-      if (profileId && jobId) {
-        await supabase
+      // 1. Statut Konekt : ne pose 'messaged' que si le candidat n'est pas déjà
+      //    plus avancé (replied / shortlisted / dismissed, ou stage kanban manuel).
+      //    Lecture org-wide (RLS org) pour ne pas créer un 2e row si le row
+      //    existant a été créé par un collègue. organizationId requis : la policy
+      //    INSERT refuse sinon (refus RLS silencieux avant ce fix).
+      if (profileId && jobId && organizationId) {
+        const { data: existing, error: readErr } = await supabase
           .from('job_candidate_status')
-          .upsert({
-            job_id: jobId,
-            candidate_id: profileId,
-            linkedin_profile_url: profileUrl || null,
-            candidate_name: candidateName || null,
-            candidate_headline: candidateHeadline || null,
-            status: 'messaged',
-            created_by: user.id,
-            organization_id: organizationId,
-          }, {
-            onConflict: 'job_id,candidate_id,created_by',
-          });
-        console.log('[Inbox] Status updated to messaged for', candidateName);
+          .select('id, status')
+          .eq('organization_id', organizationId)
+          .eq('job_id', jobId)
+          .eq('candidate_id', profileId)
+          .limit(1)
+          .maybeSingle();
+        if (readErr) {
+          console.warn('[Inbox] job_candidate_status read failed:', readErr.message);
+        } else if (!existing) {
+          const { error: insErr } = await supabase
+            .from('job_candidate_status')
+            .upsert({
+              job_id: jobId,
+              candidate_id: profileId,
+              linkedin_profile_url: profileUrl || null,
+              candidate_name: candidateName || null,
+              candidate_headline: candidateHeadline || null,
+              status: 'messaged',
+              created_by: user.id,
+              organization_id: organizationId,
+            }, {
+              onConflict: 'job_id,candidate_id,created_by',
+              ignoreDuplicates: true,
+            });
+          if (insErr) console.warn('[Inbox] job_candidate_status insert failed:', insErr.message);
+          else console.log('[Inbox] Status set to messaged for', candidateName);
+        } else if (existing.status === 'discovered' || existing.status === 'scored') {
+          const { error: updErr } = await supabase
+            .from('job_candidate_status')
+            .update({ status: 'messaged' })
+            .eq('id', existing.id);
+          if (updErr) console.warn('[Inbox] job_candidate_status update failed:', updErr.message);
+          else console.log('[Inbox] Status updated to messaged for', candidateName);
+        } else {
+          console.log(`[Inbox] Status kept (${existing.status}) for`, candidateName);
+        }
       }
 
-      // 2. Sync to Notion via add-to-shortlist (create/update candidate + shortlist)
-      if (candidateName) {
+      // 2. Sync Notion via add-to-shortlist — uniquement si la conversation est
+      //    rattachée à un job (enrollment). Sans jobId, n'importe quel interlocuteur
+      //    LinkedIn (client, collègue) devenait un Candidat + une Shortlist Notion.
+      if (candidateName && jobId) {
         // Determine accompagnement from job data
         const accompagnementRaw = (job as any)?.accompagnement || [];
         let accompagnement: string | undefined;
@@ -1723,9 +1753,12 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             setReplySuggestions(suggestions);
             setSuggestionsLoaded(true);
           } else {
-            // Cache miss → trigger auto-analyze en background. Le webhook
-            // Unipile devrait déjà l'avoir fait pour les nouveaux messages,
-            // mais pour les anciens chats jamais ouverts, on déclenche ici.
+            // Cache miss → trigger auto-analyze en background, UNE fois par
+            // chat (et par dernier message) et par session : le webhook LinkedIn
+            // couvre les nouveaux messages, le panneau IA reste disponible.
+            const guardKey = autoAnalyzeKey(selectedChat);
+            if (hasAutoAnalyzed(guardKey)) return;
+            markAutoAnalyzed(guardKey);
             const senderId = selectedChat.attendees?.[0]?.id || null;
             supabase.functions.invoke('auto-analyze-message', {
               body: {

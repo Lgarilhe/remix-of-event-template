@@ -42,12 +42,26 @@ interface SendInvitationResult {
   invitation_token?: string | null;
 }
 
+/** Code d'erreur levé par createOrganization quand l'utilisateur a déjà un espace (F3). */
+export const ORG_ALREADY_EXISTS = 'ORG_ALREADY_EXISTS';
+
+export class OrganizationExistsError extends Error {
+  code = ORG_ALREADY_EXISTS;
+  constructor() {
+    super('Vous faites déjà partie d’un espace de travail.');
+    this.name = 'OrganizationExistsError';
+  }
+}
+
 export const useOrganization = () => {
   const queryClient = useQueryClient();
   const { isReady, user } = useAuthReady();
 
   // Fetch current user's active organization
-  const { data, isLoading } = useQuery({
+  // F3 : toute erreur est LEVÉE (jamais `return null`) — `null` signifie
+  // strictement « aucune org, onboarding légitime ». Une exception déclenche
+  // le retry global (main.tsx) puis l'état d'erreur d'OrganizationGuard.
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['active-organization', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -61,7 +75,7 @@ export const useOrganization = () => {
 
       if (profileError) {
         console.error('[useOrganization] profile fetch error:', profileError);
-        return null;
+        throw profileError;
       }
 
       let activeOrgId = profile?.active_organization_id;
@@ -75,11 +89,16 @@ export const useOrganization = () => {
       // (crédits, missions, candidats, LinkedIn account...).
       if (!activeOrgId) {
         console.warn('[useOrganization] active_organization_id is null, checking memberships fallback...');
-        const { data: memberships } = await supabase
+        const { data: memberships, error: membershipsError } = await supabase
           .from('organization_members')
           .select('organization_id, organizations(created_at)')
           .eq('user_id', user.id)
           .order('organizations(created_at)', { ascending: true });
+
+        if (membershipsError) {
+          console.error('[useOrganization] memberships fetch error:', membershipsError);
+          throw membershipsError;
+        }
 
         if (memberships && memberships.length > 0) {
           // Prend la PLUS ANCIENNE org où l'user est membre — typiquement
@@ -105,7 +124,10 @@ export const useOrganization = () => {
         .eq('id', activeOrgId)
         .single();
 
-      if (orgError) return null;
+      if (orgError) {
+        console.error('[useOrganization] organization fetch error:', orgError);
+        throw orgError;
+      }
 
       // Get user's role in org
       const { data: membership } = await supabase
@@ -131,14 +153,31 @@ export const useOrganization = () => {
       slug,
       website,
       logoUrl,
+      confirmSecond = false,
     }: {
       name: string;
       slug: string;
       website?: string | null;
       logoUrl?: string | null;
+      /** true = l'utilisateur a explicitement confirmé la création d'un SECOND espace */
+      confirmSecond?: boolean;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+
+      // F3 — garde anti-doublon : un utilisateur déjà membre d'un espace ne
+      // peut en créer un second qu'après confirmation explicite (AlertDialog
+      // dans SceneOrganization, ou `?new=1` posé par l'accueil collaborateur).
+      // Vérifié ici (et pas seulement via `organization` du hook) car ce hook
+      // peut être en erreur transitoire au moment où l'onboarding est affiché.
+      if (!confirmSecond) {
+        const { count, error: countError } = await supabase
+          .from('organization_members')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id);
+        if (countError) throw countError;
+        if ((count ?? 0) > 0) throw new OrganizationExistsError();
+      }
 
       const normalizedWebsite = website?.trim() || null;
       const normalizedLogoUrl = logoUrl?.trim() || null;
@@ -173,6 +212,8 @@ export const useOrganization = () => {
     onError: (err: Error) => {
       // Don't toast duplicate slug errors — handled in the form
       if (err.message?.includes('organizations_slug_key') || err.message?.includes('duplicate key')) return;
+      // F3 : espace existant → l'appelant ouvre une confirmation, pas de toast ici
+      if ((err as { code?: string }).code === ORG_ALREADY_EXISTS) return;
       toast.error(`Erreur: ${err.message}`);
     },
   });
@@ -211,7 +252,11 @@ export const useOrganization = () => {
     isAdmin: data?.role === 'owner' || data?.role === 'admin',
     isCollaborator: (data?.role as string) === 'collaborator',
     isLoading: !isReady || isLoading,
-    needsOnboarding: isReady && !!user && !isLoading && data === null,
+    // F3 : erreur de chargement (sans donnée en cache) → OrganizationGuard
+    // affiche « Réessayer » au lieu de rediriger vers /onboarding
+    isError,
+    refetchOrganization: refetch,
+    needsOnboarding: isReady && !!user && !isLoading && !isError && data === null,
     createOrganization: createOrgMutation.mutateAsync,
     switchOrganization: switchOrgMutation.mutateAsync,
     isCreating: createOrgMutation.isPending,

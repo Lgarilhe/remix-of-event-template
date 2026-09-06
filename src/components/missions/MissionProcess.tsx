@@ -699,7 +699,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
   const {
     steps, team, loadingSteps, loadingTeam,
     addStep, updateStep, deleteStep, reorderSteps,
-    initializeDefaultSteps, initializeFromTemplate, addTeamMember, removeTeamMember, isAdding,
+    initializeDefaultSteps, initializeFromTemplate, countCandidatesOnSteps, addTeamMember, removeTeamMember, isAdding,
   } = useMissionProcess(project.id);
 
   // Fetch org members for the assign dropdown + name resolution
@@ -727,6 +727,18 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [addingStep, setAddingStep] = useState(false);
   const [suggestingAI, setSuggestingAI] = useState(false);
+  // Remplacement d'un process existant : template en attente de confirmation + nb candidats impactés
+  const [pendingTemplateKey, setPendingTemplateKey] = useState<string | null>(null);
+  const [impactedCandidates, setImpactedCandidates] = useState(0);
+
+  const applyTemplate = async (templateKey: string) => {
+    setSuggestingAI(true);
+    try {
+      await initializeFromTemplate(PROCESS_TEMPLATES[templateKey].steps, PROCESS_TEMPLATES[templateKey].label);
+    } finally {
+      setSuggestingAI(false);
+    }
+  };
 
   // AI suggestion based on job details
   const handleAISuggestion = async () => {
@@ -744,13 +756,13 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
       templateKey = 'executive';
     }
 
-    setSuggestingAI(true);
-    try {
-      await initializeFromTemplate(PROCESS_TEMPLATES[templateKey].steps);
-      toast.success(`Process "${PROCESS_TEMPLATES[templateKey].label}" suggéré par l'IA`);
-    } finally {
-      setSuggestingAI(false);
+    if (steps.length === 0) {
+      await applyTemplate(templateKey);
+      return;
     }
+    // Des étapes existent : c'est un REMPLACEMENT → confirmation explicite
+    setImpactedCandidates(await countCandidatesOnSteps());
+    setPendingTemplateKey(templateKey);
   };
   const [newStepName, setNewStepName] = useState('');
 
@@ -775,6 +787,35 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
+      <AlertDialog open={!!pendingTemplateKey} onOpenChange={(open) => !open && setPendingTemplateKey(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {steps.length > 1 ? `Remplacer les ${steps.length} étapes actuelles ?` : 'Remplacer l\'étape actuelle ?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingTemplateKey && `Le process « ${PROCESS_TEMPLATES[pendingTemplateKey].label} » remplacera les étapes existantes. `}
+              {impactedCandidates > 0
+                ? `${impactedCandidates} candidat${impactedCandidates > 1 ? 's' : ''} positionné${impactedCandidates > 1 ? 's' : ''} sur une étape actuelle ${impactedCandidates > 1 ? 'seront repositionnés' : 'sera repositionné'} sur l'étape de même nom, ou sur la première étape. `
+                : 'Aucun candidat n\'est positionné sur une étape actuelle. '}
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => {
+                const key = pendingTemplateKey;
+                setPendingTemplateKey(null);
+                if (key) void applyTemplate(key);
+              }}
+            >
+              Remplacer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Bandeau "Structurez votre process" retiré (demande Laurent 2026-05-20). */}
       {readOnly && (
         <div className="px-4 py-3 rounded-lg border border-border bg-muted/30 flex items-center gap-2">
@@ -873,7 +914,7 @@ export const MissionProcess: React.FC<MissionProcessProps> = ({ project, readOnl
                 {Object.entries(PROCESS_TEMPLATES).map(([key, tpl]) => (
                   <button
                     key={key}
-                    onClick={() => initializeFromTemplate(tpl.steps)}
+                    onClick={() => initializeFromTemplate(tpl.steps, tpl.label)}
                     disabled={isAdding}
                     className="rounded-lg border border-border bg-card p-4 text-left hover:border-primary/30 hover:shadow-sm transition-all disabled:opacity-50 group"
                   >

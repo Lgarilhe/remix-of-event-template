@@ -1100,21 +1100,27 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   if (chatId) {
     console.log(`[unipile-webhook] Triggering auto-analyze for chat: ${chatId}`);
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    // Clé service-role (auto-analyze-message rejette la clé anon en 401) +
+    // organization_id du compte (linkedMembers chargé ci-dessus) pour les créds
+    // par org et l'imputation des crédits.
+    const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
+    const autoAnalyzeOrgId = linkedMembers?.[0]?.organization_id ?? null;
     
-    // Fire-and-forget: don't await to keep webhook fast
+    // Fire-and-forget: don't await to keep webhook fast. Timeout 55 s :
+    // auto-analyze attend désormais analyze-response (jusqu'à ~50 s).
     fetchWithTimeout(`${supabaseUrl}/functions/v1/auto-analyze-message`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Authorization': `Bearer ${serviceKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         chat_id: chatId,
         account_id: account_id,
         sender_id: senderId,
+        organization_id: autoAnalyzeOrgId,
       }),
-    }).then(res => {
+    }, 55000).then(res => {
       console.log(`[unipile-webhook] Auto-analyze triggered: ${res.status}`);
     }).catch(err => {
       console.error('[unipile-webhook] Auto-analyze trigger failed:', err);

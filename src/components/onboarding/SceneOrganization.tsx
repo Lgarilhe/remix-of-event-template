@@ -4,7 +4,17 @@ import { ArrowLeft, ArrowRight, Check, Loader2, MapPin, Users, TrendingUp, Build
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useOrganization } from '@/hooks/useOrganization';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useOrganization, ORG_ALREADY_EXISTS } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -108,6 +118,8 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'insights' | 'roles'>('overview');
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
+  // F3 : l'utilisateur a déjà un espace → confirmation explicite avant d'en créer un second
+  const [confirmSecondOpen, setConfirmSecondOpen] = useState(false);
   // debounceRef removed — search is now explicit via button/Enter
   const bubblesEndRef = useRef<HTMLDivElement>(null);
   const { createOrganization } = useOrganization();
@@ -230,7 +242,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
   const generateSlug = (value: string) =>
     value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-  const handleContinue = async () => {
+  const handleContinue = async (confirmSecond = false) => {
     if (!company) return;
     setIsCreating(true);
     try {
@@ -239,6 +251,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
         slug: generateSlug(company.name),
         website: company.websiteUrl || (company.domain ? `https://${company.domain}` : null),
         logoUrl: company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : null),
+        confirmSecond,
       });
 
       // Create sourcing projects for selected roles
@@ -282,7 +295,10 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
       });
     } catch (err: any) {
       const msg = err?.message || '';
-      if (msg.includes('duplicate key') || msg.includes('organizations_slug_key')) {
+      if (err?.code === ORG_ALREADY_EXISTS) {
+        // F3 : déjà membre d'un espace → demander une confirmation explicite
+        setConfirmSecondOpen(true);
+      } else if (msg.includes('duplicate key') || msg.includes('organizations_slug_key')) {
         toast.error('Cette organisation existe déjà.');
       } else {
         toast.error(msg || 'Erreur lors de la création');
@@ -561,7 +577,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             {/* Navigation */}
             <div className="flex items-center justify-end pt-2">
               <Button
-                onClick={handleContinue}
+                onClick={() => handleContinue()}
                 disabled={isCreating}
                 className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
               >
@@ -572,6 +588,29 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* F3 : confirmation explicite avant la création d'un second espace */}
+      <AlertDialog open={confirmSecondOpen} onOpenChange={setConfirmSecondOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Vous avez déjà un espace de travail</AlertDialogTitle>
+            <AlertDialogDescription>
+              Votre compte fait déjà partie d’un espace Konekt. Créer un nouvel espace le
+              rendra actif à la place de l’actuel : vos missions, crédits et comptes
+              LinkedIn resteront dans l’espace existant. Voulez-vous vraiment créer un second espace ?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive"
+              onClick={() => { setConfirmSecondOpen(false); void handleContinue(true); }}
+            >
+              Créer un second espace
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

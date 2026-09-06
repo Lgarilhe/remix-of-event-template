@@ -9,8 +9,6 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
-  Eye,
-  EyeOff,
   Check,
   Loader2,
   ChevronDown,
@@ -385,7 +383,6 @@ const IntegrationCard = ({
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const isConnected = !!values[config.connectedKey];
   
 
@@ -404,8 +401,11 @@ const IntegrationCard = ({
     config.fields.forEach(f => {
       updates[f.key] = localValues[f.key] || null;
     });
+    // Un secret déjà enregistré (hint présent) compte comme rempli même si le champ est vide
     const allFilled = config.fields.every(f =>
-      f.key.includes('_2') || !!localValues[f.key]?.trim()
+      f.key.includes('_2') ||
+      !!localValues[f.key]?.trim() ||
+      (!!f.secret && !!values[`${f.key}_hint`])
     );
     updates[config.connectedKey] = allFilled;
     await onSave(updates);
@@ -455,29 +455,19 @@ const IntegrationCard = ({
               <label className="text-xs font-medium text-foreground">{field.label}</label>
               <div className="relative">
                 <Input
-                  type={field.secret && !showSecrets[field.key] ? 'password' : 'text'}
-                  placeholder={field.placeholder}
+                  type={field.secret ? 'password' : 'text'}
+                  autoComplete={field.secret ? 'new-password' : undefined}
+                  placeholder={
+                    field.secret && values[`${field.key}_hint`]
+                      ? `Clé enregistrée (${values[`${field.key}_hint`]}) — saisir une nouvelle clé pour la remplacer`
+                      : field.placeholder
+                  }
                   value={localValues[field.key] || ''}
                   onChange={(e) =>
                     setLocalValues(prev => ({ ...prev, [field.key]: e.target.value }))
                   }
                   className="pr-10 text-sm border-border"
                 />
-                {field.secret && (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() =>
-                      setShowSecrets(prev => ({ ...prev, [field.key]: !prev[field.key] }))
-                    }
-                  >
-                    {showSecrets[field.key] ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                )}
               </div>
             </div>
           ))}

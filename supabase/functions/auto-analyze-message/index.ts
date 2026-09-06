@@ -330,17 +330,22 @@ Deno.serve(async (req) => {
     // accountOrgId (= org du compte pour un user ; org du body pour un appel
     // service_role interne trusted) sert ensuite à résoudre les créds.
     let accountOrgId: string | undefined = organization_id;
+    // Propriétaire du compte LinkedIn (org + premier membre rattaché) : sert à
+    // l'autorisation (appel JWT) et à l'imputation des crédits (appel webhook
+    // service_role, sans user).
+    let ownerOrgId: string | undefined;
+    let ownerUserId: string | undefined;
+    if (account_id) {
+      const { data: acctMap } = await supabase
+        .from('member_linkedin_accounts')
+        .select('organization_id, user_id')
+        .eq('linkedin_account_id', account_id)
+        .limit(1);
+      ownerOrgId = acctMap?.[0]?.organization_id as string | undefined;
+      ownerUserId = acctMap?.[0]?.user_id as string | undefined;
+    }
     if (userId) {
       const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
-      let ownerOrgId: string | undefined;
-      if (account_id) {
-        const { data: acctMap } = await supabase
-          .from('member_linkedin_accounts')
-          .select('organization_id')
-          .eq('linkedin_account_id', account_id)
-          .limit(1);
-        ownerOrgId = acctMap?.[0]?.organization_id as string | undefined;
-      }
       const isMember = ownerOrgId
         ? await verifyOrgMembership(supabase, userId, ownerOrgId)
         : false;
@@ -350,7 +355,13 @@ Deno.serve(async (req) => {
         });
       }
       accountOrgId = ownerOrgId;
+    } else if (!accountOrgId) {
+      accountOrgId = ownerOrgId;
     }
+    // User à débiter : le user JWT, sinon (webhook) le membre rattaché au compte.
+    // ai_credit_transactions.user_id est uuid NOT NULL → jamais sender_id
+    // (id d'attendee LinkedIn) ni 'system'.
+    const settleUserId: string | null = userId ?? ownerUserId ?? null;
     let _aiParams: { aiAction: string; modelId: string; description: string | null } = {
       aiAction: "auto_analyze_message", modelId: "claude-sonnet-4-6", description: null,
     };
@@ -387,11 +398,38 @@ Deno.serve(async (req) => {
     const candidateName = chatDetails.attendeeName || 'Candidat';
     const profileUrl = chatDetails.attendeeProfileUrl;
 
-    // 2. Analyze intent with Claude (lightweight call)
+    // 2a. Aucun message du candidat (outreach sans réponse) : rien à analyser.
+    // On écrit quand même une entrée de cache (même forme que la réponse
+    // d'analyze-response dans ce cas) pour que le prefetch / la détection
+    // « stale » côté front ne rejouent pas ce chat indéfiniment.
+    if (!messages.some(m => !m.is_sender)) {
+      console.log('[auto-analyze] No candidate message — writing neutral cache marker');
+      const { error: markerError } = await supabase
+        .from('message_analysis_cache')
+        .upsert({
+          chat_id: chat_id,
+          account_id: account_id,
+          organization_id: accountOrgId ?? null,
+          recipient_name: candidateName,
+          analysis: {
+            intent: 'neutral', intentConfidence: 0, sentiment: 'neutral', engagement: 'low',
+            suggestedActions: [], suggestedTags: [], summary: 'Aucun message du candidat à analyser',
+            replySuggestions: [], jobMatches: [], detectedLanguage: 'fr', qualificationQuestions: [],
+          },
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'chat_id,account_id' });
+      if (markerError) console.error('[auto-analyze] Cache marker write error:', markerError);
+      return new Response(JSON.stringify({ success: true, skipped: 'no_candidate_message', cacheWritten: !markerError }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 2b. Analyze intent with Claude (lightweight call)
     const analysis = await analyzeIntent(messages, candidateName);
-    
+
     if (!analysis) {
-      console.log('[auto-analyze] Analysis failed or no candidate message');
+      // Erreur API (transitoire) : pas d'entrée de cache → réessai possible plus tard.
+      console.log('[auto-analyze] Analysis failed');
       return new Response(JSON.stringify({ success: true, skipped: 'analysis_failed' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -403,22 +441,20 @@ Deno.serve(async (req) => {
     const candidatEtat = INTENT_TO_CANDIDAT_ETAT[analysis.intent];
     const shortlistEtape = INTENT_TO_SHORTLIST_ETAPE[analysis.intent];
     
-    if (!candidatEtat && !shortlistEtape || analysis.confidence < MIN_CONFIDENCE) {
-      console.log(`[auto-analyze] No update: intent=${analysis.intent}, confidence=${analysis.confidence}`);
-      return new Response(JSON.stringify({ 
-        success: true, 
-        skipped: 'low_confidence_or_neutral',
-        analysis,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Intent non mappé ou confiance insuffisante : on saute les mises à jour de
+    // statut (étapes 4-6) mais on poursuit l'analyse complète + cache (étape 7)
+    // et le décompte de crédits — sinon ces chats n'ont jamais de cache et le
+    // front les rejoue à chaque montage.
+    const skipStatusUpdates = (!candidatEtat && !shortlistEtape) || analysis.confidence < MIN_CONFIDENCE;
+    if (skipStatusUpdates) {
+      console.log(`[auto-analyze] No status update: intent=${analysis.intent}, confidence=${analysis.confidence}`);
     }
 
     // 4. Update app DB (job_candidate_status)
 
     const candidateId = sender_id || chatDetails.attendeeProviderId;
     
-    if (candidateId) {
+    if (!skipStatusUpdates && candidateId) {
       const { data: statusRecords } = await supabase
         .from('job_candidate_status')
         .select('id, job_id, status, pipeline_stage')
@@ -461,7 +497,7 @@ Deno.serve(async (req) => {
     }
 
     // 5. Update Notion (Candidat "Etat" + Shortlist "Etape")
-    if (creds.notionApiKey) {
+    if (!skipStatusUpdates && creds.notionApiKey) {
       const notionCandidateId = await findCandidateInNotion(candidateName, creds, profileUrl);
 
       if (notionCandidateId) {
@@ -500,7 +536,7 @@ Deno.serve(async (req) => {
       'timing_issue': 'to_recontact',
     };
     const chatCategory = INTENT_TO_CHAT_CATEGORY[analysis.intent];
-    if (chatCategory && chat_id && account_id) {
+    if (!skipStatusUpdates && chatCategory && chat_id && account_id) {
       const { data: existingEntries } = await supabase
         .from('chat_categories')
         .select('created_by')
@@ -540,9 +576,12 @@ Deno.serve(async (req) => {
     // 7. Trigger full AI analysis (analyze-response) and cache the result
     // IMPORTANT: We await this so the cache is written before the function exits.
     // The webhook already calls auto-analyze as fire-and-forget, so this is fine.
+    // Appel edge→edge en Mode B : clé service-role (requireAuth → method
+    // 'service_role', userId null) + organization_id / user_id dans le body pour
+    // le décompte de crédits. La clé anon n'est ni un JWT user ni la service
+    // key → 401 systématique (cf. generate-reply-suggestions l.19-27).
     const supabaseUrl2 = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    
+
     let cacheWritten = false;
     try {
       console.log(`[auto-analyze] Triggering full analysis for cache (chat: ${chat_id})`);
@@ -554,36 +593,46 @@ Deno.serve(async (req) => {
         messages: messages.map(m => ({ text: m.text, is_sender: m.is_sender, timestamp: m.timestamp })),
       };
 
-      // Fetch available jobs from Notion for job matching
-      try {
-        const notionJobsRes = await fetch(`${supabaseUrl2}/functions/v1/fetch-notion-jobs`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({}),
-        });
-        if (notionJobsRes.ok) {
-          const notionJobsData = await notionJobsRes.json();
-          const jobs = notionJobsData?.jobs || [];
-          if (jobs.length > 0) {
-            analysisContext.availableJobs = jobs.slice(0, 15);
+      // Fetch available jobs from Notion for job matching.
+      // fetch-notion-jobs n'accepte qu'un JWT user (+ organization_id + appartenance) :
+      // on relaie le JWT de l'appelant quand il y en a un ; en appel service_role
+      // (webhook) on saute cette étape — availableJobs est optionnel.
+      if (userId && accountOrgId) {
+        try {
+          const notionJobsRes = await fetchWithTimeout(`${supabaseUrl2}/functions/v1/fetch-notion-jobs`, {
+            method: 'POST',
+            headers: {
+              'Authorization': authHeader!,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ organization_id: accountOrgId }),
+          });
+          if (notionJobsRes.ok) {
+            const notionJobsData = await notionJobsRes.json();
+            const jobs = notionJobsData?.jobs || [];
+            if (jobs.length > 0) {
+              analysisContext.availableJobs = jobs.slice(0, 15);
+            }
           }
+        } catch (e) {
+          console.warn('[auto-analyze] Failed to fetch jobs for cache:', e);
         }
-      } catch (e) {
-        console.warn('[auto-analyze] Failed to fetch jobs for cache:', e);
       }
 
-      // Call analyze-response and AWAIT the result
-      const analyzeRes = await fetch(`${supabaseUrl2}/functions/v1/analyze-response`, {
+      // Call analyze-response and AWAIT the result (Haiku, timeout interne 55 s ;
+      // on garde 50 s ici pour rester sous les 60 s de la plateforme).
+      const analyzeRes = await fetchWithTimeout(`${supabaseUrl2}/functions/v1/analyze-response`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ context: analysisContext }),
-      });
+        body: JSON.stringify({
+          context: analysisContext,
+          organization_id: accountOrgId ?? null,
+          user_id: settleUserId,
+        }),
+      }, 50000);
 
       if (analyzeRes.ok) {
         const analyzeData = await analyzeRes.json();
@@ -594,6 +643,7 @@ Deno.serve(async (req) => {
             .upsert({
               chat_id: chat_id,
               account_id: account_id,
+              organization_id: accountOrgId ?? null,
               recipient_name: candidateName,
               analysis: analyzeData.analysis,
               updated_at: new Date().toISOString(),
@@ -651,34 +701,34 @@ Deno.serve(async (req) => {
     }
 
     // ── Settle AI credits (fire-and-forget) ──
+    // Org = org propriétaire du compte LinkedIn, user = user JWT ou membre
+    // rattaché au compte (accountOrgId / settleUserId résolus après l'auth).
     const _tokensIn = analysis?._tokensIn || 0;
     const _tokensOut = analysis?._tokensOut || 0;
     if (_tokensIn + _tokensOut > 0) {
-      try {
-        const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-        const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-        // Use organization_id from body, or resolve from any available user
-        const settleUserId = sender_id || 'system';
-        const orgId = organization_id || await resolveOrgIdFromUser(settleUserId, adminClient).catch(() => null);
-        if (orgId) {
+      if (!accountOrgId || !settleUserId) {
+        console.warn(`[auto-analyze-message] settle skipped: no org/user resolved for account ${account_id}`);
+      } else {
+        try {
           const { settleCredits } = await import("../_shared/settle-credits.ts");
-          await settleCredits(adminClient, {
-            organizationId: orgId, userId: settleUserId,
+          await settleCredits(supabase, {
+            organizationId: accountOrgId, userId: settleUserId,
             aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
             tokensInput: _tokensIn, tokensOutput: _tokensOut,
             description: _aiParams.description,
           }).catch((e) => console.error("[auto-analyze-message] settle error:", e));
-        }
-      } catch (e) { console.error("[auto-analyze-message] settle skipped:", e); }
+        } catch (e) { console.error("[auto-analyze-message] settle skipped:", e); }
+      }
     }
 
     return new Response(JSON.stringify({
       success: true,
       analysis,
       cacheWritten,
-      updatedCandidatEtat: candidatEtat || null,
-      updatedShortlistEtape: shortlistEtape || null,
-      updatedChatCategory: chatCategory || null,
+      skipped: skipStatusUpdates ? 'low_confidence_or_neutral' : null,
+      updatedCandidatEtat: skipStatusUpdates ? null : (candidatEtat || null),
+      updatedShortlistEtape: skipStatusUpdates ? null : (shortlistEtape || null),
+      updatedChatCategory: skipStatusUpdates ? null : (chatCategory || null),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

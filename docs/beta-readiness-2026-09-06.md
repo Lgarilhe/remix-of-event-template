@@ -100,20 +100,9 @@ Ces points bloquent. Ils sont classés par ordre de traitement.
    inscription, onboarding, connexion LinkedIn, création de mission,
    sourcing, séquence, inbox, pipeline. Aucun de ces écrans n'a été vu dans un
    navigateur pendant cette revue.
-4. Cinq constats « haute » du front restent ouverts, tous d'effort moyen :
-   - `src/hooks/useOrganization.ts:61` : une erreur transitoire au chargement
-     de l'organisation envoie un utilisateur existant dans l'onboarding, avec
-     risque d'organisation en double s'il le termine.
-   - `src/hooks/useMessagesInbox.ts:1072` : chaque envoi depuis l'inbox
-     rétrograde le candidat à « Contacté » sur toutes ses missions, et dans
-     Notion, même depuis « Entretien » ou « Offre ».
-   - `src/hooks/useAutoPrefetchAnalyses.ts:66` : jusqu'à dix appels IA à
-     chaque ouverture de l'inbox, jamais mis en cache ni facturés.
-   - `src/components/missions/MissionProcess.tsx:749` : « Réoptimiser avec
-     l'IA » ajoute les étapes du process au lieu de les remplacer.
-   - `src/hooks/useOrganizationIntegrations.ts:40` : les clés API tierces sont
-     lisibles en clair par tout admin d'organisation (migration de GRANT par
-     colonne à écrire).
+4. Les cinq constats « haute » du front d'effort moyen ont été corrigés dans
+   le second lot du 6 septembre (section 8). Ils restent à valider à la main
+   dans un navigateur, comme le reste.
 5. Les 48 constats front de sévérité moyenne (audit du 1er septembre) sont à
    trier après l'ouverture, pas avant.
 
@@ -236,3 +225,82 @@ inexistante, `/missions` (redirige vers `/auth` sans session) et `/pricing`
 dix-sept fichiers touchés (mêmes 56 erreurs préexistantes qu'avant), `tsc`
 (31 erreurs, baseline 32, ensemble d'erreurs identique à celui d'avant les
 modifications), `vite build`, `npm run test:agent` (35 tests).
+
+## 8. Second lot du 6 septembre : les cinq bugs « haute » restants
+
+Cinq correctifs d'effort moyen, préparés par cinq agents lecteurs (un plan
+par constat, extraits de code vérifiés), implémentés en une passe, puis
+relus par dix agents contradictoires (deux lentilles par correctif :
+exactitude et régressions, puis sécurité multi-tenant ou SQL selon le cas).
+Contrôles locaux : lint identique à la base sur les quatorze fichiers front
+touchés, `tsc` à 31 erreurs sous la baseline de 32 avec le même ensemble
+d'erreurs qu'avant, `deno check` sans erreur nouvelle sur les quatre edge
+functions, build de production et 35 tests unitaires au vert.
+
+Chaîne d'analyse automatique des messages. `auto-analyze-message` appelait
+`analyze-response` et `fetch-notion-jobs` avec la clé anonyme, refusée en
+401 : le cache d'analyse n'était jamais écrit, le webhook de réception
+échouait de la même façon, et les crédits étaient imputés à un identifiant
+LinkedIn au lieu d'un utilisateur. Les appels internes passent en clé
+service avec l'organisation et l'utilisateur du compte, le cache est écrit
+aussi pour les conversations sans réponse du candidat ou à faible confiance,
+le webhook envoie la clé service et l'organisation, et le front ne relance
+l'analyse qu'une fois par conversation et par session (`src/lib/autoAnalyzeGuard.ts`).
+
+Envoi depuis l'inbox. Chaque message envoyé remettait le candidat à
+« Contacté » sur toutes ses missions, et dans Notion, y compris depuis
+« Entretien » ou « Offre », et créait une page Notion pour n'importe quel
+interlocuteur. Le statut n'est posé que s'il n'existe pas ou vaut
+« découvert » ou « scoré », la synchronisation Notion n'a lieu qu'avec un job
+rattaché, et l'edge function `add-to-shortlist` ne rétrograde plus un stage
+avancé ni n'étend le changement aux autres missions.
+
+Chargement de l'organisation. Une erreur transitoire renvoyait un utilisateur
+existant dans l'onboarding, avec création possible d'une seconde
+organisation. Les erreurs sont levées (donc retentées), le garde affiche un
+écran « Réessayer », la création d'une organisation par un utilisateur déjà
+membre demande une confirmation explicite, et `/onboarding` renvoie au
+tableau de bord quand l'organisation est déjà chargée.
+
+Secrets d'intégration. Les clés API tierces étaient lisibles en clair par
+tout administrateur via `select *` et un bouton œil. Migration
+`20260906085151_integration_secrets_write_only.sql` : plus aucun privilège
+direct sur la table pour les rôles clients, une vue publique sans secret
+(suffixe masqué des quatre clés saisies par le client, clés Konekt jamais
+exposées) et deux fonctions d'écriture réservées aux owners et admins. Le
+hook lit la vue, écrit par ces fonctions, et l'écran des intégrations n'a
+plus de bouton œil.
+
+Process d'une mission. « Réoptimiser avec l'IA » et les templates ajoutaient
+les étapes aux étapes existantes. Migration
+`20260906084418_replace_process_steps_rpc.sql` : une fonction transactionnelle
+remplace les étapes, repositionne les candidats (même nom d'étape, sinon
+première étape) et retourne le nombre repositionné, affiché dans une boîte
+de confirmation avant tout remplacement.
+
+Choix produit faits par défaut, à confirmer :
+
+1. Analyse automatique : l'analyse facturée est lancée dès le préchargement
+   des dix conversations récentes (une fois par session), pas seulement à
+   l'ouverture. Les crédits du flux webhook sont imputés au premier membre
+   rattaché au compte LinkedIn.
+2. Inbox : « Pressenti » reste écrasable par un premier message (progression
+   normale du sourcing) ; tout stage plus avancé est protégé.
+3. Organisation : un second espace reste possible après confirmation ; le
+   dialogue propose seulement Annuler ou Créer.
+4. Secrets : pas de bouton « Retirer la clé » (remplacement uniquement) ;
+   `unipile_connected` et `coresignal_enabled` sont en lecture seule pour
+   les clients ; `aircall_api_id` est traité comme non secret. Les clés
+   Unipile et Coresignal déjà lues par des admins clients restent à faire
+   tourner côté ops.
+5. Process : remplacement pur (pas d'option « ajouter à la suite »).
+
+Points de déploiement : les deux migrations partent avec le merge sur
+`main` ; Vercel et le workflow de migrations ne sont pas synchronisés, donc
+une fenêtre d'une à deux minutes existe où l'ancien front ou le nouveau
+appelle une base pas encore migrée (erreur affichée, aucune donnée
+corrompue). `types.ts` a été édité à la main pour la vue et les deux
+fonctions : à régénérer après application en production. Le linter Supabase
+signalera la vue comme « security definer view » : c'est voulu, le prédicat
+owner/admin est dans la vue.
+

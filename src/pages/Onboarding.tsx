@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useOrganization } from '@/hooks/useOrganization';
+import { toast } from 'sonner';
+import { useOrganization, ORG_ALREADY_EXISTS } from '@/hooks/useOrganization';
+import { withPreviewAccessToken } from '@/lib/previewToken';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { supabase } from '@/integrations/supabase/client';
 import { InvitationBanner } from '@/components/InvitationBanner';
@@ -82,10 +84,15 @@ const Onboarding = () => {
   const [teamInvitedCount, setTeamInvitedCount] = useState(0);
 
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
-  const { organization, organizationId, createOrganization } = useOrganization();
+  const { organization, organizationId, createOrganization, isLoading: isOrgLoading } = useOrganization();
   const { accounts } = useLinkedInAccounts();
+  // F3 : `?new=1` = création d'un second espace demandée explicitement
+  // (accueil collaborateur dans Auth.tsx). Sans ce flag, un utilisateur qui a
+  // déjà un espace est renvoyé au dashboard (voir avant le `return`).
+  const isExplicitNewWorkspace = new URLSearchParams(location.search).get('new') === '1';
 
   const flow = useMemo(() => (orgType ? FLOWS[orgType] : DEFAULT_FLOW), [orgType]);
   const chapters = useMemo(() => chaptersForFlow(flow), [flow]);
@@ -255,6 +262,9 @@ const Onboarding = () => {
           const org = await createOrganization({
             name: userName,
             slug: `${slug}-${Date.now().toString(36)}`,
+            // F3 : création silencieuse (pas de clic dédié) → autorisée pour un
+            // second espace uniquement si demandé explicitement via `?new=1`
+            confirmSecond: isExplicitNewWorkspace,
           });
           if (org?.id) {
             const aiCtx = buildOrgAiContext();
@@ -274,12 +284,16 @@ const Onboarding = () => {
           setOrgCreated(true);
         } catch (err) {
           console.error('[Onboarding] Auto-create org failed:', err);
+          if ((err as { code?: string })?.code === ORG_ALREADY_EXISTS) {
+            // F3 : la mutation ne toaste pas ce cas ; l'utilisateur garde son espace existant
+            toast.error('Vous faites déjà partie d’un espace de travail. Retrouvez-le depuis le tableau de bord.');
+          }
         }
       }
 
       setStep((s) => Math.min(s + 1, flow.length - 1));
     },
-    [markCompleted, createOrganization, orgType, orgDetailsData, discoverySource, flow.length, buildOrgAiContext]
+    [markCompleted, createOrganization, orgType, orgDetailsData, discoverySource, flow.length, buildOrgAiContext, isExplicitNewWorkspace]
   );
 
   const handleOrgCreated = useCallback(
@@ -388,6 +402,24 @@ const Onboarding = () => {
           filter: 'blur(8px)',
         }),
       };
+
+  // F3 : un utilisateur qui a déjà un espace et arrive à l'ENTRÉE du tunnel
+  // (step 0, pas de progression en cours) sans `?new=1` n'a rien à faire ici →
+  // dashboard. `step === 0` est sans effet de bord : toute création d'org dans
+  // le tunnel a lieu à un step > 0 (scènes `org` / `specializations`), donc un
+  // utilisateur en cours d'onboarding n'est jamais renvoyé.
+  if (step === 0 && !isExplicitNewWorkspace) {
+    if (isOrgLoading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="w-6 h-6 border border-border border-t-foreground rounded-full animate-spin" />
+        </div>
+      );
+    }
+    if (organization) {
+      return <Navigate to={withPreviewAccessToken('/dashboard')} replace />;
+    }
+  }
 
   return (
     <OnboardingShell

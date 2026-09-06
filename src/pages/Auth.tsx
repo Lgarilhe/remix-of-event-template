@@ -270,7 +270,9 @@ const Auth = () => {
     return (
       <CollaboratorWelcome
         orgName={collaboratorWelcome.orgName}
-        onCreateWorkspace={() => navigate(withPreviewAccessToken('/onboarding'), { replace: true })}
+        // F3 : le collaborateur est déjà membre d'un espace → `?new=1` signale
+        // une création de second espace explicitement voulue
+        onCreateWorkspace={() => navigate(withPreviewAccessToken('/onboarding', '?new=1'), { replace: true })}
         onSkip={() => navigate(withPreviewAccessToken('/dashboard'), { replace: true })}
       />
     );

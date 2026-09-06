@@ -12,7 +12,8 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
+import { autoAnalyzeKey, hasAutoAnalyzed, markAutoAnalyzed } from '@/lib/autoAnalyzeGuard';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from './useAuthReady';
 import type { Chat } from './useMessagesInbox';
@@ -115,13 +116,17 @@ export function useChatIntents(chats: Chat[], accountId: string | null) {
 
         const intent = a.intent as ChatIntent | undefined;
         if (!intent || !(intent in INTENT_META)) continue;
+        // Marqueur « aucun message du candidat » écrit par auto-analyze-message
+        // (neutral / confiance 0) : pas de badge dans la sidebar
+        if (intent === 'neutral' && a.intentConfidence === 0) continue;
 
-        // Détecte si le cache est stale (dernier message plus récent que l'analyse)
+        // Détecte si le cache est stale (dernier message plus récent que l'analyse).
+        // Pas stale si le dernier message est le nôtre : le candidat n'a rien ajouté.
         const chat = chatById.get(row.chat_id);
         const lastMsgTs = chat?.last_message?.timestamp;
         const cacheTs = row.updated_at;
         let isStale = false;
-        if (lastMsgTs && cacheTs) {
+        if (lastMsgTs && cacheTs && chat?.last_message?.is_sender !== true) {
           try {
             isStale = new Date(lastMsgTs).getTime() > new Date(cacheTs).getTime();
           } catch { /* ignore */ }
@@ -147,15 +152,14 @@ export function useChatIntents(chats: Chat[], accountId: string | null) {
   // Quand un chat a un last_message plus récent que son analyse cached,
   // on déclenche auto-analyze-message en background (max 2 concurrent,
   // 1.5s entre chaque pour ne pas hammer Anthropic).
-  const reanalyzedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!query.data || !accountId) return;
 
     const staleChats: Chat[] = [];
     for (const chat of chats) {
       const intent = query.data.get(chat.id);
-      // Cas 1 : analyse existante mais stale
-      if (intent?.isStale && !reanalyzedRef.current.has(chat.id)) {
+      // Cas 1 : analyse existante mais stale — une fois par version du chat et par session
+      if (intent?.isStale && !hasAutoAnalyzed(autoAnalyzeKey(chat))) {
         staleChats.push(chat);
       }
     }
@@ -167,7 +171,9 @@ export function useChatIntents(chats: Chat[], accountId: string | null) {
       await new Promise(r => setTimeout(r, delayMs));
       if (cancelled) return;
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      reanalyzedRef.current.add(chat.id);
+      const guardKey = autoAnalyzeKey(chat);
+      if (hasAutoAnalyzed(guardKey)) return;
+      markAutoAnalyzed(guardKey);
       try {
         const senderId = chat.attendees?.[0]?.id || null;
         await supabase.functions.invoke('auto-analyze-message', {
