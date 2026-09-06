@@ -6183,10 +6183,6 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
-      linkedin_ramp_factor: {
-        Args: { p_linked_at: string }
-        Returns: number
-      }
       expire_subscription_trials: { Args: never; Returns: number }
       set_integration_secret: {
         Args: { p_field: string; p_organization_id: string; p_value: string | null }
@@ -6240,16 +6236,6 @@ export type Database = {
       cosine_similarity_match: {
         Args: { p_candidate_id: string; p_job_id: string }
         Returns: number
-      }
-      deduct_ai_credits: {
-        Args: {
-          p_action: string
-          p_amount: number
-          p_description?: string
-          p_organization_id: string
-          p_user_id: string
-        }
-        Returns: Json
       }
       delete_email: {
         Args: { message_id: number; queue_name: string }

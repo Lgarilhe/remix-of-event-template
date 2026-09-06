@@ -148,8 +148,6 @@ export const BillingSettings = () => {
   const limitRows = state
     ? [
         { label: 'Missions actives', value: formatLimit(state.limits.max_jobs) },
-        { label: 'Recherches / mois', value: formatLimit(state.limits.max_searches) },
-        { label: 'Membres', value: formatLimit(state.limits.max_members) },
         { label: 'Crédits IA / mois', value: formatLimit(state.limits.ai_credits) },
         { label: 'Contacts enrichis / mois', value: formatLimit(state.limits.contacts_included) },
       ].filter((row) => row.value !== null)

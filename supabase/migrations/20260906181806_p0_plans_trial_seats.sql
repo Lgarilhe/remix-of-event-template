@@ -55,7 +55,7 @@ WHERE id IN ('pro', 'enterprise');
 UPDATE public.subscription_plans
 SET name = 'Gratuit',
     description = 'Après l''essai : vos données restent accessibles, sans envoi de séquences.',
-    features = '["3 missions actives", "Recherches LinkedIn limitées", "100 crédits IA par mois", "Pas d''envoi de séquences"]'::jsonb,
+    features = '["3 missions actives", "1 membre", "100 crédits IA par mois", "Pas d''envoi de séquences ni d''enrichissement de contact"]'::jsonb,
     limits = limits || '{"max_jobs": 3, "max_searches": 50, "max_members": 1, "ai_credits": 100, "contacts_included": 0}'::jsonb,
     sort_order = 0
 WHERE id = 'free';
@@ -80,17 +80,15 @@ CREATE TABLE IF NOT EXISTS public.subscription_trial_grants (
 
 ALTER TABLE public.subscription_trial_grants ENABLE ROW LEVEL SECURITY;
 
+-- Lue uniquement par le trigger et la migration : aucun accès client.
 DROP POLICY IF EXISTS own_grant_select ON public.subscription_trial_grants;
-CREATE POLICY own_grant_select
-  ON public.subscription_trial_grants FOR SELECT TO authenticated
-  USING (user_id = auth.uid());
+REVOKE ALL ON public.subscription_trial_grants FROM anon, authenticated;
 
 DROP POLICY IF EXISTS service_role_all ON public.subscription_trial_grants;
 CREATE POLICY service_role_all
   ON public.subscription_trial_grants FOR ALL TO service_role
   USING (true) WITH CHECK (true);
 
-GRANT SELECT ON public.subscription_trial_grants TO authenticated;
 GRANT ALL ON public.subscription_trial_grants TO service_role;
 
 CREATE OR REPLACE FUNCTION public.auto_create_free_subscription()
@@ -148,6 +146,17 @@ BEGIN
       AND trial_ends_at IS NOT NULL
       AND trial_ends_at < now()
       AND stripe_subscription_id IS NULL
+    RETURNING organization_id
+  ),
+  notified AS (
+    -- Les propriétaires et administrateurs sont prévenus dans l'application.
+    INSERT INTO public.notifications (user_id, organization_id, type, title, body, link)
+    SELECT m.user_id, e.organization_id, 'error', 'Essai terminé',
+           'Votre essai gratuit est terminé : votre espace passe sur le plan gratuit. Vos données restent accessibles, sans envoi de séquences ni enrichissement de contact.',
+           '/pricing'
+    FROM expired e
+    JOIN public.organization_members m
+      ON m.organization_id = e.organization_id AND m.role IN ('owner', 'admin')
     RETURNING 1
   )
   SELECT count(*) INTO v_count FROM expired;
@@ -189,11 +198,13 @@ DECLARE
   v_seat_count integer;
   v_is_service boolean := coalesce(auth.role(), '') = 'service_role';
 BEGIN
-  IF NOT v_is_service AND NOT public.is_org_member(auth.uid(), p_organization_id) THEN
+  -- Sans JWT (rôle postgres, cron) : diagnostic autorisé ; anon est bloqué par le REVOKE.
+  IF auth.uid() IS NOT NULL AND NOT v_is_service
+     AND NOT public.is_org_member(auth.uid(), p_organization_id) THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
 
-  -- Expiration paresseuse (même règle que le cron)
+  -- Expiration paresseuse (même règle que le cron), avec la même notification.
   UPDATE public.organization_subscriptions
   SET plan_id = 'free', status = 'active', updated_at = now()
   WHERE organization_id = p_organization_id
@@ -201,6 +212,14 @@ BEGIN
     AND trial_ends_at IS NOT NULL
     AND trial_ends_at < now()
     AND stripe_subscription_id IS NULL;
+  IF FOUND THEN
+    INSERT INTO public.notifications (user_id, organization_id, type, title, body, link)
+    SELECT m.user_id, p_organization_id, 'error', 'Essai terminé',
+           'Votre essai gratuit est terminé : votre espace passe sur le plan gratuit. Vos données restent accessibles, sans envoi de séquences ni enrichissement de contact.',
+           '/pricing'
+    FROM public.organization_members m
+    WHERE m.organization_id = p_organization_id AND m.role IN ('owner', 'admin');
+  END IF;
 
   SELECT * INTO v_sub FROM public.organization_subscriptions WHERE organization_id = p_organization_id;
   IF NOT FOUND THEN

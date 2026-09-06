@@ -112,8 +112,9 @@ $$;
 COMMENT ON FUNCTION public.linkedin_ramp_factor(timestamptz) IS
   'Part des plafonds LinkedIn applicable selon l''ancienneté du rattachement : 25 % la première semaine, 50 % la deuxième, 75 % la troisième, 100 % ensuite. Comptes rattachés avant le 2026-09-14 : matures. Même table dans _shared/linkedin-quotas.ts.';
 
-REVOKE EXECUTE ON FUNCTION public.linkedin_ramp_factor(timestamptz) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.linkedin_ramp_factor(timestamptz) TO authenticated, service_role;
+-- Appelée seulement par get_linkedin_quota_status (SECURITY DEFINER) : aucun accès client.
+REVOKE EXECUTE ON FUNCTION public.linkedin_ramp_factor(timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.linkedin_ramp_factor(timestamptz) TO service_role;
 
 -- ─── 3. État des plafonds d'un compte ───
 CREATE OR REPLACE FUNCTION public.get_linkedin_quota_status(p_account_id text)

@@ -23,7 +23,7 @@
  * doit poll get-enrichment-status après réception du request_id.
  *
  * Naming règle CLAUDE.md : aucun message user-facing ne mentionne "Better Contact".
- * On dit "service d'enrichment Konekt" ou similaire.
+ * On dit "service d'enrichissement Konekt" ou similaire.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
     if (!first_name && !last_name) {
       return json({
         success: false,
-        error: "Au moins le prénom est requis pour l'enrichment",
+        error: "Au moins le prénom est requis pour l'enrichissement",
       }, 400);
     }
 
@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
       if (rlAllowed === false) {
         return json({
           success: false,
-          error: "Trop de demandes d'enrichment. Patientez 1 minute.",
+          error: "Trop de demandes d'enrichissement. Patientez 1 minute.",
           error_code: "RATE_LIMITED",
         }, 429);
       }
@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
       if (quotaUsed >= quotaMonthly) {
         return json({
           success: false,
-          error: `Quota mensuel d'enrichments atteint (${quotaUsed}/${quotaMonthly}). Demandez à votre admin d'augmenter votre quota dans Paramètres > Équipe.`,
+          error: `Quota mensuel d'enrichissements atteint (${quotaUsed}/${quotaMonthly}). Demandez à votre admin d'augmenter votre quota dans Paramètres > Équipe.`,
           error_code: "QUOTA_EXCEEDED",
           quota_used: quotaUsed,
           quota_limit: quotaMonthly,
@@ -443,7 +443,7 @@ Deno.serve(async (req) => {
       console.error("[enrich-candidate-contact] BETTERCONTACT_API_KEY not configured");
       return json({
         success: false,
-        error: "Service d'enrichment non configuré. Contactez l'administrateur.",
+        error: "Service d'enrichissement non configuré. Contactez l'administrateur.",
       }, 500);
     }
 
@@ -483,22 +483,22 @@ Deno.serve(async (req) => {
     if (!bcResp.ok) {
       console.error("[enrich-candidate-contact] BC error", bcResp.status, bcText.slice(0, 200));
       if (bcResp.status === 401) {
-        return json({ success: false, error: "Service d'enrichment authentification invalide" }, 500);
+        return json({ success: false, error: "Service d'enrichissement authentification invalide" }, 500);
       }
       if (bcResp.status === 429) {
-        return json({ success: false, error: "Service d'enrichment surchargé. Réessayez dans 1 min." }, 429);
+        return json({ success: false, error: "Service d'enrichissement surchargé. Réessayez dans 1 min." }, 429);
       }
-      return json({ success: false, error: "Erreur lors du démarrage de l'enrichment" }, 500);
+      return json({ success: false, error: "Erreur lors du démarrage de l'enrichissement" }, 500);
     }
 
     let bcData: any;
     try { bcData = JSON.parse(bcText); } catch {
-      return json({ success: false, error: "Réponse invalide du service d'enrichment" }, 500);
+      return json({ success: false, error: "Réponse invalide du service d'enrichissement" }, 500);
     }
 
     if (!bcData?.success || !bcData?.id) {
       console.error("[enrich-candidate-contact] BC unexpected response:", bcText.slice(0, 300));
-      return json({ success: false, error: "Réponse inattendue du service d'enrichment" }, 500);
+      return json({ success: false, error: "Réponse inattendue du service d'enrichissement" }, 500);
     }
 
     const requestId = String(bcData.id);
@@ -536,10 +536,9 @@ Deno.serve(async (req) => {
       console.error("[enrich-candidate-contact] CRITICAL INSERT failed:", insertError.message);
       return json({
         success: false,
-        error: "Service d'enrichment non initialisé. Contactez l'administrateur.",
+        error: "Service d'enrichissement non initialisé. Contactez l'administrateur.",
         // Détails techniques pour debug (pas affiché à l'user via Konekt UI mais
         // visible dans F12 Network → Response)
-        _debug: insertError.message,
       }, 500);
     }
 

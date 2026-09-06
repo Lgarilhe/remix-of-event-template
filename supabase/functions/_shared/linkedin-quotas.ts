@@ -273,17 +273,19 @@ export function nextBusinessHoursStart(
 export async function getUserQuotas(
   admin: SupabaseClient,
   userId: string | null | undefined,
+  organizationId: string | null | undefined = null,
 ): Promise<UserQuotaConfig> {
   if (!userId) return DEFAULT_USER_QUOTAS;
+  // La ligne member_quotas est propre à l'organisation (libre-service) : sans
+  // organisation connue, on garde les défauts plutôt que la ligne d'une autre
+  // organisation du même utilisateur.
+  if (!organizationId) return DEFAULT_USER_QUOTAS;
   try {
     const { data } = await admin
       .from('member_quotas')
       .select('business_hours_start, business_hours_end, max_actions_per_day, timezone, max_profile_visits_per_day, max_searches_per_day, max_inmails_per_day')
       .eq('user_id', userId)
-      // Libre-service : un membre de plusieurs organisations peut avoir plusieurs
-      // lignes ; on prend la plus récente au lieu d'échouer sur maybeSingle.
-      .order('updated_at', { ascending: false })
-      .limit(1)
+      .eq('organization_id', organizationId)
       .maybeSingle();
     if (!data) return DEFAULT_USER_QUOTAS;
     const row = data as Record<string, unknown>;
@@ -329,7 +331,7 @@ export async function checkLinkedInQuota(
   actionType: LinkedInActionType = 'message',
   opts: { organizationId?: string | null; source?: string; log?: boolean } = {},
 ): Promise<QuotaCheckResult> {
-  const quotas = await getUserQuotas(admin, userId);
+  const quotas = await getUserQuotas(admin, userId, opts.organizationId);
   const inBh = isWithinBusinessHours(quotas.timezone, quotas.business_hours_start, quotas.business_hours_end);
 
   if (!inBh) {
@@ -489,7 +491,7 @@ export async function enforceLinkedInAction(
     return { allowed: true, count: 0, ramp_factor: 1 };
   }
 
-  const quotas = opts.quotas ?? await getUserQuotas(admin, opts.userId ?? null);
+  const quotas = opts.quotas ?? await getUserQuotas(admin, opts.userId ?? null, opts.organizationId);
   // Montée en charge du compte (25 / 50 / 75 / 100 %) appliquée à chaque
   // plafond par Math.ceil, puis marge de 5 % en mode manuel.
   const rampFactor = await getAccountRampFactor(admin, accountId);

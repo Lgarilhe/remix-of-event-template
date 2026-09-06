@@ -946,7 +946,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (search.hasSearched || search.results.length > 0) { heroLaunchRef.current = false; return; }
     if (flowMode !== 'results') return;
     heroLaunchRef.current = false;
-    setFlowError('La recherche n\'a pas abouti. Vérifie ta connexion LinkedIn et tes filtres, puis relance.');
+    setFlowError('La recherche n\'a pas abouti. Vérifiez votre connexion LinkedIn et vos filtres, puis relancez.');
     setFlowMode('hero');
   }, [activeProject?.id, flowMode, search.loading, search.hasSearched, search.results.length]);
 

@@ -1,4 +1,4 @@
-import { estimateCredits, ACTION_COSTS, resolveModel } from '@/types/aiCredits';
+import { estimateCredits, ACTION_COSTS, resolveModel, MODEL_CATALOG } from '@/types/aiCredits';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -46,7 +46,7 @@ export const CreditCostBadge = ({ actionId, modelId, className }: CreditCostBadg
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs max-w-[220px]">
           <p>
-            Estimation : ~{cost} crédit{cost > 1 ? 's' : ''} avec {resolvedModel.replace('claude-', '')}
+            Estimation : ~{cost} crédit{cost > 1 ? 's' : ''} avec le modèle {MODEL_CATALOG[resolvedModel]?.name ?? 'Avancé'}
           </p>
           <p className="text-muted-foreground mt-0.5">
             Coût réel basé sur les tokens consommés.

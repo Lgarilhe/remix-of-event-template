@@ -76,7 +76,7 @@ export const ModelPicker = ({
           <ModelLogo modelId={resolvedModelId} size={14} />
           {!compact && (
             <span className="truncate text-muted-foreground">
-              {resolvedModel?.name ?? 'Sonnet 4.6'}
+              {resolvedModel?.name ?? 'Avancé'}
             </span>
           )}
           <span className="ml-auto font-medium text-foreground whitespace-nowrap">
@@ -124,7 +124,10 @@ export const ModelPicker = ({
               >
                 <div className="flex items-center gap-3 w-full">
                   <ModelLogo modelId={modelId} size={22} />
-                  <span className="text-sm font-medium">{model.name}</span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-sm font-medium">{model.name}</span>
+                    <span className="text-xs text-muted-foreground truncate">{model.description}</span>
+                  </div>
                   <span className="text-xs px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm ml-auto shrink-0">
                     ~{cost} cr
                   </span>

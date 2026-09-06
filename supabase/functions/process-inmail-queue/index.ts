@@ -680,7 +680,10 @@ Deno.serve(async (req: Request) => {
             if (/too_many_requests|limit_exceeded|cannot_resend_yet|cannot_resend_within_24hrs/i.test(errorText)) {
               await recordUsageSignal(supabase, item.account_id, 100, item.user_timezone);
             }
-            throw new Error(`Unipile error: ${response.status} - ${errorText}`);
+            // Le corps brut du fournisseur reste dans les logs ; error_message
+            // (affiché dans la file InMail) reçoit un libellé Konekt.
+            console.error(`[process-inmail-queue] LinkedIn provider ${response.status} for item ${item.id}: ${errorText}`);
+            throw new Error(`Le service de connexion LinkedIn a refusé l'envoi (code ${response.status})`);
           }
 
           // Capture the provider usage % (LinkedIn signals how close we are to

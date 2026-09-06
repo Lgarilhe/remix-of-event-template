@@ -3,6 +3,7 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useOrganization } from '@/hooks/useOrganization';
 import { withPreviewAccessToken } from '@/lib/previewToken';
 import { LowCreditBanner } from './ai/LowCreditBanner';
+import { TrialBanner } from './billing/TrialBanner';
 
 export const OrganizationGuard = ({ children }: { children: React.ReactNode }) => {
   const { isLoading, isError, organization, needsOnboarding, refetchOrganization, isRefetchingOrganization } = useOrganization();
@@ -57,6 +58,7 @@ export const OrganizationGuard = ({ children }: { children: React.ReactNode }) =
     <>
       <div className="shrink-0">
         <LowCreditBanner />
+        <TrialBanner />
       </div>
       <div className="flex-1 min-h-0">
         {children}

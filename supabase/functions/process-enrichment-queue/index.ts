@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
       if (idx > 0) await sleep(INTER_ITEM_DELAY_MS);
 
       // 1. Business hours (timezone de l'user) — sinon, reporter à l'ouverture.
-      const quotas = await getUserQuotas(supabase, item.user_id);
+      const quotas = await getUserQuotas(supabase, item.user_id, item.organization_id);
       if (!isWithinBusinessHours(quotas.timezone, quotas.business_hours_start, quotas.business_hours_end)) {
         const next = nextBusinessHoursStart(quotas.timezone, quotas.business_hours_start, quotas.business_hours_end);
         await supabase.from("profile_enrichment_queue")

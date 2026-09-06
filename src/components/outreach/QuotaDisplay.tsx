@@ -11,7 +11,7 @@ const SafeModeBadge = () => (
       <TooltipTrigger asChild>
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-success/10 text-success border border-success/20 cursor-help">
           <Shield className="w-2.5 h-2.5" />
-          Safe mode
+          Mode protégé
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-xs">

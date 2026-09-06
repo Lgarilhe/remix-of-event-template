@@ -159,7 +159,7 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
+        <DropdownMenuItem onClick={() => navigate('/settings?tab=account')} className="cursor-pointer">
           <UserIcon className="w-4 h-4 mr-2" />
           Mon profil
         </DropdownMenuItem>

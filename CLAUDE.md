@@ -8,7 +8,7 @@ Avant toute action de code, valider ces 5 principes :
 2. **Simplicity First** — Code minimal sans features spéculatives ni abstractions inutiles. Trois lignes similaires valent mieux qu'une abstraction prématurée.
 3. **Surgical Changes** — Modifier UNIQUEMENT ce qui est demandé. Pas de refactor opportunistes, pas de renames "tant qu'on y est", pas de cleanup non demandé. Le scope = ce qui a été demandé, point.
 4. **Goal-Driven Execution** — Transformer la tâche en critères de succès vérifiables avant d'agir. "Comment je sais que c'est fini ?" doit avoir une réponse concrète.
-5. **Mind the Context** — Sur les fichiers > 1000 lignes (process-sequences, score-profile-job, useMessagesInbox, unipile-search, enrich-company), toujours `Read` avec `offset/limit` ciblé sur la zone à modifier — jamais le fichier entier. Pour les recherches cross-codebase (1015 fichiers), déléguer à un sub-agent `Explore` plutôt que grep en série. Si la session dépasse ~40% de contexte ou 2h, proposer `/compact` avant de continuer un nouveau chantier (au-delà la qualité se dégrade — hallucinations, oublis).
+5. **Mind the Context** — Sur les fichiers > 1000 lignes (process-sequences, score-profile-job, useMessagesInbox, unipile-search, enrich-company), toujours `Read` avec `offset/limit` ciblé sur la zone à modifier — jamais le fichier entier. Pour les recherches cross-codebase (environ 1 150 fichiers suivis, dont 970 sous src/ et supabase/), déléguer à un sub-agent `Explore` plutôt que grep en série. Si la session dépasse ~40% de contexte ou 2h, proposer `/compact` avant de continuer un nouveau chantier (au-delà la qualité se dégrade — hallucinations, oublis).
 
 Ces 5 principes l'emportent sur l'envie d'être proactif. Si tension entre "faire bien" et "faire ce qui est demandé" → faire ce qui est demandé.
 
@@ -141,12 +141,12 @@ This applies to (non-exhaustive) :
 /calendar                → CalendarPage
 /tasks                   → TasksPage
 /marketplace             → Marketplace
-/pricing                 → Pricing
-/settings                → Settings (deep links: ?tab=general|presets|templates|account|team|connectors|integrations|billing|credits|agency|marketplace)
+/settings                → Settings (deep links: ?tab=general|presets|templates|ai-context|agent-actions|account|team|connectors|integrations|billing|credits|agency|marketplace)
 /qualification/:id       → Qualification session (deep-linked from modals)
 Public (no AppLayout): / (landing), /auth, /onboarding (protected, no org guard), /portal/:token (CandidatePortal),
-  /client/:token (ClientPortalV2), /r/:slug (RecruiterPublicProfile), /unsubscribe, /privacy, /privacy-extension
-Legacy: /outreach → /missions, /ats → /pipeline
+  /client/:token (ClientPortalV2), /r/:slug (RecruiterPublicProfile), /unsubscribe, /privacy, /privacy-extension,
+  /pricing (page tarifs publique, lisible sans session : SELECT anon sur subscription_plans)
+Legacy: /outreach → /missions, /ats → /pipeline, /index → /
 ```
 
 ### Mission Flow
@@ -173,21 +173,21 @@ MissionWorkspace (src/pages/MissionWorkspace.tsx : loading / introuvable / rendu
 ```
 MissionSourcing
   → LinkedInSearch (orchestrator, manages cache)
-    → useLinkedInSearch (hook, 534 lines)
+    → useLinkedInSearch (hook, ~770 lignes)
        ├── searchReducer: filters, results, selectedJob, jobScores, cursor
        ├── viewReducer: statusFilter, showDismissed
        ├── Loads filters_snapshot → transforms AI format to LinkedInFiltersState
        ├── Creates synthetic job from brief: id="project:{projectId}"
        └── Deferred location resolution via pendingLocationRef
-    → useLinkedInSearchActions (807 lines) — executes search via Unipile/database
-    → useLinkedInScoring (823 lines) — batch AI scoring via score-profile-job
+    → useLinkedInSearchActions (~1 100 lignes) — executes search via Unipile/database
+    → useLinkedInScoring (~1 350 lignes) — batch AI scoring via score-profile-job
     → SearchFiltersPanel — filter UI + AutoFillFiltersButton
 ```
 
 **Filter format transformation:**
 - AI format (from edge function): `skills_keywords[]`, `location_keywords[]`, `role[].keywords`
 - UI format (LinkedInFiltersState): `location[]`, `skills[]`, `role[]`, `calculated_experience_min`
-- Transformation happens in `useLinkedInSearch` lines 266-306
+- Transformation happens in the `isAIFormat` block of `useLinkedInSearch` (filters_snapshot loading effect)
 
 ### Data Model (key tables)
 ```
@@ -197,11 +197,20 @@ mission_team               — team members per mission
 mission_invitations        — freelancer invites with tokens
 job_candidate_status       — candidate score/status per job
 outreach_sequences         — message sequences
-sequence_enrollments       — candidates in sequences
+sequence_enrollments       — candidates in sequences (.pause_reason : account_disconnected, quota_reached, subscription_required, manual)
 organizations              — org + subscription
 organization_members       — member roles (admin/owner/collaborator)
 profiles                   — user profiles
+subscription_plans         — plans (price_monthly/yearly per seat, limits.ai_credits, limits.contacts_included,
+                             limits.max_members, stripe_price_id_monthly/yearly ; SELECT accordé à anon)
+organization_subscriptions — plan_id, status (trialing/active/...), seats, trial_ends_at, stripe_* ids
+subscription_trial_grants  — un essai par utilisateur créateur (user_id PRIMARY KEY)
+candidate_enrichments      — .included = demande couverte par le forfait du plan
 ```
+RPC (SECURITY DEFINER, authenticated) : `get_subscription_state(org)` (plan effectif, essai, sièges, limites ;
+expire un essai échu à la lecture), `get_org_contact_usage(org)` (contacts inclus utilisés / forfait),
+`get_linkedin_quota_status(account)` (compteurs jour/semaine, facteur de montée en charge via `linkedin_ramp_factor`).
+Cron : `expire-subscription-trials` (horaire) → `expire_subscription_trials()`.
 
 ### Key Hooks
 ```
@@ -214,6 +223,9 @@ useLinkedInScoring         — batch AI scoring (3 parallel waves of 10)
 useFilteredLinkedInAccounts — shared hook for account filtering
 useOrganization            — org context + member role
 useJobCandidateStatus      — candidate tracking per job
+useSubscriptionState       — plan effectif, essai, sièges (RPC get_subscription_state)
+useQuotaGate               — canCreateJob, canInviteMember (sièges moins invitations en attente)
+useLinkedInQuotaStatus     — plafonds LinkedIn après palier (RPC get_linkedin_quota_status)
 ```
 
 ### Contexts
@@ -287,7 +299,7 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `KONEKT_PLATFORM_ADMIN_USER_IDS` | unipile-manage-webhooks (ids user séparés par des virgules ; sans ce secret, owner/admin de l'org suffit — SEC-031) |
 | `NOTION_TOKEN_ENCRYPTION_KEY` | `_shared/notion-secret-crypto.ts` (chiffrement des tokens Notion ; importé par notion-mcp-oauth et `_shared/notion-mcp-connection.ts`) |
 | `NOTION_ALLOWED_RETURN_ORIGINS` | notion-mcp-oauth (origines de retour OAuth autorisées) |
-| `APP_URL` | create-checkout-session, create-portal-session, notion-mcp-oauth, send-transactional-email, sequence-email-track, sequence-send-email, `_shared/agent-tools-mutations.ts` (= https://konekt-app-navy.vercel.app) |
+| `APP_URL` | agent-daily-digest, create-checkout-session, create-portal-session, notion-mcp-oauth, send-transactional-email, sequence-email-track, sequence-send-email, `_shared/agent-tools-mutations.ts` (= https://konekt-app-navy.vercel.app) |
 | `EMAIL_SITE_NAME` + `EMAIL_SENDER_DOMAIN` + `EMAIL_FROM_DOMAIN` | send-transactional-email (défauts : « Konekt », `notify.konekt.fr`, `konekt.fr`) |
 | `RESEND_WEBHOOK_SECRET` | handle-email-suppression (Svix signature verif, format `whsec_...`) |
 
@@ -338,7 +350,7 @@ activeProject exists → useLinkedInSearch creates job from brief:
   mustHave/shouldHave/niceToHave: from brief skills
 ```
 - Re-triggers on: `activeProject?.id` OR `activeProject?.job_details` change
-- Cache restore does NOT override this (line 218 guard)
+- Cache restore does NOT override this (`hydratedCacheKeyRef` / `activeProject` guard in the cache restore effect)
 
 ### Filter Loading from filters_snapshot
 ```
@@ -366,6 +378,15 @@ if (organization_id && auth.userId) {
   if (!isMember) return json({ error: "Forbidden" }, 403);
 }
 ```
+
+### Plan et sièges : use the shared gate
+```typescript
+import { getSubscriptionGate } from "../_shared/subscription-gate.ts";
+const gate = await getSubscriptionGate(adminClient, organizationId);
+// gate.effectivePlanId, gate.status, gate.seatLimit (TRIAL_SEAT_ALLOWANCE = 10 pendant l'essai),
+// gate.seatCount, gate.canSendSequences, gate.canEnrichContacts (false sur free)
+```
+Appelants : process-sequences, process-inmail-queue, enrich-candidate-contact (403 PLAN_REQUIRED), send-team-invitation et accept-invitation (refus de siège). Le helper lit `get_subscription_state`, jamais `organization_subscriptions.plan_id` en direct.
 
 ### Credentials — NEVER use mutable globals
 ```typescript
@@ -421,6 +442,10 @@ await settleCredits(adminClient, {
 import { hasFeature } from '@/lib/featureGates';
 // hasFeature(orgType, feature) — fail-closed: returns false while orgType is null (org loading).
 ```
+Second axe, par plan d'abonnement : `hasPlanFeature(planId, feature)` dans le même fichier (`sequences_send`, `contact_enrichment`, `team`, `client_portal`, `agency_settings`, `marketplace_publish`) ; miroir serveur dans `supabase/functions/_shared/subscription-gate.ts`.
+
+**Plan effectif = `get_subscription_state`, jamais `organization_subscriptions` en direct côté front.** Le hook `useSubscriptionState` appelle la RPC, qui expire un essai échu à la lecture et renvoie `effective_plan_id`, `status`, `trial_days_left`, `seat_count`, `limits`. Lire `organization_subscriptions.plan_id` directement donne un essai expiré non encore basculé ou un abonnement annulé comme s'il était actif (`useSubscription` ne lit la ligne brute que pour les identifiants Stripe et prend le plan effectif de `useSubscriptionState`).
+
 Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `src/lib/featureGates.ts`. Décision produit 2026-09 : **un freelance a les mêmes droits qu'un cabinet sur ses missions** (`create_missions`, `edit_brief`, `edit_process`, `sourcing`, `outreach`, `pipeline`, `client_portal`, `marketplace_browse`), **sauf** `team_management` (pas d'onglet Équipe) et `agency_settings` (pas de paramètres agence). `marketplace_publish` reste réservé aux entreprises. Les onglets de Settings (`canManageTeam`, `canAgencySettings`) et les `readOnly` de MissionBriefV2/MissionProcessV2 découlent de cette matrice.
 
 ### Destructive actions — ALWAYS use AlertDialog

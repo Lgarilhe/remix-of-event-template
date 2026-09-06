@@ -229,10 +229,7 @@ function EnrollmentCard({
   const statusCfg = STATUS_CONFIG[enrollment.status] || STATUS_CONFIG.completed;
   const isActive = enrollment.status === 'active';
   const isPaused = enrollment.status === 'paused';
-  // pause_reason n'est pas encore sélectionné par useCandidateEnrollments :
-  // lecture tolérante, libellé « En pause » tant que le hook ne le remonte pas.
-  const pauseReason = (enrollment as CandidateEnrollment & { pause_reason?: string | null }).pause_reason;
-  const statusLabel = isPaused ? pausedLabel(pauseReason) : statusCfg.label;
+  const statusLabel = isPaused ? pausedLabel(enrollment.pause_reason) : statusCfg.label;
 
   const sentCount = enrollment.executions.filter(e => e.status === 'sent').length;
   const totalSteps = enrollment.total_steps || enrollment.executions.length;

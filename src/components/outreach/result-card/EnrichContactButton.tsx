@@ -311,6 +311,21 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
     );
   }
 
+  if (isFreePlan) {
+    return (
+      <Button
+        variant="outline"
+        size={compact ? 'sm' : 'default'}
+        disabled
+        className={`gap-1.5 ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} opacity-50 ${className}`}
+        title="L'enrichissement de contact nécessite un abonnement"
+      >
+        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <span>{compact ? 'Coordonnées' : 'Coordonnées (abonnement requis)'}</span>
+      </Button>
+    );
+  }
+
   return (
     <>
       <Button

@@ -15,7 +15,7 @@ interface InviteMemberFormProps {
 export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps) => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('member');
-  const { canInviteMember, seatLimitMessage, isLoading: isQuotaLoading } = useQuotaGate();
+  const { canInviteMember, seatLimitMessage, isLoading: isQuotaLoading, isFree } = useQuotaGate();
   const seatsExhausted = !isQuotaLoading && !canInviteMember;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,9 +72,9 @@ export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps)
       </div>
       {seatsExhausted && (
         <p className="text-xs text-muted-foreground">
-          {seatLimitMessage}{' '}
-          <Link to="/settings?tab=billing" className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/80">
-            Ajouter un siège
+          {isFree ? 'Choisissez un plan pour inviter votre équipe.' : seatLimitMessage}{' '}
+          <Link to={isFree ? '/pricing' : '/settings?tab=billing'} className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/80">
+            {isFree ? 'Voir les plans' : 'Ajouter un siège'}
           </Link>
         </p>
       )}

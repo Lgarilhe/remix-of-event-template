@@ -38,7 +38,6 @@ const FAQS = [
 
 const COMPARISON_ROWS: { label: string; key: keyof SubscriptionPlan['limits'] }[] = [
   { label: 'Missions actives', key: 'max_jobs' },
-  { label: 'Membres', key: 'max_members' },
   { label: 'Crédits IA / mois', key: 'ai_credits' },
   { label: 'Contacts enrichis / mois', key: 'contacts_included' },
 ];
@@ -102,7 +101,9 @@ const Pricing = () => {
   // vient du store auth global ; l'organisation et l'état d'abonnement ne sont
   // interrogés que si une session existe (requêtes désactivées sinon).
   const { isReady, session } = useAuthReady();
-  const { organizationId, isAdmin, isLoading: isLoadingOrg, isError: isOrgError } = useOrganization();
+  const { organizationId, orgType, isAdmin, isLoading: isLoadingOrg, isError: isOrgError } = useOrganization();
+  // Solo est réservé aux indépendants ; un indépendant ne voit pas le plan Entreprise.
+  const recommendedPlanId = orgType === 'freelance' ? 'solo' : RECOMMENDED_PLAN_ID;
   const { data: plans = [], isLoading, isError: isPlansError } = useSubscriptionPlans();
   const { state, effectivePlanId, isPaid, isTrialing, trialDaysLeft, isLoading: isLoadingState } = useSubscriptionState();
   const [yearly, setYearly] = useState(false);
@@ -112,7 +113,12 @@ const Pricing = () => {
 
   const isSignedIn = !!session;
   // Le plan Gratuit n'est pas une colonne : c'est le palier d'atterrissage après l'essai.
-  const paidPlans = useMemo(() => plans.filter((plan) => plan.id !== 'free'), [plans]);
+  const paidPlans = useMemo(() => plans.filter((plan) => {
+    if (plan.id === 'free') return false;
+    if (orgType === 'freelance') return plan.id !== 'entreprise';
+    if (orgType === 'enterprise' || orgType === 'agency') return plan.id !== 'solo';
+    return true;
+  }), [plans, orgType]);
 
   const discountLabel = useMemo(() => {
     const discounts = paidPlans.map(yearlyDiscountPercent).filter((d) => d > 0);
@@ -413,7 +419,7 @@ const Pricing = () => {
             {/* Cards : bordures partagées */}
             <div className="flex flex-col md:flex-row mb-6">
               {paidPlans.map((plan, i) => {
-                const isRecommended = plan.id === RECOMMENDED_PLAN_ID;
+                const isRecommended = plan.id === recommendedPlanId;
                 const isCurrent = isPaid && effectivePlanId === plan.id;
                 const discount = yearlyDiscountPercent(plan);
                 const displayedPrice = yearly ? plan.price_yearly / 12 : plan.price_monthly;
@@ -581,7 +587,7 @@ const Pricing = () => {
                             key={plan.id}
                             className={cn(
                               'p-3 text-center text-xs uppercase tracking-wider font-bold',
-                              plan.id === RECOMMENDED_PLAN_ID ? 'text-[hsl(var(--skalr-purple))]' : 'text-muted-foreground'
+                              plan.id === recommendedPlanId ? 'text-[hsl(var(--skalr-purple))]' : 'text-muted-foreground'
                             )}
                           >
                             {plan.name}
@@ -601,7 +607,7 @@ const Pricing = () => {
                             {row.label}
                           </td>
                           {paidPlans.map((plan) => {
-                            const isRecommended = plan.id === RECOMMENDED_PLAN_ID;
+                            const isRecommended = plan.id === recommendedPlanId;
                             return (
                               <td key={plan.id} className="p-3 text-center">
                                 <span

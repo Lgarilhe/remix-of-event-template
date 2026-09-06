@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
 
     const { data: sub } = await adminClient
       .from("organization_subscriptions")
-      .select("stripe_customer_id, stripe_subscription_id, status")
+      .select("stripe_customer_id, stripe_subscription_id, status, trial_ends_at")
       .eq("organization_id", organization_id)
       .single();
 
@@ -258,6 +258,18 @@ Deno.serve(async (req) => {
         return json({ error: "Invalid plan_id" }, 400);
       }
 
+      // Solo est réservé aux recruteurs indépendants (org_type freelance).
+      if (plan.id === "solo") {
+        const { data: org } = await adminClient
+          .from("organizations")
+          .select("org_type")
+          .eq("id", organization_id)
+          .maybeSingle();
+        if (org?.org_type && org.org_type !== "freelance") {
+          return json({ error: "Le plan Solo est réservé aux recruteurs indépendants." }, 400);
+        }
+      }
+
       const stripePriceId = cycle === "monthly" ? plan.stripe_price_id_monthly : plan.stripe_price_id_yearly;
       const unitAmount = cycle === "monthly" ? plan.price_monthly : plan.price_yearly;
       if (!stripePriceId && (!Number.isInteger(unitAmount) || unitAmount <= 0)) {
@@ -296,6 +308,15 @@ Deno.serve(async (req) => {
         success_url: pickReturnUrl(success_url, appUrl, `${appUrl}/settings?tab=billing&checkout=success`),
         cancel_url: pickReturnUrl(cancel_url, appUrl, `${appUrl}/settings?tab=billing&checkout=cancel`),
       });
+
+      // Essai en cours : les jours restants sont reportés sur l'abonnement
+      // (Stripe exige une fin d'essai à plus de 48 heures).
+      if (sub?.status === "trialing" && sub.trial_ends_at) {
+        const trialEndMs = new Date(sub.trial_ends_at).getTime();
+        if (trialEndMs > Date.now() + 48 * 3600 * 1000) {
+          params.set("subscription_data[trial_end]", String(Math.floor(trialEndMs / 1000)));
+        }
+      }
 
       if (stripePriceId) {
         params.set("line_items[0][price]", stripePriceId);

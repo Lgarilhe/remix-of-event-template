@@ -12,33 +12,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const DEFAULT_APP_ORIGIN = "https://id-preview--08a19073-7da4-47fa-92af-b78fed96739f.lovable.app";
-
-const resolveAppOrigin = (req: Request) => {
-  const directOrigin = req.headers.get("origin");
-  if (directOrigin) {
-    try {
-      const hostname = new URL(directOrigin).hostname;
-      if (!hostname.endsWith(".lovableproject.com")) return directOrigin;
-    } catch {
-      // noop
-    }
-  }
-
-  const referer = req.headers.get("referer");
-  if (referer) {
-    try {
-      const refererUrl = new URL(referer);
-      if (!refererUrl.hostname.endsWith(".lovableproject.com")) {
-        return refererUrl.origin;
-      }
-    } catch {
-      // noop
-    }
-  }
-
-  return DEFAULT_APP_ORIGIN;
-};
+// Le lien d'invitation est toujours construit depuis APP_URL : jamais depuis
+// l'en-tête Origin ou Referer (un appelant pourrait y glisser son propre site).
+const resolveAppOrigin = (_req: Request) =>
+  (Deno.env.get("APP_URL") || "https://konekt-app-navy.vercel.app").replace(/\/+$/, "");
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {

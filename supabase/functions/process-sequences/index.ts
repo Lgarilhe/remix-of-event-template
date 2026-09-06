@@ -855,6 +855,7 @@ async function handleProcess(supabase: any, force = false) {
           const gateTrackingData = (enrollment.tracking_data ?? null) as Record<string, unknown> | null;
           await supabase.from('sequence_enrollments').update({
             status: 'paused',
+            pause_reason: 'subscription_required',
             tracking_data: { ...(gateTrackingData ?? {}), pause_reason: SUBSCRIPTION_REQUIRED_REASON },
             updated_at: gateNowIso,
           }).eq('id', enrollment.id);
@@ -893,7 +894,7 @@ async function handleProcess(supabase: any, force = false) {
 
         // Load per-user quotas (business hours + daily cap) — overrides hardcoded defaults
         const senderUserId = (step.sender_id as string) || (enrollment.created_by as string) || null;
-        const userQuotas = await getUserQuotas(supabase, senderUserId);
+        const userQuotas = await getUserQuotas(supabase, senderUserId, enrollmentOrgId ?? null);
 
         // === INBOX ROTATION: assign sender BEFORE the quota/health gate ===
         // Doit se faire AVANT checkQuotaForAction : le message part depuis le
@@ -1450,7 +1451,7 @@ async function handleProcess(supabase: any, force = false) {
             // LinkedInAccountsContext via webhook account_disconnected).
             await supabase.from('sequence_step_executions').update({
               status: 'failed',
-              error_message: `Compte déconnecté : ${executeResult.error}. Reconnectez le compte dans Settings.`,
+              error_message: accountDisconnectedLabel(step, errorStr),
               executed_at: new Date().toISOString(),
               final_message: finalMessage || null,
               final_subject: finalSubject || null,
@@ -1459,7 +1460,7 @@ async function handleProcess(supabase: any, force = false) {
               status: 'paused',
               updated_at: new Date().toISOString(),
             }).eq('id', enrollment.id);
-            console.warn(`[process] ⚠️ Account disconnected for enrollment ${enrollment.id} — paused`);
+            console.warn(`[process] ⚠️ Account disconnected for enrollment ${enrollment.id} — paused: ${errorStr}`);
             results.failed++;
             if (enrollment.sequence_id) failedSequenceIds.add(enrollment.sequence_id);
           } else if (isRateLimitError(errorStr)) {
@@ -1495,14 +1496,14 @@ async function handleProcess(supabase: any, force = false) {
           // Pause enrollment + skip retry sur compte déconnecté
           await supabase.from('sequence_step_executions').update({
             status: 'failed',
-            error_message: `Compte déconnecté : ${errorMsg}. Reconnectez le compte dans Settings.`,
+            error_message: accountDisconnectedLabel(step, errorMsg),
             executed_at: new Date().toISOString(),
           }).eq('id', exec.id);
           await supabase.from('sequence_enrollments').update({
             status: 'paused',
             updated_at: new Date().toISOString(),
           }).eq('id', enrollment.id);
-          console.warn(`[process] ⚠️ Account disconnected (in catch) for enrollment ${enrollment.id} — paused`);
+          console.warn(`[process] ⚠️ Account disconnected (in catch) for enrollment ${enrollment.id} — paused: ${errorMsg}`);
           results.failed++;
         } else if (isRateLimitError(errorMsg)) {
           const retryAt = getRateLimitRetryDate(step.action_type, enrollment.user_timezone || 'Europe/Paris');
@@ -1976,6 +1977,23 @@ function isAccountDisconnectedError(error: string | undefined): boolean {
 }
 
 /**
+ * Libellé persisté dans error_message quand un compte est déconnecté. Il est
+ * affiché tel quel dans le journal de séquence : jamais le corps brut renvoyé
+ * par le fournisseur, qui reste dans les logs console (règle branding CLAUDE.md).
+ */
+function accountDisconnectedLabel(
+  step: { step_channel?: string | null; action_type?: string | null },
+  rawError: string,
+): string {
+  const channel = (step.step_channel === 'email' || step.action_type === 'email') ? 'email'
+    : (step.step_channel === 'whatsapp' || step.action_type === 'whatsapp_message') ? 'WhatsApp'
+    : 'LinkedIn';
+  const codeMatch = rawError.match(/\b([45]\d{2})\b/);
+  const code = codeMatch ? ` (code ${codeMatch[1]})` : '';
+  return `Compte ${channel} déconnecté : le service de connexion ${channel} a refusé l'envoi${code}. Reconnectez le compte dans les paramètres.`;
+}
+
+/**
  * For rate limit (429) errors, compute the retry delay based on the action type:
  * - connection_request → next Monday 9am (weekly limit of ~100 pending invitations)
  * - inmail / smart_message → 1st of next month 9am (monthly InMail credits)
@@ -2077,16 +2095,21 @@ const DEFAULT_USER_QUOTAS: UserQuotaConfig = {
   timezone: 'Europe/Paris',
 };
 // deno-lint-ignore no-explicit-any
-async function getUserQuotas(supabase: any, userId: string | null | undefined): Promise<UserQuotaConfig> {
+async function getUserQuotas(supabase: any, userId: string | null | undefined, organizationId: string | null = null): Promise<UserQuotaConfig> {
   if (!userId) return DEFAULT_USER_QUOTAS;
-  if (userQuotasCache.has(userId)) {
-    return userQuotasCache.get(userId) ?? DEFAULT_USER_QUOTAS;
+  // La ligne est propre à l'organisation : sans organisation connue on garde les défauts
+  // (jamais la ligne d'une autre organisation du même utilisateur).
+  if (!organizationId) return DEFAULT_USER_QUOTAS;
+  const cacheKey = `${organizationId}:${userId}`;
+  if (userQuotasCache.has(cacheKey)) {
+    return userQuotasCache.get(cacheKey) ?? DEFAULT_USER_QUOTAS;
   }
   try {
     const { data } = await supabase
       .from('member_quotas')
       .select('business_hours_start, business_hours_end, max_actions_per_day, timezone')
       .eq('user_id', userId)
+      .eq('organization_id', organizationId)
       .maybeSingle();
     const merged: UserQuotaConfig = data
       ? {
@@ -2096,7 +2119,7 @@ async function getUserQuotas(supabase: any, userId: string | null | undefined): 
           timezone: data.timezone ?? DEFAULT_USER_QUOTAS.timezone,
         }
       : DEFAULT_USER_QUOTAS;
-    userQuotasCache.set(userId, merged);
+    userQuotasCache.set(cacheKey, merged);
     return merged;
   } catch (e) {
     console.warn(`[getUserQuotas] failed for user ${userId}, using defaults:`, e);

@@ -94,6 +94,59 @@ function constantTimeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/** Raison d'annulation posée par process-sequences quand le plan ne permet pas l'envoi. */
+const SUBSCRIPTION_REQUIRED_REASON = "Abonnement requis pour l'envoi de séquences";
+
+/**
+ * Reprend les inscriptions mises en pause faute d'abonnement (plan gratuit)
+ * dès que l'organisation a un plan payant : statut actif, raison effacée, et
+ * la dernière exécution annulée pour cette raison est replanifiée.
+ */
+async function resumeSubscriptionPausedEnrollments(adminClient: any, orgId: string): Promise<void> {
+  try {
+    const nowIso = new Date().toISOString();
+    const { data, error } = await adminClient
+      .from("organization_subscriptions")
+      .select("organization_id")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (error || !data) return;
+    const { data: resumed, error: resumeError } = await adminClient
+      .from("sequence_enrollments")
+      .update({ status: "active", pause_reason: null, updated_at: nowIso })
+      .eq("organization_id", orgId)
+      .eq("status", "paused")
+      .eq("pause_reason", "subscription_required")
+      .select("id");
+    if (resumeError) {
+      console.warn(`[stripe-webhook] resume after subscription failed for org ${orgId}:`, resumeError);
+      return;
+    }
+    for (const row of (resumed ?? []) as Array<{ id: string }>) {
+      const { data: cancelled } = await adminClient
+        .from("sequence_step_executions")
+        .select("id")
+        .eq("enrollment_id", row.id)
+        .eq("status", "cancelled")
+        .eq("skip_reason", SUBSCRIPTION_REQUIRED_REASON)
+        .order("step_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!cancelled?.id) continue;
+      await adminClient
+        .from("sequence_step_executions")
+        .update({ status: "scheduled", skip_reason: null, scheduled_at: nowIso, updated_at: nowIso })
+        .eq("id", cancelled.id)
+        .eq("status", "cancelled");
+    }
+    if ((resumed ?? []).length > 0) {
+      console.log(`[stripe-webhook] ${(resumed ?? []).length} enrollment(s) resumed for org ${orgId} after subscription`);
+    }
+  } catch (e) {
+    console.warn(`[stripe-webhook] resume after subscription failed (non-blocking) for org ${orgId}:`, e);
+  }
+}
+
 /** Relit un abonnement chez Stripe (état courant, quel que soit l'ordre des événements). */
 async function fetchStripeSubscription(subscriptionId: string): Promise<any | null> {
   const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
@@ -154,8 +207,9 @@ function statusOf(subscription: any): string | null {
   if (subscription?.cancel_at_period_end) return "canceling";
   switch (subscription?.status) {
     case "active":
-    case "trialing":
       return "active";
+    case "trialing":
+      return "trialing";
     case "past_due":
       return "past_due";
     case "unpaid":
@@ -251,7 +305,8 @@ Deno.serve(async (req) => {
   try {
     switch (event.type) {
       // ── Checkout completed (credit pack or new subscription) ────
-      case "checkout.session.completed": {
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
         const session = event.data.object;
         const metadata = session.metadata || {};
         const orgId = metadata.organization_id || session.client_reference_id;
@@ -259,6 +314,14 @@ Deno.serve(async (req) => {
 
         if (!orgId) {
           console.warn("[stripe-webhook] No organization_id in session metadata");
+          break;
+        }
+
+        // Paiement à notification différée (prélèvement, virement) : rien n'est
+        // crédité tant que Stripe n'a pas confirmé l'encaissement
+        // (checkout.session.async_payment_succeeded rejoue ce bloc).
+        if (session.payment_status && session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+          console.log(`[stripe-webhook] session ${session.id} payment_status=${session.payment_status}: waiting for payment confirmation`);
           break;
         }
 
@@ -399,7 +462,8 @@ Deno.serve(async (req) => {
               stripe_subscription_id: subscriptionId,
               current_period_start: period.start,
               current_period_end: period.end,
-              trial_ends_at: null,
+              // Essai Stripe éventuel (jours d'essai reportés au paiement), sinon NULL.
+              trial_ends_at: stripeTsToIso(subscription.trial_end),
               cancel_at_period_end: false,
               updated_at: new Date().toISOString(),
             }, { onConflict: "organization_id" });
@@ -407,6 +471,10 @@ Deno.serve(async (req) => {
           if (upsertError) {
             console.error(`[stripe-webhook] organization_subscriptions upsert failed for org ${orgId}:`, upsertError);
             return json({ error: "subscription upsert failed" }, 500);
+          }
+
+          if (planId && planId !== "free") {
+            await resumeSubscriptionPausedEnrollments(adminClient, orgId);
           }
 
           console.log(`[stripe-webhook] Subscription ${subscriptionId} recorded for org ${orgId} (plan ${planId}, ${billingCycle}, ${seatsOf(subscription)} seats)`);
@@ -524,6 +592,7 @@ Deno.serve(async (req) => {
             cancel_at_period_end: subscription.cancel_at_period_end || false,
             seats: seatsOf(subscription),
             stripe_subscription_id: subscription.id,
+            trial_ends_at: stripeTsToIso(subscription.trial_end),
             ...(billingCycle ? { billing_cycle: billingCycle } : {}),
             ...(period.start ? { current_period_start: period.start } : {}),
             ...(period.end ? { current_period_end: period.end } : {}),
@@ -533,6 +602,10 @@ Deno.serve(async (req) => {
         if (updateError) {
           console.error(`[stripe-webhook] subscription.updated update failed for org ${sub.organization_id}:`, updateError);
           return json({ error: "subscription update failed" }, 500);
+        }
+
+        if (newPlanId !== "free" && (status === "active" || status === "trialing")) {
+          await resumeSubscriptionPausedEnrollments(adminClient, sub.organization_id);
         }
 
         // Les crédits du plan sont recalculés par le trigger SQL

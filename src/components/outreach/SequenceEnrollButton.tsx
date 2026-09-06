@@ -139,7 +139,6 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
         onOpenChange={(open) => {
           if (!open) return;
           if (!canSendSequences) {
-            toast.error(SEQUENCES_PLAN_REQUIRED);
             return;
           }
           fetchSequences();

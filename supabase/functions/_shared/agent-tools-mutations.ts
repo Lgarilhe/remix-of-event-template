@@ -948,11 +948,20 @@ CONTRAINTES:
 //
 // requiresApproval=true car coûte des crédits Konekt (1 cr email, 10 cr phone).
 
+// Libellés neutres des sources gratuites de la cascade (clés = `source` renvoyé
+// par enrich-candidate-contact). Jamais de nom de fournisseur dans la note.
+const FREE_SOURCE_LABELS: Record<string, string> = {
+  unipile: 'les informations de contact LinkedIn',
+  manual: 'la fiche candidat',
+  job_status: 'la fiche candidat',
+  airtable: "l'ATS",
+};
+
 const enrichCandidateContact: AgentTool = {
   name: 'enrich_candidate_contact',
   description:
     "Retrieve a candidate's professional email and/or mobile phone via a waterfall cascade " +
-    "(free sources first: Unipile contact_info, org cache 30j, ATS sync ; then paid Better Contact " +
+    "(free sources first: LinkedIn contact info, org cache 30 days, ATS sync; then a paid enrichment provider " +
     "in last resort). Use this when the user explicitly says things like 'trouve l'email de X', " +
     "'récupère le téléphone de Y', 'enrichis ce candidat'. " +
     "Cost : 1 Konekt credit per email found, 10 credits per mobile found. ZERO credit if not found " +
@@ -1042,7 +1051,7 @@ const enrichCandidateContact: AgentTool = {
         cost_phone_credits: withPhone ? 10 : 0,
         estimated_max_credits: maxCredits,
         billing_note:
-          "Cascade gratuite testée d'abord (Unipile / cache 30j / ATS). Crédits débités uniquement si le contact est trouvé via fournisseur payant — 0 crédit si introuvable ou déjà en cache.",
+          "Cascade gratuite testée d'abord (contacts LinkedIn, cache 30 jours, ATS). Crédits débités uniquement si le contact est trouvé via un fournisseur payant : 0 crédit si introuvable ou déjà en cache.",
       },
       warning: !withEmail && !withPhone
         ? "Ni email ni téléphone demandé — l'exécution échouera (with_email ou with_phone doit être true)."
@@ -1109,8 +1118,8 @@ const enrichCandidateContact: AgentTool = {
             phone_provider: data.contact.phone_provider_source,
             credits_used: 0,
             note: data.source === 'cache'
-              ? 'Profil déjà enrichi (cache 30j) — gratuit'
-              : `Trouvé dans ${data.source} — gratuit`,
+              ? 'Profil déjà enrichi (cache 30 jours), gratuit'
+              : `Trouvé via ${FREE_SOURCE_LABELS[String(data.source)] ?? 'une source gratuite'}, gratuit`,
           },
         };
       }
@@ -1121,9 +1130,9 @@ const enrichCandidateContact: AgentTool = {
         data: {
           status: 'pending',
           request_id: data.request_id,
-          note: `Enrichment lancé via cascade (Unipile → cache → ATS → fournisseurs payants). ` +
-                `Résultat dans 30s à 3min — l'utilisateur peut continuer son sourcing en attendant. ` +
-                `Le contact apparaîtra automatiquement sur la card du candidat dans la liste sourcing.`,
+          note: `Enrichissement lancé via la cascade (sources gratuites, cache, ATS, puis fournisseurs payants). ` +
+                `Résultat sous 30 s à 3 min ; l'utilisateur peut continuer son sourcing en attendant. ` +
+                `Le contact apparaîtra automatiquement sur la fiche du candidat dans la liste sourcing.`,
           estimated_max_credits: (withEmail ? 1 : 0) + (withPhone ? 10 : 0),
         },
       };
@@ -2197,7 +2206,7 @@ const sendLinkedInMessage: AgentTool = {
 
     // dryRun is a PREVIEW — do NOT log to the ledger (log:false). Only execute() reserves a slot.
     const quotaCheck = await checkLinkedInQuota(ctx.adminClient, ctx.userId, accountId, isInmail ? 'inmail' : 'message', { organizationId: ctx.organizationId, source: 'agent_tool', log: false });
-    const userQuotas = await getUserQuotas(ctx.adminClient, ctx.userId);
+    const userQuotas = await getUserQuotas(ctx.adminClient, ctx.userId, ctx.organizationId);
     // Si on est hors plage MAIS pas au-dessus du cap, on PLANIFIE pour la
     // prochaine ouverture de business hours (au lieu de refuser).
     const isOverCap = quotaCheck.count_today >= quotaCheck.max_per_day;

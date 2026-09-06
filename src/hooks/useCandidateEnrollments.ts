@@ -40,6 +40,7 @@ export interface CandidateEnrollment {
   sequence_id: string;
   sequence_name: string | null;
   status: string; // 'active' | 'paused' | 'replied' | 'completed' | 'stopped'
+  pause_reason: string | null;
   current_step_order: number;
   created_at: string;
   replied_at: string | null;
@@ -77,7 +78,7 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
       const { data, error } = await supabase
         .from('sequence_enrollments')
         .select(`
-          id, sequence_id, status, current_step_order, created_at,
+          id, sequence_id, status, pause_reason, current_step_order, created_at,
           replied_at, connection_status, job_id, job_title,
           outreach_sequences (id, name),
           sequence_step_executions (
@@ -140,6 +141,7 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
           sequence_id: e.sequence_id,
           sequence_name: e.outreach_sequences?.name || null,
           status: e.status,
+          pause_reason: e.pause_reason ?? null,
           current_step_order: e.current_step_order ?? 0,
           created_at: e.created_at,
           replied_at: e.replied_at,
@@ -204,7 +206,7 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
     try {
       const { error } = await supabase
         .from('sequence_enrollments')
-        .update({ status: 'active' })
+        .update({ status: 'active', pause_reason: null })
         .eq('id', enrollmentId);
       if (error) throw error;
 

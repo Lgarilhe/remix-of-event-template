@@ -403,3 +403,60 @@ ont zéro token). Les tables sans lecteur ni
 écrivain (dont `event_registrations`, `jarvis_kb`, `jarvis_messages`, les six
 tables `airtable_*`) n'ont pas été supprimées : aucune migration destructive
 dans ce lot, décision à part si tu veux les retirer.
+
+Mise à jour après le lot P0 (même jour) : l'entrée Notifications, sa
+pastille et le bouton de paiement sont revenus avec une vraie cible (P0-B,
+P0-C). Le dépôt compte 74 fonctions (`create-portal-session` ajoutée). Les
+commandes ci-dessus restent à exécuter une fois ; la liste consolidée des
+actions prod, lot P0 compris, est en section 10.
+
+## 10. Après le lot P0
+
+Liste unique des actions prod, à exécuter dans cet ordre après le merge sur
+`main`. Le détail des décisions est dans `docs/p0-plan-2026-09-06.md`
+(sections 2, 4 et 5).
+
+1. Migrations : le workflow `deploy-migrations.yml` applique
+   `20260906084418`, `20260906085151`, `20260906181044`, `20260906181806` et
+   `20260906193347`. Vérifier le run. La migration `20260906181806` fait
+   démarrer un essai Cabinet de 14 jours sur les organisations existantes en
+   plan gratuit sans abonnement Stripe (une par créateur) et pose le cron
+   horaire `expire-subscription-trials`. Repli en cas d'erreur de suivi :
+   `workflow_dispatch` avec `repair_tracking=true`, puis relance.
+2. Edge functions : le workflow `deploy-edge-functions.yml` déploie les
+   fonctions modifiées (`_shared/` a changé, donc toutes). Vérifier que
+   `create-portal-session` apparaît dans le tableau de bord.
+3. Fonctions supprimées du dépôt mais encore servies : exécuter une fois la
+   boucle `supabase functions delete` de la section 9 (20 fonctions).
+4. Secrets à retirer : `N8N_API_KEY`, `N8N_INSTANCE_URL`,
+   `MICROSOFT_GRAPH_TOKEN`, `PDL_API_KEY`. Secrets à poser ou à vérifier :
+   `APP_URL` (= `https://konekt-app-navy.vercel.app`, lu par le digest, les
+   emails et Stripe), `KONEKT_PLATFORM_ADMIN_USER_IDS`, rotation de
+   `UNIPILE_WEBHOOK_SECRET` (section 2).
+5. Stripe, paiement : poser `STRIPE_SECRET_KEY` et `STRIPE_WEBHOOK_SECRET` ;
+   créer l'endpoint webhook
+   `https://crckfywoyjxkawathdff.supabase.co/functions/v1/stripe-webhook`
+   avec les événements checkout.session.completed,
+   customer.subscription.updated, customer.subscription.deleted,
+   invoice.paid et invoice.payment_failed ; activer le portail client. Puis
+   un paiement test par plan et par cycle, et un rejeu de chaque événement
+   (aucun test e2e ne couvre ce parcours).
+6. Stripe, changement de plan et de sièges : créer les six prix récurrents
+   par siège (Solo, Cabinet, Entreprise ; mensuel et annuel), les renseigner
+   dans `subscription_plans.stripe_price_id_monthly` et
+   `stripe_price_id_yearly`, autoriser la mise à jour de quantité et de plan
+   sur ces produits dans la configuration du portail. Sans cela, « Changer de
+   plan » et « Ajouter un siège » n'aboutissent pas.
+7. Compte interne Konekt : après le rattrapage il reçoit les crédits de son
+   plan. Pour le garder illimité, le rattacher à un plan dont
+   `limits.ai_credits` vaut -1, ou poser `plan_credits = 999999` avec une
+   `period_end` lointaine depuis l'éditeur SQL.
+8. Digest : la fonction `agent-daily-digest` (cron quotidien) n'envoie qu'aux organisations dont
+   `agent_tool_policies` a `daily_digest = auto`. Activer la ligne pour les
+   organisations de la bêta, puis vérifier la réception d'un email.
+9. `types.ts` : régénérer par `supabase gen types typescript --linked` une
+   fois les migrations appliquées, et committer.
+10. Contrôle après déploiement : une organisation neuve a des crédits et un
+    essai de 14 jours, un compte LinkedIn connecté apparaît dans
+    l'onboarding, une inscription à une séquence passe, la page `/pricing`
+    s'affiche sans session.

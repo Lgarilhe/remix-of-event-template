@@ -142,6 +142,18 @@ const Auth = () => {
 
       navigate(withPreviewAccessToken(from), { replace: true });
     } catch (error: any) {
+      // Plus de siège disponible : on ne poursuit pas vers l'onboarding (qui
+      // créerait un espace personnel) ; l'invité réessaie une fois un siège ajouté.
+      if (typeof error?.message === 'string' && /siège/i.test(error.message)) {
+        toast({
+          title: 'Invitation en attente',
+          description: `${error.message} Rouvrez le lien d'invitation une fois un siège ajouté.`,
+          variant: 'destructive',
+          duration: 15000,
+        });
+        await supabase.auth.signOut();
+        return;
+      }
       // If invitation fails, still navigate to the app (don't leave user on blank page)
       if (error?.message) {
         toast({

@@ -266,6 +266,10 @@ SET search_path TO 'public'
 AS $$
 DECLARE
   v_credits integer;
+  v_old integer;
+  v_current integer;
+  v_period_end timestamptz;
+  v_consumed integer;
 BEGIN
   -- Ne réagit qu'à la création et au changement de plan : le webhook de paiement
   -- met à jour statut et période sans toucher aux crédits.
@@ -283,6 +287,30 @@ BEGIN
   END IF;
   IF v_credits < 0 THEN
     v_credits := 999999; -- illimité
+  END IF;
+
+  -- Changement de plan en cours de période : la consommation déjà faite est
+  -- reportée sur le nouveau plafond (une bascule aller-retour ne recharge rien).
+  IF TG_OP = 'UPDATE' THEN
+    SELECT COALESCE((limits->>'ai_credits')::integer, 100)
+    INTO v_old
+    FROM public.subscription_plans
+    WHERE id = OLD.plan_id;
+    IF v_old IS NULL THEN
+      v_old := 100;
+    END IF;
+    IF v_old < 0 THEN
+      v_old := 999999;
+    END IF;
+
+    SELECT plan_credits, period_end
+    INTO v_current, v_period_end
+    FROM public.ai_credit_balances
+    WHERE organization_id = NEW.organization_id;
+    IF FOUND AND v_period_end > now() THEN
+      v_consumed := GREATEST(0, v_old - COALESCE(v_current, 0));
+      v_credits := GREATEST(0, v_credits - v_consumed);
+    END IF;
   END IF;
 
   INSERT INTO public.ai_credit_balances
@@ -354,7 +382,10 @@ CREATE POLICY org_members_insert
   WITH CHECK (
     user_id = auth.uid()
     OR (
+      -- Entre membres d'une même organisation : mentions seulement ; les
+      -- notifications système passent par le service role.
       organization_id IS NOT NULL
+      AND type = 'mention'
       AND public.is_org_member(auth.uid(), organization_id)
       AND public.is_org_member(user_id, organization_id)
     )

@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 export const AICreditsSettings = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { organizationId } = useOrganization();
+  const { organizationId, isAdmin } = useOrganization();
   const { creditsRemaining, creditsTotal, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, periodEnd, refetch } = useAICredits();
   const { data: history = [], isLoading: isLoadingHistory } = useAICreditHistory();
   const { modelId: defaultModel, setModelId: setDefaultModel } = useModelPreference(organizationId);
@@ -116,7 +116,7 @@ export const AICreditsSettings = () => {
             {topupCredits > 0 && (
               <div className="flex items-center gap-1.5">
                 <Sparkles className="w-3 h-3" />
-                <span>Top-up : <strong className="text-foreground">{topupCredits.toLocaleString()}</strong></span>
+                <span>Recharges : <strong className="text-foreground">{topupCredits.toLocaleString()}</strong></span>
               </div>
             )}
           </div>
@@ -185,7 +185,8 @@ export const AICreditsSettings = () => {
         </CardContent>
       </Card>
 
-      {/* Top-up Packs */}
+      {/* Packs de crédits : réservés aux propriétaires et administrateurs (même règle que le paiement) */}
+      {isAdmin ? (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
@@ -193,7 +194,7 @@ export const AICreditsSettings = () => {
             Recharger des crédits
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Les crédits top-up ne s'expirent jamais et sont utilisés après les crédits du plan.
+            Les crédits rechargés n'expirent jamais et sont utilisés après les crédits du plan.
           </p>
         </CardHeader>
         <CardContent>
@@ -231,6 +232,13 @@ export const AICreditsSettings = () => {
           </div>
         </CardContent>
       </Card>
+      ) : (
+        <Card>
+          <CardContent className="py-4 text-xs text-muted-foreground">
+            Pour recharger des crédits, demandez à un administrateur de votre espace.
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cost Table — shows estimated range (Haiku → Opus) */}
       <Card>
