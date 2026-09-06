@@ -2,7 +2,6 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { MessageSquare, CheckCircle2, Star, Zap, Loader2, Target, Archive, Sparkles, GitBranch } from 'lucide-react';
-import airtableLogo from '@/assets/airtable-logo.svg';
 import notionLogo from '@/assets/notion-logo.webp';
 import { ProjectEnrollmentInfo } from '@/hooks/useProjectEnrollments';
 
@@ -24,18 +23,11 @@ interface CardStatusBadgesProps {
 export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
   candidateStatus,
   profile,
-  airtableMatch,
   notionMatch,
-  historyData,
-  historyLoading,
   jobScore,
   isLikelyToRespond,
   enrollmentInfo,
 }) => {
-  const historyTotal = historyData
-    ? historyData.placements.length + historyData.shortlists.length + historyData.notes.length + historyData.appointments.length
-    : 0;
-
   // Mapping statut enrollment → label/couleur. Réutilisé pour le tooltip.
   const enrollmentLabel = enrollmentInfo
     ? enrollmentInfo.replied_at
@@ -173,37 +165,6 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
           <Sparkles className="w-3 h-3 mr-0.5" />
           Réactif
         </Badge>
-      )}
-      {/* Airtable badge — design simplifié de la branche audit (tooltip + compteur compact)
-          mais on garde theme tokens (success/foreground) au lieu de teal hardcodé pour cohérence. */}
-      {airtableMatch && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge className={`text-xs px-1.5 py-0 h-4 sm:h-5 shrink-0 gap-1 cursor-default ${
-              airtableMatch.match_type === 'fuzzy'
-                ? 'bg-success/10 text-success border border-dashed border-success/40'
-                : 'bg-success text-success-foreground'
-            }`}>
-              <img src={airtableLogo} alt="Airtable" className="w-3 h-3 object-contain shrink-0" style={{ filter: airtableMatch.match_type !== 'fuzzy' ? 'brightness(10)' : 'none' }} />
-              {historyLoading && <Loader2 className="w-2.5 h-2.5 animate-spin shrink-0" />}
-              {historyTotal > 0 && <span className="font-bold shrink-0">{historyTotal}</span>}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-xs">
-            <p className="text-xs font-medium">
-              {airtableMatch.match_type === 'fuzzy' ? 'Airtable (match approximatif)' : 'Airtable'}
-            </p>
-            {airtableMatch.status && <p className="text-xs text-muted-foreground">Statut : {airtableMatch.status}</p>}
-            {historyData && (
-              <p className="text-xs text-muted-foreground">
-                {historyData.placements.length > 0 && `${historyData.placements.length} placement(s) `}
-                {historyData.shortlists.length > 0 && `${historyData.shortlists.length} shortlist(s) `}
-                {historyData.notes.length > 0 && `${historyData.notes.length} note(s) `}
-                {historyData.appointments.length > 0 && `${historyData.appointments.length} RDV `}
-              </p>
-            )}
-          </TooltipContent>
-        </Tooltip>
       )}
       {notionMatch && (
         <Tooltip>

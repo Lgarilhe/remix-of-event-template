@@ -91,6 +91,11 @@ jobs:
             fi
           fi
 
+          # Une fonction supprimée du dépôt apparaît dans le diff du push :
+          # on ne déploie que les dossiers qui existent encore. La suppression
+          # côté Supabase reste manuelle : supabase functions delete <nom>.
+          FUNCS=$(for f in $FUNCS; do [ -d "supabase/functions/$f" ] && echo "$f"; done || true)
+
           if [ -z "$FUNCS" ]; then
             echo "::notice::No functions to deploy"
           fi

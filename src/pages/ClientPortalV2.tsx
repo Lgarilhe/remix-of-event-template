@@ -3,7 +3,7 @@
  *
  * Le hiring manager arrive ici via un lien /client/{token} partagé par
  * le recruteur Konekt. Il voit les candidats sourcés pour son recrutement,
- * peut les évaluer (scorecard), commenter, et suivre le pipeline.
+ * peut les évaluer (scorecard) et suivre le pipeline.
  *
  * Architecture :
  *   - Header brandé (logo recruteur + nom + nav)
@@ -27,7 +27,7 @@ import { PortalCandidateScoring } from '@/components/portal/PortalCandidateScori
 import { Pill } from '@/components/missions/v2/Pill';
 import {
   Users, Clock, Search, Briefcase, TrendingUp, Star, Filter,
-  Sparkles, X, ChevronRight, Award, MessageSquare, Eye, ArrowRight,
+  Sparkles, X, ChevronRight, Award, Eye, ArrowRight,
   CheckCircle, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -382,11 +382,6 @@ const OnboardingOverlay: React.FC<{
             emoji="🎯"
             title="Évaluer les candidats"
             desc="Donne ton feedback via la scorecard pour chaque profil présenté."
-          />
-          <FeatureRow
-            emoji="💬"
-            title="Commenter & échanger"
-            desc="Laisse des commentaires que ton recruteur reçoit instantanément."
           />
           <FeatureRow
             emoji="🔒"
@@ -1072,18 +1067,6 @@ const CandidateSheet: React.FC<{
                   portalToken={portalToken}
                 />
               </div>
-            </div>
-          )}
-
-          {!permissions.can_fill_scorecard && permissions.can_comment && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
-                <MessageSquare className="w-3 h-3" />
-                Commentaire
-              </p>
-              <p className="text-[11.5px] text-muted-foreground italic">
-                La fonction commentaires arrive bientôt.
-              </p>
             </div>
           )}
         </div>

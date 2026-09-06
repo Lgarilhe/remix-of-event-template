@@ -39,7 +39,6 @@ import {
 import notionLogo from '@/assets/notion-logo.webp';
 import calendlyLogo from '@/assets/calendly-logo.webp';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
-import airtableLogo from '@/assets/airtable-logo.svg';
 import aircallLogo from '@/assets/aircall-logo.webp';
 
 interface IntegrationField {
@@ -91,18 +90,6 @@ const INTEGRATIONS: IntegrationConfig[] = [
     connectedKey: 'unipile_connected',
     hostedAuth: true,
     fields: [],
-  },
-  {
-    id: 'airtable',
-    name: 'Airtable',
-    description: 'Synchronisation des données avec vos bases Airtable (candidats, placements, KPIs).',
-    logoSrc: airtableLogo,
-    connectedKey: 'airtable_connected',
-    fields: [
-      { key: 'airtable_api_key', label: 'Clé API Airtable', placeholder: 'pat...', secret: true },
-      { key: 'airtable_base_id', label: 'ID Base principale', placeholder: 'app...' },
-      { key: 'airtable_base_id_2', label: 'ID Base secondaire (optionnel)', placeholder: 'app...' },
-    ],
   },
   {
     id: 'aircall',
@@ -538,7 +525,7 @@ export const IntegrationsSettings = () => {
 
   const values = (integrations ?? EMPTY_VALUES) as Record<string, any>;
 
-  // Only show API-key integrations (Notion, Airtable, Calendly, Aircall) if already configured
+  // Only show API-key integrations (Notion, Calendly, Aircall) if already configured
   const visibleIntegrations = INTEGRATIONS.filter(config => {
     if (config.hostedAuth) return true;
     return !!values[config.connectedKey];

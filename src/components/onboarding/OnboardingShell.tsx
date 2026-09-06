@@ -23,7 +23,7 @@ interface Props {
 export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, chapters, completedScenes, orgName, children }) => {
   const progress = ((stepIndex + 1) / flow.length) * 100;
   const currentScene = flow[stepIndex];
-  const isFinale = currentScene === 'preparing' || currentScene === 'launch';
+  const isFinale = currentScene === 'launch';
   const remainingMin = Math.max(1, Math.ceil(remainingSeconds(flow, stepIndex) / 60));
   const currentChapterIdx = isFinale
     ? chapters.length

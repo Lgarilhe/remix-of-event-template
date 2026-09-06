@@ -21,7 +21,7 @@ import { CandidateList } from '@/components/candidates/CandidateList';
 import { CandidateFilters } from '@/components/candidates/CandidateFilters';
 import { PipelineStats } from '@/components/candidates/PipelineStats';
 import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandidates';
-import { PIPELINE_STAGES, type ShortlistEntry } from '@/pages/Candidates';
+import { PIPELINE_STAGES, type ShortlistEntry } from '@/types/shortlist';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Bell, Users, RefreshCw, Loader2, LayoutGrid, List } from 'lucide-react';
 import iconAts3d from '@/assets/icon-ats-3d.webp';

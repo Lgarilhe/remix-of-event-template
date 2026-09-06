@@ -1,7 +1,7 @@
 /**
  * Section — wrapper de section unifié (titre + icône + action + content).
  *
- * Remplace les 15+ définitions inline de `<Section>` dans ATSDashboard,
+ * Remplace les 15+ définitions inline de `<Section>` dans les dashboards,
  * SequenceAnalytics, etc. qui divergent sur le padding/border/fontsize.
  */
 

@@ -364,7 +364,7 @@
     outline-offset: 2px;
   }
 
-  /* ── V2 keyframes (mission redesign — Pill, CopilotRail, etc.) ── */
+  /* ── V2 keyframes (mission redesign : Pill, copilote, etc.) ── */
   @keyframes konektPulseDot {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.5; transform: scale(1.4); }

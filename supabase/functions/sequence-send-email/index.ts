@@ -320,49 +320,6 @@ async function sendViaUnipile(
   }
 }
 
-/**
- * Fallback: Send email via Microsoft Graph API (if Unipile email account not available).
- */
-async function sendViaGraphApi(
-  accessToken: string,
-  from: string,
-  to: string,
-  subject: string,
-  htmlBody: string,
-  cc?: string[],
-  bcc?: string[],
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  try {
-    const res = await fetchWithTimeout('https://graph.microsoft.com/v1.0/me/sendMail', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: {
-          subject,
-          body: { contentType: 'HTML', content: htmlBody },
-          toRecipients: [{ emailAddress: { address: to } }],
-          ...(cc?.length ? { ccRecipients: cc.map(e => ({ emailAddress: { address: e } })) } : {}),
-          ...(bcc?.length ? { bccRecipients: bcc.map(e => ({ emailAddress: { address: e } })) } : {}),
-          from: { emailAddress: { address: from } },
-        },
-        saveToSentItems: true,
-      }),
-    });
-
-    if (res.status === 202 || res.ok) {
-      return { success: true, messageId: `graph-${crypto.randomUUID().slice(0, 8)}` };
-    }
-
-    const errorBody = await res.text();
-    return { success: false, error: `Graph API ${res.status}: ${errorBody}` };
-  } catch (err) {
-    return { success: false, error: `Graph API error: ${err instanceof Error ? err.message : String(err)}` };
-  }
-}
-
 // ============ MAIN HANDLER ============
 
 Deno.serve(async (req) => {
@@ -637,14 +594,10 @@ Deno.serve(async (req) => {
         bcc,
       );
     } else {
-      // Fallback: Microsoft Graph API (if configured)
-      const graphToken = Deno.env.get('MICROSOFT_GRAPH_TOKEN');
-      if (graphToken) {
-        sendResult = await sendViaGraphApi(graphToken, senderEmail, recipientEmail, subject, htmlBody, cc, bcc);
-      } else {
-        console.error('[sequence-send-email] No email sending method available (no email account connected, no fallback token configured)');
-        sendResult = { success: false, error: 'no_email_method_available' };
-      }
+      // Aucun compte email connecté pour cet expéditeur : pas de repli global
+      // (l'ancien jeton Microsoft Graph unique pour toutes les organisations a été retiré).
+      console.error('[sequence-send-email] No email sending method available (no email account connected)');
+      sendResult = { success: false, error: 'no_email_method_available' };
     }
 
     // 10. Update execution status

@@ -7,14 +7,13 @@
  *   │  Décris la mission, l'IA fait le reste.              │
  *   └──────────────────────────────────────────────────────┘
  *
- *   ┌── 3 modes d'entrée (cards) ──────────────────────────┐
- *   │  📋 Coller une fiche      🎙 Dicter      ✍️ Manuel  │
+ *   ┌── 2 modes d'entrée (cards) ──────────────────────────┐
+ *   │  📋 Coller une fiche      ✍️ Manuel                  │
  *   └──────────────────────────────────────────────────────┘
  *
  *   ┌── Workspace selon le mode actif ─────────────────────┐
  *   │  - Mode brief : textarea grande + analyse IA live    │
  *   │  - Mode manuel : form classique                       │
- *   │  - Mode voice : à venir (placeholder)                 │
  *   └──────────────────────────────────────────────────────┘
  *
  *   ┌── Footer sticky ─────────────────────────────────────┐
@@ -34,7 +33,7 @@ import { useSourcingProjects, CreateProjectInput } from '@/hooks/useSourcingProj
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import {
-  Sparkles, Loader2, FileText, Mic, Pencil, ArrowRight, ArrowLeft,
+  Sparkles, Loader2, FileText, Pencil, ArrowRight, ArrowLeft,
   Check, X, Building2, MapPin, Briefcase, Star, Clock, Layers, Euro,
   Link2, Paperclip, Upload, Globe,
 } from 'lucide-react';
@@ -145,11 +144,11 @@ function parseJobUrl(url: string): UrlParsedJob | null {
 interface CreateMissionV2Props {
   isOpen: boolean;
   onClose: () => void;
-  /** Pré-sélectionne un mode d'entrée : 'brief' | 'manual' | 'voice' */
+  /** Pré-sélectionne un mode d'entrée : 'brief' | 'manual' */
   initialMode?: EntryMode;
 }
 
-type EntryMode = 'choose' | 'brief' | 'manual' | 'voice';
+type EntryMode = 'choose' | 'brief' | 'manual';
 
 interface BriefAnalysis {
   filters: Record<string, unknown>;
@@ -196,13 +195,6 @@ const MODE_OPTIONS: {
     icon: FileText,
     recommended: true,
     badge: '60 secondes',
-  },
-  {
-    value: 'voice',
-    label: 'Dicter à voix haute',
-    desc: 'Décris la mission à l\'oral. L\'IA structure tout pendant que tu parles.',
-    icon: Mic,
-    badge: 'Bientôt',
   },
   {
     value: 'manual',
@@ -434,11 +426,11 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         return;
       }
 
-      // Cas 2 : URL de page entreprise (plusieurs postes)
+      // Cas 2 : URL de page entreprise (pas une fiche de poste précise)
       if (parsed && !parsed.isJobUrl && parsed.company) {
         if (!clientName) setClientName(parsed.company);
         toast.info('Page entreprise détectée', {
-          description: `Pour importer plusieurs postes de ${parsed.company} en une fois, utilise "Importer plusieurs postes" depuis ta liste de missions (à venir).`,
+          description: `Entreprise pré-remplie (${parsed.company}). Colle le contenu de la fiche de poste dans la zone brief — l'IA fait le reste.`,
           duration: 7000,
         });
         return;
@@ -456,7 +448,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     }
   }, [urlSuggestion, briefName, clientName]);
 
-  // ── Upload d'un fichier (TXT pris en charge nativement, PDF/DOCX → message) ──
+  // ── Upload d'un fichier texte (TXT / Markdown) ──
   const handleFileUpload = useCallback(async (file: File) => {
     setUploadingFile(true);
     try {
@@ -481,22 +473,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         return;
       }
 
-      // PDF / DOCX : pas encore implémenté côté frontend (lourd à bundler).
-      // On accepte le fichier mais on demande à l'user de copier-coller le
-      // contenu pour l'instant. Le parsing automatique viendra dans une PR
-      // future via une edge function dédiée.
-      if (ext === 'pdf' || ext === 'docx' || ext === 'doc' || mime.includes('pdf') || mime.includes('word')) {
-        toast.info(
-          `📄 ${ext.toUpperCase()} reconnu — extraction automatique bientôt disponible`,
-          {
-            description: 'Pour l\'instant, ouvre le document, sélectionne tout (Ctrl+A) et colle le contenu dans la zone brief. L\'IA s\'occupera du reste.',
-            duration: 7000,
-          }
-        );
-        return;
-      }
-
-      toast.error(`Format ${ext.toUpperCase()} non pris en charge — utilise TXT, PDF ou DOCX`);
+      toast.error(`Format ${ext.toUpperCase()} non pris en charge — utilise un fichier TXT ou MD, ou colle le contenu dans la zone brief`);
     } catch (e: any) {
       toast.error(e.message || "Erreur lors de la lecture du fichier");
     } finally {
@@ -537,7 +514,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         <DialogHeader className="sr-only">
           <DialogTitle>Créer une nouvelle mission</DialogTitle>
           <DialogDescription>
-            Choisis comment tu veux décrire la mission : coller une fiche de poste, dicter, ou remplir manuellement.
+            Choisis comment tu veux décrire la mission : coller une fiche de poste ou remplir manuellement.
           </DialogDescription>
         </DialogHeader>
 
@@ -566,13 +543,11 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
                 {mode === 'choose' && 'Nouvelle mission'}
                 {mode === 'brief' && 'Brief IA'}
                 {mode === 'manual' && 'Création manuelle'}
-                {mode === 'voice' && 'Dictée vocale'}
               </p>
               <p className="text-[11px] text-muted-foreground">
                 {mode === 'choose' && 'Comment veux-tu décrire la mission ?'}
                 {mode === 'brief' && 'Colle ta fiche de poste, l\'IA extrait l\'essentiel'}
                 {mode === 'manual' && 'Remplis les champs un par un'}
-                {mode === 'voice' && 'Cette fonctionnalité arrive bientôt'}
               </p>
             </div>
           </div>
@@ -618,7 +593,6 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               setDescription={setDescription}
             />
           )}
-          {mode === 'voice' && <VoicePlaceholder />}
         </div>
 
         {/* Footer (selon mode) */}
@@ -701,26 +675,23 @@ const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick })
         <span className="font-editorial italic font-normal">l'IA fait le reste.</span>
       </h2>
       <p className="text-[13px] text-muted-foreground">
-        Colle une fiche de poste, dicte à voix haute, ou remplis les champs manuellement. À toi de choisir.
+        Colle une fiche de poste ou remplis les champs manuellement. À toi de choisir.
       </p>
     </div>
 
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto konekt-fade-up" style={{ animationDelay: '120ms' }}>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto konekt-fade-up" style={{ animationDelay: '120ms' }}>
       {MODE_OPTIONS.map(opt => {
         const Icon = opt.icon;
-        const disabled = opt.value === 'voice'; // Voice not implemented yet
         return (
           <button
             key={opt.value}
             type="button"
-            onClick={() => !disabled && onPick(opt.value)}
-            disabled={disabled}
+            onClick={() => onPick(opt.value)}
             className={cn(
               'relative flex flex-col items-start gap-3 px-5 py-5 rounded-xl border text-left transition-all',
               opt.recommended
                 ? 'border-foreground/30 bg-card hover:border-foreground/50'
                 : 'border-border bg-card/60 hover:bg-card hover:border-foreground/30',
-              disabled && 'opacity-50 cursor-not-allowed',
             )}
           >
             {opt.badge && (
@@ -846,12 +817,12 @@ const BriefMode: React.FC<BriefModeProps> = ({
           Une URL
         </button>
         <span className="text-[10px] text-muted-foreground/70 flex-1 text-right">
-          PDF · DOCX · TXT · WTTJ · LinkedIn Jobs · careers
+          TXT · MD · WTTJ · LinkedIn Jobs · careers
         </span>
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.docx,.doc,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+          accept=".txt,.md,text/plain,text/markdown"
           className="sr-only"
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -942,7 +913,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             <div className="text-center">
               <Upload className="w-6 h-6 mx-auto mb-2 text-foreground" />
               <p className="text-sm font-semibold">Lâche pour importer</p>
-              <p className="text-xs text-muted-foreground">PDF · DOCX · TXT</p>
+              <p className="text-xs text-muted-foreground">TXT · MD</p>
             </div>
           </div>
         )}
@@ -1071,21 +1042,6 @@ const ManualMode: React.FC<ManualModeProps> = ({
     </div>
     <p className="text-[11px] text-muted-foreground">
       Tu pourras compléter le brief, ajouter des compétences et lancer l'analyse IA après création.
-    </p>
-  </div>
-);
-
-// ─── Voice Placeholder ──────────────────────────────────────────
-
-const VoicePlaceholder: React.FC = () => (
-  <div className="px-8 py-16 text-center konekt-fade-up">
-    <div className="h-14 w-14 rounded-2xl konekt-skalr-bg konekt-shine grid place-items-center mx-auto mb-4">
-      <Mic className="w-6 h-6 text-white" strokeWidth={2} />
-    </div>
-    <h3 className="font-display text-xl font-bold mb-2">Dictée vocale arrive bientôt</h3>
-    <p className="text-[13px] text-muted-foreground max-w-sm mx-auto">
-      Tu pourras décrire ta mission à l'oral pendant que l'IA structure tout en temps réel.
-      <br />En attendant, utilise le mode <strong className="text-foreground">Coller une fiche</strong> qui marche déjà très bien.
     </p>
   </div>
 );

@@ -1,7 +1,7 @@
 /**
  * MissionOverviewV2 — Vue d'ensemble enrichie (Phase 1 / "Vue").
  *
- * Remplace MissionBentoDashboard quand le flag mission_v2 est actif.
+ * Remplace l'ancien MissionBentoDashboard (V1 retirée).
  *
  * Inspirée du design Claude "Mission Refonte v2" :
  *   ┌── Header : pills + title + meta (lieu, salaire, contrat) ──┐

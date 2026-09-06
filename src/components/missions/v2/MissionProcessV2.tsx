@@ -30,7 +30,7 @@ import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { useOrganizationMembers } from '@/hooks/useOrganization';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import type { JobDetails } from '@/types/jobDetails';
-import { StepCard, MissionTeamSection, PROCESS_TEMPLATES } from '../MissionProcess';
+import { StepCard, MissionTeamSection, PROCESS_TEMPLATES } from '../process/shared';
 import { Pill } from './Pill';
 
 interface MissionProcessV2Props {

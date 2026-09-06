@@ -25,8 +25,6 @@ FUNCTIONS=(
   "sequence-send-email"
   "sequence-email-track"
   "sequence-webhooks-handler"
-  "sequence-templates-crud"
-  "sequence-snippets-crud"
 )
 
 # Also redeploy the modified function

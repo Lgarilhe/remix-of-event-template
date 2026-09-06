@@ -24,11 +24,16 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAgent } from '@/contexts/AgentContext';
+import { useOrganization } from '@/hooks/useOrganization';
+import { hasFeature } from '@/lib/featureGates';
 
 export function NavigationPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { toggleAgent } = useAgent();
+  const { orgType, isCollaborator } = useOrganization();
+  // Même règle que l'onglet Équipe des paramètres (freelance : pas de gestion d'équipe)
+  const canManageTeam = !isCollaborator && hasFeature(orgType, 'team_management');
 
   // Ctrl+J / Cmd+J ouvre la palette
   useEffect(() => {
@@ -121,10 +126,12 @@ export function NavigationPalette() {
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             Créer une mission
           </CommandItem>
-          <CommandItem onSelect={() => go('/settings?tab=team')}>
-            <Users className="mr-2 h-4 w-4" aria-hidden="true" />
-            Gérer l'équipe
-          </CommandItem>
+          {canManageTeam && (
+            <CommandItem onSelect={() => go('/settings?tab=team')}>
+              <Users className="mr-2 h-4 w-4" aria-hidden="true" />
+              Gérer l'équipe
+            </CommandItem>
+          )}
           <CommandItem onSelect={() => go('/settings?tab=billing')}>
             <CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />
             Abonnement & facturation

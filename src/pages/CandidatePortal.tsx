@@ -425,9 +425,6 @@ export default function CandidatePortal() {
                 <Phone className="w-3.5 h-3.5" /> Appeler
               </a>
             )}
-            {!data.recruiter_email && !data.recruiter_phone && (
-              <span className="text-xs text-background/50">Coordonnées à venir</span>
-            )}
           </div>
         </motion.div>
 

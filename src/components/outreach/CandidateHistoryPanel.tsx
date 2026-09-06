@@ -19,7 +19,6 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import airtableLogo from '@/assets/airtable-logo.svg';
 import notionLogo from '@/assets/notion-logo.webp';
 
 interface CandidateHistoryPanelProps {
@@ -65,19 +64,6 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
   return (
     <div className="border-t border-border">
       <div className="p-3 space-y-2">
-        {/* Airtable Header */}
-        {data && (data.candidate || hasAirtableHistory) && (
-          <div className="flex items-center gap-2">
-            <img src={airtableLogo} alt="Airtable" className="w-4 h-4" />
-            <span className="text-xs font-semibold text-foreground">Historique Airtable</span>
-            {data.candidate?.status && (
-              <Badge variant="outline" className="text-xs h-4 px-1.5">
-                {data.candidate.status}
-              </Badge>
-            )}
-          </div>
-        )}
-
         {/* Contact info */}
         {(data?.candidate?.email || data?.candidate?.phone) && (
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -210,12 +196,6 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
               </div>
             ))}
           </HistorySection>
-        )}
-
-        {!hasAirtableHistory && data?.candidate && (
-          <p className="text-xs text-muted-foreground text-center py-2">
-            Candidat trouvé dans Airtable mais aucun historique de shortlist, placement ou note.
-          </p>
         )}
 
         {/* Notion Shortlists */}

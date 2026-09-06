@@ -77,12 +77,11 @@ Pourquoi :
 - LinkedIn (Unipile) = même pattern que Lemlist / HeyReach / Phantombuster : on utilise la session LinkedIn de l'user → noms visibles, skills/edu/langues complets, $0 par profil
 - Tous les recruteurs cibles ont DÉJÀ LinkedIn (Recruiter $700/mois ou Sales Nav $80/mois) — c'est la norme du métier
 
-Ce qui reste de la migration PDL :
-- `_shared/pdl-mapping.ts` : helpers `pdlToLinkedInProfile` / `mapFiltersToPdl` / `searchPdl` / cache utils — gardés pour usage enrichment ciblé futur
-- `_shared/resolve-org-credentials.ts` : `resolvePDLCredentials` toujours là
-- `pdl_profile_cache` table + RLS : prête à l'emploi
-- `PDL_API_KEY` secret Supabase : laissé en place
-- `database-search` edge function : SUPPRIMÉE (le frontend n'appelle plus que `unipile-search`)
+Ce qui reste de la migration PDL (nettoyage du 2026-09-06) :
+- `_shared/pdl-mapping.ts` et `resolvePDLCredentials` : SUPPRIMÉS (aucun appelant)
+- `pdl_profile_cache` table + RLS : encore en base, sans lecteur ni écrivain
+- `PDL_API_KEY` : plus lu par aucune fonction, inutile sur un nouvel environnement
+- `database-search`, `pdl-search`, `apollo-search` edge functions : SUPPRIMÉES (le frontend n'appelle plus que `unipile-search` et `coresignal-search`)
 
 Apollo/PDL futurs cas d'usage :
 - **ENRICHMENT CIBLÉ** : récupérer email/phone d'un candidat shortlisté (1 crédit pour 1 candidat actionnable, ROI clair)
@@ -129,33 +128,46 @@ This applies to (non-exhaustive) :
 ### Routes (src/App.tsx)
 ```
 /dashboard               → Dashboard (stats + welcome CTA if no missions)
-/missions                → Outreach page (ProjectsList)
-/missions/:id            → MissionWorkspace (8 tabs: overview/brief/process/sourcing/outreach/pipeline/insights/config)
+/missions                → Outreach page (liste des missions)
+/missions/:id            → MissionWorkspace → MissionWorkspaceV2 (3 phases, sous-onglets via ?tab=)
 /mission-invite/:token   → AcceptMissionInvite
+/sourcing                → SourcingSearches (recherches hors mission)
+/sourcing/:id            → SourcingSearchPage
+/agents                  → AgentsPage
 /pipeline                → ATS page (kanban/table/timeline/analytics)
+/pipeline/scorecard/:candidateId → ScorecardFullPage (alias legacy /ats/scorecard/:candidateId)
 /candidates              → Redirects to /pipeline
-/prospection             → Vivier/CRM (agency-only, gated by featureGates)
-/inbox                   → MessagesInbox
-/settings                → Settings (deep links: ?tab=general|team|connectors|integrations|billing|credits|agency|marketplace)
+/inbox                   → Inbox
+/calendar                → CalendarPage
+/tasks                   → TasksPage
+/marketplace             → Marketplace
+/pricing                 → Pricing
+/settings                → Settings (deep links: ?tab=general|presets|templates|account|team|connectors|integrations|billing|credits|agency|marketplace)
 /qualification/:id       → Qualification session (deep-linked from modals)
+Public (no AppLayout): / (landing), /auth, /onboarding (protected, no org guard), /portal/:token (CandidatePortal),
+  /client/:token (ClientPortalV2), /r/:slug (RecruiterPublicProfile), /unsubscribe, /privacy, /privacy-extension
 Legacy: /outreach → /missions, /ats → /pipeline
 ```
 
 ### Mission Flow
+Un seul parcours mission : V2, 3 phases linéaires (`src/components/missions/v2/`). Plus de flag `mission_v2` ni de composants V1.
 ```
-MissionWorkspace (tab router)
-├── MissionBentoDashboard    — overview tab
-├── MissionBrief             — edit job_details, auto-save debounced 800ms, voice dictation
-│   └── BriefWizard          — 5-step form (814 lines, the biggest component)
-├── MissionProcess           — interview steps + team management (788 lines)
-├── MissionSourcing          — LinkedIn/database search toggle
-│   └── LinkedInSearch       — search orchestrator (the most complex component)
-├── MissionOutreach          — sequences + invitations
-├── MissionPipeline          — kanban candidate view
-├── MissionInsights          — analytics
-├── MissionConfig            — hunt mode, client portal, notes
-└── MissionCopilot           — fixed bottom bar with contextual guidance
+MissionWorkspace (src/pages/MissionWorkspace.tsx : loading / introuvable / rendu V2)
+└── MissionWorkspaceV2       — PhaseStepper (3 phases) + sous-onglets, lus/écrits via ?tab=
+    ├── Phase 1 « Cadrage »
+    │   ├── MissionOverviewV2   — ?tab=overview (défaut)
+    │   ├── MissionBriefV2      — ?tab=brief, édite job_details (readOnly si !hasFeature('edit_brief'))
+    │   ├── MissionProcessV2    — ?tab=process, étapes d'entretien + équipe (briques partagées : missions/process/shared.tsx)
+    │   └── MissionConfigV2     — ?tab=config, hunt mode (MissionHuntMode) + portail client (MissionClientPortal)
+    ├── Phase 2 « Sourcing & Outreach »
+    │   ├── MissionSourcing     — ?tab=sourcing → LinkedInSearch (search orchestrator, the most complex component)
+    │   └── MissionOutreach     — ?tab=outreach, séquences + invitations
+    └── Phase 3 « Pipeline »
+        ├── MissionPipeline     — ?tab=pipeline, kanban candidats
+        └── MissionInsights     — ?tab=insights, analytics
 ```
+- Les sous-onglets se verrouillent selon `useMissionReadiness` (brief/process incomplets → phases 2 et 3 bloquées, toast « Complétez les étapes précédentes »).
+- Deep links historiques `?tab=brief|process|config|sourcing|outreach|pipeline|insights` restent valides (mapping tab → phase dans MissionWorkspaceV2).
 
 ### Search & Sourcing Flow (CRITICAL — most complex part)
 ```
@@ -213,14 +225,27 @@ OutreachSearchContext       — legacy global search (mostly replaced by useLink
 
 ### Edge Functions (supabase/functions/)
 ```
-Search:     generate-search-filters, score-profile-job, database-search, refine-search-filters
-AI:         ai-chat-completion, generate-outreach-message, generate-reply-suggestions, screen-candidate
-Scoring:    score-profile-job (batch LLM via callLLMBatch, 10 profiles/call)
-Data:       enrich-contact, enrich-company, generate-embedding
-Email:      send-transactional-email, process-email-queue, process-inmail-queue
-Integrations: unipile-search, unipile-accounts, stripe-webhook, aircall-webhook, calendly-webhook
+Search & scoring:   unipile-search, coresignal-search, generate-search-filters, refine-search-filters, nl-filter-edit,
+                    score-profile-job (batch LLM, 10 profiles/call), detect-profile-fraud, run-agent-search, search-agent-chat
+AI / agent:         ai-chat-completion, ai-credits, agent-tool-action, agent-daily-digest, process-agent-tasks, text-action,
+                    live-coach, deepgram-temp-key, generate-scorecard, generate-call-report, generate-client-competitors
+Knowledge / RAG:    ingest-context, auto-ingest-context, ingest-user-file, retrieve-context, generate-embedding
+Outreach & sequences: generate-outreach-message, generate-reply-suggestions, process-sequences, process-inmail-queue,
+                    process-scheduled-actions, sequence-send-email, sequence-email-track, sequence-webhooks-handler
+Inbox:              auto-analyze-message, auto-categorize-chats, analyze-response
+Email transactionnel: send-transactional-email, process-email-queue, handle-email-suppression, handle-email-unsubscribe
+Enrichment & sociétés: enrich-company, enrich-candidate-contact, get-enrichment-status, process-enrichment-queue,
+                    resolve-pedigree-directory, refresh-pedigree-by-funding-stage
+LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks
+Missions / pipeline: add-to-shortlist, update-candidate-stage, submit-application, client-portal-data,
+                    accept-mission-invitation, accept-invitation, send-team-invitation
+Notion:             fetch-notion-candidates, fetch-notion-jobs, notify-notion, update-notion-job, notion-mcp-oauth
+Autres intégrations: stripe-webhook, create-checkout-session, aircall-webhook, calendly-webhook,
+                    setup-calendly-webhook, backfill-calendly
+Extension Chrome:   extension-token, extension-quick-add, extension-pipeline-status
+RGPD / données:     export-org-data, rgpd-erase-contact, rgpd-purge
 ```
-77 fonctions déployées sur konekt-production. Voir liste complète : `ls supabase/functions/`.
+73 fonctions (2026-09-06). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin. Liste à jour : `ls supabase/functions/`.
 
 ---
 
@@ -235,10 +260,12 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 ### CRITICAL — à setter absolument, sinon fonctionnalités core cassées
 | Secret | Utilisé par (principales) |
 |--------|---------------------------|
-| `ANTHROPIC_API_KEY` | **tous les appels AI** — le helper `_shared/call-claude.ts` est l'unique passerelle vers les LLM depuis la migration Lovable → Anthropic direct (2026-04-21). Ancien Lovable Gateway Gemini remplacé par Claude Haiku 4.5. Utilisé par ~30 fonctions : ai-chat-completion, score-profile-job, generate-search-filters, refine-search-filters, generate-outreach-message, generate-reply-suggestions, nurturing-analyzer, search-agent-chat, chat-filter-assistant, auto-analyze-message, sequence-send-email, enrich-vivier-contacts, process-sequences, analyze-linkedin-profile, analyze-response, audit-employer-brand, auto-categorize-chats, detect-profile-fraud, enrich-company, fetch-notion-jobs, generate-call-report, generate-recruiter-bio, generate-scorecard, live-coach, process-debrief, screen-candidate, n8n-create-workflow |
-| `OPENAI_API_KEY` | backfill-knowledge-lake, fetch-notion-jobs, generate-embedding, ingest-context, retrieve-context (embeddings seulement) |
+| `ANTHROPIC_API_KEY` | **tous les appels AI** — le helper `_shared/call-claude.ts` est l'unique passerelle vers les LLM depuis la migration Lovable → Anthropic direct (2026-04-21). Ancien Lovable Gateway Gemini remplacé par Claude Haiku 4.5. Lu par 23 fonctions (2026-09-06) : ai-chat-completion, analyze-response, auto-analyze-message, auto-categorize-chats, detect-profile-fraud, enrich-company, fetch-notion-jobs, generate-call-report, generate-client-competitors, generate-outreach-message, generate-reply-suggestions, generate-scorecard, generate-search-filters, ingest-user-file, live-coach, nl-filter-edit, process-sequences, refine-search-filters, retrieve-context, score-profile-job, search-agent-chat, sequence-send-email, text-action |
+| `OPENAI_API_KEY` | fetch-notion-jobs, generate-embedding, ingest-context, ingest-user-file, retrieve-context (embeddings seulement) |
 | `UNIPILE_API_KEY` + `UNIPILE_DSN` | unipile-accounts, unipile-search, unipile-webhook, unipile-manage-webhooks + toutes les fonctions qui touchent LinkedIn (~15 au total) |
-| `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | add-to-shortlist, submit-application, process-sequences, auto-analyze-message, screen-candidate, fetch-notion-* |
+| `SB_SECRET_KEY` | clé service-role « nouveau format » : lue en priorité par `_shared/require-auth.ts` et par quasiment toutes les fonctions (`Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`). Si absente, repli sur `SUPABASE_SERVICE_ROLE_KEY` auto-provisionnée |
+| `ALLOWED_ORIGINS` | `_shared/cors.ts` (allowlist CORS, séparée par des virgules ; défaut = prod Vercel + localhost si absente) |
+| `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | add-to-shortlist, submit-application, process-sequences, auto-analyze-message, `_shared/resolve-org-credentials.ts` (repli env) |
 | `STRIPE_SECRET_KEY` | create-checkout-session |
 | `RESEND_API_KEY` | process-email-queue (envoi emails via Resend API) |
 
@@ -247,18 +274,27 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 ### IMPORTANT — features secondaires
 | Secret | Utilisé par |
 |--------|-------------|
-| `APOLLO_API_KEY` | apollo-search, database-search, enrich-company, enrich-contact, enrich-vivier-contacts, scan-recruiter-linkedin |
-| `PDL_API_KEY` | pdl-search |
+| `APOLLO_API_KEY` | enrich-company, refresh-pedigree-by-funding-stage (+ repli env dans `_shared/resolve-org-credentials.ts`) |
+| `CORESIGNAL_API_KEY` | coresignal-search (via `resolveCoresignalCredentials` de `_shared/resolve-org-credentials.ts`) |
+| `BETTERCONTACT_API_KEY` | enrich-candidate-contact, get-enrichment-status |
+| `UNIPILE_V2_API_KEY` + `UNIPILE_V2_WEBHOOK_TOKEN` | `_shared/unipile-v2.ts` (importé par unipile-webhook, unipile-manage-webhooks) — API v2 activée seulement si la clé est posée |
 | `STRIPE_WEBHOOK_SECRET` | stripe-webhook |
 | `AIRCALL_WEBHOOK_TOKEN` | aircall-webhook |
 | `CALENDLY_WEBHOOK_SIGNING_KEY` | calendly-webhook |
-| `UNIPILE_WEBHOOK_SECRET` | unipile-webhook, unipile-manage-webhooks, sequence-webhooks-handler |
-| `PROCESS_SEQUENCES_SECRET` | process-sequences (cron auth) |
-| `APP_URL` | create-checkout-session (= https://konekt-app-navy.vercel.app) |
+| `UNIPILE_WEBHOOK_SECRET` | unipile-webhook, unipile-manage-webhooks, unipile-accounts, sequence-webhooks-handler, `_shared/unipile-v2.ts` |
+| `SEQUENCE_WEBHOOK_SECRET` | sequence-webhooks-handler |
+| `PROCESS_SEQUENCES_SECRET` | auth des crons : process-sequences, process-email-queue, process-inmail-queue, process-scheduled-actions, process-agent-tasks, process-enrichment-queue, agent-daily-digest, refresh-pedigree-by-funding-stage, resolve-pedigree-directory |
+| `KONEKT_PLATFORM_ADMIN_USER_IDS` | unipile-manage-webhooks (ids user séparés par des virgules ; sans ce secret, owner/admin de l'org suffit — SEC-031) |
+| `NOTION_TOKEN_ENCRYPTION_KEY` | `_shared/notion-secret-crypto.ts` (chiffrement des tokens Notion ; importé par notion-mcp-oauth et `_shared/notion-mcp-connection.ts`) |
+| `NOTION_ALLOWED_RETURN_ORIGINS` | notion-mcp-oauth (origines de retour OAuth autorisées) |
+| `APP_URL` | create-checkout-session, notion-mcp-oauth, send-transactional-email, sequence-email-track, sequence-send-email, `_shared/agent-tools-mutations.ts` (= https://konekt-app-navy.vercel.app) |
+| `EMAIL_SITE_NAME` + `EMAIL_SENDER_DOMAIN` + `EMAIL_FROM_DOMAIN` | send-transactional-email (défauts : « Konekt », `notify.konekt.fr`, `konekt.fr`) |
 | `RESEND_WEBHOOK_SECRET` | handle-email-suppression (Svix signature verif, format `whsec_...`) |
 
 ### OPTIONAL — fallback/dev
-`DEEPGRAM_API_KEY`, `DEEPGRAM_PROJECT_ID`, `PERPLEXITY_API_KEY`, `FIRECRAWL_API_KEY`, `N8N_API_KEY`, `N8N_INSTANCE_URL`, `MICROSOFT_GRAPH_TOKEN`.
+`DEEPGRAM_API_KEY` + `DEEPGRAM_PROJECT_ID` (deepgram-temp-key), `PERPLEXITY_API_KEY` (enrich-company), `FIRECRAWL_API_KEY` (enrich-company).
+
+`PDL_API_KEY`, `N8N_API_KEY`, `N8N_INSTANCE_URL` et `MICROSOFT_GRAPH_TOKEN` ne sont plus lus par aucune fonction depuis le nettoyage du 2026-09-06 : inutiles sur un nouvel environnement, à retirer des secrets existants à l'occasion.
 
 ## Supabase Auth config (URL allow-list)
 
@@ -383,8 +419,9 @@ await settleCredits(adminClient, {
 ### Feature gating
 ```typescript
 import { hasFeature } from '@/lib/featureGates';
-// Prospection is agency-only. Check featureGates.ts for the full matrix.
+// hasFeature(orgType, feature) — fail-closed: returns false while orgType is null (org loading).
 ```
+Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `src/lib/featureGates.ts`. Décision produit 2026-09 : **un freelance a les mêmes droits qu'un cabinet sur ses missions** (`create_missions`, `edit_brief`, `edit_process`, `sourcing`, `outreach`, `pipeline`, `client_portal`, `marketplace_browse`), **sauf** `team_management` (pas d'onglet Équipe) et `agency_settings` (pas de paramètres agence). `marketplace_publish` reste réservé aux entreprises. Les onglets de Settings (`canManageTeam`, `canAgencySettings`) et les `readOnly` de MissionBriefV2/MissionProcessV2 découlent de cette matrice.
 
 ### Destructive actions — ALWAYS use AlertDialog
 ```typescript
@@ -428,12 +465,12 @@ accept(token).then(handleSuccess).catch(() => setStatus('error'));
 - **useEffect deps**: use `activeProject?.id` not `activeProject` (object ref never changes)
 - **missionSearchCache**: restores ALL state — any hook state changes can be overwritten on tab switch
 - **Edge function timeout**: 60s on Supabase — batch LLM calls must fit within this
-- **Lovable deploys from main** — must merge PR to main for changes to be visible
-- **Edge functions are NOT auto-deployed** — run `supabase functions deploy <name>` or `--all`
+- **Vercel deploys from main** — must merge PR to main for changes to be visible (~2 min)
+- **Edge functions are auto-deployed** by `.github/workflows/deploy-edge-functions.yml` on push to `main` (only the functions changed under `supabase/functions/**`; a `_shared/` change redeploys everything). Manual hotfix: `supabase functions deploy <name> --project-ref crckfywoyjxkawathdff`
 - **Two filter formats coexist** — AI format vs LinkedInFiltersState, transformation in useLinkedInSearch
 - **Step reordering**: uses temp negative order values to avoid UNIQUE constraint, then reassigns positive
 - **Location deferred resolution**: if no LinkedIn account connected, location stays as keyword until account available
-- **Prospection** is agency-only (Konekt internal) — gated via `featureGates.ts`
+- **No /prospection route anymore** — the vivier/CRM page was removed; org-type gating lives in `featureGates.ts` (see Feature gating)
 - **/candidates redirects to /pipeline** — one single entry point for candidates
 
 ---
@@ -455,67 +492,18 @@ Slash commands disponibles :
 
 ---
 
-## Apollo API (Base Konekt)
+## Apollo API (enrichment sociétés, pedigree)
 
-### Architecture
-```
-Frontend (buildSearchParams) → database-search edge function (mapFiltersToApollo) → Apollo API
-```
-- Apollo API key stored in Supabase secrets as `APOLLO_API_KEY`
-- Edge function `database-search` translates LinkedIn filter format to Apollo format
-- **Edge functions must be manually redeployed** after code changes (Lovable only deploys frontend)
+Apollo n'est **plus une source de sourcing** (voir « Sourcing strategy ») : `database-search`, `apollo-search`, `mapFiltersToApollo`, `bulk_match` et `apolloToLinkedInProfile` n'existent plus. Ce qui reste :
 
-### Apollo Search Flow
-```
-1. mixed_people/api_search → returns basic metadata (name, title, company, city)
-   - NO linkedin_url, NO employment_history, NO email
-   - Returns pagination.total_entries at TOP LEVEL (not in pagination object)
-   
-2. people/bulk_match → enriches profiles (linkedin_url, employment_history, email, phone)
-   - Consumes 1 credit per profile
-   - Batch limit: 10 profiles per call
-   - This is where linkedin_url becomes available
+- `APOLLO_API_KEY` en secret Supabase (repli env dans `_shared/resolve-org-credentials.ts`).
+- **enrich-company** : `mixed_companies/search` + `organizations/enrich?domain=` (fiche société, effectifs, levée de fonds), `organizations/{id}/job_postings` (postes ouverts), `mixed_people/api_search` (contacts clés) et `news_articles/search` (signaux). `buildSignals()` dérive les badges (levée récente, croissance, recrutement) de la réponse.
+- **refresh-pedigree-by-funding-stage** (cron) : `mixed_companies/search` par stade de levée pour rafraîchir les entrées `source='cron_apollo'` du référentiel pedigree.
 
-3. apolloToLinkedInProfile() → converts Apollo format to LinkedInProfile format
-```
-
-### Apollo Pagination
-- Apollo returns `total_entries` at top level of response (NOT inside `pagination` object)
-- `per_page` defaults to 25
-- Paginate by sending `page: 2`, `page: 3`, etc.
-- Calculate total pages: `Math.ceil(total_entries / per_page)`
-
-### Apollo Filter Mapping (mapFiltersToApollo)
-| LinkedIn Filter | Apollo Parameter | Notes |
-|----------------|-----------------|-------|
-| keywords (Boolean) | q_keywords | Boolean cleaned → simple terms |
-| role[].keywords | person_titles | Split on OR, include_similar_titles=true |
-| location[].name | person_locations | Must be simple "City, Country" format |
-| seniority | person_seniorities | Map: 1=intern, 2=entry, 4=senior, 5=manager... |
-| company_keywords | q_organization_name | DOESNT_HAVE excluded |
-| industry | q_organization_keyword_tags | Text tags, not LinkedIn IDs |
-| school | q_keywords (appended) | Names only, IDs skipped |
-| function | person_departments | Map: engineering, sales, product... |
-| company_headcount | organization_num_employees_ranges | Map A-I to "1,10", "11,50"... |
-| db_revenue_min/max | revenue_range[min]/[max] | Parse K/M/B suffixes |
-| db_funding_stage | organization_latest_funding_stage_cd | Seed, Series A/B/C... |
-| db_company_domain | q_organization_domains_list | Array of domains |
-| db_email_verified | contact_email_status: ["verified"] | Toggle |
-| db_technologies | currently_using_any_of_technology_uids | Array |
-
-### Apollo Limitations
-- Does NOT support Boolean syntax (AND/OR/NOT) → cleaned to simple terms
-- `person_locations` must be simple format ("Paris, France" not "Ville de Paris, Île-de-France, France")
-- q_keywords + person_titles AND'd together → too many keywords = 0 results
-- When person_titles present, reduce q_keywords to max 4 terms
-- Cap q_organization_name to 200 chars (prevents "Value too long" error)
-- Cap q_keywords to 500 chars
-
-### Apollo Profile Enrichment & Unipile
-- Apollo profiles have work_experience (via bulk_match) but NO summary ("À propos")
-- Unipile enrichment should ONLY trigger if profile lacks work_experience
-- If Unipile returns empty data, KEEP Apollo data (don't overwrite with empties)
-- linkedin_url only available AFTER bulk_match enrichment (not from search results)
+Rappels API :
+- Pas de syntaxe booléenne (AND/OR/NOT) ; `q_keywords` plafonné à 500 caractères, `q_organization_name` à 200.
+- `total_entries` est au niveau racine de la réponse, pas dans `pagination`.
+- 1 crédit par match sur `people/match` ; n'appeler que pour un candidat/contact actionnable, jamais en browsing.
 
 ---
 
@@ -596,11 +584,11 @@ Frontend (invokeUnipile) → unipile-search edge function → Unipile API → Li
 - `CREDENTIALS` account status → prompt user to reconnect
 
 ### Deployment Warning
-**Edge functions are NOT auto-deployed by Lovable.** After merging changes to edge functions:
+**Edge functions are auto-deployed** by `.github/workflows/deploy-edge-functions.yml` on push to `main` (changed functions only; `workflow_dispatch` accepts a name, a comma-separated list or `all`). Manual hotfix if needed:
 ```bash
-supabase functions deploy --all
+supabase functions deploy --all --project-ref crckfywoyjxkawathdff
 # Or individually:
-supabase functions deploy <function-name>
+supabase functions deploy <function-name> --project-ref crckfywoyjxkawathdff
 ```
 **SQL migrations** auto-apply via `.github/workflows/deploy-migrations.yml` on push to `main` (paths `supabase/migrations/**`). This was broken for weeks by a remote tracking-table desync (only 6/219 versions tracked → `supabase db push` refuses with "Found local migration files to be inserted before the last migration on remote"). Recovery: re-run the workflow in `workflow_dispatch` with `repair_tracking=true` (break-glass — marks all local versions `applied` in the tracking table only, no DDL re-run, reversible). Manual application still works as a hotfix and is idempotent:
 ```bash

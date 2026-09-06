@@ -6,7 +6,7 @@
  * - Mission (autocomplete sourcing_projects)
  * - Date + heure début
  * - Durée (15/30/45/60 min)
- * - Lieu (texte libre, suggestion Google Meet/Zoom auto-prefill)
+ * - Lieu (visio / bureau / téléphone / autre, texte libre)
  * - Notes
  *
  * Le manager est auto-set au currentUser. Le client_name + job_title
@@ -56,7 +56,7 @@ interface CreateEventModalProps {
   defaultDate?: Date;
 }
 
-type LocationPreset = 'google_meet' | 'zoom' | 'office' | 'phone' | 'custom';
+type LocationPreset = 'visio' | 'office' | 'phone' | 'custom';
 
 const DURATION_OPTIONS = [
   { value: '15', label: '15 min' },
@@ -67,8 +67,7 @@ const DURATION_OPTIONS = [
 ];
 
 const LOCATION_PRESETS: { value: LocationPreset; label: string; icon: React.ReactNode }[] = [
-  { value: 'google_meet', label: 'Google Meet', icon: <Video className="w-3.5 h-3.5" /> },
-  { value: 'zoom', label: 'Zoom', icon: <Video className="w-3.5 h-3.5" /> },
+  { value: 'visio', label: 'Visio', icon: <Video className="w-3.5 h-3.5" /> },
   { value: 'office', label: 'Bureau', icon: <MapPin className="w-3.5 h-3.5" /> },
   { value: 'phone', label: 'Téléphone', icon: <MapPin className="w-3.5 h-3.5" /> },
   { value: 'custom', label: 'Autre', icon: <MapPin className="w-3.5 h-3.5" /> },
@@ -103,7 +102,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   );
   const [time, setTime] = useState('10:00');
   const [duration, setDuration] = useState('30');
-  const [locationPreset, setLocationPreset] = useState<LocationPreset>('google_meet');
+  const [locationPreset, setLocationPreset] = useState<LocationPreset>('visio');
   const [customLocation, setCustomLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -142,7 +141,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setDate(format(defaultDate || new Date(), 'yyyy-MM-dd'));
     setTime('10:00');
     setDuration('30');
-    setLocationPreset('google_meet');
+    setLocationPreset('visio');
     setCustomLocation('');
     setNotes('');
   };
@@ -167,10 +166,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
       // Resolve location string
       let locationStr = '';
-      if (locationPreset === 'google_meet') {
-        locationStr = customLocation.trim() || 'Google Meet (lien à venir)';
-      } else if (locationPreset === 'zoom') {
-        locationStr = customLocation.trim() || 'Zoom (lien à venir)';
+      if (locationPreset === 'visio') {
+        locationStr = customLocation.trim() || 'Visio';
       } else if (locationPreset === 'office') {
         locationStr = customLocation.trim() || 'Bureau';
       } else if (locationPreset === 'phone') {
@@ -434,8 +431,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                 value={customLocation}
                 onChange={(e) => setCustomLocation(e.target.value)}
                 placeholder={
-                  locationPreset === 'google_meet' ? 'https://meet.google.com/…' :
-                  locationPreset === 'zoom' ? 'https://zoom.us/j/…' :
+                  locationPreset === 'visio' ? 'Lien de visio (optionnel)' :
                   locationPreset === 'office' ? 'Adresse précise (optionnel)' :
                   '+33 6 …'
                 }

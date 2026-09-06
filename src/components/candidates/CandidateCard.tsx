@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShortlistEntry } from '@/pages/Candidates';
+import { ShortlistEntry } from '@/types/shortlist';
 import { Mail, Phone, Linkedin, Calendar, Building2, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';

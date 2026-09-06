@@ -22,9 +22,11 @@ export type Feature =
   | 'live_coaching';
 
 const FEATURE_MATRIX: Record<Feature, Record<OrgType, boolean>> = {
-  create_missions:     { enterprise: true,  agency: true,  freelance: false },
-  edit_brief:          { enterprise: true,  agency: true,  freelance: false },
-  edit_process:        { enterprise: true,  agency: true,  freelance: false },
+  // Un freelance est un recruteur indépendant avec ses propres clients : mêmes
+  // droits qu'un cabinet sur ses missions (décision produit 2026-09).
+  create_missions:     { enterprise: true,  agency: true,  freelance: true  },
+  edit_brief:          { enterprise: true,  agency: true,  freelance: true  },
+  edit_process:        { enterprise: true,  agency: true,  freelance: true  },
   sourcing:            { enterprise: true,  agency: true,  freelance: true  },
   pipeline:            { enterprise: true,  agency: true,  freelance: true  },
   outreach:            { enterprise: true,  agency: true,  freelance: true  },

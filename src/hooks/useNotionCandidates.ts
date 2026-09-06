@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ShortlistEntry, Candidate } from '@/pages/Candidates';
+import type { ShortlistEntry, Candidate } from '@/types/shortlist';
 import { supabase } from '@/integrations/supabase/client';
 import { getActiveOrganizationId } from '@/lib/orgContext';
 

@@ -2,21 +2,19 @@ import type { OrgType, SceneKey } from './onboardingMeta';
 import type { OrgDetailsData } from './SceneOrgDetails';
 
 // ⚠️ Bumper la version à chaque changement de forme du flow (ajout/retrait
-// d'étapes) : un step index persisté sur l'ancien flow pointerait sur la
-// mauvaise scène et ferait sauter les nouvelles étapes.
-const STORAGE_KEY = 'konekt_onboarding_progress_v4';
+// d'étapes) : une progression persistée sur l'ancien flow serait ignorée
+// plutôt que de pointer sur la mauvaise scène.
+// v5 : tunnel raccourci (orgtype → org | orgdetails + specializations → linkedin → launch).
+const STORAGE_KEY = 'konekt_onboarding_progress_v5';
 
 export interface PersistedProgress {
   step: number;
+  /** Clé de la scène courante — permet un repli sûr si la scène n'existe plus. */
+  scene: SceneKey | null;
   orgType: OrgType | null;
-  goal?: string;
-  stack?: string[];
-  icp?: { roles: string; seniorities: string[]; locations: string };
   orgDetails: OrgDetailsData | null;
-  discoverySource: string;
   specializations: string[];
   completed: SceneKey[];
-  profileBasics: { displayName: string; jobTitle: string; linkedinUrl: string } | null;
 }
 
 export function loadOnboardingProgress(): PersistedProgress | null {

@@ -290,6 +290,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack, allowSe
       }
 
       onComplete({
+        orgId: org?.id ?? null,
         name: company.name,
         domain: company.domain,
         linkedinUrl: company.linkedinUrl,

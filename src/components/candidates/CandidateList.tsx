@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShortlistEntry } from '@/pages/Candidates';
+import { ShortlistEntry } from '@/types/shortlist';
 import { CandidateCard } from './CandidateCard';
 
 interface CandidateListProps {

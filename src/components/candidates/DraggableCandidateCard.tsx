@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { ShortlistEntry } from '@/pages/Candidates';
+import { ShortlistEntry } from '@/types/shortlist';
 import { Mail, Phone, Linkedin, Calendar, ExternalLink, Briefcase, ChevronDown, ChevronUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';

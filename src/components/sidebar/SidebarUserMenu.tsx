@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, LogOut, Sun, Moon, ChevronsUpDown, User as UserIcon, Bell, Sparkles } from 'lucide-react';
+import { Settings, LogOut, Sun, Moon, ChevronsUpDown, User as UserIcon, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
@@ -147,18 +147,6 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
         <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
           <Settings className="w-4 h-4 mr-2" />
           Paramètres
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => navigate('/settings?tab=notifications')}
-          className="cursor-pointer"
-        >
-          <Bell className="w-4 h-4 mr-2" />
-          Notifications
-          {unreadCount > 0 && (
-            <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-destructive text-destructive-foreground text-3xs font-bold tabular-nums">
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          )}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onToggleTheme} className="cursor-pointer">
           {isDark ? (

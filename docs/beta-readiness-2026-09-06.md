@@ -334,3 +334,60 @@ l'attribution des crédits du flux webhook au premier membre rattaché au
 compte reste arbitraire pour un compte partagé ; `types.ts` porte les
 nouvelles fonctions hors ordre alphabétique jusqu'à régénération.
 
+
+## 9. Lot de nettoyage du 6 septembre (soir)
+
+Décisions prises avec Laurent : la marketplace reste dans l'app et se lance en
+cercle fermé (pas de gel), la Base Konekt se vend en crédits, trois formules
+par siège plus crédits IA. Le lot applique le reste de la revue produit.
+
+Retiré du dépôt : 20 edge functions sans aucun appelant (dont analyse de
+profil, nurturing, débrief, screening Notion, snippets et templates de
+séquences, scans de pages carrière, n8n, Airtable, Aircall en lecture) et
+leurs sections de configuration ; le parcours mission V1 à huit onglets et
+ses composants (brief, process, configuration, vue d'ensemble, barre de
+progression, copilote de mission) ; les pages Admin, portail client V1 et
+Candidats ; quatorze composants et hooks orphelins ; le repli Microsoft Graph
+de l'envoi d'email et le code PDL partagé ; la carte et le badge Airtable.
+Le dépôt perd environ vingt et un mille lignes.
+
+Retiré de l'écran : le mode voix et l'import PDF « bientôt » de la création
+de mission, la promesse de commentaires du portail client, les métriques
+d'agence « prochainement », le bouton de paiement sans action, l'entrée
+Notifications sans page, les options Meet et Zoom « lien à venir », le texte
+« Coordonnées à venir » du portail candidat. L'extension Chrome n'est plus
+rendue dans les paramètres (le code reste).
+
+Onboarding : quatre écrans pour une entreprise ou un cabinet (type, organisation,
+LinkedIn, fin), cinq pour un freelance (type, détails, spécialisations,
+LinkedIn, fin). Les scènes audit de marque employeur, profil recruteur,
+équipe, ICP, ton IA, intégrations, quotas, objectif, outils et découverte sont
+supprimées. La progression persistée change de version : un tunnel commencé
+avant repart du premier écran.
+
+Droits : un freelance a les mêmes droits qu'un cabinet sur ses missions
+(création, brief, process) ; il ne voit ni l'onglet Équipe ni « Gérer
+l'équipe ». L'onglet Agence passe par la matrice de droits.
+
+Documentation : README réécrit pour Konekt (l'ancien décrivait le template
+d'événements), CLAUDE.md aligné (routes, parcours V2, 73 fonctions, secrets
+réellement lus).
+
+À faire après le merge, côté Supabase, une seule fois :
+
+```
+for f in analyze-linkedin-profile backfill-knowledge-lake chat-filter-assistant \
+  estimate-search-count fetch-aircall fetch-airtable fetch-notion-schema \
+  n8n-create-workflow nurturing-analyzer preview-transactional-email \
+  process-debrief scan-career-pages scrape-job-url screen-candidate \
+  sequence-snippets-crud sequence-templates-crud check-invitation-status \
+  audit-employer-brand generate-recruiter-bio scan-recruiter-linkedin; do
+  supabase functions delete "$f" --project-ref crckfywoyjxkawathdff
+done
+```
+
+Puis retirer les secrets `N8N_API_KEY`, `N8N_INSTANCE_URL`, `MICROSOFT_GRAPH_TOKEN`
+et `PDL_API_KEY`, que plus aucune fonction ne lit. Les tables sans lecteur ni
+écrivain (dont `event_registrations`, `jarvis_kb`, `jarvis_messages`, les six
+tables `airtable_*`) n'ont pas été supprimées : aucune migration destructive
+dans ce lot, décision à part si tu veux les retirer.

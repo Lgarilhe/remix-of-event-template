@@ -1,16 +1,17 @@
 /**
- * MissionWorkspaceV2 — Nouveau parcours mission à 3 phases.
+ * MissionWorkspaceV2 — Parcours mission à 3 phases (seul parcours depuis
+ * le retrait de la V1 à 8 onglets).
  *
- * Remplace les 8 tabs actuelles (overview/brief/process/sourcing/outreach/
- * pipeline/insights/config) par 3 phases linéaires :
+ * Les 8 anciens onglets (overview/brief/process/sourcing/outreach/
+ * pipeline/insights/config) sont regroupés en 3 phases linéaires :
  *
  *   Phase 1 — Cadrage : Brief / Process / Config (sous-onglets)
  *   Phase 2 — Sourcing & Outreach : Sourcing / Outreach (sous-onglets)
  *   Phase 3 — Pipeline : Pipeline / Insights (sous-onglets)
  *
  * IMPORTANT : ce composant ne change RIEN au métier. Il importe et
- * compose les composants existants (MissionBrief, MissionSourcing, etc.)
- * tels quels. Aucun hook, aucune action, aucune feature n'est touchée.
+ * compose les vues existantes (MissionBriefV2, MissionSourcing, etc.)
+ * telles quelles. Aucun hook, aucune action, aucune feature n'est touchée.
  *
  * Architecture :
  *   ┌─ Header breadcrumb ─────────────────────────────────┐
@@ -41,10 +42,6 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { toast } from 'sonner';
 
-import { MissionBentoDashboard } from '@/components/missions/MissionBentoDashboard';
-import { MissionBrief } from '@/components/missions/MissionBrief';
-import { MissionProcess } from '@/components/missions/MissionProcess';
-import { MissionConfig } from '@/components/missions/MissionConfig';
 import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import { MissionOutreach } from '@/components/missions/MissionOutreach';
 import { MissionPipeline } from '@/components/missions/MissionPipeline';

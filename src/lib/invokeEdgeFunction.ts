@@ -17,9 +17,7 @@ const TIMEOUT_MS = 55_000;
 const HEAVY_AI_FUNCTIONS = new Set([
   'generate-scorecard',
   'score-profile-job',
-  'screen-candidate',
   'generate-call-report',
-  'audit-employer-brand',
 ]);
 const HEAVY_AI_TIMEOUT_MS = 90_000;
 

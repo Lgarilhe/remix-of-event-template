@@ -21,7 +21,6 @@ import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { TeamManagement } from '@/components/settings/TeamManagement';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
-import { ExtensionTokens } from '@/components/settings/ExtensionTokens';
 import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
 import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
 import { EmailSignatures } from '@/components/settings/EmailSignatures';
@@ -37,11 +36,16 @@ import { AiContextSettings } from '@/components/settings/AiContextSettings';
 import { AgentActionsSettings } from '@/components/settings/AgentActionsSettings';
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { hasFeature } from '@/lib/featureGates';
 
 
 const Settings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { organization, organizationId, isOwner, isAdmin, isCollaborator, isAgency } = useOrganization();
+  const { organization, organizationId, isOwner, isAdmin, isCollaborator, orgType } = useOrganization();
+  // Droits par type d'organisation (src/lib/featureGates.ts) : un freelance
+  // n'a pas d'équipe à gérer ; les réglages agence sont réservés aux cabinets.
+  const canManageTeam = !isCollaborator && hasFeature(orgType, 'team_management');
+  const canAgencySettings = hasFeature(orgType, 'agency_settings');
   const { members, isLoading, pendingInvitations, inviteMember, isInviting, resendInvitation, isResendingInvitation, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
 
   const [editingName, setEditingName] = useState(false);
@@ -110,9 +114,9 @@ const Settings = () => {
     if (tab === 'ai-context') return 'ai-context';
     if (tab === 'agent-actions') return 'agent-actions';
     if (tab === 'connectors' && !isCollaborator && hasConnectors) return 'connectors';
-    if (tab === 'team' && !isCollaborator) return 'team';
+    if (tab === 'team' && canManageTeam) return 'team';
     if (tab === 'presets' && !isCollaborator) return 'presets';
-    if (tab === 'agency' && isAgency) return 'agency';
+    if (tab === 'agency' && canAgencySettings) return 'agency';
     if (tab === 'marketplace') return 'marketplace';
     return 'general';
   });
@@ -145,7 +149,7 @@ const Settings = () => {
       label: 'Compte & accès',
       items: [
         { value: 'account', label: 'Mon compte', icon: UserCircle },
-        ...(!isCollaborator ? [{ value: 'team', label: 'Équipe', icon: Users }] : []),
+        ...(canManageTeam ? [{ value: 'team', label: 'Équipe', icon: Users }] : []),
         ...(!isCollaborator && hasConnectors ? [{ value: 'connectors', label: 'Connecteurs', icon: Plug }] : []),
         ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon: Plug }] : []),
       ],
@@ -160,7 +164,7 @@ const Settings = () => {
     {
       label: 'Plus',
       items: [
-        ...(isAgency ? [{ value: 'agency', label: 'Agence', icon: Briefcase }] : []),
+        ...(canAgencySettings ? [{ value: 'agency', label: 'Agence', icon: Briefcase }] : []),
         { value: 'marketplace', label: 'Marketplace', icon: Store },
       ],
     },
@@ -375,14 +379,13 @@ const Settings = () => {
             {activeTab === 'account' && (
               <div className="space-y-6">
                 <MyLinkedInAccount />
-                <ExtensionTokens />
                 <MyEmailAccount />
                 <EmailSignatures />
                 <MyWhatsAppAccount />
               </div>
             )}
 
-            {activeTab === 'team' && (
+            {activeTab === 'team' && canManageTeam && (
               <div className="space-y-6">
                 <TeamManagement
                   members={members}
@@ -451,7 +454,7 @@ const Settings = () => {
             {activeTab === 'integrations' && isAdmin && (
               <IntegrationsSettings />
             )}
-            {activeTab === 'agency' && isAgency && (
+            {activeTab === 'agency' && canAgencySettings && (
               <AgencySettings />
             )}
             {activeTab === 'marketplace' && (

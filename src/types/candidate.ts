@@ -7,7 +7,7 @@
  * migration progressive et éviter les bugs de mapping.
  *
  * Mapping des types existants :
- * - `Candidate` (pages/Candidates.tsx) — **legacy**, vue table depuis Airtable
+ * - `Candidate` (types/shortlist.ts) — **legacy**, vue table Notion (ex-page Candidates)
  * - `ATSCandidate` (hooks/useATSData.ts) — vue kanban/table enrichie
  * - `JobCandidateStatus` (hooks/useJobCandidateStatus.ts) — row DB brute
  * - `LinkedInProfile` (components/outreach/types.ts) — profil LinkedIn riche

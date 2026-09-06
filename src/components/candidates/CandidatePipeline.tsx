@@ -10,7 +10,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { ShortlistEntry } from '@/pages/Candidates';
+import { ShortlistEntry } from '@/types/shortlist';
 import { DraggableCandidateCard } from './DraggableCandidateCard';
 import { DroppableColumn } from './DroppableColumn';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';

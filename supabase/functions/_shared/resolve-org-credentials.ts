@@ -3,7 +3,7 @@
  * Reads per-org credentials from organization_integrations, falls back to Deno.env.
  *
  * Usage:
- *   import { resolveUnipileCredentials, resolveNotionCredentials, resolveApolloCredentials, resolvePDLCredentials, resolveCoresignalCredentials, resolveAnthropicCredentials } from '../_shared/resolve-org-credentials.ts';
+ *   import { resolveUnipileCredentials, resolveNotionCredentials, resolveApolloCredentials, resolveCoresignalCredentials, resolveAnthropicCredentials } from '../_shared/resolve-org-credentials.ts';
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
@@ -24,10 +24,6 @@ export interface NotionCredentials {
 }
 
 export interface ApolloCredentials {
-  apiKey: string;
-}
-
-export interface PDLCredentials {
   apiKey: string;
 }
 
@@ -59,7 +55,6 @@ interface CacheEntry<T> { value: T | null; expiresAt: number }
 const unipileCache = new Map<string, CacheEntry<UnipileCredentials>>();
 const notionCache = new Map<string, CacheEntry<NotionCredentials>>();
 const apolloCache = new Map<string, CacheEntry<ApolloCredentials>>();
-const pdlCache = new Map<string, CacheEntry<PDLCredentials>>();
 const coresignalCache = new Map<string, CacheEntry<CoresignalCredentials>>();
 const anthropicCache = new Map<string, CacheEntry<AnthropicCredentials>>();
 
@@ -83,7 +78,6 @@ export function clearCredentialCaches() {
   unipileCache.clear();
   notionCache.clear();
   apolloCache.clear();
-  pdlCache.clear();
   coresignalCache.clear();
   anthropicCache.clear();
 }
@@ -242,45 +236,6 @@ export async function resolveApolloCredentials(
   }
 
   const envKey = Deno.env.get("APOLLO_API_KEY");
-  if (envKey) return { apiKey: envKey };
-  return null;
-}
-
-// ─── PDL (PeopleDataLabs) ────────────────────────────────────────────────────
-
-export async function resolvePDLCredentials(
-  organizationId?: string | null,
-  supabaseClient?: SupabaseClient
-): Promise<PDLCredentials | null> {
-  if (organizationId) {
-    const cached = cacheGet(pdlCache, organizationId);
-    if (cached !== undefined) return cached;
-
-    try {
-      const sb = supabaseClient ?? getServiceClient();
-      const { data, error } = await sb
-        .from("organization_integrations")
-        .select("pdl_api_key")
-        .eq("organization_id", organizationId)
-        .single();
-
-      if (data?.pdl_api_key) {
-        const creds: PDLCredentials = { apiKey: data.pdl_api_key };
-        console.log(`[resolve-creds] Using org-specific PDL credentials for org ${organizationId}`);
-        cacheSet(pdlCache, organizationId, creds);
-        return creds;
-      }
-      if (!error || isNoRowError(error)) {
-        cacheSet(pdlCache, organizationId, null);
-      } else {
-        console.warn(`[resolve-creds] Transient error resolving PDL creds (not cached):`, error);
-      }
-    } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org PDL credentials (not cached):`, e);
-    }
-  }
-
-  const envKey = Deno.env.get("PDL_API_KEY");
   if (envKey) return { apiKey: envKey };
   return null;
 }

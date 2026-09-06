@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
 import { supabase } from '@/integrations/supabase/client';
-import { Shield, Eye, EyeOff, Users, BarChart3, Loader2 } from 'lucide-react';
+import { Shield, Eye, EyeOff, Users, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
@@ -149,22 +149,6 @@ export const AgencySettings: React.FC = () => {
               </button>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Metrics placeholder */}
-      <div className="border border-border p-4 sm:p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Métriques agence
-          </h3>
-        </div>
-        <div className="border border-dashed border-border p-8 text-center">
-          <BarChart3 className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-xs text-muted-foreground">
-            Les métriques agence (pipeline value, placements par membre, taux de conversion) seront disponibles prochainement.
-          </p>
         </div>
       </div>
     </div>

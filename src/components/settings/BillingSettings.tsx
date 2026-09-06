@@ -130,18 +130,6 @@ export const BillingSettings = () => {
         </Card>
       )}
 
-      {/* Stripe portal placeholder */}
-      {!isFree && subscription?.stripe_customer_id && (
-        <Card>
-          <CardContent className="py-4">
-            <Button variant="outline" className="w-full gap-2">
-              <CreditCard className="w-4 h-4" />
-              Gérer les moyens de paiement
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
       {/* RGPD Data Export */}
       <Card>
         <CardHeader>

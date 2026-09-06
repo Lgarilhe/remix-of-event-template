@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { ShortlistEntry } from '@/pages/Candidates';
+import { ShortlistEntry } from '@/types/shortlist';
 import { DraggableCandidateCard } from './DraggableCandidateCard';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp } from 'lucide-react';
