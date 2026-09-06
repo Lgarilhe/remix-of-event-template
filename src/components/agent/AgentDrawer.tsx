@@ -8,6 +8,7 @@ import {
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentChatPanel } from './AgentChatPanel';
 import { useAgent } from '@/contexts/AgentContext';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -44,13 +45,16 @@ function useVisualViewportHeight(active: boolean): number | null {
 
 const AgentFAB: React.FC = () => {
   const { toggleAgent, isOpen, unreadCount } = useAgent();
+  const { session } = useAuthReady();
   const location = useLocation();
   const [hovered, setHovered] = useState(false);
 
   const isMac = useMemo(() => typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform), []);
   const shortcutLabel = isMac ? '⌘K' : 'Ctrl+K';
 
-  const isHidden = isOpen || HIDDEN_FAB_ROUTES.some(r =>
+  // Le copilote ne s'affiche qu'aux utilisateurs connectés : sur les pages
+  // publiques (landing, 404, désinscription) il n'aurait aucun contexte.
+  const isHidden = !session || isOpen || HIDDEN_FAB_ROUTES.some(r =>
     location.pathname === r || location.pathname.startsWith('/portal/')
   );
 
@@ -90,9 +94,11 @@ const AgentFAB: React.FC = () => {
 export const AgentDrawer: React.FC = () => {
   const { isOpen, closeAgent, toggleAgent, contextMode, briefContext, initialMessage, autoJob, projectId, accountId } = useAgent();
   const viewportHeight = useVisualViewportHeight(isOpen);
+  const { session } = useAuthReady();
 
-  // Global Cmd+K / Ctrl+K shortcut
+  // Global Cmd+K / Ctrl+K shortcut (utilisateurs connectés uniquement)
   useEffect(() => {
+    if (!session) return;
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -101,7 +107,7 @@ export const AgentDrawer: React.FC = () => {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [toggleAgent]);
+  }, [toggleAgent, session]);
 
   return (
     <>

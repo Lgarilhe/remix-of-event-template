@@ -80,6 +80,18 @@ const BrutalButton = ({
 
 const SkalrLanding = () => {
   useRedirectIfAuthenticated();
+  // La landing est dessinée en thème clair (dégradés ciel, cartes blanches)
+  // alors que l'app est sombre par défaut : sans ce forçage, les titres du
+  // hero et du bloc final sont blancs sur fond clair. On restaure le thème
+  // de l'utilisateur en quittant la page.
+  useEffect(() => {
+    const root = document.documentElement;
+    const hadLight = root.classList.contains('light');
+    root.classList.add('light');
+    return () => {
+      if (!hadLight) root.classList.remove('light');
+    };
+  }, []);
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [showCalendly, setShowCalendly] = useState(false);

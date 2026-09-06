@@ -33,7 +33,7 @@ import { useAuthReady } from '@/hooks/useAuthReady';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useChatStatus } from '@/hooks/useChatStatus';
-import { useChatDraft } from '@/hooks/useChatDraft';
+import { useChatDraft, readChatDraft } from '@/hooks/useChatDraft';
 import { useProfileActivity, ActivityEvent } from '@/hooks/useProfileActivity';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -147,13 +147,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const chatStatus = useChatStatus();
 
   // Draft auto-save : restore au changement de chat
-  const { draft, setDraft, clearDraft } = useChatDraft(selectedChat?.id);
+  const { setDraft, clearDraft } = useChatDraft(selectedChat?.id);
   const lastChatIdRef = useRef<string | null>(null);
   useEffect(() => {
     const id = selectedChat?.id || null;
     if (id === lastChatIdRef.current) return;
     lastChatIdRef.current = id;
-    if (id && draft && !newMessage) onNewMessageChange(draft);
+    // Lecture synchrone du stockage : la valeur `draft` du rendu courant est
+    // encore celle du chat précédent quand cet effet s'exécute.
+    const stored = readChatDraft(id);
+    if (id && stored && !newMessage) onNewMessageChange(stored);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.id]);
 

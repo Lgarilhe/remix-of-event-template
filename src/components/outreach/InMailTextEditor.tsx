@@ -22,6 +22,7 @@ import {
   Link,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { promptDialog } from '@/lib/promptDialog';
 import {
   escapeHTML,
   incomingToEditorHTML,
@@ -164,12 +165,20 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   }, [insertHTML]);
 
   // Insert link (with URL validation & XSS protection)
-  const insertLink = useCallback(() => {
+  const insertLink = useCallback(async () => {
     const selection = window.getSelection();
     const selectedText = selection?.toString() || '';
-    
-    let url = prompt('Entrez l\'URL du lien:', 'https://');
-    if (!url) return;
+    // Le dialogue prend le focus : on mémorise la sélection de l'éditeur
+    // pour la restaurer avant execCommand.
+    const savedRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+
+    let url = await promptDialog({
+      title: 'Insérer un lien',
+      description: "Adresse complète, en https://",
+      defaultValue: 'https://',
+      placeholder: 'https://exemple.com',
+    });
+    if (!url || url.trim() === 'https://') return;
 
     // Validate URL protocol to prevent javascript: XSS
     url = url.trim();
@@ -177,12 +186,21 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
       url = 'https://' + url;
     }
 
+    let linkText = 'Cliquez ici';
+    if (!selectedText) {
+      linkText = (await promptDialog({ title: 'Texte du lien', defaultValue: 'Cliquez ici' })) || 'Cliquez ici';
+    }
+
     editorRef.current?.focus();
-    
+    if (savedRange) {
+      const current = window.getSelection();
+      current?.removeAllRanges();
+      current?.addRange(savedRange);
+    }
+
     if (selectedText) {
       document.execCommand('createLink', false, url);
     } else {
-      const linkText = prompt('Texte du lien:', 'Cliquez ici') || 'Cliquez ici';
       // Escape link text to prevent HTML injection
       const safeLinkText = escapeHTML(linkText);
       document.execCommand('insertHTML', false, `<a href="${encodeURI(url)}">${safeLinkText}</a>`);

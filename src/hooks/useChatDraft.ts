@@ -64,6 +64,21 @@ function purgeOldDrafts(idx: DraftIndex): DraftIndex {
   return newIdx;
 }
 
+/**
+ * Lecture synchrone du brouillon stocké pour un chat, hors cycle React.
+ * Sert au changement de conversation : la valeur `draft` du rendu courant
+ * est encore celle du chat précédent au moment où l'effet de restauration
+ * s'exécute.
+ */
+export function readChatDraft(chatId: string | null | undefined): string {
+  if (!chatId) return '';
+  try {
+    return localStorage.getItem(`${DRAFT_PREFIX}${chatId}`) || '';
+  } catch {
+    return '';
+  }
+}
+
 export function useChatDraft(chatId: string | null | undefined) {
   const [draft, setDraftState] = useState<string>('');
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -194,7 +194,22 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
         signal: abortSignal,
       });
 
-      if (!resp.ok) throw new Error(`Edge function error: ${resp.status}`);
+      if (!resp.ok) {
+        // Avant : throw générique, jamais rendu par thread.tsx → l'utilisateur
+        // voyait un tour assistant vide sans savoir quoi faire.
+        const errorText =
+          resp.status === 401
+            ? 'Ta session a expiré. Reconnecte-toi puis renvoie ton message.'
+            : resp.status === 402
+              ? "Plus de crédits IA disponibles pour ton organisation. Recharge-les depuis Paramètres → Crédits."
+              : resp.status === 403
+                ? "Cette action n'est pas autorisée pour ton compte dans cette organisation."
+                : resp.status === 429
+                  ? 'Trop de demandes en même temps. Attends quelques secondes puis réessaie.'
+                  : 'Le copilote est momentanément indisponible. Réessaie dans un instant.';
+        yield { content: [{ type: 'text' as const, text: errorText }] };
+        return;
+      }
 
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();

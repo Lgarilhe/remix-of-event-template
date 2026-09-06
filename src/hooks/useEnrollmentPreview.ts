@@ -465,9 +465,10 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
 
           if (error) throw error;
 
-          const formattedMessage = (data?.message || step.messageTemplate)
-            .replace(/\n\n/g, '<br><br>')
-            .replace(/\n/g, '<br>');
+          // Texte brut : la preview est rendue en texte (whitespace-pre-wrap),
+          // plus en HTML. Les champs LinkedIn interpolés ne doivent jamais
+          // atteindre innerHTML (XSS stockée, audit 2026-09-01).
+          const formattedMessage = data?.message || step.messageTemplate;
 
           const generatedMsg: GeneratedMessage = {
             subject: data?.subject || step.subjectTemplate || '',
@@ -641,9 +642,8 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
 
         if (error) throw error;
 
-        const formattedMessage = (data?.message || step.messageTemplate)
-          .replace(/\n\n/g, '<br><br>')
-          .replace(/\n/g, '<br>');
+        // Texte brut, rendu en whitespace-pre-wrap côté modal (plus d'innerHTML).
+        const formattedMessage = data?.message || step.messageTemplate;
 
         setPreview(candidateId, stepId, {
           subject: data?.subject || '',

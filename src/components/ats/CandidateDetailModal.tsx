@@ -222,9 +222,10 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const handleAddNote = async (content: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
+    if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
     const { error: insertErr } = await supabase.from('candidate_notes').insert({
       candidate_id: candidate.candidateId, shortlist_id: candidate.notionShortlistId || null,
-      content, created_by: user.id,
+      content, created_by: user.id, organization_id: organizationId,
     });
     if (insertErr) { toast.error('Erreur lors de l\'ajout de la note'); return; }
     const { data } = await supabase.from('candidate_notes').select('*').eq('candidate_id', candidate.candidateId).order('created_at', { ascending: false });
@@ -244,11 +245,13 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const handleAddReminder = async (title: string, date: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
+    if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
     const { error: insertErr } = await supabase.from('candidate_reminders').insert({
       candidate_id: candidate.candidateId, candidate_name: candidate.name,
       shortlist_id: candidate.notionShortlistId || null, job_id: candidate.jobId,
       job_title: candidate.jobTitle, title,
       due_at: new Date(date).toISOString(), created_by: user.id,
+      organization_id: organizationId,
     });
     if (insertErr) { toast.error('Erreur lors de la création du rappel'); return; }
     const { data } = await supabase.from('candidate_reminders').select('*').eq('candidate_id', candidate.candidateId).order('due_at', { ascending: true });
@@ -269,6 +272,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     try {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) return;
+      if (!organizationId) throw new Error('organisation introuvable, recharge la page');
       const { data: tokenData, error: insertError } = await supabase
         .from('candidate_portal_tokens')
         .insert({
@@ -278,6 +282,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           job_title: candidate.jobTitle,
           pipeline_stage: candidate.stage,
           created_by: user.id,
+          organization_id: organizationId,
           recruiter_name: user.user_metadata?.full_name || user.email?.split('@')[0] || null,
           recruiter_email: user.email || null,
           stage_updated_at: new Date().toISOString(),

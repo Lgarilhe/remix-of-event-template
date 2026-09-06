@@ -32,14 +32,23 @@ export async function getActiveOrganizationId(): Promise<string | null> {
 
     pendingOrgIdPromise = (async () => {
       try {
-        const { data: profile } = await supabase
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('active_organization_id')
           .eq('user_id', userId)
           .maybeSingle();
 
+        if (error) {
+          hasResolvedOrgId = false;
+          return null;
+        }
+
         cachedOrgId = profile?.active_organization_id || null;
-        hasResolvedOrgId = true;
+        // Un null n'est pas définitif : l'utilisateur vient peut-être de
+        // créer son organisation (onboarding) ou la ligne profil n'est pas
+        // encore posée. On re-résout au prochain appel ; seul un id réel est
+        // mis en cache pour la session.
+        hasResolvedOrgId = cachedOrgId !== null;
         return cachedOrgId;
       } catch {
         hasResolvedOrgId = false;

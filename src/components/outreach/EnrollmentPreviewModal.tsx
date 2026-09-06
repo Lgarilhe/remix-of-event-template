@@ -1134,10 +1134,9 @@ function MessageStepCard({
                   placeholder="Tape /ai pour générer ou améliorer le message"
                 />
               ) : (
-                <div
-                  className="text-[13.5px] leading-relaxed text-foreground/90 whitespace-pre-wrap font-sans"
-                  dangerouslySetInnerHTML={{ __html: preview?.message || '' }}
-                />
+                <div className="text-[13.5px] leading-relaxed text-foreground/90 whitespace-pre-wrap font-sans">
+                  {(preview?.message || '').replace(/<br\s*\/?>/gi, '\n')}
+                </div>
               )}
             </div>
             {preview?.personalizationPoints && preview.personalizationPoints.length > 0 && (

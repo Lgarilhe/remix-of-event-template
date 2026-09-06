@@ -11,11 +11,11 @@ interface SEOHeadProps {
 export const SEOHead = ({ 
   title, 
   description, 
-  keywords = 'events, discover events, event management, community events',
-  image = '/placeholder.svg',
+  keywords = 'recrutement, sourcing, LinkedIn, ATS, IA, scoring, séquences outreach',
+  image = '/konekt-logo.png',
   url = window.location.href
 }: SEOHeadProps) => {
-  const fullTitle = `${title} | EventHub`;
+  const fullTitle = title.includes('Konekt') ? title : `${title} | Konekt`;
   
   return (
     <Helmet>

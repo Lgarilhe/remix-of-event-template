@@ -87,6 +87,11 @@ export function AppSidebar() {
     setIsDark(next);
     if (next) document.documentElement.classList.remove('light');
     else document.documentElement.classList.add('light');
+    try {
+      localStorage.setItem('konekt-theme', next ? 'dark' : 'light');
+    } catch {
+      // localStorage indisponible : le choix vaut pour la session en cours
+    }
   };
 
   const closeMobile = () => setOpenMobile(false);

@@ -442,22 +442,12 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const pendingInitialChatId = useRef<string | null>(initialChatId || null);
   const chatsRef = useRef<Chat[]>([]);
   chatsRef.current = chats;
+  // Id du chat affiché, lu par fetchMessages pour ignorer une réponse en
+  // retard qui concerne un chat que l'utilisateur a déjà quitté.
+  const selectedChatIdRef = useRef<string | null>(null);
+  selectedChatIdRef.current = selectedChat?.id ?? null;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-
-  // Backward-compatible setSelectedChat wrapper
-  const _setSelectedChat = useCallback((chatOrUpdater: Chat | null | ((prev: Chat | null) => Chat | null)) => {
-    if (typeof chatOrUpdater === 'function') {
-      chatDispatch({ type: 'UPDATE_SELECTED_CHAT', updater: chatOrUpdater });
-    } else {
-      chatDispatch({ type: 'SELECT_CHAT', chat: chatOrUpdater });
-    }
-  }, []);
-
-  const setSelectedChat = useCallback((chat: Chat | null) => {
-    chatDispatch({ type: 'SELECT_CHAT', chat });
-    onChatChange?.(chat?.id || null);
-  }, [onChatChange]);
 
   // Backward-compatible set* wrappers for chat state
   const setChats = useCallback((chatsOrUpdater: Chat[] | ((prev: Chat[]) => Chat[])) => {
@@ -511,6 +501,33 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       uiDispatch({ type: 'SET_NEW_MESSAGE', value: vOrUpdater });
     }
   }, []);
+
+  // Sélection d'un chat. Déclarée après le reducer UI : changer de
+  // conversation vide le composer dans le même rendu, pour que MessageView
+  // restaure le brouillon du nouveau chat sans écraser celui de l'ancien
+  // (avant : le texte rédigé pour A restait affiché, et envoyable, sur B).
+  const selectChat = useCallback((chat: Chat | null) => {
+    const nextId = chat?.id ?? null;
+    if (nextId !== selectedChatIdRef.current) {
+      uiDispatch({ type: 'SET_NEW_MESSAGE', value: '' });
+    }
+    selectedChatIdRef.current = nextId;
+    chatDispatch({ type: 'SELECT_CHAT', chat });
+  }, []);
+
+  // Backward-compatible setSelectedChat wrapper
+  const _setSelectedChat = useCallback((chatOrUpdater: Chat | null | ((prev: Chat | null) => Chat | null)) => {
+    if (typeof chatOrUpdater === 'function') {
+      chatDispatch({ type: 'UPDATE_SELECTED_CHAT', updater: chatOrUpdater });
+    } else {
+      selectChat(chatOrUpdater);
+    }
+  }, [selectChat]);
+
+  const setSelectedChat = useCallback((chat: Chat | null) => {
+    selectChat(chat);
+    onChatChange?.(chat?.id || null);
+  }, [selectChat, onChatChange]);
   const setShowUnreadOnly = useCallback((v: boolean) => uiDispatch({ type: 'SET_SHOW_UNREAD_ONLY', value: v }), []);
   const setSourceFilter = useCallback((v: 'all' | 'classic' | 'recruiter') => uiDispatch({ type: 'SET_SOURCE_FILTER', value: v }), []);
   const setResponseFilter = useCallback((v: 'all' | 'waiting_candidate' | 'waiting_me') => uiDispatch({ type: 'SET_RESPONSE_FILTER', value: v }), []);
@@ -882,6 +899,17 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     const mergedIds = chat?._mergedChatIds;
     const chatIds = (mergedIds && mergedIds.length > 1) ? mergedIds : [chatId];
 
+    // Vrai tant que le chat demandé est encore celui affiché (ou l'un de ses
+    // fils fusionnés) : une réponse arrivée après un changement de
+    // conversation ne doit pas écraser le fil du nouveau chat.
+    const stillActive = () => {
+      const current = selectedChatIdRef.current;
+      if (!current) return false;
+      if (current === chatId) return true;
+      const currentChat = chatsRef.current.find(c => c.id === current);
+      return !!currentChat?._mergedChatIds?.includes(chatId);
+    };
+
     setLoadingMessages(true);
     try {
       if (loadMore) {
@@ -896,6 +924,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           },
         });
         if (!data?.success) throw new Error(data?.error as string);
+        if (!stillActive()) return 0;
         const newMessages = (data.messages as Message[]) || [];
         setMessages(prev => [...newMessages, ...prev]);
         setCursor(data.cursor as string | null);
@@ -907,7 +936,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           body: { action: 'get_messages', account_id: selectedAccount, chat_id: primaryChatId, limit: 50 },
         });
         if (!primaryData?.success) throw new Error(primaryData?.error as string);
-        
+        if (!stillActive()) return 0;
+
         const primaryMessages = (primaryData.messages as Message[]) || [];
         const primaryCursor = primaryData.cursor as string | null;
         
@@ -940,7 +970,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
                 extraMessages.push(...msgs);
               }
             }
-            if (extraMessages.length > 0) {
+            if (extraMessages.length > 0 && stillActive()) {
               setMessages(prev => {
                 const seen = new Set(prev.map(m => m.id));
                 const newMsgs = extraMessages.filter(m => !seen.has(m.id));
@@ -961,10 +991,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       return 0;
     } catch (error) {
       console.error('Error fetching messages:', error);
-      toast.error('Erreur lors du chargement des messages');
+      if (stillActive()) toast.error('Erreur lors du chargement des messages');
       return 0;
     } finally {
-      setLoadingMessages(false);
+      // Une requête périmée ne doit pas éteindre le spinner du nouveau chat.
+      if (stillActive()) setLoadingMessages(false);
     }
   }, [selectedAccount]);
 

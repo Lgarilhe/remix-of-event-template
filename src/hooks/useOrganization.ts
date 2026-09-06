@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { clearOrgIdCache } from '@/lib/orgContext';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { toast } from 'sonner';
 
@@ -165,6 +166,7 @@ export const useOrganization = () => {
       return org as Organization;
     },
     onSuccess: () => {
+      clearOrgIdCache();
       queryClient.invalidateQueries({ queryKey: ['active-organization'] });
       toast.success('Organisation créée avec succès');
     },
@@ -189,6 +191,7 @@ export const useOrganization = () => {
       if (error) throw error;
     },
     onSuccess: () => {
+      clearOrgIdCache();
       queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     },
   });

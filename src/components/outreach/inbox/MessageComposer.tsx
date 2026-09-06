@@ -20,6 +20,7 @@ import {
   FileText, Wand2, Languages, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { promptDialog } from '@/lib/promptDialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -255,10 +256,15 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const handleItalic = () => applyToSelection(toggleItalic);
   const handleBulletList = () => applyToSelection(toBulletList);
   const handleNumberedList = () => applyToSelection(toNumberedList);
-  const handleLink = () => {
-    const url = window.prompt('URL du lien :', 'https://');
-    if (!url || url === 'https://') return;
-    applyToSelection((selected) => insertLink(selected, url));
+  const handleLink = async () => {
+    const url = await promptDialog({
+      title: 'Insérer un lien',
+      defaultValue: 'https://',
+      placeholder: 'https://exemple.com',
+    });
+    const trimmed = url?.trim() ?? '';
+    if (!trimmed || trimmed === 'https://') return;
+    applyToSelection((selected) => insertLink(selected, trimmed));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -283,7 +289,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     // ⌘+K / Ctrl+K → link
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
-      handleLink();
+      void handleLink();
       return;
     }
   };

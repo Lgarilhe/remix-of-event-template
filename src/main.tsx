@@ -102,6 +102,16 @@ if (SENTRY_DSN) {
   });
 }
 
+// Thème choisi dans la sidebar (clé `konekt-theme`) : appliqué avant le
+// premier rendu pour éviter un flash sombre puis clair au rechargement.
+try {
+  if (localStorage.getItem('konekt-theme') === 'light') {
+    document.documentElement.classList.add('light');
+  }
+} catch {
+  // localStorage indisponible (navigation privée stricte) : thème par défaut
+}
+
 // Auto-reload on stale chunk errors (after deploys)
 window.addEventListener('error', (e) => {
   if (isRecoverableImportError(e.error ?? e.message)) {
