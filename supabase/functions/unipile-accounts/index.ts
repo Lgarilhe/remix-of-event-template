@@ -722,23 +722,40 @@ Deno.serve(async (req) => {
 
         // Upsert dans member_linkedin_accounts si nouveau compte (create path).
         // Pour le reconnect, le webhook account_connected suffira à repasser en OK.
+        // linked_by est NOT NULL sans défaut : sans lui l'upsert échouait et
+        // l'erreur était avalée, le compte n'était jamais rattaché (P0-A).
         if (!isReconnect && data.account_id) {
-          try {
-            await adminClient
-              .from('member_linkedin_accounts')
-              .upsert({
-                user_id: user.id,
-                organization_id: organizationId,
-                linkedin_account_id: data.account_id,
-                linkedin_account_name: data.name || 'Mon compte LinkedIn',
-                account_status: data.object === 'Checkpoint' ? 'CONNECTING' : 'OK',
-                last_checked_at: new Date().toISOString(),
-              }, {
-                onConflict: 'user_id,organization_id',
-              });
+          const { error: linkError } = await adminClient
+            .from('member_linkedin_accounts')
+            .upsert({
+              user_id: user.id,
+              organization_id: organizationId,
+              linkedin_account_id: data.account_id,
+              linkedin_account_name: data.name || 'Mon compte LinkedIn',
+              account_status: data.object === 'Checkpoint' ? 'CONNECTING' : 'OK',
+              last_checked_at: new Date().toISOString(),
+              linked_by: user.id,
+            }, {
+              onConflict: 'user_id,organization_id',
+            });
+          if (linkError && (linkError.code === '42501' || linkError.code === '23505')) {
+            console.error('[connect_cookie] Failed to upsert member_linkedin_accounts:', linkError);
+            // 42501 : trigger prevent_linkedin_account_cross_tenant (compte mappé à une autre org).
+            // 23505 : UNIQUE (organization_id, linkedin_account_id), déjà rattaché à un autre membre.
+            const linkErrorMessage = linkError.code === '42501'
+              ? 'Ce compte LinkedIn est déjà rattaché à un autre espace de travail'
+              : 'Ce compte LinkedIn est déjà rattaché à un autre membre de votre organisation';
+            return new Response(
+              JSON.stringify({ success: false, error: linkErrorMessage, account_id: data.account_id }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          if (linkError) {
+            // Erreur transitoire : le compte existe côté service de connexion ; le client
+            // rattache lui-même juste après (linkAccount pose aussi linked_by).
+            console.error('[connect_cookie] Upsert member_linkedin_accounts failed (rattachement client à suivre):', linkError);
+          } else {
             console.log('[connect_cookie] Upserted member_linkedin_accounts for user', user.id, 'account', data.account_id);
-          } catch (e) {
-            console.warn('[connect_cookie] Failed to upsert member_linkedin_accounts:', e);
           }
         }
 

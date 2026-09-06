@@ -6071,6 +6071,11 @@ export type Database = {
         Args: { p_project_id: string; p_steps: Json }
         Returns: number
       }
+      get_subscription_state: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      expire_subscription_trials: { Args: never; Returns: number }
       set_integration_secret: {
         Args: { p_field: string; p_organization_id: string; p_value: string | null }
         Returns: undefined

@@ -123,7 +123,7 @@ export function NavigationPalette() {
             Ouvrir le copilot IA
             <CommandShortcut>⌘K</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={() => go('/missions?new=1')}>
+          <CommandItem onSelect={() => go('/missions?create=brief')}>
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             Créer une mission
           </CommandItem>

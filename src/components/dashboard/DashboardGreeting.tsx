@@ -190,7 +190,7 @@ export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
               icon: <Plus className="w-3.5 h-3.5" />,
               label: 'Nouvelle mission',
               primary: true,
-              onClick: () => navigate('/missions?new=1'),
+              onClick: () => navigate('/missions?create=brief'),
             },
             {
               key: 'search',

@@ -142,7 +142,7 @@ export const DashboardConnections: React.FC<DashboardConnectionsProps> = ({
   allConnected,
 }) => {
   const navigate = useNavigate();
-  const goToConnectors = () => navigate('/settings?tab=connectors');
+  const goToConnectors = () => navigate('/settings?tab=account');
 
   return (
     <motion.div

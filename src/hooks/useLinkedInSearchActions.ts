@@ -1043,14 +1043,14 @@ export function useLinkedInSearchActions(
       if (isMultipleSessionsError) {
         toast.error(
           isStandaloneSearch
-            ? 'Conflit de session LinkedIn — votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Réglages → Connecteurs) : elle partage la session au lieu d’en créer une deuxième.'
-            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si ça se répète, reconnectez votre compte avec la méthode cookie (Réglages → Connecteurs) : elle partage la session au lieu d’en créer une deuxième.',
+            ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Paramètres > Mon compte) : elle partage la session au lieu d’en créer une deuxième.'
+            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si ça se répète, reconnectez votre compte avec la méthode cookie (Paramètres > Mon compte) : elle partage la session au lieu d’en créer une deuxième.',
           {
             id: 'search-error',
             duration: 15000,
             action: {
               label: 'Reconnecter',
-              onClick: () => window.location.href = '/settings?tab=connectors',
+              onClick: () => window.location.href = '/settings?tab=account',
             },
           }
         );

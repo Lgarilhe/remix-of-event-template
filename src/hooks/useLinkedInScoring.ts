@@ -888,8 +888,11 @@ export function useLinkedInScoring({
     }
   }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId, scoringModel, scoringDisabledReason]);
 
-  // Batch score selected profiles
-  const handleBatchScore = useCallback(async () => {
+  // Batch score selected profiles. `profileIds` : lot explicite (bouton
+  // « Scorer les 20 premiers ») : la sélection React n'est pas encore
+  // propagée quand le bouton la crée et lance le scoring dans le même clic.
+  const handleBatchScore = useCallback(async (profileIds?: string[]) => {
+    const targetIds = Array.isArray(profileIds) ? new Set(profileIds) : selectedProfiles;
     if (!selectedJob) {
       toast.error('Sélectionnez un poste pour le scoring');
       return;
@@ -899,7 +902,7 @@ export function useLinkedInScoring({
       return;
     }
 
-    if (selectedProfiles.size === 0) {
+    if (targetIds.size === 0) {
       toast.error('Sélectionnez au moins un profil');
       return;
     }
@@ -927,14 +930,14 @@ export function useLinkedInScoring({
     // Les données profil sont déjà en mémoire (issues de la recherche LinkedIn
     // initiale). La limite sert juste à protéger l'user d'un long wait + coût crédits.
     const SAFE_BATCH_SIZE = 25;
-    if (selectedProfiles.size > SAFE_BATCH_SIZE) {
-      const eta = Math.ceil(selectedProfiles.size / 25) * 60; // ~1min par tranche de 25
+    if (targetIds.size > SAFE_BATCH_SIZE) {
+      const eta = Math.ceil(targetIds.size / 25) * 60; // ~1min par tranche de 25
       const etaLabel = eta < 60 ? `${eta} secondes` : `${Math.ceil(eta / 60)} minutes`;
       const ok = await confirmAlert({
-        title: `Scorer ${selectedProfiles.size} profils en une fois ?`,
+        title: `Scorer ${targetIds.size} profils en une fois ?`,
         description:
           `Temps estimé : ~${etaLabel}\n`
-          + `Crédits IA consommés : ~${selectedProfiles.size}`,
+          + `Crédits IA consommés : ~${targetIds.size}`,
         confirmLabel: 'Lancer le scoring',
       });
       if (!ok) return;
@@ -956,7 +959,7 @@ export function useLinkedInScoring({
     // exception, un score partiel restait définitif puisque rien ne le
     // re-scorait jamais (l'edge function ne cache plus ces résultats).
     const profilesToScore = allProfiles.filter(p =>
-      selectedProfiles.has(p.id) && (!jobScores[p.id] || isDegradedScore(jobScores[p.id]))
+      targetIds.has(p.id) && (!jobScores[p.id] || isDegradedScore(jobScores[p.id]))
     );
 
     if (profilesToScore.length === 0) {

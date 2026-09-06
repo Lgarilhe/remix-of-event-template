@@ -48,6 +48,10 @@ function validateUUID(val: unknown): string | null {
     : null;
 }
 
+// Sentinelle « illimité » des crédits du plan : même valeur que le trigger SQL
+// sync_credit_balance_from_subscription (limits.ai_credits négatif → 999999).
+const UNLIMITED_PLAN_CREDITS = 999999;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -157,7 +161,14 @@ Deno.serve(async (req) => {
             .single();
 
           const planLimits = plan?.limits as { ai_credits?: number } | null;
-          const newPlanCredits = planLimits?.ai_credits ?? 0;
+          // limits.ai_credits est l'unique source de vérité (migration 20260906181044) :
+          // absent → 100 comme le trigger SQL, négatif (-1) → illimité, jamais de solde négatif.
+          const rawPlanCredits = Number(planLimits?.ai_credits ?? NaN);
+          const newPlanCredits = !Number.isFinite(rawPlanCredits)
+            ? 100
+            : rawPlanCredits < 0
+              ? UNLIMITED_PLAN_CREDITS
+              : Math.floor(rawPlanCredits);
 
           // Calculate new period (1 month from now)
           const now = new Date();
@@ -189,9 +200,11 @@ Deno.serve(async (req) => {
 
       return {
         organization_id: bal.organization_id,
-        plan_credits: bal.plan_credits ?? bal.credits_remaining ?? 0,
+        // Solde = plan_credits + topup_credits ; credits_remaining / credits_total ne
+        // sont que des miroirs historiques, plus jamais lus.
+        plan_credits: bal.plan_credits ?? 0,
         topup_credits: bal.topup_credits ?? 0,
-        credits_total: bal.credits_total ?? 0,
+        credits_total: (bal.plan_credits ?? 0) + (bal.topup_credits ?? 0),
         period_start: bal.period_start,
         period_end: bal.period_end,
         updated_at: bal.updated_at,

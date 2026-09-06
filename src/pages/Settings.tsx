@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
@@ -105,8 +105,12 @@ const Settings = () => {
     }
   };
 
-  const [activeTab, _setActiveTab] = useState(() => {
-    const tab = searchParams.get('tab');
+  // Résout ?tab= selon les droits. Au premier rendu, isAdmin / isCollaborator /
+  // hasConnectors ne sont pas encore chargés : un lien profond vers un onglet
+  // conditionnel (?tab=connectors, ?tab=billing, ?tab=team) retombait sur
+  // « Général ». L'effet ci-dessous réapplique la résolution une fois les
+  // droits connus. ?tab=account est inconditionnel et se résout toujours.
+  const resolveTab = useCallback((tab: string | null) => {
     if (tab === 'credits') return 'credits';
     if (tab === 'billing' && isAdmin) return 'billing';
     if (tab === 'integrations' && isAdmin) return 'integrations';
@@ -120,7 +124,17 @@ const Settings = () => {
     if (tab === 'agency' && canAgencySettings) return 'agency';
     if (tab === 'marketplace') return 'marketplace';
     return 'general';
-  });
+  }, [isAdmin, isCollaborator, hasConnectors, canManageTeam, canAgencySettings]);
+
+  const requestedTab = searchParams.get('tab');
+  const [activeTab, _setActiveTab] = useState(() => resolveTab(requestedTab));
+
+  useEffect(() => {
+    if (!requestedTab) return;
+    // Onglet demandé pas (encore) autorisé : on garde l'onglet courant.
+    if (resolveTab(requestedTab) !== requestedTab) return;
+    _setActiveTab((prev) => (prev === requestedTab ? prev : requestedTab));
+  }, [requestedTab, resolveTab]);
 
   // Sync activeTab → URL pour bookmark / partage de lien direct
   const setActiveTab = useCallback(

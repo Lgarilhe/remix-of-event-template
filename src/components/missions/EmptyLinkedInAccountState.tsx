@@ -27,7 +27,7 @@ export const EmptyLinkedInAccountState: React.FC<EmptyLinkedInAccountStateProps>
           {message}
         </p>
         <button
-          onClick={() => navigate('/settings?tab=connectors')}
+          onClick={() => navigate('/settings?tab=account')}
           className="relative overflow-hidden h-9 px-6 bg-background text-foreground border border-border text-xs font-medium uppercase tracking-wider group"
         >
           <span className="relative z-10 flex items-center gap-2">

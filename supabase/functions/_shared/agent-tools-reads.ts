@@ -1685,11 +1685,15 @@ const searchKnowledge: AgentTool = {
   },
 };
 
-// Anti-hallucination : les comptes Konekt internes / sandbox utilisent des
-// sentinelles (credits_remaining = 999 999 999, period_end ~ 2126) que le LLM
-// avait tendance à "corriger" en chiffres plausibles inventés (validé en prod
-// 2026-05-19 : 999 999 999 → 97 274 ; 2126-04-28 → 30 juin 2025). On les
-// remplace par des libellés explicites côté outil, le LLM n'a plus à deviner.
+// Anti-hallucination : l'illimité est une sentinelle (plan_credits = 999 999,
+// posée par le trigger SQL sync_credit_balance_from_subscription quand
+// limits.ai_credits est négatif ; period_end ~ 2126 sur les comptes internes)
+// que le LLM avait tendance à "corriger" en chiffres plausibles inventés
+// (validé en prod 2026-05-19 : sentinelle → 97 274 ; 2126-04-28 → 30 juin 2025).
+// On les remplace par des libellés explicites côté outil, le LLM n'a plus à
+// deviner. Solde = plan_credits + topup_credits (credits_remaining et
+// credits_total ne sont que des miroirs historiques).
+const UNLIMITED_PLAN_CREDITS = 999_999;
 function formatPeriodEnd(pe: unknown): string | null {
   if (!pe) return null;
   const d = new Date(String(pe));
@@ -1701,9 +1705,10 @@ function formatPeriodEnd(pe: unknown): string | null {
 }
 function formatCredits(b: Record<string, any> | null, role: OrgRole): Record<string, unknown> | null {
   if (!b) return null;
-  const remaining = Number(b.credits_remaining);
-  const total = Number(b.credits_total);
-  const isUnlimited = remaining >= 999_000_000 || total >= 999_000_000;
+  const planCredits = Number(b.plan_credits ?? 0);
+  const topupCredits = Number(b.topup_credits ?? 0);
+  // Les débits entament la sentinelle jusqu'au reset : tolérance de 10 000 sous 999999.
+  const isUnlimited = planCredits >= UNLIMITED_PLAN_CREDITS - 10_000;
   const periodEnd = formatPeriodEnd(b.period_end);
   if (!isPrivileged(role)) {
     return { period_end: periodEnd, note: 'Solde détaillé visible uniquement par owner/admin.' };
@@ -1712,14 +1717,13 @@ function formatCredits(b: Record<string, any> | null, role: OrgRole): Record<str
     return {
       balance: 'illimité',
       period_end: periodEnd,
-      note: "Compte Konekt interne / sandbox — pas de plafond réel. Si tu vois 999 999 999 ou une date en 2126, ce sont des sentinelles techniques : reformule simplement « solde illimité » / « sans expiration », n'invente PAS un chiffre.",
+      note: "Crédits IA illimités sur ce plan (ou compte Konekt interne), pas de plafond réel. Si tu vois 999 999 ou une date en 2126, ce sont des sentinelles techniques : reformule simplement « solde illimité » / « sans expiration », n'invente PAS un chiffre.",
     };
   }
   return {
-    balance: remaining,
-    total,
-    plan_credits: b.plan_credits,
-    topup_credits: b.topup_credits,
+    balance: planCredits + topupCredits,
+    plan_credits: planCredits,
+    topup_credits: topupCredits,
     period_start: b.period_start,
     period_end: periodEnd,
   };
@@ -1893,7 +1897,7 @@ const getOrgAnalytics: AgentTool = {
     const interviewsP = qq.limit(500);
 
     const balP = ctx.adminClient.from('ai_credit_balances')
-      .select('credits_remaining, credits_total, period_start, period_end, plan_credits, topup_credits')
+      .select('plan_credits, topup_credits, period_start, period_end')
       .eq('organization_id', ctx.organizationId)
       .maybeSingle();
     const usageP = ctx.adminClient.from('ai_credit_transactions')
@@ -2001,7 +2005,7 @@ const getTeamOverview: AgentTool = {
         .order('created_at', { ascending: false })
         .limit(20),
       ctx.adminClient.from('ai_credit_balances')
-        .select('credits_remaining, credits_total, period_start, period_end, plan_credits, topup_credits')
+        .select('plan_credits, topup_credits, period_start, period_end')
         .eq('organization_id', ctx.organizationId)
         .maybeSingle(),
     ]);

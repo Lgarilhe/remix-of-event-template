@@ -65,6 +65,10 @@ interface SearchHeroProps {
   history: SearchHistoryEntry[];
   onLaunch: (phrase: string) => void;
   onResumeHistory: (entry: SearchHistoryEntry) => void;
+  /** Filtres du brief déjà chargés : recherche directe, sans génération IA. */
+  onLaunchWithBriefFilters?: () => void;
+  /** Recherche échouée avant tout résultat : message affiché sous le prompt. */
+  errorMessage?: string | null;
   disabled?: boolean;
 }
 
@@ -74,7 +78,7 @@ const HERO_EXAMPLES = [
 ];
 
 export const SearchHero: React.FC<SearchHeroProps> = ({
-  jobTitle, clientName, history, onLaunch, onResumeHistory, disabled,
+  jobTitle, clientName, history, onLaunch, onResumeHistory, onLaunchWithBriefFilters, errorMessage, disabled,
 }) => {
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
@@ -133,19 +137,23 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => onLaunch(value.trim())}
+            onClick={() => { if (!armed && onLaunchWithBriefFilters) onLaunchWithBriefFilters(); else onLaunch(value.trim()); }}
             className={cn(
               'ml-auto inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors duration-150 disabled:opacity-60',
-              armed
+              (armed || onLaunchWithBriefFilters)
                 ? 'bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border border-transparent'
                 : 'bg-transparent text-[var(--k-text-muted)] border border-[var(--k-hairline)] hover:text-[var(--k-text)] hover:border-[var(--k-hairline-hover)]',
             )}
           >
             <svg viewBox="0 0 24 24" {...svgProps} strokeWidth={1.6} className="w-3.5 h-3.5"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
-            Générer &amp; chercher
+            {!armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : <>Générer &amp; chercher</>}
           </button>
         </div>
       </div>
+
+      {errorMessage && (
+        <p role="alert" className="relative w-full max-w-[640px] mt-2 text-xs text-[var(--k-warn)]">{errorMessage}</p>
+      )}
 
       <div className="relative flex flex-wrap justify-center gap-1.5 mt-4 max-w-[660px]">
         <span className="w-full text-center font-mono text-[10px] uppercase tracking-wider text-[var(--k-text-muted)] mb-0.5">
@@ -164,7 +172,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         ou
         <button type="button" onClick={() => onLaunch('')} disabled={disabled}
           className="font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] underline underline-offset-4 decoration-[var(--k-hairline-focus)]">
-          générer depuis le brief
+          {onLaunchWithBriefFilters ? 'régénérer les filtres depuis le brief' : 'générer depuis le brief'}
         </button>
         — sans rien taper
         <span className="w-10 h-px bg-[var(--k-hairline)]" />

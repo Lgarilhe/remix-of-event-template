@@ -2,11 +2,18 @@
  * Edge function: Stripe Webhook Handler
  *
  * Handles:
- * - checkout.session.completed → Credit pack purchase or new subscription
- * - invoice.paid → Subscription renewal (reset plan credits)
- * - customer.subscription.updated → Plan change
- * - customer.subscription.deleted → Cancellation → downgrade to Free
+ * - checkout.session.completed → Credit pack purchase (topup) or new subscription
+ * - invoice.paid → Subscription renewal: status + current_period_* only (plan
+ *   credits are reset lazily by ai-credits get_balance once period_end is past)
+ * - customer.subscription.updated → Plan change: plan_id, status, billing_cycle,
+ *   current_period_* (plan credits recomputed by the SQL trigger
+ *   sync_credit_balance_from_subscription on plan_id change)
+ * - customer.subscription.deleted → Cancellation → plan free, status canceled
+ *   (credits recomputed by the same trigger)
  * - invoice.payment_failed → Notification (logged for now)
+ *
+ * Plan credits are never written here: subscription_plans.limits.ai_credits is
+ * the single source of truth (migration 20260906181044).
  *
  * Security: Verifies Stripe webhook signature.
  */
@@ -70,14 +77,11 @@ async function verifyStripeSignature(
   }
 }
 
-// ─── Plan credit mapping ────────────────────────────────────────────────────
+// ─── Horodatages Stripe (secondes Unix) → ISO ──────────────────────────────
 
-const PLAN_CREDITS: Record<string, number> = {
-  free: 50,
-  pro: 3500,
-  business: 9000,
-  enterprise: 999999,
-};
+function stripeTsToIso(ts: unknown): string | null {
+  return typeof ts === "number" && Number.isFinite(ts) ? new Date(ts * 1000).toISOString() : null;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -163,12 +167,12 @@ Deno.serve(async (req) => {
           // Créditer le solde (après le verrou d'idempotence).
           const { data: bal } = await adminClient
             .from("ai_credit_balances")
-            .select("topup_credits, credits_total")
+            .select("plan_credits, topup_credits")
             .eq("organization_id", orgId)
             .single();
 
           const currentTopup = bal?.topup_credits ?? 0;
-          const currentTotal = bal?.credits_total ?? 0;
+          const currentTotal = (bal?.plan_credits ?? 0) + (bal?.topup_credits ?? 0);
 
           const { error: balanceError } = await adminClient
             .from("ai_credit_balances")
@@ -235,7 +239,7 @@ Deno.serve(async (req) => {
         // Find org by stripe_customer_id
         const { data: sub } = await adminClient
           .from("organization_subscriptions")
-          .select("organization_id, plan_id")
+          .select("organization_id")
           .eq("stripe_customer_id", customerId)
           .single();
 
@@ -244,44 +248,28 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // Reset plan credits
-        const planCredits = PLAN_CREDITS[sub.plan_id] || PLAN_CREDITS.free;
-        const now = new Date();
-        const periodEnd = new Date(now);
-        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        // Les crédits du plan ne sont pas touchés ici : le reset mensuel est fait
+        // paresseusement par ai-credits (get_balance) quand period_end est dépassé.
+        // Période lue sur la ligne d'abonnement non proratisée (une facture de
+        // cycle peut porter des lignes de prorata d'un changement de plan).
+        // Sans ligne exploitable, la période est laissée à
+        // customer.subscription.updated ; jamais recalculée depuis now().
+        const lines: any[] = invoice.lines?.data ?? [];
+        const line = lines.find((l) => l?.proration !== true && (l?.type === "subscription" || l?.subscription)) ?? null;
+        const periodStart = line?.period?.start ? stripeTsToIso(line.period.start) : null;
+        const periodEnd = line?.period?.end ? stripeTsToIso(line.period.end) : null;
 
-        const { data: bal } = await adminClient
-          .from("ai_credit_balances")
-          .select("topup_credits")
-          .eq("organization_id", sub.organization_id)
-          .single();
-
-        const topup = bal?.topup_credits ?? 0;
-
-        await adminClient
-          .from("ai_credit_balances")
-          .upsert({
-            organization_id: sub.organization_id,
-            plan_credits: planCredits,
-            topup_credits: topup,
-            credits_total: planCredits + topup,
-            period_start: now.toISOString(),
-            period_end: periodEnd.toISOString(),
-            updated_at: now.toISOString(),
-          }, { onConflict: "organization_id" });
-
-        // Update subscription period
         await adminClient
           .from("organization_subscriptions")
           .update({
-            current_period_start: now.toISOString(),
-            current_period_end: periodEnd.toISOString(),
             status: "active",
-            updated_at: now.toISOString(),
+            ...(periodStart ? { current_period_start: periodStart } : {}),
+            ...(periodEnd ? { current_period_end: periodEnd } : {}),
+            updated_at: new Date().toISOString(),
           })
           .eq("organization_id", sub.organization_id);
 
-        console.log(`[stripe-webhook] Reset plan credits for org ${sub.organization_id}: ${planCredits}`);
+        console.log(`[stripe-webhook] Renewal recorded for org ${sub.organization_id} (period ${periodStart} → ${periodEnd})`);
         break;
       }
 
@@ -298,11 +286,27 @@ Deno.serve(async (req) => {
 
         if (!sub) break;
 
-        // Determine new plan from Stripe price
-        const priceId = subscription.items?.data?.[0]?.price?.id;
-        let newPlanId = sub.plan_id;
+        const item = subscription.items?.data?.[0];
 
-        if (priceId) {
+        // Plan : metadata.plan_id de l'abonnement si présent (et connu en base),
+        // sinon correspondance par identifiant de prix Stripe comme avant.
+        const metaPlanId =
+          typeof subscription.metadata?.plan_id === "string" ? subscription.metadata.plan_id.trim() : "";
+        const priceId = item?.price?.id;
+        let newPlanId: string | null = null;
+
+        if (metaPlanId) {
+          const { data: plan } = await adminClient
+            .from("subscription_plans")
+            .select("id")
+            .eq("id", metaPlanId)
+            .eq("is_active", true)
+            .single();
+
+          if (plan) newPlanId = plan.id;
+        }
+
+        if (!newPlanId && priceId) {
           // Look up plan by stripe price ID
           const { data: plan } = await adminClient
             .from("subscription_plans")
@@ -313,6 +317,17 @@ Deno.serve(async (req) => {
           if (plan) newPlanId = plan.id;
         }
 
+        if (!newPlanId) newPlanId = sub.plan_id;
+
+        // Cycle de facturation depuis le prix récurrent (month → monthly, year → yearly).
+        const interval = item?.price?.recurring?.interval;
+        const billingCycle = interval === "month" ? "monthly" : interval === "year" ? "yearly" : null;
+
+        // Période courante : au niveau de l'abonnement, sinon sur l'item
+        // (versions d'API Stripe récentes).
+        const periodStart = stripeTsToIso(subscription.current_period_start ?? item?.current_period_start);
+        const periodEnd = stripeTsToIso(subscription.current_period_end ?? item?.current_period_end);
+
         await adminClient
           .from("organization_subscriptions")
           .update({
@@ -320,32 +335,16 @@ Deno.serve(async (req) => {
             status: subscription.cancel_at_period_end ? "canceling" : "active",
             cancel_at_period_end: subscription.cancel_at_period_end || false,
             stripe_subscription_id: subscription.id,
+            ...(billingCycle ? { billing_cycle: billingCycle } : {}),
+            ...(periodStart ? { current_period_start: periodStart } : {}),
+            ...(periodEnd ? { current_period_end: periodEnd } : {}),
             updated_at: new Date().toISOString(),
           })
           .eq("organization_id", sub.organization_id);
 
-        // If upgrade, immediately adjust plan credits
+        // Les crédits du plan sont recalculés par le trigger SQL
+        // sync_credit_balance_from_subscription quand plan_id change.
         if (newPlanId !== sub.plan_id) {
-          const newCredits = PLAN_CREDITS[newPlanId] || PLAN_CREDITS.free;
-          const { data: bal } = await adminClient
-            .from("ai_credit_balances")
-            .select("plan_credits, topup_credits")
-            .eq("organization_id", sub.organization_id)
-            .single();
-
-          const topup = bal?.topup_credits ?? 0;
-          // Only upgrade credits (don't reduce on downgrade mid-cycle)
-          const finalPlanCredits = Math.max(bal?.plan_credits ?? 0, newCredits);
-
-          await adminClient
-            .from("ai_credit_balances")
-            .update({
-              plan_credits: finalPlanCredits,
-              credits_total: finalPlanCredits + topup,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("organization_id", sub.organization_id);
-
           console.log(`[stripe-webhook] Plan changed to ${newPlanId} for org ${sub.organization_id}`);
         }
         break;
@@ -364,7 +363,8 @@ Deno.serve(async (req) => {
 
         if (!sub) break;
 
-        // Downgrade to free
+        // Downgrade to free : les crédits du plan (topups conservés) sont recalculés
+        // par le trigger SQL sync_credit_balance_from_subscription.
         await adminClient
           .from("organization_subscriptions")
           .update({
@@ -372,24 +372,6 @@ Deno.serve(async (req) => {
             status: "canceled",
             stripe_subscription_id: null,
             cancel_at_period_end: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("organization_id", sub.organization_id);
-
-        // Set plan credits to free tier (keep topups)
-        const freeCredits = PLAN_CREDITS.free;
-        const { data: bal } = await adminClient
-          .from("ai_credit_balances")
-          .select("topup_credits")
-          .eq("organization_id", sub.organization_id)
-          .single();
-
-        const topup = bal?.topup_credits ?? 0;
-        await adminClient
-          .from("ai_credit_balances")
-          .update({
-            plan_credits: freeCredits,
-            credits_total: freeCredits + topup,
             updated_at: new Date().toISOString(),
           })
           .eq("organization_id", sub.organization_id);

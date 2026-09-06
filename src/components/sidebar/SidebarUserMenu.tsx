@@ -9,12 +9,13 @@
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, LogOut, Sun, Moon, ChevronsUpDown, User as UserIcon, Sparkles } from 'lucide-react';
+import { Settings, LogOut, Sun, Moon, ChevronsUpDown, User as UserIcon, Sparkles, Bell } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAICredits } from '@/hooks/useAICredits';
+import { useNotifications } from '@/hooks/useNotifications';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,10 +39,14 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   onToggleTheme,
 }) => {
   const navigate = useNavigate();
+  // L'ouverture du panneau attend la fermeture du menu : sinon le retour de
+  // focus sur l'avatar est vu comme un clic hors du panneau, qui se referme.
+  const openNotificationsRef = React.useRef(false);
   const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
   const connections = useDashboardConnections();
   const { organizationName } = useOrganization();
   const { creditsRemaining, isLow, isOut } = useAICredits();
+  const { unreadCount: unreadNotifications } = useNotifications();
 
   const avatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl || null;
 
@@ -90,6 +95,13 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
         side="top"
         sideOffset={8}
         className="w-60 rounded-xl"
+        onCloseAutoFocus={(e) => {
+          if (openNotificationsRef.current) {
+            openNotificationsRef.current = false;
+            e.preventDefault();
+            window.dispatchEvent(new CustomEvent('konekt:open-notifications'));
+          }
+        }}
       >
         <DropdownMenuLabel className="font-normal">
           <div className="flex items-center gap-2.5">
@@ -109,6 +121,20 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+
+        {/* Notifications : ouvre le panneau de l'en-tête (même compteur, hors messages) */}
+        <DropdownMenuItem
+          onSelect={() => { openNotificationsRef.current = true; }}
+          className="cursor-pointer"
+        >
+          <Bell className="w-4 h-4 mr-2" />
+          <span className="flex-1">Notifications</span>
+          {unreadNotifications > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold tabular-nums bg-destructive text-destructive-foreground rounded-full">
+              {unreadNotifications > 99 ? '99+' : unreadNotifications}
+            </span>
+          )}
+        </DropdownMenuItem>
 
         {/* Credits inline */}
         <DropdownMenuItem

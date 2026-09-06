@@ -253,7 +253,9 @@ const Onboarding = () => {
     clearOnboardingProgress();
     await queryClient.invalidateQueries({ queryKey: ['active-organization'] });
     await queryClient.refetchQueries({ queryKey: ['active-organization'] });
-    navigate('/dashboard', { replace: true });
+    // Une organisation qui vient d'être créée n'a aucune mission : on ouvre
+    // directement la création (ProjectsListV2 honore ?create=brief).
+    navigate('/missions?create=brief', { replace: true });
   }, [navigate, queryClient]);
 
   // ─── Récap de lancement ───

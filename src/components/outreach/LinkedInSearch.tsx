@@ -912,6 +912,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const [planStage, setPlanStage] = useState<PlanStage>('analyze');
   const [planChips, setPlanChips] = useState<PlanChip[]>([]);
   const [chipsDirty, setChipsDirty] = useState(false);
+  const [flowError, setFlowError] = useState<string | null>(null);
   const flowBusyRef = useRef(false);
 
   // Initialisation par mission : hero si rien (recherche/résultats), sinon
@@ -934,6 +935,21 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id, search.hasSearched, search.results.length, search.loading, flowMode]);
 
+  // Exception à « jamais redescendre » : une recherche lancée depuis le hero
+  // qui échoue avant tout résultat (compte indisponible, quota, erreur réseau)
+  // ramène au hero avec un message, pas sur un panneau vide. handleSearch
+  // avale ses erreurs (toast) : on observe l'état (plus de chargement, rien
+  // trouvé). Layout effect pour éviter l'affichage d'un panneau vide.
+  const heroLaunchRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!activeProject?.id || !heroLaunchRef.current || search.loading) return;
+    if (search.hasSearched || search.results.length > 0) { heroLaunchRef.current = false; return; }
+    if (flowMode !== 'results') return;
+    heroLaunchRef.current = false;
+    setFlowError('La recherche n\'a pas abouti. Vérifie ta connexion LinkedIn et tes filtres, puis relance.');
+    setFlowMode('hero');
+  }, [activeProject?.id, flowMode, search.loading, search.hasSearched, search.results.length]);
+
   // Édition de filtres depuis la barre de chips : synchronise le ref (lu par
   // handleSearch) et marque la vue « modifiée » — la recherche ne repart que
   // sur action explicite (Relancer), l'exploration est gratuite.
@@ -950,8 +966,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Phrase (hero ou affinage) → filtres via IA Konekt. runSearch=false pour
   // l'affinage : les chips se mettent à jour, l'user choisit quand relancer.
   const applyPhrase = useCallback(async (phrase: string, runSearch: boolean) => {
-    if (!search.selectedJob) { toast.error('Brief mission manquant.'); return; }
-    if (!selectedAccount && searchSource !== 'database') { toast.error('Connectez votre compte LinkedIn pour lancer une recherche.'); return; }
+    if (!search.selectedJob) throw new Error('Brief mission manquant.');
+    if (!selectedAccount && searchSource !== 'database') throw new Error('Connectez votre compte LinkedIn pour lancer une recherche.');
     const job = buildAugmentedJob(search.selectedJob, phrase);
     const { update, suggestions } = await generateFiltersFromJob({
       job,
@@ -1007,22 +1023,48 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const launchFlow = useCallback(async (phrase: string) => {
     if (flowBusyRef.current) return;
     flowBusyRef.current = true;
+    setFlowError(null);
+    heroLaunchRef.current = true;
     setFlowQuery(phrase || `Généré depuis le brief — ${search.selectedJob?.title || activeProject?.name || ''}`);
     setPlanChips([]);
     setPlanStage('analyze');
     setFlowMode('plan');
     try {
       await applyPhrase(phrase, true);
-      setFlowMode('results');
+      // Updater fonctionnel : si l'effet de retour au hero est déjà passé
+      // (recherche échouée), on ne l'écrase pas.
+      setFlowMode(prev => (prev === 'plan' ? 'results' : prev));
     } catch (error: any) {
       const msg = error?.message || '';
-      toast.error(msg.includes('insufficient_credits') ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : 'La génération a échoué, réessayez.');
-      setFlowMode(planChips.length > 0 || search.results.length > 0 || search.hasSearched ? 'results' : 'hero');
+      const shown = msg.includes('insufficient_credits') ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : 'La génération a échoué, réessayez.';
+      toast.error(shown);
+      setFlowError(shown);
+      setFlowMode(hasSearchedRef.current ? 'results' : 'hero');
     } finally {
       flowBusyRef.current = false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applyPhrase, search.selectedJob, activeProject?.name]);
+
+  // Filtres du brief déjà chargés (filters_snapshot → useLinkedInSearch) et
+  // aucune recherche : recherche directe, sans repasser par la génération IA
+  // (un appel IA de 5 à 15 s évité). Le passage hero → results se fait par
+  // l'effet d'initialisation dès que search.loading passe à true.
+  const briefFiltersReady = !!activeProject
+    && Object.keys(activeProject.filters_snapshot || {}).length > 0
+    && !!(search.filters.keywords?.trim() || (search.filters.role?.length ?? 0) > 0);
+  const launchWithBriefFilters = useCallback(() => {
+    if (flowBusyRef.current || search.loading) return;
+    if (!selectedAccount && searchSource !== 'database') {
+      const msg = 'Connectez votre compte LinkedIn pour lancer une recherche.';
+      toast.error(msg);
+      setFlowError(msg);
+      return;
+    }
+    setFlowError(null);
+    setChipsDirty(false);
+    heroLaunchRef.current = true;
+    handleSearch(false);
+  }, [selectedAccount, searchSource, search.loading, handleSearch]);
 
   const resumeFromHistory = useCallback((entry: { filters_snapshot: LinkedInFiltersState }) => {
     const merged = { ...INITIAL_FILTERS, ...entry.filters_snapshot };
@@ -1032,8 +1074,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     search.setHasSearched(false);
     search.setCursor(null);
     search.setTotal(null);
-    setFlowMode('results');
+    // Pas de setFlowMode('results') ici : l'effet d'initialisation y passe dès
+    // que le chargement démarre, et un échec ramène au hero (heroLaunchRef).
+    setFlowError(null);
     setChipsDirty(false);
+    heroLaunchRef.current = true;
     queueMicrotask(() => handleSearch(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSearch]);
@@ -1132,6 +1177,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           history={searchHistory.history}
           onLaunch={launchFlow}
           onResumeHistory={resumeFromHistory}
+          onLaunchWithBriefFilters={briefFiltersReady ? launchWithBriefFilters : undefined}
+          errorMessage={flowError}
           disabled={search.loading}
         />
       )}
@@ -1278,6 +1325,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               : undefined
           }
           onBatchScore={scoring.handleBatchScore}
+          canBatchScore={!scoringDisabledReason}
           onBulkDismiss={handleBulkDismiss}
           onBulkAddToProject={handleBulkAddToProject}
           onSetAutoHideTreated={search.setAutoHideTreated}

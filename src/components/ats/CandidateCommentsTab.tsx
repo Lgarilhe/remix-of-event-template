@@ -177,7 +177,8 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
       if (error) throw error;
 
       // Create in-app notifications for mentioned users
-      if (mentionedUserIds.length > 0) {
+      // La policy INSERT exige organization_id : le destinataire doit être membre de la même organisation.
+      if (mentionedUserIds.length > 0 && organizationId) {
         const notifications = mentionedUserIds
           .filter(uid => uid !== user.id) // Don't notify yourself
           .map(uid => ({
@@ -185,8 +186,8 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
             type: 'mention',
             title: `${getMemberName(user.id)} vous a mentionné`,
             body: `Sur le profil de ${candidateName}: "${newComment.trim().slice(0, 100)}${newComment.trim().length > 100 ? '...' : ''}"`,
-            link: `/ats?candidate=${candidateId}`,
-            organization_id: organization?.id || null,
+            link: `/pipeline?candidate=${candidateId}`,
+            organization_id: organizationId,
           }));
         
         if (notifications.length > 0) {

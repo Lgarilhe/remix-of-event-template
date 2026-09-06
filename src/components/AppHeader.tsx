@@ -1,6 +1,7 @@
 import React from 'react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { PanelLeft } from 'lucide-react';
+import { NotificationDropdown } from '@/components/notifications/NotificationDropdown';
 
 export const AppHeader: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   return (
@@ -9,6 +10,10 @@ export const AppHeader: React.FC<{ children?: React.ReactNode }> = ({ children }
         <PanelLeft className="h-4 w-4" />
       </SidebarTrigger>
       {children}
+      {/* Zone droite : actions globales, le centre de notifications en premier */}
+      <div className="ml-auto flex items-center gap-1">
+        <NotificationDropdown />
+      </div>
     </header>
   );
 };

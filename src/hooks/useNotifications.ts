@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from '@/hooks/useAuthReady';
 
@@ -12,11 +12,22 @@ export interface Notification {
   created_at: string;
 }
 
+// Un topic realtime par instance du hook : supabase.channel(topic) renvoie le
+// channel existant si le nom est déjà pris, et le cleanup d'une instance
+// couperait alors la souscription de l'autre (en-tête + menu utilisateur).
+let channelSeq = 0;
+
 export const useNotifications = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const { isReady, user } = useAuthReady();
+
+  // Les messages LinkedIn (new_message) ont déjà leur pastille « Messages »
+  // dans la sidebar : ils restent dans la liste mais sortent du compteur.
+  const unreadCount = useMemo(
+    () => notifications.filter(n => !n.read_at && n.type !== 'new_message').length,
+    [notifications],
+  );
 
   const fetchNotifications = useCallback(async () => {
     if (!isReady) {
@@ -26,7 +37,6 @@ export const useNotifications = () => {
 
     if (!user) {
       setNotifications([]);
-      setUnreadCount(0);
       setLoading(false);
       return;
     }
@@ -39,13 +49,10 @@ export const useNotifications = () => {
         .order('created_at', { ascending: false })
         .limit(50);
 
-      const notifs = (data || []) as Notification[];
-      setNotifications(notifs);
-      setUnreadCount(notifs.filter(n => !n.read_at).length);
+      setNotifications((data || []) as Notification[]);
     } catch (error) {
       console.warn('[useNotifications] Failed to fetch notifications:', error);
       setNotifications([]);
-      setUnreadCount(0);
     } finally {
       setLoading(false);
     }
@@ -59,7 +66,6 @@ export const useNotifications = () => {
   useEffect(() => {
     if (!isReady || !user) {
       setNotifications([]);
-      setUnreadCount(0);
       return;
     }
 
@@ -68,8 +74,11 @@ export const useNotifications = () => {
     
     const setup = async () => {
       try {
+        // Topic neuf à chaque (re)souscription : l'ancien channel termine son
+        // leave pendant que le nouveau s'abonne (rafraîchissement de jeton).
+        const topic = `notifications-realtime-${++channelSeq}`;
         channel = supabase
-          .channel('notifications-realtime')
+          .channel(topic)
           .on(
             'postgres_changes',
             {
@@ -82,7 +91,20 @@ export const useNotifications = () => {
               if (!isMounted) return;
               const newNotif = payload.new as Notification;
               setNotifications(prev => [newNotif, ...prev]);
-              setUnreadCount(prev => prev + 1);
+            }
+          )
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_id=eq.${user.id}`,
+            },
+            (payload) => {
+              if (!isMounted) return;
+              const updated = payload.new as Notification;
+              setNotifications(prev => prev.map(n => (n.id === updated.id ? { ...n, ...updated } : n)));
             }
           )
           .subscribe();
@@ -108,20 +130,22 @@ export const useNotifications = () => {
     setNotifications(prev =>
       prev.map(n => n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n)
     );
-    setUnreadCount(prev => Math.max(0, prev - 1));
   }, []);
 
   const markAllAsRead = useCallback(async () => {
     if (!user) return;
 
+    // Les messages LinkedIn restent gérés par la messagerie (pastille « Messages »).
     await supabase
       .from('notifications')
       .update({ read_at: new Date().toISOString() })
       .eq('user_id', user.id)
+      .neq('type', 'new_message')
       .is('read_at', null);
 
-    setNotifications(prev => prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
-    setUnreadCount(0);
+    setNotifications(prev => prev.map(n => (
+      n.type === 'new_message' ? n : { ...n, read_at: n.read_at || new Date().toISOString() }
+    )));
   }, [user]);
 
   return { notifications, unreadCount, loading, markAsRead, markAllAsRead, refresh: fetchNotifications };

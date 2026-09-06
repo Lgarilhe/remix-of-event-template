@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, ExternalLink, RefreshCw, Lock, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,11 @@ interface Props {
   onBack?: () => void;
 }
 
+// La connexion se fait dans un autre onglet : après un clic « Connecter
+// LinkedIn », on interroge la liste des comptes toutes les 8 s pendant 3 min.
+const POLL_INTERVAL_MS = 8000;
+const POLL_WINDOW_MS = 3 * 60 * 1000;
+
 const LINKEDIN_BENEFITS = [
   'Invitations, messages et relances entièrement automatisés',
   'Fonctionne 24h/24, même ordinateur éteint',
@@ -28,13 +33,60 @@ const LINKEDIN_BENEFITS = [
  * plus tard depuis les Réglages.
  */
 export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
-  const { accounts, loading: linkedInLoading, reload: reloadLinkedIn } = useLinkedInAccounts();
+  const { accounts, reload: reloadLinkedIn } = useLinkedInAccounts();
   const { organization } = useOrganization();
 
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const linkedInConnected = accounts.some((a) => a.type !== 'WHATSAPP' && a.provider !== 'WHATSAPP');
+
+  // Rechargement silencieux (pas de spinner) : le ref empêche deux appels
+  // qui se chevauchent (focus + visibilitychange arrivent souvent ensemble).
+  const reloadInFlightRef = useRef(false);
+  const [pollUntil, setPollUntil] = useState<number | null>(null);
+
+  const silentReload = useCallback(async () => {
+    if (reloadInFlightRef.current) return;
+    reloadInFlightRef.current = true;
+    try {
+      await reloadLinkedIn();
+    } catch {
+      // Erreur transitoire : la prochaine tentative reprendra
+    } finally {
+      reloadInFlightRef.current = false;
+    }
+  }, [reloadLinkedIn]);
+
+  // Retour sur la fenêtre (focus / onglet redevenu visible) tant qu'aucun
+  // compte n'est connecté. Les écouteurs sont retirés dès la connexion.
+  useEffect(() => {
+    if (linkedInConnected) return;
+    const onFocus = () => { void silentReload(); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void silentReload();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [linkedInConnected, silentReload]);
+
+  // Sondage borné dans le temps après un clic « Connecter LinkedIn » ;
+  // s'arrête à l'échéance, à la connexion ou au démontage.
+  useEffect(() => {
+    if (pollUntil === null || linkedInConnected) return;
+    const timer = setInterval(() => {
+      if (Date.now() >= pollUntil) {
+        setPollUntil(null);
+        return;
+      }
+      void silentReload();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [pollUntil, linkedInConnected, silentReload]);
 
   const handleConnect = async () => {
     setConnecting(true);
@@ -49,6 +101,7 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
       });
       if (data?.success && data.url) {
         window.open(data.url, '_blank', 'noopener,noreferrer');
+        setPollUntil(Date.now() + POLL_WINDOW_MS);
         toast.info('Fenêtre de connexion LinkedIn ouverte. Revenez ici après connexion.');
       } else {
         throw new Error(data?.error || 'Erreur');
@@ -153,11 +206,11 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
         <button
           type="button"
           onClick={handleRefresh}
-          disabled={refreshing || linkedInLoading}
+          disabled={refreshing}
           className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Actualiser la connexion"
         >
-          <RefreshCw className={`w-3 h-3 ${(refreshing || linkedInLoading) ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
           Actualiser
         </button>
       </motion.div>

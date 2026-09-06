@@ -47,13 +47,14 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
         include_org_accounts: includeOrgAccounts,
       });
       if (error || !data?.success) {
-        setAccounts([]);
+        // Erreur transitoire : on garde la liste précédente plutôt que de
+        // démonter les écrans qui en dépendent (sourcing en cours).
+        console.warn('Failed to load LinkedIn accounts:', error || (data as any)?.error);
         return;
       }
       setAccounts((data as any).accounts || []);
     } catch (e) {
       console.error('Failed to load LinkedIn accounts:', e);
-      setAccounts([]);
     } finally {
       setLoading(false);
       setHasLoaded(true);
@@ -136,7 +137,7 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
           duration: 12000,
           action: {
             label: 'Reconnecter',
-            onClick: () => navigate('/settings?tab=connectors'),
+            onClick: () => navigate('/settings?tab=account'),
           },
         });
       }

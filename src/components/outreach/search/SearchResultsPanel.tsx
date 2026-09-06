@@ -101,7 +101,10 @@ interface SearchResultsPanelProps {
   onScoreProfile: (profile: LinkedInProfile) => void;
   /** Scoring profond auto à l'ouverture de la fiche (profil complet fourni). */
   onDeepScoreProfile?: (fullProfile: LinkedInProfile) => Promise<void> | void;
-  onBatchScore: () => void;
+  /** Scoring par lot de la sélection, ou d'un lot explicite (« Scorer les 20 premiers »). */
+  onBatchScore: (profileIds?: string[]) => void;
+  /** Faux quand le scoring est impossible (titre requis en recherche autonome) : masque « Scorer les 20 premiers ». */
+  canBatchScore?: boolean;
   onBulkDismiss: () => void;
   onBulkAddToProject: () => void;
   onSetAutoHideTreated: (v: boolean) => void;
@@ -194,6 +197,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   onScoreProfile,
   onDeepScoreProfile,
   onBatchScore,
+  canBatchScore = true,
   onBulkDismiss,
   onBulkAddToProject,
   onSetAutoHideTreated,
@@ -475,6 +479,15 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     return filteredResults;
   }, [filteredResults, mergedResults, statusFilter, getAirtableMatch, getNotionMatch, matchesNotionShortlistName]);
 
+  // « Scorer les 20 premiers » : premier lot sans aucun score. Le bouton
+  // sélectionne les 20 premiers profils affichés non scorés et lance le
+  // scoring par lot existant (aucune dépense sans clic).
+  const firstBatchIds = React.useMemo(() => {
+    const isScored = (id: string) => !!jobScores[id] || treatedCandidates.get(id)?.score != null;
+    if (results.some(p => isScored(p.id))) return [] as string[];
+    return displayResults.filter(p => !isScored(p.id)).slice(0, 20).map(p => p.id);
+  }, [results, displayResults, jobScores, treatedCandidates]);
+
   return (
     <div className="bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden">
       {/* HEADER: count clarifié + Pool toggle. Affiché uniquement quand il
@@ -607,6 +620,27 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </Button>
           )}
 
+          {/* Scorer les 20 premiers : premier lot sans score, rien de sélectionné */}
+          {selectedProfiles.size === 0 && selectedJob && canBatchScore && firstBatchIds.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                firstBatchIds.forEach(id => onToggleProfileSelection(id));
+                onBatchScore(firstBatchIds);
+              }}
+              className="h-7 px-3 text-[11.5px] gap-1.5 rounded-full text-foreground hover:bg-foreground/10 shrink-0 font-medium"
+              disabled={scoringInProgress}
+              title="Sélectionne les premiers profils non scorés et lance le scoring par lot"
+            >
+              {scoringInProgress ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
+              <span className="hidden sm:inline">
+                {firstBatchIds.length >= 20 ? 'Scorer les 20 premiers' : `Scorer les ${firstBatchIds.length} profils`}
+              </span>
+              <span className="sm:hidden">Scorer {firstBatchIds.length}</span>
+            </Button>
+          )}
+
           {/* Bulk actions — pattern Gmail/Notion : compteur + actions
               avec labels visibles à partir de md (pas juste des icônes). */}
           {selectedProfiles.size > 0 && (
@@ -616,7 +650,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               </span>
               <div className="w-px h-4 bg-border mx-0.5" aria-hidden="true" />
               <button
-                onClick={onBatchScore}
+                onClick={() => onBatchScore()}
                 disabled={scoringInProgress}
                 className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors disabled:opacity-40"
                 title="Scorer les profils sélectionnés"

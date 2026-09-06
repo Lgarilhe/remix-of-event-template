@@ -4,6 +4,7 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
+import { EmptyLinkedInAccountState } from './EmptyLinkedInAccountState';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { countBriefFields } from '@/lib/missionUtils';
 import { useAgent } from '@/contexts/AgentContext';
@@ -90,6 +91,12 @@ export const MissionSourcing = ({ project }: MissionSourcingProps) => {
         <BrutalLoader variant="default" rows={2} messages={['Chargement des comptes…']} />
       </div>
     );
+  }
+
+  // Un rechargement en échec ne doit pas démonter une recherche en cours :
+  // l'état vide ne s'affiche que si aucun compte n'a jamais été sélectionné ici.
+  if (accounts.length === 0 && !selectedAccount) {
+    return <EmptyLinkedInAccountState message="Pour lancer le sourcing, connectez d'abord un compte LinkedIn." />;
   }
 
   return (

@@ -500,6 +500,8 @@ Deno.serve(async (req) => {
                   account_status: 'OK',
                   last_checked_at: new Date().toISOString(),
                   failure_reason: null,
+                  // NOT NULL sans défaut : l'utilisateur qui a initié le flow hosted_auth.
+                  linked_by: hostedState.userId,
                 }, {
                   onConflict: 'user_id,organization_id',
                 });
@@ -508,6 +510,26 @@ Deno.serve(async (req) => {
             }
           } catch (e) {
             console.error('[unipile-webhook] Upsert via hosted_auth failed:', e);
+            // L'utilisateur qui a lancé la connexion attend le rattachement : on le prévient.
+            const code = (e as { code?: string })?.code;
+            const body = code === '42501'
+              ? 'Ce compte LinkedIn est déjà rattaché à un autre espace de travail.'
+              : code === '23505'
+                ? 'Ce compte LinkedIn est déjà rattaché à un autre membre de votre organisation.'
+                : "Le compte LinkedIn est connecté mais n'a pas pu être rattaché. Réessayez depuis Paramètres > Mon compte.";
+            try {
+              await supabase.from('notifications').insert({
+                user_id: hostedState.userId,
+                organization_id: hostedState.organizationId,
+                type: 'error',
+                title: 'Compte LinkedIn non rattaché',
+                body,
+                link: '/settings?tab=account',
+                metadata: { linkedin_account_id: payload.account_id },
+              });
+            } catch (notifErr) {
+              console.warn('[unipile-webhook] Notification insert failed:', notifErr);
+            }
           }
         } else {
           // Fallback legacy : simple UPDATE sur linkedin_account_id (ancien comportement)
@@ -611,18 +633,19 @@ Deno.serve(async (req) => {
             .eq('linkedin_account_id', payload.account_id);
 
           if (linkedUsers && linkedUsers.length > 0) {
+            // Schéma notifications : body + read_at (NULL = non lue), pas message/read.
             const notifications = linkedUsers.map((u: any) => ({
               user_id: u.user_id,
               organization_id: u.organization_id,
               type: 'linkedin_disconnected',
               title: 'Compte LinkedIn déconnecté',
-              message: `Votre compte LinkedIn "${u.linkedin_account_name || 'LinkedIn'}" a été déconnecté. Reconnectez-le dans Paramètres > Mon compte.`,
-              read: false,
-              metadata: { account_id: payload.account_id, reason, reason_text: reasonText },
+              body: `Votre compte LinkedIn${u.linkedin_account_name ? ` « ${u.linkedin_account_name} »` : ''} n'est plus connecté. Reconnectez-le depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`,
+              link: '/settings?tab=account',
+              metadata: { linkedin_account_id: payload.account_id },
             }));
 
             const { error: notifError } = await supabase.from('notifications').insert(notifications);
-            if (notifError) console.warn('[unipile-webhook] Could not create notifications (table may not exist):', notifError);
+            if (notifError) console.warn('[unipile-webhook] Could not create notifications:', notifError);
           }
         } catch (e) {
           console.warn('[unipile-webhook] Error creating disconnect notifications:', e);
@@ -1077,7 +1100,9 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
           type: 'new_message',
           title: `Nouveau message de ${senderName}`,
           body: chatId ? `Vous avez reçu un nouveau message LinkedIn` : null,
-          link: `/outreach?tab=messages${chatId ? `&chatId=${chatId}` : ''}`,
+          // /outreach est une route legacy (redirigée vers /missions, query perdue).
+          link: chatId ? `/inbox?chatId=${encodeURIComponent(chatId)}` : '/inbox',
+          metadata: chatId ? { chat_id: chatId } : {},
         });
     }
     console.log(`[unipile-webhook] Created notifications for ${linkedMembers.length} user(s)`);

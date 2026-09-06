@@ -382,7 +382,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
               Créez une mission pour commencer à sourcer
             </p>
             <button
-              onClick={() => navigate('/missions?new=1')}
+              onClick={() => navigate('/missions?create=brief')}
               className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-medium hover:opacity-90 transition-opacity"
             >
               <Plus className="w-3.5 h-3.5" />
