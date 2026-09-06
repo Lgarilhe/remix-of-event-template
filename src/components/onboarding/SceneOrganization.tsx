@@ -30,6 +30,8 @@ import type { OnboardingCompanyData } from '@/pages/Onboarding';
 interface Props {
   onComplete: (companyData: OnboardingCompanyData) => void;
   onBack?: () => void;
+  /** true = second espace explicitement demandé (`?new=1`) : pas de confirmation */
+  allowSecondWorkspace?: boolean;
 }
 
 interface Source {
@@ -108,7 +110,7 @@ const AGENT_MESSAGES = [
 ];
 
 /* ─── Component ─── */
-export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
+export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack, allowSecondWorkspace = false }) => {
   const [query, setQuery] = useState('');
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'disambiguate' | 'results'>('idle');
   const [sources, setSources] = useState<Source[]>(SCAN_SOURCES);
@@ -577,7 +579,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack }) => {
             {/* Navigation */}
             <div className="flex items-center justify-end pt-2">
               <Button
-                onClick={() => handleContinue()}
+                onClick={() => handleContinue(allowSecondWorkspace)}
                 disabled={isCreating}
                 className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
               >

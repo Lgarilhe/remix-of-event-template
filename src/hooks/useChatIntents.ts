@@ -13,7 +13,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { autoAnalyzeKey, hasAutoAnalyzed, markAutoAnalyzed } from '@/lib/autoAnalyzeGuard';
+import { autoAnalyzeKey, hasAutoAnalyzed, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from './useAuthReady';
 import type { Chat } from './useMessagesInbox';
@@ -172,17 +172,13 @@ export function useChatIntents(chats: Chat[], accountId: string | null) {
       if (cancelled) return;
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       const guardKey = autoAnalyzeKey(chat);
-      if (hasAutoAnalyzed(guardKey)) return;
-      markAutoAnalyzed(guardKey);
+      const senderId = chat.attendees?.[0]?.id || null;
+      const pending = runAutoAnalyzeOnce(guardKey, () => supabase.functions.invoke('auto-analyze-message', {
+        body: { chat_id: chat.id, account_id: chat.account_id, sender_id: senderId },
+      }));
+      if (!pending) return;
       try {
-        const senderId = chat.attendees?.[0]?.id || null;
-        await supabase.functions.invoke('auto-analyze-message', {
-          body: {
-            chat_id: chat.id,
-            account_id: chat.account_id,
-            sender_id: senderId,
-          },
-        });
+        await pending;
         // Invalide la query pour forcer re-fetch des intents
         if (!cancelled) {
           queryClient.invalidateQueries({ queryKey: ['chat-intents', accountId] });

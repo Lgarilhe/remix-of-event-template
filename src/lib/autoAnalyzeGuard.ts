@@ -40,3 +40,21 @@ export function markAutoAnalyzed(key: string): void {
     // Quota dépassé ou storage désactivé → garde en mémoire seule
   }
 }
+
+const inFlight = new Map<string, Promise<unknown>>();
+
+/**
+ * Lance `run` une seule fois par clé et par session, et partage la promesse
+ * en vol : un second déclencheur (sélection d'un chat pendant son
+ * préchargement) attend la même analyse au lieu de repartir ou d'abandonner.
+ * Retourne null si la clé a déjà été traitée et qu'aucune analyse n'est en cours.
+ */
+export function runAutoAnalyzeOnce<T>(key: string, run: () => Promise<T>): Promise<T> | null {
+  const existing = inFlight.get(key);
+  if (existing) return existing as Promise<T>;
+  if (hasAutoAnalyzed(key)) return null;
+  markAutoAnalyzed(key);
+  const pending = run().finally(() => { inFlight.delete(key); });
+  inFlight.set(key, pending);
+  return pending;
+}

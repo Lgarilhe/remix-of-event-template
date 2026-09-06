@@ -157,9 +157,12 @@ async function updateNotionPage(pageId: string, notionApiKey: string, properties
 // Tout autre stage (Répondu, Pré-qualif, CV envoyé, ITW en cours, Offre, Gagné,
 // Perdu, ou valeur Notion inconnue type « Qualification ») est considéré plus
 // avancé → intouchable. Complément de la liste advancedStages
-// d'auto-analyze-message. Pressenti reste écrasable : c'est la progression
-// normale « shortlisté depuis le sourcing → premier message ».
-const CONTACT_OVERWRITABLE_STAGES = new Set<string>(['Nouveau', 'Pressenti', 'Contacté']);
+// d'auto-analyze-message. Pressenti (rang 3 du kanban, au-dessus de Répondu)
+// est protégé aussi : un shortlisté qui reçoit son premier message le garde.
+const CONTACT_OVERWRITABLE_STAGES = new Set<string>(['Nouveau', 'Contacté']);
+// Statuts Konekt qui verrouillent le flux Contacté même sans pipeline_stage
+// explicite (le kanban dérive « Répondu » de status='replied').
+const CONTACT_LOCKED_STATUSES = new Set<string>(['replied', 'dismissed']);
 function canOverwriteWithContact(stage: string | null | undefined): boolean {
   return !stage || CONTACT_OVERWRITABLE_STAGES.has(stage);
 }
@@ -235,7 +238,7 @@ async function syncCandidateStatus(input: JcsSyncInput): Promise<void> {
     const slug = input.linkedinUrl.match(/\/in\/([^/?#]+)/i)?.[1];
     let lookup = supabase
       .from('job_candidate_status')
-      .select('id, pipeline_stage')
+      .select('id, pipeline_stage, status')
       .eq('organization_id', input.organizationId);
     if (input.jobId) {
       // Les 2 formes coexistent en base (avec/sans préfixe project:)
@@ -251,8 +254,9 @@ async function syncCandidateStatus(input: JcsSyncInput): Promise<void> {
       console.warn('[add-to-shortlist] jcs lookup failed:', lookupErr.message);
       return;
     }
-    const targets = (rows || []).filter((r: { id: string; pipeline_stage: string | null }) =>
-      isShortlistIntent || canOverwriteWithContact(r.pipeline_stage));
+    const targets = (rows || []).filter((r: { id: string; pipeline_stage: string | null; status: string | null }) =>
+      isShortlistIntent ||
+      (canOverwriteWithContact(r.pipeline_stage) && !CONTACT_LOCKED_STATUSES.has(r.status || '')));
     if (targets.length === 0) {
       console.log(`[add-to-shortlist] jcs: ${rows?.length || 0} rows matched, 0 to update (url match)`);
       return;

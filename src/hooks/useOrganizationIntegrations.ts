@@ -68,11 +68,12 @@ export const useOrganizationIntegrations = () => {
       if (!organizationId) throw new Error('No organization');
 
       const settings: IntegrationUpdates = {};
-      const secrets: Array<[string, string]> = [];
+      const secrets: Array<[string, string | null]> = [];
       for (const [key, value] of Object.entries(updates)) {
         if (SECRET_FIELDS.includes(key)) {
-          // Champ write-only : chaîne vide = secret inchangé
-          if (typeof value === 'string' && value.trim()) secrets.push([key, value.trim()]);
+          // Champ write-only : chaîne vide = secret inchangé, null = retirer la clé
+          if (value === null) secrets.push([key, null]);
+          else if (typeof value === 'string' && value.trim()) secrets.push([key, value.trim()]);
         } else {
           settings[key] = value;
         }
@@ -99,6 +100,9 @@ export const useOrganizationIntegrations = () => {
       toast.success('Intégration mise à jour');
     },
     onError: (err: Error) => {
+      // Un secret a pu être enregistré avant l'échec de la seconde RPC :
+      // on resynchronise l'affichage (hints, flags) avec la base.
+      queryClient.invalidateQueries({ queryKey: ['org-integrations', organizationId] });
       toast.error(`Erreur: ${err.message}`);
     },
   });

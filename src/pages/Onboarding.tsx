@@ -59,6 +59,9 @@ const Onboarding = () => {
   });
   const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
+  // F3 : verrou anti double clic sur la création silencieuse (flux freelance)
+  const orgCreateInFlightRef = useRef(false);
+  const tunnelStartedRef = useRef(false);
   const [completedScenes, setCompletedScenes] = useState<Set<SceneKey>>(
     () => new Set(restored?.completed ?? [])
   );
@@ -250,11 +253,13 @@ const Onboarding = () => {
 
   const handleSpecializationsSubmitted = useCallback(
     async (specs: string[]) => {
+      if (orgCreateInFlightRef.current) return; // double clic pendant la création
       setSpecializations(specs);
       markCompleted('specializations');
       setDirection(1);
 
       if (orgType === 'freelance' && orgDetailsData) {
+        orgCreateInFlightRef.current = true;
         try {
           const { data: { user } } = await supabase.auth.getUser();
           const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
@@ -285,9 +290,13 @@ const Onboarding = () => {
         } catch (err) {
           console.error('[Onboarding] Auto-create org failed:', err);
           if ((err as { code?: string })?.code === ORG_ALREADY_EXISTS) {
-            // F3 : la mutation ne toaste pas ce cas ; l'utilisateur garde son espace existant
+            // F3 : la mutation ne toaste pas ce cas ; l'utilisateur garde son
+            // espace existant et ne poursuit pas un tunnel sans organisation
             toast.error('Vous faites déjà partie d’un espace de travail. Retrouvez-le depuis le tableau de bord.');
+            return;
           }
+        } finally {
+          orgCreateInFlightRef.current = false;
         }
       }
 
@@ -408,7 +417,13 @@ const Onboarding = () => {
   // dashboard. `step === 0` est sans effet de bord : toute création d'org dans
   // le tunnel a lieu à un step > 0 (scènes `org` / `specializations`), donc un
   // utilisateur en cours d'onboarding n'est jamais renvoyé.
-  if (step === 0 && !isExplicitNewWorkspace) {
+  // Un utilisateur qui est déjà entré dans le tunnel (step > 0 à un moment,
+  // y compris après rechargement avec progression restaurée) et revient au
+  // premier écran ne doit pas être éjecté : son org vient peut-être d'être créée.
+  useEffect(() => {
+    if (step > 0) tunnelStartedRef.current = true;
+  }, [step]);
+  if (step === 0 && !isExplicitNewWorkspace && !tunnelStartedRef.current) {
     if (isOrgLoading) {
       return (
         <div className="min-h-screen flex items-center justify-center">
@@ -481,7 +496,7 @@ const Onboarding = () => {
               />
             )}
             {currentScene === 'org' && (
-              <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} />
+              <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} allowSecondWorkspace={isExplicitNewWorkspace} />
             )}
             {currentScene === 'audit' && (
               <SceneAudit

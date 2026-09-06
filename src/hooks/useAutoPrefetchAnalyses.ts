@@ -19,7 +19,7 @@
 
 import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { autoAnalyzeKey, hasAutoAnalyzed, markAutoAnalyzed } from '@/lib/autoAnalyzeGuard';
+import { autoAnalyzeKey, hasAutoAnalyzed, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import type { Chat } from './useMessagesInbox';
 
 const MAX_CONCURRENT = 3;
@@ -50,27 +50,24 @@ export function useAutoPrefetchAnalyses({ chats, enabled = true }: PrefetchOptio
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
         return; // Skip si onglet pas visible
       }
+      // On délègue à `auto-analyze-message` qui :
+      // - Fetch les messages réels depuis Unipile
+      // - Lance analyze-response avec le contexte complet (incl. jobs)
+      // - Cache le résultat dans message_analysis_cache
+      // C'est exactement ce que fait le webhook Unipile à chaque nouveau
+      // message, on déclenche le même flow ici en background pour les
+      // chats antérieurs. Promesse partagée avec la sélection et la
+      // ré-analyse « stale » (une seule analyse par chat et par session).
       const guardKey = autoAnalyzeKey(chat);
-      if (hasAutoAnalyzed(guardKey)) return;
-      markAutoAnalyzed(guardKey);
+      const senderId = chat.attendees?.[0]?.id || null;
+      const pending = runAutoAnalyzeOnce(guardKey, () => supabase.functions.invoke('auto-analyze-message', {
+        body: { chat_id: chat.id, account_id: chat.account_id, sender_id: senderId },
+      }));
+      if (!pending) return;
       inFlight++;
 
       try {
-        // On délègue à `auto-analyze-message` qui :
-        // - Fetch les messages réels depuis Unipile
-        // - Lance analyze-response avec le contexte complet (incl. jobs)
-        // - Cache le résultat dans message_analysis_cache
-        // C'est exactement ce que fait le webhook Unipile à chaque nouveau
-        // message, on déclenche le même flow ici en background pour les
-        // chats antérieurs.
-        const senderId = chat.attendees?.[0]?.id || null;
-        await supabase.functions.invoke('auto-analyze-message', {
-          body: {
-            chat_id: chat.id,
-            account_id: chat.account_id,
-            sender_id: senderId,
-          },
-        });
+        await pending;
       } catch (e) {
         // Silent fail — c'est juste un prefetch
         console.debug('[prefetch] analyse failed for chat', chat.id, e);

@@ -22,6 +22,7 @@ import { WebhookManager } from '@/components/outreach/WebhookManager';
 import { ProxyConfigPanel } from '@/components/outreach/ProxyConfigPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { confirmAlert } from '@/lib/confirmAlert';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import {
   AlertDialog,
@@ -370,6 +371,10 @@ const LinkedInHostedAuthCard = ({
 /* ──────────────────────────────────────────────
  *  Generic integration card (API key based)
  * ────────────────────────────────────────────── */
+// Référence stable quand l'organisation n'a pas encore de ligne d'intégrations :
+// un `{}` recréé à chaque rendu réinitialisait les champs en cours de saisie.
+const EMPTY_VALUES: Record<string, never> = {};
+
 const IntegrationCard = ({
   config,
   values,
@@ -399,7 +404,13 @@ const IntegrationCard = ({
   const handleSave = async () => {
     const updates: Record<string, any> = {};
     config.fields.forEach(f => {
-      updates[f.key] = localValues[f.key] || null;
+      if (f.secret) {
+        // Write-only : champ vide = inchangé (le retrait passe par « Retirer la clé »)
+        const v = localValues[f.key]?.trim();
+        if (v) updates[f.key] = v;
+      } else {
+        updates[f.key] = localValues[f.key] || null;
+      }
     });
     // Un secret déjà enregistré (hint présent) compte comme rempli même si le champ est vide
     const allFilled = config.fields.every(f =>
@@ -459,7 +470,7 @@ const IntegrationCard = ({
                   autoComplete={field.secret ? 'new-password' : undefined}
                   placeholder={
                     field.secret && values[`${field.key}_hint`]
-                      ? `Clé enregistrée (${values[`${field.key}_hint`]}) — saisir une nouvelle clé pour la remplacer`
+                      ? `Clé enregistrée (${values[`${field.key}_hint`]}), saisir pour remplacer`
                       : field.placeholder
                   }
                   value={localValues[field.key] || ''}
@@ -469,6 +480,24 @@ const IntegrationCard = ({
                   className="pr-10 text-sm border-border"
                 />
               </div>
+              {field.secret && !!values[`${field.key}_hint`] && (
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive disabled:opacity-50"
+                  onClick={async () => {
+                    const ok = await confirmAlert({
+                      title: 'Retirer cette clé ?',
+                      description: "L'intégration sera déconnectée jusqu'à la saisie d'une nouvelle clé.",
+                      confirmLabel: 'Retirer',
+                      destructive: true,
+                    });
+                    if (ok) await onSave({ [field.key]: null, [config.connectedKey]: false });
+                  }}
+                >
+                  Retirer la clé
+                </button>
+              )}
             </div>
           ))}
 
@@ -507,7 +536,7 @@ export const IntegrationsSettings = () => {
     );
   }
 
-  const values = (integrations || {}) as Record<string, any>;
+  const values = (integrations ?? EMPTY_VALUES) as Record<string, any>;
 
   // Only show API-key integrations (Notion, Airtable, Calendly, Aircall) if already configured
   const visibleIntegrations = INTEGRATIONS.filter(config => {

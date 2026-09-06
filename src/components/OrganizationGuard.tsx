@@ -5,7 +5,7 @@ import { withPreviewAccessToken } from '@/lib/previewToken';
 import { LowCreditBanner } from './ai/LowCreditBanner';
 
 export const OrganizationGuard = ({ children }: { children: React.ReactNode }) => {
-  const { isLoading, isError, organization, needsOnboarding, refetchOrganization } = useOrganization();
+  const { isLoading, isError, organization, needsOnboarding, refetchOrganization, isRefetchingOrganization } = useOrganization();
 
   if (isLoading) {
     return (
@@ -32,11 +32,12 @@ export const OrganizationGuard = ({ children }: { children: React.ReactNode }) =
           </p>
           <button
             type="button"
+            disabled={isRefetchingOrganization}
             onClick={() => { void refetchOrganization(); }}
-            className="relative overflow-hidden inline-flex items-center gap-1.5 h-8 px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground"
+            className="relative overflow-hidden inline-flex items-center gap-1.5 h-8 px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground disabled:opacity-60"
           >
-            <RefreshCw className="w-3 h-3" />
-            <span>Réessayer</span>
+            <RefreshCw className={isRefetchingOrganization ? 'w-3 h-3 animate-spin' : 'w-3 h-3'} />
+            <span>{isRefetchingOrganization ? 'Nouvelle tentative…' : 'Réessayer'}</span>
           </button>
         </div>
       </div>

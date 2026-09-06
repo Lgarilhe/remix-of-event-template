@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { emitQuotaAction } from '@/lib/quotaEvents';
-import { autoAnalyzeKey, hasAutoAnalyzed, markAutoAnalyzed } from '@/lib/autoAnalyzeGuard';
+import { autoAnalyzeKey, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
@@ -1109,7 +1109,8 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
           .from('job_candidate_status')
           .select('id, status')
           .eq('organization_id', organizationId)
-          .eq('job_id', jobId)
+          // Les deux formes coexistent en base (le sourcing écrit 'project:<uuid>')
+          .in('job_id', [jobId, `project:${jobId}`])
           .eq('candidate_id', profileId)
           .limit(1)
           .maybeSingle();
@@ -1133,7 +1134,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             });
           if (insErr) console.warn('[Inbox] job_candidate_status insert failed:', insErr.message);
           else console.log('[Inbox] Status set to messaged for', candidateName);
-        } else if (existing.status === 'discovered' || existing.status === 'scored') {
+        } else if (['discovered', 'scored', 'new', 'untreated', 'contacted'].includes(existing.status)) {
           const { error: updErr } = await supabase
             .from('job_candidate_status')
             .update({ status: 'messaged' })
@@ -1757,16 +1758,18 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
             // chat (et par dernier message) et par session : le webhook LinkedIn
             // couvre les nouveaux messages, le panneau IA reste disponible.
             const guardKey = autoAnalyzeKey(selectedChat);
-            if (hasAutoAnalyzed(guardKey)) return;
-            markAutoAnalyzed(guardKey);
             const senderId = selectedChat.attendees?.[0]?.id || null;
-            supabase.functions.invoke('auto-analyze-message', {
+            // Partage l'analyse déjà en vol (préchargement, ré-analyse) au lieu
+            // de sortir : le cache est relu à la fin dans tous les cas.
+            const pending = runAutoAnalyzeOnce(guardKey, () => supabase.functions.invoke('auto-analyze-message', {
               body: {
                 chat_id: chatId,
                 account_id: accountId,
                 sender_id: senderId,
               },
-            }).then((res) => {
+            }));
+            if (!pending) return;
+            pending.then((res) => {
               // Re-query le cache après l'analyse pour récupérer les suggestions
               if (res.data?.success) {
                 supabase

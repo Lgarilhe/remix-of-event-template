@@ -87,9 +87,10 @@ WHERE auth.uid() IS NOT NULL
 COMMENT ON VIEW public.organization_integrations_public IS
   'Projection sans secret de organization_integrations (owner/admin de l''org). Les clés client n''apparaissent que sous forme de suffixe masqué ; les clés Konekt n''apparaissent jamais.';
 
--- Les default privileges du bootstrap donnent SELECT à anon sur toute nouvelle
--- vue → révocation explicite.
-REVOKE ALL PRIVILEGES ON TABLE public.organization_integrations_public FROM PUBLIC, anon;
+-- Les default privileges du bootstrap donnent aussi INSERT/UPDATE/DELETE à
+-- authenticated sur toute nouvelle vue (« TABLES » couvre les vues) : une vue
+-- definer auto-updatable contournerait alors la RLS et les allowlists des RPC.
+REVOKE ALL PRIVILEGES ON TABLE public.organization_integrations_public FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.organization_integrations_public TO authenticated, service_role;
 
 -- ─── 4. RPC : écriture d'un secret client ────────────────────────────────────

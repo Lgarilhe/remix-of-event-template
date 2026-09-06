@@ -5,7 +5,7 @@
 -- dont job_candidate_status.pipeline_stage = mission_process_steps.id (MissionPipeline.tsx).
 --
 -- replace_process_steps(p_project_id, p_steps) :
---   1. verrou ligne sourcing_projects (sérialise deux remplacements concurrents) ;
+--   1. verrou advisory transactionnel par projet (sérialise deux remplacements concurrents) ;
 --   2. contrôle d'appartenance à l'org du projet (is_org_member) ;
 --   3. DELETE des anciennes étapes, INSERT des nouvelles (step_order = position dans le tableau) ;
 --   4. remap pipeline_stage : ancien step.id → nouvelle étape de même nom (casse/espaces
@@ -39,11 +39,16 @@ BEGIN
     RAISE EXCEPTION 'Trop d''étapes (50 maximum)' USING ERRCODE = 'invalid_parameter_value';
   END IF;
 
-  -- Verrou projet : deux remplacements simultanés (double clic, deux onglets) s'exécutent l'un après l'autre.
+  -- Verrou applicatif par projet : sérialise deux remplacements simultanés
+  -- (double clic, deux onglets) SANS verrouiller la ligne sourcing_projects,
+  -- que les triggers de job_candidate_status (stats) doivent pouvoir mettre à
+  -- jour ; un FOR UPDATE ici créait un cycle de verrous avec un déplacement
+  -- kanban concurrent (deadlock reproduit en relecture).
+  PERFORM pg_advisory_xact_lock(hashtext('replace_process_steps'), hashtext(p_project_id::text));
+
   SELECT sp.organization_id INTO v_org
   FROM public.sourcing_projects sp
-  WHERE sp.id = p_project_id
-  FOR UPDATE;
+  WHERE sp.id = p_project_id;
 
   IF v_org IS NULL THEN
     RAISE EXCEPTION 'Mission introuvable' USING ERRCODE = 'no_data_found';
@@ -126,5 +131,6 @@ $$;
 COMMENT ON FUNCTION public.replace_process_steps(uuid, jsonb) IS
   'Remplace atomiquement les étapes du process d''une mission et remappe job_candidate_status.pipeline_stage (ancien step.id → étape de même nom, sinon première étape). Retourne le nombre de candidats repositionnés. Réservé aux membres de l''organisation du projet.';
 
-REVOKE ALL ON FUNCTION public.replace_process_steps(uuid, jsonb) FROM PUBLIC;
+-- anon reçoit EXECUTE par les default privileges du bootstrap : révocation explicite.
+REVOKE ALL ON FUNCTION public.replace_process_steps(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.replace_process_steps(uuid, jsonb) TO authenticated, service_role;

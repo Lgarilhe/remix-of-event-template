@@ -6067,8 +6067,12 @@ export type Database = {
         Args: { p_run_id: string; p_ttl_minutes?: number }
         Returns: boolean
       }
+      replace_process_steps: {
+        Args: { p_project_id: string; p_steps: Json }
+        Returns: number
+      }
       set_integration_secret: {
-        Args: { p_field: string; p_organization_id: string; p_value: string }
+        Args: { p_field: string; p_organization_id: string; p_value: string | null }
         Returns: undefined
       }
       update_integration_settings: {

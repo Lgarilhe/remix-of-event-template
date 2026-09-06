@@ -232,10 +232,29 @@ Cinq correctifs d'effort moyen, préparés par cinq agents lecteurs (un plan
 par constat, extraits de code vérifiés), implémentés en une passe, puis
 relus par dix agents contradictoires (deux lentilles par correctif :
 exactitude et régressions, puis sécurité multi-tenant ou SQL selon le cas).
-Contrôles locaux : lint identique à la base sur les quatorze fichiers front
-touchés, `tsc` à 31 erreurs sous la baseline de 32 avec le même ensemble
-d'erreurs qu'avant, `deno check` sans erreur nouvelle sur les quatre edge
-functions, build de production et 35 tests unitaires au vert.
+Les relecteurs SQL ont rejoué les deux migrations sur un Postgres 16 jetable
+au schéma reconstruit. Leurs 35 constats (2 bloquants, 11 importants, 22
+mineurs) ont été traités dans un second commit, sauf les mineurs listés plus
+bas. Contrôles locaux : lint identique à la base sur les quinze fichiers
+front touchés, `tsc` à 31 erreurs sous la baseline de 32 avec le même
+ensemble d'erreurs qu'avant, `deno check` sans erreur nouvelle sur les
+quatre edge functions, build de production et 35 tests unitaires au vert.
+
+Ce que la relecture a attrapé et qui est corrigé : la vue publique des
+intégrations restait modifiable par tout utilisateur connecté (privilèges
+par défaut du bootstrap, insertion possible chez une autre organisation) ;
+un verrou de ligne dans la fonction de remplacement des étapes pouvait
+bloquer en cycle avec un déplacement kanban simultané (verrou advisory à la
+place) ; l'analyse automatique facturait Haiku alors qu'elle appelle Sonnet ;
+le marqueur « aucun message du candidat » était pris pour une analyse par le
+panneau IA ; une sélection de conversation pendant son préchargement perdait
+les suggestions de réponse (promesse partagée entre les trois déclencheurs) ;
+un candidat en « Pressenti » ou ayant répondu pouvait encore être ramené à
+« Contacté » par le flux inbox ; un pointeur d'organisation périmé donnait un
+écran d'erreur permanent (retour aux appartenances) ; un double clic dans le
+flux freelance créait deux organisations ; le formulaire d'intégrations
+perdait la saisie à chaque rendu tant qu'aucune ligne n'existait ; il n'était
+plus possible de retirer une clé (bouton « Retirer la clé » avec confirmation).
 
 Chaîne d'analyse automatique des messages. `auto-analyze-message` appelait
 `analyze-response` et `fetch-notion-jobs` avec la clé anonyme, refusée en
@@ -284,15 +303,16 @@ Choix produit faits par défaut, à confirmer :
    des dix conversations récentes (une fois par session), pas seulement à
    l'ouverture. Les crédits du flux webhook sont imputés au premier membre
    rattaché au compte LinkedIn.
-2. Inbox : « Pressenti » reste écrasable par un premier message (progression
-   normale du sourcing) ; tout stage plus avancé est protégé.
+2. Inbox : « Pressenti », « Répondu » et tout stage plus avancé sont
+   protégés ; seul « Nouveau » ou « Contacté » passe à « Contacté » (la
+   relecture a montré que Pressenti est au-dessus de Contacté dans le kanban).
 3. Organisation : un second espace reste possible après confirmation ; le
    dialogue propose seulement Annuler ou Créer.
-4. Secrets : pas de bouton « Retirer la clé » (remplacement uniquement) ;
-   `unipile_connected` et `coresignal_enabled` sont en lecture seule pour
-   les clients ; `aircall_api_id` est traité comme non secret. Les clés
-   Unipile et Coresignal déjà lues par des admins clients restent à faire
-   tourner côté ops.
+4. Secrets : un secret enregistré se remplace ou se retire (bouton « Retirer
+   la clé », confirmation) ; `unipile_connected` et `coresignal_enabled`
+   sont en lecture seule pour les clients ; `aircall_api_id` est traité
+   comme non secret. Les clés Unipile et Coresignal déjà lues par des admins
+   clients restent à faire tourner côté ops.
 5. Process : remplacement pur (pas d'option « ajouter à la suite »).
 
 Points de déploiement : les deux migrations partent avec le merge sur
@@ -303,4 +323,14 @@ corrompue). `types.ts` a été édité à la main pour la vue et les deux
 fonctions : à régénérer après application en production. Le linter Supabase
 signalera la vue comme « security definer view » : c'est voulu, le prédicat
 owner/admin est dans la vue.
+
+Constats mineurs laissés tels quels, par choix : pas de limite de débit sur
+la chaîne d'analyse en appel interne (le webhook et la garde de session
+bornent déjà le volume) ; les messages Postgres restent en anglais quand un
+payload de process viole une contrainte CHECK (le front n'envoie que des
+valeurs valides) ; le nombre de candidats affiché avant remplacement est
+compté sous la RLS de l'appelant et peut différer du remap serveur ;
+l'attribution des crédits du flux webhook au premier membre rattaché au
+compte reste arbitraire pour un compte partagé ; `types.ts` porte les
+nouvelles fonctions hors ordre alphabétique jusqu'à régénération.
 

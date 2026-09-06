@@ -124,8 +124,11 @@ export const InlineAIPanel: React.FC<InlineAIPanelProps> = ({
           const isStale = cacheAge > 24 * 60 * 60 * 1000;
           const cachedMsgCount = (cached.analysis as any)._messageCount;
           const hasNewMessages = typeof cachedMsgCount === 'number' && cachedMsgCount !== context.messages.length;
+          // Marqueur « aucun message du candidat » écrit par auto-analyze-message :
+          // pas une analyse, le panneau relance la sienne (contexte complet).
+          const isMarker = (cached.analysis as { _marker?: boolean })._marker === true;
 
-          if (!isStale && !hasNewMessages) {
+          if (!isStale && !hasNewMessages && !isMarker) {
             setAnalysis(cached.analysis as unknown as AnalysisResult);
             setLoading(false);
             isAnalyzingRef.current = false;

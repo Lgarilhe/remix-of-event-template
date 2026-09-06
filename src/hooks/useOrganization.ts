@@ -61,7 +61,7 @@ export const useOrganization = () => {
   // F3 : toute erreur est LEVÉE (jamais `return null`) — `null` signifie
   // strictement « aucune org, onboarding légitime ». Une exception déclenche
   // le retry global (main.tsx) puis l'état d'erreur d'OrganizationGuard.
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['active-organization', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -78,17 +78,15 @@ export const useOrganization = () => {
         throw profileError;
       }
 
-      let activeOrgId = profile?.active_organization_id;
-
-      // 🔧 SAFETY NET (fix 2026-05-06) : si active_organization_id est null
-      // (peut arriver après un bug trigger, bootstrap raté, ou reset),
-      // on FALLBACK sur les orgs où l'user est déjà membre AVANT de
-      // déclencher l'onboarding qui créerait une duplicate org.
-      // Sans ce fallback, l'user redirigé vers /onboarding crée une
-      // nouvelle org alors qu'il en avait déjà une → perte de tout
-      // (crédits, missions, candidats, LinkedIn account...).
-      if (!activeOrgId) {
-        console.warn('[useOrganization] active_organization_id is null, checking memberships fallback...');
+      // 🔧 SAFETY NET (fix 2026-05-06, étendu 2026-09-06) : résolution par les
+      // appartenances quand active_organization_id est null (bug trigger,
+      // bootstrap raté, reset) OU pointe vers une org devenue invisible
+      // (membre retiré avant le trigger du 2026-09-03, org supprimée). Sans ce
+      // fallback, l'user partait vers /onboarding et créait une org doublon →
+      // perte de tout (crédits, missions, candidats, compte LinkedIn...) ; avec
+      // le `throw` des erreurs, un pointeur périmé donnerait un écran d'erreur
+      // permanent, ce qui n'est pas mieux.
+      const resolveFromMemberships = async (): Promise<string | null> => {
         const { data: memberships, error: membershipsError } = await supabase
           .from('organization_members')
           .select('organization_id, organizations(created_at)')
@@ -99,34 +97,52 @@ export const useOrganization = () => {
           console.error('[useOrganization] memberships fetch error:', membershipsError);
           throw membershipsError;
         }
+        if (!memberships || memberships.length === 0) return null;
 
-        if (memberships && memberships.length > 0) {
-          // Prend la PLUS ANCIENNE org où l'user est membre — typiquement
-          // celle créée pendant l'onboarding initial, donc avec ses
-          // données. Évite de prendre une nouvelle org de test/duplicate.
-          activeOrgId = memberships[0].organization_id;
-          console.warn(`[useOrganization] Recovered active org from memberships: ${activeOrgId} (${memberships.length} total)`);
+        // Prend la PLUS ANCIENNE org où l'user est membre — typiquement
+        // celle créée pendant l'onboarding initial, donc avec ses
+        // données. Évite de prendre une nouvelle org de test/duplicate.
+        const recovered = memberships[0].organization_id;
+        console.warn(`[useOrganization] Recovered active org from memberships: ${recovered} (${memberships.length} total)`);
 
-          // Persiste pour pas re-faire le fallback à chaque mount
-          await supabase
-            .from('profiles')
-            .upsert({ user_id: user.id, active_organization_id: activeOrgId }, { onConflict: 'user_id' });
-        } else {
-          // Vraiment aucune org → user nouveau → onboarding légitime
-          return null;
-        }
+        // Persiste pour pas re-faire le fallback à chaque mount
+        await supabase
+          .from('profiles')
+          .upsert({ user_id: user.id, active_organization_id: recovered }, { onConflict: 'user_id' });
+        return recovered;
+      };
+
+      let activeOrgId: string | null = profile?.active_organization_id ?? null;
+      if (!activeOrgId) {
+        console.warn('[useOrganization] active_organization_id is null, checking memberships fallback...');
+        activeOrgId = await resolveFromMemberships();
+        // Vraiment aucune org → user nouveau → onboarding légitime
+        if (!activeOrgId) return null;
       }
 
-      // Get organization details
-      const { data: org, error: orgError } = await supabase
+      // Get organization details (maybeSingle : 0 ligne = org invisible pour
+      // cet utilisateur, un état de données, pas une erreur transitoire)
+      let { data: org, error: orgError } = await supabase
         .from('organizations')
         .select('*')
         .eq('id', activeOrgId)
-        .single();
+        .maybeSingle();
 
       if (orgError) {
         console.error('[useOrganization] organization fetch error:', orgError);
         throw orgError;
+      }
+      if (!org) {
+        console.warn('[useOrganization] active_organization_id points to an invisible org, falling back to memberships');
+        activeOrgId = await resolveFromMemberships();
+        if (!activeOrgId) return null;
+        ({ data: org, error: orgError } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', activeOrgId)
+          .maybeSingle());
+        if (orgError) throw orgError;
+        if (!org) return null;
       }
 
       // Get user's role in org
@@ -256,6 +272,7 @@ export const useOrganization = () => {
     // affiche « Réessayer » au lieu de rediriger vers /onboarding
     isError,
     refetchOrganization: refetch,
+    isRefetchingOrganization: isFetching,
     needsOnboarding: isReady && !!user && !isLoading && !isError && data === null,
     createOrganization: createOrgMutation.mutateAsync,
     switchOrganization: switchOrgMutation.mutateAsync,
