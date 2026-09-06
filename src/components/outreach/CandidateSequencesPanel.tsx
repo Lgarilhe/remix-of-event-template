@@ -46,11 +46,20 @@ interface Props {
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   active: { label: 'En cours', color: 'bg-success/10 text-success border-success/30', icon: <Play className="w-3 h-3" /> },
-  paused: { label: 'Arrêté', color: 'bg-muted text-muted-foreground border-border', icon: <Pause className="w-3 h-3" /> },
+  paused: { label: 'En pause', color: 'bg-muted text-muted-foreground border-border', icon: <Pause className="w-3 h-3" /> },
   replied: { label: 'Répondu', color: 'bg-info/10 text-info border-info/30', icon: <MessageCircle className="w-3 h-3" /> },
   completed: { label: 'Terminé', color: 'bg-foreground/8 text-foreground border-border', icon: <CheckCircle2 className="w-3 h-3" /> },
   stopped: { label: 'Stoppé', color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <StopCircle className="w-3 h-3" /> },
 };
+
+// Libellé d'une inscription en pause selon sequence_enrollments.pause_reason.
+const PAUSE_REASON_LABELS: Record<string, string> = {
+  account_disconnected: 'En pause (compte déconnecté)',
+  quota_reached: 'En pause (limite atteinte)',
+  subscription_required: 'En pause (abonnement requis)',
+};
+const pausedLabel = (reason: string | null | undefined): string =>
+  PAUSE_REASON_LABELS[reason || ''] || 'En pause';
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
   message: 'Message LinkedIn',
@@ -220,6 +229,10 @@ function EnrollmentCard({
   const statusCfg = STATUS_CONFIG[enrollment.status] || STATUS_CONFIG.completed;
   const isActive = enrollment.status === 'active';
   const isPaused = enrollment.status === 'paused';
+  // pause_reason n'est pas encore sélectionné par useCandidateEnrollments :
+  // lecture tolérante, libellé « En pause » tant que le hook ne le remonte pas.
+  const pauseReason = (enrollment as CandidateEnrollment & { pause_reason?: string | null }).pause_reason;
+  const statusLabel = isPaused ? pausedLabel(pauseReason) : statusCfg.label;
 
   const sentCount = enrollment.executions.filter(e => e.status === 'sent').length;
   const totalSteps = enrollment.total_steps || enrollment.executions.length;
@@ -241,7 +254,7 @@ function EnrollmentCard({
             <Badge variant="outline" className={cn('text-3xs px-1.5 h-5', statusCfg.color)}>
               <span className="inline-flex items-center gap-1">
                 {statusCfg.icon}
-                {statusCfg.label}
+                {statusLabel}
               </span>
             </Badge>
           </div>

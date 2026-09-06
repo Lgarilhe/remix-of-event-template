@@ -133,10 +133,20 @@ async function doFetchEdgeFunction(
   }
 }
 
+/**
+ * Erreur renvoyée par invokeEdgeFunction. Sur une réponse non-2xx, `status`
+ * porte le code HTTP et `code` l'`error_code` métier du serveur s'il existe
+ * (INSUFFICIENT_CREDITS, QUOTA_EXCEEDED, PLAN_REQUIRED, ...).
+ */
+export interface EdgeFunctionError extends Error {
+  status?: number;
+  code?: string;
+}
+
 export async function invokeEdgeFunction<T = Record<string, unknown>>(
   functionName: string,
   body: Record<string, unknown> = {}
-): Promise<{ data: T & { success?: boolean; error?: string }; error: Error | null }> {
+): Promise<{ data: T & { success?: boolean; error?: string; error_code?: string }; error: EdgeFunctionError | null }> {
   const enrichedBody = { ...body };
   if (!enrichedBody.organization_id) {
     const orgId = await getActiveOrganizationId();
@@ -176,7 +186,16 @@ export async function invokeEdgeFunction<T = Record<string, unknown>>(
             : text.trim() || `HTTP ${response.status}`;
 
       const friendlyMsg = humanizeError(rawMessage);
-      return { data: { success: false, error: friendlyMsg } as any, error: new Error(friendlyMsg) };
+      // On conserve le payload d'erreur du serveur (error_code et détails) dans
+      // `data` pour les appelants qui testent data?.error_code, sans changer la
+      // forme { data, error }. `success` et `error` restent normalisés.
+      const errorCode = typeof payload?.error_code === 'string' ? payload.error_code : undefined;
+      const errorData = { ...(payload ?? {}), success: false, error: friendlyMsg };
+      const err: EdgeFunctionError = Object.assign(new Error(friendlyMsg), {
+        status: response.status,
+        ...(errorCode ? { code: errorCode } : {}),
+      });
+      return { data: errorData as any, error: err };
     }
 
     return {

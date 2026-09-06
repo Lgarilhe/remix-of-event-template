@@ -125,6 +125,10 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   coresignal_preview: { action: "coresignal_preview", label: "Base Konekt — aperçu", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
   coresignal_collect: { action: "coresignal_collect", label: "Base Konekt — fiche complète", floor: 2, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
   web_search: { action: "web_search", label: "Recherche web", floor: 1, typicalTokens: 0, routingTier: "fast", category: "agent" },
+  // Enrichissement de contact — pas de tokens LLM, le floor = coût hors forfait
+  // (un email = 1 crédit, un téléphone = 10 crédits ; miroir de ai-config.ts).
+  enrich_contact_email: { action: "enrich_contact_email", label: "Email pro candidat", floor: 1, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
+  enrich_contact_phone: { action: "enrich_contact_phone", label: "Téléphone mobile candidat", floor: 10, typicalTokens: 0, routingTier: "fast", category: "sourcing" },
 };
 
 // ─── Credit Calculation (frontend) ──────────────────────────────────────────

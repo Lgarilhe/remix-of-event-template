@@ -455,13 +455,119 @@ const createMission: AgentTool = {
 // ─── Tool 4 — enroll_in_sequence ────────────────────────────────────────────
 // INSERT dans sequence_enrollments. Le candidat doit déjà exister
 // (job_candidate_status row), et la séquence doit appartenir à l'org.
+//
+// Anti-doublon organisation (lot P0-D, docs/p0-plan-2026-09-06.md, section 2) :
+// un candidat contacté par un membre de l'org dans les 90 derniers jours
+// (toute séquence, tout compte, statuts active/paused/replied/completed) est
+// refusé, sauf `force: true` posé par un propriétaire ou administrateur. Même
+// clé de rapprochement que src/lib/enrollmentDuplicates.ts : profile_id
+// normalisé (identifiant LinkedIn ou URL en minuscules sans barre finale),
+// repli sur provider_id.
+
+const RECENT_CONTACT_WINDOW_DAYS = 90;
+const RECENT_CONTACT_STATUSES = ['active', 'paused', 'replied', 'completed'];
+
+interface RecentOrgContact {
+  createdBy: string | null;
+  createdByFirstName: string | null;
+  createdAt: string;
+  sequenceId: string;
+  sequenceName: string | null;
+}
+
+function normalizeEnrollmentKey(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().replace(/\/+$/, '').toLowerCase();
+  return normalized || null;
+}
+
+function linkedInSlugOf(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/linkedin\.com\/in\/([^/?#]+)/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function quoteFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function formatRecentContact(recent: RecentOrgContact): string {
+  const who = recent.createdByFirstName || "un membre de l'équipe";
+  const date = new Date(recent.createdAt).toLocaleDateString('fr-FR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Paris',
+  });
+  const seq = recent.sequenceName ? ` (séquence « ${recent.sequenceName} »)` : '';
+  return `Déjà contacté par ${who} le ${date}${seq}`;
+}
+
+/** Dernier contact de l'organisation avec ce candidat sur 90 jours, ou null. */
+async function findRecentOrgContact(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<RecentOrgContact | null> {
+  const rawValues = [params.candidate_id, params.profile_url]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(v => v.trim());
+  if (rawValues.length === 0) return null;
+
+  const keys = new Set<string>();
+  const queryValues = new Set<string>(rawValues);
+  for (const value of rawValues) {
+    const key = normalizeEnrollmentKey(value);
+    if (key) { keys.add(key); queryValues.add(key); }
+    const slug = linkedInSlugOf(value);
+    if (slug) { keys.add(slug); queryValues.add(slug); }
+  }
+  const list = Array.from(queryValues).map(quoteFilterValue).join(',');
+  const since = new Date(Date.now() - RECENT_CONTACT_WINDOW_DAYS * 86_400_000).toISOString();
+
+  const { data: rows, error } = await ctx.adminClient
+    .from('sequence_enrollments')
+    .select('profile_id, provider_id, created_by, created_at, status, sequence_id')
+    .eq('organization_id', ctx.organizationId)
+    .gte('created_at', since)
+    .in('status', RECENT_CONTACT_STATUSES)
+    .or(`profile_id.in.(${list}),provider_id.in.(${list})`)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) throw new Error(`Vérification des contacts récents impossible : ${error.message}`);
+
+  const match = (rows ?? []).find((row: Record<string, unknown>) => {
+    for (const value of [row.profile_id, row.provider_id]) {
+      const key = normalizeEnrollmentKey(value);
+      if (key && keys.has(key)) return true;
+      const slug = linkedInSlugOf(value);
+      if (slug && keys.has(slug)) return true;
+    }
+    return false;
+  });
+  if (!match) return null;
+
+  const [{ data: profile }, { data: seq }] = await Promise.all([
+    match.created_by
+      ? ctx.adminClient.from('profiles').select('display_name').eq('user_id', String(match.created_by)).maybeSingle()
+      : Promise.resolve({ data: null }),
+    ctx.adminClient.from('outreach_sequences').select('name').eq('id', String(match.sequence_id)).maybeSingle(),
+  ]);
+  const firstName = String(profile?.display_name ?? '').trim().split(/\s+/)[0] || null;
+
+  return {
+    createdBy: match.created_by ? String(match.created_by) : null,
+    createdByFirstName: firstName,
+    createdAt: String(match.created_at),
+    sequenceId: String(match.sequence_id),
+    sequenceName: seq?.name ? String(seq.name) : null,
+  };
+}
 
 const enrollInSequence: AgentTool = {
   name: 'enroll_in_sequence',
   description:
     "Enroll a candidate into an outreach sequence. The sequence steps will start being processed by the cron. " +
     "Use when the user says 'enrôle X dans ma séquence Y', 'lance la séquence sur ce candidat'. " +
-    "Requires the candidate to already exist on the mission and the sequence to belong to the user's org.",
+    "Requires the candidate to already exist on the mission and the sequence to belong to the user's org. " +
+    "Refused when the organization already contacted the candidate in the last 90 days (any sequence, any account); " +
+    "only an owner or admin can override with force: true after explicit confirmation.",
   category: 'mutation_safe',
   requiresApproval: true,
   inputSchema: {
@@ -473,6 +579,11 @@ const enrollInSequence: AgentTool = {
       profile_name: { type: 'string', description: 'Display name (e.g. "Marie Martin").' },
       account_id: { type: 'string', description: 'Unipile LinkedIn account_id of the recruiter who will send.' },
       job_id: { type: 'string', description: 'Mission UUID this enrollment is tied to.' },
+      force: {
+        type: 'boolean',
+        description:
+          'Set to true only when the user explicitly confirms enrolling a candidate already contacted by the organization in the last 90 days. Owners and admins only.',
+      },
     },
     required: ['sequence_id', 'candidate_id', 'account_id', 'job_id'],
   },
@@ -504,11 +615,50 @@ const enrollInSequence: AgentTool = {
       return { allowed: false, reason: 'Mission inaccessible' };
     }
 
+    // Anti-doublon organisation (90 jours). Rejoué avant execute (SEC-002),
+    // donc la règle tient aussi à l'approbation.
+    let recent: Awaited<ReturnType<typeof findRecentOrgContact>>;
+    try {
+      recent = await findRecentOrgContact(params, ctx);
+    } catch (err) {
+      return { allowed: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+    if (recent) {
+      const candidate = String(params.profile_name ?? params.candidate_id);
+      if ('sequenceId' in (recent as object) && String((recent as { sequenceId?: unknown }).sequenceId ?? '') === String(params.sequence_id)) {
+        return {
+          allowed: false,
+          reason: `${candidate} est déjà inscrit dans cette séquence : pas de double inscription.`,
+        };
+      }
+      if (params.force !== true) {
+        return {
+          allowed: false,
+          reason:
+            `${candidate} : ${formatRecentContact(recent)}. Inscription refusée pour éviter un double contact. ` +
+            `Un propriétaire ou administrateur peut passer outre en relançant avec force: true après confirmation explicite.`,
+        };
+      }
+      const { data: callerRole } = await ctx.adminClient
+        .from('organization_members')
+        .select('role')
+        .eq('organization_id', ctx.organizationId)
+        .eq('user_id', ctx.userId)
+        .maybeSingle();
+      if (callerRole?.role !== 'admin' && callerRole?.role !== 'owner') {
+        return {
+          allowed: false,
+          reason:
+            `${candidate} : ${formatRecentContact(recent)}. La dérogation force: true est réservée aux propriétaires et administrateurs.`,
+        };
+      }
+    }
+
     return { allowed: true };
   },
 
   async dryRun(params, ctx) {
-    const [{ data: seq }, { data: project }] = await Promise.all([
+    const [{ data: seq }, { data: project }, recent] = await Promise.all([
       ctx.adminClient
         .from('outreach_sequences')
         .select('name')
@@ -519,6 +669,7 @@ const enrollInSequence: AgentTool = {
         .select('name, job_title')
         .eq('id', String(params.job_id))
         .maybeSingle(),
+      findRecentOrgContact(params, ctx),
     ]);
 
     // Check if already enrolled
@@ -529,25 +680,53 @@ const enrollInSequence: AgentTool = {
       .eq('provider_id', String(params.candidate_id))
       .maybeSingle();
 
+    const candidate = String(params.profile_name ?? params.candidate_id);
+    const warning = existing
+      ? 'Ce candidat est déjà dans cette séquence, pas de double enrôlement.'
+      : recent
+        ? `${formatRecentContact(recent)}. Inscription forcée par dérogation (force: true).`
+        : undefined;
+
     return {
       summary: existing
-        ? `${params.profile_name ?? params.candidate_id} est déjà enrôlé dans « ${seq?.name ?? 'cette séquence'} »`
-        : `Enrôler ${params.profile_name ?? params.candidate_id} dans « ${seq?.name ?? 'cette séquence'} » pour la mission ${project?.job_title ?? project?.name ?? params.job_id}`,
+        ? `${candidate} est déjà enrôlé dans « ${seq?.name ?? 'cette séquence'} »`
+        : `Enrôler ${candidate} dans « ${seq?.name ?? 'cette séquence'} » pour la mission ${project?.job_title ?? project?.name ?? params.job_id}` +
+          (recent ? ' malgré un contact récent de l\'organisation' : ''),
       details: {
         sequence_name: seq?.name ?? null,
-        candidate: params.profile_name ?? params.candidate_id,
+        candidate,
         job: project?.job_title ?? project?.name ?? null,
         already_enrolled: !!existing,
+        recent_contact: recent
+          ? {
+              contacted_by: recent.createdBy,
+              contacted_by_first_name: recent.createdByFirstName,
+              contacted_at: recent.createdAt,
+              sequence_id: recent.sequenceId,
+              sequence_name: recent.sequenceName,
+              forced: true,
+            }
+          : null,
       },
-      warning: existing ? 'Ce candidat est déjà dans cette séquence — pas de double enrôlement.' : undefined,
+      warning,
     };
   },
 
   async execute(params, ctx) {
+    // Doublon relu ici pour le compte rendu (verifyAccess a déjà tranché) :
+    // une erreur de lecture ne fait pas échouer une inscription approuvée.
+    let recent: Awaited<ReturnType<typeof findRecentOrgContact>> = null;
+    try {
+      recent = await findRecentOrgContact(params, ctx);
+    } catch {
+      recent = null;
+    }
+
     const { data, error } = await ctx.adminClient
       .from('sequence_enrollments')
       .insert({
         sequence_id: String(params.sequence_id),
+        profile_id: String(params.candidate_id),
         provider_id: String(params.candidate_id),
         profile_url: params.profile_url ? String(params.profile_url) : null,
         profile_name: params.profile_name ? String(params.profile_name) : null,
@@ -560,8 +739,30 @@ const enrollInSequence: AgentTool = {
       .select('id, current_step_order')
       .single();
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: { enrollment_id: data.id } };
+    if (error) {
+      return {
+        success: false,
+        error: error.code === '23505' ? 'Ce candidat est déjà inscrit dans cette séquence.' : error.message,
+      };
+    }
+    return {
+      success: true,
+      data: {
+        enrollment_id: data.id,
+        ...(recent
+          ? {
+              recent_contact: {
+                contacted_by: recent.createdBy,
+                contacted_by_first_name: recent.createdByFirstName,
+                contacted_at: recent.createdAt,
+                sequence_id: recent.sequenceId,
+                sequence_name: recent.sequenceName,
+              },
+              message: `Inscrit par dérogation : ${formatRecentContact(recent)}.`,
+            }
+          : {}),
+      },
+    };
   },
 };
 

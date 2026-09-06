@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -23,6 +23,12 @@ import { toast } from 'sonner';
 import { LinkedInProfile } from './types';
 import { EnrollmentPreviewModal } from './EnrollmentPreviewModal';
 import { checkProfilesCompat } from '@/lib/sequenceCompatibility';
+import {
+  findRecentEnrollments,
+  formatRecentContactLabel,
+  RECENT_CONTACT_WINDOW_DAYS,
+  type RecentEnrollment,
+} from '@/lib/enrollmentDuplicates';
 import { useOrganization } from '@/hooks/useOrganization';
 
 interface SequenceEnrollModalProps {
@@ -61,7 +67,11 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [results, setResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
   const [excludeIncompatible, setExcludeIncompatible] = useState(true);
-  const { organizationId } = useOrganization();
+  // Anti-doublon organisation (90 jours) : null = pas encore vérifié.
+  const [recentEnrollments, setRecentEnrollments] = useState<Map<string, RecentEnrollment> | null>(null);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [enrollDuplicatesAnyway, setEnrollDuplicatesAnyway] = useState(false);
+  const { organizationId, isAdmin } = useOrganization();
 
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -81,11 +91,50 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     () => checkProfilesCompat(profiles, sequence.steps),
     [profiles, sequence.steps],
   );
-  const profilesToEnroll = useMemo(
+  const compatibleProfiles = useMemo(
     () => excludeIncompatible
       ? compat.compatible.map(c => c.profile as LinkedInProfile)
       : profiles,
     [compat.compatible, profiles, excludeIncompatible],
+  );
+
+  // Pré-contrôle organisation : candidats déjà contactés par un membre dans
+  // les 90 derniers jours (toute séquence, tout compte). Chargé à l'ouverture
+  // pour afficher l'avertissement avant le clic ; handleEnroll refait la
+  // vérification si elle n'a pas abouti.
+  const profilesKey = useMemo(() => profiles.map(p => p.id).join('|'), [profiles]);
+  useEffect(() => {
+    if (!isOpen || hasMessageSteps || !organizationId) return;
+    let cancelled = false;
+    setRecentEnrollments(null);
+    setEnrollDuplicatesAnyway(false);
+    setIsCheckingDuplicates(true);
+    findRecentEnrollments(supabase, organizationId, profiles)
+      .then(map => { if (!cancelled) setRecentEnrollments(map); })
+      .catch(err => {
+        console.warn('[SequenceEnrollModal] recent enrollments check failed:', err);
+        if (!cancelled) {
+          toast.warning('Vérification des contacts récents impossible', {
+            description: 'Les candidats déjà contactés ne seront pas signalés.',
+          });
+          setRecentEnrollments(new Map());
+        }
+      })
+      .finally(() => { if (!cancelled) setIsCheckingDuplicates(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, hasMessageSteps, organizationId, profilesKey]);
+
+  const duplicateProfiles = useMemo(
+    () => (recentEnrollments ? compatibleProfiles.filter(p => recentEnrollments.has(p.id)) : []),
+    [compatibleProfiles, recentEnrollments],
+  );
+  const allowDuplicates = isAdmin && enrollDuplicatesAnyway;
+  const profilesToEnroll = useMemo(
+    () => (allowDuplicates || !recentEnrollments)
+      ? compatibleProfiles
+      : compatibleProfiles.filter(p => !recentEnrollments.has(p.id)),
+    [compatibleProfiles, recentEnrollments, allowDuplicates],
   );
 
   if (hasMessageSteps) {
@@ -132,11 +181,23 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
       // Source des profils à enrôler : on respecte le toggle "exclure les
       // incompatibles" pour éviter les échecs silencieux (1st degree +
-      // connection_request, etc.).
-      const enrollSet = profilesToEnroll;
+      // connection_request, etc.), puis l'anti-doublon organisation
+      // (90 jours) sauf dérogation cochée par un propriétaire ou admin.
+      let recent = recentEnrollments;
+      if (!recent) {
+        recent = await findRecentEnrollments(supabase, organizationId, profiles);
+        setRecentEnrollments(recent);
+      }
+      const enrollSet = allowDuplicates
+        ? compatibleProfiles
+        : compatibleProfiles.filter(p => !recent.has(p.id));
 
       if (enrollSet.length === 0) {
-        toast.error('Aucun profil compatible avec cette séquence');
+        toast.error(
+          compatibleProfiles.length === 0
+            ? 'Aucun profil compatible avec cette séquence'
+            : 'Tous les candidats ont déjà été contactés récemment par votre organisation',
+        );
         setIsEnrolling(false);
         return;
       }
@@ -382,6 +443,61 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                       Exclure les profils incompatibles ({compat.blockers.length + compat.warnings.length})
                     </span>
                   </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Anti-doublon organisation : contactés dans les 90 derniers jours
+              par un membre, toute séquence et tout compte. Exclus par défaut ;
+              dérogation réservée aux propriétaires et administrateurs. */}
+          {isCheckingDuplicates && (
+            <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Vérification des contacts récents de l'organisation
+            </p>
+          )}
+          {duplicateProfiles.length > 0 && recentEnrollments && (
+            <div className="p-3 border border-warning/40 bg-warning/5 rounded-md space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <p className="text-xs font-semibold text-warning">
+                    {duplicateProfiles.length} candidat(s) déjà contacté(s) par votre organisation ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours
+                  </p>
+                  <ul className="text-[11px] text-muted-foreground space-y-1 max-h-24 overflow-y-auto">
+                    {duplicateProfiles.slice(0, 5).map(p => {
+                      const entry = recentEnrollments.get(p.id);
+                      return (
+                        <li key={p.id} className="truncate">
+                          <span className="font-medium text-foreground">{p.name}</span>
+                          {' : '}{entry ? formatRecentContactLabel(entry) : 'Déjà contacté'}
+                        </li>
+                      );
+                    })}
+                    {duplicateProfiles.length > 5 && (
+                      <li className="italic">
+                        et {duplicateProfiles.length - 5} autre(s)
+                      </li>
+                    )}
+                  </ul>
+                  {isAdmin ? (
+                    <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={enrollDuplicatesAnyway}
+                        onChange={(e) => setEnrollDuplicatesAnyway(e.target.checked)}
+                        className="h-3 w-3 rounded border-border"
+                      />
+                      <span className="text-foreground">
+                        Inscrire quand même ({duplicateProfiles.length})
+                      </span>
+                    </label>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      Exclus de l'inscription. Seuls les propriétaires et administrateurs peuvent les inscrire quand même.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

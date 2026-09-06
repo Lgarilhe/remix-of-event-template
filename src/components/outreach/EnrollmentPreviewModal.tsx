@@ -29,6 +29,12 @@ import { HistoryPopover } from './enrollment-preview/HistoryPopover';
 import { DynamicSummaryBanner } from './enrollment-preview/DynamicSummaryBanner';
 import { CandidateStatesMap, CandidateState } from './enrollment-preview/types';
 import { useOrganization } from '@/hooks/useOrganization';
+import {
+  findRecentEnrollments,
+  formatRecentContactLabel,
+  RECENT_CONTACT_WINDOW_DAYS,
+  type RecentEnrollment,
+} from '@/lib/enrollmentDuplicates';
 
 // ── Types ──
 
@@ -145,7 +151,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   job,
   onSuccess,
 }) => {
-  const { organizationId } = useOrganization();
+  const { organizationId, isAdmin } = useOrganization();
   const steps = useMemo(() => mapSteps(sequence.steps), [sequence.steps]);
   const isSingle = profiles.length === 1;
   const isBulk = profiles.length > 10;
@@ -235,12 +241,50 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     });
   }, [getCandidateState]);
 
-  // Active profiles (not removed, not skipped)
+  // ── Anti-doublon organisation (90 jours) ──
+  // Candidats déjà contactés par un membre (toute séquence, tout compte) :
+  // signalés et exclus de l'inscription, sauf dérogation cochée par un
+  // propriétaire ou administrateur. null = vérification pas encore aboutie.
+  const [recentEnrollments, setRecentEnrollments] = useState<Map<string, RecentEnrollment> | null>(null);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [enrollDuplicatesAnyway, setEnrollDuplicatesAnyway] = useState(false);
+  const profilesKey = useMemo(() => profiles.map(p => p.id).join('|'), [profiles]);
+  useEffect(() => {
+    if (!isOpen || !organizationId) return;
+    let cancelled = false;
+    setRecentEnrollments(null);
+    setEnrollDuplicatesAnyway(false);
+    setIsCheckingDuplicates(true);
+    findRecentEnrollments(supabase, organizationId, profiles)
+      .then(map => { if (!cancelled) setRecentEnrollments(map); })
+      .catch(err => {
+        console.warn('[EnrollmentPreviewModal] recent enrollments check failed:', err);
+        if (!cancelled) {
+          toast.warning('Vérification des contacts récents impossible', {
+            description: 'Les candidats déjà contactés ne seront pas signalés.',
+          });
+          setRecentEnrollments(new Map());
+        }
+      })
+      .finally(() => { if (!cancelled) setIsCheckingDuplicates(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, organizationId, profilesKey]);
+
+  const allowDuplicates = isAdmin && enrollDuplicatesAnyway;
+  const duplicateProfiles = useMemo(() =>
+    recentEnrollments
+      ? profiles.filter(p => recentEnrollments.has(p.id) && !getCandidateState(p.id).removed)
+      : [],
+    [profiles, recentEnrollments, getCandidateState]);
+
+  // Active profiles (not removed, not skipped, not recently contacted unless override)
   const activeProfiles = useMemo(() =>
     profiles.filter(p => {
       const s = getCandidateState(p.id);
-      return !s.removed && !s.skipped;
-    }), [profiles, getCandidateState, candidateStates]);
+      if (s.removed || s.skipped) return false;
+      return allowDuplicates || !recentEnrollments?.has(p.id);
+    }), [profiles, getCandidateState, candidateStates, recentEnrollments, allowDuplicates]);
 
   useEffect(() => {
     if (!candidateIds.length) {
@@ -366,7 +410,27 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         ? job.id.slice('project:'.length)
         : job?.id;
 
-      for (const profile of activeProfiles) {
+      // Anti-doublon organisation : si la vérification à l'ouverture n'a pas
+      // abouti, on la refait ici avant tout INSERT. Les candidats contactés
+      // dans les 90 derniers jours sont exclus sauf dérogation (owner/admin).
+      let recent = recentEnrollments;
+      if (!recent) {
+        recent = await findRecentEnrollments(supabase, organizationId, profiles);
+        setRecentEnrollments(recent);
+      }
+      const enrollSet = allowDuplicates
+        ? activeProfiles
+        : activeProfiles.filter(p => !recent.has(p.id));
+      if (enrollSet.length === 0) {
+        toast.error(
+          activeProfiles.length === 0
+            ? 'Aucun candidat à inscrire'
+            : 'Tous les candidats ont déjà été contactés récemment par votre organisation',
+        );
+        return;
+      }
+
+      for (const profile of enrollSet) {
         try {
           // Pré-check pour info uniquement. La race fenêtre entre SELECT et
           // INSERT est gérée plus bas via UPSERT + ignoreDuplicates (la
@@ -641,6 +705,57 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           estimatedCredits={estimatedCredits}
           hasAiSteps={hasAiSteps}
         />
+      )}
+
+      {/* Anti-doublon organisation : contactés dans les 90 derniers jours par
+          un membre, toute séquence et tout compte. Exclus par défaut ;
+          dérogation réservée aux propriétaires et administrateurs. */}
+      {!enrollResults && isCheckingDuplicates && (
+        <div className="px-4 sm:px-6 py-1.5 border-b border-border bg-muted/10 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Vérification des contacts récents de l'organisation
+        </div>
+      )}
+      {!enrollResults && recentEnrollments && duplicateProfiles.length > 0 && (
+        <div className="px-4 sm:px-6 py-2.5 border-b border-warning/40 bg-warning/5 shrink-0">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <p className="text-[12px] font-semibold text-warning">
+                {duplicateProfiles.length} candidat{duplicateProfiles.length > 1 ? 's' : ''} déjà contacté{duplicateProfiles.length > 1 ? 's' : ''} par votre organisation ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours
+              </p>
+              <ul className="text-[11px] text-muted-foreground space-y-0.5 max-h-20 overflow-y-auto">
+                {duplicateProfiles.slice(0, 5).map(p => {
+                  const entry = recentEnrollments.get(p.id);
+                  return (
+                    <li key={p.id} className="truncate">
+                      <span className="font-medium text-foreground">{p.name}</span>
+                      {' : '}{entry ? formatRecentContactLabel(entry) : 'Déjà contacté'}
+                    </li>
+                  );
+                })}
+                {duplicateProfiles.length > 5 && (
+                  <li className="italic">et {duplicateProfiles.length - 5} autre{duplicateProfiles.length - 5 > 1 ? 's' : ''}</li>
+                )}
+              </ul>
+              {isAdmin ? (
+                <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={enrollDuplicatesAnyway}
+                    onChange={(e) => setEnrollDuplicatesAnyway(e.target.checked)}
+                    className="h-3 w-3 rounded border-border"
+                  />
+                  <span className="text-foreground">Inscrire quand même ({duplicateProfiles.length})</span>
+                </label>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Exclus de l'inscription. Seuls les propriétaires et administrateurs peuvent les inscrire quand même.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Body */}

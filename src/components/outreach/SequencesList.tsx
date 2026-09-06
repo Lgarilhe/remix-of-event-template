@@ -368,7 +368,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         // Reactivate paused enrollments
         const { data: pausedEnrollments } = await supabase
           .from('sequence_enrollments')
-          .update({ status: 'active' })
+          .update({ status: 'active', pause_reason: null })
           .eq('sequence_id', sequenceId)
           .eq('status', 'paused')
           .select('id, current_step_order');
@@ -399,7 +399,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         // Pause active enrollments
         await supabase
           .from('sequence_enrollments')
-          .update({ status: 'paused' })
+          .update({ status: 'paused', pause_reason: 'manual' })
           .eq('sequence_id', sequenceId)
           .eq('status', 'active');
       }

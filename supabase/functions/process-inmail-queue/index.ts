@@ -1,6 +1,9 @@
 ﻿// Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
-import { enforceLinkedInAction, recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
+import {
+  enforceLinkedInAction, recordUsageSignal, parseUsagePct,
+  isWithinBusinessHours, nextBusinessHoursStart, ACCOUNT_DISCONNECTED_PAUSE_REASON,
+} from "../_shared/linkedin-quotas.ts";
 import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
 
 const corsHeaders = {
@@ -43,29 +46,8 @@ interface InMailQueueItem {
   network_distance: number | null; // 1=1st degree, 2=2nd degree, 3=3rd degree
 }
 
-// Check if current time is within business hours for the given timezone.
-// Conformité LinkedIn (warning #260513-007211) : les plages horaires sont
-// configurables par user via member_quotas (cf. migration 20260513220000).
-// Defaults : 8h-19h (compatible avec l'ancien comportement).
-function isWithinBusinessHours(timezone: string, startHour = 8, endHour = 19): boolean {
-  try {
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      hour: "numeric",
-      hour12: false,
-    });
-    const hour = parseInt(formatter.format(now), 10);
-
-    return hour >= startHour && hour < endHour;
-  } catch (e) {
-    console.error("Error checking business hours:", e);
-    // Default to Paris timezone if invalid
-    const now = new Date();
-    const parisHour = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" })).getHours();
-    return parisHour >= startHour && parisHour < endHour;
-  }
-}
+// Heures ouvrées : isWithinBusinessHours / nextBusinessHoursStart du module
+// partagé linkedin-quotas.ts (lundi-vendredi, plages par user via member_quotas).
 
 // Get a random delay between 1-2 minutes in milliseconds
 function getRandomDelay(): number {
@@ -74,42 +56,6 @@ function getRandomDelay(): number {
   const minMs = minMinutes * 60 * 1000;
   const maxMs = maxMinutes * 60 * 1000;
   return Math.floor(Math.random() * (maxMs - minMs) + minMs);
-}
-
-// Calculate next scheduled time with human-like variation
-function calculateNextScheduledTime(timezone: string, startHour = 8, endHour = 19): Date {
-  const now = new Date();
-  const delay = getRandomDelay();
-  let nextTime = new Date(now.getTime() + delay);
-
-  // Check if next time is still within business hours
-  try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      hour: "numeric",
-      hour12: false,
-    });
-    const nextHour = parseInt(formatter.format(nextTime), 10);
-
-    // If outside business hours, schedule for next day at startHour + random offset
-    if (nextHour >= endHour || nextHour < startHour) {
-      // Get tomorrow at startHour in the user's timezone
-      const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + (nextHour >= endHour ? 1 : 0));
-
-      // Add random offset between 0-30 minutes after startHour
-      const randomOffset = Math.floor(Math.random() * 30 * 60 * 1000);
-
-      // Convert to target timezone's startHour
-      const targetDate = new Date(tomorrow.toLocaleString("en-US", { timeZone: timezone }));
-      targetDate.setHours(startHour, 0, 0, 0);
-      nextTime = new Date(targetDate.getTime() + randomOffset);
-    }
-  } catch (e) {
-    console.error("Error calculating next scheduled time:", e);
-  }
-
-  return nextTime;
 }
 
 // Load per-user quotas from member_quotas. Used to enforce business hours
@@ -478,11 +424,11 @@ Deno.serve(async (req: Request) => {
         const itemQuotas = await getQuotasFor(item.created_by);
         const itemTz = item.user_timezone || itemQuotas.timezone;
         if (!isWithinBusinessHours(itemTz, itemQuotas.startHour, itemQuotas.endHour)) {
-          // Reschedule for next business hours
-          const nextScheduled = calculateNextScheduledTime(itemTz, itemQuotas.startHour, itemQuotas.endHour);
+          // Prochain créneau ouvré (week-end exclu, jitter 0-45 min), helper partagé
+          const nextScheduled = nextBusinessHoursStart(itemTz, itemQuotas.startHour, itemQuotas.endHour);
           await supabase
             .from("inmail_queue")
-            .update({ scheduled_at: nextScheduled.toISOString() })
+            .update({ scheduled_at: nextScheduled })
             .eq("id", item.id);
 
           results.push({ id: item.id, success: false, error: "Outside business hours, rescheduled" });
@@ -501,16 +447,24 @@ Deno.serve(async (req: Request) => {
             .maybeSingle();
           const status = acctRow?.account_status;
           if (status && status !== 'OK') {
-            console.warn(`[process-inmail-queue] account ${item.account_id} status=${status} — rescheduling +1h`);
+            // CREDENTIALS / ERROR = compte déconnecté (lot P0-D) : même raison
+            // de pause que les inscriptions aux séquences. inmail_queue n'a ni
+            // statut 'paused' (contrainte CHECK) ni colonne pause_reason :
+            // l'item reste 'scheduled' avec la raison lisible et repart de
+            // lui-même au cycle qui suit la reconnexion.
+            const disconnected = status === 'CREDENTIALS' || status === 'ERROR';
+            console.warn(`[process-inmail-queue] account ${item.account_id} status=${status}: ${disconnected ? ACCOUNT_DISCONNECTED_PAUSE_REASON : 'rescheduling +1h'}`);
             await supabase
               .from('inmail_queue')
               .update({
                 status: 'scheduled',
                 scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-                error_message: `Compte LinkedIn non disponible (statut: ${status})`,
+                error_message: disconnected
+                  ? 'Compte LinkedIn déconnecté : envoi en pause, reprise automatique après reconnexion'
+                  : `Compte LinkedIn non disponible (statut: ${status})`,
               })
               .eq('id', item.id);
-            results.push({ id: item.id, success: false, error: `account status: ${status}` });
+            results.push({ id: item.id, success: false, error: disconnected ? ACCOUNT_DISCONNECTED_PAUSE_REASON : `account status: ${status}` });
             continue;
           }
         } catch (statusErr) {

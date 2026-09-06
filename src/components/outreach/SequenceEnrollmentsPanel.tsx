@@ -93,6 +93,8 @@ interface Enrollment {
   created_at: string;
   replied_at: string | null;
   connection_status: string | null;
+  /** account_disconnected | quota_reached | subscription_required | manual. NULL hors pause. */
+  pause_reason?: string | null;
   executions?: StepExecution[];
 }
 
@@ -135,6 +137,15 @@ const statusConfig: Record<string, { label: string; icon: React.ReactNode; class
     className: 'bg-success text-success-foreground border border-success'
   },
 };
+
+// Libellé d'une inscription en pause selon sequence_enrollments.pause_reason.
+const PAUSE_REASON_LABELS: Record<string, string> = {
+  account_disconnected: 'En pause (compte déconnecté)',
+  quota_reached: 'En pause (limite atteinte)',
+  subscription_required: 'En pause (abonnement requis)',
+};
+const pausedLabel = (reason: string | null | undefined): string =>
+  PAUSE_REASON_LABELS[reason || ''] || 'En pause';
 
 // Actions to hide from UI (internal/noise)
 const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event']);
@@ -285,7 +296,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       // Update enrollment status
       const { error: enrollError } = await supabase
         .from('sequence_enrollments')
-        .update({ status: 'paused' })
+        .update({ status: 'paused', pause_reason: 'manual' })
         .eq('id', enrollmentId);
 
       if (enrollError) throw enrollError;
@@ -311,7 +322,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     try {
       const { error } = await supabase
         .from('sequence_enrollments')
-        .update({ status: 'active' })
+        .update({ status: 'active', pause_reason: null })
         .eq('id', enrollmentId);
 
       if (error) throw error;
@@ -359,7 +370,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       
       const { error: enrollError } = await supabase
         .from('sequence_enrollments')
-        .update({ status: 'paused' })
+        .update({ status: 'paused', pause_reason: 'manual' })
         .in('id', ids);
 
       if (enrollError) throw enrollError;
@@ -389,6 +400,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         .from('sequence_enrollments')
         .update({
           status: 'active',
+          pause_reason: null,
           replied_at: null,
           updated_at: new Date().toISOString(),
         })
@@ -701,7 +713,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                   <Badge className={`text-xs rounded-full ${status.className}`}>
                                     {status.icon}
-                                    <span className="ml-1">{status.label}</span>
+                                    <span className="ml-1">
+                                      {enrollment.status === 'paused' ? pausedLabel(enrollment.pause_reason) : status.label}
+                                    </span>
                                   </Badge>
                                   {(() => {
                                     // Find next scheduled or last executed action

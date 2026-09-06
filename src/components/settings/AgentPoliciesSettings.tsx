@@ -142,9 +142,10 @@ export function AgentPoliciesSettings() {
             <Sunrise className="w-4 h-4 text-muted-foreground shrink-0" />
             <div className="min-w-0">
               <div className="text-[13px] font-medium">Digest matinal</div>
-              <div className="text-[11px] text-muted-foreground truncate">
-                Chaque matin, le copilot résume missions actives, relances dues, entretiens du jour
-                et actions en attente dans une conversation.
+              <div className="text-[11px] text-muted-foreground">
+                Chaque matin de semaine, le copilot résume vos missions actives, les entretiens des
+                prochaines 24 h et les actions IA en attente d'approbation dans une conversation, et
+                envoie ce digest par email au propriétaire de l'organisation (ou à un administrateur).
               </div>
             </div>
           </div>

@@ -156,7 +156,7 @@ const SkalrLanding = () => {
 
   const faqs = [
     { question: 'Comment ça marche ?', answer: "Connectez votre compte LinkedIn via notre intégration sécurisée, configurez vos filtres de recherche, et laissez Konekt trouver, scorer et contacter les meilleurs profils pour vous." },
-    { question: 'Mon compte LinkedIn est-il en sécurité ?', answer: "Absolument. Nous utilisons des connexions sécurisées et respectons les limites de LinkedIn. Vos identifiants sont chiffrés et ne sont jamais stockés en clair." },
+    { question: 'Mon compte LinkedIn est-il protégé ?', answer: "Oui. Konekt n'agit que pendant vos heures ouvrées, dans votre fuseau horaire, et espace chaque action comme le ferait une personne. Les volumes quotidiens et hebdomadaires sont plafonnés, un compte nouvellement connecté monte en charge progressivement, et l'activité se met en pause d'elle-même dès qu'une limite approche ou que LinkedIn envoie un signal. Un même profil n'est pas sollicité deux fois par votre organisation sans avertissement, et vos identifiants ne sont jamais stockés en clair." },
     { question: "Combien de messages puis-je envoyer ?", answer: "Cela dépend de votre abonnement LinkedIn et de votre plan Konekt. Nous optimisons automatiquement le volume et les horaires d'envoi." },
     { question: "C'est gratuit ?", answer: "Konekt propose un essai gratuit pour découvrir la plateforme. Nos plans sont ensuite adaptés à la taille de votre équipe." },
   ];

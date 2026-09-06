@@ -2,7 +2,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 import { interpolateAndStrip, buildSequenceContext } from "../_shared/template-interpolation.ts";
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
-import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from "../_shared/linkedin-quotas.ts";
+import {
+  enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType,
+  ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON,
+} from "../_shared/linkedin-quotas.ts";
 import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
 
 // No wildcard CORS — this function is called by cron (service role) and frontend (authenticated users)
@@ -17,7 +20,6 @@ const ENV_UNIPILE_DSN_RAW = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?
 const ENV_UNIPILE_DSN = `https://${ENV_UNIPILE_DSN_RAW}`;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const NOTION_API_KEY = Deno.env.get('NOTION_API_KEY');
-const WEEKLY_INVITE_LIMIT = 100;
 
 // Statuts d'exécution non terminaux : une étape dans un de ces états est
 // « en cours » et ne doit pas être re-planifiée.
@@ -968,6 +970,34 @@ async function handleProcess(supabase: any, force = false) {
             .maybeSingle();
 
           if (accountStatus && accountStatus.account_status !== 'OK') {
+            if (accountStatus.account_status === 'CREDENTIALS' || accountStatus.account_status === 'ERROR') {
+              // Compte déconnecté (lot P0-D) : pause explicite de l'inscription
+              // (pause_reason = account_disconnected) au lieu d'une
+              // reprogrammation horaire sans fin ; le webhook account_connected
+              // la remet en 'active'. L'exécution est annulée avec sa raison
+              // (même pattern que le gate d'abonnement et l'arrêt manuel) :
+              // laissée 'scheduled', elle serait sautée « Enrollment inactive »
+              // au cycle suivant, statut terminal, étape perdue. Le webhook la
+              // re-planifie à la reconnexion.
+              const pauseNowIso = new Date().toISOString();
+              // La pause est posée avant l'annulation : si elle échoue (colonne
+              // absente, erreur transitoire), on retombe sur la reprogrammation
+              // horaire ci-dessous au lieu de laisser une inscription active
+              // sans exécution.
+              const { error: pauseErr } = await supabase.from('sequence_enrollments').update({
+                status: 'paused', pause_reason: ACCOUNT_DISCONNECTED_PAUSE_REASON, updated_at: pauseNowIso,
+              }).eq('id', enrollment.id);
+              if (pauseErr) {
+                console.warn(`[process] Pause enrollment ${enrollment.id} failed, fallback to hourly reschedule:`, pauseErr.message);
+              } else {
+                await supabase.from('sequence_step_executions').update({
+                  status: 'cancelled', skip_reason: ACCOUNT_DISCONNECTED_SKIP_REASON, updated_at: pauseNowIso,
+                }).eq('id', exec.id);
+                console.warn(`[process] Account ${effectiveAccountId} status is '${accountStatus.account_status}': enrollment ${enrollment.id} paused (${ACCOUNT_DISCONNECTED_PAUSE_REASON})`);
+                results.skipped++;
+                continue;
+              }
+            }
             console.warn(`[process] ⛔ Account ${effectiveAccountId} status is '${accountStatus.account_status}' — skipping execution`);
             await supabase.from('sequence_step_executions').update({
               status: 'scheduled',

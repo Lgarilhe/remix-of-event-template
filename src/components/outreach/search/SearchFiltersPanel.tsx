@@ -59,8 +59,9 @@ interface SearchFiltersPanelProps {
   searchSource?: 'linkedin' | 'database';
   onSearchSourceChange?: (source: 'linkedin' | 'database') => void;
   
-  // Quota
-  quota: {
+  // Quota (obsolète : QuotaDisplay lit désormais les compteurs serveur du
+  // compte sélectionné ; conservé pour l'appelant LinkedInSearch)
+  quota?: {
     quotas: {
       searchResultsFetched: number;
       profileVisits: number;
@@ -104,7 +105,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   activeProject,
   searchSource,
   onSearchSourceChange,
-  quota,
   onSearch,
   onClearFilters,
   searchHistory = [],
@@ -201,15 +201,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       <div className="rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] p-2.5 space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-[10px] font-semibold text-[var(--k-text-muted)] uppercase tracking-[0.06em]">Compte</label>
-          <QuotaDisplay
-            searchResultsFetched={quota.quotas.searchResultsFetched}
-            profileVisits={quota.quotas.profileVisits}
-            messagesSent={quota.quotas.messagesSent}
-            invitationsSent={quota.quotas.invitationsSent}
-            inmailsSent={quota.quotas.inmailsSent}
-            apiMode={quota.apiMode}
-            compact={true}
-          />
+          <QuotaDisplay accountId={selectedAccount} compact={true} />
         </div>
 
         <div className="flex items-center gap-2">

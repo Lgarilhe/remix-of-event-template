@@ -10,7 +10,7 @@
 // toute nouvelle action LinkedIn visible DOIT passer par ces checks.
 // ============================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check';
+import type { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check';
 type SupabaseClient = ReturnType<typeof createClient>;
 
 export interface UserQuotaConfig {
@@ -37,43 +37,99 @@ export const DEFAULT_USER_QUOTAS: UserQuotaConfig = {
 };
 
 // ============================================================================
-// WARM-UP MODE — reprise douce après réinstauration d'un compte LinkedIn suspendu
+// MONTÉE EN CHARGE PAR COMPTE (lot P0-D, docs/p0-plan-2026-09-06.md, section 2)
 // ============================================================================
-// Le(s) compte(s) sortent d'une suspension (#260513-007211). Pendant la phase de
-// reprise on plafonne TOUTES les actions bien en dessous des caps normaux, puis
-// on remonte par paliers une fois le compte confirmé stable. Le clamp se fait par
-// Math.min → il ne RELÈVE jamais un cap déjà plus bas (quotas custom users safe).
-// Le mode expire AUTOMATIQUEMENT le 2026-06-16 (audit 2026-06-10 : le flag
-// hard-codé sans garde-fou risquait de rester actif indéfiniment — sourcing
-// à capacité réduite). Pour prolonger la reprise douce : repousser la date.
-export const WARMUP_UNTIL = Date.parse('2026-06-16T00:00:00+02:00');
-export const WARMUP_MODE = Date.now() < WARMUP_UNTIL;
-export const WARMUP_CAPS = {
-  max_actions_per_day: 20,         // actions visibles/j (normal : 80)
-  max_profile_visits_per_day: 40,  // vues de profil/j (normal : 100)
-  max_searches_per_day: 50,        // recherches/j (normal : 100)
-  max_inmails_per_day: 15,         // InMails/j (normal : 40)
-  weekly_invite_limit: 30,         // invitations/semaine (normal : 100)
-};
+// Un compte LinkedIn nouvellement rattaché n'a droit qu'à une part de ses
+// plafonds : 25 % la première semaine depuis linked_at, 50 % la deuxième,
+// 75 % la troisième, 100 % ensuite. Même table que linkedin_ramp_factor(...)
+// côté SQL (migration 20260906193347) : comptes rattachés avant la mise en
+// prod (2026-09-14, pivot avec marge) ou sans linked_at = matures ; la première
+// action journalisée compte aussi (un compte dissocié puis rattaché garde son ancienneté). Une reconnexion ne remet pas
+// linked_at à zéro (upsert sans toucher la colonne), donc pas de retour au palier 1.
 
-/** Clamp warm-up : applique les caps de reprise par Math.min (pure, ne mute pas). */
-function applyWarmupCaps(q: UserQuotaConfig): UserQuotaConfig {
-  if (!WARMUP_MODE) return q;
-  return {
-    ...q,
-    max_actions_per_day: Math.min(q.max_actions_per_day, WARMUP_CAPS.max_actions_per_day),
-    max_profile_visits_per_day: Math.min(q.max_profile_visits_per_day, WARMUP_CAPS.max_profile_visits_per_day),
-    max_searches_per_day: Math.min(q.max_searches_per_day, WARMUP_CAPS.max_searches_per_day),
-    max_inmails_per_day: Math.min(q.max_inmails_per_day, WARMUP_CAPS.max_inmails_per_day),
-  };
+/** Comptes rattachés avant cet instant : matures (borne identique au SQL). */
+export const RAMP_MATURITY_CUTOFF_MS = Date.parse('2026-09-14T00:00:00Z');
+
+const DAY_MS = 24 * 3600 * 1000;
+
+/** Paliers (borne haute exclusive en jours depuis linked_at, part des plafonds). */
+export const RAMP_STAGES: ReadonlyArray<{ maxDays: number; factor: number }> = [
+  { maxDays: 7, factor: 0.25 },
+  { maxDays: 14, factor: 0.5 },
+  { maxDays: 21, factor: 0.75 },
+];
+
+/**
+ * Part des plafonds applicable à un compte selon l'ancienneté de son
+ * rattachement. Pure : `now` est injectable pour les tests.
+ */
+export function linkedInRampFactor(
+  linkedAt: string | Date | null | undefined,
+  now: number = Date.now(),
+): number {
+  if (!linkedAt) return 1;
+  const linkedMs = linkedAt instanceof Date ? linkedAt.getTime() : Date.parse(linkedAt);
+  if (!Number.isFinite(linkedMs)) return 1;
+  if (linkedMs < RAMP_MATURITY_CUTOFF_MS) return 1;
+  const ageMs = now - linkedMs;
+  for (const stage of RAMP_STAGES) {
+    if (ageMs < stage.maxDays * DAY_MS) return stage.factor;
+  }
+  return 1;
+}
+
+/** Plafond effectif après palier : Math.ceil(cap × facteur), jamais 0 pour un cap > 0. */
+export function rampCap(cap: number, factor: number): number {
+  return Math.ceil(cap * factor);
+}
+
+/**
+ * Facteur de montée en charge du compte, lu dans member_linkedin_accounts.
+ * Compte inconnu ou lecture en erreur : 1 (même repli que le SQL sur NULL).
+ */
+async function getAccountRampFactor(admin: SupabaseClient, accountId: string): Promise<number> {
+  try {
+    const { data, error } = await admin
+      .from('member_linkedin_accounts')
+      .select('linked_at')
+      .eq('linkedin_account_id', accountId)
+      .order('linked_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.warn('[linkedin-quotas] linked_at read failed, ramp factor 1:', error.message);
+      return 1;
+    }
+    const linkedAt = (data as { linked_at?: string | null } | null)?.linked_at ?? null;
+    // Ancienneté réelle : la première action journalisée si elle précède linked_at
+    // (compte dissocié puis rattaché). Même règle que get_linkedin_quota_status.
+    const { data: firstAction } = await admin
+      .from('linkedin_action_log')
+      .select('created_at')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const firstActionAt = (firstAction as { created_at?: string | null } | null)?.created_at ?? null;
+    const anchor = [linkedAt, firstActionAt].filter((v): v is string => !!v).sort()[0] ?? null;
+    return linkedInRampFactor(anchor);
+  } catch (e) {
+    console.warn('[linkedin-quotas] linked_at read failed, ramp factor 1:', e);
+    return 1;
+  }
 }
 
 /**
  * Weekly invitation ceiling. LinkedIn's hard limit is ~200/week (Unipile docs);
- * we stay deliberately conservative at 100 (ou la valeur warm-up en reprise).
- * Shared so every send path agrees.
+ * we stay deliberately conservative at 100 (réduit par le palier de montée en
+ * charge du compte). Shared so every send path agrees.
  */
-export const WEEKLY_INVITE_LIMIT = WARMUP_MODE ? WARMUP_CAPS.weekly_invite_limit : 100;
+export const WEEKLY_INVITE_LIMIT = 100;
+
+/** Raison de pause posée sur sequence_enrollments.pause_reason quand le compte LinkedIn est déconnecté. */
+export const ACCOUNT_DISCONNECTED_PAUSE_REASON = 'account_disconnected';
+/** Raison posée sur l'exécution annulée à la mise en pause ; le webhook la re-planifie à la reconnexion. */
+export const ACCOUNT_DISCONNECTED_SKIP_REASON = 'Compte LinkedIn déconnecté, reprise automatique à la reconnexion';
 
 /** Provider `usage` percentage at which we proactively pause the account. */
 export const USAGE_PAUSE_THRESHOLD = 90;
@@ -224,10 +280,14 @@ export async function getUserQuotas(
       .from('member_quotas')
       .select('business_hours_start, business_hours_end, max_actions_per_day, timezone, max_profile_visits_per_day, max_searches_per_day, max_inmails_per_day')
       .eq('user_id', userId)
+      // Libre-service : un membre de plusieurs organisations peut avoir plusieurs
+      // lignes ; on prend la plus récente au lieu d'échouer sur maybeSingle.
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (!data) return DEFAULT_USER_QUOTAS;
     const row = data as Record<string, unknown>;
-    return applyWarmupCaps({
+    return {
       business_hours_start: row.business_hours_start as number ?? DEFAULT_USER_QUOTAS.business_hours_start,
       business_hours_end: row.business_hours_end as number ?? DEFAULT_USER_QUOTAS.business_hours_end,
       max_actions_per_day: row.max_actions_per_day as number ?? DEFAULT_USER_QUOTAS.max_actions_per_day,
@@ -235,57 +295,10 @@ export async function getUserQuotas(
       max_profile_visits_per_day: row.max_profile_visits_per_day as number ?? DEFAULT_USER_QUOTAS.max_profile_visits_per_day,
       max_searches_per_day: row.max_searches_per_day as number ?? DEFAULT_USER_QUOTAS.max_searches_per_day,
       max_inmails_per_day: row.max_inmails_per_day as number ?? DEFAULT_USER_QUOTAS.max_inmails_per_day,
-    });
+    };
   } catch {
-    return applyWarmupCaps(DEFAULT_USER_QUOTAS);
+    return DEFAULT_USER_QUOTAS;
   }
-}
-
-/**
- * Count today's "visible" LinkedIn actions issued by this user — across both
- * sequence steps (sequence_step_executions where status='sent') AND
- * standalone tool executions (agent_tool_executions where tool_name in the
- * VISIBLE_TOOL_NAMES list and status='executed').
- *
- * Approximative by design : the sequence counter is per-account_id; the tool
- * counter is per-user_id. We sum both — risk is a slight over-count if the
- * user has multiple LinkedIn accounts (favourable for safety).
- */
-export const VISIBLE_AGENT_TOOL_NAMES = ['send_linkedin_message'] as const;
-
-export async function countActionsToday(
-  admin: SupabaseClient,
-  userId: string,
-  accountId: string | null,
-): Promise<number> {
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
-  const dayStartIso = dayStart.toISOString();
-
-  // 1. Sequence step executions for this account (if known)
-  let sequenceCount = 0;
-  if (accountId) {
-    const { data } = await admin
-      .from('sequence_step_executions')
-      .select('id, step:sequence_steps!inner(action_type), enrollment:sequence_enrollments!inner(account_id)')
-      .eq('status', 'sent')
-      .eq('enrollment.account_id', accountId)
-      .in('step.action_type', ['message', 'smart_message', 'inmail', 'connection_request'])
-      .gte('executed_at', dayStartIso);
-    sequenceCount = (data?.length as number) || 0;
-  }
-
-  // 2. Standalone tool executions for this user
-  const { data: toolData } = await admin
-    .from('agent_tool_executions')
-    .select('id')
-    .eq('user_id', userId)
-    .in('tool_name', VISIBLE_AGENT_TOOL_NAMES as unknown as string[])
-    .eq('status', 'executed')
-    .gte('executed_at', dayStartIso);
-  const toolCount = (toolData?.length as number) || 0;
-
-  return sequenceCount + toolCount;
 }
 
 export interface QuotaCheckResult {
@@ -299,6 +312,8 @@ export interface QuotaCheckResult {
   in_business_hours: boolean;
   /** User's configured timezone */
   timezone: string;
+  /** Part des plafonds applicable au compte (montée en charge), 1 = mature */
+  ramp_factor?: number;
 }
 
 /**
@@ -346,6 +361,7 @@ export async function checkLinkedInQuota(
     max_per_day: quotas.max_actions_per_day,
     in_business_hours: true,
     timezone: quotas.timezone,
+    ramp_factor: res.ramp_factor,
   };
 }
 
@@ -380,6 +396,8 @@ export interface EnforceResult {
   count?: number;
   /** True when within the soft-warning band (≥75% of the headline cap) — for UI nudges. */
   softWarn?: boolean;
+  /** Part des plafonds appliquée au compte (montée en charge) : 0.25 / 0.5 / 0.75 / 1. */
+  ramp_factor?: number;
 }
 
 /** Interpret Y-M-D H:M as wall-clock time in `tz`, return the UTC epoch ms. */
@@ -468,19 +486,22 @@ export async function enforceLinkedInAction(
   if (!accountId) {
     // No account to key the ledger on — nothing to enforce (the caller will
     // fail downstream without an account anyway).
-    return { allowed: true, count: 0 };
+    return { allowed: true, count: 0, ramp_factor: 1 };
   }
 
   const quotas = opts.quotas ?? await getUserQuotas(admin, opts.userId ?? null);
-  const factor = manual ? 0.95 : 1;
-  const clamp = (n: number) => Math.max(1, Math.floor(n * factor));
+  // Montée en charge du compte (25 / 50 / 75 / 100 %) appliquée à chaque
+  // plafond par Math.ceil, puis marge de 5 % en mode manuel.
+  const rampFactor = await getAccountRampFactor(admin, accountId);
+  const manualFactor = manual ? 0.95 : 1;
+  const clamp = (n: number) => Math.max(1, Math.floor(rampCap(n, rampFactor) * manualFactor));
 
   const daySince = startOfLocalDayUtc(quotas.timezone);
   const weekSince = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 
-  let headlineCap = quotas.max_actions_per_day;
-  if (actionType === 'profile_view') headlineCap = quotas.max_profile_visits_per_day;
-  else if (actionType === 'search') headlineCap = quotas.max_searches_per_day;
+  let headlineCap = rampCap(quotas.max_actions_per_day, rampFactor);
+  if (actionType === 'profile_view') headlineCap = rampCap(quotas.max_profile_visits_per_day, rampFactor);
+  else if (actionType === 'search') headlineCap = rampCap(quotas.max_searches_per_day, rampFactor);
 
   try {
     const { data, error } = await admin.rpc('check_linkedin_action_quota', {
@@ -502,18 +523,18 @@ export async function enforceLinkedInAction(
     if (error) {
       console.error('[linkedin-quotas] check_linkedin_action_quota RPC error:', error.message);
       return manual
-        ? { allowed: true, scope: 'rpc_error', count: 0 }
-        : { allowed: false, scope: 'rpc_error', reason: 'Contrôle de quota indisponible. Action différée.' };
+        ? { allowed: true, scope: 'rpc_error', count: 0, ramp_factor: rampFactor }
+        : { allowed: false, scope: 'rpc_error', reason: 'Contrôle de quota indisponible. Action différée.', ramp_factor: rampFactor };
     }
 
     const result = (data ?? {}) as { allowed?: boolean; reason?: string; scope?: string; count?: number };
     const count = typeof result.count === 'number' ? result.count : 0;
     const softWarn = result.allowed === true && headlineCap > 0 && (count + 1) >= Math.floor(headlineCap * 0.75);
-    return { allowed: result.allowed === true, reason: result.reason, scope: result.scope, count, softWarn };
+    return { allowed: result.allowed === true, reason: result.reason, scope: result.scope, count, softWarn, ramp_factor: rampFactor };
   } catch (e) {
     console.error('[linkedin-quotas] enforceLinkedInAction failed:', e);
     return manual
-      ? { allowed: true, scope: 'exception', count: 0 }
-      : { allowed: false, scope: 'exception', reason: 'Contrôle de quota en erreur. Action différée.' };
+      ? { allowed: true, scope: 'exception', count: 0, ramp_factor: rampFactor }
+      : { allowed: false, scope: 'exception', reason: 'Contrôle de quota en erreur. Action différée.', ramp_factor: rampFactor };
   }
 }

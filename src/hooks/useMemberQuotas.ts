@@ -20,11 +20,13 @@ export interface MemberQuota {
   updated_at: string;
 }
 
+// Alignés sur les défauts serveur (_shared/linkedin-quotas.ts et RPC
+// get_linkedin_quota_status) : 80 actions visibles, 100 visites, 100 recherches, 40 InMails.
 export const DEFAULT_QUOTAS = {
-  max_inmails_per_day: 50,
+  max_inmails_per_day: 40,
   max_messages_per_day: 100,
   max_searches_per_day: 100,
-  max_profile_visits_per_day: 200,
+  max_profile_visits_per_day: 100,
   business_hours_start: 8,
   business_hours_end: 19,
   max_actions_per_day: 80,

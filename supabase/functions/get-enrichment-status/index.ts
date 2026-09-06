@@ -4,8 +4,16 @@
  * Workflow :
  *   1. Auth + org check
  *   2. GET Better Contact /api/v2/async/{request_id}
- *   3. Si status='terminated' → UPDATE candidate_enrichments avec contact_data + retour
+ *   3. Si status='terminated' → UPDATE candidate_enrichments avec contact_data,
+ *      incrément du compteur mensuel (statistiques), débit de crédits seulement
+ *      si la ligne n'est pas couverte par le forfait (included = false), puis retour
  *   4. Si encore en cours → return status='pending'
+ *
+ * Corps : { request_id, candidate_id? } — si candidate_id (identifiant d'un
+ * candidat du pipeline) est fourni et qu'un contact est trouvé, le résultat est
+ * gardé sur la fiche pipeline (candidate_contacts, source 'enriched').
+ *
+ * Réponse : `included` = demande couverte par le forfait (aucun crédit débité).
  *
  * Frontend appelle ce endpoint toutes les 5s tant que status='pending'.
  *
@@ -63,13 +71,47 @@ function extractContactFromBcResult(bcData: any): {
   };
 }
 
+/**
+ * Garde le résultat sur la fiche pipeline : candidate_contacts, une ligne par
+ * (organisation, candidat). Seuls les champs trouvés sont écrits : un email ou
+ * un téléphone saisi à la main pour l'autre champ n'est pas effacé.
+ */
+async function saveCandidateContact(
+  client: ReturnType<typeof createClient>,
+  input: { organizationId: string; candidateId: string; userId: string; email: string | null; phone: string | null },
+): Promise<void> {
+  if (!input.email && !input.phone) return;
+  // Une fiche saisie à la main garde son étiquette « Saisi » quand un seul
+  // champ est enrichi ; « Enrichi » seulement si la ligne est neuve ou déjà enrichie.
+  const { data: existing } = await client
+    .from("candidate_contacts")
+    .select("source")
+    .eq("organization_id", input.organizationId)
+    .eq("candidate_id", input.candidateId)
+    .maybeSingle();
+  const source = !existing || !existing.source || String(existing.source).startsWith("enriched") ? "enriched" : existing.source;
+  const { error } = await client
+    .from("candidate_contacts")
+    .upsert({
+      organization_id: input.organizationId,
+      candidate_id: input.candidateId,
+      source,
+      updated_by: input.userId,
+      ...(input.email ? { email: input.email } : {}),
+      ...(input.phone ? { phone: input.phone } : {}),
+    }, { onConflict: "organization_id,candidate_id" });
+  if (error) {
+    console.warn("[get-enrichment-status] candidate_contacts upsert failed:", error.message);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     // ── Auth ──
     const auth = await requireAuth(req, corsHeaders);
-    if (!auth.userId) return auth.response!;
+    if (!auth.userId) return json({ success: false, error: "Authentification utilisateur requise" }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceClient = createClient(
@@ -79,6 +121,9 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const requestId = body.request_id || body.id;
+    // Identifiant pipeline optionnel (job_candidate_status.candidate_id, texte)
+    const candidateIdRaw = typeof body.candidate_id === "string" ? body.candidate_id.trim() : "";
+    const candidateId = candidateIdRaw.length > 0 && candidateIdRaw.length <= 200 ? candidateIdRaw : null;
 
     if (!requestId) {
       return json({ success: false, error: "request_id requis" }, 400);
@@ -93,7 +138,7 @@ Deno.serve(async (req) => {
         p_window_seconds: 60,
       });
       if (rlAllowed === false) {
-        return json({ success: false, error: "Trop de requêtes." }, 429);
+        return json({ success: false, error: "Trop de requêtes.", error_code: "RATE_LIMITED" }, 429);
       }
     } catch { /* RPC indispo, on laisse passer */ }
 
@@ -119,7 +164,7 @@ Deno.serve(async (req) => {
       console.warn(`[get-enrichment-status] Row introuvable pour request_id=${requestId} — refus pour sécurité multi-tenant`);
       return json({
         success: false,
-        error: "Demande d'enrichment introuvable. La table candidate_enrichments est-elle bien créée ?",
+        error: "Demande d'enrichissement introuvable",
         error_code: "ENRICHMENT_NOT_FOUND",
       }, 404);
     }
@@ -138,9 +183,19 @@ Deno.serve(async (req) => {
 
       // ── Si déjà terminé en DB, retour direct (pas besoin de re-call BC) ──
       if (cached.status === "terminated") {
+        if (candidateId) {
+          await saveCandidateContact(serviceClient, {
+            organizationId: cached.organization_id,
+            candidateId,
+            userId: auth.userId,
+            email: cached.contact_email || null,
+            phone: cached.contact_phone || null,
+          });
+        }
         return json({
           success: true,
           status: "terminated",
+          included: cached.included === true,
           contact: {
             email: cached.contact_email,
             email_status: cached.contact_email_status,
@@ -223,6 +278,8 @@ Deno.serve(async (req) => {
       completed_at: new Date().toISOString(),
     };
 
+    const isIncluded = cached?.included === true;
+
     if (cached?.id) {
       // Update la row existante
       const { error: updateError } = await serviceClient
@@ -236,6 +293,7 @@ Deno.serve(async (req) => {
 
       // ── SETTLE CREDITS Konekt ──
       // Débite uniquement si :
+      //  - la demande n'est pas couverte par le forfait (included = false)
       //  - on n'a pas déjà settle pour cette row (credits_consumed était 0 avant)
       //  - BC a réellement trouvé email ou phone (sinon BC ne facture rien non plus)
       // L'idempotence est garantie par : on settle UNE FOIS par transition pending→terminated.
@@ -245,43 +303,56 @@ Deno.serve(async (req) => {
         const ownerUserId = cached.requested_by_user_id || auth.userId;
         let creditsUsed = 0;
 
-        if (contact.email) {
-          settleCredits(serviceClient, {
-            organizationId: cached.organization_id,
-            userId: ownerUserId,
-            aiAction: "enrich_contact_email",
-            modelId: "claude-haiku-4-5", // dummy, floor=1 utilisé car tokens=0
-            tokensInput: 0,
-            tokensOutput: 0,
-            description: `Email enrichi via cascade — ${cached.linkedin_url}`,
-          }).catch(e => console.warn("[get-enrichment-status] settle email failed:", e));
-          creditsUsed += 1;
-        }
-        if (contact.phone) {
-          settleCredits(serviceClient, {
-            organizationId: cached.organization_id,
-            userId: ownerUserId,
-            aiAction: "enrich_contact_phone",
-            modelId: "claude-haiku-4-5",
-            tokensInput: 0,
-            tokensOutput: 0,
-            description: `Téléphone enrichi via cascade — ${cached.linkedin_url}`,
-          }).catch(e => console.warn("[get-enrichment-status] settle phone failed:", e));
-          creditsUsed += 10;
+        if (!isIncluded) {
+          if (contact.email) {
+            await settleCredits(serviceClient, {
+              organizationId: cached.organization_id,
+              userId: ownerUserId,
+              aiAction: "enrich_contact_email",
+              modelId: "claude-haiku-4-5", // dummy, floor=1 utilisé car tokens=0
+              tokensInput: 0,
+              tokensOutput: 0,
+              description: `Contact enrichi (email) : ${cached.linkedin_url}`,
+            });
+            creditsUsed += 1;
+          }
+          if (contact.phone) {
+            await settleCredits(serviceClient, {
+              organizationId: cached.organization_id,
+              userId: ownerUserId,
+              aiAction: "enrich_contact_phone",
+              modelId: "claude-haiku-4-5",
+              tokensInput: 0,
+              tokensOutput: 0,
+              description: `Contact enrichi (téléphone) : ${cached.linkedin_url}`,
+            });
+            creditsUsed += 10;
+          }
         }
 
-        // Increment quota mensuel utilisateur (atomique via RPC)
-        if (creditsUsed > 0) {
-          serviceClient.rpc("increment_enrichment_quota", {
+        // Compteur mensuel par membre (statistiques, y compris sous forfait),
+        // incrémenté AVANT de renvoyer le contact (atomique via RPC).
+        if (contact.email || contact.phone) {
+          const { error: quotaError } = await serviceClient.rpc("increment_enrichment_quota", {
             p_user_id: ownerUserId,
             p_org_id: cached.organization_id,
             p_emails: contact.email ? 1 : 0,
             p_phones: contact.phone ? 1 : 0,
             p_credits: creditsUsed,
-          }).then(({ error }) => {
-            if (error) console.warn("[get-enrichment-status] quota increment failed:", error.message);
           });
+          if (quotaError) console.warn("[get-enrichment-status] quota increment failed:", quotaError.message);
         }
+      }
+
+      // Fiche pipeline : garder le contact trouvé
+      if (candidateId && cached.organization_id) {
+        await saveCandidateContact(serviceClient, {
+          organizationId: cached.organization_id,
+          candidateId,
+          userId: auth.userId,
+          email: contact.email,
+          phone: contact.phone,
+        });
       }
     } else {
       // Pas de row → on n'écrit pas en DB ni settle (dégradé, pas de cache).
@@ -291,6 +362,7 @@ Deno.serve(async (req) => {
     return json({
       success: true,
       status: "terminated",
+      included: isIncluded,
       contact: {
         email: contact.email,
         email_status: contact.email_status,
@@ -302,6 +374,7 @@ Deno.serve(async (req) => {
       credits_consumed: contact.credits_consumed,
     });
   } catch (err) {
+    if (err instanceof Response) return err;
     console.error("[get-enrichment-status] Error:", err);
     return json({ success: false, error: "Erreur serveur" }, 500);
   }

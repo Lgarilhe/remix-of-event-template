@@ -4,9 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ExternalLink, Loader2, RefreshCw, Unlink, KeyRound, AlertTriangle, ChevronDown, ChevronUp, Info, CheckCircle2 } from 'lucide-react';
+import { ExternalLink, Loader2, RefreshCw, Unlink, KeyRound, AlertTriangle, ChevronDown, ChevronUp, Info, CheckCircle2, Gauge, CirclePause } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
+import { useLinkedInQuotaStatus, rampStageLabel } from '@/hooks/useLinkedInQuotaStatus';
 import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
@@ -502,6 +504,9 @@ export const MyLinkedInAccount = () => {
       </CardContent>
     </Card>
 
+    {/* Plafonds du jour : compteurs serveur du compte rattaché */}
+    {myMapping && <LinkedInQuotaCard accountId={myMapping.linkedin_account_id} />}
+
     {/* Plages horaires & cap journalier — conformité LinkedIn warning #260513-007211 */}
     <LinkedInSafetySettings />
   </div>
@@ -833,5 +838,132 @@ function ReconnectForm({
         )}
       </div>
     </form>
+  );
+}
+
+/** Heure locale HH:MM dans le fuseau du compte (repli : fuseau du navigateur). */
+function formatHourMinute(iso: string, timeZone: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone });
+  } catch {
+    return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+}
+
+/** Vrai si la date ISO tombe un autre jour civil qu'aujourd'hui, dans le fuseau donné. */
+function isAnotherDay(iso: string, timeZone: string): boolean {
+  try {
+    const opts: Intl.DateTimeFormatOptions = { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' };
+    return new Date(iso).toLocaleDateString('fr-FR', opts) !== new Date().toLocaleDateString('fr-FR', opts);
+  } catch {
+    return false;
+  }
+}
+
+function QuotaRow({ label, used, cap }: { label: string; used: number; cap: number }) {
+  const percent = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
+  const isWarning = percent >= 80;
+  const isCritical = percent >= 95;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={cn(
+          'font-medium tabular-nums',
+          isCritical ? 'text-destructive' : isWarning ? 'text-warning' : 'text-foreground',
+        )}>
+          {used} / {cap}
+        </span>
+      </div>
+      <Progress
+        value={percent}
+        className={cn(
+          'h-1.5',
+          isCritical ? '[&>div]:bg-destructive' : isWarning ? '[&>div]:bg-warning' : '[&>div]:bg-linkedin',
+        )}
+      />
+    </div>
+  );
+}
+
+/**
+ * Carte « Plafonds du jour » : compteurs serveur (RPC get_linkedin_quota_status)
+ * du compte LinkedIn rattaché, plafonds effectifs après palier de montée en
+ * charge, pause en cours, compte déconnecté.
+ */
+function LinkedInQuotaCard({ accountId }: { accountId: string }) {
+  const { data: status, isLoading } = useLinkedInQuotaStatus(accountId);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-4 flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+          Chargement des plafonds…
+        </CardContent>
+      </Card>
+    );
+  }
+  // Erreur ou compte non rattaché à un membre : rien à afficher.
+  if (!status) return null;
+
+  const accountStatus = (status.account_status || '').toUpperCase();
+  const disconnected = accountStatus === 'CREDENTIALS' || accountStatus === 'ERROR';
+  const paused = !!status.paused_until && new Date(status.paused_until).getTime() > Date.now();
+  const pad = (h: number) => String(h).padStart(2, '0');
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Gauge className="w-5 h-5 text-primary" aria-hidden="true" />
+          Plafonds du jour
+          <Badge variant="secondary" className="ml-auto text-xs font-normal">
+            {rampStageLabel(status.ramp_stage)}
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {disconnected && (
+          <div className="flex items-start gap-2 p-2.5 bg-destructive/5 border border-destructive/40 rounded text-xs">
+            <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-foreground">
+              <span className="font-medium">Compte déconnecté, reconnectez-le.</span>{' '}
+              <span className="text-muted-foreground">
+                Les séquences qui utilisent ce compte sont en pause et reprendront automatiquement après reconnexion.
+              </span>
+            </p>
+          </div>
+        )}
+
+        {paused && status.paused_until && (
+          <div className="flex items-start gap-2 p-2.5 bg-warning/5 border border-warning/30 rounded text-xs">
+            <CirclePause className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-foreground">
+              <span className="font-medium">
+                Pause en cours jusqu'à {isAnotherDay(status.paused_until, status.timezone) ? 'demain ' : ''}
+                {formatHourMinute(status.paused_until, status.timezone)}.
+              </span>{' '}
+              <span className="text-muted-foreground">
+                Une limite a été approchée ou signalée par LinkedIn : les actions reprendront d'elles-mêmes.
+              </span>
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-2.5">
+          <QuotaRow label="Actions visibles" used={status.today.visible_actions} cap={status.caps.visible_actions} />
+          <QuotaRow label="Visites de profils" used={status.today.profile_views} cap={status.caps.profile_views} />
+          <QuotaRow label="Recherches" used={status.today.searches} cap={status.caps.searches} />
+          <QuotaRow label="InMails" used={status.today.inmails} cap={status.caps.inmails} />
+          <QuotaRow label="Invitations sur 7 jours" used={status.week.invitations} cap={status.caps.weekly_invitations} />
+        </div>
+
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Heures ouvrées : {pad(status.business_hours.start)}:00 à {pad(status.business_hours.end)}:00 ({status.timezone}),
+          du lundi au vendredi. Compteurs du jour remis à zéro à {formatHourMinute(status.day_resets_at, status.timezone)}.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

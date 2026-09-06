@@ -11,6 +11,11 @@
 //   - actions IA en attente d'approbation
 // Texte DÉTERMINISTE (aucun appel LLM : zéro coût, zéro hallucination).
 // Idempotent : une seule conversation digest par org et par jour.
+//
+// P0-D : le même contenu part aussi par email au destinataire (owner, sinon
+// premier admin) via send-transactional-email (template 'daily-digest',
+// idempotencyKey par org et par jour), et une notification type 'digest'
+// est insérée pour lui. Un échec d'envoi est loggé, jamais bloquant.
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
@@ -21,11 +26,28 @@ const corsHeaders = {
 };
 
 const MAX_ORGS_PER_RUN = 50;
+const APP_URL = (Deno.env.get("APP_URL") || "https://konekt-app-navy.vercel.app").replace(/\/+$/, "");
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 const frDate = (d: Date) =>
   d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Paris" });
+// « JJ/MM » pour le titre de la notification
+const frShortDate = (d: Date) =>
+  d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" });
+// « AAAA-MM-JJ » (heure de Paris) pour la clé d'idempotence de l'email
+const parisIsoDate = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
 const frTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
+
+interface DigestMission { label: string; client?: string; found: number; messaged: number; shortlisted: number }
+interface DigestInterview { time: string; candidateName: string; jobTitle?: string; eventName?: string }
+interface DigestAction { summary: string }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -45,8 +67,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceRoleKey);
-  const today = frDate(new Date());
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const runDate = new Date();
+  const today = frDate(runDate);
+  const todayShort = frShortDate(runDate);
+  const todayIso = parisIsoDate(runDate);
   const digestTitle = `Digest du ${today}`;
 
   // ===== Orgs opt-in =====
@@ -62,7 +88,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const results: Array<{ org: string; status: string }> = [];
+  const results: Array<{ org: string; status: string; email?: string }> = [];
 
   for (const { organization_id: orgId } of (optIns ?? []) as Array<{ organization_id: string }>) {
     try {
@@ -91,7 +117,7 @@ Deno.serve(async (req) => {
       // ── Données du digest (requêtes parallèles, toutes fail-soft) ──
       const now = new Date();
       const in24h = new Date(now.getTime() + 24 * 3600_000);
-      const [missionsRes, interviewsRes, pendingRes] = await Promise.all([
+      const [missionsRes, interviewsRes, pendingRes, orgRes] = await Promise.all([
         supabase
           .from("sourcing_projects")
           .select("id, name, job_title, client_name, stats_total_found, stats_messaged, stats_shortlisted")
@@ -117,11 +143,22 @@ Deno.serve(async (req) => {
           .gte("proposed_at", new Date(now.getTime() - 7 * 864e5).toISOString())
           .order("proposed_at", { ascending: false })
           .limit(10),
+        supabase
+          .from("organizations")
+          .select("name")
+          .eq("id", orgId)
+          .maybeSingle(),
       ]);
 
       const missions = (missionsRes.data ?? []) as Array<Record<string, unknown>>;
       const interviews = (interviewsRes.data ?? []) as Array<Record<string, unknown>>;
       const pending = (pendingRes.data ?? []) as Array<Record<string, unknown>>;
+      const organizationName = ((orgRes.data as { name?: string } | null)?.name || "").trim();
+
+      // Même contenu, structuré pour le template email 'daily-digest'
+      const emailMissions: DigestMission[] = [];
+      const emailInterviews: DigestInterview[] = [];
+      const emailActions: DigestAction[] = [];
 
       // ── Rédaction déterministe ──
       const lines: string[] = [`☀️ **${digestTitle}**`, ""];
@@ -137,6 +174,7 @@ Deno.serve(async (req) => {
           const messaged = Number(m.stats_messaged) || 0;
           const shortlisted = Number(m.stats_shortlisted) || 0;
           lines.push(`- **${label}**${client} : ${found} sourcés, ${messaged} contactés, ${shortlisted} shortlistés`);
+          emailMissions.push({ label, client: (m.client_name as string) || undefined, found, messaged, shortlisted });
         }
         if (missions.length > 5) lines.push(`- … et ${missions.length - 5} autre(s)`);
       }
@@ -148,6 +186,12 @@ Deno.serve(async (req) => {
       } else {
         for (const it of interviews) {
           lines.push(`- ${frTime(String(it.event_start_at))} — **${it.candidate_name || "?"}**${it.job_title ? ` (${it.job_title})` : ""}${it.event_name ? ` · ${it.event_name}` : ""}`);
+          emailInterviews.push({
+            time: frTime(String(it.event_start_at)),
+            candidateName: (it.candidate_name as string) || "Candidat",
+            jobTitle: (it.job_title as string) || undefined,
+            eventName: (it.event_name as string) || undefined,
+          });
         }
       }
       lines.push("");
@@ -159,6 +203,7 @@ Deno.serve(async (req) => {
         for (const p of pending.slice(0, 5)) {
           const summary = (p.dry_run_result as Record<string, unknown> | null)?.summary;
           lines.push(`- ${summary || p.tool_name}`);
+          emailActions.push({ summary: String(summary || p.tool_name || "Action à valider") });
         }
         if (pending.length > 5) lines.push(`- … et ${pending.length - 5} autre(s)`);
         lines.push("→ À valider dans Réglages → Actions de l'agent, ou depuis le chat.");
@@ -187,7 +232,75 @@ Deno.serve(async (req) => {
       });
       if (msgErr) throw new Error(msgErr.message);
 
-      results.push({ org: orgId, status: "sent" });
+      // ── Email au destinataire (owner, sinon admin) : fail-soft ──
+      // send-transactional-email accepte la service-role (Bearer + apikey), rend
+      // le template et met en file ; la clé d'idempotence est par org et par jour.
+      let emailStatus = "failed";
+      try {
+        const { data: userData, error: userErr } = await supabase.auth.admin.getUserById(recipient);
+        const recipientEmail: string | undefined = userData?.user?.email || undefined;
+        if (userErr || !recipientEmail) {
+          emailStatus = "no_email";
+          console.warn(`[agent-daily-digest] org ${orgId}: destinataire ${recipient} sans email`, userErr?.message ?? "");
+        } else {
+          const emailResponse = await fetchWithTimeout(`${supabaseUrl}/functions/v1/send-transactional-email`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${serviceRoleKey}`,
+              apikey: serviceRoleKey,
+            },
+            body: JSON.stringify({
+              templateName: "daily-digest",
+              recipientEmail,
+              idempotencyKey: `daily-digest-${orgId}-${todayIso}`,
+              templateData: {
+                dateLabel: today,
+                organizationName,
+                missions: emailMissions,
+                missionsTotal: missions.length,
+                interviews: emailInterviews,
+                actions: emailActions,
+                actionsTotal: pending.length,
+                appUrl: `${APP_URL}/dashboard`,
+                settingsUrl: `${APP_URL}/settings?tab=agent-actions`,
+              },
+            }),
+          });
+          const payload = await emailResponse.json().catch(() => null) as
+            { success?: boolean; reason?: string; error?: string; details?: string } | null;
+          if (!emailResponse.ok) {
+            emailStatus = "failed";
+            console.error(`[agent-daily-digest] org ${orgId}: email refusé (${emailResponse.status})`, payload?.error, payload?.details);
+          } else if (payload?.success) {
+            emailStatus = "queued";
+          } else {
+            emailStatus = payload?.reason || "not_sent";
+            console.warn(`[agent-daily-digest] org ${orgId}: email non envoyé (${emailStatus})`);
+          }
+        }
+      } catch (emailErr) {
+        emailStatus = "failed";
+        console.error(`[agent-daily-digest] org ${orgId}: envoi email échoué:`, emailErr);
+      }
+
+      // ── Notification cloche pour le destinataire (fail-soft) ──
+      const summaryBody =
+        `${plural(missions.length, "mission active", "missions actives")}, ` +
+        `${plural(interviews.length, "entretien", "entretiens")} dans les 24 h, ` +
+        `${plural(pending.length, "action IA en attente", "actions IA en attente")}.`;
+      const { error: notifErr } = await supabase.from("notifications").insert({
+        user_id: recipient,
+        organization_id: orgId,
+        type: "digest",
+        title: `Digest du ${todayShort}`,
+        body: summaryBody,
+        link: "/dashboard",
+        metadata: { source: "agent_daily_digest", conversation_id: conv.id, date: todayIso, email: emailStatus },
+      });
+      if (notifErr) console.warn(`[agent-daily-digest] org ${orgId}: notification non insérée:`, notifErr.message);
+
+      results.push({ org: orgId, status: "sent", email: emailStatus });
     } catch (e) {
       console.error(`[agent-daily-digest] org ${orgId} failed:`, e);
       results.push({ org: orgId, status: `error: ${e instanceof Error ? e.message : "unknown"}` });

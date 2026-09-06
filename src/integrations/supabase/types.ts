@@ -4134,7 +4134,7 @@ export type Database = {
         Row: {
           can_enrich_contacts: boolean
           created_at: string
-          enrichment_quota_monthly: number
+          enrichment_quota_monthly: number | null
           id: string
           organization_id: string
           role: string
@@ -4143,7 +4143,7 @@ export type Database = {
         Insert: {
           can_enrich_contacts?: boolean
           created_at?: string
-          enrichment_quota_monthly?: number
+          enrichment_quota_monthly?: number | null
           id?: string
           organization_id: string
           role?: string
@@ -4152,7 +4152,7 @@ export type Database = {
         Update: {
           can_enrich_contacts?: boolean
           created_at?: string
-          enrichment_quota_monthly?: number
+          enrichment_quota_monthly?: number | null
           id?: string
           organization_id?: string
           role?: string

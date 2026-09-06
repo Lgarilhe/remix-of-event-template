@@ -63,6 +63,14 @@ export const ManualContactsEditor: React.FC<Props> = ({
       .finally(() => setLoading(false));
   }, [open, candidateId, organizationId]);
 
+  // Origine des contacts, sans exposer la valeur brute de `source`
+  // ('manual' → Saisi, 'enriched*' → Enrichi, autre → rien).
+  const sourceLabel = contacts?.source === 'manual'
+    ? 'Saisi'
+    : contacts?.source?.startsWith('enriched')
+      ? 'Enrichi'
+      : null;
+
   const handleSave = async () => {
     if (!organizationId) {
       toast.error('Organisation non détectée');
@@ -196,7 +204,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
             {contacts?.updatedAt && (
               <p className="text-[10px] text-muted-foreground italic">
                 Dernière mise à jour : {new Date(contacts.updatedAt).toLocaleString('fr-FR')}
-                {contacts.source !== 'manual' && ` (source : ${contacts.source})`}
+                {sourceLabel && ` (${sourceLabel})`}
               </p>
             )}
 

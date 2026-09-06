@@ -6,7 +6,8 @@
 --      propriétaires et administrateurs (trigger de garde).
 --   2. Montée en charge par compte : linkedin_ramp_factor(linked_at) donne
 --      25 / 50 / 75 / 100 % des plafonds par semaine depuis le rattachement ;
---      les comptes rattachés avant le 2026-09-07 sont considérés matures. La
+--      les comptes rattachés avant le 2026-09-14 (pivot de mise en prod, avec
+--      marge) sont considérés matures. La
 --      même table est appliquée côté serveur dans _shared/linkedin-quotas.ts.
 --   3. get_linkedin_quota_status(account) : compteurs du jour et de la semaine
 --      lus dans linkedin_action_log (réservé au service role jusqu'ici),
@@ -46,8 +47,15 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  v_role := public.get_org_role(auth.uid(), NEW.organization_id);
+  -- Le rôle est jugé dans l'organisation d'origine de la ligne ; déplacer une
+  -- ligne vers une autre organisation exige d'en être administrateur aussi.
+  v_role := public.get_org_role(auth.uid(),
+    CASE WHEN TG_OP = 'UPDATE' THEN OLD.organization_id ELSE NEW.organization_id END);
   IF v_role IN ('owner', 'admin') THEN
+    IF TG_OP = 'UPDATE' AND NEW.organization_id IS DISTINCT FROM OLD.organization_id
+       AND coalesce(public.get_org_role(auth.uid(), NEW.organization_id), '') NOT IN ('owner', 'admin') THEN
+      RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+    END IF;
     RETURN NEW;
   END IF;
 
@@ -89,10 +97,11 @@ CREATE OR REPLACE FUNCTION public.linkedin_ramp_factor(p_linked_at timestamptz)
 RETURNS numeric
 LANGUAGE sql
 STABLE
+SET search_path = ''
 AS $$
   SELECT CASE
     WHEN p_linked_at IS NULL THEN 1.0
-    WHEN p_linked_at < timestamptz '2026-09-07 00:00:00+00' THEN 1.0
+    WHEN p_linked_at < timestamptz '2026-09-14 00:00:00+00' THEN 1.0
     WHEN now() - p_linked_at < interval '7 days' THEN 0.25
     WHEN now() - p_linked_at < interval '14 days' THEN 0.5
     WHEN now() - p_linked_at < interval '21 days' THEN 0.75
@@ -101,8 +110,9 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.linkedin_ramp_factor(timestamptz) IS
-  'Part des plafonds LinkedIn applicable selon l''ancienneté du rattachement : 25 % la première semaine, 50 % la deuxième, 75 % la troisième, 100 % ensuite. Comptes rattachés avant le 2026-09-07 : matures.';
+  'Part des plafonds LinkedIn applicable selon l''ancienneté du rattachement : 25 % la première semaine, 50 % la deuxième, 75 % la troisième, 100 % ensuite. Comptes rattachés avant le 2026-09-14 : matures. Même table dans _shared/linkedin-quotas.ts.';
 
+REVOKE EXECUTE ON FUNCTION public.linkedin_ramp_factor(timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.linkedin_ramp_factor(timestamptz) TO authenticated, service_role;
 
 -- ─── 3. État des plafonds d'un compte ───
@@ -139,7 +149,9 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  IF NOT v_is_service AND NOT public.is_org_member(auth.uid(), v_acc.organization_id) THEN
+  -- Sans JWT (rôle postgres, cron) : diagnostic autorisé ; anon est bloqué par le REVOKE.
+  IF auth.uid() IS NOT NULL AND NOT v_is_service
+     AND NOT public.is_org_member(auth.uid(), v_acc.organization_id) THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
 
@@ -148,8 +160,18 @@ BEGIN
   WHERE organization_id = v_acc.organization_id AND user_id = v_acc.user_id;
 
   v_tz := coalesce(v_q.timezone, 'Europe/Paris');
+  BEGIN
+    PERFORM now() AT TIME ZONE v_tz;
+  EXCEPTION WHEN invalid_parameter_value THEN
+    v_tz := 'Europe/Paris';
+  END;
   v_day_start := (date_trunc('day', now() AT TIME ZONE v_tz)) AT TIME ZONE v_tz;
-  v_factor := public.linkedin_ramp_factor(v_acc.linked_at);
+  -- Ancienneté réelle : la première action journalisée si elle précède linked_at
+  -- (compte dissocié puis rattaché). Même règle dans _shared/linkedin-quotas.ts.
+  v_factor := public.linkedin_ramp_factor(least(
+    v_acc.linked_at,
+    (SELECT min(created_at) FROM public.linkedin_action_log WHERE account_id = p_account_id)
+  ));
 
   v_cap_visible := ceil(coalesce(v_q.max_actions_per_day, 80) * v_factor);
   v_cap_visits := ceil(coalesce(v_q.max_profile_visits_per_day, 100) * v_factor);
@@ -158,7 +180,7 @@ BEGIN
   v_cap_invites_week := ceil(100 * v_factor);
 
   SELECT
-    count(*) FILTER (WHERE action_type IN ('connection_request', 'message', 'inmail', 'smart_message', 'endorse') AND created_at >= v_day_start),
+    count(*) FILTER (WHERE action_type IN ('connection_request', 'message', 'inmail', 'smart_message') AND created_at >= v_day_start),
     count(*) FILTER (WHERE action_type = 'profile_view' AND created_at >= v_day_start),
     count(*) FILTER (WHERE action_type = 'search' AND created_at >= v_day_start),
     count(*) FILTER (WHERE action_type = 'inmail' AND created_at >= v_day_start),
@@ -211,6 +233,7 @@ COMMENT ON COLUMN public.candidate_enrichments.included IS
   'Demande couverte par le forfait de contacts du plan (pas de débit de crédits).';
 
 ALTER TABLE public.organization_members
+  ALTER COLUMN enrichment_quota_monthly DROP NOT NULL,
   ALTER COLUMN enrichment_quota_monthly DROP DEFAULT;
 
 -- Le forfait est par organisation ; le plafond par membre n'est plus posé par défaut.
@@ -275,3 +298,11 @@ ALTER TABLE public.sequence_enrollments
 
 COMMENT ON COLUMN public.sequence_enrollments.pause_reason IS
   'Raison de la mise en pause : account_disconnected | quota_reached | subscription_required | manual. NULL hors pause.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sequence_enrollments_pause_reason_check') THEN
+    ALTER TABLE public.sequence_enrollments ADD CONSTRAINT sequence_enrollments_pause_reason_check
+      CHECK (pause_reason IS NULL OR pause_reason IN ('account_disconnected', 'quota_reached', 'subscription_required', 'manual'));
+  END IF;
+END $$;

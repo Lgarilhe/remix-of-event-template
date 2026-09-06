@@ -2,6 +2,7 @@
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
 import { resolveV2WebhookToken } from "../_shared/unipile-v2.ts";
+import { ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON } from "../_shared/linkedin-quotas.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,6 +72,59 @@ async function findEnrollmentsBySenderAccount<T extends { id: string }>(
   const merged = new Map<string, T>();
   for (const row of [...(byAccount.data ?? []), ...(bySender.data ?? [])]) merged.set(row.id, row);
   return { rows: [...merged.values()], error: null };
+}
+
+/**
+ * Reprise des inscriptions mises en pause par process-sequences quand ce
+ * compte était en CREDENTIALS / ERROR (pause_reason = account_disconnected) :
+ * l'inscription repasse 'active' (pause_reason NULL) et l'exécution annulée à
+ * la mise en pause est re-planifiée tout de suite (le processeur applique
+ * ensuite heures ouvrées et quotas). Compte d'enrôlement ou compte d'envoi en
+ * rotation. Non bloquant : le rattachement du compte ne dépend pas de ce pas.
+ */
+async function resumeEnrollmentsAfterReconnect(supabase: SupabaseClient, accountId: string | undefined) {
+  if (!accountId) return;
+  try {
+    const nowIso = new Date().toISOString();
+    const resumedIds = new Set<string>();
+    for (const column of ['account_id', 'assigned_sender_id'] as const) {
+      const { data, error } = await supabase
+        .from('sequence_enrollments')
+        .update({ status: 'active', pause_reason: null, updated_at: nowIso })
+        .eq(column, accountId)
+        .eq('status', 'paused')
+        .eq('pause_reason', ACCOUNT_DISCONNECTED_PAUSE_REASON)
+        .select('id');
+      if (error) {
+        console.warn(`[unipile-webhook] account_connected: resume by ${column} failed:`, error);
+        continue;
+      }
+      for (const row of (data ?? []) as Array<{ id: string }>) resumedIds.add(row.id);
+    }
+
+    for (const enrollmentId of resumedIds) {
+      const { data: cancelled } = await supabase
+        .from('sequence_step_executions')
+        .select('id')
+        .eq('enrollment_id', enrollmentId)
+        .eq('status', 'cancelled')
+        .eq('skip_reason', ACCOUNT_DISCONNECTED_SKIP_REASON)
+        .order('step_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!cancelled?.id) continue;
+      const { error: execError } = await supabase
+        .from('sequence_step_executions')
+        .update({ status: 'scheduled', skip_reason: null, scheduled_at: nowIso, updated_at: nowIso })
+        .eq('id', cancelled.id)
+        .eq('status', 'cancelled');
+      if (execError) console.warn(`[unipile-webhook] account_connected: execution ${cancelled.id} not rescheduled:`, execError);
+    }
+
+    console.log(`[unipile-webhook] account_connected: ${resumedIds.size} enrollment(s) resumed after reconnect of ${accountId}`);
+  } catch (e) {
+    console.warn('[unipile-webhook] account_connected: enrollment resume failed (non-blocking):', e);
+  }
 }
 
 // Resolve Unipile credentials for the org that owns the given Unipile account_id.
@@ -542,6 +596,10 @@ Deno.serve(async (req) => {
             console.warn('[unipile-webhook] Could not update account status (legacy flow):', e);
           }
         }
+
+        // Lot P0-D : les inscriptions mises en pause à la déconnexion de ce
+        // compte reprennent d'elles-mêmes (pause explicite, reprise automatique).
+        await resumeEnrollmentsAfterReconnect(supabase, payload.account_id);
         break;
       }
 
@@ -585,6 +643,11 @@ Deno.serve(async (req) => {
                 ...(normalizedStatus === 'OK' ? { failure_reason: null } : {}),
               })
               .eq('linkedin_account_id', accId);
+            // Reconnexion par cookie ou par statut : les inscriptions mises en
+            // pause pour compte déconnecté reprennent (idempotent).
+            if (normalizedStatus === 'OK') {
+              await resumeEnrollmentsAfterReconnect(supabase, accId);
+            }
             }
           }
         } catch (e) {

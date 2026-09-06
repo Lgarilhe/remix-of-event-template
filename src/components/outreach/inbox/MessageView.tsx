@@ -401,7 +401,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       // Pause toutes les inscriptions actives (cas rare où il y en aurait plusieurs)
       const { error: pauseErr } = await supabase
         .from('sequence_enrollments')
-        .update({ status: 'paused' })
+        .update({ status: 'paused', pause_reason: 'manual' })
         .in('id', ids);
       if (pauseErr) throw pauseErr;
       // Cancel les executions schedulées
