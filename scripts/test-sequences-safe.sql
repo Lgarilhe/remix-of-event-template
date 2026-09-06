@@ -3,7 +3,7 @@
 --
 -- Ce script crée des données de test SANS envoyer de vrais messages.
 -- Il utilise des steps EMAIL (pas LinkedIn) → l'envoi échouera proprement
--- car aucun MICROSOFT_GRAPH_TOKEN n'est configuré.
+-- car aucun compte email n'est connecté dans l'environnement de test.
 --
 -- Exécuter dans Supabase SQL Editor, puis appeler process-sequences.
 -- ============================================================================

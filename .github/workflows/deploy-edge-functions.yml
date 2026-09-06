@@ -26,7 +26,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45  # 77 functions × ~30s = ~40min worst case (full _shared change)
+    timeout-minutes: 45  # 73 functions × ~30s = ~37min worst case (full _shared change)
     steps:
       - name: Checkout
         uses: actions/checkout@v4

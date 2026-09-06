@@ -387,7 +387,19 @@ done
 ```
 
 Puis retirer les secrets `N8N_API_KEY`, `N8N_INSTANCE_URL`, `MICROSOFT_GRAPH_TOKEN`
-et `PDL_API_KEY`, que plus aucune fonction ne lit. Les tables sans lecteur ni
+et `PDL_API_KEY`, que plus aucune fonction ne lit.
+
+Relecture contradictoire du lot (trois lentilles, lecture seule), corrigée
+dans la foulée : plus de bouton « Retour » sur l'écran LinkedIn (il ramenait
+sur l'écran qui crée l'espace et bloquait le tunnel), entrée « Abonnement »
+de la palette réservée aux admins comme l'onglet, écran des tokens de
+l'extension Chrome remis dans « Mon compte » (l'extension y renvoie), pastille
+de notifications retirée du menu utilisateur tant qu'aucun écran ne les
+affiche, preset « Visio » reconnu par le calendrier, nom d'expéditeur des
+emails de séquence lu sur la bonne colonne de `profiles` (la requête
+précédente échouait en silence), script de déploiement pointant sur l'ancien
+projet supprimé, test unitaire des coûts IA réparé (les actions à coût fixe
+ont zéro token). Les tables sans lecteur ni
 écrivain (dont `event_registrations`, `jarvis_kb`, `jarvis_messages`, les six
 tables `airtable_*`) n'ont pas été supprimées : aucune migration destructive
 dans ce lot, décision à part si tu veux les retirer.

@@ -31,8 +31,9 @@ export function NavigationPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { toggleAgent } = useAgent();
-  const { orgType, isCollaborator } = useOrganization();
-  // Même règle que l'onglet Équipe des paramètres (freelance : pas de gestion d'équipe)
+  const { orgType, isCollaborator, isAdmin } = useOrganization();
+  // Mêmes règles que les onglets des paramètres : Équipe (freelance : pas de
+  // gestion d'équipe) et Facturation (admins et propriétaires seulement).
   const canManageTeam = !isCollaborator && hasFeature(orgType, 'team_management');
 
   // Ctrl+J / Cmd+J ouvre la palette
@@ -132,10 +133,12 @@ export function NavigationPalette() {
               Gérer l'équipe
             </CommandItem>
           )}
-          <CommandItem onSelect={() => go('/settings?tab=billing')}>
-            <CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />
-            Abonnement & facturation
-          </CommandItem>
+          {isAdmin && (
+            <CommandItem onSelect={() => go('/settings?tab=billing')}>
+              <CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />
+              Abonnement & facturation
+            </CommandItem>
+          )}
         </CommandGroup>
 
         <CommandGroup heading="Paramètres">

@@ -55,6 +55,9 @@ const Onboarding = () => {
   const [orgCreated, setOrgCreated] = useState(false);
   // F3 : verrou anti double clic sur la création silencieuse (flux freelance)
   const orgCreateInFlightRef = useRef(false);
+  // Id de l'espace créé dans CE tunnel. `orgCreated` ne convient pas comme
+  // garde : il passe à true dès l'entrée pour un collaborateur venu via `?new=1`.
+  const createdOrgIdRef = useRef<string | null>(null);
   const tunnelStartedRef = useRef(false);
   const [completedScenes, setCompletedScenes] = useState<Set<SceneKey>>(
     () => new Set(restored?.completed ?? [])
@@ -169,7 +172,7 @@ const Onboarding = () => {
       markCompleted('specializations');
       setDirection(1);
 
-      if (orgType === 'freelance' && orgDetailsData) {
+      if (orgType === 'freelance' && orgDetailsData && !createdOrgIdRef.current) {
         orgCreateInFlightRef.current = true;
         try {
           const { data: { user } } = await supabase.auth.getUser();
@@ -183,6 +186,7 @@ const Onboarding = () => {
             confirmSecond: isExplicitNewWorkspace,
           });
           if (org?.id) {
+            createdOrgIdRef.current = org.id;
             await supabase
               .from('organizations')
               .update({
@@ -216,6 +220,7 @@ const Onboarding = () => {
   const handleOrgCreated = useCallback(
     (data: OnboardingCompanyData) => {
       setOrgCreated(true);
+      if (data.orgId) createdOrgIdRef.current = data.orgId;
       markCompleted('org');
 
       // org_type pilote les droits (featureGates) : on le pose dès la création,
@@ -350,8 +355,9 @@ const Onboarding = () => {
             {currentScene === 'org' && (
               <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} allowSecondWorkspace={isExplicitNewWorkspace} />
             )}
+            {/* Pas de retour : la scène précédente crée l'espace de travail */}
             {currentScene === 'linkedin' && (
-              <SceneLinkedIn onNext={handleLinkedInNext} onBack={goBack} />
+              <SceneLinkedIn onNext={handleLinkedInNext} />
             )}
             {currentScene === 'launch' && (
               <SceneLaunch

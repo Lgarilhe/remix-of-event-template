@@ -11,7 +11,9 @@ import linkedinLogo from '@/assets/linkedin-logo.webp';
 
 interface Props {
   onNext: (linkedInConnected: boolean) => void;
-  onBack: () => void;
+  /** Absent quand la scène suit la création de l'espace : revenir en arrière
+   *  relancerait la création (espace en double ou tunnel bloqué). */
+  onBack?: () => void;
 }
 
 const LINKEDIN_BENEFITS = [
@@ -161,10 +163,12 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
       </motion.div>
 
       {/* Navigation */}
-      <div className="flex items-center justify-between pt-2">
-        <Button variant="ghost" onClick={onBack} className="gap-2 text-sm">
-          <ArrowLeft className="w-4 h-4" /> Retour
-        </Button>
+      <div className={`flex items-center pt-2 ${onBack ? 'justify-between' : 'justify-end'}`}>
+        {onBack && (
+          <Button variant="ghost" onClick={onBack} className="gap-2 text-sm">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </Button>
+        )}
         <div className="flex items-center gap-2">
           {!linkedInConnected && (
             <Button variant="ghost" onClick={() => onNext(false)} className="text-sm text-muted-foreground">

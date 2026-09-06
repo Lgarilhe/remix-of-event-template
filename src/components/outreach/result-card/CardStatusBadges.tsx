@@ -1,17 +1,14 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { MessageSquare, CheckCircle2, Star, Zap, Loader2, Target, Archive, Sparkles, GitBranch } from 'lucide-react';
+import { MessageSquare, CheckCircle2, Star, Zap, Target, Archive, Sparkles, GitBranch } from 'lucide-react';
 import notionLogo from '@/assets/notion-logo.webp';
 import { ProjectEnrollmentInfo } from '@/hooks/useProjectEnrollments';
 
 interface CardStatusBadgesProps {
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null } | null;
   profile: { open_to_work?: boolean; premium?: boolean };
-  airtableMatch?: { airtable_id: string; source_base: string; full_name: string | null; status: string | null; match_type?: 'url' | 'fuzzy' } | null;
   notionMatch?: { id: string; name: string } | null;
-  historyData?: any;
-  historyLoading?: boolean;
   /** Score IA pour ce candidat sur le job courant (si déjà scoré) */
   jobScore?: { match_score: number; recommendation?: string; scoringDepth?: 'quick' | 'deep' } | null;
   /** LinkedIn signal "Likely to respond" — affiché en badge "Réactif" si true */

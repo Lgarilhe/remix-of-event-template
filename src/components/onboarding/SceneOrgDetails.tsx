@@ -3,14 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
 
 export interface OrgDetailsData {
   teamSize: string;
-  specializations: string[];
-  discoverySource: string;
   freelanceMode?: string;
   tjm?: string;
   annualHires?: string;
@@ -37,32 +34,6 @@ const ANNUAL_HIRES = [
   { value: '40+', label: 'Plus de 40 recrutements' },
 ];
 
-const SPECIALIZATIONS = [
-  { value: 'tech', label: 'Tech / IT' },
-  { value: 'data', label: 'Data / IA / ML' },
-  { value: 'product', label: 'Product / Design' },
-  { value: 'finance', label: 'Finance / Compta' },
-  { value: 'sales', label: 'Sales / Business Dev' },
-  { value: 'marketing', label: 'Marketing / Com' },
-  { value: 'engineering', label: 'Ingénierie / Industrie' },
-  { value: 'health', label: 'Santé / Pharma / Biotech' },
-  { value: 'legal', label: 'Juridique / Compliance' },
-  { value: 'hr', label: 'RH / People' },
-  { value: 'executive', label: 'Executive / C-level' },
-  { value: 'supply-chain', label: 'Supply Chain / Logistique' },
-  { value: 'construction', label: 'BTP / Immobilier' },
-  { value: 'retail', label: 'Retail / E-commerce' },
-  { value: 'hospitality', label: 'Hôtellerie / Restauration' },
-  { value: 'education', label: 'Éducation / Formation' },
-  { value: 'public-sector', label: 'Secteur public / ESS' },
-  { value: 'media', label: 'Média / Édition / Créatif' },
-  { value: 'energy', label: 'Énergie / Environnement' },
-  { value: 'telecom', label: 'Télécom / Réseaux' },
-  { value: 'generalist', label: 'Généraliste' },
-  { value: 'other', label: 'Autre' },
-];
-
-
 const FREELANCE_MODES = [
   { value: 'rpo', label: 'RPO (embedded)' },
   { value: 'success', label: 'Au succès / Missions ponctuelles' },
@@ -76,17 +47,9 @@ const TJM_STEP = 50;
 export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) => {
   const isFreelance = orgType === 'freelance';
   const [teamSize, setTeamSize] = useState(isFreelance ? '1' : '');
-  const [specializations, setSpecializations] = useState<string[]>([]);
-  
   const [freelanceMode, setFreelanceMode] = useState('');
   const [tjm, setTjm] = useState<[number, number]>([400, 700]);
   const [annualHires, setAnnualHires] = useState('');
-
-  const toggleSpec = (value: string) => {
-    setSpecializations(prev =>
-      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
-    );
-  };
 
   const handleTjmMinChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const nextMin = Math.min(Number(event.target.value), tjm[1] - TJM_STEP);
@@ -102,8 +65,6 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
   const tjmEndPercent = ((tjm[1] - TJM_MIN) / (TJM_MAX - TJM_MIN)) * 100;
 
   const canSubmit = teamSize && (!isFreelance || freelanceMode);
-
-  
 
   return (
     <div className="w-full flex flex-col gap-5">
@@ -260,7 +221,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
           <ArrowLeft className="w-4 h-4" /> Retour
         </Button>
         <Button
-          onClick={() => canSubmit && onSubmit({ teamSize, specializations, discoverySource: '', freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined, annualHires: annualHires || undefined })}
+          onClick={() => canSubmit && onSubmit({ teamSize, freelanceMode: isFreelance ? freelanceMode : undefined, tjm: (freelanceMode === 'rpo' || freelanceMode === 'both') ? `${tjm[0]}-${tjm[1]}` : undefined, annualHires: annualHires || undefined })}
           disabled={!canSubmit}
           className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
         >

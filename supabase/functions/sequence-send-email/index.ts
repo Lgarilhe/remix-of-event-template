@@ -4,7 +4,7 @@
  * Sends an outreach email for a sequence step execution.
  * Called by process-sequences when it encounters an email step.
  * Handles: variable resolution, AI personalization, tracking pixel/link injection,
- * and sending via Microsoft Graph API or VPS MCP endpoint.
+ * and sending via the organisation's connected email account.
  */
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
@@ -445,17 +445,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3. Resolve sender info
-    let senderEmail = '';
+    // 3. Resolve sender display name (step.sender_id, else sequence creator).
+    // `profiles` is keyed by user_id and only carries display_name.
     let senderName = '';
-    // Try to get sender from step.sender_id or sequence creator
-    if (step.sender_id || sequence?.created_by) {
-      const senderId = step.sender_id || sequence.created_by;
-      const { data: profile } = await supabase.from('profiles').select('email, first_name, last_name').eq('id', senderId).single();
-      if (profile) {
-        senderEmail = profile.email || '';
-        senderName = [profile.first_name, profile.last_name].filter(Boolean).join(' ');
-      }
+    const senderId = step.sender_id || sequence?.created_by;
+    if (senderId) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('user_id', senderId)
+        .maybeSingle();
+      senderName = profile?.display_name || '';
     }
 
     // org_id hoisted — needed both by AI snippet generator (line ~410) and
@@ -566,7 +566,7 @@ Deno.serve(async (req) => {
     // Add tracking pixel
     htmlBody = addTrackingPixel(htmlBody, trackingId, SUPABASE_URL);
 
-    // 9. Send email — priority: Unipile (uses connected email account) > Microsoft Graph (fallback)
+    // 9. Send email via the connected email account (Unipile) — no global fallback
     const cc = step.cc_emails as string[] || [];
     const bcc = step.bcc_emails as string[] || [];
 

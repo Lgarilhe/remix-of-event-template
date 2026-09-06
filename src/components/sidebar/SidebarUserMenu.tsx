@@ -14,7 +14,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
 import { useOrganization } from '@/hooks/useOrganization';
-import { useNotifications } from '@/hooks/useNotifications';
 import { useAICredits } from '@/hooks/useAICredits';
 import {
   DropdownMenu,
@@ -42,7 +41,6 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
   const connections = useDashboardConnections();
   const { organizationName } = useOrganization();
-  const { unreadCount } = useNotifications();
   const { creditsRemaining, isLow, isOut } = useAICredits();
 
   const avatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl || null;
@@ -71,11 +69,6 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
               avatarUrl={avatarUrl}
               size={collapsed ? 28 : 28}
             />
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-3xs font-bold tabular-nums ring-2 ring-sidebar">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
           </div>
 
           {!collapsed && (

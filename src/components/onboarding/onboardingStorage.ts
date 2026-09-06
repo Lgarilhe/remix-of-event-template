@@ -6,6 +6,7 @@ import type { OrgDetailsData } from './SceneOrgDetails';
 // plutôt que de pointer sur la mauvaise scène.
 // v5 : tunnel raccourci (orgtype → org | orgdetails + specializations → linkedin → launch).
 const STORAGE_KEY = 'konekt_onboarding_progress_v5';
+const LEGACY_STORAGE_KEYS = ['konekt_onboarding_progress_v4'];
 
 export interface PersistedProgress {
   step: number;
@@ -19,6 +20,7 @@ export interface PersistedProgress {
 
 export function loadOnboardingProgress(): PersistedProgress | null {
   try {
+    for (const key of LEGACY_STORAGE_KEYS) localStorage.removeItem(key);
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedProgress;

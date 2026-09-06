@@ -55,7 +55,8 @@ export const CandidateHistoryPanel: React.FC<CandidateHistoryPanelProps> = ({
   const hasNotionHistory = allNotionShortlists.length > 0;
   const hasHistory = hasAirtableHistory || hasNotionHistory;
 
-  if (!hasHistory && !data?.candidate) return null;
+  const hasContact = !!(data?.candidate?.email || data?.candidate?.phone);
+  if (!hasHistory && !hasContact) return null;
 
   if (compact) {
     return <CompactHistory data={data} notionShortlists={allNotionShortlists} />;

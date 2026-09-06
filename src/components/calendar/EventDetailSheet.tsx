@@ -93,6 +93,10 @@ const getLocationMeta = (
 ): { icon: React.ReactNode; label: string; href: string | null } => {
   if (!location) return { icon: <MapPin className="w-4 h-4" />, label: 'Lieu non précisé', href: null };
   const lower = location.toLowerCase();
+  if (lower.trim() === 'visio') {
+    // Preset « Visio » sans lien (CreateEventModal)
+    return { icon: <Video className="w-4 h-4" />, label: 'Visio', href: null };
+  }
   if (lower.includes('meet.google')) {
     return { icon: <Video className="w-4 h-4" />, label: 'Google Meet', href: location };
   }

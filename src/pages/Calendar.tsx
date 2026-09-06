@@ -118,8 +118,9 @@ const TYPE_STYLES: Record<
   },
 };
 
+// URL http(s) ou le preset « Visio » sans lien (CreateEventModal)
 const isVisioLink = (loc: string | null | undefined) =>
-  !!loc && /^https?:\/\//i.test(loc);
+  !!loc && (/^https?:\/\//i.test(loc) || loc.trim().toLowerCase() === 'visio');
 
 const getInitials = (name: string | null | undefined): string => {
   if (!name) return '?';

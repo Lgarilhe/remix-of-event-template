@@ -178,7 +178,8 @@ describe('ACTION_COSTS', () => {
       expect(action.action).toBeTruthy();
       expect(action.label).toBeTruthy();
       expect(action.floor).toBeGreaterThanOrEqual(1);
-      expect(action.typicalTokens).toBeGreaterThan(0);
+      // 0 pour les actions à coût fixe sans appel LLM (aperçu Base Konekt, recherche web)
+      expect(action.typicalTokens).toBeGreaterThanOrEqual(0);
       expect(action.routingTier).toMatch(/^(fast|default|thinking)$/);
       expect(action.category).toMatch(/^(sourcing|outreach|qualification|agent)$/);
     }

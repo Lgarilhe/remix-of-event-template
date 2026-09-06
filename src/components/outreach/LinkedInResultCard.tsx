@@ -390,10 +390,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <CardStatusBadges
                     candidateStatus={candidateStatus}
                     profile={profile}
-                    airtableMatch={airtableMatch}
                     notionMatch={notionMatch}
-                    historyData={historyData}
-                    historyLoading={historyLoading}
                     jobScore={jobScore}
                     isLikelyToRespond={isLikelyToRespond}
                     enrollmentInfo={enrollmentInfo}

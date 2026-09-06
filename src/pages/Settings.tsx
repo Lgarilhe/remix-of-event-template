@@ -21,6 +21,7 @@ import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
 import { PendingInvitations } from '@/components/settings/PendingInvitations';
 import { TeamManagement } from '@/components/settings/TeamManagement';
 import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
+import { ExtensionTokens } from '@/components/settings/ExtensionTokens';
 import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
 import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
 import { EmailSignatures } from '@/components/settings/EmailSignatures';
@@ -379,6 +380,8 @@ const Settings = () => {
             {activeTab === 'account' && (
               <div className="space-y-6">
                 <MyLinkedInAccount />
+                {/* L'extension Chrome renvoie ici (/settings?tab=account) pour créer son token */}
+                <ExtensionTokens />
                 <MyEmailAccount />
                 <EmailSignatures />
                 <MyWhatsAppAccount />
