@@ -38,7 +38,11 @@ test.describe('Séquences', () => {
     await admin().from('sourcing_projects').delete().eq('id', missionId);
   });
 
-  test("@smoke l'onglet outreach affiche la séquence de l'organisation", async ({ page }) => {
+  // mockVendors est indispensable : MissionOutreach sort par un retour anticipé
+  // tant que la liste des comptes LinkedIn est vide, et cette liste vient de
+  // l'edge function unipile-accounts, que `supabase start` n'expose pas en CI.
+  // Les fixtures Playwright sont paresseuses, il faut donc la demander ici.
+  test("@smoke l'onglet outreach affiche la séquence de l'organisation", async ({ page, mockVendors }) => {
     const errors: string[] = [];
     page.on('console', (m) => {
       if (m.type() === 'error') errors.push(m.text());

@@ -69,3 +69,17 @@ DROP POLICY IF EXISTS "mission_invitations_manage" ON public.mission_invitations
 -- jeton.
 -- ---------------------------------------------------------------------
 DROP POLICY IF EXISTS "Invitees can view their own invitations" ON public.organization_invitations;
+
+-- ---------------------------------------------------------------------
+-- client_portal_tokens
+-- 20260326182810 pose une lecture USING (true) sans clause TO, que le
+-- durcissement 20260409100000 ne retire pas : sur une base neuve, tout
+-- compte authentifié lit les jetons de portail de toutes les organisations
+-- et peut ouvrir /client/:token sur les missions d'un tiers. La production
+-- ne porte que org_members_all, service_role_all et les deux garde-fous
+-- anon. Lecture et gestion restent assurées par les policies _by_org, et
+-- le portail public passe par l'edge function client-portal-data sous
+-- service_role.
+-- ---------------------------------------------------------------------
+DROP POLICY IF EXISTS "client_portal_tokens_read" ON public.client_portal_tokens;
+DROP POLICY IF EXISTS "client_portal_tokens_manage" ON public.client_portal_tokens;

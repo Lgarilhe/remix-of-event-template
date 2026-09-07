@@ -101,6 +101,18 @@ jobs:
           echo "E2E_SUPABASE_ANON_KEY=$(supabase status -o env | grep ANON_KEY | cut -d= -f2 | tr -d '\"')" >> "$GITHUB_ENV"
           echo "E2E_SUPABASE_SERVICE_ROLE_KEY=$(supabase status -o env | grep SERVICE_ROLE_KEY | cut -d= -f2 | tr -d '\"')" >> "$GITHUB_ENV"
 
+      # La prod vient de MIGRATION_CLEAN.sql, pas des migrations : un durcissement
+      # RLS écrit contre ses noms de policies peut être sans effet sur une base
+      # reconstruite, où les policies permissives d'origine survivent. Ce test du
+      # dépôt lève une exception listant les contrôles en échec, il suffit donc à
+      # faire échouer le job. Il tourne en transaction et annule ses écritures.
+      - name: Audit RLS deux organisations (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/rls_two_orgs_audit.sql -c 'ROLLBACK;'
+
       - name: Build front
         run: npm run build
         env:
@@ -123,6 +135,17 @@ jobs:
           else
             echo "value=@critical|@smoke" >> "$GITHUB_OUTPUT"
           fi
+
+      # Les 12 tests de e2e/api/sequences-engine.spec.ts se désactivent seuls tant
+      # que E2E_EDGE_FUNCTIONS ne vaut pas 1, ce que ce job ne pose pas : ils
+      # apparaissent en gris dans le rapport. Sans ce rappel, la suite dite
+      # complète se lit comme couvrant le moteur de séquences, ce qui est faux.
+      - name: Rappeler la couverture manquante (nightly)
+        if: github.event_name == 'schedule' && env.E2E_EDGE_FUNCTIONS != '1'
+        run: |
+          echo "::warning title=Couverture partielle::Le moteur de séquences n'est pas testé : \
+          e2e/api/sequences-engine.spec.ts est sauté faute de E2E_EDGE_FUNCTIONS=1 \
+          (skip_execution, nudge_sequences, verrouillage des actions de cron)."
 
       - name: Run Playwright
         run: |
