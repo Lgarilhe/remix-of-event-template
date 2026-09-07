@@ -402,3 +402,49 @@ autres (vérifier le format existant).
 4. Régénérer `types.ts` (`supabase gen types typescript --linked`).
 5. Vérifier que l'organisation déjà activée sur la Base Konekt garde son
    accès (drapeau conservé) et que son plan n'est pas `free`.
+
+## 6. État du lot M au 2026-09-07
+
+Trois commits sur la branche : `87319ca` (implémentation), `c507bec` et
+`4bda626` (correctifs des trois relectures contradictoires : correction du
+code, sécurité SQL, produit et style). La migration a été jouée deux fois sur
+un Postgres local reproduisant le schéma de production, avec des scénarios de
+droits, de plafonds, de plans et de notifications. TypeScript reste à 28
+erreurs, le build passe, le lint est au niveau de la référence, les 32 tests
+unitaires passent et les 51 tests end-to-end sont toujours listés.
+
+Ce que les relectures ont rattrapé, au delà des points de la section 3 :
+
+- `mission_team` n'a pas d'unicité (mission, membre) en production : sans le
+  rattrapage, chaque acceptation de partenaire échouait. La migration
+  dédoublonne puis pose la contrainte.
+- Le garde de publication ne couvrait que la mise à jour : une mission créée
+  directement avec le statut publié passait outre le plan. Il couvre
+  maintenant l'insertion, et refuse une publication sans rémunération.
+- L'adresse LinkedIn d'un recruteur, affichée en lien à l'entreprise, est
+  contrainte en base et filtrée à la lecture : un autre schéma que https vers
+  linkedin.com exécuterait du code dans la session de l'entreprise.
+- Une candidature partait au nom de l'organisation active du recruteur, pas
+  de celle validée par Konekt.
+- Une policy ouvrait la ligne entière des missions publiées à tous les
+  partenaires (notes, description, filtres, statistiques). Elle est retirée :
+  les listes passent par les fonctions, qui ne renvoient que les champs de la
+  carte.
+- Une erreur de lecture s'affichait comme une liste vide.
+- Les réglages du mode chasse n'étaient enregistrables qu'avant publication,
+  et une candidature en attente restait sans réponse quand la mission passait
+  en pourvue, en annulée ou hors marketplace.
+- Un espace sans type d'organisation (dix sur dix-sept en production) n'avait
+  aucun moyen d'en choisir un : le réglage est ajouté dans Paramètres.
+
+Restes connus, non traités :
+
+- Après une fin de collaboration, l'ancienne notification « Candidature
+  acceptée » mène à un écran « mission introuvable » plutôt qu'à une phrase
+  qui explique la fin de l'accès.
+- La réponse à une candidature ne revérifie pas le plan de l'entreprise :
+  une mission publiée pendant l'essai reste gérable après l'expiration, pour
+  ne pas laisser le recruteur sans réponse.
+- La date de publication n'est pas stockée : la carte n'affiche plus
+  d'ancienneté, seulement la date limite.
+- Aucun test end-to-end ne couvre le cercle partenaires.
