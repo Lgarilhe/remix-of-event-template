@@ -216,15 +216,13 @@ const OpenMissionsTab: React.FC = () => {
                   <div className="pt-2 border-t border-border space-y-1 text-xs text-muted-foreground">
                     <p className="flex items-center gap-1 text-foreground font-medium">
                       <Percent className="w-3 h-3" />
-                      {mission.hunt_bounty_percent ?? 0} % du salaire annuel
+                      {mission.hunt_bounty_percent != null
+                        ? `${mission.hunt_bounty_percent} % du salaire annuel`
+                        : 'Rémunération à confirmer avec l\'entreprise'}
                     </p>
                     <p className="flex items-center gap-3 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Users className="w-3 h-3" /> {mission.accepted_count}/{max} recruteurs
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatDistanceToNow(new Date(mission.created_at), { addSuffix: true, locale: fr })}
                       </span>
                     </p>
                     {mission.hunt_deadline && (
@@ -278,7 +276,9 @@ const OpenMissionsTab: React.FC = () => {
               />
             </div>
             <p className="text-xs text-muted-foreground border border-border p-3">
-              Rémunération : {target?.hunt_bounty_percent ?? 0} % du salaire annuel, facturée par vous à l'entreprise à l'embauche.
+              {target?.hunt_bounty_percent != null
+                ? `Rémunération : ${target.hunt_bounty_percent} % du salaire annuel, facturée par vous à l'entreprise à l'embauche.`
+                : "L'entreprise n'a pas encore fixé la rémunération. Demandez-la dans votre message."}
             </p>
           </div>
           <DialogFooter>
@@ -333,8 +333,11 @@ const MyApplicationsTab: React.FC = () => {
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {a.client_name || a.organization_name || 'Entreprise'}
-              {a.hunt_bounty_percent ? ` · ${a.hunt_bounty_percent} % du salaire annuel` : ''}
+              {a.hunt_bounty_percent != null ? ` · ${a.hunt_bounty_percent} % du salaire annuel` : ''}
               {' · '}envoyée le {formatDate(a.created_at)}
+              {a.hunt_status && a.hunt_status !== 'published' && a.hunt_status !== 'in_progress'
+                ? ` · ${huntStatusLabel(a.hunt_status)}`
+                : ''}
             </p>
             {a.message && (
               <p className="text-xs text-muted-foreground mt-1 italic line-clamp-2">« {a.message} »</p>
@@ -429,7 +432,7 @@ const PartnerMissionsTab: React.FC = () => {
           </p>
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
             <span className="uppercase tracking-wider">{huntStatusLabel(m.hunt_status)}</span>
-            {m.hunt_bounty_percent ? <span>{m.hunt_bounty_percent} % du salaire annuel</span> : null}
+            {m.hunt_bounty_percent != null ? <span>{m.hunt_bounty_percent} % du salaire annuel</span> : null}
           </div>
         </button>
       ))}

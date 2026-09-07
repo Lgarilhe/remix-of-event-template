@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
+import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
-import { useHuntApplicants, type HuntApplicant } from '@/hooks/useMarketplace';
+import { useHuntApplicants, useHuntMissionControls, type HuntApplicant, type HuntStatusAction } from '@/hooks/useMarketplace';
 import { hasFeature, hasPlanFeature } from '@/lib/featureGates';
 import {
   Target, Users, Calendar, Percent, Globe, Lock, Loader2, ExternalLink, Sparkles, User,
@@ -15,42 +14,45 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { applicationStatusLabel, orgTypeLabel, formatDate } from '@/components/marketplace/huntLabels';
+import { HUNT_STATUS_LABELS, applicationStatusLabel, orgTypeLabel, formatDate } from '@/components/marketplace/huntLabels';
 import { ErrorBox } from '@/components/marketplace/ErrorBox';
 
 interface MissionHuntModeProps {
   project: SourcingProject;
 }
 
-const HUNT_STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  draft:       { label: 'Brouillon',  bg: 'hsl(var(--muted))',                color: 'hsl(var(--muted-foreground))' },
-  published:   { label: 'Publiée',    bg: 'hsl(var(--accent))',               color: 'hsl(var(--accent-foreground))' },
-  in_progress: { label: 'En cours',   bg: 'hsl(var(--status-info-muted))',    color: 'hsl(var(--status-info))' },
-  filled:      { label: 'Pourvue',    bg: 'hsl(var(--status-success-muted))', color: 'hsl(var(--status-success))' },
-  cancelled:   { label: 'Annulée',    bg: 'hsl(var(--destructive) / 0.15)',   color: 'hsl(var(--destructive))' },
+// Couleurs seules : le libellé vient de huntLabels, partagé avec la marketplace.
+const HUNT_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
+  draft:       { bg: 'hsl(var(--muted))',                color: 'hsl(var(--muted-foreground))' },
+  published:   { bg: 'hsl(var(--accent))',               color: 'hsl(var(--accent-foreground))' },
+  in_progress: { bg: 'hsl(var(--status-info-muted))',    color: 'hsl(var(--status-info))' },
+  filled:      { bg: 'hsl(var(--status-success-muted))', color: 'hsl(var(--status-success))' },
+  cancelled:   { bg: 'hsl(var(--destructive) / 0.15)',   color: 'hsl(var(--destructive))' },
 };
 
 // Actions de statut confirmées par AlertDialog
-type StatusAction = 'filled' | 'cancelled' | 'draft';
+type StatusAction = Extract<HuntStatusAction, 'filled' | 'cancelled' | 'draft' | 'disabled'>;
 
-const STATUS_ACTION_TEXT: Record<StatusAction, { title: string; description: string; confirm: string; success: string }> = {
+const STATUS_ACTION_TEXT: Record<StatusAction, { title: string; description: string; confirm: string }> = {
   filled: {
     title: 'Marquer la mission comme pourvue ?',
-    description: 'La mission ne sera plus proposée aux recruteurs partenaires. Les recruteurs acceptés gardent leur accès.',
+    description: 'La mission ne sera plus proposée aux recruteurs partenaires. Les recruteurs acceptés gardent leur accès et les candidatures en attente sont closes, avec une notification à leurs auteurs.',
     confirm: 'Mission pourvue',
-    success: 'Mission marquée comme pourvue',
   },
   cancelled: {
     title: 'Annuler la publication ?',
-    description: 'La mission ne sera plus proposée aux recruteurs partenaires. Les candidatures en attente ne pourront plus être acceptées.',
+    description: 'La mission ne sera plus proposée aux recruteurs partenaires. Les candidatures en attente sont closes, avec une notification à leurs auteurs.',
     confirm: 'Annuler la publication',
-    success: 'Publication annulée',
   },
   draft: {
     title: 'Remettre la mission en brouillon ?',
-    description: 'Vous pourrez modifier les réglages puis publier de nouveau.',
+    description: 'La mission sort de la marketplace. Les candidatures en attente sont closes, avec une notification à leurs auteurs. Vous pourrez modifier les réglages puis publier de nouveau.',
     confirm: 'Remettre en brouillon',
-    success: 'Mission remise en brouillon',
+  },
+  disabled: {
+    title: 'Désactiver le mode chasse ?',
+    description: 'La mission sort de la marketplace. Les recruteurs déjà acceptés gardent leur accès, les candidatures en attente sont closes, avec une notification à leurs auteurs.',
+    confirm: 'Désactiver',
   },
 };
 
@@ -58,8 +60,6 @@ const STATUS_ACTION_TEXT: Record<StatusAction, { title: string; description: str
 type ApplicantAction = { kind: 'accepted' | 'rejected' | 'end'; applicant: HuntApplicant } | null;
 
 export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => {
-  const queryClient = useQueryClient();
-  const { updateProject } = useSourcingProjects();
   const { orgType, isAdmin } = useOrganization();
   const { effectivePlanId, isTrialing } = useSubscriptionState();
   const canPublish = hasFeature(orgType, 'marketplace_publish');
@@ -68,20 +68,20 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
 
   const isEnabled = project.hunt_mode;
   const huntStatus = project.hunt_status || 'draft';
-  const statusCfg = HUNT_STATUS_CONFIG[huntStatus] || HUNT_STATUS_CONFIG.draft;
+  const statusColors = HUNT_STATUS_COLORS[huntStatus] || HUNT_STATUS_COLORS.draft;
 
   const {
     applicants, isLoading: loadingApplicants, isError: applicantsError, errorText: applicantsErrorText,
     refetch: refetchApplicants, respond, endCollaboration, isResponding,
   } = useHuntApplicants(project.id, canPublish && isEnabled);
 
+  const { saveSettings, setStatus, isBusy: busy } = useHuntMissionControls(project.id);
+
   const [bounty, setBounty] = useState(project.hunt_bounty_percent ?? 15);
   const [maxRecruiters, setMaxRecruiters] = useState(project.hunt_max_recruiters ?? 3);
   const [deadline, setDeadline] = useState(project.hunt_deadline?.slice(0, 10) || '');
-  const [busy, setBusy] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<StatusAction | null>(null);
   const [pendingApplicant, setPendingApplicant] = useState<ApplicantAction>(null);
-  const [pendingDisable, setPendingDisable] = useState(false);
 
   if (!canPublish) {
     return (
@@ -99,44 +99,18 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   const acceptedCount = accepted.length;
   const maxCount = project.hunt_max_recruiters ?? maxRecruiters;
 
-  // Les listes de la marketplace (missions publiées, candidatures) sont
-  // rafraîchies après chaque changement de statut de la mission.
-  const refreshMarketplace = () => {
-    queryClient.invalidateQueries({ queryKey: ['marketplace'] });
-  };
-
-  const setHuntMode = async (newMode: boolean) => {
-    setBusy(true);
-    try {
-      await updateProject({
-        id: project.id,
-        hunt_mode: newMode,
-        hunt_status: newMode ? 'draft' : null,
-      });
-      refreshMarketplace();
-      toast.success(newMode ? 'Mode chasse activé' : 'Mode chasse désactivé');
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erreur lors de la mise à jour');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleToggle = async () => {
-    // Désactiver avec des candidatures en cours retire la mission de vos listes
-    // sans prévenir les recruteurs : on demande confirmation.
-    if (isEnabled && applicants.some((a) => a.status === 'pending' || a.status === 'accepted')) {
-      setPendingDisable(true);
+    if (!isEnabled) {
+      await setStatus('enabled').catch(() => undefined);
       return;
     }
-    await setHuntMode(!isEnabled);
+    // Désactiver retire la mission de la marketplace et clôt les candidatures
+    // en attente : on demande confirmation.
+    setPendingStatus('disabled');
   };
 
-  const handlePublish = async () => {
-    if (!canPublishPlan) {
-      toast.error('La publication sur la marketplace est disponible avec le plan Entreprise.');
-      return;
-    }
+  const handleSave = async (publish: boolean) => {
+    // Les bornes sont vérifiées côté serveur ; ce contrôle évite un aller-retour.
     if (!bounty || bounty < 5 || bounty > 30) {
       toast.error('La rémunération doit être comprise entre 5 % et 30 % du salaire annuel');
       return;
@@ -150,35 +124,12 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
       toast.error('La date limite ne peut pas être dans le passé');
       return;
     }
-    setBusy(true);
-    try {
-      await updateProject({
-        id: project.id,
-        hunt_bounty_percent: bounty,
-        hunt_max_recruiters: maxRecruiters,
-        hunt_deadline: deadline ? new Date(deadline).toISOString() : null,
-        hunt_status: 'published',
-      });
-      refreshMarketplace();
-      toast.success('Mission publiée sur la marketplace');
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erreur lors de la publication');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const applyStatus = async (status: StatusAction) => {
-    setBusy(true);
-    try {
-      await updateProject({ id: project.id, hunt_status: status });
-      refreshMarketplace();
-      toast.success(STATUS_ACTION_TEXT[status].success);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erreur lors de la mise à jour');
-    } finally {
-      setBusy(false);
-    }
+    await saveSettings({
+      bounty,
+      maxRecruiters,
+      deadline: deadline ? new Date(deadline).toISOString() : null,
+      publish,
+    }).catch(() => undefined);
   };
 
   const confirmApplicantAction = async () => {
@@ -194,6 +145,9 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   };
 
   const isOpen = huntStatus === 'published' || huntStatus === 'in_progress';
+  // La mission reste ouverte pendant tout le jour de la date limite (règle en base).
+  const deadlinePassed = !!project.hunt_deadline
+    && project.hunt_deadline.slice(0, 10) < new Date().toISOString().slice(0, 10);
   const isClosed = huntStatus === 'filled' || huntStatus === 'cancelled';
 
   return (
@@ -211,21 +165,27 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleToggle}
-          disabled={busy}
-          className={cn(
-            'h-9 px-4 rounded-full text-[12px] font-semibold inline-flex items-center gap-1.5 border transition-colors flex-shrink-0',
-            isEnabled
-              ? 'bg-foreground text-background border-foreground hover:opacity-90'
-              : 'bg-background text-foreground border-border hover:bg-accent',
-            busy && 'opacity-50',
-          )}
-        >
-          {busy && <Loader2 className="w-3 h-3 animate-spin" />}
-          {isEnabled ? 'Activé' : 'Désactivé'}
-        </button>
+        {isAdmin ? (
+          <button
+            type="button"
+            onClick={handleToggle}
+            disabled={busy}
+            className={cn(
+              'h-9 px-4 rounded-full text-[12px] font-semibold inline-flex items-center gap-1.5 border transition-colors flex-shrink-0',
+              isEnabled
+                ? 'bg-foreground text-background border-foreground hover:opacity-90'
+                : 'bg-background text-foreground border-border hover:bg-accent',
+              busy && 'opacity-50',
+            )}
+          >
+            {busy && <Loader2 className="w-3 h-3 animate-spin" />}
+            {isEnabled ? 'Activé' : 'Désactivé'}
+          </button>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">
+            {isEnabled ? 'Mode chasse activé' : 'Mode chasse désactivé'}
+          </span>
+        )}
       </div>
 
       {isEnabled && (
@@ -236,9 +196,9 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Statut :</span>
               <span
                 className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
-                style={{ background: statusCfg.bg, color: statusCfg.color }}
+                style={{ background: statusColors.bg, color: statusColors.color }}
               >
-                {statusCfg.label}
+                {HUNT_STATUS_LABELS[huntStatus] || huntStatus}
               </span>
             </div>
             {huntStatus !== 'draft' && (
@@ -252,12 +212,25 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm space-y-1">
               <div className="flex items-center gap-2 font-medium text-foreground">
                 <Sparkles className="w-4 h-4 shrink-0" />
-                <span>La publication sur la marketplace est disponible avec le plan Entreprise.</span>
+                <span>
+                  {isOpen
+                    ? 'Cette mission reste publiée avec votre plan actuel.'
+                    : 'La publication sur la marketplace est disponible avec le plan Entreprise.'}
+                </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Vous pouvez préparer les réglages dès maintenant.{' '}
+                {isOpen
+                  ? 'Une fois retirée, vous ne pourrez la republier qu\'avec le plan Entreprise.'
+                  : 'Vous pouvez préparer les réglages dès maintenant.'}{' '}
                 <Link to="/pricing" className="underline underline-offset-4 text-foreground">Voir les plans</Link>
               </p>
+            </div>
+          )}
+
+          {deadlinePassed && isOpen && (
+            <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">
+              Date limite dépassée : la mission n'est plus proposée aux recruteurs partenaires.
+              Repoussez la date puis enregistrez pour la remettre en avant.
             </div>
           )}
 
@@ -273,7 +246,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 onChange={(e) => setBounty(Number(e.target.value))}
                 min={5}
                 max={30}
-                disabled={isClosed}
+                disabled={isClosed || !isAdmin}
                 className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60"
               />
             </div>
@@ -287,7 +260,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 onChange={(e) => setMaxRecruiters(Number(e.target.value))}
                 min={1}
                 max={10}
-                disabled={isClosed}
+                disabled={isClosed || !isAdmin}
                 className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60"
               />
             </div>
@@ -299,7 +272,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                disabled={isClosed}
+                disabled={isClosed || !isAdmin}
                 className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-60"
               />
             </div>
@@ -310,10 +283,15 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
 
           {/* Actions de statut */}
           <div className="flex items-center gap-2 pt-3 border-t border-border flex-wrap">
-            {huntStatus === 'draft' && (
+            {!isAdmin && (
+              <p className="text-[11px] text-muted-foreground">
+                Seul un administrateur peut modifier ces réglages.
+              </p>
+            )}
+            {isAdmin && huntStatus === 'draft' && (
               <button
                 type="button"
-                onClick={handlePublish}
+                onClick={() => { void handleSave(true); }}
                 disabled={busy || !canPublishPlan}
                 className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
@@ -321,27 +299,44 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 Publier sur la marketplace
               </button>
             )}
-            {isOpen && (
+            {isAdmin && isOpen && (
               <>
+                <button
+                  type="button"
+                  onClick={() => { void handleSave(false); }}
+                  disabled={busy}
+                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Enregistrer les réglages
+                </button>
                 <button
                   type="button"
                   onClick={() => setPendingStatus('filled')}
                   disabled={busy}
-                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-medium border border-border hover:bg-accent disabled:opacity-50 transition-colors"
                 >
                   Mission pourvue
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPendingStatus('cancelled')}
+                  onClick={() => setPendingStatus('draft')}
                   disabled={busy}
                   className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-medium border border-border hover:bg-accent disabled:opacity-50 transition-colors"
+                >
+                  Remettre en brouillon
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingStatus('cancelled')}
+                  disabled={busy}
+                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-medium border border-border text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
                 >
                   Annuler la publication
                 </button>
               </>
             )}
-            {isClosed && (
+            {isAdmin && isClosed && (
               <button
                 type="button"
                 onClick={() => setPendingStatus('draft')}
@@ -378,17 +373,23 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               <div className="space-y-2">
                 {others.map((a) => (
                   <ApplicantCard key={a.id} applicant={a}>
-                    {a.status === 'pending' && isOpen && !isAdmin ? (
+                    {a.status === 'pending' && !isAdmin ? (
                       <span className="text-[11px] text-muted-foreground">
                         Seul un administrateur peut répondre.
                       </span>
-                    ) : a.status === 'pending' && isOpen ? (
+                    ) : a.status === 'pending' ? (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => setPendingApplicant({ kind: 'accepted', applicant: a })}
-                          disabled={isResponding || acceptedCount >= maxCount}
-                          title={acceptedCount >= maxCount ? 'Nombre maximal de recruteurs atteint' : undefined}
+                          disabled={isResponding || acceptedCount >= maxCount || !isOpen}
+                          title={
+                            !isOpen
+                              ? 'La mission n\'est plus ouverte aux candidatures'
+                              : acceptedCount >= maxCount
+                                ? 'Nombre maximal de recruteurs atteint'
+                                : undefined
+                          }
                           className="h-8 px-3 rounded-full text-[11.5px] font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50"
                         >
                           Accepter
@@ -452,32 +453,6 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
         </>
       )}
 
-      {/* Confirmation de la désactivation du mode chasse */}
-      <AlertDialog open={pendingDisable} onOpenChange={(open) => !open && setPendingDisable(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Désactiver le mode chasse ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              La mission sort de la marketplace et de vos listes. Les recruteurs déjà acceptés gardent
-              leur accès à la mission et les candidatures en attente restent sans réponse. Mettez fin aux
-              collaborations avant, si c'est ce que vous voulez.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                setPendingDisable(false);
-                void setHuntMode(false);
-              }}
-            >
-              Désactiver
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Confirmation des changements de statut */}
       <AlertDialog open={!!pendingStatus} onOpenChange={(open) => !open && setPendingStatus(null)}>
         <AlertDialogContent>
@@ -492,7 +467,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               onClick={() => {
                 const status = pendingStatus;
                 setPendingStatus(null);
-                if (status) void applyStatus(status);
+                if (status) void setStatus(status).catch(() => undefined);
               }}
             >
               {pendingStatus ? STATUS_ACTION_TEXT[pendingStatus].confirm : ''}

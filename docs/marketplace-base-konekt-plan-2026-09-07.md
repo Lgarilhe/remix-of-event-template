@@ -396,8 +396,9 @@ autres (vérifier le format existant).
 3. Poser `KONEKT_PLATFORM_ADMIN_USER_IDS` (identifiants `auth.users` des
    administrateurs Konekt, séparés par des virgules) pour ouvrir le panneau
    d'administration du cercle. Sans lui, valider une organisation partenaire
-   par SQL :
-   `update feature_activations set status = 'active', validated_at = now(), validated_by = '<uid>' where organization_id = '<org>' and feature = 'marketplace_recruit';`
+   depuis l'éditeur SQL avec la fonction dédiée, qui pose le statut et envoie
+   la notification comme le fait l'écran :
+   `select public.validate_marketplace_partner('<organisation>');`
 4. Régénérer `types.ts` (`supabase gen types typescript --linked`).
 5. Vérifier que l'organisation déjà activée sur la Base Konekt garde son
    accès (drapeau conservé) et que son plan n'est pas `free`.

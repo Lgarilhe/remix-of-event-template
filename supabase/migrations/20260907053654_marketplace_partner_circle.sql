@@ -148,6 +148,59 @@ REVOKE INSERT, UPDATE, DELETE ON public.feature_activations FROM anon, authentic
 GRANT SELECT ON public.feature_activations TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.feature_activations TO service_role;
 
+-- ─── 2 ter. profiles : forme de l'adresse LinkedIn ───
+-- Le champ est affiché en lien cliquable (candidatures, profil public) et
+-- reste modifiable en direct par son propriétaire : la forme est contrainte
+-- en base, et les lectures filtrent aussi (get_hunt_applicants).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE linkedin_url IS NOT NULL
+      AND linkedin_url !~* '^https://([a-z0-9-]+\.)?linkedin\.com/'
+  ) THEN
+    RAISE NOTICE 'profiles_linkedin_url_check non posé, profils à corriger : %',
+      (SELECT array_agg(user_id) FROM public.profiles
+       WHERE linkedin_url IS NOT NULL
+         AND linkedin_url !~* '^https://([a-z0-9-]+\.)?linkedin\.com/');
+  ELSIF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.profiles'::regclass
+      AND conname = 'profiles_linkedin_url_check'
+  ) THEN
+    ALTER TABLE public.profiles
+      ADD CONSTRAINT profiles_linkedin_url_check
+      CHECK (linkedin_url IS NULL OR linkedin_url ~* '^https://([a-z0-9-]+\.)?linkedin\.com/');
+  END IF;
+END $$;
+
+-- ─── 2 bis. mission_team : unicité (mission, membre) ───
+-- Le schéma de prod a perdu cette contrainte à l'import : sans elle,
+-- l'acceptation d'un partenaire échoue (ON CONFLICT sans contrainte).
+DELETE FROM public.mission_team a
+USING public.mission_team b
+WHERE a.project_id = b.project_id
+  AND a.user_id = b.user_id
+  AND (a.created_at, a.id) > (b.created_at, b.id);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.mission_team'::regclass
+      AND contype = 'u'
+      AND conkey @> (
+        SELECT array_agg(attnum ORDER BY attnum)
+        FROM pg_attribute
+        WHERE attrelid = 'public.mission_team'::regclass
+          AND attname IN ('project_id', 'user_id')
+      )
+  ) THEN
+    ALTER TABLE public.mission_team
+      ADD CONSTRAINT mission_team_project_user_key UNIQUE (project_id, user_id);
+  END IF;
+END $$;
+
 -- ─── 3. sourcing_projects : bornes du mode chasse ───
 DO $$
 BEGIN
@@ -156,7 +209,9 @@ BEGIN
     WHERE hunt_bounty_percent IS NOT NULL
       AND (hunt_bounty_percent < 5 OR hunt_bounty_percent > 30)
   ) THEN
-    RAISE NOTICE 'sourcing_projects_hunt_bounty_check non posé : des lignes ont un hunt_bounty_percent hors de 5 à 30';
+    RAISE NOTICE 'sourcing_projects_hunt_bounty_check non posé, missions hors de 5 à 30 : %',
+      (SELECT array_agg(id) FROM public.sourcing_projects
+       WHERE hunt_bounty_percent IS NOT NULL AND (hunt_bounty_percent < 5 OR hunt_bounty_percent > 30));
   ELSIF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conrelid = 'public.sourcing_projects'::regclass
@@ -172,7 +227,9 @@ BEGIN
     WHERE hunt_max_recruiters IS NOT NULL
       AND (hunt_max_recruiters < 1 OR hunt_max_recruiters > 10)
   ) THEN
-    RAISE NOTICE 'sourcing_projects_hunt_max_recruiters_check non posé : des lignes ont un hunt_max_recruiters hors de 1 à 10';
+    RAISE NOTICE 'sourcing_projects_hunt_max_recruiters_check non posé, missions hors de 1 à 10 : %',
+      (SELECT array_agg(id) FROM public.sourcing_projects
+       WHERE hunt_max_recruiters IS NOT NULL AND (hunt_max_recruiters < 1 OR hunt_max_recruiters > 10));
   ELSIF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conrelid = 'public.sourcing_projects'::regclass
@@ -259,14 +316,12 @@ GRANT EXECUTE ON FUNCTION public.can_publish_hunt_mission(uuid) TO authenticated
 DROP POLICY IF EXISTS public_hunt_select ON public.sourcing_projects;
 DROP POLICY IF EXISTS "Public can view published hunt missions" ON public.sourcing_projects;
 DROP POLICY IF EXISTS "Authenticated can view published hunt missions" ON public.sourcing_projects;
+-- Aucune policy de lecture directe pour les partenaires : une policy ouvre la
+-- ligne entière (notes, description, filtres, statistiques) à des cabinets
+-- concurrents. Les missions ouvertes passent par get_open_hunt_missions, qui
+-- ne projette que les champs de la carte ; un partenaire accepté garde l'accès
+-- à la mission par mission_team_select.
 DROP POLICY IF EXISTS marketplace_partner_select ON public.sourcing_projects;
-CREATE POLICY marketplace_partner_select
-  ON public.sourcing_projects FOR SELECT TO authenticated
-  USING (
-    hunt_mode = true
-    AND hunt_status IN ('published', 'in_progress')
-    AND public.is_marketplace_partner(auth.uid())
-  );
 
 CREATE OR REPLACE FUNCTION public.sourcing_projects_hunt_publish_guard()
 RETURNS trigger
@@ -276,12 +331,19 @@ SET search_path = ''
 AS $$
 BEGIN
   -- Service role, migrations, crons (auth.uid() nul) : pas de restriction.
+  -- L'insertion est couverte aussi : sans cela, une mission créée directement
+  -- avec hunt_status = 'published' contourne le contrôle de plan.
   IF NEW.hunt_status = 'published'
-     AND OLD.hunt_status IS DISTINCT FROM 'published'
-     AND auth.uid() IS NOT NULL
-     AND NOT public.can_publish_hunt_mission(NEW.organization_id) THEN
-    RAISE EXCEPTION 'La publication sur la marketplace est disponible avec le plan Entreprise.'
-      USING ERRCODE = '42501';
+     AND (TG_OP = 'INSERT' OR OLD.hunt_status IS DISTINCT FROM 'published') THEN
+    IF auth.uid() IS NOT NULL AND NOT public.can_publish_hunt_mission(NEW.organization_id) THEN
+      RAISE EXCEPTION 'La publication sur la marketplace est disponible avec le plan Entreprise.'
+        USING ERRCODE = '42501';
+    END IF;
+    -- Une mission publiée annonce une rémunération : sans elle, le recruteur
+    -- postulerait sans condition commerciale.
+    IF NEW.hunt_bounty_percent IS NULL THEN
+      RAISE EXCEPTION 'Indiquez la rémunération avant de publier la mission';
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -292,7 +354,7 @@ REVOKE EXECUTE ON FUNCTION public.sourcing_projects_hunt_publish_guard() FROM PU
 
 DROP TRIGGER IF EXISTS sourcing_projects_hunt_publish_guard ON public.sourcing_projects;
 CREATE TRIGGER sourcing_projects_hunt_publish_guard
-  BEFORE UPDATE OF hunt_status ON public.sourcing_projects
+  BEFORE INSERT OR UPDATE OF hunt_status ON public.sourcing_projects
   FOR EACH ROW EXECUTE FUNCTION public.sourcing_projects_hunt_publish_guard();
 
 -- ─── 6. Cercle partenaires : état et demande ───
@@ -382,6 +444,11 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
+  IF nullif(btrim(coalesce(p_headline, '')), '') IS NULL
+     OR nullif(btrim(coalesce(p_bio, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'Indiquez un titre et une présentation' USING ERRCODE = '22023';
+  END IF;
+
   -- L'adresse est affichée en lien cliquable à l'entreprise : seul un lien
   -- LinkedIn en https est accepté (aucun autre schéma, notamment javascript:).
   IF nullif(btrim(p_linkedin_url), '') IS NOT NULL
@@ -389,12 +456,14 @@ BEGIN
     RAISE EXCEPTION 'Adresse LinkedIn invalide' USING ERRCODE = '22023';
   END IF;
 
-  -- Fiche recruteur montrée à l'entreprise lors d'une candidature.
+  -- Fiche recruteur montrée à l'entreprise lors d'une candidature. Un champ
+  -- laissé vide ne remplace pas la valeur déjà enregistrée : un appel
+  -- incomplet ne doit pas effacer la fiche d'un partenaire actif.
   UPDATE public.profiles
-  SET recruiter_headline = nullif(btrim(p_headline), ''),
-      recruiter_bio = nullif(btrim(p_bio), ''),
-      specializations = coalesce(p_specializations, specializations),
-      linkedin_url = nullif(btrim(p_linkedin_url), '')
+  SET recruiter_headline = coalesce(nullif(btrim(p_headline), ''), recruiter_headline),
+      recruiter_bio = coalesce(nullif(btrim(p_bio), ''), recruiter_bio),
+      specializations = coalesce(nullif(p_specializations, '{}'), specializations),
+      linkedin_url = coalesce(nullif(btrim(p_linkedin_url), ''), linkedin_url)
   WHERE user_id = v_uid;
 
   -- Une ligne déjà active ou suspendue n'est pas modifiée : son état est renvoyé tel quel.
@@ -490,11 +559,21 @@ BEGIN
     RAISE EXCEPTION 'Non authentifié' USING ERRCODE = '42501';
   END IF;
 
-  IF NOT public.is_marketplace_partner(v_uid) THEN
+  -- Organisation au titre de laquelle le recruteur postule : celle qui a été
+  -- validée par Konekt, pas l'organisation active du profil (un utilisateur
+  -- peut appartenir à plusieurs organisations).
+  SELECT fa.organization_id INTO v_org_id
+  FROM public.feature_activations fa
+  JOIN public.organization_members om
+    ON om.organization_id = fa.organization_id AND om.user_id = v_uid
+  WHERE fa.feature = 'marketplace_recruit'
+    AND fa.status = 'active'
+  ORDER BY (fa.organization_id = public.get_user_org_id(v_uid)) DESC, fa.validated_at NULLS LAST
+  LIMIT 1;
+
+  IF v_org_id IS NULL THEN
     RAISE EXCEPTION 'Accès réservé aux partenaires du cercle' USING ERRCODE = '42501';
   END IF;
-
-  v_org_id := public.get_user_org_id(v_uid);
 
   SELECT * INTO v_project FROM public.sourcing_projects sp WHERE sp.id = p_project_id;
   IF NOT FOUND OR coalesce(v_project.hunt_mode, false) = false THEN
@@ -518,13 +597,24 @@ BEGIN
     RAISE EXCEPTION 'Le nombre maximal de recruteurs est atteint';
   END IF;
 
-  BEGIN
-    INSERT INTO public.hunt_applications (project_id, recruiter_user_id, recruiter_org_id, status, message)
-    VALUES (p_project_id, v_uid, v_org_id, 'pending', nullif(btrim(p_message), ''))
-    RETURNING id INTO v_app_id;
-  EXCEPTION WHEN unique_violation THEN
+  -- Une candidature retirée, refusée ou terminée peut être renouvelée : la
+  -- ligne est réutilisée. Une candidature en attente ou acceptée bloque.
+  -- Le message est borné : il est affiché tel quel à l'entreprise.
+  INSERT INTO public.hunt_applications (project_id, recruiter_user_id, recruiter_org_id, status, message)
+  VALUES (p_project_id, v_uid, v_org_id, 'pending', left(nullif(btrim(p_message), ''), 2000))
+  ON CONFLICT (project_id, recruiter_user_id) DO UPDATE
+    SET status = 'pending',
+        message = excluded.message,
+        recruiter_org_id = excluded.recruiter_org_id,
+        responded_at = NULL,
+        responded_by = NULL,
+        updated_at = now()
+    WHERE public.hunt_applications.status IN ('withdrawn', 'rejected', 'ended')
+  RETURNING id INTO v_app_id;
+
+  IF v_app_id IS NULL THEN
     RAISE EXCEPTION 'Vous avez déjà postulé à cette mission';
-  END;
+  END IF;
 
   -- Notification aux propriétaires et administrateurs de l'entreprise.
   SELECT p.display_name INTO v_recruiter_name FROM public.profiles p WHERE p.user_id = v_uid;
@@ -543,7 +633,16 @@ BEGIN
          jsonb_build_object('source', 'marketplace', 'application_id', v_app_id, 'project_id', v_project.id)
   FROM public.organization_members m
   WHERE m.organization_id = v_project.organization_id
-    AND m.role IN ('owner', 'admin');
+    AND (
+      m.role IN ('owner', 'admin')
+      -- Organisation sans propriétaire ni administrateur : tous les membres
+      -- sont prévenus, sinon la candidature reste invisible.
+      OR NOT EXISTS (
+        SELECT 1 FROM public.organization_members m2
+        WHERE m2.organization_id = v_project.organization_id
+          AND m2.role IN ('owner', 'admin')
+      )
+    );
 
   RETURN v_app_id;
 END;
@@ -688,7 +787,10 @@ BEGIN
     'recruiter_headline', p.recruiter_headline,
     'recruiter_bio', p.recruiter_bio,
     'specializations', p.specializations,
-    'linkedin_url', p.linkedin_url,
+    'linkedin_url', CASE
+      WHEN p.linkedin_url ~* '^https://([a-z0-9-]+\.)?linkedin\.com/[^[:space:]]*$' THEN p.linkedin_url
+      ELSE NULL
+    END,
     'years_experience', p.years_experience,
     'placements_count', p.placements_count,
     'rating', p.rating,
@@ -986,3 +1088,220 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.get_mission_team_profiles(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_mission_team_profiles(uuid) TO authenticated, service_role;
+
+-- ─── 10. Côté entreprise : réglages et statut de la mission ───
+-- Ces deux fonctions remplacent les écritures directes de l'écran de
+-- configuration : elles vérifient le rôle (propriétaire ou administrateur),
+-- appliquent les bornes commerciales et ferment les candidatures en attente
+-- quand la mission quitte la marketplace.
+
+CREATE OR REPLACE FUNCTION public.save_hunt_mission_settings(
+  p_project_id uuid,
+  p_bounty numeric,
+  p_max_recruiters integer,
+  p_deadline timestamptz,
+  p_publish boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_project public.sourcing_projects;
+  v_role text;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Non authentifié' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT * INTO v_project FROM public.sourcing_projects sp WHERE sp.id = p_project_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Mission introuvable';
+  END IF;
+
+  v_role := public.get_org_role(v_uid, v_project.organization_id);
+  IF coalesce(v_role, '') NOT IN ('owner', 'admin') THEN
+    RAISE EXCEPTION 'Accès réservé aux administrateurs de l''organisation' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_bounty IS NULL OR p_bounty < 5 OR p_bounty > 30 THEN
+    RAISE EXCEPTION 'La rémunération doit être comprise entre 5 %% et 30 %% du salaire annuel';
+  END IF;
+  IF p_max_recruiters IS NULL OR p_max_recruiters < 1 OR p_max_recruiters > 10 THEN
+    RAISE EXCEPTION 'Le nombre de recruteurs doit être compris entre 1 et 10';
+  END IF;
+  IF p_deadline IS NOT NULL AND p_deadline::date < current_date THEN
+    RAISE EXCEPTION 'La date limite ne peut pas être dans le passé';
+  END IF;
+
+  UPDATE public.sourcing_projects
+  SET hunt_mode = true,
+      hunt_bounty_percent = p_bounty,
+      hunt_max_recruiters = p_max_recruiters,
+      hunt_deadline = p_deadline,
+      hunt_status = CASE
+        WHEN p_publish AND coalesce(hunt_status, 'draft') = 'draft' THEN 'published'
+        ELSE coalesce(hunt_status, 'draft')
+      END,
+      updated_at = now()
+  WHERE id = p_project_id
+  RETURNING * INTO v_project;
+
+  RETURN jsonb_build_object('hunt_status', v_project.hunt_status);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.save_hunt_mission_settings(uuid, numeric, integer, timestamptz, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.save_hunt_mission_settings(uuid, numeric, integer, timestamptz, boolean) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.set_hunt_mission_status(p_project_id uuid, p_status text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_project public.sourcing_projects;
+  v_role text;
+  v_org_name text;
+  v_closed integer := 0;
+  v_title text;
+  v_body text;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Non authentifié' USING ERRCODE = '42501';
+  END IF;
+  IF p_status NOT IN ('enabled', 'draft', 'filled', 'cancelled', 'disabled') THEN
+    RAISE EXCEPTION 'Statut inconnu';
+  END IF;
+
+  SELECT * INTO v_project FROM public.sourcing_projects sp WHERE sp.id = p_project_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Mission introuvable';
+  END IF;
+
+  v_role := public.get_org_role(v_uid, v_project.organization_id);
+  IF coalesce(v_role, '') NOT IN ('owner', 'admin') THEN
+    RAISE EXCEPTION 'Accès réservé aux administrateurs de l''organisation' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT o.name INTO v_org_name FROM public.organizations o WHERE o.id = v_project.organization_id;
+
+  IF p_status = 'enabled' THEN
+    UPDATE public.sourcing_projects
+    SET hunt_mode = true,
+        hunt_status = coalesce(hunt_status, 'draft'),
+        updated_at = now()
+    WHERE id = p_project_id
+    RETURNING * INTO v_project;
+    RETURN jsonb_build_object('hunt_status', v_project.hunt_status, 'hunt_mode', true, 'closed', 0);
+  END IF;
+
+  -- La mission quitte la marketplace : les candidatures en attente sont
+  -- closes et leurs auteurs prévenus, sinon ils attendent une réponse qui
+  -- ne viendra jamais.
+  v_title := CASE p_status
+    WHEN 'filled' THEN 'Mission pourvue'
+    WHEN 'cancelled' THEN 'Mission annulée'
+    ELSE 'Mission retirée de la marketplace'
+  END;
+  v_body := coalesce(v_org_name, 'L''entreprise') || ' ne recherche plus de recruteur sur ' || v_project.name || '.';
+
+  WITH closed AS (
+    UPDATE public.hunt_applications ha
+    SET status = 'rejected',
+        responded_at = now(),
+        responded_by = v_uid,
+        updated_at = now()
+    WHERE ha.project_id = p_project_id
+      AND ha.status = 'pending'
+    RETURNING ha.id, ha.recruiter_user_id, ha.recruiter_org_id
+  ),
+  notified AS (
+    INSERT INTO public.notifications (user_id, organization_id, type, title, body, link, metadata)
+    SELECT c.recruiter_user_id, c.recruiter_org_id, 'info', v_title, v_body, '/marketplace',
+           jsonb_build_object('source', 'marketplace', 'application_id', c.id, 'project_id', p_project_id)
+    FROM closed c
+    RETURNING 1
+  )
+  SELECT count(*) INTO v_closed FROM closed;
+
+  UPDATE public.sourcing_projects
+  SET hunt_mode = CASE WHEN p_status = 'disabled' THEN false ELSE hunt_mode END,
+      hunt_status = CASE WHEN p_status = 'disabled' THEN NULL ELSE p_status END,
+      updated_at = now()
+  WHERE id = p_project_id
+  RETURNING * INTO v_project;
+
+  RETURN jsonb_build_object(
+    'hunt_status', v_project.hunt_status,
+    'hunt_mode', v_project.hunt_mode,
+    'closed', v_closed
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.set_hunt_mission_status(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_hunt_mission_status(uuid, text) TO authenticated, service_role;
+
+-- ─── 11. Validation d'un partenaire sans la fonction d'administration ───
+-- Repli documenté quand le secret KONEKT_PLATFORM_ADMIN_USER_IDS n'est pas
+-- posé : même effet que l'action de l'écran (statut et notification).
+CREATE OR REPLACE FUNCTION public.validate_marketplace_partner(p_organization_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_previous text;
+  v_notified integer := 0;
+BEGIN
+  IF auth.uid() IS NOT NULL AND auth.role() IS DISTINCT FROM 'service_role' THEN
+    RAISE EXCEPTION 'Réservé à l''équipe Konekt' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT fa.status INTO v_previous
+  FROM public.feature_activations fa
+  WHERE fa.organization_id = p_organization_id AND fa.feature = 'marketplace_recruit';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Aucune demande pour cette organisation';
+  END IF;
+
+  UPDATE public.feature_activations
+  SET status = 'active', validated_at = now(), updated_at = now()
+  WHERE organization_id = p_organization_id AND feature = 'marketplace_recruit';
+
+  IF coalesce(v_previous, '') <> 'active' THEN
+    WITH cible AS (
+      SELECT m.user_id
+      FROM public.organization_members m
+      WHERE m.organization_id = p_organization_id
+        AND (
+          m.role IN ('owner', 'admin')
+          OR NOT EXISTS (
+            SELECT 1 FROM public.organization_members m2
+            WHERE m2.organization_id = p_organization_id AND m2.role IN ('owner', 'admin')
+          )
+        )
+    ),
+    ins AS (
+      INSERT INTO public.notifications (user_id, organization_id, type, title, body, link, metadata)
+      SELECT c.user_id, p_organization_id, 'success', 'Bienvenue dans le cercle partenaires',
+             'Votre organisation peut maintenant consulter les missions publiées et postuler.',
+             '/marketplace', jsonb_build_object('source', 'marketplace', 'feature', 'marketplace_recruit')
+      FROM cible c
+      RETURNING 1
+    )
+    SELECT count(*) INTO v_notified FROM ins;
+  END IF;
+
+  RETURN jsonb_build_object('status', 'active', 'notified', v_notified);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.validate_marketplace_partner(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.validate_marketplace_partner(uuid) TO service_role;

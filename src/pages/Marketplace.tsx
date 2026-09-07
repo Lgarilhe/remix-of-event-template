@@ -10,18 +10,21 @@
  */
 
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Target } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import { useOrganization } from '@/hooks/useOrganization';
 import { usePartnerState } from '@/hooks/useMarketplace';
 import { PartnerCircleCard } from '@/components/marketplace/PartnerCircleCard';
 import { PartnerMarketplace } from '@/components/marketplace/PartnerMarketplace';
+import { PartnerMissionsSection } from '@/components/marketplace/PartnerMissionsSection';
 import { EnterpriseHuntMissions } from '@/components/marketplace/EnterpriseHuntMissions';
 import { PlatformAdminPanel } from '@/components/marketplace/PlatformAdminPanel';
 
 export default function Marketplace() {
   const { orgType, isLoading: orgLoading } = useOrganization();
-  const { isPartner, isLoading: partnerLoading } = usePartnerState();
+  const { state: partnerState, isPartner, isLoading: partnerLoading } = usePartnerState();
+  const isSuspended = partnerState?.status === 'suspended';
 
   const isRecruiterOrg = orgType === 'agency' || orgType === 'freelance';
   const isEnterprise = orgType === 'enterprise';
@@ -43,6 +46,15 @@ export default function Marketplace() {
     body = <EnterpriseHuntMissions />;
   } else if (isRecruiterOrg && isPartner) {
     body = <PartnerMarketplace />;
+  } else if (isRecruiterOrg && isSuspended) {
+    body = (
+      <div className="space-y-6">
+        <div className="max-w-2xl">
+          <PartnerCircleCard />
+        </div>
+        <PartnerMissionsSection />
+      </div>
+    );
   } else if (isRecruiterOrg) {
     body = (
       <div className="max-w-2xl">
@@ -50,12 +62,24 @@ export default function Marketplace() {
       </div>
     );
   } else {
+    // Organisation sans type : le choix fait à l'inscription manque ou n'a pas
+    // été enregistré. Le réglage est dans Paramètres, on y renvoie.
     body = (
-      <div className="border border-border p-12 text-center">
-        <Target className="w-8 h-8 text-muted-foreground mx-auto mb-4" />
-        <p className="text-xs text-muted-foreground">
-          La marketplace n'est pas disponible pour cette organisation.
+      <div className="border border-border p-12 text-center max-w-2xl mx-auto space-y-3">
+        <Target className="w-8 h-8 text-muted-foreground mx-auto" />
+        <p className="text-sm text-foreground">
+          Indiquez le type de votre organisation pour utiliser la marketplace.
         </p>
+        <p className="text-xs text-muted-foreground">
+          Une entreprise publie ses missions, un cabinet ou un indépendant rejoint le cercle
+          de recruteurs partenaires.
+        </p>
+        <Link
+          to="/settings"
+          className="inline-flex items-center h-9 px-4 border border-border text-xs font-medium uppercase tracking-wider hover:bg-muted"
+        >
+          Ouvrir les paramètres
+        </Link>
       </div>
     );
   }

@@ -175,12 +175,15 @@ Deno.serve(async (req) => {
       // Notification aux propriétaires et administrateurs, seulement quand
       // l'organisation entre dans le cercle (pas à une nouvelle validation).
       if (nextStatus === "active" && current.status !== "active") {
-        const { data: managers } = await db
+        const { data: members } = await db
           .from("organization_members")
-          .select("user_id")
-          .eq("organization_id", organizationId)
-          .in("role", ["owner", "admin"]);
-        const recipients = (managers ?? []) as Array<{ user_id: string }>;
+          .select("user_id, role")
+          .eq("organization_id", organizationId);
+        const all = (members ?? []) as Array<{ user_id: string; role: string | null }>;
+        const managers = all.filter((m) => m.role === "owner" || m.role === "admin");
+        // Organisation sans propriétaire ni administrateur : tous les membres
+        // sont prévenus, sinon personne ne saurait que le cercle est ouvert.
+        const recipients = managers.length > 0 ? managers : all;
         if (recipients.length > 0) {
           const { error: notifErr } = await db.from("notifications").insert(
             recipients.map((m) => ({
@@ -204,7 +207,8 @@ Deno.serve(async (req) => {
 
     return json({ error: "Action inconnue" }, 400);
   } catch (err) {
+    // Le détail reste dans les journaux : l'écran n'affiche pas de message technique.
     console.error("[marketplace-admin]", err);
-    return json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
+    return json({ error: "Erreur serveur" }, 500);
   }
 });

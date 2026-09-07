@@ -502,14 +502,15 @@ export const ProjectsListV2: React.FC = () => {
   if (!isLoading && unifiedProjects.length === 0) {
     return (
       <>
+        {/* Missions confiées par une entreprise (cabinets et indépendants) :
+            affichées avant l'état vide, qui parle des missions propres. */}
+        <div className="max-w-[1200px] mx-auto w-full mb-6">
+          <PartnerMissionsSection />
+        </div>
         <EmptyMissionState
           onCreateAI={() => { setCreateInitialTab('brief'); setShowCreateModal(true); }}
           onCreateManual={() => { setCreateInitialTab('manual'); setShowCreateModal(true); }}
         />
-        {/* Missions confiées par une entreprise (cabinets et indépendants) */}
-        <div className="max-w-[1200px] mx-auto w-full mt-6">
-          <PartnerMissionsSection />
-        </div>
         {showCreateModal && (
           <CreateMissionV2
             isOpen={showCreateModal}

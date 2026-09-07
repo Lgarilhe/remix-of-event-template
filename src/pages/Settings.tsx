@@ -32,6 +32,7 @@ import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
 import { ConnectorSettings } from '@/components/settings/ConnectorSettings';
 import { AgencySettings } from '@/components/settings/AgencySettings';
 import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
+import { OrgTypeSetting } from '@/components/settings/OrgTypeSetting';
 import { PedigreePresetsSettings } from '@/components/settings/PedigreePresetsSettings';
 import { AiContextSettings } from '@/components/settings/AiContextSettings';
 import { AgentActionsSettings } from '@/components/settings/AgentActionsSettings';
@@ -382,6 +383,7 @@ const Settings = () => {
                       </div>
                     )}
                   </div>
+                  <OrgTypeSetting />
                   <div>
                     <label className="text-sm text-muted-foreground">Identifiant</label>
                     <p className="text-foreground font-mono text-sm">{organization?.slug}</p>

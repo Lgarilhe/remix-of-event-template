@@ -133,14 +133,27 @@ export interface PlatformPartner {
 
 const MARKETPLACE_KEY = 'marketplace';
 
-/** Message d'erreur lisible depuis une erreur RPC ou inconnue. */
+// Messages de Postgres ou du réseau : ils ne sont pas écrits pour l'utilisateur.
+const TECHNICAL_ERROR = /violates|permission denied|relation |column |syntax error|duplicate key|null value|JWT|Failed to fetch|FetchError|Internal Server Error/i;
+
+/**
+ * Message d'erreur lisible. Les exceptions des RPC sont rédigées en français
+ * et destinées à l'écran ; tout ce qui ressemble à une erreur technique est
+ * remplacé par le message de repli, le détail restant dans la console.
+ */
 function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message) return err.message;
-  if (err && typeof err === 'object' && 'message' in err) {
+  let raw: string | null = null;
+  if (err instanceof Error && err.message) raw = err.message;
+  else if (err && typeof err === 'object' && 'message' in err) {
     const msg = (err as { message?: unknown }).message;
-    if (typeof msg === 'string' && msg) return msg;
+    if (typeof msg === 'string' && msg) raw = msg;
   }
-  return fallback;
+  if (!raw) return fallback;
+  if (TECHNICAL_ERROR.test(raw)) {
+    console.error('[marketplace]', raw);
+    return fallback;
+  }
+  return raw;
 }
 
 // ---------------------------------------------------------------------------
@@ -570,5 +583,93 @@ export const usePlatformAdmin = () => {
     validate,
     suspend,
     isMutating: statusMutation.isPending,
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Réglages et statut d'une mission en mode chasse (entreprise)
+// ---------------------------------------------------------------------------
+
+export type HuntStatusAction = 'enabled' | 'draft' | 'filled' | 'cancelled' | 'disabled';
+
+export const useHuntMissionControls = (projectId: string | null | undefined) => {
+  const queryClient = useQueryClient();
+
+  const invalidate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: [MARKETPLACE_KEY] });
+    queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+    if (projectId) queryClient.invalidateQueries({ queryKey: ['sourcing-project', projectId] });
+  }, [queryClient, projectId]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (input: {
+      bounty: number;
+      maxRecruiters: number;
+      deadline: string | null;
+      publish?: boolean;
+    }) => {
+      if (!projectId) throw new Error('Mission introuvable');
+      const { data, error } = await supabase.rpc('save_hunt_mission_settings', {
+        p_project_id: projectId,
+        p_bounty: input.bounty,
+        p_max_recruiters: input.maxRecruiters,
+        p_deadline: input.deadline,
+        p_publish: input.publish ?? false,
+      });
+      if (error) throw new Error(errorMessage(error, "Les réglages n'ont pas pu être enregistrés"));
+      return (data as unknown as { hunt_status?: string } | null)?.hunt_status ?? null;
+    },
+    onSuccess: (_status, variables) => {
+      invalidate();
+      toast.success(variables.publish ? 'Mission publiée sur la marketplace' : 'Réglages enregistrés');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async (status: HuntStatusAction) => {
+      if (!projectId) throw new Error('Mission introuvable');
+      const { data, error } = await supabase.rpc('set_hunt_mission_status', {
+        p_project_id: projectId,
+        p_status: status,
+      });
+      if (error) throw new Error(errorMessage(error, "Le statut n'a pas pu être modifié"));
+      return { status, closed: Number((data as unknown as { closed?: number } | null)?.closed ?? 0) };
+    },
+    onSuccess: ({ status, closed }) => {
+      invalidate();
+      const label: Record<HuntStatusAction, string> = {
+        enabled: 'Mode chasse activé',
+        draft: 'Mission remise en brouillon',
+        filled: 'Mission marquée comme pourvue',
+        cancelled: 'Publication annulée',
+        disabled: 'Mode chasse désactivé',
+      };
+      const suffix = closed > 0
+        ? ` ${closed} candidature${closed > 1 ? 's' : ''} en attente ${closed > 1 ? 'ont' : 'a'} été close${closed > 1 ? 's' : ''}.`
+        : '';
+      toast.success(label[status] + (suffix ? '.' + suffix : ''));
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const saveSettings = useCallback(
+    async (input: { bounty: number; maxRecruiters: number; deadline: string | null; publish?: boolean }) => {
+      await saveMutation.mutateAsync(input);
+    },
+    [saveMutation],
+  );
+
+  const setStatus = useCallback(
+    async (status: HuntStatusAction) => {
+      await statusMutation.mutateAsync(status);
+    },
+    [statusMutation],
+  );
+
+  return {
+    saveSettings,
+    setStatus,
+    isBusy: saveMutation.isPending || statusMutation.isPending,
   };
 };

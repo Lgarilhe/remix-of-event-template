@@ -57,11 +57,22 @@ export const MarketplaceActivation: React.FC = () => {
   if (orgType === 'enterprise') return <HuntModeCard />;
   if (orgType === 'agency' || orgType === 'freelance') return <PartnerCircleCard />;
 
+  // Espace sans type : le réglage est juste au-dessus, dans l'onglet Général.
   return (
-    <div className="rounded-xl border border-border bg-card p-6 text-center">
-      <p className="text-sm text-muted-foreground">
-        La marketplace n'est pas disponible pour cette organisation.
+    <div className="rounded-xl border border-border bg-card p-6 space-y-2">
+      <p className="text-sm text-foreground">
+        Indiquez le type de votre organisation pour utiliser la marketplace.
       </p>
+      <p className="text-xs text-muted-foreground">
+        Une entreprise publie ses missions, un cabinet ou un indépendant rejoint le cercle de
+        recruteurs partenaires. Le type se règle dans l'onglet Général.
+      </p>
+      <Link
+        to="/settings"
+        className="inline-flex items-center gap-1 text-xs font-medium text-foreground underline underline-offset-4"
+      >
+        Ouvrir l'onglet Général <ArrowRight className="w-3 h-3" />
+      </Link>
     </div>
   );
 };

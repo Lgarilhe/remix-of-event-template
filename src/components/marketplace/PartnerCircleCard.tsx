@@ -142,8 +142,9 @@ export const PartnerCircleCard: React.FC = () => {
   }
 
   const status = state.status;
-  // Formulaire figé dès qu'une demande existe, et pour un membre qui ne peut pas l'envoyer.
-  const readOnly = status !== 'inactive' || !canRequest;
+  // Une demande en attente reste modifiable (le serveur accepte la mise à jour
+  // tant qu'elle n'est ni active ni suspendue) ; un membre sans droit ne saisit rien.
+  const readOnly = status === 'active' || status === 'suspended' || !canRequest;
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 sm:p-6 space-y-5">
@@ -195,7 +196,8 @@ export const PartnerCircleCard: React.FC = () => {
               <Clock className="w-4 h-4 text-warning shrink-0 mt-0.5" />
               <p className="text-sm text-foreground">
                 Demande envoyée{state.requested_at ? ` le ${formatDate(state.requested_at)}` : ''}.
-                {' '}L'équipe Konekt valide les demandes sous 48 h ouvrées.
+                {' '}L'équipe Konekt examine chaque demande avant d'ouvrir l'accès. Vous pouvez encore
+                modifier votre fiche ci dessous.
               </p>
             </div>
           )}
@@ -204,7 +206,13 @@ export const PartnerCircleCard: React.FC = () => {
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 flex items-start gap-3">
               <Ban className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
               <p className="text-sm text-foreground">
-                Votre accès au cercle est suspendu. Écrivez à l'équipe Konekt.
+                Votre accès au cercle est suspendu : vous ne voyez plus les missions ouvertes et ne
+                pouvez plus postuler. Vos missions en cours restent accessibles depuis Missions.
+                {' '}
+                <a href="mailto:l.garilhe@konekt.fr" className="underline underline-offset-4">
+                  Écrivez à l'équipe Konekt
+                </a>{' '}
+                pour comprendre cette décision.
               </p>
             </div>
           )}
@@ -294,7 +302,7 @@ export const PartnerCircleCard: React.FC = () => {
                 <div className="flex items-center justify-between gap-3 flex-wrap pt-2">
                   <Button type="submit" size="sm" className="rounded-full" disabled={isRequesting}>
                     {isRequesting && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
-                    Demander à rejoindre le cercle
+                    {status === 'pending_validation' ? 'Mettre à jour ma demande' : 'Demander à rejoindre le cercle'}
                   </Button>
                 </div>
               )}

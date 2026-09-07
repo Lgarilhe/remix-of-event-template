@@ -6690,9 +6690,27 @@ export type Database = {
           similarity: number
         }[]
       }
+      save_hunt_mission_settings: {
+        Args: {
+          p_bounty: number
+          p_deadline: string | null
+          p_max_recruiters: number
+          p_project_id: string
+          p_publish?: boolean
+        }
+        Returns: Json
+      }
+      set_hunt_mission_status: {
+        Args: { p_project_id: string; p_status: string }
+        Returns: Json
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       unaccent: { Args: { "": string }; Returns: string }
+      validate_marketplace_partner: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       withdraw_hunt_application: {
         Args: { p_application_id: string }
         Returns: undefined
