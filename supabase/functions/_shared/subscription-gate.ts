@@ -48,7 +48,7 @@ export async function getSubscriptionGate(
 ): Promise<SubscriptionGate> {
   const { data: sub, error: subError } = await admin
     .from("organization_subscriptions")
-    .select("plan_id, status, trial_ends_at, seats")
+    .select("plan_id, status, trial_ends_at, seats, stripe_subscription_id")
     .eq("organization_id", organizationId)
     .maybeSingle();
 
@@ -59,7 +59,13 @@ export async function getSubscriptionGate(
 
   const rawStatus = String(sub?.status ?? "active");
   const trialEndsAt = sub?.trial_ends_at ? Date.parse(String(sub.trial_ends_at)) : NaN;
-  const trialExpired = rawStatus === "trialing" && Number.isFinite(trialEndsAt) && trialEndsAt < Date.now();
+  // Un essai converti en abonnement de paiement porte un identifiant Stripe :
+  // il n'est pas expiré ici, le statut suit le webhook (même règle que
+  // get_subscription_state).
+  const trialExpired = rawStatus === "trialing"
+    && Number.isFinite(trialEndsAt)
+    && trialEndsAt < Date.now()
+    && !sub?.stripe_subscription_id;
 
   const effectivePlanId =
     !sub || sub.plan_id === "free" || rawStatus === "canceled" || rawStatus === "unpaid" || trialExpired

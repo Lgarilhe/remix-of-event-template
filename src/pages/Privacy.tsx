@@ -119,6 +119,9 @@ export default function PrivacyPage() {
                     { name: 'Google AI', data: 'Profils dans les prompts IA', location: 'US (DPF)' },
                     { name: 'Deepgram', data: 'Audio coaching live', location: 'US (DPF + SCC)' },
                     { name: 'Unipile', data: 'Messages LinkedIn/Email', location: 'France' },
+                    { name: 'Coresignal', data: 'Profils professionnels publics (Base Konekt)', location: 'Lituanie (UE)' },
+                    { name: 'BetterContact', data: 'Coordonnées professionnelles (enrichissement)', location: 'France' },
+                    { name: 'Resend', data: 'Emails transactionnels', location: 'US (DPF + SCC)' },
                     { name: 'Stripe', data: 'Facturation', location: 'US (DPF + SCC)' },
                   ].map((row) => (
                     <tr key={row.name} className="border-b border-border/50">

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
@@ -126,8 +126,20 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
   // Base Konekt : état lisible par tous les membres (RPC get_base_konekt_state),
   // pas seulement par les administrateurs.
-  const { isEnabled: baseKonektEnabled, includedRemaining } = useBaseKonektState();
+  const {
+    isEnabled: baseKonektEnabled, planAllows: baseKonektPlanAllows,
+    includedRemaining, creditsPerSearch, isLoading: baseKonektLoading,
+  } = useBaseKonektState();
   const [baseKonektDialogOpen, setBaseKonektDialogOpen] = useState(false);
+  // La source « Base Konekt » peut être restaurée depuis le cache d'une mission
+  // alors que l'accès a été coupé entretemps : on revient sur LinkedIn plutôt
+  // que de laisser partir des recherches qui seront refusées.
+  const baseKonektUsable = baseKonektEnabled && baseKonektPlanAllows;
+  useEffect(() => {
+    if (!baseKonektLoading && !baseKonektUsable && searchSource === 'database') {
+      onSearchSourceChange?.('linkedin');
+    }
+  }, [baseKonektLoading, baseKonektUsable, searchSource, onSearchSourceChange]);
 
   const handleApplyPresetJob = useCallback((jobId: string | null, _jobTitle: string | null) => {
     if (jobId) {
@@ -167,7 +179,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               onClick={() => onSearchSourceChange('linkedin')}
               className={cn(
                 'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
-                searchSource !== 'database'
+                searchSource !== 'database' || !baseKonektUsable
                   ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
                   : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
               )}
@@ -176,10 +188,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => baseKonektEnabled ? onSearchSourceChange('database') : setBaseKonektDialogOpen(true)}
+              onClick={() => baseKonektUsable ? onSearchSourceChange('database') : setBaseKonektDialogOpen(true)}
               className={cn(
                 'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
-                baseKonektEnabled && searchSource === 'database'
+                baseKonektUsable && searchSource === 'database'
                   ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
                   : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
               )}
@@ -187,17 +199,23 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               Base Konekt
             </button>
           </div>
-          {baseKonektEnabled && (
+          {/* Rien tant que l'état n'est pas connu : annoncer un prix faux, même
+              une seconde, vaut mieux évité. */}
+          {!baseKonektLoading && baseKonektUsable && (
             <p className="px-1 text-3xs text-[var(--k-text-muted)]">
               {includedRemaining > 0
                 ? `${includedRemaining} recherche${includedRemaining > 1 ? 's' : ''} incluse${includedRemaining > 1 ? 's' : ''} restante${includedRemaining > 1 ? 's' : ''} ce mois`
-                : '2 crédits par page de résultats'}
+                : `${creditsPerSearch} crédits par page de résultats`}
             </p>
           )}
         </div>
       )}
 
-      <BaseKonektDialog open={baseKonektDialogOpen} onOpenChange={setBaseKonektDialogOpen} />
+      <BaseKonektDialog
+        open={baseKonektDialogOpen}
+        onOpenChange={setBaseKonektDialogOpen}
+        onActivated={() => onSearchSourceChange?.('database')}
+      />
 
       {/* Alerte compte LinkedIn — uniquement en mode LinkedIn (la Base Konekt
           n'exige pas de compte connecté). */}

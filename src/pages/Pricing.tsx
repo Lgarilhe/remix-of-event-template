@@ -40,6 +40,7 @@ const COMPARISON_ROWS: { label: string; key: keyof SubscriptionPlan['limits'] }[
   { label: 'Missions actives', key: 'max_jobs' },
   { label: 'Crédits IA / mois', key: 'ai_credits' },
   { label: 'Contacts enrichis / mois', key: 'contacts_included' },
+  { label: 'Recherches Base Konekt / mois', key: 'database_searches_included' },
 ];
 
 const euroFormatter = new Intl.NumberFormat('fr-FR', {

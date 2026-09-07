@@ -17,6 +17,8 @@ export interface SubscriptionPlan {
     max_members: number;
     ai_credits: number;
     contacts_included?: number;
+    /** Recherches Base Konekt incluses par mois civil (lot K). */
+    database_searches_included?: number;
   };
   stripe_price_id_monthly: string | null;
   stripe_price_id_yearly: string | null;

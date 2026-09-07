@@ -344,10 +344,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
   );
 
-  // Auto-relaunch search when source toggle changes
+  // Relance automatique au changement de source. Deux exceptions : passer sur
+  // la Base Konekt consommerait une unité du forfait ou des crédits sans clic
+  // sur « Rechercher » ; en revenir peut être une correction automatique (accès
+  // coupé), qui ne doit pas lancer de recherche LinkedIn à l'insu de l'user.
   useEffect(() => {
     if (prevSearchSourceRef.current !== searchSource) {
+      const previous = prevSearchSourceRef.current;
       prevSearchSourceRef.current = searchSource;
+      if (searchSource === 'database') return;
+      if (previous === 'database') return;
       // Small delay to let the api type effect fire first
       const timer = setTimeout(() => {
         handleSearch();

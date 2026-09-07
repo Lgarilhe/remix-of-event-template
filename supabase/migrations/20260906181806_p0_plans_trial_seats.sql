@@ -24,17 +24,17 @@ INSERT INTO public.subscription_plans
 VALUES
   ('solo', 'Solo', 'Pour un recruteur indépendant, un compte LinkedIn.',
    5900, 59000, 'eur',
-   '["Missions illimitées", "Recherches LinkedIn illimitées", "Scoring IA des profils", "Séquences LinkedIn et email", "Inbox unifiée", "500 crédits IA par mois", "50 contacts enrichis par mois"]'::jsonb,
+   '["Missions illimitées", "Recherches LinkedIn illimitées", "Scoring IA des profils", "Séquences LinkedIn et email", "Inbox unifiée", "500 crédits IA par mois", "50 contacts enrichis par mois", "Base Konekt facturée en crédits"]'::jsonb,
    '{"max_jobs": -1, "max_searches": -1, "max_members": -1, "ai_credits": 500, "contacts_included": 50}'::jsonb,
    true, 1),
   ('cabinet', 'Cabinet', 'Pour un cabinet de recrutement, par siège.',
    13900, 139000, 'eur',
-   '["Tout Solo", "Équipe, rôles et quotas par recruteur", "Portail client par mission", "Paramètres agence", "2 000 crédits IA par mois", "200 contacts enrichis par mois"]'::jsonb,
+   '["Tout Solo", "Équipe, rôles et quotas par recruteur", "Portail client par mission", "Paramètres agence", "2 000 crédits IA par mois", "200 contacts enrichis par mois", "Base Konekt : 100 recherches incluses par mois"]'::jsonb,
    '{"max_jobs": -1, "max_searches": -1, "max_members": -1, "ai_credits": 2000, "contacts_included": 200}'::jsonb,
    true, 2),
   ('entreprise', 'Entreprise', 'Pour une équipe recrutement interne, par siège.',
    18900, 189000, 'eur',
-   '["Tout Cabinet", "Publication de missions sur la marketplace (espaces de type entreprise)", "5 000 crédits IA par mois", "500 contacts enrichis par mois", "Support prioritaire"]'::jsonb,
+   '["Tout Cabinet", "Publication de missions sur la marketplace (espaces de type entreprise)", "5 000 crédits IA par mois", "500 contacts enrichis par mois", "Base Konekt : 300 recherches incluses par mois", "Support prioritaire"]'::jsonb,
    '{"max_jobs": -1, "max_searches": -1, "max_members": -1, "ai_credits": 5000, "contacts_included": 500}'::jsonb,
    true, 3)
 ON CONFLICT (id) DO UPDATE SET

@@ -76,7 +76,7 @@ async function resolveOrg(
   const { data } = await svc
     .from("profiles")
     .select("active_organization_id")
-    .eq("id", userId)
+    .eq("user_id", userId)
     .maybeSingle();
   return (data?.active_organization_id as string) ?? null;
 }
@@ -177,9 +177,9 @@ interface QuotaContext {
 
 /**
  * Réserve une unité du quota inclus du mois (verrou par organisation côté SQL).
- * Renvoie l'identifiant de la ligne réservée, ou null si le quota est atteint.
- * Un échec du RPC renvoie null : la requête bascule alors sur les crédits, ce
- * qui reste le comportement sûr pour un fournisseur payant.
+ * Renvoie l'identifiant de la ligne réservée, ou null quand le quota du mois
+ * est atteint. Un échec du contrôle lève : facturer en crédits une
+ * organisation dont le forfait couvre la recherche serait pire que d'échouer.
  */
 async function reserveIncluded(
   svc: ReturnType<typeof serviceClient>,
@@ -187,21 +187,16 @@ async function reserveIncluded(
   userId: string,
   action: string,
 ): Promise<string | null> {
-  try {
-    const { data, error } = await svc.rpc("reserve_base_konekt_included", {
-      p_organization_id: orgId,
-      p_user_id: userId,
-      p_action: action,
-    });
-    if (error) {
-      console.error("[coresignal-search] reserve_base_konekt_included failed:", error);
-      return null;
-    }
-    return typeof data === "string" && data ? data : null;
-  } catch (e) {
-    console.error("[coresignal-search] reserve_base_konekt_included threw:", e);
-    return null;
+  const { data, error } = await svc.rpc("reserve_base_konekt_included", {
+    p_organization_id: orgId,
+    p_user_id: userId,
+    p_action: action,
+  });
+  if (error) {
+    console.error("[coresignal-search] reserve_base_konekt_included failed:", error);
+    throw new Error("QUOTA_CHECK_FAILED");
   }
+  return typeof data === "string" && data ? data : null;
 }
 
 /** Rend une unité réservée quand la requête n'a rien servi. */
@@ -259,13 +254,15 @@ async function includedRemaining(
 
     const now = new Date();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
     const { count, error } = await svc
       .from("base_konekt_usage")
       .select("id", { count: "exact", head: true })
       .eq("organization_id", orgId)
       .eq("included", true)
       .in("action", ["preview", "search"])
-      .gte("created_at", monthStart);
+      .gte("created_at", monthStart)
+      .lt("created_at", monthEnd);
     if (error) {
       console.warn("[coresignal-search] included usage count failed (non-blocking):", error);
       return null;
@@ -494,12 +491,17 @@ async function handleSearch(apiKey: string, svc: ReturnType<typeof serviceClient
 
   const ids = Array.isArray(http.body) ? (http.body as unknown[]).map(String) : [];
 
+  // Même règle que l'aperçu : une recherche sans résultat ne coûte rien.
   let included = false;
-  if (quota.reservationId) {
-    included = true;
-  } else {
-    const settled = await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — recherche (IDs)");
-    await recordUsage(svc, orgId, userId, "search", settled ? PREVIEW_COST : 0);
+  if (ids.length > 0) {
+    if (quota.reservationId) {
+      included = true;
+    } else {
+      const settled = await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — recherche (IDs)");
+      await recordUsage(svc, orgId, userId, "search", settled ? PREVIEW_COST : 0);
+    }
+  } else if (quota.reservationId) {
+    await releaseIncluded(svc, quota.reservationId);
   }
   const remaining = await includedRemaining(svc, orgId, quota.planId);
   console.log(`[coresignal-search] search ids=${ids.length} total=${http.totalResults} credits=${http.creditsRemaining} included=${included} remaining=${remaining}`);
@@ -653,8 +655,18 @@ Deno.serve(async (req) => {
     // côté SQL, donc deux pages lancées en parallèle ne consomment pas la même
     // unité. Réservation obtenue → ni pré-check de solde ni débit de crédits.
     if (userId && orgId && (action === "preview" || action === "search")) {
-      const id = await reserveIncluded(svc, orgId, userId, action);
-      if (id) reserved = { svc, id };
+      try {
+        const id = await reserveIncluded(svc, orgId, userId, action);
+        if (id) reserved = { svc, id };
+      } catch {
+        // Contrôle du forfait indisponible : on ne facture pas à l'aveugle.
+        return json(503, {
+          success: false,
+          error: "Service momentanément indisponible, réessayez",
+          errorType: "QUOTA_CHECK_UNAVAILABLE",
+          retryable: true,
+        });
+      }
     }
     const reservationId = reserved?.id ?? null;
 

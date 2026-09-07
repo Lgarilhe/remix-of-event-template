@@ -801,12 +801,13 @@ export function useLinkedInSearchActions(
       setLoading(true);
     }
 
+    // Portée fonction : en cas d'échec sur un tour ultérieur, les profils déjà
+    // payés au tour précédent sont affichés au lieu d'être jetés.
+    let allCollected: LinkedInProfile[] = [];
+    let currentCursor = appendMode ? cursor : null;
+
     try {
       const currentFilters = context.filtersRef.current;
-      
-      // Accumulate profiles across multiple API calls until we reach the target batch size
-      let allCollected: LinkedInProfile[] = [];
-      let currentCursor = appendMode ? cursor : null;
       let latestTotal: number | null = null;
       let exhausted = false;
       const seen = new Set<string>();
@@ -926,6 +927,13 @@ export function useLinkedInSearchActions(
 
         currentCursor = batchCursor;
 
+        // Base Konekt : chaque appel consomme une recherche du forfait ou des
+        // crédits. Une action de l'utilisateur ne doit en consommer qu'une :
+        // la suite se charge par « Charger plus ».
+        if (isDatabase) {
+          break;
+        }
+
         // If we've collected enough, stop
         if (allCollected.length >= RESULTS_PER_BATCH) {
           break;
@@ -947,12 +955,6 @@ export function useLinkedInSearchActions(
       // Persist cursor and total for next "load more" call
       setCursor(currentCursor);
       if (latestTotal !== null) setTotal(latestTotal);
-
-      // Base Konekt : la page vient d'entamer le quota inclus côté serveur,
-      // le compteur affiché dans le panneau doit suivre.
-      if (isDatabase) {
-        queryClient.invalidateQueries({ queryKey: [BASE_KONEKT_QUERY_KEY] });
-      }
 
       if (exhausted || reachedTotal) {
         setHasMoreResults(false);
@@ -1026,7 +1028,8 @@ export function useLinkedInSearchActions(
         if (scoredBatch.length === 0) {
           toast.info('Aucun nouveau profil trouvé. Essayez d\'élargir vos filtres ou de modifier vos mots-clés.', { id: 'no-new-results', duration: 5000 });
         } else if (scoredBatch.length < 5 && noMoreResults) {
-          toast.info(`Seulement ${scoredBatch.length} nouveau${scoredBatch.length > 1 ? 'x' : ''} profil${scoredBatch.length > 1 ? 's' : ''} trouvé${scoredBatch.length > 1 ? 's' : ''}. Fin des résultats LinkedIn pour ces filtres.`, { id: 'few-new-results', duration: 5000 });
+          const sourceLabel = isDatabase ? 'de la Base Konekt' : 'LinkedIn';
+          toast.info(`Seulement ${scoredBatch.length} nouveau${scoredBatch.length > 1 ? 'x' : ''} profil${scoredBatch.length > 1 ? 's' : ''} trouvé${scoredBatch.length > 1 ? 's' : ''}. Fin des résultats ${sourceLabel} pour ces filtres.`, { id: 'few-new-results', duration: 5000 });
         }
         setResults(prev => [...prev, ...scoredBatch]);
       } else {
@@ -1036,6 +1039,17 @@ export function useLinkedInSearchActions(
 
     } catch (error: any) {
       console.error('[LinkedInSearch] Search error:', error);
+
+      // Une page déjà servie a été payée : on l'affiche avant le message.
+      if (allCollected.length > 0) {
+        setCursor(currentCursor);
+        if (appendMode) {
+          setResults(prev => [...prev, ...allCollected]);
+        } else {
+          setResults(allCollected);
+          setHasSearched(true);
+        }
+      }
 
       const errorMessage = String(error?.message || '');
       const errorType = String(error?.errorType || '').toLowerCase();
@@ -1052,7 +1066,12 @@ export function useLinkedInSearchActions(
       // Base Konekt fermée pour cet espace : le message serveur est technique,
       // on dit à l'user ce qui bloque plutôt que de le relayer tel quel.
       if (errorType === 'not_enabled') {
-        toast.error("La Base Konekt n'est pas activée pour votre espace.", {
+        toast.error("La Base Konekt n'est pas activée pour votre espace. Un administrateur peut l'activer depuis le panneau de recherche ou les paramètres.", {
+          id: 'search-error',
+          duration: 8000,
+        });
+      } else if (errorType === 'quota_check_unavailable') {
+        toast.error('Le décompte de vos recherches incluses est momentanément indisponible. Réessayez dans un instant.', {
           id: 'search-error',
           duration: 8000,
         });
@@ -1115,6 +1134,11 @@ export function useLinkedInSearchActions(
       // Stop infinite scroll from retrying on error
       setHasMoreResults(false);
     } finally {
+      // Base Konekt : une page servie a entamé le forfait ou les crédits, même
+      // si un tour ultérieur a échoué. Le compteur du panneau doit suivre.
+      if (isDatabase) {
+        queryClient.invalidateQueries({ queryKey: [BASE_KONEKT_QUERY_KEY] });
+      }
       setLoading(false);
       setLoadingMore(false);
     }

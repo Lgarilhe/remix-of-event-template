@@ -39,7 +39,9 @@ FROM (VALUES
 ) AS q(id, quota)
 WHERE p.id = q.id;
 
--- Ligne visible sur la page tarifs, ajoutée une seule fois. Le plan gratuit
+-- Ligne visible sur la page tarifs, ajoutée une seule fois. Elle figure aussi
+-- dans 20260906181806 (source de vérité des plans, qui écrase features à
+-- chaque rejeu) : ce bloc rattrape les bases déjà migrées. Le plan gratuit
 -- n'annonce rien : la Base Konekt n'y est pas activable.
 UPDATE public.subscription_plans p
 SET features = p.features || to_jsonb(q.ligne)
@@ -102,7 +104,8 @@ CREATE POLICY base_konekt_usage_select
   ON public.base_konekt_usage FOR SELECT TO authenticated
   USING (public.is_org_member(auth.uid(), organization_id));
 
-REVOKE INSERT, UPDATE, DELETE ON public.base_konekt_usage FROM anon, authenticated;
+REVOKE ALL PRIVILEGES ON public.base_konekt_usage FROM PUBLIC, anon;
+REVOKE INSERT, UPDATE, DELETE ON public.base_konekt_usage FROM authenticated;
 GRANT SELECT ON public.base_konekt_usage TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.base_konekt_usage TO service_role;
 
@@ -121,9 +124,10 @@ DECLARE
   v_plan_id text;
   v_status text;
   v_trial_ends_at timestamptz;
+  v_stripe_subscription_id text;
 BEGIN
-  SELECT s.plan_id, s.status, s.trial_ends_at
-  INTO v_plan_id, v_status, v_trial_ends_at
+  SELECT s.plan_id, s.status, s.trial_ends_at, s.stripe_subscription_id
+  INTO v_plan_id, v_status, v_trial_ends_at, v_stripe_subscription_id
   FROM public.organization_subscriptions s
   WHERE s.organization_id = _organization_id
   LIMIT 1;
@@ -134,7 +138,13 @@ BEGIN
 
   RETURN CASE
     WHEN v_status IN ('canceled', 'unpaid') THEN 'free'
-    WHEN v_status = 'trialing' AND v_trial_ends_at IS NOT NULL AND v_trial_ends_at < now() THEN 'free'
+    -- Un essai converti en abonnement de paiement porte un identifiant Stripe :
+    -- il n'est pas expiré ici, le statut suit le webhook (même règle que
+    -- get_subscription_state).
+    WHEN v_status = 'trialing'
+      AND v_trial_ends_at IS NOT NULL
+      AND v_trial_ends_at < now()
+      AND v_stripe_subscription_id IS NULL THEN 'free'
     ELSE v_plan_id
   END;
 END;
@@ -159,6 +169,7 @@ DECLARE
   v_role text;
   v_monthly integer;
   v_used integer;
+  v_status text;
   -- Mois civil en UTC : le décompte ne dépend pas du fuseau de la session.
   v_period_start timestamptz := date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
   v_period_end timestamptz;
@@ -175,16 +186,28 @@ BEGIN
 
   v_period_end := v_period_start + interval '1 month';
   v_plan_id := public.base_konekt_effective_plan(p_organization_id);
+  SELECT s.status INTO v_status
+  FROM public.organization_subscriptions s
+  WHERE s.organization_id = p_organization_id;
 
   SELECT coalesce(oi.coresignal_enabled, false) INTO v_enabled
   FROM public.organization_integrations oi
   WHERE oi.organization_id = p_organization_id;
   v_enabled := coalesce(v_enabled, false);
 
-  SELECT coalesce((p.limits ->> 'database_searches_included')::integer, 0) INTO v_monthly
+  SELECT coalesce(greatest(0, CASE
+    WHEN pg_catalog.jsonb_typeof(p.limits -> 'database_searches_included') = 'number'
+      THEN pg_catalog.floor((p.limits ->> 'database_searches_included')::numeric)::integer
+    ELSE 0
+  END), 0) INTO v_monthly
   FROM public.subscription_plans p
   WHERE p.id = v_plan_id;
   v_monthly := coalesce(v_monthly, 0);
+  -- Pendant l'essai, le forfait est plafonné : l'accès est ouvert sans carte
+  -- bancaire, les recherches sont payées au fournisseur.
+  IF coalesce(v_status, '') = 'trialing' THEN
+    v_monthly := least(v_monthly, 10);
+  END IF;
 
   -- Une unité = une page d'aperçu ; la fiche complète (collect) reste en crédits.
   SELECT count(*) INTO v_used
@@ -207,7 +230,11 @@ BEGIN
     'period_end', v_period_end,
     'credits_per_search', 2,
     'credits_per_profile', 2,
-    'can_activate', coalesce(v_role IN ('owner', 'admin'), false) AND v_plan_id <> 'free'
+    'can_activate', coalesce(v_role IN ('owner', 'admin'), false) AND v_plan_id <> 'free',
+    -- Droit de couper l'accès, sans condition de plan : une organisation
+    -- retombée sur la formule gratuite doit pouvoir désactiver.
+    'can_manage', coalesce(v_role IN ('owner', 'admin'), false),
+    'trialing', coalesce(v_status, '') = 'trialing'
   );
 END;
 $$;
@@ -236,7 +263,7 @@ BEGIN
   -- La désactivation reste ouverte quel que soit le plan : une organisation
   -- retombée sur le plan gratuit doit pouvoir couper l'accès.
   IF p_enabled AND public.base_konekt_effective_plan(p_organization_id) = 'free' THEN
-    RAISE EXCEPTION 'La Base Konekt est disponible à partir du plan Solo' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'La Base Konekt est disponible à partir de la formule Solo' USING ERRCODE = '42501';
   END IF;
 
   -- La trace d'activation n'est écrasée que par une activation : après une
@@ -280,6 +307,7 @@ AS $$
 DECLARE
   v_monthly integer;
   v_used integer;
+  v_status text;
   v_usage_id uuid;
   v_period_start timestamptz := date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
   v_period_end timestamptz;
@@ -299,10 +327,21 @@ BEGIN
     pg_catalog.hashtext(p_organization_id::text)
   );
 
-  SELECT coalesce((p.limits ->> 'database_searches_included')::integer, 0) INTO v_monthly
+  SELECT coalesce(greatest(0, CASE
+    WHEN pg_catalog.jsonb_typeof(p.limits -> 'database_searches_included') = 'number'
+      THEN pg_catalog.floor((p.limits ->> 'database_searches_included')::numeric)::integer
+    ELSE 0
+  END), 0) INTO v_monthly
   FROM public.subscription_plans p
   WHERE p.id = public.base_konekt_effective_plan(p_organization_id);
   v_monthly := coalesce(v_monthly, 0);
+
+  SELECT s.status INTO v_status
+  FROM public.organization_subscriptions s
+  WHERE s.organization_id = p_organization_id;
+  IF coalesce(v_status, '') = 'trialing' THEN
+    v_monthly := least(v_monthly, 10);
+  END IF;
 
   IF v_monthly <= 0 THEN
     RETURN NULL;

@@ -1,5 +1,5 @@
 /**
- * BaseKonektDialog — présentation et activation de la Base Konekt depuis le
+ * BaseKonektDialog : présentation et activation de la Base Konekt depuis le
  * panneau de recherche (lot K).
  *
  * Affiché quand la Base Konekt n'est pas encore activée : c'est le seul endroit
@@ -24,11 +24,15 @@ import { useBaseKonektState } from '@/hooks/useBaseKonekt';
 interface BaseKonektDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Appelé après une activation réussie : la source passe sur la Base Konekt. */
+  onActivated?: () => void;
 }
 
-export const BaseKonektDialog = ({ open, onOpenChange }: BaseKonektDialogProps) => {
+export const BaseKonektDialog = ({ open, onOpenChange, onActivated }: BaseKonektDialogProps) => {
   const navigate = useNavigate();
-  const { state, isLoading, planAllows, canActivate, includedMonthly, setEnabled, isSaving } = useBaseKonektState();
+  const {
+    state, isLoading, planAllows, canActivate, includedMonthly, isTrialing, setEnabled, isSaving,
+  } = useBaseKonektState();
   const [activating, setActivating] = useState(false);
 
   const creditsPerSearch = state?.credits_per_search ?? 2;
@@ -38,6 +42,7 @@ export const BaseKonektDialog = ({ open, onOpenChange }: BaseKonektDialogProps) 
     setActivating(true);
     try {
       await setEnabled(true);
+      onActivated?.();
       onOpenChange(false);
     } catch {
       // Le hook a déjà affiché le refus (rôle ou plan) : la boîte reste ouverte.
@@ -54,7 +59,9 @@ export const BaseKonektDialog = ({ open, onOpenChange }: BaseKonektDialogProps) 
   } else if (!planAllows) {
     planLine = 'La Base Konekt est disponible à partir de la formule Solo.';
   } else if (includedMonthly > 0) {
-    planLine = `Votre formule comprend ${includedMonthly} recherches incluses par mois.`;
+    planLine = isTrialing
+      ? `Pendant l'essai, ${includedMonthly} recherches sont incluses. Le forfait complet de votre formule s'applique dès le premier paiement.`
+      : `Votre formule comprend ${includedMonthly} recherches incluses par mois.`;
   } else {
     planLine = 'Votre formule ne comprend pas de recherche incluse : la Base Konekt est facturée en crédits.';
   }
@@ -76,12 +83,16 @@ export const BaseKonektDialog = ({ open, onOpenChange }: BaseKonektDialogProps) 
         <div className="space-y-3 text-sm text-muted-foreground">
           <p>{planLine}</p>
           <p>
-            Au-delà du quota inclus : {creditsPerSearch} crédits par page de 20 profils,
-            {' '}{creditsPerProfile} crédits par fiche complète.
+            {includedMonthly > 0
+              ? `Page de 20 profils : ${creditsPerSearch} crédits une fois vos recherches incluses épuisées.`
+              : `Page de 20 profils : ${creditsPerSearch} crédits.`}
+          </p>
+          <p>
+            Fiche complète : {creditsPerProfile} crédits, qu'il reste ou non des recherches incluses.
           </p>
           <p className="text-xs">
-            Les profils viennent de sources professionnelles publiques. Le sous-traitant qui les fournit est
-            listé sur la{' '}
+            Les profils viennent de sources professionnelles publiques. Le sous-traitant qui les fournit
+            figure sur la{' '}
             <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">
               page confidentialité
             </Link>

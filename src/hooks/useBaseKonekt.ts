@@ -1,5 +1,5 @@
 /**
- * useBaseKonekt — état de la Base Konekt pour l'organisation active (lot K,
+ * useBaseKonekt : état de la Base Konekt pour l'organisation active (lot K,
  * docs/marketplace-base-konekt-plan-2026-09-07.md).
  *
  * Tout est calculé par la RPC get_base_konekt_state : activation, plan
@@ -32,17 +32,23 @@ export interface BaseKonektState {
   credits_per_profile: number;
   /** Propriétaire ou administrateur, sur un plan qui autorise la Base Konekt. */
   can_activate: boolean;
+  /** Propriétaire ou administrateur, quel que soit le plan (permet de couper l'accès). */
+  can_manage: boolean;
+  /** Vrai pendant l'essai : le forfait de recherches est plafonné. */
+  trialing: boolean;
 }
 
 export const BASE_KONEKT_QUERY_KEY = 'base-konekt';
 
-// Messages de Postgres ou du réseau : ils ne sont pas écrits pour l'utilisateur.
-const TECHNICAL_ERROR = /violates|permission denied|relation |column |syntax error|duplicate key|null value|JWT|Failed to fetch|FetchError|Internal Server Error/i;
+// Codes des exceptions levées volontairement par la RPC : leur message est
+// écrit pour l'écran. Tout le reste (schéma, réseau, droits Postgres) est
+// technique et ne doit pas être montré.
+const USER_FACING_CODES = new Set(['42501', 'P0001', '22023']);
 
 /**
- * Message affichable. Les exceptions de la RPC sont rédigées en français et
- * destinées à l'écran ; une erreur technique est remplacée par le repli, le
- * détail restant dans la console.
+ * Message affichable. On n'affiche le message du serveur que pour une
+ * exception volontaire de la RPC ; sinon le repli, le détail restant dans la
+ * console.
  */
 function errorMessage(err: unknown, fallback: string): string {
   let raw: string | null = null;
@@ -51,8 +57,11 @@ function errorMessage(err: unknown, fallback: string): string {
     const msg = (err as { message?: unknown }).message;
     if (typeof msg === 'string' && msg) raw = msg;
   }
+  const code = err && typeof err === 'object' && 'code' in err
+    ? String((err as { code?: unknown }).code ?? '')
+    : '';
   if (!raw) return fallback;
-  if (TECHNICAL_ERROR.test(raw)) {
+  if (!USER_FACING_CODES.has(code)) {
     console.error('[base-konekt]', raw);
     return fallback;
   }
@@ -67,7 +76,7 @@ function errorMessage(err: unknown, fallback: string): string {
  */
 export const useBaseKonektState = () => {
   const queryClient = useQueryClient();
-  const { organizationId } = useOrganization();
+  const { organizationId, isLoading: orgLoading } = useOrganization();
 
   const query = useQuery({
     queryKey: [BASE_KONEKT_QUERY_KEY, organizationId],
@@ -115,16 +124,23 @@ export const useBaseKonektState = () => {
 
   return {
     state,
-    isLoading: query.isLoading,
+    // Tant que l'organisation n'est pas chargée, la requête est désactivée et
+    // ne dit rien : les écrans doivent rester en chargement.
+    isLoading: orgLoading || query.isPending,
     isError: query.isError,
     errorText: query.isError ? errorMessage(query.error, 'Impossible de charger la Base Konekt') : null,
     refetch: () => { void query.refetch(); },
     isEnabled: !!state?.enabled,
     planAllows: !!state?.plan_allows,
     canActivate: !!state?.can_activate,
+    canManage: !!state?.can_manage,
+    isTrialing: !!state?.trialing,
     includedRemaining: state?.included_remaining ?? 0,
     includedMonthly: state?.included_monthly ?? 0,
     includedUsed: state?.included_used ?? 0,
+    creditsPerSearch: state?.credits_per_search ?? 2,
+    creditsPerProfile: state?.credits_per_profile ?? 2,
+    periodEnd: state?.period_end ?? null,
     setEnabled,
     isSaving: setEnabledMutation.isPending,
   };

@@ -1,5 +1,5 @@
 /**
- * BaseKonektCard — réglage de la Base Konekt dans Paramètres > Crédits IA (lot K).
+ * BaseKonektCard : réglage de la Base Konekt dans Paramètres > Crédits IA (lot K).
  *
  * Lecture ouverte à tous les membres (ils consomment le quota), interrupteur
  * réservé aux propriétaires et administrateurs sur une formule payante. La règle
@@ -38,6 +38,8 @@ export const BaseKonektCard = () => {
     canActivate,
     includedMonthly,
     includedUsed,
+    canManage,
+    isTrialing,
     setEnabled,
     isSaving,
   } = useBaseKonektState();
@@ -48,7 +50,11 @@ export const BaseKonektCard = () => {
 
   // Remise à zéro du quota : 1er du mois suivant, renvoyé par la RPC.
   const resetDate = state?.period_end ? new Date(state.period_end) : null;
-  const resetLabel = resetDate && !Number.isNaN(resetDate.getTime()) ? format(resetDate, 'dd/MM') : null;
+  // La borne est minuit UTC : on la formate en UTC pour ne pas afficher la
+  // veille aux fuseaux à l'ouest de Greenwich.
+  const resetLabel = resetDate && !Number.isNaN(resetDate.getTime())
+    ? `${String(resetDate.getUTCDate()).padStart(2, '0')}/${String(resetDate.getUTCMonth() + 1).padStart(2, '0')}`
+    : null;
 
   const usagePercent = includedMonthly > 0
     ? Math.min(100, Math.round((includedUsed / includedMonthly) * 100))
@@ -94,17 +100,22 @@ export const BaseKonektCard = () => {
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">{isEnabled ? 'Activée' : 'Non activée'}</p>
+            <p className="text-sm font-medium text-foreground">
+              {isEnabled && !planAllows ? 'Suspendue' : isEnabled ? 'Activée' : 'Non activée'}
+            </p>
             <p className="text-xs text-muted-foreground">
-              {isEnabled
-                ? 'Tous les membres de votre espace peuvent choisir cette source dans le panneau de recherche.'
-                : 'Vos recherches passent uniquement par LinkedIn.'}
+              {isEnabled && !planAllows
+                ? 'Votre formule ne donne plus accès à la Base Konekt : les recherches en base sont refusées.'
+                : isEnabled
+                  ? 'Tous les membres de votre espace peuvent choisir cette source dans le panneau de recherche.'
+                  : 'Vos recherches passent uniquement par LinkedIn.'}
             </p>
           </div>
-          {canActivate && (
+          {/* Couper l'accès reste possible même si la formule ne l'autorise plus. */}
+          {(canActivate || (canManage && isEnabled)) && (
             <Switch
               checked={isEnabled}
-              disabled={isSaving}
+              disabled={isSaving || (!isEnabled && !canActivate)}
               aria-label="Activer la Base Konekt"
               onCheckedChange={(checked) => {
                 if (checked) {
@@ -125,6 +136,7 @@ export const BaseKonektCard = () => {
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
                     {includedUsed} / {includedMonthly} recherches incluses ce mois
+                    {isTrialing ? ' (essai)' : ''}
                   </span>
                   {resetLabel && (
                     <span className="flex items-center gap-1">
@@ -141,11 +153,13 @@ export const BaseKonektCard = () => {
             )}
 
             <p className="text-xs text-muted-foreground">
-              Au-delà du quota inclus : {creditsPerSearch} crédits par page de 20 profils,
-              {' '}{creditsPerProfile} crédits par fiche complète.
+              {includedMonthly > 0
+                ? `Page de 20 profils : ${creditsPerSearch} crédits une fois vos recherches incluses épuisées.`
+                : `Page de 20 profils : ${creditsPerSearch} crédits.`}
+              {' '}Fiche complète : {creditsPerProfile} crédits, qu'il reste ou non des recherches incluses.
             </p>
 
-            {!canActivate && (
+            {!canManage && (
               <p className="text-xs text-muted-foreground">
                 Pour activer ou désactiver la Base Konekt, demandez à un administrateur de votre organisation.
               </p>
