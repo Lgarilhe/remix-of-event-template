@@ -191,6 +191,9 @@ export const usePartnerState = () => {
   return {
     state,
     isLoading: query.isLoading,
+    isError: query.isError,
+    errorText: query.isError ? errorMessage(query.error, 'Impossible de charger votre statut partenaire') : null,
+    refetch: () => { void query.refetch(); },
     isPartner: state?.status === 'active',
     canRequest: !!state?.can_request,
     requestPartner,
@@ -243,6 +246,9 @@ export const useOpenHuntMissions = (enabled: boolean) => {
   return {
     missions: query.data ?? [],
     isLoading: query.isLoading,
+    isError: query.isError,
+    errorText: query.isError ? errorMessage(query.error, 'Impossible de charger les missions ouvertes') : null,
+    refetch: () => { void query.refetch(); },
     apply,
     isApplying: applyMutation.isPending,
   };
@@ -289,7 +295,11 @@ export const useMyHuntApplications = (enabled: boolean) => {
   return {
     applications: query.data ?? [],
     isLoading: query.isLoading,
+    isError: query.isError,
+    errorText: query.isError ? errorMessage(query.error, 'Impossible de charger vos candidatures') : null,
+    refetch: () => { void query.refetch(); },
     withdraw,
+    isWithdrawing: withdrawMutation.isPending,
   };
 };
 
@@ -314,6 +324,9 @@ export const usePartnerMissions = (enabled: boolean) => {
   return {
     missions: query.data ?? [],
     isLoading: query.isLoading,
+    isError: query.isError,
+    errorText: query.isError ? errorMessage(query.error, 'Impossible de charger vos missions partenaires') : null,
+    refetch: () => { void query.refetch(); },
   };
 };
 
@@ -338,6 +351,9 @@ export const useMyHuntMissions = (enabled: boolean) => {
   return {
     missions: query.data ?? [],
     isLoading: query.isLoading,
+    isError: query.isError,
+    errorText: query.isError ? errorMessage(query.error, 'Impossible de charger vos missions publiées') : null,
+    refetch: () => { void query.refetch(); },
   };
 };
 
@@ -416,6 +432,9 @@ export const useHuntApplicants = (projectId: string | null | undefined, enabled:
   return {
     applicants: query.data ?? [],
     isLoading: query.isLoading,
+    isError: query.isError,
+    errorText: query.isError ? errorMessage(query.error, 'Impossible de charger les candidatures') : null,
+    refetch: () => { void query.refetch(); },
     respond,
     endCollaboration,
     isResponding: respondMutation.isPending || endMutation.isPending,
@@ -441,11 +460,18 @@ export const useMissionTeamProfiles = (projectId: string | null | undefined) => 
 
   const profiles = useMemo(() => query.data ?? [], [query.data]);
 
+  /**
+   * Nom d'un membre de l'équipe. `fallback` sert tant que la RPC n'a pas
+   * répondu, ou si elle échoue : l'appelant passe le nom qu'il connaît déjà
+   * pour les membres de son organisation.
+   */
   const getName = useCallback(
-    (userId: string): string => {
+    (userId: string, fallback?: string): string => {
       const profile = profiles.find((p) => p.user_id === userId);
       const name = profile?.display_name?.trim();
       if (name) return name;
+      const fromCaller = fallback?.trim();
+      if (fromCaller) return fromCaller;
       return profile?.is_external ? 'Recruteur partenaire' : 'Membre';
     },
     [profiles],
@@ -537,6 +563,8 @@ export const usePlatformAdmin = () => {
   return {
     isPlatformAdmin,
     isLoading: whoamiQuery.isLoading || (isPlatformAdmin && partnersQuery.isLoading),
+    isError: partnersQuery.isError,
+    errorText: partnersQuery.isError ? errorMessage(partnersQuery.error, 'Impossible de charger les demandes') : null,
     partners: partnersQuery.data ?? [],
     refresh,
     validate,

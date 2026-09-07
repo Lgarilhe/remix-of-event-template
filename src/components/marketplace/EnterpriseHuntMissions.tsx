@@ -9,10 +9,11 @@ import { useNavigate } from 'react-router-dom';
 import { Target, Users, Clock, Calendar, ArrowRight } from 'lucide-react';
 import { useMyHuntMissions } from '@/hooks/useMarketplace';
 import { huntStatusLabel, formatDate } from './huntLabels';
+import { ErrorBox } from './ErrorBox';
 
 export const EnterpriseHuntMissions: React.FC = () => {
   const navigate = useNavigate();
-  const { missions, isLoading } = useMyHuntMissions(true);
+  const { missions, isLoading, isError, errorText, refetch } = useMyHuntMissions(true);
 
   return (
     <div>
@@ -24,6 +25,12 @@ export const EnterpriseHuntMissions: React.FC = () => {
         <div className="flex items-center justify-center py-20">
           <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
         </div>
+      ) : isError ? (
+        <ErrorBox
+          title="Impossible de charger vos missions publiées."
+          detail={errorText}
+          onRetry={refetch}
+        />
       ) : missions.length === 0 ? (
         <div className="border border-dashed border-border p-12 text-center">
           <Target className="w-8 h-8 text-muted-foreground mx-auto mb-3" />

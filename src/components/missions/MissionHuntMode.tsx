@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
@@ -15,6 +16,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { applicationStatusLabel, orgTypeLabel, formatDate } from '@/components/marketplace/huntLabels';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 
 interface MissionHuntModeProps {
   project: SourcingProject;
@@ -56,8 +58,9 @@ const STATUS_ACTION_TEXT: Record<StatusAction, { title: string; description: str
 type ApplicantAction = { kind: 'accepted' | 'rejected' | 'end'; applicant: HuntApplicant } | null;
 
 export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => {
+  const queryClient = useQueryClient();
   const { updateProject } = useSourcingProjects();
-  const { orgType } = useOrganization();
+  const { orgType, isAdmin } = useOrganization();
   const { effectivePlanId, isTrialing } = useSubscriptionState();
   const canPublish = hasFeature(orgType, 'marketplace_publish');
   // Publication : plan Entreprise ou période d'essai (règle aussi appliquée par un trigger en base)
@@ -67,8 +70,10 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   const huntStatus = project.hunt_status || 'draft';
   const statusCfg = HUNT_STATUS_CONFIG[huntStatus] || HUNT_STATUS_CONFIG.draft;
 
-  const { applicants, isLoading: loadingApplicants, respond, endCollaboration, isResponding } =
-    useHuntApplicants(project.id, canPublish && isEnabled);
+  const {
+    applicants, isLoading: loadingApplicants, isError: applicantsError, errorText: applicantsErrorText,
+    refetch: refetchApplicants, respond, endCollaboration, isResponding,
+  } = useHuntApplicants(project.id, canPublish && isEnabled);
 
   const [bounty, setBounty] = useState(project.hunt_bounty_percent ?? 15);
   const [maxRecruiters, setMaxRecruiters] = useState(project.hunt_max_recruiters ?? 3);
@@ -76,6 +81,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   const [busy, setBusy] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<StatusAction | null>(null);
   const [pendingApplicant, setPendingApplicant] = useState<ApplicantAction>(null);
+  const [pendingDisable, setPendingDisable] = useState(false);
 
   if (!canPublish) {
     return (
@@ -93,21 +99,37 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   const acceptedCount = accepted.length;
   const maxCount = project.hunt_max_recruiters ?? maxRecruiters;
 
-  const handleToggle = async () => {
+  // Les listes de la marketplace (missions publiées, candidatures) sont
+  // rafraîchies après chaque changement de statut de la mission.
+  const refreshMarketplace = () => {
+    queryClient.invalidateQueries({ queryKey: ['marketplace'] });
+  };
+
+  const setHuntMode = async (newMode: boolean) => {
     setBusy(true);
     try {
-      const newMode = !isEnabled;
       await updateProject({
         id: project.id,
         hunt_mode: newMode,
         hunt_status: newMode ? 'draft' : null,
       });
+      refreshMarketplace();
       toast.success(newMode ? 'Mode chasse activé' : 'Mode chasse désactivé');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erreur lors de la mise à jour');
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleToggle = async () => {
+    // Désactiver avec des candidatures en cours retire la mission de vos listes
+    // sans prévenir les recruteurs : on demande confirmation.
+    if (isEnabled && applicants.some((a) => a.status === 'pending' || a.status === 'accepted')) {
+      setPendingDisable(true);
+      return;
+    }
+    await setHuntMode(!isEnabled);
   };
 
   const handlePublish = async () => {
@@ -123,8 +145,9 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
       toast.error('Le nombre de recruteurs doit être compris entre 1 et 10');
       return;
     }
-    if (deadline && new Date(deadline) < new Date()) {
-      toast.error('La date limite doit être dans le futur');
+    // La mission reste ouverte pendant tout le jour choisi (même règle en base).
+    if (deadline && deadline < new Date().toISOString().slice(0, 10)) {
+      toast.error('La date limite ne peut pas être dans le passé');
       return;
     }
     setBusy(true);
@@ -136,6 +159,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
         hunt_deadline: deadline ? new Date(deadline).toISOString() : null,
         hunt_status: 'published',
       });
+      refreshMarketplace();
       toast.success('Mission publiée sur la marketplace');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erreur lors de la publication');
@@ -148,6 +172,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
     setBusy(true);
     try {
       await updateProject({ id: project.id, hunt_status: status });
+      refreshMarketplace();
       toast.success(STATUS_ACTION_TEXT[status].success);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erreur lors de la mise à jour');
@@ -337,6 +362,12 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               </div>
+            ) : applicantsError ? (
+              <ErrorBox
+                title="Impossible de charger les candidatures."
+                detail={applicantsErrorText}
+                onRetry={refetchApplicants}
+              />
             ) : others.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {huntStatus === 'draft'
@@ -347,7 +378,11 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               <div className="space-y-2">
                 {others.map((a) => (
                   <ApplicantCard key={a.id} applicant={a}>
-                    {a.status === 'pending' && isOpen ? (
+                    {a.status === 'pending' && isOpen && !isAdmin ? (
+                      <span className="text-[11px] text-muted-foreground">
+                        Seul un administrateur peut répondre.
+                      </span>
+                    ) : a.status === 'pending' && isOpen ? (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -399,14 +434,16 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                         {a.responded_at ? ` · accepté le ${formatDate(a.responded_at)}` : ''}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPendingApplicant({ kind: 'end', applicant: a })}
-                      disabled={isResponding}
-                      className="h-8 px-3 rounded-full text-[11.5px] font-medium border border-border text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                    >
-                      Mettre fin
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setPendingApplicant({ kind: 'end', applicant: a })}
+                        disabled={isResponding}
+                        className="h-8 px-3 rounded-full text-[11.5px] font-medium border border-border text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                      >
+                        Mettre fin
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -414,6 +451,32 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
           </div>
         </>
       )}
+
+      {/* Confirmation de la désactivation du mode chasse */}
+      <AlertDialog open={pendingDisable} onOpenChange={(open) => !open && setPendingDisable(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Désactiver le mode chasse ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La mission sort de la marketplace et de vos listes. Les recruteurs déjà acceptés gardent
+              leur accès à la mission et les candidatures en attente restent sans réponse. Mettez fin aux
+              collaborations avant, si c'est ce que vous voulez.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setPendingDisable(false);
+                void setHuntMode(false);
+              }}
+            >
+              Désactiver
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Confirmation des changements de statut */}
       <AlertDialog open={!!pendingStatus} onOpenChange={(open) => !open && setPendingStatus(null)}>
@@ -473,6 +536,14 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   );
 };
 
+/**
+ * Vrai pour une adresse de profil LinkedIn en https. Le lien n'est rendu que
+ * dans ce cas : l'adresse vient du recruteur, un autre schéma (javascript:,
+ * data:) exécuterait du code dans la session de l'entreprise.
+ */
+const isLinkedInUrl = (url: string | null): url is string =>
+  !!url && /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\//i.test(url.trim());
+
 // Fiche d'un recruteur candidat : identité, organisation, profil, message
 const ApplicantCard: React.FC<{ applicant: HuntApplicant; children: React.ReactNode }> = ({ applicant: a, children }) => (
   <div className="rounded-lg border border-border bg-background px-4 py-3 space-y-2">
@@ -497,7 +568,7 @@ const ApplicantCard: React.FC<{ applicant: HuntApplicant; children: React.ReactN
           {typeof a.placements_count === 'number' && a.placements_count > 0 && (
             <span>{a.placements_count} placement{a.placements_count > 1 ? 's' : ''}</span>
           )}
-          {a.linkedin_url && (
+          {isLinkedInUrl(a.linkedin_url) && (
             <a
               href={a.linkedin_url}
               target="_blank"

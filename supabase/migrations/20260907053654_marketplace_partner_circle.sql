@@ -382,6 +382,13 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
+  -- L'adresse est affichée en lien cliquable à l'entreprise : seul un lien
+  -- LinkedIn en https est accepté (aucun autre schéma, notamment javascript:).
+  IF nullif(btrim(p_linkedin_url), '') IS NOT NULL
+     AND btrim(p_linkedin_url) !~* '^https://([a-z0-9-]+\.)?linkedin\.com/[^[:space:]]*$' THEN
+    RAISE EXCEPTION 'Adresse LinkedIn invalide' USING ERRCODE = '22023';
+  END IF;
+
   -- Fiche recruteur montrée à l'entreprise lors d'une candidature.
   UPDATE public.profiles
   SET recruiter_headline = nullif(btrim(p_headline), ''),
@@ -455,7 +462,7 @@ BEGIN
   LEFT JOIN public.organizations o ON o.id = sp.organization_id
   WHERE sp.hunt_mode = true
     AND sp.hunt_status IN ('published', 'in_progress')
-    AND (sp.hunt_deadline IS NULL OR sp.hunt_deadline > now())
+    AND (sp.hunt_deadline IS NULL OR sp.hunt_deadline::date >= current_date)
     AND NOT public.is_org_member(v_uid, sp.organization_id)
   ORDER BY sp.created_at DESC;
 END;
@@ -500,7 +507,7 @@ BEGIN
   END IF;
 
   IF coalesce(v_project.hunt_status, '') NOT IN ('published', 'in_progress')
-     OR (v_project.hunt_deadline IS NOT NULL AND v_project.hunt_deadline <= now()) THEN
+     OR (v_project.hunt_deadline IS NOT NULL AND v_project.hunt_deadline::date < current_date) THEN
     RAISE EXCEPTION 'Cette mission n''accepte plus de candidature';
   END IF;
 

@@ -8,9 +8,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Shield, Loader2, X, Clock, Ban, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Shield, Loader2, X, Clock, Ban, CheckCircle2, ArrowRight, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { usePartnerState } from '@/hooks/useMarketplace';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { IconTile } from '@/components/ui/IconTile';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,22 +33,25 @@ const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const PartnerCircleCard: React.FC = () => {
-  const { state, isLoading, canRequest, requestPartner, isRequesting } = usePartnerState();
+  const { state, isLoading, isError, errorText, refetch, canRequest, requestPartner, isRequesting } = usePartnerState();
+  const { user } = useAuthReady();
+  const userId = user?.id ?? null;
 
   // Profil recruteur de l'utilisateur : pré-remplit le formulaire et sert
-  // d'affichage en lecture une fois la demande envoyée.
+  // d'affichage en lecture une fois la demande envoyée. La clé porte
+  // l'identifiant : un changement de compte ne réutilise pas le profil précédent.
   const { data: profile } = useQuery({
-    queryKey: ['marketplace', 'partner-profile'],
+    queryKey: ['marketplace', 'partner-profile', userId],
     queryFn: async (): Promise<PartnerProfile | null> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+      if (!userId) return null;
       const { data } = await supabase
         .from('profiles')
         .select('recruiter_headline, recruiter_bio, specializations, linkedin_url')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .maybeSingle();
       return (data as PartnerProfile | null) ?? null;
     },
+    enabled: !!userId,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -56,16 +60,21 @@ export const PartnerCircleCard: React.FC = () => {
   const [specializations, setSpecializations] = useState<string[]>([]);
   const [specInput, setSpecInput] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
-  const prefilled = useRef(false);
+  const prefilledFor = useRef<string | null>(null);
+
+  const profileHeadline = profile?.recruiter_headline ?? '';
+  const profileBio = profile?.recruiter_bio ?? '';
+  const profileLinkedin = profile?.linkedin_url ?? '';
+  const profileSpecs = (profile?.specializations ?? []).join('|');
 
   useEffect(() => {
-    if (!profile || prefilled.current) return;
-    prefilled.current = true;
-    setHeadline(profile.recruiter_headline ?? '');
-    setBio(profile.recruiter_bio ?? '');
-    setSpecializations(profile.specializations ?? []);
-    setLinkedinUrl(profile.linkedin_url ?? '');
-  }, [profile]);
+    if (!userId || !profile || prefilledFor.current === userId) return;
+    prefilledFor.current = userId;
+    setHeadline(profileHeadline);
+    setBio(profileBio);
+    setSpecializations(profileSpecs ? profileSpecs.split('|') : []);
+    setLinkedinUrl(profileLinkedin);
+  }, [userId, profile, profileHeadline, profileBio, profileSpecs, profileLinkedin]);
 
   const addSpecialization = () => {
     const value = specInput.trim();
@@ -91,7 +100,7 @@ export const PartnerCircleCard: React.FC = () => {
       return;
     }
     const url = linkedinUrl.trim();
-    if (!/^https?:\/\/([a-z]+\.)?linkedin\.com\//i.test(url)) {
+    if (!/^https:\/\/([a-z0-9-]+\.)?linkedin\.com\//i.test(url)) {
       toast.error('Indiquez l\'adresse de votre profil LinkedIn (https://www.linkedin.com/in/...)');
       return;
     }
@@ -107,7 +116,7 @@ export const PartnerCircleCard: React.FC = () => {
     }
   };
 
-  if (isLoading || !state) {
+  if (isLoading) {
     return (
       <div className="rounded-xl border border-border bg-card p-6 flex items-center justify-center">
         <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -115,8 +124,26 @@ export const PartnerCircleCard: React.FC = () => {
     );
   }
 
+  if (isError || !state) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 space-y-3">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm text-foreground">Impossible de charger votre statut partenaire.</p>
+            {errorText && <p className="text-xs text-muted-foreground mt-1">{errorText}</p>}
+          </div>
+        </div>
+        <Button size="sm" variant="outline" className="rounded-full" onClick={refetch}>
+          Réessayer
+        </Button>
+      </div>
+    );
+  }
+
   const status = state.status;
-  const readOnly = status !== 'inactive';
+  // Formulaire figé dès qu'une demande existe, et pour un membre qui ne peut pas l'envoyer.
+  const readOnly = status !== 'inactive' || !canRequest;
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 sm:p-6 space-y-5">
@@ -180,6 +207,12 @@ export const PartnerCircleCard: React.FC = () => {
                 Votre accès au cercle est suspendu. Écrivez à l'équipe Konekt.
               </p>
             </div>
+          )}
+
+          {status === 'inactive' && !canRequest && (
+            <p className="text-xs text-muted-foreground">
+              Seul un propriétaire ou un administrateur de votre organisation peut envoyer cette demande.
+            </p>
           )}
 
           {status !== 'suspended' && (
@@ -259,16 +292,10 @@ export const PartnerCircleCard: React.FC = () => {
 
               {!readOnly && (
                 <div className="flex items-center justify-between gap-3 flex-wrap pt-2">
-                  {canRequest ? (
-                    <Button type="submit" size="sm" className="rounded-full" disabled={isRequesting}>
-                      {isRequesting && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
-                      Demander à rejoindre le cercle
-                    </Button>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Demandez à un administrateur de votre organisation.
-                    </p>
-                  )}
+                  <Button type="submit" size="sm" className="rounded-full" disabled={isRequesting}>
+                    {isRequesting && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
+                    Demander à rejoindre le cercle
+                  </Button>
                 </div>
               )}
             </form>

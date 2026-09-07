@@ -112,6 +112,8 @@ export const useMissionProcess = (projectId: string | undefined) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mission-team', projectId] });
+      // Noms de l'équipe (RPC get_mission_team_profiles), lus par le lot marketplace.
+      queryClient.invalidateQueries({ queryKey: ['marketplace', 'team-profiles', projectId] });
       toast.success('Membre assigné à la mission');
     },
     onError: (err: Error) => {
@@ -134,6 +136,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mission-team', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace', 'team-profiles', projectId] });
       toast.success('Membre retiré de la mission');
     },
     onError: (err: Error) => toast.error(err.message),

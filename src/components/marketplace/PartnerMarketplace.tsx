@@ -30,6 +30,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   CONTRACT_LABELS, REMOTE_LABELS, applicationStatusLabel, huntStatusLabel, formatDate,
 } from './huntLabels';
+import { ErrorBox } from './ErrorBox';
 
 type TabKey = 'open' | 'applications' | 'missions';
 
@@ -72,7 +73,11 @@ const ApplicationBadge: React.FC<{ status: string }> = ({ status }) => {
     : 'border-border text-muted-foreground';
   return (
     <span className={cn('inline-flex items-center justify-center w-full h-9 border text-xs font-medium uppercase tracking-wider', tone)}>
-      {status === 'pending' ? 'Candidature envoyée' : `Candidature ${applicationStatusLabel(status).toLowerCase()}`}
+      {status === 'pending'
+        ? 'Candidature envoyée'
+        : status === 'ended'
+          ? 'Collaboration terminée'
+          : `Candidature ${applicationStatusLabel(status).toLowerCase()}`}
     </span>
   );
 };
@@ -82,7 +87,7 @@ const ApplicationBadge: React.FC<{ status: string }> = ({ status }) => {
 // ---------------------------------------------------------------------------
 
 const OpenMissionsTab: React.FC = () => {
-  const { missions, isLoading, apply, isApplying } = useOpenHuntMissions(true);
+  const { missions, isLoading, isError, errorText, refetch, apply, isApplying } = useOpenHuntMissions(true);
   const [search, setSearch] = useState('');
   const [filterContract, setFilterContract] = useState('');
   const [filterRemote, setFilterRemote] = useState('');
@@ -134,9 +139,9 @@ const OpenMissionsTab: React.FC = () => {
           className="h-9 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:outline-none"
         >
           <option value="">Tous les contrats</option>
-          <option value="cdi">CDI</option>
-          <option value="cdd">CDD</option>
-          <option value="freelance">Freelance</option>
+          {Object.entries(CONTRACT_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
         </select>
         <select
           value={filterRemote}
@@ -144,9 +149,9 @@ const OpenMissionsTab: React.FC = () => {
           className="h-9 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:outline-none"
         >
           <option value="">Tous les modes</option>
-          <option value="onsite">Sur site</option>
-          <option value="hybrid">Hybride</option>
-          <option value="full_remote">Télétravail à 100 %</option>
+          {Object.entries(REMOTE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
         </select>
         <span className="text-xs text-muted-foreground uppercase tracking-wider ml-auto">
           {filtered.length} mission{filtered.length > 1 ? 's' : ''}
@@ -155,6 +160,12 @@ const OpenMissionsTab: React.FC = () => {
 
       {isLoading ? (
         <Spinner />
+      ) : isError ? (
+        <ErrorBox
+          title="Impossible de charger les missions ouvertes."
+          detail={errorText}
+          onRetry={refetch}
+        />
       ) : filtered.length === 0 ? (
         <EmptyBox
           title="Aucune mission disponible"
@@ -301,10 +312,13 @@ const OpenMissionsTab: React.FC = () => {
 
 const MyApplicationsTab: React.FC = () => {
   const navigate = useNavigate();
-  const { applications, isLoading, withdraw } = useMyHuntApplications(true);
+  const { applications, isLoading, isError, errorText, refetch, withdraw, isWithdrawing } = useMyHuntApplications(true);
   const [withdrawTarget, setWithdrawTarget] = useState<MyHuntApplication | null>(null);
 
   if (isLoading) return <Spinner />;
+  if (isError) {
+    return <ErrorBox title="Impossible de charger vos candidatures." detail={errorText} onRetry={refetch} />;
+  }
   if (applications.length === 0) {
     return <EmptyBox title="Aucune candidature" text="Vos candidatures aux missions ouvertes apparaîtront ici." />;
   }
@@ -333,7 +347,8 @@ const MyApplicationsTab: React.FC = () => {
             <button
               type="button"
               onClick={() => setWithdrawTarget(a)}
-              className="h-8 px-3 border border-border text-xs font-medium uppercase tracking-wider hover:bg-muted"
+              disabled={isWithdrawing}
+              className="h-8 px-3 border border-border text-xs font-medium uppercase tracking-wider hover:bg-muted disabled:opacity-50"
             >
               Retirer
             </button>
@@ -384,9 +399,12 @@ const MyApplicationsTab: React.FC = () => {
 
 const PartnerMissionsTab: React.FC = () => {
   const navigate = useNavigate();
-  const { missions, isLoading } = usePartnerMissions(true);
+  const { missions, isLoading, isError, errorText, refetch } = usePartnerMissions(true);
 
   if (isLoading) return <Spinner />;
+  if (isError) {
+    return <ErrorBox title="Impossible de charger vos missions en cours." detail={errorText} onRetry={refetch} />;
+  }
   if (missions.length === 0) {
     return (
       <EmptyBox

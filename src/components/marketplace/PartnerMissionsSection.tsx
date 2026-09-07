@@ -16,9 +16,28 @@ export const PartnerMissionsSection: React.FC = () => {
   const navigate = useNavigate();
   const { orgType } = useOrganization();
   const isRecruiterOrg = orgType === 'agency' || orgType === 'freelance';
-  const { missions } = usePartnerMissions(isRecruiterOrg);
+  const { missions, isError, refetch } = usePartnerMissions(isRecruiterOrg);
 
-  if (!isRecruiterOrg || missions.length === 0) return null;
+  if (!isRecruiterOrg) return null;
+
+  // Un échec de lecture ne doit pas faire disparaître la section en silence :
+  // le partenaire perdrait l'accès à ses missions sans le savoir.
+  if (isError) {
+    return (
+      <div className="mb-6 flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+        <span>Vos missions partenaires n'ont pas pu être chargées.</span>
+        <button
+          type="button"
+          onClick={refetch}
+          className="h-7 px-2.5 border border-border text-[11px] font-medium uppercase tracking-wider hover:bg-muted"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
+  if (missions.length === 0) return null;
 
   return (
     <div className="mb-6">

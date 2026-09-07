@@ -425,7 +425,8 @@ interface MissionTeamSectionProps {
   /** Nom d'un membre de l'organisation (menu d'assignation). */
   getMemberName: (userId: string) => string;
   /** Nom d'un membre de l'équipe mission, y compris les recruteurs partenaires externes. */
-  getTeamMemberName: (userId: string) => string;
+  /** Nom de l'équipe mission ; `fallback` sert tant que la RPC n'a pas répondu. */
+  getTeamMemberName: (userId: string, fallback?: string) => string;
   /** Vrai si le membre n'appartient pas à l'organisation de la mission (retrait via le mode chasse). */
   isExternalMember: (userId: string) => boolean;
   orgMembers: any[];
@@ -501,7 +502,6 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             <option value="sourcer">Sourcer</option>
             <option value="account_manager">Account Manager</option>
             <option value="reviewer">Reviewer</option>
-            <option value="freelance">Recruteur partenaire</option>
           </select>
           <button
             onClick={handleAssign}
@@ -533,14 +533,19 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                 <User className="w-4 h-4 text-muted-foreground" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{getTeamMemberName(member.user_id)}</p>
+                <p className="text-sm font-medium text-foreground truncate">
+                  {getTeamMemberName(member.user_id, getMemberName(member.user_id))}
+                </p>
               </div>
               <span className="px-2 py-0.5 text-xs font-medium rounded-md border border-border text-muted-foreground bg-muted/50">
                 {ROLE_LABELS[member.role] || member.role}
               </span>
               {!readOnly && !isExternalMember(member.user_id) && (
                 <button
-                  onClick={() => setRemoveTarget({ id: member.id, name: getTeamMemberName(member.user_id) })}
+                  onClick={() => setRemoveTarget({
+                    id: member.id,
+                    name: getTeamMemberName(member.user_id, getMemberName(member.user_id)),
+                  })}
                   className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

@@ -15,6 +15,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { orgTypeLabel, formatDate } from './huntLabels';
+import { ErrorBox } from './ErrorBox';
 
 const PARTNER_STATUS_LABELS: Record<string, string> = {
   inactive: 'Inactif',
@@ -26,7 +27,7 @@ const PARTNER_STATUS_LABELS: Record<string, string> = {
 type PendingAction = { kind: 'validate' | 'suspend'; partner: PlatformPartner } | null;
 
 export const PlatformAdminPanel: React.FC = () => {
-  const { isPlatformAdmin, isLoading, partners, refresh, validate, suspend, isMutating } = usePlatformAdmin();
+  const { isPlatformAdmin, isLoading, isError, errorText, partners, refresh, validate, suspend, isMutating } = usePlatformAdmin();
   const [pending, setPending] = useState<PendingAction>(null);
 
   if (!isPlatformAdmin) return null;
@@ -66,6 +67,12 @@ export const PlatformAdminPanel: React.FC = () => {
         <div className="flex items-center justify-center py-10">
           <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
         </div>
+      ) : isError ? (
+        <ErrorBox
+          title="Impossible de charger les demandes."
+          detail={errorText}
+          onRetry={() => { refresh().catch(() => undefined); }}
+        />
       ) : partners.length === 0 ? (
         <p className="text-xs text-muted-foreground border border-dashed border-border p-6 text-center">
           Aucune demande pour le moment.
