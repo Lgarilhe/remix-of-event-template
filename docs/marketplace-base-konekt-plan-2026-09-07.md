@@ -448,3 +448,47 @@ Restes connus, non traités :
 - La date de publication n'est pas stockée : la carte n'affiche plus
   d'ancienneté, seulement la date limite.
 - Aucun test end-to-end ne couvre le cercle partenaires.
+
+## 7. État du lot K au 2026-09-07
+
+Deux commits : `3e7813c` (implémentation) et `37274eb` (correctifs des trois
+relectures contradictoires). La migration a été jouée trois fois sur un
+Postgres local par-dessus celle du lot M, avec des scénarios de droits, de
+plans, de quota et de concurrence. TypeScript reste à 28 erreurs, deno check
+est propre, le build passe, le lint est au niveau de la référence, les 32
+tests unitaires passent et les 51 tests end-to-end sont toujours listés.
+
+Ce que les relectures ont rattrapé :
+
+- Un clic sur « Rechercher » en Base Konekt déclenchait deux à dix appels,
+  donc deux à dix unités du forfait, alors que l'écran annonce une page à
+  deux crédits. Une action de l'utilisateur ne consomme plus qu'une unité, la
+  suite passe par « Charger plus ».
+- Basculer sur la source lançait une recherche facturée sans clic.
+- Un essai converti en abonnement de paiement était rétrogradé sur la formule
+  gratuite et perdait l'accès, par divergence avec la fonction d'abonnement.
+  La règle est alignée, dans la migration et dans la garde partagée du
+  serveur, qui sert aussi aux séquences et à l'enrichissement.
+- L'essai de quatorze jours ouvrait cent recherches payées au fournisseur,
+  sans carte bancaire. Le forfait d'essai est plafonné à dix recherches, et
+  l'écran le dit.
+- Un échec du décompte était traité comme un quota épuisé : l'organisation
+  était facturée en crédits, voire refusée, alors que son forfait couvrait la
+  recherche.
+- Une recherche sans résultat consommait une unité, et un échec sur un tour
+  ultérieur jetait les profils déjà payés.
+- Quand la formule ne donne plus accès à la base, l'accès restait activé sans
+  moyen de le couper, et le sélecteur laissait partir des recherches refusées.
+- La fiche complète était présentée comme couverte par le forfait, alors
+  qu'elle est facturée dès la première.
+- Le fournisseur de la base ne figurait pas dans la liste des sous-traitants
+  de la page confidentialité, qui manquait aussi l'enrichissement de contacts
+  et l'envoi d'emails.
+
+Restes connus, non traités :
+
+- Le reste du forfait est calculé à deux endroits, dans la fonction SQL et
+  dans la fonction serveur, avec les mêmes bornes. Une seule source serait
+  préférable.
+- Aucun test end-to-end ne couvre l'activation ni le décompte.
+- Le quota d'essai (dix recherches) n'est pas réglable sans migration.
