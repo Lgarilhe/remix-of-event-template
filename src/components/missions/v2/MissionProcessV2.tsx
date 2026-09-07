@@ -11,7 +11,7 @@
  *   - PROCESS_TEMPLATES (5 templates : fast/standard/senior/executive)
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Sparkles, Loader2, Clock, Zap, Target, Users, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { useOrganizationMembers } from '@/hooks/useOrganization';
+import { useMissionTeamProfiles } from '@/hooks/useMarketplace';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import type { JobDetails } from '@/types/jobDetails';
 import { StepCard, MissionTeamSection, PROCESS_TEMPLATES } from '../process/shared';
@@ -67,6 +68,14 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
     const profile = memberProfiles.find((p: any) => p.user_id === userId);
     return profile?.display_name || userId.slice(0, 8) + '...';
   };
+
+  // Noms de l'équipe mission (membres internes et recruteurs partenaires externes)
+  const { profiles: teamProfiles, getName: getTeamMemberName } = useMissionTeamProfiles(project.id);
+  const externalUserIds = useMemo(
+    () => new Set(teamProfiles.filter(p => p.is_external).map(p => p.user_id)),
+    [teamProfiles],
+  );
+  const isExternalMember = (userId: string) => externalUserIds.has(userId);
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -327,6 +336,8 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
               loadingTeam={loadingTeam}
               readOnly={readOnly}
               getMemberName={getMemberName}
+              getTeamMemberName={getTeamMemberName}
+              isExternalMember={isExternalMember}
               orgMembers={orgMembers}
               projectId={project.id}
               projectName={project.name}

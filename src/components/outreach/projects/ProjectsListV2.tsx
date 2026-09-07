@@ -44,6 +44,7 @@ import {
 import { CreateMissionV2 } from '@/components/missions/v2/CreateMissionV2';
 import { EmptyMissionState } from '@/components/missions/EmptyMissionState';
 import { Pill } from '@/components/missions/v2/Pill';
+import { PartnerMissionsSection } from '@/components/marketplace/PartnerMissionsSection';
 
 // ── Types ──
 
@@ -505,6 +506,10 @@ export const ProjectsListV2: React.FC = () => {
           onCreateAI={() => { setCreateInitialTab('brief'); setShowCreateModal(true); }}
           onCreateManual={() => { setCreateInitialTab('manual'); setShowCreateModal(true); }}
         />
+        {/* Missions confiées par une entreprise (cabinets et indépendants) */}
+        <div className="max-w-[1200px] mx-auto w-full mt-6">
+          <PartnerMissionsSection />
+        </div>
         {showCreateModal && (
           <CreateMissionV2
             isOpen={showCreateModal}
@@ -675,6 +680,9 @@ export const ProjectsListV2: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* ── Section : Missions partenaires (cabinets et indépendants) ── */}
+      {!isLoading && <PartnerMissionsSection />}
 
       {/* No results after filtering */}
       {!isLoading && filtered.length === 0 && unifiedProjects.length > 0 && (

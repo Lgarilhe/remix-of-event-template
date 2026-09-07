@@ -2715,6 +2715,8 @@ export type Database = {
           id: string
           organization_id: string
           payment_method_added: boolean | null
+          requested_at: string | null
+          requested_by: string | null
           status: string | null
           updated_at: string | null
           validated_at: string | null
@@ -2729,6 +2731,8 @@ export type Database = {
           id?: string
           organization_id: string
           payment_method_added?: boolean | null
+          requested_at?: string | null
+          requested_by?: string | null
           status?: string | null
           updated_at?: string | null
           validated_at?: string | null
@@ -2743,6 +2747,8 @@ export type Database = {
           id?: string
           organization_id?: string
           payment_method_added?: boolean | null
+          requested_at?: string | null
+          requested_by?: string | null
           status?: string | null
           updated_at?: string | null
           validated_at?: string | null
@@ -2798,6 +2804,8 @@ export type Database = {
           project_id: string
           recruiter_org_id: string | null
           recruiter_user_id: string
+          responded_at: string | null
+          responded_by: string | null
           status: string | null
           updated_at: string | null
         }
@@ -2810,6 +2818,8 @@ export type Database = {
           project_id: string
           recruiter_org_id?: string | null
           recruiter_user_id: string
+          responded_at?: string | null
+          responded_by?: string | null
           status?: string | null
           updated_at?: string | null
         }
@@ -2822,6 +2832,8 @@ export type Database = {
           project_id?: string
           recruiter_org_id?: string | null
           recruiter_user_id?: string
+          responded_at?: string | null
+          responded_by?: string | null
           status?: string | null
           updated_at?: string | null
         }
@@ -6192,6 +6204,10 @@ export type Database = {
         Args: { p_organization_id: string; p_updates: Json }
         Returns: undefined
       }
+      apply_to_hunt_mission: {
+        Args: { p_message: string | null; p_project_id: string }
+        Returns: string
+      }
       archive_old_agent_conversations: { Args: never; Returns: number }
       atomic_tracking_append: {
         Args: {
@@ -6201,6 +6217,10 @@ export type Database = {
           p_value: string
         }
         Returns: undefined
+      }
+      can_publish_hunt_mission: {
+        Args: { _organization_id: string }
+        Returns: boolean
       }
       check_linkedin_action_quota: {
         Args: {
@@ -6241,6 +6261,10 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      end_hunt_collaboration: {
+        Args: { p_application_id: string }
+        Returns: undefined
+      }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
@@ -6255,6 +6279,10 @@ export type Database = {
           tracking_id: string
         }[]
       }
+      get_hunt_applicants: {
+        Args: { p_project_id: string }
+        Returns: Json[]
+      }
       get_linkedin_reconnect_alerts: {
         Args: never
         Returns: {
@@ -6262,6 +6290,11 @@ export type Database = {
           failure_count: number
           last_failure_at: string
         }[]
+      }
+      get_marketplace_partner_state: { Args: never; Returns: Json }
+      get_mission_team_profiles: {
+        Args: { p_project_id: string }
+        Returns: Json[]
       }
       get_multiple_project_stats: {
         Args: { p_project_ids: string[] }
@@ -6275,6 +6308,9 @@ export type Database = {
           untreated: number
         }[]
       }
+      get_my_hunt_applications: { Args: never; Returns: Json[] }
+      get_my_hunt_missions: { Args: never; Returns: Json[] }
+      get_open_hunt_missions: { Args: never; Returns: Json[] }
       get_org_integration: {
         Args: { p_org_id: string }
         Returns: {
@@ -6326,6 +6362,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_partner_missions: { Args: never; Returns: Json[] }
       get_portal_token: {
         Args: { p_token: string }
         Returns: {
@@ -6526,6 +6563,10 @@ export type Database = {
         Returns: undefined
       }
       invoke_resolve_pedigree_directory: { Args: never; Returns: undefined }
+      is_marketplace_partner: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
       is_mission_team_member: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
@@ -6584,6 +6625,19 @@ export type Database = {
         Returns: boolean
       }
       release_sequence_lock: { Args: { p_run_id: string }; Returns: undefined }
+      request_marketplace_partner: {
+        Args: {
+          p_bio: string
+          p_headline: string
+          p_linkedin_url: string
+          p_specializations: string[]
+        }
+        Returns: Json
+      }
+      respond_to_hunt_application: {
+        Args: { p_application_id: string; p_decision: string }
+        Returns: Json
+      }
       retrieve_context: {
         Args: {
           p_chunk_types?: string[]
@@ -6639,6 +6693,10 @@ export type Database = {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       unaccent: { Args: { "": string }; Returns: string }
+      withdraw_hunt_application: {
+        Args: { p_application_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "user"

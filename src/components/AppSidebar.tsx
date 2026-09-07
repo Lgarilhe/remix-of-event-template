@@ -58,7 +58,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/calendar',    label: 'Calendrier',  icon: Calendar  },
   { to: '/tasks',       label: 'Tâches',      icon: ListTodo  },
   { to: '/inbox',       label: 'Messages',    icon: Inbox,    badgeKey: 'unread' },
-  { to: '/marketplace', label: 'Marketplace', icon: Store,    feature: 'marketplace_browse' },
+  { to: '/marketplace', label: 'Marketplace', icon: Store    },
 ];
 
 export function AppSidebar() {

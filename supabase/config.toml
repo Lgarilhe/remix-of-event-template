@@ -124,6 +124,9 @@ verify_jwt = false
 [functions.live-coach]
 verify_jwt = false
 
+[functions.marketplace-admin]
+verify_jwt = false
+
 [functions.notify-notion]
 verify_jwt = false
 
