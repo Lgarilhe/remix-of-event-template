@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sparkles, TrendingDown, Clock, ArrowUpRight, Coins, ShoppingCart, Loader2, CheckCircle2, Brain } from 'lucide-react';
 import { format } from 'date-fns';
 import { EnrichmentAnalytics } from '@/components/settings/EnrichmentAnalytics';
+import { BaseKonektCard } from '@/components/settings/BaseKonektCard';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
@@ -239,6 +240,9 @@ export const AICreditsSettings = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Base Konekt : quota inclus par formule, puis crédits au-delà */}
+      <BaseKonektCard />
 
       {/* Cost Table — shows estimated range (Haiku → Opus) */}
       <Card>

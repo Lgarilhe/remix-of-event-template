@@ -1186,6 +1186,44 @@ export type Database = {
           },
         ]
       }
+      base_konekt_usage: {
+        Row: {
+          action: string
+          created_at: string
+          credits: number
+          id: string
+          included: boolean
+          organization_id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          credits?: number
+          id?: string
+          included?: boolean
+          organization_id: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          credits?: number
+          id?: string
+          included?: boolean
+          organization_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "base_konekt_usage_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_coaching_sessions: {
         Row: {
           alerts_log: Json | null
@@ -4013,6 +4051,8 @@ export type Database = {
           apollo_api_key: string | null
           calendly_api_key: string | null
           calendly_connected: boolean
+          coresignal_activated_at: string | null
+          coresignal_activated_by: string | null
           coresignal_api_key: string | null
           coresignal_enabled: boolean
           created_at: string
@@ -4041,6 +4081,8 @@ export type Database = {
           apollo_api_key?: string | null
           calendly_api_key?: string | null
           calendly_connected?: boolean
+          coresignal_activated_at?: string | null
+          coresignal_activated_by?: string | null
           coresignal_api_key?: string | null
           coresignal_enabled?: boolean
           created_at?: string
@@ -4069,6 +4111,8 @@ export type Database = {
           apollo_api_key?: string | null
           calendly_api_key?: string | null
           calendly_connected?: boolean
+          coresignal_activated_at?: string | null
+          coresignal_activated_by?: string | null
           coresignal_api_key?: string | null
           coresignal_enabled?: boolean
           created_at?: string
@@ -6269,6 +6313,10 @@ export type Database = {
         Args: { payload: Json; queue_name: string }
         Returns: number
       }
+      get_base_konekt_state: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_email_tracking_by_id: {
         Args: { p_tracking_id: string }
         Returns: {
@@ -6611,6 +6659,15 @@ export type Database = {
         Args: { p_mission_ids: string[] }
         Returns: undefined
       }
+      record_base_konekt_usage: {
+        Args: {
+          p_action: string
+          p_credits: number
+          p_organization_id: string
+          p_user_id: string | null
+        }
+        Returns: string
+      }
       record_cron_heartbeat: {
         Args: { p_error?: string; p_job_name: string; p_status?: string }
         Returns: undefined
@@ -6624,6 +6681,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      release_base_konekt_usage: {
+        Args: { p_usage_id: string }
+        Returns: undefined
+      }
       release_sequence_lock: { Args: { p_run_id: string }; Returns: undefined }
       request_marketplace_partner: {
         Args: {
@@ -6633,6 +6694,10 @@ export type Database = {
           p_specializations: string[]
         }
         Returns: Json
+      }
+      reserve_base_konekt_included: {
+        Args: { p_action: string; p_organization_id: string; p_user_id: string }
+        Returns: string
       }
       respond_to_hunt_application: {
         Args: { p_application_id: string; p_decision: string }
@@ -6698,6 +6763,10 @@ export type Database = {
           p_project_id: string
           p_publish?: boolean
         }
+        Returns: Json
+      }
+      set_base_konekt_enabled: {
+        Args: { p_enabled: boolean; p_organization_id: string }
         Returns: Json
       }
       set_hunt_mission_status: {

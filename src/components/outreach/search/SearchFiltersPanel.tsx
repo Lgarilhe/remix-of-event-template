@@ -4,7 +4,8 @@ import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
 import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
+import { useBaseKonektState } from '@/hooks/useBaseKonekt';
+import { BaseKonektDialog } from './BaseKonektDialog';
 
 import { AutoFillFiltersButton } from '@/components/outreach/AutoFillFiltersButton';
 import { SearchPromptBar } from './SearchPromptBar';
@@ -123,9 +124,10 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   const [advancedOpen, setAdvancedOpen] = useState(!activeProject);
   const { data: allJobs = [] } = useJobs();
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
-  // Feature flag Base Konekt (rollout contrôlé par org). Lisible admin/owner.
-  const { integrations } = useOrganizationIntegrations();
-  const coresignalEnabled = integrations?.coresignal_enabled === true;
+  // Base Konekt : état lisible par tous les membres (RPC get_base_konekt_state),
+  // pas seulement par les administrateurs.
+  const { isEnabled: baseKonektEnabled, includedRemaining } = useBaseKonektState();
+  const [baseKonektDialogOpen, setBaseKonektDialogOpen] = useState(false);
 
   const handleApplyPresetJob = useCallback((jobId: string | null, _jobTitle: string | null) => {
     if (jobId) {
@@ -152,37 +154,50 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
         </Alert>
       )}
 
-      {/* Sélecteur de source — visible seulement si Base Konekt activée pour l'org.
-          « LinkedIn » = recherche live via la session LinkedIn. « Base Konekt » =
-          recherche base de données (identité visible, sans toucher au compte). */}
-      {coresignalEnabled && onSearchSourceChange && (
-        <div className="grid grid-cols-2 gap-1 p-1 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)]">
-          <button
-            type="button"
-            onClick={() => onSearchSourceChange('linkedin')}
-            className={cn(
-              'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
-              searchSource !== 'database'
-                ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
-                : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
-            )}
-          >
-            LinkedIn
-          </button>
-          <button
-            type="button"
-            onClick={() => onSearchSourceChange('database')}
-            className={cn(
-              'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
-              searchSource === 'database'
-                ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
-                : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
-            )}
-          >
-            Base Konekt
-          </button>
+      {/* Sélecteur de source. « LinkedIn » = recherche live via la session
+          LinkedIn. « Base Konekt » = recherche base de données (identité
+          visible, sans toucher au compte). Tant que la Base Konekt n'est pas
+          activée, l'onglet garde sa place mais ouvre la boîte de présentation :
+          c'est le point de découverte de la source. */}
+      {onSearchSourceChange && (
+        <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)]">
+            <button
+              type="button"
+              onClick={() => onSearchSourceChange('linkedin')}
+              className={cn(
+                'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
+                searchSource !== 'database'
+                  ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
+                  : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
+              )}
+            >
+              LinkedIn
+            </button>
+            <button
+              type="button"
+              onClick={() => baseKonektEnabled ? onSearchSourceChange('database') : setBaseKonektDialogOpen(true)}
+              className={cn(
+                'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
+                baseKonektEnabled && searchSource === 'database'
+                  ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
+                  : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
+              )}
+            >
+              Base Konekt
+            </button>
+          </div>
+          {baseKonektEnabled && (
+            <p className="px-1 text-3xs text-[var(--k-text-muted)]">
+              {includedRemaining > 0
+                ? `${includedRemaining} recherche${includedRemaining > 1 ? 's' : ''} incluse${includedRemaining > 1 ? 's' : ''} restante${includedRemaining > 1 ? 's' : ''} ce mois`
+                : '2 crédits par page de résultats'}
+            </p>
+          )}
         </div>
       )}
+
+      <BaseKonektDialog open={baseKonektDialogOpen} onOpenChange={setBaseKonektDialogOpen} />
 
       {/* Alerte compte LinkedIn — uniquement en mode LinkedIn (la Base Konekt
           n'exige pas de compte connecté). */}

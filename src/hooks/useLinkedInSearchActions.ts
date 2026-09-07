@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { invokeCoresignal } from '@/lib/invokeCoresignal';
@@ -10,6 +11,7 @@ import { Job } from '@/types/jobs';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { calculatePreScore, PreScoreResult } from '@/hooks/linkedin/preScoring';
+import { BASE_KONEKT_QUERY_KEY } from '@/hooks/useBaseKonekt';
 import { toast } from 'sonner';
 
 const RESULTS_PER_BATCH = 25;
@@ -759,6 +761,8 @@ export function useLinkedInSearchActions(
     setHasSearched,
   } = setters;
 
+  const queryClient = useQueryClient();
+
   const handleSearch = useCallback(async (appendMode = false, retryCount = 0) => {
     const isDatabase = context.searchSource === 'database';
 
@@ -944,6 +948,12 @@ export function useLinkedInSearchActions(
       setCursor(currentCursor);
       if (latestTotal !== null) setTotal(latestTotal);
 
+      // Base Konekt : la page vient d'entamer le quota inclus côté serveur,
+      // le compteur affiché dans le panneau doit suivre.
+      if (isDatabase) {
+        queryClient.invalidateQueries({ queryKey: [BASE_KONEKT_QUERY_KEY] });
+      }
+
       if (exhausted || reachedTotal) {
         setHasMoreResults(false);
       } else {
@@ -1039,8 +1049,15 @@ export function useLinkedInSearchActions(
       // alors que le compte allait très bien.
       const isUnprocessableSearch = errorMessage.toLowerCase().includes('unable to process');
 
-      // NEVER auto-retry on session conflicts
-      if (isMultipleSessionsError) {
+      // Base Konekt fermée pour cet espace : le message serveur est technique,
+      // on dit à l'user ce qui bloque plutôt que de le relayer tel quel.
+      if (errorType === 'not_enabled') {
+        toast.error("La Base Konekt n'est pas activée pour votre espace.", {
+          id: 'search-error',
+          duration: 8000,
+        });
+      } else if (isMultipleSessionsError) {
+        // NEVER auto-retry on session conflicts
         toast.error(
           isStandaloneSearch
             ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Paramètres > Mon compte) : elle partage la session au lieu d’en créer une deuxième.'
@@ -1101,7 +1118,7 @@ export function useLinkedInSearchActions(
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [selectedAccount, selectedJob, filters, cursor, results, quota, candidateStatus, autoHideTreatedRef, activeProject?.kind, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
+  }, [selectedAccount, selectedJob, filters, cursor, results, quota, candidateStatus, autoHideTreatedRef, activeProject?.kind, queryClient, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
 
   const handleLoadMore = useCallback(() => {
     if (!cursor) return;

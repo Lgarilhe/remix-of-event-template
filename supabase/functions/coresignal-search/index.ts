@@ -22,6 +22,7 @@ import {
 } from "../_shared/coresignal-mapping.ts";
 import { settleCredits } from "../_shared/settle-credits.ts";
 import { ACTION_COSTS } from "../_shared/ai-config.ts";
+import { getSubscriptionGate } from "../_shared/subscription-gate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +40,11 @@ const EMPLOYEE = "employee_multi_source";
 const DB_PAGE_SIZE = 20;
 const ID_BLOCK_SIZE = 1000; // taille d'un bloc d'IDs renvoyé par /search/es_dsl
 const MAX_ES_DSL_CHARS = 15000;
+
+// Coûts en crédits Konekt hors quota inclus (floor : ces actions n'appellent
+// aucun LLM, donc tokens = 0).
+const PREVIEW_COST = ACTION_COSTS.coresignal_preview?.floor ?? 2;
+const COLLECT_COST = ACTION_COSTS.coresignal_collect?.floor ?? 2;
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -159,6 +165,118 @@ async function settle(svc: ReturnType<typeof serviceClient>, orgId: string | nul
   }
 }
 
+// ─── Quota inclus (lot K) ────────────────────────────────────────────────────
+
+/** État de facturation d'une requête : plan effectif + réservation éventuelle. */
+interface QuotaContext {
+  /** Plan effectif de l'organisation (null pour un appel service-role). */
+  planId: string | null;
+  /** Ligne base_konekt_usage réservée sur le quota du mois, sinon null. */
+  reservationId: string | null;
+}
+
+/**
+ * Réserve une unité du quota inclus du mois (verrou par organisation côté SQL).
+ * Renvoie l'identifiant de la ligne réservée, ou null si le quota est atteint.
+ * Un échec du RPC renvoie null : la requête bascule alors sur les crédits, ce
+ * qui reste le comportement sûr pour un fournisseur payant.
+ */
+async function reserveIncluded(
+  svc: ReturnType<typeof serviceClient>,
+  orgId: string,
+  userId: string,
+  action: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await svc.rpc("reserve_base_konekt_included", {
+      p_organization_id: orgId,
+      p_user_id: userId,
+      p_action: action,
+    });
+    if (error) {
+      console.error("[coresignal-search] reserve_base_konekt_included failed:", error);
+      return null;
+    }
+    return typeof data === "string" && data ? data : null;
+  } catch (e) {
+    console.error("[coresignal-search] reserve_base_konekt_included threw:", e);
+    return null;
+  }
+}
+
+/** Rend une unité réservée quand la requête n'a rien servi. */
+async function releaseIncluded(svc: ReturnType<typeof serviceClient>, usageId: string): Promise<void> {
+  try {
+    const { error } = await svc.rpc("release_base_konekt_usage", { p_usage_id: usageId });
+    if (error) console.error("[coresignal-search] release_base_konekt_usage failed:", error);
+  } catch (e) {
+    console.error("[coresignal-search] release_base_konekt_usage threw:", e);
+  }
+}
+
+/** Trace un usage facturé en crédits (non bloquant : la trace ne doit rien casser). */
+async function recordUsage(
+  svc: ReturnType<typeof serviceClient>,
+  orgId: string | null,
+  userId: string | null,
+  action: string,
+  credits: number,
+): Promise<void> {
+  if (!orgId) return;
+  try {
+    const { error } = await svc.rpc("record_base_konekt_usage", {
+      p_organization_id: orgId,
+      p_user_id: userId,
+      p_action: action,
+      p_credits: credits,
+    });
+    if (error) console.warn("[coresignal-search] record_base_konekt_usage failed (non-blocking):", error);
+  } catch (e) {
+    console.warn("[coresignal-search] record_base_konekt_usage threw (non-blocking):", e);
+  }
+}
+
+/**
+ * Recherches incluses restant ce mois. Même règle que get_base_konekt_state :
+ * quota du plan effectif moins les lignes incluses du mois civil (UTC, comme
+ * date_trunc('month', now()) côté base). null si le calcul n'aboutit pas.
+ */
+async function includedRemaining(
+  svc: ReturnType<typeof serviceClient>,
+  orgId: string | null,
+  planId: string | null,
+): Promise<number | null> {
+  if (!orgId || !planId) return null;
+  try {
+    const { data: plan } = await svc
+      .from("subscription_plans")
+      .select("limits")
+      .eq("id", planId)
+      .maybeSingle();
+    const limits = (plan?.limits ?? {}) as { database_searches_included?: unknown };
+    const monthly = Number(limits.database_searches_included ?? 0);
+    if (!Number.isFinite(monthly) || monthly <= 0) return 0;
+
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const { count, error } = await svc
+      .from("base_konekt_usage")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .eq("included", true)
+      .in("action", ["preview", "search"])
+      .gte("created_at", monthStart);
+    if (error) {
+      console.warn("[coresignal-search] included usage count failed (non-blocking):", error);
+      return null;
+    }
+    return Math.max(0, Math.trunc(monthly) - (count ?? 0));
+  } catch (e) {
+    console.warn("[coresignal-search] included remaining unavailable (non-blocking):", e);
+    return null;
+  }
+}
+
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
 // Hydratation GRATUITE depuis le cache : remplace les cartes partielles par la
@@ -257,7 +375,7 @@ async function fetchIdBlock(
 
 // Pagination Base Konekt SANS PLAFOND : IDs profonds (relevance) via /search/es_dsl
 // + cartes via preview-by-ids. Piloté par un curseur opaque (voir DbPageCursor).
-async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, params: Record<string, unknown>): Promise<Response> {
+async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, params: Record<string, unknown>, quota: QuotaContext): Promise<Response> {
   const filters = (params.filters ?? {}) as LinkedInFiltersLite;
   const rawCursor = typeof params.cursor === "string" && params.cursor ? params.cursor : null;
 
@@ -340,16 +458,27 @@ async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClien
     : null;
 
   // Débit uniquement si on a réellement servi des cartes (une fin de résultats
-  // ne coûte rien à l'utilisateur).
+  // ne coûte rien à l'utilisateur). Une page prise sur le quota inclus ne touche
+  // pas au solde de crédits.
+  let included = false;
   if (results.length > 0) {
-    await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — aperçu");
+    if (quota.reservationId) {
+      included = true;
+    } else {
+      const settled = await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — aperçu");
+      await recordUsage(svc, orgId, userId, "preview", settled ? PREVIEW_COST : 0);
+    }
+  } else if (quota.reservationId) {
+    // Rien servi : l'unité réservée retourne au quota du mois.
+    await releaseIncluded(svc, quota.reservationId);
   }
-  console.log(`[coresignal-search] preview served=${results.length} offset=${state.offset}/${state.ids.length} hasMore=${hasMore} total=${state.total} credits=${creditsRemaining}`);
+  const remaining = await includedRemaining(svc, orgId, quota.planId);
+  console.log(`[coresignal-search] preview served=${results.length} offset=${state.offset}/${state.ids.length} hasMore=${hasMore} total=${state.total} credits=${creditsRemaining} included=${included} remaining=${remaining}`);
 
-  return json(200, { success: true, results, cursor: nextCursor, total: state.total });
+  return json(200, { success: true, results, cursor: nextCursor, total: state.total, included, included_remaining: remaining });
 }
 
-async function handleSearch(apiKey: string, svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, params: Record<string, unknown>): Promise<Response> {
+async function handleSearch(apiKey: string, svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, params: Record<string, unknown>, quota: QuotaContext): Promise<Response> {
   const filters = (params.filters ?? {}) as LinkedInFiltersLite;
   const after = params.cursor as string | undefined;
 
@@ -365,10 +494,17 @@ async function handleSearch(apiKey: string, svc: ReturnType<typeof serviceClient
 
   const ids = Array.isArray(http.body) ? (http.body as unknown[]).map(String) : [];
 
-  await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — recherche (IDs)");
-  console.log(`[coresignal-search] search ids=${ids.length} total=${http.totalResults} credits=${http.creditsRemaining}`);
+  let included = false;
+  if (quota.reservationId) {
+    included = true;
+  } else {
+    const settled = await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — recherche (IDs)");
+    await recordUsage(svc, orgId, userId, "search", settled ? PREVIEW_COST : 0);
+  }
+  const remaining = await includedRemaining(svc, orgId, quota.planId);
+  console.log(`[coresignal-search] search ids=${ids.length} total=${http.totalResults} credits=${http.creditsRemaining} included=${included} remaining=${remaining}`);
 
-  return json(200, { success: true, ids, total: http.totalResults, cursor: null });
+  return json(200, { success: true, ids, total: http.totalResults, cursor: null, included, included_remaining: remaining });
 }
 
 async function handleCollect(apiKey: string, svc: ReturnType<typeof serviceClient>, orgId: string | null, userId: string | null, params: Record<string, unknown>): Promise<Response> {
@@ -385,8 +521,9 @@ async function handleCollect(apiKey: string, svc: ReturnType<typeof serviceClien
       ? await q.eq("coresignal_id", id).maybeSingle()
       : await q.eq("linkedin_url", linkedinUrl!).maybeSingle();
     if (cached?.profile_data && new Date(cached.expires_at as string) > new Date()) {
+      // Relecture du cache : aucun débit, donc aucune ligne d'usage.
       console.log(`[coresignal-search] collect cache HIT id=${id ?? linkedinUrl}`);
-      return json(200, { success: true, profile: cached.profile_data, cached: true });
+      return json(200, { success: true, profile: cached.profile_data, cached: true, included: false });
     }
   }
 
@@ -423,16 +560,21 @@ async function handleCollect(apiKey: string, svc: ReturnType<typeof serviceClien
     }
   }
 
-  await settle(svc, orgId, userId, "coresignal_collect", "Base Konekt — fiche complète");
+  // La fiche complète reste facturée en crédits, quota inclus ou non.
+  const settled = await settle(svc, orgId, userId, "coresignal_collect", "Base Konekt — fiche complète");
+  await recordUsage(svc, orgId, userId, "collect", settled ? COLLECT_COST : 0);
   console.log(`[coresignal-search] collect LIVE id=${key} credits=${http.creditsRemaining}`);
 
-  return json(200, { success: true, profile, cached: false });
+  return json(200, { success: true, profile, cached: false, included: false });
 }
 
 // ─── Entrypoint ───────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Réservation de quota inclus en cours : rendue si la requête n'aboutit pas.
+  let reserved: { svc: ReturnType<typeof serviceClient>; id: string } | null = null;
 
   try {
     let auth;
@@ -458,21 +600,33 @@ Deno.serve(async (req) => {
       orgId = organization_id ?? null;
     }
 
-    // Gate de rollout (utilisateurs uniquement) : la Base Konekt n'est ouverte
-    // qu'aux orgs explicitement activées. Vérifié CÔTÉ SERVEUR — le front ne fait
-    // qu'un pré-affichage — pour empêcher tout appel direct qui consommerait des
+    // Gate d'accès (utilisateurs uniquement) : plan effectif payant ET activation
+    // par l'organisation. Vérifié CÔTÉ SERVEUR — le front ne fait qu'un
+    // pré-affichage — pour empêcher tout appel direct qui consommerait des
     // crédits fournisseur (clé partagée) hors périmètre.
+    let planId: string | null = null;
     if (userId) {
       if (!orgId) {
-        return json(403, { success: false, error: "Base Konekt non activée", errorType: "NOT_ENABLED" });
+        return json(403, { success: false, error: "Base Konekt non activée", errorType: "NOT_ENABLED", plan_allows: false });
+      }
+      let planAllows = false;
+      try {
+        const gate = await getSubscriptionGate(svc, orgId);
+        planId = gate.effectivePlanId;
+        planAllows = gate.effectivePlanId !== "free";
+      } catch (e) {
+        // Fail-closed : sans lecture de l'abonnement, on n'ouvre pas un
+        // fournisseur payant.
+        console.error("[coresignal-search] subscription gate failed:", e);
+        return json(503, { success: false, error: "Service momentanément indisponible, réessayez", errorType: "PLAN_CHECK_UNAVAILABLE", retryable: true });
       }
       const { data: integ } = await svc
         .from("organization_integrations")
         .select("coresignal_enabled")
         .eq("organization_id", orgId)
         .maybeSingle();
-      if (integ?.coresignal_enabled !== true) {
-        return json(403, { success: false, error: "Base Konekt non activée", errorType: "NOT_ENABLED" });
+      if (!planAllows || integ?.coresignal_enabled !== true) {
+        return json(403, { success: false, error: "Base Konekt non activée", errorType: "NOT_ENABLED", plan_allows: planAllows });
       }
     }
 
@@ -495,13 +649,20 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Quota inclus du mois (aperçu et recherche) : la réservation est atomique
+    // côté SQL, donc deux pages lancées en parallèle ne consomment pas la même
+    // unité. Réservation obtenue → ni pré-check de solde ni débit de crédits.
+    if (userId && orgId && (action === "preview" || action === "search")) {
+      const id = await reserveIncluded(svc, orgId, userId, action);
+      if (id) reserved = { svc, id };
+    }
+    const reservationId = reserved?.id ?? null;
+
     // Pré-check solde (fail-closed) AVANT tout appel fournisseur payant : sans lui,
     // une org à 0 crédit consomme la Base Konekt sans débit ni trace (le settle
     // post-paiement étant fail-open).
-    if (userId && orgId && (action === "preview" || action === "search" || action === "collect")) {
-      const cost = action === "collect"
-        ? (ACTION_COSTS.coresignal_collect?.floor ?? 2)
-        : (ACTION_COSTS.coresignal_preview?.floor ?? 2);
+    if (userId && orgId && !reservationId && (action === "preview" || action === "search" || action === "collect")) {
+      const cost = action === "collect" ? COLLECT_COST : PREVIEW_COST;
       const { data: balance } = await svc
         .from("ai_credit_balances")
         .select("plan_credits, topup_credits")
@@ -516,17 +677,29 @@ Deno.serve(async (req) => {
     // Credentials par requête (org → env fallback)
     const creds = await resolveCoresignalCredentials(orgId);
     if (!creds) {
+      if (reservationId) await releaseIncluded(svc, reservationId);
       return json(500, { success: false, error: "Base Konekt non configurée", errorType: "NOT_CONFIGURED" });
     }
 
+    const quota: QuotaContext = { planId, reservationId };
+    let response: Response;
     switch (action) {
-      case "preview": return await handlePreview(creds.apiKey, svc, orgId, userId, params);
-      case "search":  return await handleSearch(creds.apiKey, svc, orgId, userId, params);
-      case "collect": return await handleCollect(creds.apiKey, svc, orgId, userId, params);
-      default:        return json(400, { success: false, error: "Action non reconnue", errorType: "BAD_ACTION" });
+      case "preview": response = await handlePreview(creds.apiKey, svc, orgId, userId, params, quota); break;
+      case "search":  response = await handleSearch(creds.apiKey, svc, orgId, userId, params, quota); break;
+      case "collect": response = await handleCollect(creds.apiKey, svc, orgId, userId, params); break;
+      default:        response = json(400, { success: false, error: "Action non reconnue", errorType: "BAD_ACTION" });
     }
+
+    // Réservation non suivie d'un service rendu (échec fournisseur, curseur
+    // invalide…) : l'unité retourne au quota. Le cas « 200 sans résultat » est
+    // déjà rendu par le handler.
+    if (reservationId && response.status !== 200) {
+      await releaseIncluded(svc, reservationId);
+    }
+    return response;
   } catch (e) {
     console.error("[coresignal-search] error:", e);
+    if (reserved) await releaseIncluded(reserved.svc, reserved.id);
     return json(500, { success: false, error: e instanceof Error ? e.message : "Erreur interne" });
   }
 });
