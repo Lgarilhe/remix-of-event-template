@@ -56,15 +56,18 @@ jobs:
 
       # ── Cible Supabase ──────────────────────────────────────────────────
       # Deux modes :
-      #  A) STAGING (recommandé) : si le secret E2E_SUPABASE_URL est fourni, on
-      #     tape un projet Supabase de test qui a déjà le schéma complet. C'est
-      #     le mode fiable — le dossier supabase/migrations/ ne contient PAS le
-      #     schéma de base importé depuis Lovable (ex: table connector_instances
-      #     référencée mais jamais créée par une migration), donc `supabase start`
-      #     ne peut pas reconstruire la base à neuf à partir des seules migrations.
-      #  B) LOCAL : fallback `supabase start` (tant que le schéma de base n'est
-      #     pas baseliné — voir AUDITS/QA_PLAYWRIGHT_PLAN §3.3 ; échouera sur les
-      #     dépendances manquantes jusqu'à ce qu'un baseline soit commité).
+      #  A) STAGING : si le secret E2E_SUPABASE_URL est fourni, on tape un projet
+      #     Supabase de test qui a déjà le schéma complet.
+      #  B) LOCAL (défaut) : `supabase start` reconstruit la base à partir des
+      #     seules migrations. Vérifié le 2026-09-07 sur PostgreSQL 16 vierge :
+      #     les 266 fichiers de supabase/migrations/ s'appliquent sans erreur et
+      #     supabase/tests/rls_two_orgs_audit.sql passe ses 10 contrôles.
+      #     Une seule table de l'import Lovable n'est créée par aucune migration,
+      #     notion_api_cache ; le rattrapage 20260903074500 la traite désormais
+      #     sous condition d'existence.
+      #     Si cette étape casse à nouveau, l'erreur vient d'une migration qui ne
+      #     rejoue pas sur une base neuve : reproduire en local avant de toucher
+      #     au workflow.
       - name: Resolve Supabase target (staging secret OR local)
         id: target
         env:

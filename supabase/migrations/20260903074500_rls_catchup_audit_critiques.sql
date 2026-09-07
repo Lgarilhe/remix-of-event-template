@@ -95,6 +95,20 @@ CREATE POLICY "mission_team_select" ON public.match_scores
   FOR SELECT TO authenticated
   USING (public.is_mission_team_member_for_candidate(auth.uid(), candidate_id, organization_id));
 
+-- Policies de 20260410000000_backfill_rls_phase_2.sql, absentes de la prod
+-- (créée depuis MIGRATION_CLEAN.sql) mais reconstruites par une base neuve,
+-- par exemple la stack de test de la CI e2e. Elles appellent l'ancienne
+-- signature, donc portent le même défaut d'isolation entre organisations, et
+-- retiennent la fonction. Les policies recréées ci-dessus couvrent les mêmes
+-- lectures et écritures, avec le contrôle d'organisation.
+DROP POLICY IF EXISTS "mission_team_view_evaluations" ON public.candidate_evaluations;
+DROP POLICY IF EXISTS "mission_team_create_evaluations" ON public.candidate_evaluations;
+DROP POLICY IF EXISTS "mission_team_update_evaluations" ON public.candidate_evaluations;
+DROP POLICY IF EXISTS "mission_team_view_notes" ON public.candidate_notes;
+DROP POLICY IF EXISTS "mission_team_create_notes" ON public.candidate_notes;
+DROP POLICY IF EXISTS "mission_team_view_profiles" ON public.candidate_profiles;
+DROP POLICY IF EXISTS "mission_team_view_scores" ON public.match_scores;
+
 -- Ancienne signature sans organisation : plus aucune policy ne l'utilise.
 DROP FUNCTION IF EXISTS public.is_mission_team_member_for_candidate(uuid, text);
 
@@ -355,5 +369,14 @@ ALTER TABLE public.organization_invitations
 -- toutes les autres. Les edge functions utilisent désormais des clés par
 -- organisation (v2) ; les entrées globales sont purgées.
 -- ---------------------------------------------------------------------
-DELETE FROM public.notion_api_cache
-WHERE cache_key IN ('notion:jobs:v1', 'notion:candidates:v1', 'notion:shortlist:v1');
+-- La table vient du schéma importé de Lovable et n'est créée par aucune
+-- migration : une base reconstruite à neuf (stack de test de la CI e2e) ne
+-- l'a pas. La purge ne s'applique que là où la table existe.
+DO $notion_cache$
+BEGIN
+  IF to_regclass('public.notion_api_cache') IS NOT NULL THEN
+    DELETE FROM public.notion_api_cache
+    WHERE cache_key IN ('notion:jobs:v1', 'notion:candidates:v1', 'notion:shortlist:v1');
+  END IF;
+END
+$notion_cache$;
