@@ -237,10 +237,34 @@ ALTER TABLE public.organization_members
   ALTER COLUMN enrichment_quota_monthly DROP NOT NULL,
   ALTER COLUMN enrichment_quota_monthly DROP DEFAULT;
 
--- Le forfait est par organisation ; le plafond par membre n'est plus posé par défaut.
-UPDATE public.organization_members
-SET enrichment_quota_monthly = NULL
-WHERE enrichment_quota_monthly = 100;
+-- Le forfait est par organisation ; le plafond par membre n'est plus posé par
+-- défaut. Le déclencheur de hiérarchie des rôles (enforce_role_update) refuse
+-- toute mise à jour d'une ligne owner quand auth.uid() est nul, ce qui est le
+-- cas d'une migration : il est suspendu le temps de cette écriture, qui ne
+-- touche pas au rôle.
+DO $$
+DECLARE
+  v_guard boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgrelid = 'public.organization_members'::regclass
+      AND tgname = 'enforce_role_update'
+      AND NOT tgisinternal
+  ) INTO v_guard;
+
+  IF v_guard THEN
+    ALTER TABLE public.organization_members DISABLE TRIGGER enforce_role_update;
+  END IF;
+
+  UPDATE public.organization_members
+  SET enrichment_quota_monthly = NULL
+  WHERE enrichment_quota_monthly = 100;
+
+  IF v_guard THEN
+    ALTER TABLE public.organization_members ENABLE TRIGGER enforce_role_update;
+  END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.get_org_contact_usage(p_organization_id uuid)
 RETURNS jsonb
