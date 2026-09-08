@@ -11,10 +11,12 @@ import { useOrganization } from '@/hooks/useOrganization';
 const TRIAL_WARNING_DAYS = 7;
 
 export const TrialBanner = () => {
-  const { state, isTrialing, isFree, trialDaysLeft } = useSubscriptionState();
+  const { state, isTrialing, isTrialPaid, isFree, trialDaysLeft } = useSubscriptionState();
   const { isAdmin } = useOrganization();
 
   if (!state) return null;
+  // Essai déjà couvert par un abonnement : rien à réclamer, l'abonné a payé.
+  if (isTrialPaid) return null;
 
   let text: string | null = null;
   if (isTrialing && trialDaysLeft !== null && trialDaysLeft <= TRIAL_WARNING_DAYS) {

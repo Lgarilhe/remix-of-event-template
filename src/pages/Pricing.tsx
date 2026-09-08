@@ -106,7 +106,7 @@ const Pricing = () => {
   // Solo est réservé aux indépendants ; un indépendant ne voit pas le plan Entreprise.
   const recommendedPlanId = orgType === 'freelance' ? 'solo' : RECOMMENDED_PLAN_ID;
   const { data: plans = [], isLoading, isError: isPlansError } = useSubscriptionPlans();
-  const { state, effectivePlanId, isPaid, isTrialing, trialDaysLeft, isLoading: isLoadingState } = useSubscriptionState();
+  const { state, effectivePlanId, isPaid, isTrialing, isTrialPaid, trialDaysLeft, isLoading: isLoadingState } = useSubscriptionState();
   const [yearly, setYearly] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
@@ -150,7 +150,10 @@ const Pricing = () => {
         organization_id: organizationId,
       });
       if (error || !data?.url) {
-        toast.error("Impossible d'ouvrir le paiement. Réessayez.");
+        // Le serveur renvoie une phrase française pour ses refus explicables
+        // (abonnement déjà en place, plan réservé aux indépendants, facturation
+        // inactive). « Réessayez » ne sert que si rien n'est exploitable.
+        toast.error(data?.error || "Impossible d'ouvrir le paiement. Réessayez.");
         setCheckoutPlanId(null);
         return;
       }
@@ -172,7 +175,7 @@ const Pricing = () => {
         organization_id: organizationId,
       });
       if (error || !data?.url) {
-        toast.error("Impossible d'ouvrir la gestion de l'abonnement. Réessayez.");
+        toast.error(data?.error || "Impossible d'ouvrir la gestion de l'abonnement. Réessayez.");
         setOpeningPortal(false);
         return;
       }
@@ -359,6 +362,7 @@ const Pricing = () => {
             <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 border-2 border-[hsl(var(--skalr-purple))] bg-muted/30 text-xs font-bold uppercase tracking-wider text-foreground">
               <span className="w-1.5 h-1.5 bg-[hsl(var(--skalr-purple))] shrink-0" />
               Essai en cours : {formatDaysLeft(trialDaysLeft)}
+              {isTrialPaid ? ' — abonnement déjà en place' : ''}
             </div>
           )}
 

@@ -95,12 +95,16 @@ Deno.serve(async (req) => {
       // Sièges (lot P0-C) : un siège = une ligne organization_members, et une
       // invitation en attente réserve un siège. Le renvoi d'une invitation déjà
       // en attente n'en consomme pas de nouveau, d'où le contrôle ici seulement.
+      // Seules les invitations encore valides réservent un siège : aucun
+      // traitement ne fait sortir une invitation périmée du statut « pending »,
+      // et une invitation jamais ouverte bloquait donc un siège à vie.
       const gate = await getSubscriptionGate(supabase, organization_id);
       const { count: pendingCount, error: pendingError } = await supabase
         .from("organization_invitations")
         .select("id", { count: "exact", head: true })
         .eq("organization_id", organization_id)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString());
       if (pendingError) {
         console.error("[send-team-invitation] pending invitations count failed:", pendingError.message);
         throw new Error("Impossible de vérifier les sièges disponibles");

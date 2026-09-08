@@ -222,6 +222,38 @@ function statusOf(subscription: any): string | null {
   }
 }
 
+/**
+ * Organisation rattachée à un client Stripe.
+ *
+ * Remplace un `.single()` qui confondait trois cas : aucune ligne, plusieurs
+ * lignes, et lecture en échec. Les deux derniers levaient une erreur avalée par
+ * le catch général, qui répondait 200 à Stripe : l'événement était perdu sans
+ * rejeu possible. Ici une lecture en échec est signalée à l'appelant, qui
+ * renvoie 500 pour que Stripe rejoue.
+ */
+async function findOrgByCustomer(
+  adminClient: ReturnType<typeof createClient>,
+  customerId: unknown,
+  columns: string,
+): Promise<{ row: Record<string, any> | null; failed: boolean }> {
+  if (typeof customerId !== "string" || !customerId) return { row: null, failed: false };
+  const { data, error } = await adminClient
+    .from("organization_subscriptions")
+    .select(columns)
+    .eq("stripe_customer_id", customerId)
+    .order("updated_at", { ascending: false })
+    .limit(2);
+  if (error) {
+    console.error(`[stripe-webhook] lecture de l'abonnement impossible pour le client ${customerId}:`, error);
+    return { row: null, failed: true };
+  }
+  const rows = (data ?? []) as Record<string, any>[];
+  if (rows.length > 1) {
+    console.error(`[stripe-webhook] ${rows.length} organisations partagent le client ${customerId} : la plus récemment modifiée est retenue`);
+  }
+  return { row: rows[0] ?? null, failed: false };
+}
+
 /** Identifiant d'abonnement d'une facture (ancien et nouveau format d'API). */
 function invoiceSubscriptionId(invoice: any): string | null {
   const direct = invoice?.subscription;
@@ -234,15 +266,37 @@ function invoiceSubscriptionId(invoice: any): string | null {
 }
 
 /**
- * Plan interne : metadata.plan_id de l'abonnement (puis de la session) s'il
- * est connu et actif en base, sinon correspondance par identifiant de prix
- * Stripe. null si rien ne correspond.
+ * Plan interne, résolu d'abord par l'identifiant de prix Stripe, ensuite par
+ * metadata.plan_id de l'abonnement puis de la session. null si rien ne
+ * correspond.
+ *
+ * L'ordre compte. Les métadonnées sont écrites une seule fois, au Checkout, et
+ * Stripe ne les touche plus : après un changement de plan depuis le portail,
+ * elles désignent encore l'ancien plan. Le prix porté par la ligne
+ * d'abonnement, lui, suit toujours ce qui est facturé. Faire primer les
+ * métadonnées laissait donc l'organisation sur son ancien plan tout en payant
+ * le nouveau. Au premier Checkout le prix est construit à la volée et ne
+ * correspond à aucun plan : les métadonnées prennent alors le relais.
  */
 async function resolvePlanId(
   adminClient: ReturnType<typeof createClient>,
   subscription: any,
   fallbackMetadata?: Record<string, unknown> | null,
 ): Promise<string | null> {
+  const priceId = subscription?.items?.data?.[0]?.price?.id;
+  // Format d'identifiant vérifié avant l'interpolation dans le filtre PostgREST
+  // (ni virgule, ni parenthèse, ni point, ni guillemet). Le plan trouvé par le
+  // prix n'est pas filtré sur is_active : un abonné facturé sur un plan retiré
+  // du catalogue garde ce plan, il ne bascule pas ailleurs.
+  if (typeof priceId === "string" && /^price_[A-Za-z0-9_]+$/.test(priceId)) {
+    const { data: plan } = await adminClient
+      .from("subscription_plans")
+      .select("id")
+      .or(`stripe_price_id_monthly.eq.${priceId},stripe_price_id_yearly.eq.${priceId}`)
+      .maybeSingle();
+    if (plan) return plan.id;
+  }
+
   const candidates = [subscription?.metadata?.plan_id, fallbackMetadata?.plan_id]
     .map((v) => (typeof v === "string" ? v.trim() : ""))
     .filter(Boolean);
@@ -253,16 +307,6 @@ async function resolvePlanId(
       .select("id")
       .eq("id", candidate)
       .eq("is_active", true)
-      .maybeSingle();
-    if (plan) return plan.id;
-  }
-
-  const priceId = subscription?.items?.data?.[0]?.price?.id;
-  if (typeof priceId === "string" && priceId) {
-    const { data: plan } = await adminClient
-      .from("subscription_plans")
-      .select("id")
-      .or(`stripe_price_id_monthly.eq.${priceId},stripe_price_id_yearly.eq.${priceId}`)
       .maybeSingle();
     if (plan) return plan.id;
   }
@@ -333,7 +377,22 @@ Deno.serve(async (req) => {
             break;
           }
 
-          // IDEMPOTENCE : on insère d'ABORD la ligne d'achat, dont
+          // Le solde est lu AVANT de poser le verrou d'idempotence. Une lecture
+          // en échec doit pouvoir être rejouée par Stripe ; si le verrou était
+          // déjà posé, le rejeu sortirait en doublon et les crédits seraient
+          // perdus. Sans ce contrôle, une erreur de lecture faisait écrire
+          // topup_credits = pack seul, effaçant les recharges déjà achetées.
+          const { data: bal, error: balReadError } = await adminClient
+            .from("ai_credit_balances")
+            .select("plan_credits, topup_credits")
+            .eq("organization_id", orgId)
+            .maybeSingle();
+          if (balReadError) {
+            console.error(`[stripe-webhook] solde illisible pour org ${orgId} (session ${session.id}) — crédit reporté au rejeu:`, balReadError);
+            return json({ error: "balance read failed" }, 500);
+          }
+
+          // IDEMPOTENCE : on insère ensuite la ligne d'achat, dont
           // stripe_session_id est UNIQUE (migration 20260715120000). Un event
           // Stripe rejoué (retry/redelivery) provoque une violation d'unicité
           // (23505) → on saute le crédit au lieu de le doubler. La ligne d'achat
@@ -360,13 +419,8 @@ Deno.serve(async (req) => {
             return json({ error: "credit_purchase insert failed" }, 500);
           }
 
-          // Créditer le solde (après le verrou d'idempotence).
-          const { data: bal } = await adminClient
-            .from("ai_credit_balances")
-            .select("plan_credits, topup_credits")
-            .eq("organization_id", orgId)
-            .single();
-
+          // Créditer le solde (après le verrou d'idempotence, sur la lecture
+          // faite avant lui).
           const currentTopup = bal?.topup_credits ?? 0;
           const currentTotal = (bal?.plan_credits ?? 0) + (bal?.topup_credits ?? 0);
 
@@ -428,7 +482,7 @@ Deno.serve(async (req) => {
           }
           const { data: current } = await adminClient
             .from("organization_subscriptions")
-            .select("stripe_subscription_id, status")
+            .select("stripe_subscription_id, status, plan_id")
             .eq("organization_id", orgId)
             .maybeSingle();
           if (
@@ -454,7 +508,11 @@ Deno.serve(async (req) => {
             .from("organization_subscriptions")
             .upsert({
               organization_id: orgId,
-              ...(planId ? { plan_id: planId } : {}),
+              // plan_id est toujours présent : la colonne est NOT NULL sans
+              // valeur par défaut en production, et un upsert qui l'omet est
+              // refusé par Postgres avant l'arbitrage du conflit. À défaut de
+              // plan résolu on conserve celui de la ligne, jamais rien.
+              plan_id: planId ?? current?.plan_id ?? "free",
               status: statusOf(subscription) ?? "active",
               ...(billingCycle ? { billing_cycle: billingCycle } : {}),
               seats: seatsOf(subscription),
@@ -490,11 +548,12 @@ Deno.serve(async (req) => {
         const customerId = invoice.customer;
 
         // Find org by stripe_customer_id
-        const { data: sub } = await adminClient
-          .from("organization_subscriptions")
-          .select("organization_id, status, stripe_subscription_id")
-          .eq("stripe_customer_id", customerId)
-          .single();
+        const { row: sub, failed } = await findOrgByCustomer(
+          adminClient,
+          customerId,
+          "organization_id, status, stripe_subscription_id",
+        );
+        if (failed) return json({ error: "subscription lookup failed" }, 500);
 
         if (!sub) {
           console.warn("[stripe-webhook] No subscription found for customer:", customerId);
@@ -557,13 +616,17 @@ Deno.serve(async (req) => {
           return json({ error: "subscription fetch failed" }, 500);
         }
 
-        const { data: sub } = await adminClient
-          .from("organization_subscriptions")
-          .select("organization_id, plan_id, stripe_subscription_id")
-          .eq("stripe_customer_id", customerId)
-          .single();
+        const { row: sub, failed } = await findOrgByCustomer(
+          adminClient,
+          customerId,
+          "organization_id, plan_id, stripe_subscription_id",
+        );
+        if (failed) return json({ error: "subscription lookup failed" }, 500);
 
-        if (!sub) break;
+        if (!sub) {
+          console.warn(`[stripe-webhook] subscription.updated : aucune organisation pour le client ${customerId}`);
+          break;
+        }
 
         const status = statusOf(subscription);
 
@@ -621,13 +684,17 @@ Deno.serve(async (req) => {
         const subscription = event.data.object;
         const customerId = subscription.customer;
 
-        const { data: sub } = await adminClient
-          .from("organization_subscriptions")
-          .select("organization_id, stripe_subscription_id")
-          .eq("stripe_customer_id", customerId)
-          .single();
+        const { row: sub, failed } = await findOrgByCustomer(
+          adminClient,
+          customerId,
+          "organization_id, stripe_subscription_id",
+        );
+        if (failed) return json({ error: "subscription lookup failed" }, 500);
 
-        if (!sub) break;
+        if (!sub) {
+          console.warn(`[stripe-webhook] subscription.deleted : aucune organisation pour le client ${customerId}`);
+          break;
+        }
 
         // Un ancien abonnement rejoué après une nouvelle souscription ne doit
         // pas rétrograder l'organisation.
@@ -670,14 +737,25 @@ Deno.serve(async (req) => {
         // un ancien abonnement rejoué).
         if (!invoiceSubId) break;
 
-        const { data: sub } = await adminClient
-          .from("organization_subscriptions")
-          .select("organization_id, stripe_subscription_id")
-          .eq("stripe_customer_id", customerId)
-          .single();
+        const { row: sub, failed } = await findOrgByCustomer(
+          adminClient,
+          customerId,
+          "organization_id, stripe_subscription_id",
+        );
+        if (failed) return json({ error: "subscription lookup failed" }, 500);
 
         if (!sub || sub.stripe_subscription_id !== invoiceSubId) {
           console.log(`[stripe-webhook] payment_failed for ${invoiceSubId} ignored (no matching subscription for customer ${customerId})`);
+          break;
+        }
+
+        // L'état est relu chez Stripe avant d'écrire : un événement rejoué après
+        // la régularisation du paiement laissait sinon l'organisation en
+        // « paiement en attente » jusqu'au cycle suivant.
+        const liveSub = await fetchStripeSubscription(invoiceSubId);
+        if (!liveSub) return json({ error: "subscription fetch failed" }, 500);
+        if (!["past_due", "unpaid"].includes(String(liveSub.status ?? ""))) {
+          console.log(`[stripe-webhook] payment_failed for ${invoiceSubId} ignored (Stripe dit ${liveSub.status})`);
           break;
         }
 

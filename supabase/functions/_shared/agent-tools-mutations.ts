@@ -14,6 +14,7 @@ import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
 import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
+import { getSubscriptionGate } from './subscription-gate.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -2637,6 +2638,42 @@ const inviteTeamMember: AgentTool = {
       }
     }
 
+    // Sièges : même règle que send-team-invitation. Sans ce contrôle, le
+    // copilot envoyait l'email, réservait un siège facturable, et l'acceptation
+    // était ensuite refusée en 403 par le serveur.
+    const { data: pendingSame } = await ctx.adminClient
+      .from('organization_invitations')
+      .select('id')
+      .eq('organization_id', ctx.organizationId)
+      .eq('email', email)
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+
+    // Le renvoi d'une invitation déjà en attente ne consomme pas de siège neuf.
+    if (!pendingSame) {
+      try {
+        const gate = await getSubscriptionGate(ctx.adminClient, ctx.organizationId);
+        const { count: pendingCount, error: pendingError } = await ctx.adminClient
+          .from('organization_invitations')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', ctx.organizationId)
+          .eq('status', 'pending')
+          .gt('expires_at', new Date().toISOString());
+        if (pendingError) {
+          return { allowed: false, reason: 'Impossible de vérifier les sièges disponibles. Réessayez.' };
+        }
+        if (gate.seatCount + (pendingCount ?? 0) >= gate.seatLimit) {
+          return { allowed: false, reason: 'Tous vos sièges sont utilisés. Ajoutez un siège dans Abonnement.' };
+        }
+      } catch (e) {
+        return {
+          allowed: false,
+          reason: e instanceof Error ? e.message : 'Impossible de vérifier les sièges disponibles.',
+        };
+      }
+    }
+
     return { allowed: true };
   },
 
@@ -2650,13 +2687,14 @@ const inviteTeamMember: AgentTool = {
       .eq('id', ctx.organizationId)
       .maybeSingle();
 
-    // Check for pending invitation to same email
+    // Check for pending invitation to same email (encore valide seulement)
     const { data: pending } = await ctx.adminClient
       .from('organization_invitations')
       .select('id, created_at, expires_at, status')
       .eq('organization_id', ctx.organizationId)
       .eq('email', email)
       .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
       .maybeSingle();
 
     return {

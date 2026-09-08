@@ -64,11 +64,16 @@ export const useSubscriptionState = () => {
   const effectivePlanId = state?.effective_plan_id ?? 'free';
   const isTrialing = state?.status === 'trialing';
   const isFree = effectivePlanId === 'free';
+  // Essai déjà couvert par un abonnement : Stripe garde le statut « trialing »
+  // jusqu'à la fin de l'essai, mais l'organisation paie et n'a plus de plan à
+  // choisir.
+  const isTrialPaid = isTrialing && !!state?.has_stripe_subscription;
 
-  // Sièges autorisés : limite du plan gratuit, allocation d'essai, sinon quantité facturée.
+  // Sièges autorisés : limite du plan gratuit, allocation d'essai tant que rien
+  // n'est facturé, sinon la quantité facturée.
   const seatLimit = isFree
     ? Math.max(1, state?.limits?.max_members ?? 1)
-    : isTrialing
+    : isTrialing && !isTrialPaid
       ? TRIAL_SEAT_ALLOWANCE
       : Math.max(1, state?.seats ?? 1);
   const seatCount = state?.seat_count ?? 0;
@@ -80,6 +85,7 @@ export const useSubscriptionState = () => {
     refetch: query.refetch,
     effectivePlanId,
     isTrialing,
+    isTrialPaid,
     isFree,
     isPaid: !!state?.has_stripe_subscription && !isFree,
     trialDaysLeft: state?.trial_days_left ?? null,

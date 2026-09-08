@@ -20,6 +20,9 @@ import { cn } from '@/lib/utils';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { toast } from 'sonner';
 
+/** Délai de la seconde relecture du solde après un achat (le temps que l'événement de paiement soit traité). */
+const PACK_REFRESH_DELAY_MS = 5000;
+
 export const AICreditsSettings = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -33,8 +36,12 @@ export const AICreditsSettings = () => {
   useEffect(() => {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {
-      toast.success('Paiement réussi ! Vos crédits ont été ajoutés.');
+      toast.success('Paiement réussi. Vos crédits arrivent.');
+      // Le solde n'est écrit qu'à l'arrivée de l'événement de paiement, quelques
+      // secondes après le retour du navigateur : une seule relecture immédiate
+      // affichait encore l'ancien solde. Deuxième passage différé.
       refetch();
+      window.setTimeout(() => { void refetch(); }, PACK_REFRESH_DELAY_MS);
       searchParams.delete('checkout');
       setSearchParams(searchParams, { replace: true });
     } else if (checkout === 'cancel') {
@@ -55,7 +62,7 @@ export const AICreditsSettings = () => {
       });
 
       if (error || !data?.url) {
-        toast.error('Erreur lors de la création du paiement. Réessayez.');
+        toast.error(data?.error || 'Erreur lors de la création du paiement. Réessayez.');
         return;
       }
 

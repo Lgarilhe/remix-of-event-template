@@ -8,7 +8,8 @@
  *     plan_id = 'free', si status ∈ (canceled, unpaid), ou si l'essai est
  *     expiré (trialing avec trial_ends_at < now()) ;
  *   - sièges autorisés : plan effectif free → limits.max_members du plan (1) ;
- *     essai en cours → TRIAL_SEAT_ALLOWANCE ; sinon organization_subscriptions.seats ;
+ *     essai en cours et non payé → TRIAL_SEAT_ALLOWANCE ; sinon
+ *     organization_subscriptions.seats, la quantité facturée ;
  *   - un siège = une ligne organization_members, tous rôles.
  *
  * Aucun appel réseau externe : trois lectures Supabase au plus.
@@ -89,7 +90,10 @@ export async function getSubscriptionGate(
 
     const limits = (plan?.limits ?? {}) as { max_members?: unknown };
     seatLimit = toSeatNumber(limits.max_members, 1);
-  } else if (isTrialing) {
+  } else if (isTrialing && !sub?.stripe_subscription_id) {
+    // L'allocation d'essai ne vaut que tant qu'aucune quantité n'est facturée.
+    // Un essai payé reste « trialing » chez Stripe jusqu'à sa date de fin :
+    // conserver l'allocation ouvrait dix sièges à qui n'en paie que trois.
     seatLimit = TRIAL_SEAT_ALLOWANCE;
   } else {
     seatLimit = toSeatNumber(sub?.seats, 1);

@@ -37,7 +37,10 @@ Deno.serve(async (req) => {
   try {
     const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
     if (!STRIPE_SECRET_KEY) {
-      return json({ error: "billing_not_configured" }, 500);
+      return json({
+        error_code: "billing_not_configured",
+        error: "La facturation n'est pas encore active. Contactez-nous.",
+      }, 500);
     }
 
     // Auth : utilisateur connecté obligatoire (pas d'appel service-role).
@@ -87,7 +90,12 @@ Deno.serve(async (req) => {
 
     const stripeCustomerId = sub?.stripe_customer_id || null;
     if (!stripeCustomerId) {
-      return json({ error: "no_customer" }, 404);
+      // Le code technique voyage dans error_code ; error porte la phrase que
+      // l'écran affiche tel quel, sans quoi l'utilisateur lisait « no_customer ».
+      return json({
+        error_code: "no_customer",
+        error: "Aucun abonnement à gérer pour le moment. Choisissez d'abord un plan.",
+      }, 404);
     }
 
     const appUrl = Deno.env.get("APP_URL") || "https://konekt-app-navy.vercel.app";

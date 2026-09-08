@@ -53,7 +53,7 @@ export const BillingSettings = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { state, isLoading, isFree, isPaid, isTrialing, seatLimit, seatCount } = useSubscriptionState();
+  const { state, isLoading, isFree, isPaid, isTrialing, isTrialPaid, seatLimit, seatCount } = useSubscriptionState();
   const { organizationId } = useOrganization();
   const [exporting, setExporting] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
@@ -94,7 +94,7 @@ export const BillingSettings = () => {
         organization_id: organizationId,
       });
       if (error || !data?.url) {
-        toast.error("Impossible d'ouvrir la gestion de l'abonnement. Réessayez.");
+        toast.error(data?.error || "Impossible d'ouvrir la gestion de l'abonnement. Réessayez.");
         setOpeningPortal(false);
         return;
       }
@@ -173,11 +173,13 @@ export const BillingSettings = () => {
                 <Badge variant={badge.variant}>{badge.label}</Badge>
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                {isTrialing
-                  ? "Essai gratuit, sans carte bancaire. Choisissez un plan pour continuer après l'essai."
-                  : isFree
-                    ? 'Vos données restent accessibles, sans envoi de séquences.'
-                    : 'Facturé par siège et par mois.'}
+                {isTrialPaid
+                  ? 'Essai en cours, déjà couvert par votre abonnement. La facturation démarre à la fin de l\'essai.'
+                  : isTrialing
+                    ? "Essai gratuit, sans carte bancaire. Choisissez un plan pour continuer après l'essai."
+                    : isFree
+                      ? 'Vos données restent accessibles, sans envoi de séquences.'
+                      : 'Facturé par siège et par mois.'}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -227,7 +229,7 @@ export const BillingSettings = () => {
                 </div>
               )}
 
-              {!isTrialing && state.current_period_end && (
+              {(!isTrialing || isTrialPaid) && state.current_period_end && (
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
                   <span>

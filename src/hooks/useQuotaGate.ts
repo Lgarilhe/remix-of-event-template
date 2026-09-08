@@ -39,6 +39,8 @@ export const useQuotaGate = () => {
   });
 
   // Une invitation en attente réserve un siège (même règle que send-team-invitation).
+  // Seules les invitations encore valides comptent : rien ne fait sortir une
+  // invitation périmée du statut « pending ».
   const { data: pendingInvitations = 0 } = useQuery({
     queryKey: ['quota-pending-invitations', organizationId],
     queryFn: async () => {
@@ -47,7 +49,8 @@ export const useQuotaGate = () => {
         .from('organization_invitations')
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', organizationId)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString());
       if (error) return 0;
       return count || 0;
     },

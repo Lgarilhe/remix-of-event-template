@@ -62,7 +62,10 @@ Deno.serve(async (req) => {
   try {
     const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
     if (!STRIPE_SECRET_KEY) {
-      return json({ error: "Stripe not configured" }, 500);
+      return json({
+        error_code: "billing_not_configured",
+        error: "Le paiement n'est pas encore actif. Contactez-nous.",
+      }, 500);
     }
 
     // Auth
@@ -160,19 +163,30 @@ Deno.serve(async (req) => {
       const customer = await customerRes.json();
       stripeCustomerId = customer.id;
 
-      // Save customer ID
-      const { error: upsertError } = await adminClient
-        .from("organization_subscriptions")
-        .upsert({
-          organization_id,
-          stripe_customer_id: stripeCustomerId,
-          status: sub ? undefined : "free",
-          plan_id: sub ? undefined : "free",
-          billing_cycle: sub ? undefined : "monthly",
-        }, { onConflict: "organization_id" });
+      // Enregistrement du client de paiement. Sur une ligne existante c'est une
+      // mise à jour, jamais un upsert : JSON.stringify retire les champs
+      // undefined du corps, et PostgREST construit alors un INSERT sans
+      // plan_id, colonne NOT NULL sans valeur par défaut. Postgres contrôle
+      // NOT NULL avant d'arbitrer ON CONFLICT, donc l'écriture échouait pour
+      // toute organisation ayant déjà une ligne d'abonnement, c'est-à-dire
+      // toutes.
+      const { error: saveError } = sub
+        ? await adminClient
+            .from("organization_subscriptions")
+            .update({ stripe_customer_id: stripeCustomerId, updated_at: new Date().toISOString() })
+            .eq("organization_id", organization_id)
+        : await adminClient
+            .from("organization_subscriptions")
+            .upsert({
+              organization_id,
+              stripe_customer_id: stripeCustomerId,
+              status: "active",
+              plan_id: "free",
+              billing_cycle: "monthly",
+            }, { onConflict: "organization_id" });
 
-      if (upsertError) {
-        console.error("[create-checkout] Failed to save Stripe customer ID", { error: upsertError, organization_id, stripeCustomerId });
+      if (saveError) {
+        console.error("[create-checkout] Failed to save Stripe customer ID", { error: saveError, organization_id, stripeCustomerId });
         return json({ error: "Failed to save payment configuration" }, 500);
       }
     }
@@ -240,9 +254,37 @@ Deno.serve(async (req) => {
       // Checkout qui créerait un deuxième abonnement chez Stripe.
       if (sub?.stripe_subscription_id && !["canceled", "unpaid"].includes(sub.status ?? "")) {
         return json({
-          code: "subscription_exists",
+          error_code: "subscription_exists",
           error: "Vous avez déjà un abonnement. Modifiez-le depuis « Gérer l'abonnement ».",
         }, 409);
+      }
+
+      // La colonne stripe_subscription_id n'est écrite que par le webhook :
+      // entre le paiement et l'arrivée de l'événement, le contrôle ci-dessus ne
+      // voit rien. On interroge donc Stripe, seule source qui sait déjà qu'un
+      // abonnement existe. Sans cette lecture, un second clic pendant ce délai
+      // crée un deuxième abonnement sur le même client, et le facture.
+      const liveRes = await fetchWithTimeout(
+        `https://api.stripe.com/v1/subscriptions?customer=${encodeURIComponent(stripeCustomerId!)}&status=all&limit=100`,
+        { headers: { Authorization: `Bearer ${STRIPE_SECRET_KEY}` } },
+      );
+      if (liveRes.ok) {
+        const list = await liveRes.json();
+        const live = (list?.data ?? []).find((s: { status?: string }) =>
+          ["trialing", "active", "past_due"].includes(s?.status ?? "")
+        );
+        if (live) {
+          console.warn(`[create-checkout] abonnement Stripe déjà vivant ${live.id} pour org ${organization_id} (base : ${sub?.stripe_subscription_id ?? "aucun"})`);
+          return json({
+            error_code: "subscription_exists",
+            error: "Vous avez déjà un abonnement. Modifiez-le depuis « Gérer l'abonnement ».",
+          }, 409);
+        }
+      } else {
+        // Lecture impossible : on laisse passer plutôt que de bloquer un
+        // paiement sur un incident Stripe. Le doublon reste improbable et
+        // rattrapable côté portail.
+        console.error(`[create-checkout] lecture des abonnements Stripe impossible (${liveRes.status}) pour org ${organization_id}`);
       }
 
       // Plan résolu côté serveur : jamais de prix venant du client.
@@ -258,14 +300,21 @@ Deno.serve(async (req) => {
         return json({ error: "Invalid plan_id" }, 400);
       }
 
-      // Solo est réservé aux recruteurs indépendants (org_type freelance).
+      // Solo est réservé aux recruteurs indépendants (org_type freelance). Le
+      // contrôle refuse par défaut : un org_type absent laissait un cabinet
+      // s'abonner à 59 € au lieu de 139 € par siège, et huit organisations en
+      // production n'ont pas ce champ.
       if (plan.id === "solo") {
-        const { data: org } = await adminClient
+        const { data: org, error: orgError } = await adminClient
           .from("organizations")
           .select("org_type")
           .eq("id", organization_id)
           .maybeSingle();
-        if (org?.org_type && org.org_type !== "freelance") {
+        if (orgError) {
+          console.error("[create-checkout] lecture org_type impossible:", orgError.message);
+          return json({ error: "Impossible de vérifier votre type d'organisation. Réessayez." }, 500);
+        }
+        if (org?.org_type !== "freelance") {
           return json({ error: "Le plan Solo est réservé aux recruteurs indépendants." }, 400);
         }
       }
@@ -279,6 +328,9 @@ Deno.serve(async (req) => {
 
       // Un siège = une ligne de organization_members (tous rôles) ; une
       // invitation en attente réserve un siège (même règle que send-team-invitation).
+      // Seules les invitations encore valides comptent : rien ne fait passer une
+      // invitation périmée hors du statut « pending », et sans cette borne une
+      // invitation jamais ouverte se facturait indéfiniment.
       const { count: memberCount } = await adminClient
         .from("organization_members")
         .select("id", { count: "exact", head: true })
@@ -287,7 +339,8 @@ Deno.serve(async (req) => {
         .from("organization_invitations")
         .select("id", { count: "exact", head: true })
         .eq("organization_id", organization_id)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString());
       const quantity = Math.max(1, (memberCount ?? 0) + (pendingCount ?? 0));
 
       const params = new URLSearchParams({
