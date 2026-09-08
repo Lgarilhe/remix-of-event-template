@@ -45,6 +45,12 @@ test('Notion is a one-click card and technical MCP fields stay hidden by default
 
   const advanced = page.getByRole('button', { name: 'Options avancées pour développeurs', exact: true });
   await advanced.click();
+
+  // Le formulaire de connecteur demande un second geste : le panneau déplié
+  // n'affiche que la description et le bouton d'ajout. Le test attendait le
+  // champ dès l'ouverture, ce que l'interface n'a jamais fait.
+  await expect(page.getByPlaceholder('URL du serveur MCP (https://…)')).toBeHidden();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
   await expect(page.getByPlaceholder('URL du serveur MCP (https://…)')).toBeVisible();
 });
 test('a connected Notion workspace is clearly available in the assistant', async ({ asRole }) => {
