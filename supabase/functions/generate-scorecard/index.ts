@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -120,6 +121,19 @@ Génère la scorecard d'évaluation sur mesure.`;
     // L'user peut toujours forcer un autre modèle via le ModelPicker.
     const modelToUse = _aiParams.modelId || 'claude-haiku-4-5';
     console.log('[generate-scorecard] Using model:', modelToUse);
+
+    // Refus avant l'appel : la scorecard consomme jusqu'à 4 000 jetons de
+    // sortie, déjà facturés par le fournisseur quand settleCredits découvre le
+    // solde vide. L'organisation est celle du profil, la même que celle du
+    // règlement plus bas.
+    const gate = await assertCredits({
+      userId,
+      aiAction: _aiParams.aiAction,
+      modelId: modelToUse,
+      systemCall: auth.method === "service_role" && !userId,
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     let aiResult;
     try {

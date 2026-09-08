@@ -31,6 +31,9 @@ import {
 } from "../_shared/connector-selection.mjs";
 import { UNTRUSTED_CONTENT_SAFETY_PROMPT } from "../_shared/prompt-safety.mjs";
 import { resolveNotionMcpConnectorRow } from "../_shared/notion-mcp-connection.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { calculateTokenCredits, normalizeModelId } from "../_shared/ai-config.ts";
+import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 
 // Register tools at module load (idempotent)
 registerMutatingTools();
@@ -381,6 +384,8 @@ async function maybeGenerateTitle(
   conversationId: string,
   userMessage: string,
   assistantResponse: string,
+  userId: string,
+  organizationId: string | null,
 ): Promise<void> {
   try {
     const { data: conv } = await supabase
@@ -410,6 +415,19 @@ async function maybeGenerateTitle(
         },
       ],
     });
+    // Appel modèle à part entière, jusqu'ici hors du décompte. Réglé avant
+    // la sortie sur titre vide : les jetons ont été consommés dans les deux cas.
+    // res.model porte l'id daté renvoyé par l'API ; vide, il ferait retomber le
+    // multiplicateur sur celui de Sonnet alors que l'appel tourne en rapide.
+    await settleClaudeUsage({
+      userId,
+      organizationId,
+      aiAction: "conversation_title",
+      usage: res.usage,
+      modelId: res.model || "claude-haiku-4-5",
+      description: "Titre de conversation",
+    });
+
     const title = (res.content || "").trim().slice(0, 80);
     if (!title) return;
     // AND title IS NULL — évite d'écraser un titre posé entre-temps (course
@@ -460,7 +478,7 @@ async function runMemoryHooks(supabase: any, conversationId: string, userId: str
     }
 
     // Compaction (no-op tant que la conversation tient dans la fenêtre de 24).
-    await maybeCompactConversation(supabase, conversationId);
+    await maybeCompactConversation(supabase, conversationId, { userId, organizationId: orgId });
   } catch (e) {
     console.warn("[search-agent-chat] memory hooks failed:", e);
   }
@@ -608,6 +626,30 @@ Deno.serve(async (req) => {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Barrière de crédits. Dernier point où une réponse ordinaire est encore
+    // possible : les deux chemins ci-dessous ouvrent un text/event-stream, et
+    // un flux déjà ouvert ne peut plus porter un 402. Posée ici, elle précède
+    // aussi le classifieur d'intention et le générateur de titre, qui sont des
+    // appels modèle, et l'écriture du message utilisateur : un tour refusé ne
+    // laisse pas une question sans réponse dans l'historique.
+    //
+    // Action et modèle sont ceux qui seront réglés plus bas. L'action vient de
+    // _aiParams, identique dans les deux règlements ; le classifieur ne la
+    // change pas, il ne choisit que le chemin, donc rien ne justifie d'attendre
+    // son verdict. Le modèle est celui qui part réellement dans le corps de la
+    // requête (resolvedModel), ramené à l'identifiant du catalogue : sous sa
+    // forme datée, l'estimation retomberait sur le modèle par défaut du tier
+    // et réclamerait le multiplicateur de Sonnet pour un appel en rapide.
+    const guardModelId = normalizeModelId(resolvedModel);
+    const gate = await assertCredits({
+      userId: user.id,
+      organizationId: conv.organization_id ?? null,
+      aiAction: _aiParams.aiAction,
+      modelId: guardModelId,
+      adminClient: supabase,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     // Save user message (after auth validation). On garde l'id : les
     // agent_tool_executions proposées ce tour-ci y sont rattachées
@@ -915,6 +957,21 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             { role: "user", content: recentTranscript || String(message).slice(0, 2000) },
           ],
         });
+        // Le classifieur est un appel modèle à part entière : il partait sans
+        // règlement. Posé en tâche de fond, il ne retarde pas le premier octet
+        // du flux. clf.model vide ferait retomber le multiplicateur sur celui
+        // de Sonnet alors que l'appel tourne en rapide.
+        const classifierSettle = settleClaudeUsage({
+          userId: user.id,
+          organizationId: orgId || null,
+          aiAction: "intent_routing",
+          usage: clf.usage,
+          modelId: clf.model || "claude-haiku-4-5",
+          description: "Routage d'intention du copilot",
+        });
+        try { (globalThis as any).EdgeRuntime?.waitUntil?.(classifierSettle); } catch { /* no-op */ }
+        classifierSettle.catch(() => {});
+
         const raw = (clf.content || "").trim();
         const data = /\bDATA\b/i.test(raw);
         const action = /\bACTION\b/i.test(raw);
@@ -1201,6 +1258,11 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
             // contrainte est le hard-limit edge (~150s), pas le nombre de
             // rounds. On ne DÉMARRE pas de nouveau round passé 95s.
             let maxToolRounds = 8;
+            // Solde lu par le garde d'entrée. null quand la lecture a échoué :
+            // la boucle n'est alors pas bornée par les crédits, même politique
+            // que le garde (un incident base ne coupe pas l'IA du produit).
+            const balanceAtEntry = gate.remaining;
+            const perRoundEstimate = gate.estimated;
             const LOOP_WALL_BUDGET_MS = 95_000;
             const loopStartedAt = Date.now();
             let roundNumber = 0;
@@ -1315,6 +1377,45 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
                 const budgetChunk = { choices: [{ delta: { content: budgetMsg }, index: 0 }] };
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify(budgetChunk)}\n\n`));
                 break;
+              }
+              // Un seul tour de chat enchaîne jusqu'à 8 appels modèle, alors
+              // que le garde d'entrée n'en a estimé qu'un : sans ce contrôle,
+              // une organisation à 6 crédits en dépense soixante. Relire le
+              // solde ne servirait à rien, le règlement n'a lieu qu'à la fin de
+              // la requête et le compteur n'a donc pas bougé. On compare le
+              // solde d'entrée à ce que CETTE requête a déjà consommé, plus
+              // l'estimation du tour suivant. L'arrêt passe par le même
+              // mécanisme que le budget temps : un texte streamé, que le
+              // navigateur affiche déjà (chat-adapter ne lit que
+              // choices[].delta.content), et qui est persisté avec la réponse.
+              if (roundNumber > 1 && balanceAtEntry !== null) {
+                // On lit `raw` et non `credits` : `credits` applique le plancher
+                // de l'action, qui vaut 3 sur la calibration. Un premier tour à
+                // 200 jetons serait compté 3 crédits au lieu de 1, et toute
+                // organisation sous deux fois le plancher se verrait couper dès
+                // le deuxième tour, avec un message d'épuisement faux.
+                const spent = calculateTokenCredits(
+                  _tokensIn,
+                  _tokensOut,
+                  guardModelId,
+                  _aiParams.aiAction,
+                ).breakdown.raw;
+                // Le débit final vaut au moins le plancher : on le réserve une
+                // fois, pas à chaque tour, puis on compare au coût réel cumulé.
+                const budget = balanceAtEntry - Math.max(perRoundEstimate, 1);
+                if (spent >= budget) {
+                  console.warn(`[search-agent-chat] crédits épuisés en cours de boucle (solde=${balanceAtEntry} consommé=${spent} budget=${budget}), arrêt avant le round ${roundNumber}`);
+                  const creditMsg = "Je m'arrête ici : les crédits IA de votre organisation sont épuisés. Rechargez-les depuis Paramètres, onglet Crédits IA, puis relancez votre demande.";
+                  fullResponse += (fullResponse ? "\n\n" : "") + creditMsg;
+                  // Un seul évènement, de la forme que chat-adapter traite déjà :
+                  // il affiche le texte dans le fil ET lève le toast avec le
+                  // renvoi vers l'achat. Émettre en plus un delta de contenu
+                  // afficherait la phrase deux fois. La persistance en base ne
+                  // dépend pas du flux, elle passe par fullResponse ci-dessus.
+                  const creditSignal = { error: creditMsg, error_code: "INSUFFICIENT_CREDITS" };
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(creditSignal)}\n\n`));
+                  break;
+                }
               }
               console.log(`[search-agent-chat] Tool loop round ${roundNumber}, elapsed ${elapsedMs}ms, messages: ${currentMessages.length}`);
 
@@ -1651,7 +1752,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               });
 
               // Titre auto de la conversation — fire-and-forget, ne bloque pas le [DONE].
-              const titlePromise = maybeGenerateTitle(supabase, conversation_id, message, fullResponse);
+              const titlePromise = maybeGenerateTitle(supabase, conversation_id, message, fullResponse, user.id, orgId || null);
               try { (globalThis as any).EdgeRuntime?.waitUntil?.(titlePromise); } catch { /* no-op */ }
               titlePromise.catch(() => {});
 
@@ -1802,7 +1903,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
               });
 
               // Titre auto de la conversation — fire-and-forget, ne bloque pas le [DONE].
-              const titlePromise = maybeGenerateTitle(supabase, conversation_id, message, fullResponse);
+              const titlePromise = maybeGenerateTitle(supabase, conversation_id, message, fullResponse, user.id, orgId || null);
               try { (globalThis as any).EdgeRuntime?.waitUntil?.(titlePromise); } catch { /* no-op */ }
               titlePromise.catch(() => {});
 

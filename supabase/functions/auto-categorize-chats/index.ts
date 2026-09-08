@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -120,6 +121,18 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Refus avant l'appel, et avant d'aller chercher les messages : sans
+    // crédits, rien de ce qui suit n'a de raison de tourner. Un appel en
+    // service-role est déjà rejeté plus haut (getUser échoue), donc aucun
+    // traitement automatique ne passe ici : pas d'exemption. Aucun champ model
+    // n'est passé à callAi, mapModel route sur le modèle rapide.
+    const gate = await assertCredits({
+      userId: user.id,
+      aiAction: 'auto_categorize_chats',
+      modelId: 'claude-haiku-4-5',
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     // Resolve Unipile credentials from org_integrations with env fallback
     let UNIPILE_API_KEY: string;

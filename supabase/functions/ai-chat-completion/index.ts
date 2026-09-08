@@ -3,6 +3,7 @@ import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat, ClaudeCompatError } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,6 +69,20 @@ Deno.serve(async (req) => {
         console.warn("[ai-chat-completion] user-memory injection skipped:", e);
       }
     }
+
+    // Le solde est vérifié avant l'appel : après, le fournisseur a déjà
+    // facturé. callClaudeCompat ne reçoit aucun champ model, donc mapModel
+    // route sur le modèle rapide : c'est lui qu'il faut estimer, pas le défaut
+    // du tier. L'exemption ne joue que sans utilisateur identifiable.
+    const gate = await assertCredits({
+      userId,
+      organizationId: orgId,
+      aiAction: "ai_chat",
+      modelId: "claude-haiku-4-5",
+      systemCall: auth.method === "service_role" && !userId,
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     const result = await callClaudeCompat({
       messages,

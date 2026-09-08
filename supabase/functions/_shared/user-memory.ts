@@ -83,6 +83,17 @@ export async function extractInsightsFromConversation(
       response_format: { type: 'json_object' },
       timeoutMs: 20000,
     });
+    // Cet appel partait sans décompte : il atteignait le fournisseur sans
+    // jamais entrer dans le compteur de l'organisation.
+    const { settleClaudeUsage } = await import('./settle-usage.ts');
+    await settleClaudeUsage({
+      userId,
+      organizationId,
+      aiAction: 'memory_extract',
+      usage: result.usage,
+      modelId: result.model,
+      description: 'Mémorisation du copilot',
+    });
     const parsed = JSON.parse(result.content.replace(/```json\n?|```/g, '').trim());
     extracted = Array.isArray(parsed.insights) ? parsed.insights : [];
   } catch (err) {

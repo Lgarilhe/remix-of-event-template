@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,6 +72,18 @@ Deno.serve(async (req) => {
     if (!ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY is not configured");
     }
+
+    // Refus avant l'appel. On estime sur _aiParams.modelId, celui dont dérive
+    // resolvedModel envoyé au fournisseur : estimer sur le défaut du tier
+    // réclamerait un coût que l'appel ne produit pas.
+    const gate = await assertCredits({
+      userId,
+      aiAction: _aiParams.aiAction,
+      modelId: _aiParams.modelId,
+      systemCall: auth.method === "service_role" && !userId,
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     const effectiveTotal = totalResults ?? resultCount;
     const autoDirection = effectiveTotal < 50 ? 'expand' : effectiveTotal > 500 ? 'narrow' : 'expand';

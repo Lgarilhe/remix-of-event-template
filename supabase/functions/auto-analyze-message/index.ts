@@ -1,5 +1,6 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -429,6 +430,31 @@ Deno.serve(async (req) => {
     }
 
     // 2b. Analyze intent with Claude (lightweight call)
+    //
+    // Refus avant l'appel, placé après les deux sorties qui ne consomment rien
+    // (aucun message, aucun message du candidat) pour ne jamais refuser une
+    // requête sans dépense en face.
+    //
+    // L'exemption vaut pour le webhook uniquement : il arrive en service-role
+    // sans utilisateur, déclenché par un message LinkedIn entrant, et un 402 y
+    // couperait l'analyse automatique de l'inbox. Les appels du navigateur
+    // (prefetch, ouverture d'une conversation) portent un JWT et sont gardés.
+    // Le modèle est écrit en dur dans analyzeIntent : c'est celui-là qu'on
+    // estime, comme le fait déjà le règlement plus bas.
+    const gate = await assertCredits({
+      userId: settleUserId,
+      organizationId: accountOrgId ?? null,
+      aiAction: _aiParams.aiAction,
+      modelId: AUTO_ANALYZE_MODEL,
+      // Le chemin webhook n'a pas d'utilisateur du navigateur, mais le compte
+      // LinkedIn a donné l'organisation et l'utilisateur à débiter. L'exemption
+      // ne vaut donc que si la résolution n'a rien rendu. Le garde laisse déjà
+      // passer sur panne de lecture, l'inbox ne s'arrête pas sur un incident.
+      systemCall: !settleUserId && !accountOrgId,
+      adminClient: supabase,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
+
     const analysis = await analyzeIntent(messages, candidateName);
 
     if (!analysis) {

@@ -206,7 +206,9 @@ Deno.serve(async (req) => {
       organizationId: settleOrgId,
       aiAction: "analyze_response",
       modelId: "claude-haiku-4-5",
-      systemCall: auth.method === "service_role",
+      // La chaîne inbox appelle en service-role mais transporte l'utilisateur et
+      // l'organisation à débiter : ce n'est pas un traitement automatique.
+      systemCall: auth.method === "service_role" && !settleUserId,
     });
     if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 

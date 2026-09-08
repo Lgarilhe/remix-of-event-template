@@ -916,6 +916,18 @@ CONTRAINTES:
         response_format: { type: 'json_object' },
         timeoutMs: 25000,
       });
+      // Ce brouillon atteignait le fournisseur sans jamais être décompté, alors
+      // qu'il produit exactement le même objet qu'une génération de message
+      // depuis l'interface : même action, même tarif.
+      const { settleClaudeUsage } = await import('./settle-usage.ts');
+      await settleClaudeUsage({
+        userId: ctx.userId,
+        organizationId: ctx.organizationId,
+        aiAction: 'outreach_message',
+        usage: result.usage,
+        modelId: result.model,
+        description: 'Brouillon de message proposé par le copilot',
+      });
       const parsed = JSON.parse(result.content.replace(/```json\n?|```/g, '').trim());
       return {
         success: true,

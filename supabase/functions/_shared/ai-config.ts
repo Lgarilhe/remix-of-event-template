@@ -188,9 +188,49 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     action: "agent_search_calibration",
     label: "Agent — calibration",
     floor: 3,
-    typicalTokens: 6_000,
+    typicalTokens: 3_000,
     routingTier: "thinking",
     category: "agent",
+    providers: ["anthropic"],
+  },
+  conversation_title: {
+    action: "conversation_title",
+    label: "Copilot — titre de conversation",
+    floor: 1,
+    typicalTokens: 1_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+    providers: ["anthropic"],
+  },
+  intent_routing: {
+    action: "intent_routing",
+    label: "Copilot — routage d'intention",
+    floor: 1,
+    typicalTokens: 2_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+    providers: ["anthropic"],
+  },
+  context_compaction: {
+    action: "context_compaction",
+    label: "Copilot — résumé de conversation",
+    floor: 1,
+    typicalTokens: 4_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
+    providers: ["anthropic"],
+  },
+  memory_extract: {
+    action: "memory_extract",
+    label: "Copilot — mémorisation",
+    floor: 1,
+    typicalTokens: 3_000,
+    routingTier: "fast",
+    category: "agent",
+    autoDefault: "claude-haiku-4-5",
     providers: ["anthropic"],
   },
   agent_search_run: {
@@ -206,7 +246,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     action: "agent_chat",
     label: "Copilot — chat (par message)",
     floor: 1,
-    typicalTokens: 4_000,
+    typicalTokens: 2_500,
     routingTier: "thinking",
     category: "agent",
     providers: ["anthropic"],
@@ -327,6 +367,17 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "outreach",
   },
+  auto_categorize_chats: {
+    action: "auto_categorize_chats",
+    label: "Classement des conversations",
+    floor: 1,
+    // Le front envoie des lots de 30 conversations (useChatCategories), avec
+    // jusqu'à 6 messages de 300 caractères chacune : l'entrée pèse bien plus
+    // que la sortie. 10 000 jetons = un lot moyen, pas un lot plein.
+    typicalTokens: 10_000,
+    routingTier: "fast",
+    category: "outreach",
+  },
   scorecard_chat: {
     action: "scorecard_chat",
     label: "Chat scorecard",
@@ -350,6 +401,43 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     typicalTokens: 5_000,
     routingTier: "default",
     category: "qualification",
+  },
+  generate_client_competitors: {
+    action: "generate_client_competitors",
+    label: "Concurrents client",
+    floor: 1,
+    typicalTokens: 2_000,
+    routingTier: "fast",
+    category: "sourcing",
+    // Valeurs reprises telles quelles du catalogue navigateur
+    // (src/types/aiCredits.ts) : deux barèmes différents feraient diverger
+    // l'estimation affichée et le refus serveur.
+    autoDefault: "claude-haiku-4-5",
+  },
+  enrich_company: {
+    action: "enrich_company",
+    label: "Fiche société",
+    // Le plancher reste à 1 : enrich-company règle CHAQUE extraction
+    // séparément (site, offres, actualités, synthèse), un plancher plus haut
+    // multiplierait la facture par le nombre d'appels.
+    floor: 1,
+    // L'estimation, elle, couvre la requête entière. Le fichier compte sept
+    // appels réglés séparément (site, offres, contacts, actualités, synthèse) :
+    // à 6 000 jetons, le seul cumul des planchers dépassait déjà le seuil du
+    // garde, qui laissait donc passer un enrichissement froid sur un solde bas.
+    typicalTokens: 20_000,
+    routingTier: "fast",
+    category: "sourcing",
+  },
+  notion_job_skills: {
+    action: "notion_job_skills",
+    label: "Compétences extraites d'un poste",
+    floor: 1,
+    // Un seul appel groupé pour tous les postes absents du cache de
+    // compétences, donc rarement rejoué.
+    typicalTokens: 6_000,
+    routingTier: "fast",
+    category: "sourcing",
   },
   // ─── Enrichment de contact (Better Contact) ─────────────────────────────
   // Pas de tokens consommés (c'est un appel API externe, pas Anthropic).

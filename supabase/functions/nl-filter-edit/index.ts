@@ -10,6 +10,7 @@
 // getAnthropicModelId, settleCredits après l'appel IA.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -154,6 +155,16 @@ Deno.serve(async (req) => {
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
+    // Refus avant l'appel. userId est garanti non nul (400 plus haut), donc
+    // aucune exemption de traitement automatique ici.
+    const gate = await assertCredits({
+      userId,
+      aiAction: _aiParams.aiAction,
+      modelId: _aiParams.modelId,
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
+
     const userContent = `FILTRES ACTUELS :\n${JSON.stringify(current_filters ?? {}, null, 2)}\n\nINSTRUCTION : ${instruction.trim().slice(0, 500)}`;
 
     const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
@@ -194,7 +205,7 @@ Deno.serve(async (req) => {
     // Settle credits (fire-and-forget, pattern refine-search-filters)
     try {
       const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-      const orgId = await resolveOrgIdFromUser(svc, userId);
+      const orgId = await resolveOrgIdFromUser(userId, svc);
       if (orgId) {
         const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
         if (await verifyOrgMembership(svc, userId, orgId)) {

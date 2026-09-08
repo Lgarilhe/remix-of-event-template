@@ -45,6 +45,13 @@ const SUMMARY_PROMPT =
 export async function maybeCompactConversation(
   adminClient: AnyClient,
   conversationId: string,
+  /**
+   * Utilisateur et organisation à débiter. Sans eux l'appel au modèle partait
+   * sans décompte : il coûtait au fournisseur sans jamais entrer dans le
+   * compteur de l'organisation. Optionnels pour ne pas casser un appelant qui
+   * ne les connaît pas, auquel cas le décompte est simplement sauté.
+   */
+  settle?: { userId: string; organizationId: string },
 ): Promise<void> {
   try {
     const { count } = await adminClient
@@ -113,6 +120,17 @@ export async function maybeCompactConversation(
         },
       ],
     });
+    if (settle?.userId && settle?.organizationId) {
+      const { settleClaudeUsage } = await import("./settle-usage.ts");
+      await settleClaudeUsage({
+        userId: settle.userId,
+        organizationId: settle.organizationId,
+        aiAction: "context_compaction",
+        usage: result.usage,
+        modelId: result.model,
+        description: "Résumé de conversation du copilot",
+      });
+    }
     const newSummary = (result.content || "").trim();
     if (!newSummary) return;
 

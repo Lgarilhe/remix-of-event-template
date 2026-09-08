@@ -33,6 +33,23 @@ function getOrgModelDefault(): string | null {
 export const CREDITS_TOAST_ID = 'ai-credits-insufficient';
 
 /**
+ * Toast de refus de crédits, avec le renvoi vers Paramètres, onglet Crédits IA.
+ *
+ * Exporté parce que tous les appels IA ne passent pas par invokeWithCredits :
+ * le flux du copilot part en fetch direct (chat-adapter). Sans point unique,
+ * chaque surface écrirait sa propre phrase et son propre lien.
+ */
+export function notifyInsufficientCredits(message = 'Crédits IA insuffisants.'): void {
+  toast.error(message, {
+    id: CREDITS_TOAST_ID,
+    action: {
+      label: 'Acheter des crédits',
+      onClick: () => { window.location.href = '/settings?tab=credits'; },
+    },
+  });
+}
+
+/**
  * Modèle réellement utilisé pour une action, dans l'ordre appliqué à l'appel :
  * choix ponctuel, défaut de l'organisation, défaut de l'action, défaut du tier.
  */
@@ -103,13 +120,7 @@ export async function invokeWithCredits<T = Record<string, unknown>>(
         const remaining = preauthResult.remaining ?? 0;
         const estimated = preauthResult.estimated_credits ?? 1;
         const msg = `Crédits IA insuffisants (${remaining} restants, ~${estimated} requis)`;
-        toast.error(msg, {
-          id: CREDITS_TOAST_ID,
-          action: {
-            label: 'Acheter des crédits',
-            onClick: () => window.location.href = '/settings?tab=credits',
-          },
-        });
+        notifyInsufficientCredits(msg);
         // Même forme d'erreur que le refus serveur (402 + error_code), pour que
         // les appelants n'aient qu'un seul test à écrire, sur le code.
         return {
@@ -139,13 +150,7 @@ export async function invokeWithCredits<T = Record<string, unknown>>(
   // l'appel au modèle. Le test porte sur le code, pas sur le texte du message,
   // qui est une phrase française sans code HTTP ni jeton technique.
   if (isInsufficientCreditsError(result.error)) {
-    toast.error('Crédits IA insuffisants.', {
-      id: CREDITS_TOAST_ID,
-      action: {
-        label: 'Acheter des crédits',
-        onClick: () => window.location.href = '/settings?tab=credits',
-      },
-    });
+    notifyInsufficientCredits();
   }
 
   return result as InvokeResult<T>;

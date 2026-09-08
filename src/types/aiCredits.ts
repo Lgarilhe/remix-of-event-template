@@ -99,9 +99,13 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   generate_scorecard: { action: "generate_scorecard", label: "Scorecard", floor: 2, typicalTokens: 4_000, routingTier: "fast", category: "qualification" },
   call_report: { action: "call_report", label: "Compte-rendu d'appel", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
   live_coaching: { action: "live_coaching", label: "Coaching live (par minute)", floor: 5, typicalTokens: 10_000, routingTier: "default", category: "qualification" },
-  agent_search_calibration: { action: "agent_search_calibration", label: "Agent — calibration", floor: 3, typicalTokens: 6_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
+  agent_search_calibration: { action: "agent_search_calibration", label: "Agent — calibration", floor: 3, typicalTokens: 3_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
+  conversation_title: { action: "conversation_title", label: "Copilot — titre de conversation", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
+  intent_routing: { action: "intent_routing", label: "Copilot — routage d'intention", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
+  context_compaction: { action: "context_compaction", label: "Copilot — résumé de conversation", floor: 1, typicalTokens: 4_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
+  memory_extract: { action: "memory_extract", label: "Copilot — mémorisation", floor: 1, typicalTokens: 3_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5", providers: ["anthropic"] },
   agent_search_run: { action: "agent_search_run", label: "Agent — recherche", floor: 10, typicalTokens: 25_000, routingTier: "default", category: "agent", providers: ["anthropic"] },
-  agent_chat: { action: "agent_chat", label: "Copilot — chat (par message)", floor: 1, typicalTokens: 4_000, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
+  agent_chat: { action: "agent_chat", label: "Copilot — chat (par message)", floor: 1, typicalTokens: 2_500, routingTier: "thinking", category: "agent", providers: ["anthropic"] },
   ai_chat: { action: "ai_chat", label: "Assistant texte inline", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
   rag_rerank: { action: "rag_rerank", label: "Recherche sémantique — re-ranking", floor: 1, typicalTokens: 2_500, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
   file_ingest: { action: "file_ingest", label: "Lecture de fichier joint", floor: 1, typicalTokens: 8_000, routingTier: "fast", category: "agent", autoDefault: "claude-haiku-4-5" },
@@ -115,10 +119,22 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   translate_text: { action: "translate_text", label: "Traduire un texte", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "outreach" },
   summarize_conversation: { action: "summarize_conversation", label: "Résumer une conversation", floor: 1, typicalTokens: 1_500, routingTier: "fast", category: "outreach" },
   auto_analyze_message: { action: "auto_analyze_message", label: "Classification message", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "outreach" },
+  // CTA "job_details" peut générer ~2k tokens (message long + JSON wrap), les
+  // autres CTA sont autour de 800-1200 tokens : 1.5k typique (miroir ai-config).
+  cta_reply: { action: "cta_reply", label: "Suggérer une réponse + CTA", floor: 1, typicalTokens: 1_500, routingTier: "fast", category: "outreach" },
+  // Lots de 30 conversations (useChatCategories), jusqu'à 6 messages de 300
+  // caractères chacune : l'entrée pèse bien plus que la sortie.
+  auto_categorize_chats: { action: "auto_categorize_chats", label: "Classement des conversations", floor: 1, typicalTokens: 10_000, routingTier: "fast", category: "outreach" },
   scorecard_chat: { action: "scorecard_chat", label: "Chat scorecard", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "qualification" },
   debrief: { action: "debrief", label: "Débrief rapide", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "qualification" },
   meeting_minutes: { action: "meeting_minutes", label: "Compte-rendu réunion", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "qualification" },
   generate_client_competitors: { action: "generate_client_competitors", label: "Concurrents client", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing", autoDefault: "claude-haiku-4-5" },
+  // Plancher à 1 : enrich-company règle CHAQUE extraction séparément (site,
+  // offres, actualités, synthèse). L'estimation, elle, couvre la requête
+  // entière, soit deux à quatre appels rapides sur des pages récupérées.
+  enrich_company: { action: "enrich_company", label: "Fiche société", floor: 1, typicalTokens: 20_000, routingTier: "fast", category: "sourcing" },
+  // Un seul appel groupé pour tous les postes absents du cache de compétences.
+  notion_job_skills: { action: "notion_job_skills", label: "Compétences extraites d'un poste", floor: 1, typicalTokens: 6_000, routingTier: "fast", category: "sourcing" },
   // Base Konekt (recherche base de données) — pas de tokens LLM, floor = coût réel
   // provider. Doc Coresignal : /search/es_dsl ET /search/es_dsl/preview = 2 crédits
   // par requête (une page ≈ 20 profils) ; collect = 2 crédits par profil.

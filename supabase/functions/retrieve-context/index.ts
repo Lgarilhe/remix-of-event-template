@@ -322,6 +322,15 @@ Deno.serve(async (req) => {
     // Si on a fetché plus que `limit`, on demande à Claude Haiku de noter chaque
     // chunk de 0-10 sur la pertinence à la query. Coût ~$0.001/call (Haiku).
     // Gain attendu : +30-40% de pertinence (audit RAG_AGENT_AUDIT.md §1).
+    //
+    // Pas de garde de crédits ici, à dessein. Aucun appelant navigateur : cette
+    // fonction n'est appelée que d'edge à edge (generate-outreach-message,
+    // generate-reply-suggestions, sequence-send-email, process-sequences), donc
+    // toujours en service-role sans utilisateur. settleClaudeUsage sort alors
+    // sans rien débiter (userId nul), le re-ranking n'est jamais facturé, et un
+    // refus ici couperait le contexte du cron de séquences sans économiser un
+    // seul crédit. Les appels d'origine utilisateur sont déjà gardés chez
+    // l'appelant, avant d'arriver ici.
     let rerankedFromCount = chunks.length;
     if (rerankEnabled && chunks.length > limit) {
       try {

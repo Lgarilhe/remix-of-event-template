@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { assertCredits } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -884,12 +885,29 @@ Deno.serve(async (req) => {
     // Extract skills using AI only for uncached jobs
     let aiSkillsMap = new Map<string, string[]>();
     if (jobsNeedingSkills.length > 0) {
-      console.log(`Extracting skills for ${jobsNeedingSkills.length} jobs via AI...`);
-      aiSkillsMap = await extractSkillsWithAI(jobsNeedingSkills, { userId: user.id, organizationId });
-      
-      // Cache the newly extracted skills
-      if (aiSkillsMap.size > 0) {
-        await cacheSkills(aiSkillsMap);
+      // Solde vérifié ici et pas à l'entrée : cette fonction sert d'abord la
+      // liste des postes, que le sélecteur de mission, la scorecard et l'inbox
+      // appellent en boucle. Un 402 sur la requête entière masquerait la liste
+      // pour une extraction accessoire, alors que le cache de compétences
+      // couvre déjà la plupart des postes. Sans crédits, on sert donc la liste
+      // sans les compétences déduites plutôt que de refuser.
+      const gate = await assertCredits({
+        userId: user.id,
+        organizationId,
+        aiAction: 'notion_job_skills',
+        modelId: 'claude-haiku-4-5',
+        adminClient: supabase,
+      });
+      if (!gate.ok) {
+        console.warn(`[fetch-notion-jobs] extraction des compétences ignorée, crédits insuffisants (org=${organizationId})`);
+      } else {
+        console.log(`Extracting skills for ${jobsNeedingSkills.length} jobs via AI...`);
+        aiSkillsMap = await extractSkillsWithAI(jobsNeedingSkills, { userId: user.id, organizationId });
+
+        // Cache the newly extracted skills
+        if (aiSkillsMap.size > 0) {
+          await cacheSkills(aiSkillsMap);
+        }
       }
     }
 

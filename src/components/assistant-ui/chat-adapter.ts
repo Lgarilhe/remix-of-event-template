@@ -3,6 +3,9 @@ import type {
   ChatModelRunOptions,
   ChatModelRunResult,
 } from '@assistant-ui/react';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { notifyInsufficientCredits } from '@/lib/invokeWithCredits';
+import { ACTION_COSTS, resolveModel } from '@/types/aiCredits';
 
 type AssistantContentPart = NonNullable<ChatModelRunResult['content']>[number];
 
@@ -140,6 +143,51 @@ async function ingestPendingFiles(config: SkalrAdapterConfig, files: File[]): Pr
   return blocks;
 }
 
+/**
+ * Phrase de repli quand le serveur ne renvoie pas la sienne (corps illisible).
+ * Le serveur, lui, indique le restant et le requis.
+ */
+const CREDITS_EXHAUSTED_TEXT =
+  "Crédits IA insuffisants : je ne peux pas répondre. Rechargez-les depuis Paramètres, onglet Crédits IA, puis renvoyez votre message.";
+
+/**
+ * Pré-autorisation des crédits, sur la même action `ai-credits` que
+ * invokeWithCredits.
+ *
+ * Le copilot part en fetch direct, donc hors de ce passage partagé : sans lui,
+ * l'utilisateur à sec crée une conversation, envoie ses fichiers, puis reçoit
+ * un refus. Renvoie la phrase à afficher, ou null si le tour peut partir.
+ *
+ * Ne refuse que sur un « non » explicite. Panne de lecture, réponse illisible :
+ * on laisse passer, même politique que le garde serveur, qui refusera si le
+ * solde est réellement vide.
+ */
+async function preauthCredits(
+  aiAction: string,
+  modelOverride?: string | null,
+): Promise<string | null> {
+  // search-agent-chat résout le modèle sans le défaut d'organisation (son
+  // extractAIParams est appelé sans ce paramètre) : l'appliquer ici estimerait
+  // sur un modèle qui ne part pas, et réclamerait le multiplicateur d'un autre.
+  const routingTier = ACTION_COSTS[aiAction]?.routingTier ?? 'default';
+  const model = resolveModel(routingTier, modelOverride ?? null, null, aiAction);
+  try {
+    const { data, error } = await invokeEdgeFunction<{
+      has_credits: boolean;
+      estimated_credits: number;
+      remaining: number;
+    }>('ai-credits', { action: 'preauth', ai_action: aiAction, model });
+    if (error || !data || data.has_credits !== false) return null;
+    const remaining = data.remaining ?? 0;
+    const estimated = data.estimated_credits ?? 1;
+    return `Crédits IA insuffisants (${remaining} restants, ${estimated} requis). `
+      + 'Rechargez-les depuis Paramètres, onglet Crédits IA, puis renvoyez votre message.';
+  } catch (e) {
+    console.warn('[chat-adapter] Pré-autorisation des crédits en échec, appel laissé passer :', e);
+    return null;
+  }
+}
+
 export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }: ChatModelRunOptions) {
@@ -153,6 +201,22 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
 
       const pendingFiles = config.getPendingFiles?.() ?? [];
       if (!userContent.trim() && pendingFiles.length === 0) return;
+
+      const contextMode = config.getContextMode ? config.getContextMode() : (config.contextMode || null);
+      // Le sourcing garde son action historique (calibration) ; les autres
+      // modes (libre/brief/process/outreach) sont facturés en agent_chat.
+      const aiAction = contextMode === 'sourcing' ? 'agent_search_calibration' : 'agent_chat';
+
+      // Pré-autorisation AVANT la création de la conversation et l'envoi des
+      // fichiers : un tour refusé ne laisse ni conversation vide ni pièce
+      // jointe indexée, et les fichiers restent dans le composeur pour être
+      // renvoyés une fois les crédits rechargés.
+      const preauthRefusal = await preauthCredits(aiAction, config.modelOverride);
+      if (preauthRefusal) {
+        notifyInsufficientCredits(preauthRefusal);
+        yield { content: [{ type: 'text' as const, text: preauthRefusal }] };
+        return;
+      }
 
       // The backend rejects requests without a conversation_id (400) and has
       // no create-on-the-fly path. Guarantee the row exists first.
@@ -168,7 +232,6 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
       }
 
       const appContext = config.getAppContext?.() ?? undefined;
-      const contextMode = config.getContextMode ? config.getContextMode() : (config.contextMode || null);
 
       const resp = await fetch(`${config.supabaseUrl}/functions/v1/search-agent-chat`, {
         method: 'POST',
@@ -181,9 +244,7 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
           conversation_id: conversationId,
           message: messageWithFiles,
           _ai_model: config.modelOverride || undefined,
-          // Le sourcing garde son action historique (calibration) ; les autres
-          // modes (libre/brief/process/outreach) sont facturés en agent_chat.
-          _ai_action: contextMode === 'sourcing' ? 'agent_search_calibration' : 'agent_chat',
+          _ai_action: aiAction,
           context_mode: contextMode || undefined,
           brief_context: config.briefContext || undefined,
           project_id: config.projectId || undefined,
@@ -195,13 +256,21 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
       });
 
       if (!resp.ok) {
+        // Corps du refus serveur : `error` porte la phrase française destinée à
+        // l'utilisateur, `error_code` le jeton machine. Le garde de crédits y
+        // met le restant et le requis, qu'aucune phrase écrite ici ne connaît.
+        const payload = (await resp.json().catch(() => null)) as { error?: unknown } | null;
+        const serverMessage = typeof payload?.error === 'string' && payload.error.trim()
+          ? payload.error.trim()
+          : null;
+        if (resp.status === 402) notifyInsufficientCredits(serverMessage ?? CREDITS_EXHAUSTED_TEXT);
         // Avant : throw générique, jamais rendu par thread.tsx → l'utilisateur
         // voyait un tour assistant vide sans savoir quoi faire.
         const errorText =
           resp.status === 401
             ? 'Ta session a expiré. Reconnecte-toi puis renvoie ton message.'
             : resp.status === 402
-              ? "Plus de crédits IA disponibles pour ton organisation. Recharge-les depuis Paramètres → Crédits."
+              ? (serverMessage ?? CREDITS_EXHAUSTED_TEXT)
               : resp.status === 403
                 ? "Cette action n'est pas autorisée pour ton compte dans cette organisation."
                 : resp.status === 429
@@ -250,6 +319,28 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
           try {
             const parsed = JSON.parse(data);
             if (parsed.done === true) continue;
+
+            // Refus ou panne annoncés par un objet d'erreur plutôt que par un
+            // delta de texte. Le serveur passe aujourd'hui par un delta, que la
+            // branche de texte plus bas rend déjà ; sans cette branche-ci, une
+            // autre forme d'évènement serait ignorée et le tour se terminerait
+            // sur une bulle vide.
+            const streamError = typeof parsed.error === 'string'
+              ? parsed.error
+              : typeof parsed.error?.message === 'string'
+                ? parsed.error.message
+                : null;
+            if (streamError) {
+              if (parsed.error_code === 'INSUFFICIENT_CREDITS') notifyInsufficientCredits(streamError);
+              accumulated += streamError;
+              if (!lastTextPart) {
+                lastTextPart = { type: 'text' as const, text: '' };
+                orderedParts.push(lastTextPart);
+              }
+              lastTextPart.text += (lastTextPart.text ? '\n\n' : '') + streamError;
+              yield { content: snapshot() };
+              continue;
+            }
 
             // Progression des outils (boucle backend) : chip inline dans le fil
             const ts = parsed.tool_status;

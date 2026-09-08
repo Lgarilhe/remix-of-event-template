@@ -19,6 +19,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -222,11 +223,29 @@ Deno.serve(async (req) => {
     let aiUsage: { input_tokens: number; output_tokens: number } | null = null;
 
     const IMAGE_MIMES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-    if (mime === "application/pdf" || lowerName.endsWith(".pdf")) {
+    const isPdf = mime === "application/pdf" || lowerName.endsWith(".pdf");
+    const isImage = IMAGE_MIMES.includes(mime) || /\.(png|jpe?g|webp|gif)$/.test(lowerName);
+
+    // Seuls le PDF et l'image passent par le modèle. Un .docx, un .txt ou un
+    // .csv est lu sans jeton : refuser ces formats sur un solde vide serait un
+    // refus sans dépense en face. extractViaAI écrit son modèle en dur, c'est
+    // donc lui qu'on estime, pas le défaut du tier.
+    if (isPdf || isImage) {
+      const gate = await assertCredits({
+        userId: auth.userId,
+        organizationId: organization_id,
+        aiAction: "file_ingest",
+        modelId: "claude-haiku-4-5",
+        adminClient: admin,
+      });
+      if (!gate.ok) return creditGateResponse(gate, corsHeaders);
+    }
+
+    if (isPdf) {
       const result = await extractViaAI("pdf", "application/pdf", content_base64, filename);
       extracted = result.text;
       aiUsage = result.usage;
-    } else if (IMAGE_MIMES.includes(mime) || /\.(png|jpe?g|webp|gif)$/.test(lowerName)) {
+    } else if (isImage) {
       const mediaType = IMAGE_MIMES.includes(mime)
         ? mime
         : lowerName.endsWith(".png") ? "image/png"
