@@ -98,7 +98,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   const [withPhone, setWithPhone] = useState(false);
   const { enrich, status, contact, isLoading } = useCandidateEnrichment();
   const elapsed = useElapsed(isLoading);
-  const { creditsRemaining, invalidateBalance } = useAICredits();
+  const { creditsRemaining, invalidateBalance, hasBalance: hasCredits } = useAICredits();
   const {
     canEnrich, quotaMonthly, quotaUsed, isQuotaExhausted,
     includedMonthly, includedUsed, includedRemaining, periodEnd, refetchQuota,
@@ -121,7 +121,9 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   const coveredByPlan = requestedUnits > 0 && includedRemaining >= requestedUnits;
   // Coût en crédits, seulement pour la part hors forfait
   const totalCost = coveredByPlan ? 0 : (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
-  const insufficientCredits = totalCost > creditsRemaining;
+  // Solde non chargé : il vaut 0 par défaut, ce qui bloquerait la recherche
+  // alors que le solde est peut-être intact. Le serveur tranche de son côté.
+  const insufficientCredits = hasCredits && totalCost > creditsRemaining;
   const resetDay = formatResetDay(periodEnd);
 
   const linkedinUrl = profile.profile_url || profile.public_profile_url;
@@ -401,14 +403,16 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
                     {totalCost} crédit{totalCost > 1 ? 's' : ''}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Solde Konekt :</span>
-                  <span className={`font-bold tabular-nums ${
-                    insufficientCredits ? 'text-destructive' : 'text-foreground'
-                  }`}>
-                    {creditsRemaining} crédit{creditsRemaining > 1 ? 's' : ''}
-                  </span>
-                </div>
+                {hasCredits && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Solde Konekt :</span>
+                    <span className={`font-bold tabular-nums ${
+                      insufficientCredits ? 'text-destructive' : 'text-foreground'
+                    }`}>
+                      {creditsRemaining} crédit{creditsRemaining > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
               </>
             )}
             {quotaMonthly !== null && (

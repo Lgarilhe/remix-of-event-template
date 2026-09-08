@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { invokeEdgeFunction, isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
+import { invokeWithCredits, CREDITS_TOAST_ID } from '@/lib/invokeWithCredits';
 import { invokeCoresignal } from '@/lib/invokeCoresignal';
 import { ACTION_COSTS } from '@/types/aiCredits';
 import { LinkedInProfile } from '@/components/outreach/types';
@@ -884,7 +884,9 @@ export function useLinkedInScoring({
       }
     } catch (err) {
       console.error('Score error:', err);
-      toast.error('Erreur lors du scoring');
+      // Un refus de crédits a déjà été annoncé par le wrapper d'appel : un
+      // second message générique laisserait croire à une panne.
+      if (!isInsufficientCreditsError(err)) toast.error('Erreur lors du scoring');
     }
   }, [selectedJob, setJobScores, candidateStatus, setSelectedProfiles, customScoringInstructions, accountId, scoringModel, scoringDisabledReason]);
 
@@ -1053,6 +1055,12 @@ export function useLinkedInScoring({
 
       const allResults: JobMatchResult[] = [];
       let rateLimited = false;
+      /**
+       * Refus de crédits sur un lot. Les vagues suivantes se feraient refuser
+       * de la même façon : on arrête après avoir gardé ce que les lots déjà
+       * partis ont rendu, y compris les profils que le serveur note sans coût.
+       */
+      let creditStop = false;
       let aggregatedStats: BatchScoringStats | null = null;
       const batchStartTime = Date.now();
       const totalBatches = Math.ceil(profilesData.length / BATCH_SIZE);
@@ -1065,7 +1073,7 @@ export function useLinkedInScoring({
 
       // Process batches in parallel waves (PARALLEL_BATCHES at a time)
       for (let wave = 0; wave < batches.length; wave += PARALLEL_BATCHES) {
-        if (rateLimited) break;
+        if (rateLimited || creditStop) break;
 
         const waveBatches = batches.slice(wave, wave + PARALLEL_BATCHES);
         const waveStart = wave + 1;
@@ -1097,9 +1105,17 @@ export function useLinkedInScoring({
 
           if (error) {
             const errMsg = error.message || '';
-            if (errMsg.includes('CREDITS_EXHAUSTED') || errMsg.includes('402')) {
-              toast.error('Crédits IA épuisés.', { duration: 8000 });
-              return;
+            // Test sur le code métier, pas sur le texte : le message remonté
+            // est une phrase française, sans code HTTP ni jeton technique. Les
+            // deux anciens tests de sous-chaîne ne passaient jamais, et chaque
+            // vague repartait pour se faire refuser à son tour.
+            if (isInsufficientCreditsError(error)) {
+              creditStop = true;
+              toast.error('Crédits IA épuisés : notation interrompue.', {
+                id: CREDITS_TOAST_ID,
+                duration: 8000,
+              });
+              continue;
             }
             if (errMsg.includes('RATE_LIMITED') || errMsg.includes('429')) {
               rateLimited = true;
@@ -1120,6 +1136,18 @@ export function useLinkedInScoring({
             console.error(`Batch ${batchIndex} error:`, error);
             toast.warning(`Lot ${batchIndex}/${totalBatches} échoué, passage au suivant...`);
             continue;
+          }
+
+          // Arrêt annoncé dans une réponse 200 : le serveur rend les profils que
+          // l'étape A a servis sans coût (cache, filtres durs) et laisse les
+          // autres sans note. On garde ces résultats et on stoppe les vagues.
+          const creditStopInfo = (data as { credit_stop?: unknown } | null)?.credit_stop;
+          if (creditStopInfo) {
+            creditStop = true;
+            toast.error('Crédits IA épuisés : notation interrompue.', {
+              id: CREDITS_TOAST_ID,
+              duration: 8000,
+            });
           }
 
           if (data?.results && Array.isArray(data.results)) {
@@ -1245,7 +1273,15 @@ export function useLinkedInScoring({
         }
 
         const goodCount = scoredCount - lowScoreProfiles.length;
-        if (rateLimited) {
+        if (creditStop) {
+          // Reste à noter : les profils qui n'ont reçu aucun score, lots refusés
+          // et vagues jamais parties comprises.
+          const notScored = profilesToScore.length - scoredCount;
+          toast.error(
+            `Crédits IA épuisés : ${scoredCount} profil${scoredCount > 1 ? 's' : ''} noté${scoredCount > 1 ? 's' : ''} sur ${profilesToScore.length}, ${notScored} à reprendre après rechargement.`,
+            { id: CREDITS_TOAST_ID, duration: 10000 },
+          );
+        } else if (rateLimited) {
           toast.warning(`${scoredCount} profils scorés sur ${profilesToScore.length} (rate limit atteint, réessayez le reste)`);
         } else if (lowScoreProfiles.length > 0) {
           toast.success(`${scoredCount} profils scorés : ${goodCount} pertinent${goodCount > 1 ? 's' : ''}, ${lowScoreProfiles.length} écarté${lowScoreProfiles.length > 1 ? 's' : ''}`);

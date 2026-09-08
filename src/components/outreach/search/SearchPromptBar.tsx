@@ -17,6 +17,7 @@ import { Loader2 } from 'lucide-react';
 import { Job } from '@/types/jobs';
 import { LinkedInFiltersState, LocationFilterItem } from '@/components/outreach/types';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
+import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import type { FilterSuggestions } from './SearchFiltersPanel';
 import { buildAugmentedJob, generateFiltersFromJob } from './generateFiltersFromJob';
 
@@ -92,7 +93,8 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
     } catch (error: any) {
       const msg = error?.message || '';
       let humanized = 'Erreur lors de la génération des filtres';
-      if (msg.includes('insufficient_credits')) humanized = 'Crédits IA insuffisants';
+      // Refus de crédits : test sur le code, le message est déjà traduit.
+      if (isInsufficientCreditsError(error)) humanized = 'Crédits IA insuffisants';
       else if (msg.includes('503') || msg.includes('529') || msg.includes('surcharg')) humanized = 'Service IA temporairement surchargé, réessayez dans 30 secondes';
       else if (msg.includes('429')) humanized = 'Trop de requêtes, réessayez dans quelques secondes';
       else if (msg.includes('timeout') || msg.includes('aborted')) humanized = 'La requête a pris trop de temps. Réessayez.';

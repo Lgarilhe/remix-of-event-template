@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { requireAuth } from "../_shared/require-auth.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -201,6 +202,23 @@ Deno.serve(async (req) => {
     if (!ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY is not configured");
     }
+
+    // Placé après la validation du job : sans job la fonction répond 400 sans
+    // appeler le modèle. Un seul garde pour l'ensemble de callAIWithRetry :
+    // ses tentatives rejouent le MÊME appel, pas un appel supplémentaire.
+    //
+    // L'exemption ne vaut que si AUCUN utilisateur n'est identifiable. En Mode B
+    // (service-role + user_id_override), c'est le copilot qui appelle après une
+    // demande de l'utilisateur dans le chat : l'organisation à débiter est
+    // connue, le garde et le settle plus bas s'appliquent comme pour un appel
+    // depuis le navigateur.
+    const gate = await assertCredits({
+      userId,
+      aiAction: _aiParams.aiAction,
+      modelId: _aiParams.modelId,
+      systemCall: auth.method === "service_role" && !userIdOverride,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     // Build the prompt for AI
     const databaseAddon = isDatabase ? `
@@ -756,17 +774,20 @@ ${transversal.bodyContent ? `Contenu détaillé critères transverses:\n${transv
       try {
         const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
         const svcSettle = createClient(Deno.env.get("SUPABASE_URL")!, (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!);
-        const orgId = auth.userId ? await resolveOrgIdFromUser(auth.userId, svcSettle) : null;
-        if (orgId && auth.userId) {
+        // userId, pas auth.userId : en Mode B (copilot) l'appel est authentifié
+        // en service-role mais fait pour un utilisateur nommé, dont l'org doit
+        // être débitée. L'appartenance reste vérifiée juste en dessous.
+        const orgId = await resolveOrgIdFromUser(userId, svcSettle);
+        if (orgId) {
           // Verify user still belongs to the resolved org before billing credits
           const { verifyOrgMembership } = await import("../_shared/require-auth.ts");
-          const isMember = await verifyOrgMembership(svcSettle, auth.userId, orgId);
+          const isMember = await verifyOrgMembership(svcSettle, userId, orgId);
           if (!isMember) {
             console.warn("[generate-search-filters] settle skipped: user is not a member of org", orgId);
           } else {
             const { settleCredits } = await import("../_shared/settle-credits.ts");
             await settleCredits(svcSettle, {
-              organizationId: orgId, userId: auth.userId!,
+              organizationId: orgId, userId,
               aiAction: _aiParams.aiAction, modelId: _aiParams.modelId,
               tokensInput: _tokensIn, tokensOutput: _tokensOut,
               description: _aiParams.description,

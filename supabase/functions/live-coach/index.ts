@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -53,6 +54,28 @@ Deno.serve(async (req) => {
       const { data: prof } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
       liveCoachOrgId = (prof?.active_organization_id as string) || null;
     }
+    // Un seul garde pour les deux modes, y compris l'intro plafonnée à 150
+    // jetons : elle est déduite comme le coaching, settleClaudeUsage la
+    // facture sous "live_coaching" dont le plancher est de 5 crédits. La
+    // laisser hors du garde ferait passer un appel qui débite 5 crédits sur un
+    // solde vide, ce que ce fichier existe pour empêcher. Le déséquilibre
+    // signalé (10 crédits demandés) venait du modèle, pas de la position.
+    // modelId : les deux branches appellent callClaudeCompat sans champ model,
+    // et mapModel retombe alors sur Haiku (cf _shared/call-claude.ts). Le
+    // garde demande donc 5 crédits, exactement ce qui sera déduit, contre 10
+    // s'il estimait sur Sonnet, défaut du tier de l'action. L'identifiant est
+    // celui du catalogue, pas la version datée : getModel ne reconnaît que les
+    // identifiants inscrits dans MODEL_CATALOG.
+    const gate = await assertCredits({
+      userId,
+      organizationId: liveCoachOrgId,
+      aiAction: "live_coaching",
+      modelId: "claude-haiku-4-5",
+      systemCall: auth.method === "service_role",
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
+
     const aiContext = await loadAndBuildAiContext(svc, { userId, orgId: liveCoachOrgId });
 
     // === INTRO GENERATION MODE ===

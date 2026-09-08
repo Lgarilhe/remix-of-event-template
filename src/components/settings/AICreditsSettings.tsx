@@ -24,8 +24,8 @@ export const AICreditsSettings = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { organizationId, isAdmin } = useOrganization();
-  const { creditsRemaining, creditsTotal, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, periodEnd, refetch } = useAICredits();
-  const { data: history = [], isLoading: isLoadingHistory } = useAICreditHistory();
+  const { creditsRemaining, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, hasBalance, periodEnd, refetch } = useAICredits();
+  const { data: history = [], isLoading: isLoadingHistory, isError: isHistoryError } = useAICreditHistory();
   const { modelId: defaultModel, setModelId: setDefaultModel } = useModelPreference(organizationId);
   const [buyingPack, setBuyingPack] = useState<string | null>(null);
 
@@ -88,6 +88,18 @@ export const AICreditsSettings = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!hasBalance ? (
+            /* Solde illisible : afficher zéro ferait croire à un compte vidé. */
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Solde indisponible pour le moment. Réessayez dans quelques instants.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => refetch()}>
+                Réessayer
+              </Button>
+            </div>
+          ) : (
+          <>
           <div className="flex items-end justify-between">
             <div>
               <span className={cn(
@@ -106,7 +118,9 @@ export const AICreditsSettings = () => {
             )}
           </div>
 
-          <Progress value={usagePercent} className="h-2" />
+          {/* Barre et pourcentage seulement si l'enveloppe du mois est connue :
+              sans elle, le rapport afficherait un 0 % permanent. */}
+          {usagePercent !== null && <Progress value={usagePercent} className="h-2" />}
 
           {/* Plan vs Topup breakdown */}
           <div className="flex gap-4 text-xs text-muted-foreground">
@@ -123,7 +137,7 @@ export const AICreditsSettings = () => {
           </div>
 
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{usagePercent}% utilisé</span>
+            <span>{usagePercent !== null ? `${usagePercent}% utilisé ce mois` : ''}</span>
             {periodEnd && (
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
@@ -136,6 +150,8 @@ export const AICreditsSettings = () => {
             <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
               Plus de crédits disponibles. Achetez un pack de crédits ou passez à un plan supérieur.
             </div>
+          )}
+          </>
           )}
         </CardContent>
       </Card>
@@ -289,6 +305,8 @@ export const AICreditsSettings = () => {
             <div className="flex justify-center py-4">
               <BrutalLoader compact />
             </div>
+          ) : isHistoryError ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Historique indisponible pour le moment</p>
           ) : history.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">Aucune utilisation pour le moment</p>
           ) : (

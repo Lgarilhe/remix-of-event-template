@@ -104,7 +104,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
   const [strongConfirmChecked, setStrongConfirmChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const { creditsRemaining, invalidateBalance } = useAICredits();
+  const { creditsRemaining, invalidateBalance, hasBalance: hasCredits } = useAICredits();
   const { includedMonthly, includedUsed, includedRemaining, periodEnd, refetchQuota } = useEnrichmentPermission();
   // Plan effectif gratuit : l'enrichissement de contact nécessite un abonnement.
   const { isFree: isFreePlan } = useSubscriptionState();
@@ -124,7 +124,9 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
   const costPerProfile = (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
   // Coût maximum en crédits, seulement pour les profils hors forfait
   const maxCost = costPerProfile * beyondProfiles;
-  const insufficientCredits = maxCost > creditsRemaining;
+  // Solde non chargé : il vaut 0 par défaut, ce qui bloquerait le lot alors que
+  // le solde est peut-être intact. Le serveur refuse de toute façon si besoin.
+  const insufficientCredits = hasCredits && maxCost > creditsRemaining;
   const requireStrongConfirm = count > strongConfirmThreshold;
   const canSubmit = (withEmail || withPhone)
     && !insufficientCredits
@@ -335,12 +337,14 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
                     {maxCost} crédit{maxCost > 1 ? 's' : ''} ({beyondProfiles} profil{beyondProfiles > 1 ? 's' : ''})
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Votre solde :</span>
-                  <span className={`font-bold tabular-nums ${insufficientCredits ? 'text-destructive' : 'text-foreground'}`}>
-                    {creditsRemaining} crédit{creditsRemaining > 1 ? 's' : ''}
-                  </span>
-                </div>
+                {hasCredits && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Votre solde :</span>
+                    <span className={`font-bold tabular-nums ${insufficientCredits ? 'text-destructive' : 'text-foreground'}`}>
+                      {creditsRemaining} crédit{creditsRemaining > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
               </>
             )}
             {insufficientCredits ? (

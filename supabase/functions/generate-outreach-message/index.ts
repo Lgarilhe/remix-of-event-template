@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { ANTI_AI_STYLE_PROMPT } from "../_shared/anti-ai-style.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 const corsHeaders = {
@@ -538,6 +539,19 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.warn('[generate-outreach-message] Could not fetch org_id:', e);
     }
+
+    // Un seul garde à l'entrée, pas un par appel : la passe de correction
+    // (callAnthropic une 2e fois) fait partie du même message. La refuser en
+    // cours de route renverrait un message qui a échoué à sa propre
+    // validation. Placé après orgId pour ne pas relire l'org dans le garde,
+    // et avant le RAG et les identifiants LinkedIn, inutiles si on refuse.
+    const gate = await assertCredits({
+      userId,
+      organizationId: orgId,
+      aiAction: _aiParams.aiAction,
+      modelId: _aiParams.modelId,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     // Load AI context (Settings → Contexte IA) for prompt injection
     const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });

@@ -3,6 +3,7 @@ import { requireAuth } from "../_shared/require-auth.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,6 +53,27 @@ Deno.serve(async (req) => {
       const { data: prof } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
       reportOrgId = (prof?.active_organization_id as string) || null;
     }
+    // Refus avant l'appel au modèle. settleCredits a besoin de result.usage,
+    // il ne peut donc que constater le dépassement après coup : sans ce garde,
+    // une org à sec reçoit son compte-rendu sans qu'aucun crédit soit déduit.
+    // aiAction aligné sur le settle plus bas.
+    // modelId : l'appel plus bas passe par callClaudeCompat sans champ model,
+    // et mapModel retombe alors sur Haiku (cf _shared/call-claude.ts). Sans le
+    // dire au garde, l'estimation se ferait sur Sonnet, défaut du tier de
+    // l'action, soit le double de ce qui sera déduit et le double de ce que le
+    // navigateur a annoncé. L'identifiant est celui du catalogue, pas la
+    // version datée : getModel ne reconnaît que les identifiants
+    // inscrits dans MODEL_CATALOG.
+    const gate = await assertCredits({
+      userId,
+      organizationId: reportOrgId,
+      aiAction: "call_report",
+      modelId: "claude-haiku-4-5",
+      systemCall: auth.method === "service_role",
+      adminClient: svc,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
+
     const aiContext = await loadAndBuildAiContext(svc, { userId, orgId: reportOrgId });
 
     const result = await callClaudeCompat({

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Brain, BarChart3, Sparkles, Zap } from 'lucide-react';
+import { CheckCircle2, Brain, BarChart3, Zap } from 'lucide-react';
 import type { BatchScoringStats as Stats } from './JobScoreDisplay';
 
 interface BatchScoringStatsProps {
@@ -51,12 +51,9 @@ export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, dur
             </span>
           </div>
         )}
-        {stats.llmCalled > 0 && (
-          <div className="flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3 text-foreground/50" />
-            <span>{stats.llmCalled} crédit{stats.llmCalled > 1 ? 's' : ''} IA</span>
-          </div>
-        )}
+        {/* Pas de compteur de crédits ici : llmCalled compte des profils, alors
+            que la facturation se fait par appel serveur et au prorata des
+            jetons. Le coût réel est dans Paramètres, Crédits IA. */}
       </div>
     </div>
   );

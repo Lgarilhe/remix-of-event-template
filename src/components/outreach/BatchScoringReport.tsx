@@ -266,23 +266,19 @@ export const BatchScoringReport: React.FC<BatchScoringReportProps> = ({
         </ScrollArea>
 
         {/* ── Footer ── */}
-        {stats && stats.llmCalled > 0 && (
+        {/* Le nombre de profils notés est déjà dans la tuile « Scorés IA » plus
+            haut : le pied ne porte que la durée. */}
+        {durationLabel && (
           <motion.div
-            className="px-6 py-3 border-t border-border bg-muted/20 flex items-center justify-between"
+            className="px-6 py-3 border-t border-border bg-muted/20 flex items-center justify-end"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
           >
-            <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" />
-              {stats.llmCalled} crédit{stats.llmCalled > 1 ? 's' : ''} IA utilisé{stats.llmCalled > 1 ? 's' : ''}
+            <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {durationLabel}
             </span>
-            {durationLabel && (
-              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {durationLabel}
-              </span>
-            )}
           </motion.div>
         )}
       </DialogContent>

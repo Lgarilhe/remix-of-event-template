@@ -75,6 +75,12 @@ function humanizeError(err: Error | string): string {
   if (lower.includes('rate limit') || lower.includes('429') || lower.includes('too many')) {
     return 'Trop de requêtes. Patientez quelques secondes avant de réessayer.';
   }
+  // Refus de crédits. Le serveur place normalement une phrase française dans
+  // `error` et le jeton technique dans `error_code` ; cette règle sert de filet
+  // si les deux champs sont inversés, sinon l'utilisateur lirait le jeton brut.
+  if (lower.includes('insufficient_credits') || lower.includes('credits_exhausted')) {
+    return 'Crédits IA insuffisants. Rechargez depuis Paramètres, onglet Crédits IA.';
+  }
   if (lower.includes('internal') || lower.includes('500') || lower.includes('502') || lower.includes('503')) {
     return 'Erreur serveur temporaire. Réessayez dans quelques instants.';
   }
@@ -141,6 +147,26 @@ async function doFetchEdgeFunction(
 export interface EdgeFunctionError extends Error {
   status?: number;
   code?: string;
+}
+
+/**
+ * Refus de crédits, quel que soit le champ par lequel le serveur l'exprime.
+ *
+ * A tester à la place de la sous-chaîne du message : le texte affiché est une
+ * phrase française traduite, il ne contient ni le code HTTP ni le jeton
+ * technique. Couvre les trois formes rencontrées : le 402 du garde serveur
+ * (status), l'error_code du corps (code), et le refus émis par le navigateur
+ * avant l'appel (message, sans status ni code).
+ */
+export function isInsufficientCreditsError(err: unknown): boolean {
+  if (!err) return false;
+  const e = err as EdgeFunctionError;
+  if (e.status === 402) return true;
+  if (e.code === 'INSUFFICIENT_CREDITS' || e.code === 'CREDITS_EXHAUSTED') return true;
+  const msg = typeof e.message === 'string' ? e.message.toLowerCase() : '';
+  return msg.includes('insufficient_credits')
+    || msg.includes('credits_exhausted')
+    || msg.includes('crédits ia insuffisants');
 }
 
 export async function invokeEdgeFunction<T = Record<string, unknown>>(

@@ -18,10 +18,13 @@ import {
   MODEL_CATALOG,
   ACTION_COSTS,
   calculateTokenCredits,
-  estimateCredits,
   calculateUSDCost,
-  getModel,
 } from "../_shared/ai-config.ts";
+// L'estimation de preauth est partagée avec le garde serveur (assertCredits) :
+// deux formules divergentes laisseraient le navigateur autoriser un appel que
+// le serveur refuse. Le renouvellement de période est partagé pour la même
+// raison : le garde doit recharger exactement comme cette fonction.
+import { estimateActionCredits, renewPlanCreditsIfExpired } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,9 +51,14 @@ function validateUUID(val: unknown): string | null {
     : null;
 }
 
-// Sentinelle « illimité » des crédits du plan : même valeur que le trigger SQL
-// sync_credit_balance_from_subscription (limits.ai_credits négatif → 999999).
-const UNLIMITED_PLAN_CREDITS = 999999;
+// Sources de transaction qui comptent comme de la consommation. Un achat de
+// recharge est journalisé en source "topup" avec credits_used = 0, et un octroi
+// manuel ("admin_grant") n'est pas de la consommation : ni l'un ni l'autre
+// n'entre dans l'enveloppe de la période.
+const CONSUMED_SOURCES = ["plan", "topup", "mixed"];
+// Pagination de la somme : PostgREST plafonne une réponse à 1000 lignes.
+const CONSUMED_PAGE_SIZE = 1000;
+const CONSUMED_MAX_PAGES = 20;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -131,7 +139,7 @@ Deno.serve(async (req) => {
         .from("ai_credit_balances")
         .select("*")
         .eq("organization_id", organization_id)
-        .single();
+        .maybeSingle();
 
       if (!bal) {
         return {
@@ -139,76 +147,68 @@ Deno.serve(async (req) => {
           plan_credits: 0,
           topup_credits: 0,
           credits_total: 0,
-          period_start: null,
-          period_end: null,
+          period_start: null as string | null,
+          period_end: null as string | null,
           updated_at: new Date().toISOString(),
         };
       }
 
-      // Auto-reset plan credits if period expired
-      if (bal.period_end && new Date(bal.period_end) < new Date()) {
-        const { data: sub } = await adminClient
-          .from("organization_subscriptions")
-          .select("plan_id")
-          .eq("organization_id", organization_id)
-          .single();
-
-        if (sub?.plan_id) {
-          const { data: plan } = await adminClient
-            .from("subscription_plans")
-            .select("limits")
-            .eq("id", sub.plan_id)
-            .single();
-
-          const planLimits = plan?.limits as { ai_credits?: number } | null;
-          // limits.ai_credits est l'unique source de vérité (migration 20260906181044) :
-          // absent → 100 comme le trigger SQL, négatif (-1) → illimité, jamais de solde négatif.
-          const rawPlanCredits = Number(planLimits?.ai_credits ?? NaN);
-          const newPlanCredits = !Number.isFinite(rawPlanCredits)
-            ? 100
-            : rawPlanCredits < 0
-              ? UNLIMITED_PLAN_CREDITS
-              : Math.floor(rawPlanCredits);
-
-          // Calculate new period (1 month from now)
-          const now = new Date();
-          const periodEnd = new Date(now);
-          periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-          await adminClient
-            .from("ai_credit_balances")
-            .update({
-              plan_credits: newPlanCredits,
-              credits_total: newPlanCredits + (bal.topup_credits ?? 0),
-              period_start: now.toISOString(),
-              period_end: periodEnd.toISOString(),
-              updated_at: now.toISOString(),
-            })
-            .eq("organization_id", organization_id);
-
-          return {
-            organization_id,
-            plan_credits: newPlanCredits,
-            topup_credits: bal.topup_credits ?? 0,
-            credits_total: newPlanCredits + (bal.topup_credits ?? 0),
-            period_start: now.toISOString(),
-            period_end: periodEnd.toISOString(),
-            updated_at: now.toISOString(),
-          };
-        }
-      }
+      // Renouvellement de la période échue : même écrit que le garde serveur,
+      // via l'implémentation partagée de credit-guard.ts.
+      const effective = await renewPlanCreditsIfExpired(adminClient, organization_id!, {
+        plan_credits: Number(bal.plan_credits ?? 0),
+        topup_credits: Number(bal.topup_credits ?? 0),
+        period_start: (bal.period_start as string | null) ?? null,
+        period_end: (bal.period_end as string | null) ?? null,
+        updated_at: (bal.updated_at as string | null) ?? null,
+      });
 
       return {
-        organization_id: bal.organization_id,
+        organization_id,
         // Solde = plan_credits + topup_credits ; credits_remaining / credits_total ne
         // sont que des miroirs historiques, plus jamais lus.
-        plan_credits: bal.plan_credits ?? 0,
-        topup_credits: bal.topup_credits ?? 0,
-        credits_total: (bal.plan_credits ?? 0) + (bal.topup_credits ?? 0),
-        period_start: bal.period_start,
-        period_end: bal.period_end,
-        updated_at: bal.updated_at,
+        plan_credits: effective.plan_credits,
+        topup_credits: effective.topup_credits,
+        credits_total: effective.plan_credits + effective.topup_credits,
+        period_start: effective.period_start,
+        period_end: effective.period_end,
+        updated_at: effective.updated_at,
       };
+    }
+
+    // ── Helper: crédits consommés depuis le début de la période ─────────
+    /**
+     * Somme de credits_used sur les transactions de débit depuis period_start.
+     *
+     * Le front en a besoin pour reconstituer l'enveloppe du mois (consommé +
+     * restant) : sans elle, aucun pourcentage n'est calculable et l'alerte de
+     * solde bas ne se déclenche jamais. Renvoie null si la lecture échoue, pour
+     * que le front affiche « inconnu » plutôt qu'un pourcentage inventé.
+     */
+    async function consumedSincePeriodStart(periodStart: string | null): Promise<number | null> {
+      if (!periodStart) return 0;
+      let total = 0;
+      for (let page = 0; page < CONSUMED_MAX_PAGES; page++) {
+        const from = page * CONSUMED_PAGE_SIZE;
+        const { data, error } = await adminClient
+          .from("ai_credit_transactions")
+          .select("credits_used")
+          .eq("organization_id", organization_id)
+          .gte("created_at", periodStart)
+          .in("source", CONSUMED_SOURCES)
+          .order("created_at", { ascending: true })
+          .range(from, from + CONSUMED_PAGE_SIZE - 1);
+
+        if (error) {
+          console.error(`[ai-credits] somme consommée illisible (org=${organization_id}):`, error.message);
+          return null;
+        }
+        const rows = (data ?? []) as { credits_used: number | null }[];
+        for (const row of rows) total += Number(row.credits_used ?? 0);
+        if (rows.length < CONSUMED_PAGE_SIZE) return total;
+      }
+      console.warn(`[ai-credits] somme consommée tronquée au plafond de pages (org=${organization_id})`);
+      return total;
     }
 
     // ── Helper: FIFO deduction (plan first, then topup) ─────────────────
@@ -297,7 +297,13 @@ Deno.serve(async (req) => {
       // ── GET BALANCE ─────────────────────────────────────────────────
       case "get_balance": {
         const bal = await getBalance();
-        return json(bal);
+        // Ajouté ici plutôt que dans getBalance : les trois cas de retour
+        // (aucune ligne de solde, période renouvelée, cas courant) passent par
+        // ce point unique, et les autres actions ne paient pas la lecture.
+        // Sans ligne de solde, period_start est null et la somme vaut 0 : le
+        // front lit une enveloppe vide, pas une enveloppe inconnue.
+        const consumed = await consumedSincePeriodStart(bal.period_start);
+        return json(consumed === null ? bal : { ...bal, credits_consumed_period: consumed });
       }
 
       // ── PRE-AUTH ────────────────────────────────────────────────────
@@ -306,10 +312,7 @@ Deno.serve(async (req) => {
         const aiAction = validateString(body.ai_action) || "scoring";
         const modelId = validateString(body.model) || undefined;
 
-        const action = ACTION_COSTS[aiAction];
-        const routingTier = action?.routingTier ?? "default";
-        const resolvedModel = getModel(routingTier, modelId, undefined, aiAction);
-        const estimated = estimateCredits(aiAction, resolvedModel);
+        const { estimated, model: resolvedModel } = estimateActionCredits(aiAction, modelId);
 
         const bal = await getBalance();
         const remaining = bal.plan_credits + bal.topup_credits;
@@ -335,10 +338,15 @@ Deno.serve(async (req) => {
         const result = await deductFIFO(credits, aiAction, modelId, tokensIn, tokensOut, description);
 
         if (!result.success) {
+          // Même forme que le 402 du garde (credit-guard.ts) : phrase française
+          // dans `error`, qui est le champ affiché, jeton machine dans
+          // `error_code`.
+          const message = `Crédits IA insuffisants (${result.remaining} restants, ${credits} requis). Rechargez depuis Paramètres, onglet Crédits IA.`;
           return json(
             {
-              error: "insufficient_credits",
-              message: "Crédits IA insuffisants.",
+              error: message,
+              error_code: "INSUFFICIENT_CREDITS",
+              message,
               remaining: result.remaining,
               credits_required: credits,
             },

@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 type SupabaseClient = ReturnType<typeof createClient>;
 import { requireAuth } from "../_shared/require-auth.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { recordUsageSignal, parseUsagePct } from "../_shared/linkedin-quotas.ts";
 
 
@@ -3302,6 +3303,95 @@ Deno.serve(async (req) => {
     }));
 
     const passing = stageA.filter(ps => ps.needsLLM);
+
+    // Garde crédits : après l'étape A, avant l'étape B.
+    // L'étape A (cache + filtres durs) ne consomme aucun token et écrit déjà
+    // ses résultats en base : la placer sous le garde ferait payer un chemin
+    // gratuit. L'étape B pousse les profils dans profile_enrichment_queue, où
+    // le worker les consommera : garder plus bas laissait ces lignes de file
+    // écrites pour un lot jamais noté.
+    // Une seule vérification pour tout le lot, pas une par vague de dix : un
+    // refus en cours de route laisserait un lot à moitié noté et des lignes
+    // job_candidate_status incohérentes.
+    // En service-role (worker process-agent-tasks), on exempte : ce worker
+    // traite un 402 comme un échec de lot, réduit la taille des lots jusqu'à
+    // un profil, puis met les candidats de côté définitivement et fait échouer
+    // la tâche. Une org à sec y perdrait ses candidats, pas seulement son
+    // scoring. Le décompte a posteriori continue de s'appliquer.
+    if (passing.length > 0) {
+      const gate = await assertCredits({
+        userId: effectiveUserId,
+        organizationId: resolvedOrgId,
+        aiAction: aiParams.aiAction,
+        modelId: aiParams.modelId,
+        // L'exemption ne vaut que pour un vrai traitement automatique, sans
+        // utilisateur. process-agent-tasks appelle en service-role mais fournit
+        // user_id et organization_id : l'utilisateur est connu, son solde doit
+        // donc être lu comme depuis le navigateur.
+        systemCall: isServiceRole && !effectiveUserId,
+        // Client service-role déjà construit plus haut, le garde en
+        // reconstruisait un à chaque appel.
+        adminClient: supabase,
+      });
+
+      if (!gate.ok) {
+        // Refus : 200 avec ce que l'étape A a produit, pas 402. Un 402
+        // perdrait aussi les profils servis par le cache et ceux éliminés par
+        // les filtres durs, qui n'ont rien coûté. Le champ credit_stop porte
+        // l'arrêt et le nombre de profils restés sans note.
+        const servedResults: ScoringResult[] = [];
+        let servedHardFiltered = 0;
+        for (const ps of stageA) {
+          if (ps.cached) {
+            servedResults.push({ ...ps.cached, profile_id: ps.profile.id });
+            // Même resynchronisation que le chemin nominal : la ligne du
+            // demandeur peut avoir score NULL alors que le cache est frais.
+            await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached);
+          } else if (ps.hardFilterResult?.result) {
+            servedResults.push({ ...ps.hardFilterResult.result, profile_id: ps.profile.id });
+            servedHardFiltered++;
+          }
+        }
+
+        // Rien à rendre : le 402 ne perd rien. C'est le seul cas possible pour
+        // une requête à profil unique (un profil déjà servi par l'étape A ne
+        // passe pas par ce garde), donc la forme « lot » ci-dessous ne répond
+        // jamais à une requête qui attend { result }.
+        if (servedResults.length === 0) return creditGateResponse(gate, corsHeaders);
+
+        const servedAvg = Math.round(
+          servedResults.reduce((sum, r) => sum + r.finalScore, 0) / servedResults.length,
+        );
+        console.warn(
+          `[score-profile-job] arrêt crédits : ${servedResults.length} profils rendus, ${passing.length} non notés (org=${gate.organizationId})`,
+        );
+        return new Response(
+          JSON.stringify({
+            success: true,
+            results: servedResults,
+            stats: {
+              total: servedResults.length,
+              hardFiltered: servedHardFiltered,
+              llmSkipped: servedResults.length,
+              llmCalled: 0,
+              escalated: 0,
+              escalationModel: null,
+              avgScore: servedAvg,
+              totalTokens: 0,
+            },
+            credit_stop: {
+              error_code: "INSUFFICIENT_CREDITS",
+              message: gate.body.message,
+              remaining: gate.remaining,
+              credits_required: gate.estimated,
+              profiles_scored: servedResults.length,
+              profiles_skipped: passing.length,
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
 
     // Étape B : Phase 2 — hydratation cache + ENQUEUE (AUCUN fetch inline).
     // maybeEnrichProfile lit le cache d'enrichissement (hydrate le profil si

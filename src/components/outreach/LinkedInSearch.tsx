@@ -18,7 +18,7 @@ import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { LinkedInProfile, LinkedInFiltersState, INITIAL_FILTERS } from './types';
 import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { invokeEdgeFunction, isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -1020,7 +1020,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }
     } catch (error: any) {
       const msg = error?.message || '';
-      toast.error(msg.includes('insufficient_credits') ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : "L'affinage a échoué, réessayez.");
+      // Refus de crédits : test sur le code, le message est déjà traduit.
+      toast.error(isInsufficientCreditsError(error) ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : "L'affinage a échoué, réessayez.");
       throw error;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1042,7 +1043,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setFlowMode(prev => (prev === 'plan' ? 'results' : prev));
     } catch (error: any) {
       const msg = error?.message || '';
-      const shown = msg.includes('insufficient_credits') ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : 'La génération a échoué, réessayez.';
+      const shown = isInsufficientCreditsError(error) ? 'Crédits IA insuffisants' : msg.length > 0 && msg.length < 180 ? msg : 'La génération a échoué, réessayez.';
       toast.error(shown);
       setFlowError(shown);
       setFlowMode(hasSearchedRef.current ? 'results' : 'hero');

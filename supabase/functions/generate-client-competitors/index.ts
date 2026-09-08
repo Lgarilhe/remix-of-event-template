@@ -13,6 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleCredits } from "../_shared/settle-credits.ts";
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { getAnthropicModelId } from "../_shared/ai-config.ts";
 
 const corsHeaders = {
@@ -90,6 +91,21 @@ serve(async (req: Request) => {
         });
       }
     }
+
+    // Après la vérification d'appartenance : on ne lit le solde qu'une fois
+    // l'org confirmée. settleCredits ne peut refuser qu'après la réponse du
+    // modèle, ce garde est le seul point où un refus évite la dépense.
+    const gate = await assertCredits({
+      userId: auth.userId,
+      organizationId: body.organization_id ?? null,
+      aiAction: 'generate_client_competitors',
+      modelId: 'claude-haiku-4-5',
+      systemCall: auth.method === 'service_role',
+      // Client service-role déjà construit plus haut, le garde en
+      // reconstruisait un à chaque appel.
+      adminClient: admin,
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     const userPrompt = [
       `Donne-moi les concurrents directs et adjacents de "${body.client_company_name}".`,

@@ -2,6 +2,7 @@
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -188,6 +189,26 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Placé après le warmup et après le court-circuit « aucun message du
+    // candidat » : ces deux retours n'appellent pas le modèle. En Mode B
+    // (service-role), l'appel vient de auto-analyze-message, déclenché par un
+    // message LinkedIn entrant : un 402 y couperait l'écriture du cache
+    // d'analyse sans qu'un utilisateur puisse rien y faire, donc on exempte.
+    // modelId : le sélecteur du navigateur envoie _ai_model et la
+    // pré-autorisation estime avec ce modèle, mais cette fonction l'ignore.
+    // L'appel plus bas passe par callClaudeCompat sans champ model, et
+    // mapModel retombe sur Haiku (cf _shared/call-claude.ts). Le garde estime
+    // donc sur le modèle réellement appelé, sinon un choix Sonnet ou Opus fait
+    // refuser le navigateur là où le serveur laisse passer.
+    const gate = await assertCredits({
+      userId: settleUserId,
+      organizationId: settleOrgId,
+      aiAction: "analyze_response",
+      modelId: "claude-haiku-4-5",
+      systemCall: auth.method === "service_role",
+    });
+    if (!gate.ok) return creditGateResponse(gate, corsHeaders);
 
     // Detect language from last message
     const lastMsgLower = lastCandidateMessage.text.toLowerCase();

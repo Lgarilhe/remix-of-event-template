@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Wand2, Loader2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -348,7 +349,8 @@ export const AutoFillFiltersButton: React.FC<AutoFillFiltersButtonProps> = ({
       // Extract error message
       let errorMessage = 'Erreur lors de la génération des filtres';
       const msg = error?.message || '';
-      if (msg.includes('insufficient_credits')) {
+      // Refus de crédits : test sur le code, le message est déjà traduit.
+      if (isInsufficientCreditsError(error)) {
         errorMessage = 'Crédits IA insuffisants';
       } else if (error?.context?.json?.error) {
         errorMessage = error.context.json.error;

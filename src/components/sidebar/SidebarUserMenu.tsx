@@ -45,14 +45,21 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
   const connections = useDashboardConnections();
   const { organizationName } = useOrganization();
-  const { creditsRemaining, isLow, isOut } = useAICredits();
+  const { creditsRemaining, isLow, isOut, hasBalance: hasCredits, isLoading: creditsLoading } = useAICredits();
   const { unreadCount: unreadNotifications } = useNotifications();
 
   const avatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl || null;
 
-  const compactCredits = creditsRemaining > 9999
-    ? `${(creditsRemaining / 1000).toFixed(creditsRemaining > 99999 ? 0 : 1)}k`
-    : creditsRemaining.toLocaleString('fr-FR');
+  // Solde non chargé : on l'annonce comme tel plutôt que d'afficher un zéro,
+  // qui se lirait « plus aucun crédit » alors que le solde est peut-être intact.
+  // Le chargement, organisation comprise, se distingue de l'échec de lecture.
+  const compactCredits = creditsLoading
+    ? '...'
+    : !hasCredits
+    ? 'n/d'
+    : creditsRemaining > 9999
+      ? `${(creditsRemaining / 1000).toFixed(creditsRemaining > 99999 ? 0 : 1)}k`
+      : creditsRemaining.toLocaleString('fr-FR');
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();

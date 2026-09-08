@@ -600,6 +600,9 @@ Deno.serve(async (req) => {
     const scoredProfiles: Array<{ profile: any; score: any; fromCache: boolean }> = [];
     const goProfiles: Array<{ profile: any; score: any }> = [];
     let cacheHits = 0;
+    // Renseigné quand score-profile-job refuse faute de crédits. Coupe les
+    // vagues suivantes : le solde ne remonte pas pendant une recherche.
+    let creditStopMessage: string | null = null;
 
     // Separate cached from uncached profiles first
     const profilesToScore: Array<{ profile: any; index: number }> = [];
@@ -677,7 +680,27 @@ Deno.serve(async (req) => {
             }),
           }, { timeoutMs: 30000, maxRetries: 2 });
 
+          // Un refus n'est pas un verdict sur le profil. Sans ce test,
+          // scoreData vaut le corps de l'erreur, score.recommendation est
+          // indéfini, et le résumé annonce « Aucun profil n'a passé les
+          // critères » alors que le scoring n'a pas tourné.
+          if (!scoreRes.ok) {
+            const errBody = await scoreRes.json().catch(() => null);
+            if (scoreRes.status === 402) {
+              creditStopMessage = typeof errBody?.message === "string"
+                ? errBody.message
+                : "Crédits IA insuffisants.";
+            }
+            console.error(`[run-agent-search] score-profile-job ${scoreRes.status} pour ${profile.name}`);
+            return { profile, score: null };
+          }
+
           const scoreData = await scoreRes.json();
+          // Arrêt en cours de lot : le scoring rend 200 avec ce qu'il a déjà
+          // noté et signale l'arrêt dans credit_stop.
+          if (typeof scoreData?.credit_stop?.message === "string") {
+            creditStopMessage = scoreData.credit_stop.message;
+          }
           return { profile, score: scoreData };
         } catch (err) {
           console.error(`[run-agent-search] Scoring failed for ${profile.name}:`, err);
@@ -715,6 +738,9 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Les vagues suivantes seraient refusées de la même façon.
+        if (creditStopMessage) break;
+
         // Progress update every batch
         if (batchStart + CONCURRENCY < profilesToScore.length) {
           await postStatus(`⏳ ${scoredProfiles.length}/${filteredProfiles.length} profils analysés — ${goProfiles.length} Go trouvés${cacheHits > 0 ? ` (${cacheHits} scores en cache)` : ""}...`);
@@ -737,9 +763,11 @@ Deno.serve(async (req) => {
     const goCount = goProfiles.length;
     const totalScored = scoredProfiles.length;
 
-    let summaryMsg = timedOut
-      ? `⏱️ **Recherche partielle** (temps max atteint)\n\n`
-      : `✅ **Recherche terminée !**\n\n`;
+    let summaryMsg = creditStopMessage
+      ? `⚠️ **Recherche interrompue : crédits IA insuffisants**\n\n`
+      : timedOut
+        ? `⏱️ **Recherche partielle** (temps max atteint)\n\n`
+        : `✅ **Recherche terminée !**\n\n`;
     summaryMsg += `- 📊 **${totalScored}** profils analysés${timedOut ? ` sur ${Math.min(filteredProfiles.length, maxProfiles)}` : ""}\n`;
     summaryMsg += `- ✅ **${goCount}** profils qualifiés "Go"\n`;
     if (cacheHits > 0) summaryMsg += `- ⚡ **${cacheHits}** scores récupérés du cache\n`;
@@ -764,8 +792,14 @@ Deno.serve(async (req) => {
         if (summary) summaryMsg += `> ${summary.slice(0, 120)}…\n`;
         summaryMsg += `\n`;
       }
-    } else {
+    } else if (!creditStopMessage) {
       summaryMsg += `Aucun profil n'a passé les critères. Tu veux que j'élargisse la recherche ?`;
+    }
+
+    // Un solde épuisé n'est pas un verdict sur les profils : on le dit, plutôt
+    // que de laisser croire qu'aucun ne convenait.
+    if (creditStopMessage) {
+      summaryMsg += `${creditStopMessage}\n\nLes profils restants n'ont pas été analysés. Relancez la recherche une fois le solde rechargé.`;
     }
 
     // Post results

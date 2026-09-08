@@ -8,7 +8,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { invokeWithCredits, estimateActionCredits } from '@/lib/invokeWithCredits';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from '@/hooks/useAuthReady';
 
@@ -758,8 +758,14 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     withoutPhone: profiles.filter(p => !p.contact_info?.phones?.length).length,
   };
 
-  const hasAiSteps = messageSteps.some(s => s.useAiPersonalization);
-  const estimatedCredits = hasAiSteps ? profiles.length * 2 : 0; // ~2 credits per AI generation
+  // Une génération par candidat ET par étape personnalisée : compter les
+  // candidats seuls divisait l'estimation par le nombre d'étapes de la séquence.
+  // Le coût unitaire vient de l'estimateur du produit, sur le modèle qui servira
+  // à l'appel : le littéral 2 utilisé jusqu'ici était le plancher de l'action,
+  // pas son estimation, et annonçait moins de la moitié de ce qui sera exigé.
+  const aiStepCount = messageSteps.filter(s => s.useAiPersonalization).length;
+  const hasAiSteps = aiStepCount > 0;
+  const estimatedCredits = profiles.length * aiStepCount * estimateActionCredits('outreach_message');
 
   return {
     previews,

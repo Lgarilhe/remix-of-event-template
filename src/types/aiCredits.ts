@@ -183,9 +183,21 @@ export interface CreditBalance {
   organization_id: string;
   plan_credits: number;
   topup_credits: number;
+  /**
+   * Miroir du restant (plan_credits + topup_credits) renvoyé par get_balance.
+   * Ce n'est PAS l'enveloppe de la période : ne pas s'en servir comme
+   * dénominateur, le rapport vaudrait toujours 1.
+   */
   credits_total: number;
-  period_start: string;
-  period_end: string;
+  /**
+   * Crédits consommés depuis period_start : somme de credits_used sur
+   * ai_credit_transactions pour source 'plan', 'topup' ou 'mixed' (les octrois
+   * 'admin_grant' sont exclus). Enveloppe du mois = ce champ + le restant.
+   * Absent des versions serveur antérieures : traiter le cas null.
+   */
+  credits_consumed_period?: number;
+  period_start: string | null;
+  period_end: string | null;
   updated_at: string;
 }
 
