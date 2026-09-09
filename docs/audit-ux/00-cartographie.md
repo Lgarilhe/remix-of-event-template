@@ -25,13 +25,13 @@ Les colonnes comptent ce qui casse une expérience quand c'est mal fait :
 | `/privacy-extension` | PrivacyExtensionPage | 2 | · | · | · / · | · / · | · |
 | `/r/:slug` | RecruiterPublicProfile | 5 | · | · | · / · | · / · | maybeSingle x1 |
 | `/candidates` | Navigate | 0 | · | · | · / · | · / · | · |
-| `/missions` | Outreach | 30 | 12 | 2 | 1 / · | 20 / 25 | maybeSingle x6, localStorage x1 |
-| `/missions/:id` | MissionWorkspace | 228 | 135 | 40 | 112 / 59 | 133 / 235 | maybeSingle x19, portail x2, window.confirm x1, localStorage x33 |
+| `/missions` | Outreach | 31 | 12 | 2 | 1 / · | 20 / 25 | maybeSingle x6, localStorage x6 |
+| `/missions/:id` | MissionWorkspace | 229 | 135 | 40 | 112 / 59 | 133 / 235 | maybeSingle x19, portail x2, window.confirm x1, localStorage x38 |
 | `/sourcing` | SourcingSearches | 15 | 11 | 1 | · / · | 8 / 8 | maybeSingle x6, localStorage x1 |
 | `/sourcing/:id` | SourcingSearchPage | 175 | 55 | 20 | 97 / 33 | 60 / 131 | maybeSingle x13, portail x1, window.confirm x1, localStorage x31 |
 | `/agents` | AgentsPage | 13 | 8 | · | · / · | 6 / 5 | maybeSingle x4, localStorage x1 |
 | `/pipeline` | ATS | 138 | 72 | 10 | 26 / 3 | 56 / 80 | maybeSingle x21, portail x1, localStorage x3 |
-| `/inbox` | Inbox | 90 | 44 | 11 | 20 / 11 | 52 / 87 | maybeSingle x15, localStorage x18 |
+| `/inbox` | Inbox | 117 | 55 | 15 | 25 / 11 | 56 / 98 | maybeSingle x21, portail x1, localStorage x23 |
 | `/calendar` | CalendarPage | 36 | 17 | 4 | 21 / · | 13 / 17 | maybeSingle x6, localStorage x5 |
 | `/tasks` | TasksPage | 31 | 15 | 2 | 10 / · | 11 / 13 | maybeSingle x6, localStorage x1 |
 | `/outreach` | Navigate | 0 | · | · | · / · | · / · | · |
@@ -155,17 +155,17 @@ Les fichiers qui écrivent réellement. Ce sont eux qu'un test de résultat doit
 ### `/inbox` — Inbox
 
 - `src/hooks/useOrganization.ts` : écrit 7, succès 6, erreur 5 — attention : maybeSingle
+- `src/components/outreach/EnrollmentPreviewModal.tsx` : écrit 6, succès 2, erreur 5 — attention : maybeSingle, portail maison
 - `src/hooks/useMessagesInbox.ts` : écrit 4, succès 8, erreur 14 — attention : maybeSingle
 - `src/hooks/useChatStatus.ts` : écrit 4, succès 3, erreur 3
 - `src/hooks/useChatCategories.ts` : écrit 4, succès 1, erreur 1
 - `src/hooks/useMessageTemplates.ts` : écrit 4, succès 3, erreur 3
 - `src/hooks/useSourcingProjects.ts` : écrit 3, succès 2, erreur 3 — attention : maybeSingle
+- `src/components/outreach/SequenceEnrollModal.tsx` : écrit 3, succès 1, erreur 4
 - `src/hooks/useUserTemplateVariables.ts` : écrit 3, succès 3, erreur 3
 - `src/hooks/useMemberLinkedInAccounts.ts` : écrit 2, succès 2, erreur 4
+- `src/hooks/useEnrollmentPreview.ts` : écrit 2, succès 0, erreur 0 — attention : maybeSingle
 - `src/components/outreach/inbox/MessageView.tsx` : écrit 2, succès 2, erreur 2
-- `src/pages/Inbox.tsx` : écrit 1, succès 0, erreur 0
-- `src/hooks/useAuthReady.ts` : écrit 1, succès 0, erreur 0
-- `src/hooks/useAttendeePictures.ts` : écrit 1, succès 0, erreur 0
 
 ### `/calendar` — CalendarPage
 

@@ -1964,7 +1964,16 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     handleSuggestionClick,
     handleSuggestionSend,
     fetchReplySuggestions,
+    /**
+     * Inscription directe, sans préparation ni confirmation.
+     * Conservée pour les appels internes du hook. Les points d'entrée
+     * utilisateur passent par `SequenceEnrollModal`, qui montre le candidat,
+     * les messages et les avertissements avant d'engager quoi que ce soit
+     * (audit UX du 09/09/2026, constat UX05).
+     */
     enrollInSequence,
+    /** Rafraîchit les inscriptions après une confirmation depuis la modale. */
+    fetchEnrollments,
     handleAddToPipeline,
     handleEnrollInSequence,
     handleScheduleCall,

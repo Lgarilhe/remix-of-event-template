@@ -26,7 +26,12 @@
  *   - Logique de redirection vers /missions/:id
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  saveEditorDraft,
+  loadEditorDraft,
+  editorDraftSavedAt,
+} from '@/lib/editorDraft';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useSourcingProjects, CreateProjectInput } from '@/hooks/useSourcingProjects';
@@ -205,6 +210,17 @@ const MODE_OPTIONS: {
   },
 ];
 
+/** Clé du brouillon de création de mission, une seule par navigateur. */
+const MISSION_DRAFT_KEY = 'create-mission';
+
+interface MissionDraft {
+  mode?: EntryMode;
+  briefText?: string;
+  briefName?: string;
+  clientName?: string;
+  description?: string;
+}
+
 export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   isOpen,
   onClose,
@@ -226,6 +242,9 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   const [urlSuggestion, setUrlSuggestion] = useState<string | null>(null);
   // File upload state
   const [uploadingFile, setUploadingFile] = useState(false);
+  // Passe a vrai quand la mission a ete creee : la fermeture efface alors le
+  // brouillon au lieu de le conserver.
+  const creationReussieRef = useRef(false);
 
   // Détecte automatiquement une URL collée dans le brief — propose un scan
   useEffect(() => {
@@ -237,22 +256,54 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     }
   }, [briefText]);
 
-  // Reset state on close
+  // Fermeture : le travail en cours est conservé au lieu d'être effacé, puis
+  // proposé à la réouverture. Une fiche de poste collée survit donc à une
+  // fermeture par erreur (audit UX du 09/09/2026, constat UX06).
   useEffect(() => {
-    if (!isOpen) {
-      const t = setTimeout(() => {
-        setMode(initialMode);
-        setBriefText('');
-        setBriefName('');
-        setClientName('');
-        setDescription('');
-        setAnalysis(null);
-        setAnalyzing(false);
-        setCreating(false);
-      }, 200);
-      return () => clearTimeout(t);
-    }
-  }, [isOpen, initialMode]);
+    if (isOpen) return;
+    const t = setTimeout(() => {
+      const aDuTexte =
+        briefText.trim() || briefName.trim() || clientName.trim() || description.trim();
+      const aConserver = aDuTexte && !creationReussieRef.current;
+      saveEditorDraft(
+        MISSION_DRAFT_KEY,
+        aConserver ? { mode, briefText, briefName, clientName, description } : null,
+      );
+      creationReussieRef.current = false;
+      setMode(initialMode);
+      setBriefText('');
+      setBriefName('');
+      setClientName('');
+      setDescription('');
+      setAnalysis(null);
+      setAnalyzing(false);
+      setCreating(false);
+    }, 200);
+    return () => clearTimeout(t);
+    // Volontairement dépendant de la saisie : c'est sa valeur au moment de la
+    // fermeture qu'il faut conserver.
+  }, [isOpen, initialMode, mode, briefText, briefName, clientName, description]);
+
+  // Réouverture : on repropose le brouillon, sans écraser une saisie en cours.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (briefText || briefName || clientName || description) return;
+    const brouillon = loadEditorDraft<MissionDraft>(MISSION_DRAFT_KEY);
+    if (!brouillon) return;
+    if (brouillon.mode) setMode(brouillon.mode);
+    setBriefText(brouillon.briefText || '');
+    setBriefName(brouillon.briefName || '');
+    setClientName(brouillon.clientName || '');
+    setDescription(brouillon.description || '');
+    const quand = editorDraftSavedAt(MISSION_DRAFT_KEY);
+    toast.info('Brouillon repris', {
+      description: quand
+        ? `Votre saisie du ${quand.toLocaleDateString('fr-FR')} à ${quand.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} a été conservée.`
+        : 'Votre saisie précédente a été conservée.',
+    });
+    // Au seul passage à l'ouverture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // ── Brief IA : analyse + creation ──
   const handleAnalyze = useCallback(async () => {
@@ -372,6 +423,8 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
       }
 
       const project = await createProject(input);
+      // La mission existe : le brouillon n'a plus lieu d'etre conserve.
+      creationReussieRef.current = true;
       onClose();
       if (project?.id) {
         navigate(`/missions/${project.id}?tab=${analysis ? 'sourcing' : 'brief'}`);
@@ -494,6 +547,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         description: description || undefined,
         client_name: clientName || undefined,
       });
+      creationReussieRef.current = true;
       onClose();
       if (project?.id) {
         navigate(`/missions/${project.id}?tab=brief`);

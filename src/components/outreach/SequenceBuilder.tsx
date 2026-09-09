@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import {
+  saveEditorDraft,
+  loadEditorDraft,
+  clearEditorDraft,
+  editorDraftSavedAt,
+} from '@/lib/editorDraft';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -298,6 +304,9 @@ const getPrimarySteps = (steps: SequenceStep[]): SequenceStep[] => {
 // ── Wizard step order ──
 const WIZARD_ORDER: WizardStep[] = ['info', 'senders', 'steps', 'guardrails', 'review'];
 
+/** Brouillon d'une sequence en cours de creation, un seul par navigateur. */
+const SEQUENCE_DRAFT_KEY = 'sequence-new';
+
 export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   isOpen,
   onClose,
@@ -305,14 +314,21 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   initialSequence,
 }) => {
   const isEditing = !!initialSequence;
+  // Brouillon d'une sequence en cours de creation. On ne conserve rien pour une
+  // sequence existante : la verite y est cote base, et repousser une vieille
+  // saisie par-dessus serait pire que de la perdre.
+  const brouillonInitial = isEditing ? null : loadEditorDraft<Sequence>(SEQUENCE_DRAFT_KEY);
   const [sequence, setSequence] = useState<Sequence>(
-    initialSequence || {
+    initialSequence || brouillonInitial || {
       name: '',
       description: '',
       steps: [],
       isActive: true,
     }
   );
+  // Vrai tant que la sequence n'a pas ete enregistree : la fermeture conserve
+  // alors le travail au lieu de l'effacer (audit UX du 09/09/2026, constat UX06).
+  const enregistreeRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [expandedStepId, setExpandedStepId] = useState<string | null>(
     initialSequence?.steps[0]?.id || null
@@ -322,6 +338,34 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   const { signatures } = useEmailSignatures();
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
+
+  // Conservation a la sortie : le composant est demonte par son parent au clic
+  // sur « Retour », donc c'est le nettoyage d'effet qui doit ecrire.
+  const sequenceRef = useRef(sequence);
+  sequenceRef.current = sequence;
+  useEffect(() => {
+    if (isEditing) return;
+    return () => {
+      if (enregistreeRef.current) return;
+      const courante = sequenceRef.current;
+      const aDuContenu =
+        courante.name.trim() || courante.description?.trim() || courante.steps.length > 0;
+      saveEditorDraft(SEQUENCE_DRAFT_KEY, aDuContenu ? courante : null);
+    };
+  }, [isEditing]);
+
+  // Reprise annoncee : sans message, l'utilisateur croit a un bug d'affichage.
+  useEffect(() => {
+    if (isEditing || !brouillonInitial) return;
+    const quand = editorDraftSavedAt(SEQUENCE_DRAFT_KEY);
+    toast.info('Brouillon de séquence repris', {
+      description: quand
+        ? `Votre travail du ${quand.toLocaleDateString('fr-FR')} à ${quand.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} a été conservé.`
+        : 'Votre travail précédent a été conservé.',
+    });
+    // Au seul montage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Wizard vs expert mode
   const [mode, setMode] = useState<'wizard' | 'expert'>(isEditing ? 'expert' : 'wizard');
@@ -525,6 +569,8 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     setIsSaving(true);
     try {
       await onSave(sequence);
+      enregistreeRef.current = true;
+      if (!isEditing) clearEditorDraft(SEQUENCE_DRAFT_KEY);
       toast.success('Séquence enregistrée');
       onClose();
     } catch (err) {
