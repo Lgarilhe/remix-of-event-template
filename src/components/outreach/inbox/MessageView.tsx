@@ -149,10 +149,12 @@ export const MessageView: React.FC<MessageViewProps> = ({
   // Draft auto-save : restore au changement de chat
   const { setDraft, clearDraft } = useChatDraft(selectedChat?.id);
   const lastChatIdRef = useRef<string | null>(null);
+  const skipNextDraftSaveRef = useRef(false);
   useEffect(() => {
     const id = selectedChat?.id || null;
     if (id === lastChatIdRef.current) return;
     lastChatIdRef.current = id;
+    skipNextDraftSaveRef.current = true;
     // Lecture synchrone du stockage : la valeur `draft` du rendu courant est
     // encore celle du chat précédent quand cet effet s'exécute.
     const stored = readChatDraft(id);
@@ -162,7 +164,16 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
   useEffect(() => {
     if (!selectedChat?.id) return;
-    if (!newMessage) return;
+    // Au changement de conversation, `newMessage` est encore le texte de la
+    // conversation précédente : l'écrire ici le rangerait sous le mauvais chat.
+    // On saute donc ce seul passage.
+    if (skipNextDraftSaveRef.current) {
+      skipNextDraftSaveRef.current = false;
+      return;
+    }
+    // La valeur vide est enregistrée elle aussi : sans ça, effacer entièrement
+    // son texte laissait le brouillon précédent en place, et il réapparaissait
+    // au retour dans la conversation (audit UX du 09/09/2026, constat UX04).
     setDraft(newMessage);
   }, [newMessage, selectedChat?.id, setDraft]);
 

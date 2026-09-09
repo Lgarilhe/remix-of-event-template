@@ -641,8 +641,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   const handleBulkDismiss = useCallback(async () => {
     if (!search.selectedJob) return;
     
+    // La liste affichée mélange les résultats de la recherche courante et les
+    // profils réhydratés du vivier (`mergedResults`). Résoudre la sélection sur
+    // `search.results` seul laissait tomber les profils du vivier en silence
+    // (audit UX du 09/09/2026, constat UX02).
     const profilesToDismiss = Array.from(search.selectedProfiles)
-      .map(id => search.results.find(p => p.id === id))
+      .map(id => mergedResults.find(p => p.id === id))
       .filter((p): p is LinkedInProfile => !!p)
       .map(profile => ({
         id: profile.id,
@@ -654,21 +658,23 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     await search.candidateStatus.batchDismiss(profilesToDismiss);
     search.setSelectedProfiles(new Set());
     toast.success(`${profilesToDismiss.length} profil(s) archivé(s)`);
-  }, [search.selectedJob, search.selectedProfiles, search.results, search.candidateStatus, search.setSelectedProfiles]);
+  }, [search.selectedJob, search.selectedProfiles, mergedResults, search.candidateStatus, search.setSelectedProfiles]);
 
   const handleBulkAddToProject = useCallback(async () => {
     if (!activeProject || !search.selectedJob) return;
 
-    const profilesToAdd = Array.from(search.selectedProfiles)
-      .map(id => search.results.find(p => p.id === id))
+    // Résolution sur la liste affichée, vivier compris (constat UX02).
+    const selectedIds = Array.from(search.selectedProfiles);
+    const profilesToAdd = selectedIds
+      .map(id => mergedResults.find(p => p.id === id))
       .filter((p): p is LinkedInProfile => !!p);
+    const introuvables = selectedIds.length - profilesToAdd.length;
 
-    // 🐛 BUG CRITIQUE FIX (Opus audit) : avant, ce handler appelait
-    // `dismissCandidate` (=archive) alors que le toast disait "ajouté au projet".
-    // Résultat : l'user cliquait "Ajouter au projet" et ses profils étaient archivés
-    // silencieusement. Fix : utiliser `batchDiscover` qui persiste en status='discovered'
-    // sans écraser les statuts existants (cas d'un profil déjà scored/messaged).
-    await search.candidateStatus.batchDiscover(
+    // Historique : ce handler archivait les profils tout en annonçant un ajout
+    // (corrigé), puis les écrivait en `discovered` tout en annonçant une
+    // shortlist (constat UX01). Il écrit maintenant le statut `shortlisted`,
+    // celui que le filtre Shortlist cherche réellement.
+    const bilan = await search.candidateStatus.batchShortlist(
       profilesToAdd.map(profile => ({
         id: profile.id,
         name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
@@ -678,10 +684,26 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       }))
     );
 
+    // Un échec conserve la sélection : l'utilisateur peut réessayer sans
+    // reconstituer son lot. On ne confirme que ce que la base a accepté.
+    if (bilan.failed > 0) {
+      toast.error(
+        bilan.error
+          ? `Shortlist impossible : ${bilan.error}. Votre sélection est conservée.`
+          : 'Shortlist impossible. Votre sélection est conservée, réessayez.'
+      );
+      return;
+    }
+
     search.setSelectedProfiles(new Set());
     queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-    toast.success(`${profilesToAdd.length} profil(s) shortlisté(s)`);
-  }, [activeProject, search.selectedJob, search.selectedProfiles, search.results, search.candidateStatus, search.setSelectedProfiles, queryClient]);
+
+    const parts: string[] = [];
+    if (bilan.added > 0) parts.push(`${bilan.added} profil(s) shortlisté(s)`);
+    if (bilan.already > 0) parts.push(`${bilan.already} déjà en shortlist`);
+    if (introuvables > 0) parts.push(`${introuvables} introuvable(s)`);
+    toast.success(parts.join(', ') || 'Aucun profil à shortlister');
+  }, [activeProject, search.selectedJob, search.selectedProfiles, mergedResults, search.candidateStatus, search.setSelectedProfiles, queryClient]);
 
   // Handle archive for single profile
   const handleArchive = useCallback(async (profile: LinkedInProfile) => {

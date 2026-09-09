@@ -144,7 +144,17 @@ export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
         .maybeSingle();
 
       if (error) throw error;
-      return (data || { id, ...payload }) as SourcingProject;
+      // Zéro ligne renvoyée sans erreur explicite : la mission a été supprimée
+      // ailleurs, ou l'accès a changé pendant l'édition. Fabriquer un objet à
+      // partir du payload faisait passer ce cas pour une sauvegarde réussie, et
+      // le brief vidait alors ses modifications en attente
+      // (audit UX du 09/09/2026, constat UX03).
+      if (!data) {
+        throw new Error(
+          "Mission introuvable ou accès modifié : vos modifications n'ont pas été enregistrées.",
+        );
+      }
+      return data as SourcingProject;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
