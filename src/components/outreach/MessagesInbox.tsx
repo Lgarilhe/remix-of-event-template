@@ -107,7 +107,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
   // Séquence choisie, pas encore engagée. Le choix ouvre la préparation, il
   // n'inscrit personne (audit UX du 09/09/2026, constat UX05).
   const [pendingSequence, setPendingSequence] = useState<
-    { id: string; name: string; steps: any[] } | null
+    { id: string; name: string; steps: unknown[] } | null
   >(null);
 
   // Le candidat de la conversation, au format attendu par la préparation
