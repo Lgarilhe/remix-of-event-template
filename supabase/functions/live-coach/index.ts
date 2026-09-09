@@ -3,7 +3,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth } from "../_shared/require-auth.ts";
 import { callClaudeCompat } from "../_shared/call-claude.ts";
 import { settleClaudeUsage } from "../_shared/settle-usage.ts";
+import { settleCredits } from "../_shared/settle-credits.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { ACTION_COSTS, calculateUSDCost } from "../_shared/ai-config.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -126,6 +128,45 @@ Format : juste les 3 lignes avec "•" devant, rien d'autre. Pas de phrase compl
       pending_signals,
     } = body;
 
+    // La session est lue et vérifiée AVANT l'appel au modèle, pour deux
+    // raisons : la facturation est à la minute et a besoin de l'heure de début
+    // et du filigrane, et un identifiant de session appartenant à quelqu'un
+    // d'autre ne doit pas d'abord consommer un appel payant avant d'être
+    // refusé plus bas.
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!
+    );
+
+    const { data: sessionRow, error: sessionError } = await supabaseAdmin
+      .from("call_coaching_sessions")
+      .select("created_by, billed_minutes, pending_cost_usd, billing_started_at")
+      .eq("id", session_id)
+      .maybeSingle();
+
+    // Une lecture en échec n'est pas une session volée : renvoyer 403 couperait
+    // tout le coaching sur un incident base, sans trace côté client.
+    if (sessionError) {
+      console.error("[live-coach] lecture de session impossible:", sessionError);
+      return new Response(JSON.stringify({ error: "Session unavailable" }), { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (!sessionRow || sessionRow.created_by !== userId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Le compteur de minutes part de la PREMIÈRE analyse, pas de la création de
+    // la ligne : le panneau peut rester ouvert longtemps avant l'entretien, et
+    // partir de created_at facturait ce temps mort d'un seul coup.
+    let billingStartedAt = sessionRow.billing_started_at as string | null;
+    if (!billingStartedAt) {
+      billingStartedAt = new Date().toISOString();
+      await supabaseAdmin
+        .from("call_coaching_sessions")
+        .update({ billing_started_at: billingStartedAt })
+        .eq("id", session_id)
+        .is("billing_started_at", null);
+    }
+
     // Truncate transcript to last ~2000 chars for speed
     const truncatedTranscript = full_transcript.length > 2000
       ? '...' + full_transcript.slice(-2000)
@@ -236,10 +277,64 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
         timeoutMs: 20000,
         aiContext,
       });
-      await settleClaudeUsage({ userId, aiAction: "live_coaching", usage: aiResult.usage, modelId: aiResult.model });
     } catch (e) {
       console.error("[live-coach] Claude error:", e);
       throw new Error("Coach analysis timeout or network error");
+    }
+
+    // ── Facturation à la minute ──
+    // L'action est vendue « 5 crédits par minute » mais elle était débitée à
+    // chaque appel, et le navigateur appelle dès 80 caractères de parole, à
+    // chaque fin de phrase, et sinon toutes les 12 secondes : au moins cinq
+    // débits par minute, soit 25 crédits au lieu de 5. Un entretien de 45
+    // minutes épuisait un quart du forfait mensuel d'un cabinet.
+    //
+    // Le temps écoulé est calculé côté serveur, depuis la première analyse de
+    // la session, jamais depuis elapsed_seconds envoyé par le navigateur, qui
+    // pourrait rester à zéro.
+    const callCostUsd = calculateUSDCost(
+      aiResult.usage?.input_tokens ?? 0,
+      aiResult.usage?.output_tokens ?? 0,
+      aiResult.model,
+    );
+    const startedAt = Date.parse(String(billingStartedAt));
+    const billedMinutes = Number(sessionRow.billed_minutes ?? 0);
+    const pendingCostUsd = Number(sessionRow.pending_cost_usd ?? 0);
+    const elapsedMinutes = Number.isFinite(startedAt)
+      ? Math.floor((Date.now() - startedAt) / 60_000)
+      : 0;
+    const dueMinutes = Math.max(0, elapsedMinutes - billedMinutes);
+
+    // La minute est RÉSERVÉE avant d'être facturée : l'écriture du filigrane
+    // est conditionnée à sa valeur lue, donc un seul appel gagne la minute.
+    // Rien côté navigateur n'empêche deux analyses de se chevaucher (isAnalyzing
+    // ne sert qu'au témoin de chargement) : facturer d'abord et écrire ensuite
+    // aurait laissé deux appels concurrents débiter la même minute.
+    let claimedMinutes = 0;
+
+    if (dueMinutes > 0 && liveCoachOrgId) {
+      const { data: claimed } = await supabaseAdmin
+        .from("call_coaching_sessions")
+        .update({ billed_minutes: elapsedMinutes, pending_cost_usd: 0 })
+        .eq("id", session_id)
+        .eq("billed_minutes", billedMinutes)
+        .select("id");
+      if ((claimed ?? []).length > 0) claimedMinutes = dueMinutes;
+    }
+
+    if (claimedMinutes > 0 && liveCoachOrgId) {
+      const perMinute = ACTION_COSTS.live_coaching?.floor ?? 5;
+      await settleCredits(supabaseAdmin as never, {
+        organizationId: liveCoachOrgId,
+        userId,
+        aiAction: "live_coaching",
+        modelId: aiResult.model,
+        tokensInput: 0,
+        tokensOutput: 0,
+        flatCredits: claimedMinutes * perMinute,
+        costUsd: pendingCostUsd + callCostUsd,
+        description: `Coaching en direct : ${claimedMinutes} minute${claimedMinutes > 1 ? 's' : ''}`,
+      });
     }
 
     let analysis = { resolved_signals: [] as string[], dig_deeper: [] as any[], criteria_updates: {} };
@@ -257,23 +352,10 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
       }
     }
 
-    // Save to DB (fire-and-forget for speed)
-    // Verify session belongs to the authenticated user before updating
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      (Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!
-    );
-
-    const { data: sessionRow } = await supabaseAdmin
-      .from("call_coaching_sessions")
-      .select("created_by")
-      .eq("id", session_id)
-      .single();
-
-    if (sessionRow?.created_by !== userId) {
-      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
+    // Save to DB (fire-and-forget for speed). L'appartenance de la session a
+    // été vérifiée avant l'appel au modèle, et le filigrane de facturation a
+    // déjà été écrit plus haut par l'appel qui a réservé la minute. Ici on ne
+    // reporte que le coût fournisseur non encore facturé.
     Promise.resolve(supabaseAdmin
       .from("call_coaching_sessions")
       .update({
@@ -284,6 +366,17 @@ IMPORTANT : Sois CONCIS et RAPIDE.`;
       .eq("id", session_id))
       .then(() => {})
       .catch((e: unknown) => console.error('[live-coach] Transcript update failed:', e));
+
+    // Minute non réservée : le coût de cet appel s'ajoute au report, en base,
+    // pour ne pas écraser la contribution d'une analyse concurrente.
+    if (claimedMinutes === 0 && callCostUsd > 0) {
+      Promise.resolve(supabaseAdmin.rpc("add_coaching_pending_cost", {
+        p_session_id: session_id,
+        p_cost: callCostUsd,
+      }))
+        .then(() => {})
+        .catch((e: unknown) => console.error('[live-coach] report du coût impossible:', e));
+    }
 
     return new Response(JSON.stringify(analysis), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

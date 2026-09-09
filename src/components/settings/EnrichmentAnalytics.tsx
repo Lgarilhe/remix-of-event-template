@@ -193,7 +193,7 @@ export const EnrichmentAnalytics: React.FC = () => {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Package className="w-3.5 h-3.5" />
-            <span>Contacts inclus ce mois</span>
+            <span>Forfait du mois (1 par email, 10 par mobile)</span>
           </div>
           <div className="text-sm font-bold tabular-nums text-foreground">
             {includedUsed} / {includedMonthly}
@@ -209,7 +209,7 @@ export const EnrichmentAnalytics: React.FC = () => {
           </div>
         ) : (
           <p className="text-[11px] text-muted-foreground">
-            Aucun contact inclus dans votre forfait actuel : les enrichissements de contact sont facturés en crédits.
+            Aucune unité incluse dans votre forfait actuel : les enrichissements de contact sont facturés en crédits.
           </p>
         )}
       </div>

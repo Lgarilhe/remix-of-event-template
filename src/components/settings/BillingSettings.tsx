@@ -23,6 +23,13 @@ const CHECKOUT_REFRESH_KEYS = [
 /** Second rafraîchissement : le webhook peut arriver quelques secondes après le retour. */
 const CHECKOUT_REFRESH_DELAY_MS = 5000;
 
+/**
+ * Unités de forfait de contacts accordées pendant un essai non payé. Miroir du
+ * plafond posé par get_org_contact_usage (migration 20260909164751) : l'accès
+ * est ouvert sans carte bancaire, chaque unité est payée au fournisseur.
+ */
+const TRIAL_CONTACT_ALLOWANCE = 20;
+
 const formatDate = (iso: string) => format(new Date(iso), 'dd/MM/yyyy');
 
 const formatLimit = (value: number | undefined) => {
@@ -149,7 +156,18 @@ export const BillingSettings = () => {
     ? [
         { label: 'Missions actives', value: formatLimit(state.limits.max_jobs) },
         { label: 'Crédits IA / mois', value: formatLimit(state.limits.ai_credits) },
-        { label: 'Contacts enrichis / mois', value: formatLimit(state.limits.contacts_included) },
+        // Le forfait s'exprime en emails : un mobile en consomme dix, comme au
+        // tarif à l'acte. Afficher « contacts » laissait croire que les deux se
+        // valaient. Pendant un essai non payé, le serveur plafonne le forfait :
+        // annoncer celui du plan promettait dix fois ce qui est accordé.
+        {
+          label: 'Emails de contact / mois (un mobile en vaut 10)',
+          value: formatLimit(
+            isTrialing && !isTrialPaid && typeof state.limits.contacts_included === 'number'
+              ? Math.min(state.limits.contacts_included, TRIAL_CONTACT_ALLOWANCE)
+              : state.limits.contacts_included,
+          ),
+        },
       ].filter((row) => row.value !== null)
     : [];
 

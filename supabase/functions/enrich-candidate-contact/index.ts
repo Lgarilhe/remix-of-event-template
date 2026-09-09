@@ -6,8 +6,9 @@
  *   2. Abonnement : plan effectif free → 403 PLAN_REQUIRED (subscription-gate)
  *   3. Forfait (lot P0-D) : N contacts inclus par mois et par organisation
  *      (limits.contacts_included, RPC get_org_contact_usage). Un email = 1,
- *      un téléphone = 1. Tant que le reste couvre la demande → included = true,
- *      pas de pré-autorisation ni de débit de crédits. Au-delà : crédits (1 / 10).
+ *      un mobile = 10, même rapport que le barème à l'acte. Tant que le reste
+ *      couvre la demande → included = true, pas de pré-autorisation ni de débit
+ *      de crédits. Au-delà : crédits, aux mêmes planchers.
  *   4. Cache lookup : si déjà enrichi récemment pour cet org+linkedin_url → retour direct ($0)
  *   5. POST Better Contact /api/v2/async → récupère request_id
  *   6. INSERT dans candidate_enrichments status='pending', included
@@ -99,19 +100,12 @@ async function getOrgContactUsage(
   let remaining = Number(data?.included_remaining ?? 0);
   if (!Number.isFinite(remaining)) remaining = 0;
 
-  // Les demandes incluses encore en cours (moins de 10 minutes) ne sont pas
-  // comptées par la RPC : elles réservent une unité chacune pour qu'un lot ne
-  // dépasse pas le forfait.
-  const periodStart = typeof data?.period_start === "string" ? data.period_start : new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const { count: pendingIncluded } = await client
-    .from("candidate_enrichments")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", orgId)
-    .eq("included", true)
-    .eq("status", "pending")
-    .gte("requested_at", periodStart > tenMinutesAgo ? periodStart : tenMinutesAgo);
-  remaining = Math.max(0, remaining - (pendingIncluded ?? 0));
+  // Les demandes en cours sont désormais déduites par la RPC elle-même, à leur
+  // réservation en unités (colonne reserved_units, migration 20260909164751).
+  // La compensation qui existait ici comptait des LIGNES : exacte tant qu'un
+  // email et un mobile valaient une unité chacun, elle sous-estimait d'un
+  // facteur dix depuis que le mobile en vaut dix, et la conserver déduirait
+  // maintenant deux fois la même demande.
 
   return {
     included_monthly: Number.isFinite(monthly) ? monthly : 0,
@@ -298,9 +292,14 @@ Deno.serve(async (req) => {
     }
 
     // ── Forfait de contacts inclus (par organisation et par mois) ──
-    // Unité : un email = 1, un téléphone = 1. Couvert → pas de pré-auth ni de
+    // Unité : un email = 1, un mobile = 10, même rapport que le barème à
+    // l'acte et que la facturation du fournisseur. Compter le mobile pour une
+    // unité rendait le forfait dix fois plus cher dès qu'un client le dépensait
+    // en numéros, sans que rien ne le borne. Couvert → pas de pré-auth ni de
     // débit de crédits ; sinon comportement crédits habituel (1 / 10).
-    const requestedUnits = (enrichEmail ? 1 : 0) + (enrichPhone ? 1 : 0);
+    const requestedUnits =
+      (enrichEmail ? (ACTION_COSTS.enrich_contact_email?.floor ?? 1) : 0) +
+      (enrichPhone ? (ACTION_COSTS.enrich_contact_phone?.floor ?? 10) : 0);
     const usage = await getOrgContactUsage(serviceClient, orgId);
     const included = usage.included_remaining >= requestedUnits;
 
@@ -322,7 +321,14 @@ Deno.serve(async (req) => {
       }, 403);
     }
 
-    if (cascade.email || cascade.phone) {
+    // La cascade ne court-circuite l'appel payant que si elle couvre TOUT ce
+    // qui a été demandé. Sortir dès qu'un élément est connu servait un email en
+    // cache à une demande de mobile : le mobile n'était jamais cherché, et la
+    // ligne de cache le rendait inaccessible pendant trente jours.
+    const cascadeCoversRequest =
+      (!enrichEmail || !!cascade.email) && (!enrichPhone || !!cascade.phone);
+
+    if ((cascade.email || cascade.phone) && cascadeCoversRequest) {
       console.log(`[enrich-candidate-contact] Cascade hit (source=${cascade.source}) — pas d'appel BC, pas de débit crédit`);
       if (candidateId) {
         await saveCandidateContact(serviceClient, {
@@ -518,6 +524,10 @@ Deno.serve(async (req) => {
         provider_request_id: requestId,
         status: "pending",
         included,
+        // Ce que la demande retient dans le forfait tant que le fournisseur n'a
+        // pas répondu. Sans cette réservation, un lot passait en entier avant
+        // que le compteur, qui ne voit que les demandes terminées, ne bouge.
+        reserved_units: included ? requestedUnits : 0,
         // Relance d'une ligne existante (en erreur, sans contact ou expirée) :
         // on repart d'un état propre pour le settle et le compteur.
         credits_consumed: 0,
