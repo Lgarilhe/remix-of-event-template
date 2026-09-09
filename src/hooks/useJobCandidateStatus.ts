@@ -726,7 +726,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       name?: string;
       headline?: string;
       profileUrl?: string;
-      linkedinProfileData?: any;
+      linkedinProfileData?: Record<string, unknown> | null;
     }>
   ): Promise<{ added: number; already: number; failed: number; error?: string }> => {
     if (!jobId) return { added: 0, already: 0, failed: profiles.length, error: 'Aucune mission active' };
@@ -805,7 +805,7 @@ export function useJobCandidateStatus(jobId: string | null) {
     setTreatedIds(prev => new Set([...prev, ...toWrite.map(p => p.id)]));
 
     return { added: toWrite.length, already: already.length, failed: 0 };
-  }, [jobId, statuses, organizationId]);
+  }, [jobId, statuses, organizationId, setStatuses, setTreatedIds]);
 
   return {
     statuses,
