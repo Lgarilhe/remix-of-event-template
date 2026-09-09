@@ -1,0 +1,210 @@
+{
+  "/": {
+    "ecran": "SkalrLanding",
+    "code": "partiel",
+    "interface": "partiel",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": "page publique parcourue"
+  },
+  "/auth": {
+    "ecran": "Auth",
+    "code": "fait",
+    "interface": "fait",
+    "erreurs": "partiel",
+    "mobile_clavier": "a_faire",
+    "note": "parcours essai et mot de passe oublie observes dans le navigateur"
+  },
+  "/onboarding": {
+    "ecran": "Onboarding",
+    "code": "fait",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/portal/:token": {
+    "ecran": "CandidatePortal",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/client/:token": {
+    "ecran": "ClientPortalPage",
+    "code": "partiel",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": "revue ponctuelle seulement"
+  },
+  "/mission-invite/:token": {
+    "ecran": "AcceptMissionInvite",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/unsubscribe": {
+    "ecran": "UnsubscribePage",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/privacy": {
+    "ecran": "PrivacyPage",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/privacy-extension": {
+    "ecran": "PrivacyExtensionPage",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/r/:slug": {
+    "ecran": "RecruiterPublicProfile",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/missions": {
+    "ecran": "Outreach",
+    "code": "fait",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/missions/:id": {
+    "ecran": "MissionWorkspace",
+    "code": "fait",
+    "interface": "a_faire",
+    "erreurs": "partiel",
+    "mobile_clavier": "a_faire",
+    "note": "echec de sauvegarde reproduit en local, pas en environnement connecte"
+  },
+  "/sourcing": {
+    "ecran": "SourcingSearches",
+    "code": "fait",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/sourcing/:id": {
+    "ecran": "SourcingSearchPage",
+    "code": "fait",
+    "interface": "a_faire",
+    "erreurs": "partiel",
+    "mobile_clavier": "a_faire",
+    "note": "shortlist et selection reproduites en local"
+  },
+  "/agents": {
+    "ecran": "AgentsPage",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/pipeline": {
+    "ecran": "ATS",
+    "code": "fait",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/inbox": {
+    "ecran": "Inbox",
+    "code": "fait",
+    "interface": "a_faire",
+    "erreurs": "partiel",
+    "mobile_clavier": "a_faire",
+    "note": "brouillons reproduits en local, superposition mobile non reproduite"
+  },
+  "/calendar": {
+    "ecran": "CalendarPage",
+    "code": "partiel",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": "revue ponctuelle seulement"
+  },
+  "/tasks": {
+    "ecran": "TasksPage",
+    "code": "partiel",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": "revue ponctuelle seulement"
+  },
+  "/dashboard": {
+    "ecran": "Dashboard",
+    "code": "partiel",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": "revue ponctuelle seulement"
+  },
+  "/qualification/:id": {
+    "ecran": "Qualification",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/pipeline/scorecard/:candidateId": {
+    "ecran": "ScorecardFullPage",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/ats/scorecard/:candidateId": {
+    "ecran": "ScorecardFullPage",
+    "code": "a_faire",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": ""
+  },
+  "/settings": {
+    "ecran": "Settings",
+    "code": "partiel",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": "revue ponctuelle seulement"
+  },
+  "/pricing": {
+    "ecran": "Pricing",
+    "code": "partiel",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": "revue ponctuelle seulement"
+  },
+  "/marketplace": {
+    "ecran": "Marketplace",
+    "code": "partiel",
+    "interface": "a_faire",
+    "erreurs": "a_faire",
+    "mobile_clavier": "a_faire",
+    "note": "revue ponctuelle seulement"
+  }
+}

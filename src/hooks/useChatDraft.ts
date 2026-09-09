@@ -79,9 +79,47 @@ export function readChatDraft(chatId: string | null | undefined): string {
   }
 }
 
+/**
+ * Écriture synchrone du brouillon, hors cycle React.
+ * Une valeur vide efface le brouillon stocké : effacer son texte doit se
+ * conserver comme n'importe quelle autre modification.
+ */
+function persistChatDraft(chatId: string, value: string): void {
+  try {
+    if (value.trim()) {
+      localStorage.setItem(`${DRAFT_PREFIX}${chatId}`, value);
+      const idx = loadIndex();
+      idx[chatId] = Date.now();
+      saveIndex(purgeOldDrafts(idx));
+    } else {
+      localStorage.removeItem(`${DRAFT_PREFIX}${chatId}`);
+      const idx = loadIndex();
+      delete idx[chatId];
+      saveIndex(idx);
+    }
+  } catch {
+    // localStorage plein ou navigation privée
+  }
+}
+
 export function useChatDraft(chatId: string | null | undefined) {
   const [draft, setDraftState] = useState<string>('');
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Dernière valeur saisie mais pas encore écrite. Sans elle, une sortie avant
+  // la fin du délai perdait la dernière frappe : le minuteur était annulé, mais
+  // rien n'était enregistré (audit UX du 09/09/2026, constat UX04).
+  const pendingRef = useRef<{ chatId: string; value: string } | null>(null);
+
+  /** Écrit tout de suite ce qui attendait, et annule le minuteur. */
+  const flush = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    if (pending) persistChatDraft(pending.chatId, pending.value);
+  }, []);
 
   // Load draft when chatId changes
   useEffect(() => {
@@ -97,44 +135,51 @@ export function useChatDraft(chatId: string | null | undefined) {
     }
   }, [chatId]);
 
-  // Cleanup debounce timer on unmount
+  // Sortie du composant : on écrit ce qui attendait au lieu de le jeter.
+  useEffect(() => flush, [flush]);
+
+  // Changement de conversation : le brouillon en attente appartient à la
+  // conversation qu'on quitte, il doit être écrit avant de charger la suivante.
   useEffect(() => {
     return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (pendingRef.current && pendingRef.current.chatId !== chatId) flush();
     };
-  }, []);
+  }, [chatId, flush]);
 
-  /** Set the draft + debounced save to localStorage */
+  // Fermeture ou mise en arrière-plan de la page : même règle.
+  useEffect(() => {
+    const onLeave = () => flush();
+    window.addEventListener('pagehide', onLeave);
+    window.addEventListener('beforeunload', onLeave);
+    return () => {
+      window.removeEventListener('pagehide', onLeave);
+      window.removeEventListener('beforeunload', onLeave);
+    };
+  }, [flush]);
+
+  /** Modifie le brouillon, avec écriture différée dans le stockage local. */
   const setDraft = useCallback((value: string) => {
     setDraftState(value);
     if (!chatId) return;
 
+    pendingRef.current = { chatId, value };
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      try {
-        if (value.trim()) {
-          localStorage.setItem(`${DRAFT_PREFIX}${chatId}`, value);
-          // Update index
-          const idx = loadIndex();
-          idx[chatId] = Date.now();
-          saveIndex(purgeOldDrafts(idx));
-        } else {
-          // Empty draft → cleanup
-          localStorage.removeItem(`${DRAFT_PREFIX}${chatId}`);
-          const idx = loadIndex();
-          delete idx[chatId];
-          saveIndex(idx);
-        }
-      } catch {
-        // localStorage full ou private mode
-      }
+      debounceTimerRef.current = null;
+      pendingRef.current = null;
+      persistChatDraft(chatId, value);
     }, SAVE_DEBOUNCE_MS);
   }, [chatId]);
 
   /** Clear le draft (à appeler après envoi message réussi) */
   const clearDraft = useCallback(() => {
     if (!chatId) return;
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    // Sans ça, un `flush` ultérieur réécrirait le brouillon qu'on vient d'effacer.
+    pendingRef.current = null;
     setDraftState('');
     try {
       localStorage.removeItem(`${DRAFT_PREFIX}${chatId}`);

@@ -698,10 +698,114 @@ export function useJobCandidateStatus(jobId: string | null) {
       });
 
       console.log(`[batchDiscover] Persisted ${uniqueProfiles.length} new profiles`);
+
     } catch (error) {
       console.error('Error in batchDiscover:', error);
     }
   }, [jobId, statuses]);
+
+  /**
+   * Met des profils en shortlist, et dit ce qui s'est réellement passé.
+   *
+   * Pourquoi cette fonction existe (audit UX du 09/09/2026, constats UX01/UX01b) :
+   * le bouton « Shortlister » appelait `batchDiscover`, qui écrit le statut
+   * `discovered`. Or le filtre Shortlist cherche `shortlisted`. L'utilisateur
+   * voyait donc une confirmation positive sans retrouver personne dans sa
+   * shortlist. `batchDiscover` ignorait en plus les profils déjà connus et
+   * avalait ses erreurs de persistance : un échec base ressortait en succès.
+   *
+   * Les trois garanties tenues ici :
+   *  - le statut écrit est bien `shortlisted`, y compris pour un profil déjà noté ;
+   *  - l'historique utile du candidat est conservé (score, recommandation, identité) ;
+   *  - le bilan retourné distingue ajoutés, déjà en shortlist, et échec.
+   *    L'appelant ne doit afficher un succès que sur la foi de ce bilan.
+   */
+  const batchShortlist = useCallback(async (
+    profiles: Array<{
+      id: string;
+      name?: string;
+      headline?: string;
+      profileUrl?: string;
+      linkedinProfileData?: any;
+    }>
+  ): Promise<{ added: number; already: number; failed: number; error?: string }> => {
+    if (!jobId) return { added: 0, already: 0, failed: profiles.length, error: 'Aucune mission active' };
+    if (profiles.length === 0) return { added: 0, already: 0, failed: 0 };
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { added: 0, already: 0, failed: profiles.length, error: 'Session expirée' };
+
+    // Dédoublonnage par candidat
+    const unique = Array.from(new Map(profiles.map(p => [p.id, p])).values());
+
+    // Déjà en shortlist : rien à écrire, mais à compter dans le bilan
+    const already = unique.filter(p => statuses.get(p.id)?.status === 'shortlisted');
+    const toWrite = unique.filter(p => statuses.get(p.id)?.status !== 'shortlisted');
+
+    if (toWrite.length === 0) {
+      return { added: 0, already: already.length, failed: 0 };
+    }
+
+    const records = toWrite.map(p => {
+      const existing = statuses.get(p.id);
+      return {
+        job_id: jobId,
+        candidate_id: p.id,
+        // On préfère la donnée déjà en base quand elle existe : elle a pu être
+        // enrichie depuis la recherche (nom complet, URL résolue).
+        candidate_name: existing?.candidate_name || p.name || null,
+        candidate_headline: existing?.candidate_headline || p.headline || null,
+        linkedin_profile_url: existing?.linkedin_profile_url || p.profileUrl || null,
+        linkedin_profile_data: existing?.linkedin_profile_data || p.linkedinProfileData || null,
+        // L'historique de notation survit à la mise en shortlist.
+        score: existing?.score ?? null,
+        recommendation: existing?.recommendation ?? null,
+        status: 'shortlisted' as const,
+        created_by: user.id,
+        organization_id: organizationId,
+      };
+    });
+
+    const { error } = await supabase
+      .from('job_candidate_status')
+      .upsert(records, { onConflict: 'job_id,candidate_id,created_by' });
+
+    if (error) {
+      // Pas de `return` silencieux : l'appelant doit pouvoir ne rien confirmer.
+      console.error('[batchShortlist] échec de persistance:', error);
+      return { added: 0, already: already.length, failed: toWrite.length, error: error.message };
+    }
+
+    // État local : le statut change pour tout le monde, y compris les déjà connus.
+    setStatuses(prev => {
+      const next = new Map(prev);
+      for (const p of toWrite) {
+        const existing = next.get(p.id);
+        next.set(p.id, {
+          ...(existing ?? {
+            id: '',
+            job_id: jobId,
+            candidate_id: p.id,
+            linkedin_profile_url: p.profileUrl || null,
+            candidate_name: p.name || null,
+            candidate_headline: p.headline || null,
+            score: null,
+            recommendation: null,
+            skip_reason: null,
+            created_by: user.id,
+            created_at: new Date().toISOString(),
+            linkedin_profile_data: p.linkedinProfileData || null,
+          }),
+          status: 'shortlisted',
+          updated_at: new Date().toISOString(),
+        } as JobCandidateStatus);
+      }
+      return next;
+    });
+    setTreatedIds(prev => new Set([...prev, ...toWrite.map(p => p.id)]));
+
+    return { added: toWrite.length, already: already.length, failed: 0 };
+  }, [jobId, statuses, organizationId]);
 
   return {
     statuses,
@@ -711,6 +815,7 @@ export function useJobCandidateStatus(jobId: string | null) {
     dismissCandidate,
     batchDismiss,
     batchDiscover,
+    batchShortlist,
     saveScore,
     batchSaveScores,
     updateStatus,
