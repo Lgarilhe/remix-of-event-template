@@ -291,6 +291,7 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `APOLLO_API_KEY` | enrich-company, refresh-pedigree-by-funding-stage (+ repli env dans `_shared/resolve-org-credentials.ts`) |
 | `CORESIGNAL_API_KEY` | coresignal-search (via `resolveCoresignalCredentials` de `_shared/resolve-org-credentials.ts`) |
 | `BETTERCONTACT_API_KEY` | enrich-candidate-contact, get-enrichment-status |
+| `BETTERCONTACT_CREDIT_COST_USD` | get-enrichment-status — prix d'un crédit fournisseur en dollars, pour renseigner `cost_usd` sur les débits d'enrichissement (sans jeton, le calcul par jetons donnerait zéro). Défaut 0.045, à remplacer par le tarif contracté |
 | `UNIPILE_V2_API_KEY` + `UNIPILE_V2_WEBHOOK_TOKEN` | `_shared/unipile-v2.ts` (importé par unipile-webhook, unipile-manage-webhooks) — API v2 activée seulement si la clé est posée |
 | `STRIPE_WEBHOOK_SECRET` | stripe-webhook |
 | `AIRCALL_WEBHOOK_TOKEN` | aircall-webhook |
