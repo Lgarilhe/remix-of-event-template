@@ -150,33 +150,139 @@ au mois civil : un essai à cheval sur deux mois ouvre 400 unités. Et rien ne
 coupe les comptes LinkedIn connectés quand l'organisation retombe sur le plan
 gratuit, alors que c'est la seule ligne à coût fixe mensuel.
 
-## 6. Ce qu'il me manque pour conclure
+## 6. Les prix fournisseurs, relevés le 9 septembre
 
-Quatre prix que je ne peux pas déduire du dépôt et qui décident de tout :
+Trois fournisseurs distincts, souvent confondus : le service de connexion
+LinkedIn, le fournisseur de base de données qui alimente la Base Konekt, et le
+fournisseur d'enrichissement de contact. Ce dernier n'est pas celui de la base de
+données. Le code le montre : `enrich-candidate-contact/index.ts:41` appelle
+`app.bettercontact.rocks`, `coresignal-search/index.ts:33` appelle
+`api.coresignal.com`.
 
-1. Le prix par contact enrichi facturé par le fournisseur, séparément pour un
-   email et pour un mobile.
-2. Le prix d'un crédit chez le fournisseur de base de données, sachant qu'une
-   page d'aperçu en consomme deux et que la première page d'une recherche neuve
-   en consomme quatre.
-3. Le prix mensuel par compte LinkedIn connecté chez le service de connexion.
-4. Les factures mensuelles d'hébergement, base de données et frontal.
+Les tarifs ci-dessous sont les prix publics affichés, relevés par recherche. Les
+sites des trois fournisseurs sont bloqués par le proxy réseau de cette session,
+je n'ai donc pas pu ouvrir leurs pages moi-même. À recouper avec vos factures
+réelles, qui peuvent porter un tarif négocié.
 
-Avec ces quatre nombres, la marge de chaque plan devient un calcul, pas une
-fourchette.
+### Connexion LinkedIn
+
+49 € par mois jusqu'à dix comptes connectés, puis 5 € par compte, dégressif
+jusqu'à 3 € au volume. Facturation au pic de comptes connectés sur trente jours,
+sans coût par requête.
+
+Soit environ 4,90 € par siège au premier palier. Rapporté au prix des plans :
+8,3 % sur Solo, 3,5 % sur Cabinet, 2,6 % sur Entreprise. Cette ligne n'est pas un
+problème, contrairement à ce que je craignais.
+
+### Enrichissement de contact
+
+Un email vérifié coûte 1 crédit, un mobile vérifié 10 crédits. C'est exactement
+le rapport que Konekt a recopié dans ses propres planchers, ce qui confirme la
+source. Les crédits ne sont débités que si la donnée est trouvée.
+
+Grille : 49 $ pour 1 000 crédits, 149 $ pour 3 000, 199 $ pour 5 000, 399 $ pour
+10 000. Soit **0,040 à 0,050 $ le crédit** aux volumes réalistes.
+
+Konekt vend son crédit 0,0238 à 0,030 €, soit 0,026 à 0,032 $. La comparaison est
+directe et sans appel :
+
+| Article | Coût fournisseur | Prix de vente Konekt | Résultat |
+|---|---|---|---|
+| Un email | 0,040 à 0,050 $ | 0,026 à 0,032 $ | vendu à 55-80 % du coût |
+| Un mobile | 0,40 à 0,50 $ | 0,26 à 0,32 $ | vendu à 55-80 % du coût |
+
+L'enrichissement est donc vendu à perte à l'acte, sur les deux lignes. Le
+commentaire « floor = coût réel » du catalogue est juste en nombre de crédits et
+faux en argent : un crédit du fournisseur d'enrichissement coûte treize à quinze
+fois ce que coûte un crédit Konekt dépensé en jetons, et les deux sont vendus au
+même prix.
+
+Sur les forfaits inclus, l'effet dépend entièrement du mélange email / mobile,
+que rien ne borne puisque le forfait compte un mobile comme un email :
+
+| Plan | Forfait dépensé en emails | Forfait dépensé en mobiles | Revenu |
+|---|---|---|---|
+| Cabinet, 200 unités | 9 $ | 90 $ | 150 $ |
+| Entreprise, 500 unités | 22,50 $ | 225 $ | 204 $ |
+
+Entreprise perd de l'argent avant même de compter l'IA, l'hébergement et la
+connexion LinkedIn, dès lors que le client dépense son forfait en numéros de
+mobile. Ce qu'il fera, puisque c'est l'article le plus utile et qu'il ne coûte
+pas plus cher dans le forfait.
+
+Décompter le mobile 10 unités, comme le fait déjà le barème à l'acte, ramène le
+coût du forfait à 9 $ pour Cabinet et 22,50 $ pour Entreprise quel que soit le
+mélange. C'est le correctif le plus rentable de tout cet audit, et il tient en
+une ligne de comptage.
+
+### Base de données
+
+Le code appelle le point multi-source (`employee_multi_source`,
+`coresignal-search/index.ts:34`), le plus cher de la gamme. La documentation
+publique indique que les requêtes `search/es_dsl` sont gratuites, mais qu'un
+aperçu multi-source coûte 20 crédits pour vingt résultats et qu'une collecte
+multi-source coûte 20 crédits par profil. Les abonnements vont de 49 $ pour
+2 500 crédits à 499 $ pour 35 000, soit **0,014 à 0,020 $ le crédit**.
+
+Si ces chiffres sont exacts, une page d'aperçu et une fiche complète coûtent
+chacune environ 0,28 à 0,40 $, quand Konekt les facture 2 crédits, soit 0,026 à
+0,032 $. Le forfait inclus reviendrait alors à 28-40 $ par mois sur Cabinet et
+84-120 $ sur Entreprise.
+
+Je n'ai pas pu vérifier ce point, et c'est celui qui pèse le plus lourd après
+l'enrichissement. Il est mesurable en cinq minutes : la fonction lit déjà l'
+en-tête `x-credits-remaining` à chaque appel et le journalise
+(`coresignal-search/index.ts:106` et `:473`). Une recherche et une fiche
+révélées depuis l'application, journaux ouverts, donnent la consommation exacte.
+Les seuls appels de production datent des 8 et 9 juillet, hors de la fenêtre de
+journaux consultable.
+
+### Ce qui reste inconnu
+
+Les factures mensuelles d'hébergement, de base de données et de frontal. Elles
+sont a priori fixes et faibles au regard du reste, mais elles n'entrent dans
+aucun calcul ci-dessus.
+
+## 6 bis. Marge par plan, avec les prix relevés
+
+Pour une organisation d'un siège consommant tout son forfait, hors hébergement.
+Le scénario favorable suppose un forfait dépensé en emails et une base de données
+peu coûteuse ; le scénario défavorable, un forfait dépensé en mobiles et le tarif
+multi-source de la base.
+
+| Plan | Revenu | Favorable | Marge | Défavorable | Marge |
+|---|---|---|---|---|---|
+| Solo | 64 $ | 9 $ | 86 % | 29 $ | 54 % |
+| Cabinet | 150 $ | 24 $ | 84 % | 135 $ | 10 % |
+| Entreprise | 204 $ | 55 $ | 73 % | 347 $ | −70 % |
+
+Détail du scénario défavorable sur Entreprise : 16,82 $ d'IA, 225 $
+d'enrichissement dépensé en mobiles, 99,60 $ de base de données au tarif
+multi-source, 5,29 $ de connexion LinkedIn.
+
+L'écart entre les deux colonnes n'est pas un aléa d'usage : c'est un choix que la
+grille laisse au client, sans le facturer.
 
 ## 7. Ordre de marche proposé
 
-1. Corriger la facturation du coaching en direct. C'est le seul défaut qui puisse
+1. Décompter le mobile 10 unités du forfait de contacts, comme le fait déjà le
+   barème à l'acte. Une ligne de comptage, et l'exposition d'Entreprise passe de
+   225 $ à 22,50 $ par mois. C'est le geste le plus rentable de cet audit.
+2. Corriger la facturation du coaching en direct. C'est le seul défaut qui puisse
    faire partir un client en colère dès la première semaine.
-2. Corriger le plafond de recherches pour un essai payé, en même temps.
-3. Poser les prix fournisseurs en constante et les transmettre au règlement, pour
-   que la marge devienne mesurable.
-4. Décompter le téléphone 10 unités du forfait de contacts.
-5. Décider entre forfait par siège et forfait par organisation, et l'écrire sur
+3. Corriger le plafond de recherches pour un essai payé, en même temps.
+4. Mesurer la consommation réelle de la base de données : une recherche et une
+   fiche depuis l'application, journaux ouverts, et lire `x-credits-remaining`.
+   Cinq minutes, et le plus gros point d'incertitude tombe.
+5. Remonter le prix de vente du crédit d'enrichissement au-dessus de son coût,
+   ou changer de fournisseur. Vendu 0,026 à 0,032 $ pour un coût de 0,040 à
+   0,050 $, il perd de l'argent à chaque appel hors forfait.
+6. Poser les prix fournisseurs en constante et les transmettre au règlement, pour
+   que la marge devienne mesurable au lieu d'être estimée.
+7. Décider entre forfait par siège et forfait par organisation, et l'écrire sur
    la page tarifs.
-6. Revoir la marche Cabinet vers Entreprise, dont le prix marginal du crédit est
+8. Revoir la marche Cabinet vers Entreprise, dont le prix marginal du crédit est
    plus bas que celui des packs.
 
-Les points 1 et 2 sont des correctifs de quelques lignes. Le reste demande une
+Les points 1, 2 et 3 sont des correctifs de quelques lignes. Le reste demande une
 décision commerciale, pas du code.
