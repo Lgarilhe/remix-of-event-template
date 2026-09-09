@@ -315,3 +315,68 @@ Vérifié sur PostgreSQL 16 avec les fonctions réelles : lot de trente mobiles
 borné à la réservation puis ramené à la consommation réelle, essai plafonné à
 vingt, abonné pendant l'essai servi à cent recherches, report de coût
 incrémental. Plus tsc, tests unitaires et build.
+
+## 9. Le coût fournisseur, rendu mesurable
+
+Le constat de la section 5 restait ouvert : les actions qui appellent un
+fournisseur externe enregistrent un coût de zéro, parce que le coût se déduit
+des jetons et qu'elles n'en consomment aucun. Quatre actions sont concernées, et
+non cinq : la recherche web porte déjà son prix réel, un cent par requête.
+Derrière ce symptôme commun, deux manques différents.
+
+Pour l'enrichissement de contact, c'est le prix qui manquait, pas la quantité.
+La réponse du fournisseur porte le nombre de crédits débités à chaque demande
+terminée, et cette valeur était déjà écrite dans
+`candidate_enrichments.credits_consumed` sans jamais servir au calcul du coût.
+Le débit la reprend maintenant, répartie entre l'email et le mobile au prorata
+de leurs poids de 1 et 10, multipliée par un prix unitaire lu dans le secret
+`BETTERCONTACT_CREDIT_COST_USD`. Sans secret, 0,045 $, milieu du tarif public
+relevé en section 6. Quand le fournisseur n'annonce aucune quantité, rien n'est
+écrit : un blanc se voit, un chiffre inventé passe pour une mesure.
+
+Pour la Base Konekt, c'est la quantité. Le catalogue suppose deux crédits
+fournisseur par recherche, la documentation du point multi-source en annonce
+vingt, et personne n'avait tranché : les seuls appels de production datent du
+8 juillet, hors de portée des journaux. La réponse HTTP porte pourtant le solde
+restant à chaque appel. Chaque ligne de `base_konekt_usage` garde désormais ce
+solde et l'instant du relevé, et la vue `base_konekt_provider_cost` donne la
+consommation d'une opération par différence entre deux relevés successifs.
+
+Trois précautions vont dans le même sens, une case vide plutôt qu'un chiffre
+faux. La mesure s'ordonne sur l'instant du relevé et non sur la création de la
+ligne, qui précède l'appel quand l'opération est prise sur le forfait. Une ligne
+sans relevé casse la chaîne au lieu de disparaître, sans quoi sa consommation
+serait reversée sur l'opération suivante, qui paraîtrait deux fois plus chère.
+Et comme la clé du fournisseur est partagée par défaut entre organisations, un
+écart ne compte que si l'opération précédente, toutes organisations confondues,
+vient de la même organisation.
+
+La mesure se fait à l'usage, sans rien à lancer. Après deux recherches
+consécutives depuis le même compte :
+
+```sql
+select action, provider_credits_read_at, provider_credits_consumed
+from base_konekt_provider_cost
+where provider_credits_consumed is not null
+order by provider_credits_read_at desc;
+```
+
+Si un aperçu coûte vingt crédits et non deux, le prix de revient d'une page
+passe de 0,04 $ à 0,40 $, et le forfait de cent recherches du plan Cabinet de
+4 $ à 40 $ par mois. C'est la dernière inconnue capable de retourner les marges
+de la section 6 bis. Tant qu'elle n'est pas levée, `coresignal_preview` et
+`coresignal_collect` restent à zéro dans le grand livre des crédits : le prix
+d'un crédit fournisseur s'y posera en constante une fois la quantité connue,
+comme pour l'enrichissement.
+
+Deux points restent hors de ce grand livre, sans être perdus. Une demande
+d'enrichissement couverte par le forfait ne produit aucun débit, donc aucune
+ligne de transaction, mais sa consommation est écrite sur la demande
+elle-même : la dépense du forfait se lit en sommant `credits_consumed` sur
+`candidate_enrichments`. Même chose pour un débit refusé faute de solde.
+
+La relecture contradictoire de ce lot a par ailleurs sorti un défaut plus vieux,
+sans rapport avec la mesure : deux sondages simultanés du même enrichissement
+voyaient tous les deux une demande en cours et la facturaient chacun leur tour.
+Le passage à « terminée » est maintenant réclamé par une écriture
+conditionnelle, et seule la requête qui l'emporte débite.

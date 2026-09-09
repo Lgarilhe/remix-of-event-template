@@ -32,6 +32,23 @@ const corsHeaders = {
 
 const BC_BASE = "https://app.bettercontact.rocks/api/v2";
 
+/**
+ * Prix d'un crédit du fournisseur d'enrichissement, en dollars.
+ *
+ * La quantité de crédits vient de la réponse du fournisseur, qui la renvoie à
+ * chaque demande terminée ; seul le prix unitaire manque. Le tarif public va de
+ * 0,040 à 0,050 $ le crédit selon le palier, et le secret
+ * BETTERCONTACT_CREDIT_COST_USD permet d'y mettre le tarif réellement contracté.
+ *
+ * Sans ce coût, settleCredits retombait sur le calcul par jetons, qui vaut zéro
+ * pour une action qui n'en consomme aucun : le suivi de marge était aveugle
+ * précisément sur la ligne la plus chère (audit tarifaire du 2026-09-09).
+ */
+const ENRICH_CREDIT_COST_USD = (() => {
+  const raw = Number(Deno.env.get("BETTERCONTACT_CREDIT_COST_USD"));
+  return Number.isFinite(raw) && raw > 0 ? raw : 0.045;
+})();
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -57,9 +74,19 @@ function extractContactFromBcResult(bcData: any): {
   email_provider: string | null;
   phone_provider: string | null;
   credits_consumed: number;
+  /**
+   * Nombre de crédits annoncé par le fournisseur, ou null s'il n'a rien annoncé
+   * ou a renvoyé autre chose qu'un nombre. Le distinguer d'un zéro est ce qui
+   * sépare un coût mesuré d'un coût supposé.
+   */
+  credits_reported: number | null;
 } {
   const dataArray = Array.isArray(bcData?.data) ? bcData.data : [];
   const first = dataArray[0] || {};
+  const rawCredits = Number(bcData?.credits_consumed);
+  const creditsReported = Number.isFinite(rawCredits) && rawCredits >= 0
+    ? Math.trunc(rawCredits)
+    : null;
   return {
     email: first.contact_email_address || null,
     email_status: first.contact_email_address_status || null,
@@ -67,7 +94,8 @@ function extractContactFromBcResult(bcData: any): {
     phone_type: first.contact_phone_number_type || null,
     email_provider: first.email_provider || null,
     phone_provider: first.phone_provider || null,
-    credits_consumed: Number(bcData?.credits_consumed ?? 0),
+    credits_consumed: creditsReported ?? 0,
+    credits_reported: creditsReported,
   };
 }
 
@@ -281,29 +309,51 @@ Deno.serve(async (req) => {
     const isIncluded = cached?.included === true;
 
     if (cached?.id) {
-      // Update la row existante
-      const { error: updateError } = await serviceClient
+      // Le passage à « terminée » est réclamé par une écriture conditionnelle :
+      // seule la requête qui trouve encore la demande en cours l'emporte, et
+      // c'est elle seule qui débite. Deux sondages simultanés du même
+      // request_id (deux onglets, un lot qui repasse) voyaient sinon tous les
+      // deux une demande en cours et facturaient chacun leur tour.
+      const { data: claimed, error: updateError } = await serviceClient
         .from("candidate_enrichments")
         .update(updatePayload)
-        .eq("id", cached.id);
+        .eq("id", cached.id)
+        .eq("status", "pending")
+        .select("id");
 
       if (updateError) {
         console.warn("[get-enrichment-status] UPDATE failed:", updateError.message);
       }
+      const wonTransition = (claimed ?? []).length > 0;
 
       // ── SETTLE CREDITS Konekt ──
       // Débite uniquement si :
+      //  - cette requête a gagné la transition « en cours » → « terminée »
       //  - la demande n'est pas couverte par le forfait (included = false)
-      //  - on n'a pas déjà settle pour cette row (credits_consumed était 0 avant)
       //  - BC a réellement trouvé email ou phone (sinon BC ne facture rien non plus)
-      // L'idempotence est garantie par : on settle UNE FOIS par transition pending→terminated.
       // Si l'user re-clique enrich sur ce profil dans 30j, c'est servi par le cache (pas de re-settle).
-      const alreadySettled = (cached.credits_consumed ?? 0) > 0;
-      if (!alreadySettled && cached.organization_id) {
+      if (wonTransition && cached.organization_id) {
         const ownerUserId = cached.requested_by_user_id || auth.userId;
         let creditsUsed = 0;
 
         if (!isIncluded) {
+          // Coût fournisseur de la demande. La réponse porte le nombre de
+          // crédits réellement débités : on le répartit entre l'email et le
+          // mobile au prorata de leurs poids, 1 et 10. Si le fournisseur n'a
+          // rien annoncé, aucun coût n'est écrit : mieux vaut un blanc qu'un
+          // chiffre inventé, puisque ce champ ne sert qu'à mesurer la marge.
+          const emailUnits = contact.email ? 1 : 0;
+          const phoneUnits = contact.phone ? 10 : 0;
+          const nominalUnits = emailUnits + phoneUnits;
+          const costPerUnit = contact.credits_reported != null && nominalUnits > 0
+            ? (contact.credits_reported * ENRICH_CREDIT_COST_USD) / nominalUnits
+            : null;
+          if (contact.credits_reported != null && contact.credits_reported > 0 && nominalUnits === 0) {
+            console.error(
+              `[get-enrichment-status] facturé ${contact.credits_reported} crédits sans résultat pour ${requestId}`,
+            );
+          }
+
           if (contact.email) {
             await settleCredits(serviceClient, {
               organizationId: cached.organization_id,
@@ -312,6 +362,7 @@ Deno.serve(async (req) => {
               modelId: "claude-haiku-4-5", // dummy, floor=1 utilisé car tokens=0
               tokensInput: 0,
               tokensOutput: 0,
+              ...(costPerUnit != null ? { costUsd: costPerUnit * emailUnits } : {}),
               description: `Contact enrichi (email) : ${cached.linkedin_url}`,
             });
             creditsUsed += 1;
@@ -324,6 +375,7 @@ Deno.serve(async (req) => {
               modelId: "claude-haiku-4-5",
               tokensInput: 0,
               tokensOutput: 0,
+              ...(costPerUnit != null ? { costUsd: costPerUnit * phoneUnits } : {}),
               description: `Contact enrichi (téléphone) : ${cached.linkedin_url}`,
             });
             creditsUsed += 10;

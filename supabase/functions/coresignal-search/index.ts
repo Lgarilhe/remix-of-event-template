@@ -91,6 +91,22 @@ interface CoresignalHttp {
   body: unknown;
 }
 
+/**
+ * Lit un en-tête numérique du fournisseur. Un en-tête absent, vide, illisible ou
+ * hors des bornes d'un entier signé donne null. La colonne de mesure est un
+ * integer : une valeur non finie ou trop grande y ferait échouer l'écriture de
+ * la ligne d'usage entière, pour un chiffre qui n'est qu'un instrument.
+ */
+const INT32_MAX = 2_147_483_647;
+
+function toFiniteInt(raw: string | null): number | null {
+  if (raw == null || raw.trim() === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const t = Math.trunc(n);
+  return Math.abs(t) <= INT32_MAX ? t : null;
+}
+
 async function callCoresignal(
   apiKey: string,
   path: string,
@@ -111,8 +127,8 @@ async function callCoresignal(
   return {
     ok: res.ok,
     status: res.status,
-    totalResults: totalResults != null ? Number(totalResults) : null,
-    creditsRemaining: creditsRemaining != null ? Number(creditsRemaining) : null,
+    totalResults: toFiniteInt(totalResults),
+    creditsRemaining: toFiniteInt(creditsRemaining),
     nextAfter: nextAfter != null && nextAfter !== "" ? nextAfter : null,
     body,
   };
@@ -138,6 +154,31 @@ function mapCoresignalError(http: CoresignalHttp): Response {
     return json(400, { success: false, error: "Recherche non comprise par la Base Konekt, ajustez vos critères", errorType: "BAD_QUERY", retryable: false });
   }
   return json(502, { success: false, error: "La Base Konekt est momentanément indisponible", errorType: "UPSTREAM", retryable: true });
+}
+
+/**
+ * Inscrit sur une ligne d'usage déjà posée le solde de crédits relevé chez le
+ * fournisseur. Sert aux aperçus pris sur le forfait, dont la ligne est créée par
+ * la réservation, avant l'appel.
+ */
+async function stampProviderCredits(
+  svc: ReturnType<typeof serviceClient>,
+  usageId: string,
+  remaining: number | null,
+): Promise<void> {
+  if (remaining == null || !Number.isFinite(remaining)) return;
+  try {
+    const { error } = await svc.rpc("stamp_base_konekt_provider_credits", {
+      p_usage_id: usageId,
+      p_provider_credits_remaining: remaining,
+    });
+    // La fonction peut ne pas encore exister si les fonctions edge sont
+    // déployées avant la migration. La mesure est alors simplement absente,
+    // sans conséquence sur la recherche ni sur le forfait.
+    if (error) console.warn("[coresignal-search] solde fournisseur non inscrit (non bloquant):", error);
+  } catch (e) {
+    console.warn("[coresignal-search] solde fournisseur non inscrit (non bloquant):", e);
+  }
 }
 
 /** Débite les crédits Konekt (action non-LLM, floor utilisé car tokens=0). */
@@ -216,15 +257,36 @@ async function recordUsage(
   userId: string | null,
   action: string,
   credits: number,
+  /**
+   * Solde de crédits restant chez le fournisseur juste après l'appel (en-tête
+   * x-credits-remaining). L'écart entre deux lignes donne le coût réel d'un
+   * aperçu ou d'une fiche : le catalogue en suppose deux, la documentation du
+   * point multi-source parle de vingt, et personne n'avait mesuré.
+   */
+  providerCreditsRemaining?: number | null,
 ): Promise<void> {
   if (!orgId) return;
+  // PostgREST résout une fonction par l'ENSEMBLE des noms d'arguments reçus. Un
+  // cinquième nom que la base ne connaît pas encore ne fait pas correspondance,
+  // et l'appel échoue en PGRST202 : la trace de l'usage serait perdue alors que
+  // les crédits, eux, ont été débités. Les fonctions edge et les migrations
+  // étant déployées par deux workflows parallèles, cette fenêtre existe. D'où
+  // l'argument omis quand il est vide, et le rejeu à quatre arguments sinon.
+  const base = {
+    p_organization_id: orgId,
+    p_user_id: userId,
+    p_action: action,
+    p_credits: credits,
+  };
+  const withProvider = providerCreditsRemaining != null
+    ? { ...base, p_provider_credits_remaining: providerCreditsRemaining }
+    : base;
   try {
-    const { error } = await svc.rpc("record_base_konekt_usage", {
-      p_organization_id: orgId,
-      p_user_id: userId,
-      p_action: action,
-      p_credits: credits,
-    });
+    let { error } = await svc.rpc("record_base_konekt_usage", withProvider);
+    if (error && (error as { code?: string }).code === "PGRST202" && withProvider !== base) {
+      console.warn("[coresignal-search] signature à cinq arguments inconnue, rejeu sans le solde fournisseur");
+      ({ error } = await svc.rpc("record_base_konekt_usage", base));
+    }
     if (error) console.warn("[coresignal-search] record_base_konekt_usage failed (non-blocking):", error);
   } catch (e) {
     console.warn("[coresignal-search] record_base_konekt_usage threw (non-blocking):", e);
@@ -463,7 +525,12 @@ async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClien
       included = true;
     } else {
       const settled = await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — aperçu");
-      await recordUsage(svc, orgId, userId, "preview", settled ? PREVIEW_COST : 0);
+      await recordUsage(svc, orgId, userId, "preview", settled ? PREVIEW_COST : 0, creditsRemaining);
+    }
+    // Aperçu pris sur le forfait : la ligne d'usage existe déjà, posée par la
+    // réservation avant l'appel. On y inscrit le solde relevé après coup.
+    if (included && quota.reservationId) {
+      await stampProviderCredits(svc, quota.reservationId, creditsRemaining);
     }
   } else if (quota.reservationId) {
     // Rien servi : l'unité réservée retourne au quota du mois.
@@ -496,9 +563,12 @@ async function handleSearch(apiKey: string, svc: ReturnType<typeof serviceClient
   if (ids.length > 0) {
     if (quota.reservationId) {
       included = true;
+      // La ligne d'usage existe déjà, posée par la réservation avant l'appel :
+      // on y inscrit le solde relevé après coup, comme pour l'aperçu.
+      await stampProviderCredits(svc, quota.reservationId, http.creditsRemaining);
     } else {
       const settled = await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — recherche (IDs)");
-      await recordUsage(svc, orgId, userId, "search", settled ? PREVIEW_COST : 0);
+      await recordUsage(svc, orgId, userId, "search", settled ? PREVIEW_COST : 0, http.creditsRemaining);
     }
   } else if (quota.reservationId) {
     await releaseIncluded(svc, quota.reservationId);
@@ -564,7 +634,7 @@ async function handleCollect(apiKey: string, svc: ReturnType<typeof serviceClien
 
   // La fiche complète reste facturée en crédits, quota inclus ou non.
   const settled = await settle(svc, orgId, userId, "coresignal_collect", "Base Konekt — fiche complète");
-  await recordUsage(svc, orgId, userId, "collect", settled ? COLLECT_COST : 0);
+  await recordUsage(svc, orgId, userId, "collect", settled ? COLLECT_COST : 0, http.creditsRemaining);
   console.log(`[coresignal-search] collect LIVE id=${key} credits=${http.creditsRemaining}`);
 
   return json(200, { success: true, profile, cached: false, included: false });
