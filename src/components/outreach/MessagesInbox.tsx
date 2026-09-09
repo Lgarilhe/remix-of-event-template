@@ -7,7 +7,7 @@
  * La hauteur est imposée par le parent (Inbox.tsx fixe via calc(100dvh)).
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { MessageSquare } from 'lucide-react';
 import { useMessagesInbox } from '@/hooks/useMessagesInbox';
@@ -17,9 +17,18 @@ import { useAutoPrefetchAnalyses } from '@/hooks/useAutoPrefetchAnalyses';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
 import { AddToPipelineModal } from './AddToPipelineModal';
+import { SequenceEnrollModal } from './SequenceEnrollModal';
+import type { LinkedInProfile } from './types';
 import { getCurrentCandidateProfile, getChatAvatar } from '@/hooks/useMessagesInboxHelpers';
 import { Button } from '@/components/ui/button';
-import { GitBranch, X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { GitBranch } from 'lucide-react';
 import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 
 interface MessagesInboxProps {
@@ -94,6 +103,31 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
   );
 
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
+
+  // Séquence choisie, pas encore engagée. Le choix ouvre la préparation, il
+  // n'inscrit personne (audit UX du 09/09/2026, constat UX05).
+  const [pendingSequence, setPendingSequence] = useState<
+    { id: string; name: string; steps: any[] } | null
+  >(null);
+
+  // Le candidat de la conversation, au format attendu par la préparation
+  // d'inscription partagée avec le sourcing.
+  const enrollProfile = useMemo<LinkedInProfile | null>(() => {
+    const chat = inbox.selectedChat;
+    if (!chat || !candidateProfile?.linkedinId) return null;
+    const attendee = chat.attendees?.[0];
+    return {
+      id: candidateProfile.linkedinId,
+      name: candidateProfile.name,
+      headline: candidateProfile.headline,
+      profile_url: candidateProfile.linkedinUrl,
+      public_profile_url: candidateProfile.linkedinUrl,
+      profile_picture_url: getChatAvatar(chat) || undefined,
+      // Distance inconnue depuis une conversation : la vérification de
+      // compatibilité la traite comme non renseignée, donc sans blocage abusif.
+      network_distance: (attendee as { network_distance?: unknown })?.network_distance,
+    } as unknown as LinkedInProfile;
+  }, [inbox.selectedChat, candidateProfile]);
 
   const handleDeleteChat = async (chatId: string) => {
     const success = await deleteChat(chatId);
@@ -275,40 +309,68 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
         </div>
       </div>
 
-      {/* Modals — fixed/portal, hors layout grid */}
-      {inbox.showSequenceSelect && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-background border border-border rounded-md p-4 max-w-sm w-full shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-sm">Choisir une séquence</h3>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => inbox.setShowSequenceSelect(false)}
+      {/*
+        Choix de la séquence. Le dialogue partagé remplace la fenêtre maison :
+        celle-ci était posée à `z-50` dans le même composant que la conversation
+        mobile en `z-[2100]`, donc invisible sur téléphone (constat UX07). Il
+        apporte au passage le focus, la touche Échap et le titre annoncé.
+      */}
+      <Dialog open={inbox.showSequenceSelect} onOpenChange={inbox.setShowSequenceSelect}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Choisir une séquence</DialogTitle>
+            <DialogDescription className="text-xs">
+              {candidateProfile?.name
+                ? `Vous verrez les messages et les avertissements avant d'engager ${candidateProfile.name}.`
+                : "Vous verrez les messages et les avertissements avant d'engager le candidat."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {inbox.sequences.length === 0 && (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                Aucune séquence active pour l'instant.
+              </p>
+            )}
+            {inbox.sequences.map((sequence) => (
+              <button
+                key={sequence.id}
+                onClick={() => {
+                  // Choisir n'inscrit pas : on ouvre la préparation.
+                  setPendingSequence(sequence);
+                  inbox.setShowSequenceSelect(false);
+                }}
+                className="w-full p-3 text-left border border-border rounded-md hover:bg-accent/20 transition-colors"
               >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {inbox.sequences.map((sequence) => (
-                <button
-                  key={sequence.id}
-                  onClick={() => inbox.enrollInSequence(sequence)}
-                  className="w-full p-3 text-left border border-border rounded-md hover:bg-accent/20 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <GitBranch className="w-4 h-4 text-foreground" />
-                    <span className="font-medium text-sm">{sequence.name}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {sequence.steps.length} étape(s)
-                  </p>
-                </button>
-              ))}
-            </div>
+                <div className="flex items-center gap-2">
+                  <GitBranch className="w-4 h-4 text-foreground" />
+                  <span className="font-medium text-sm">{sequence.name}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {sequence.steps.length} étape(s)
+                </p>
+              </button>
+            ))}
           </div>
-        </div>
+        </DialogContent>
+      </Dialog>
+
+      {/*
+        Préparation avant engagement, la même que depuis le sourcing : candidat,
+        messages, contacts récents et avertissements de compatibilité, puis
+        confirmation explicite.
+      */}
+      {pendingSequence && enrollProfile && selectedAccount && (
+        <SequenceEnrollModal
+          isOpen
+          onClose={() => setPendingSequence(null)}
+          sequence={pendingSequence}
+          profiles={[enrollProfile]}
+          accountId={selectedAccount}
+          onSuccess={() => {
+            setPendingSequence(null);
+            inbox.fetchEnrollments();
+          }}
+        />
       )}
 
       {inbox.showPipelineModal && candidateProfile && (

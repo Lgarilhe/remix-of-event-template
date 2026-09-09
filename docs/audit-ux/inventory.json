@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-09T09:36:15.200Z",
+  "generatedAt": "2026-09-09T16:42:58.429Z",
   "routes": [
     {
       "path": "/",
@@ -579,7 +579,7 @@
         "AppLayout"
       ],
       "entry": "src/pages/Outreach.tsx",
-      "files": 30,
+      "files": 31,
       "totals": {
         "dialogs": 2,
         "portals": 0,
@@ -592,7 +592,7 @@
         "toastError": 25,
         "maybeSingle": 6,
         "windowConfirm": 0,
-        "localStorage": 1
+        "localStorage": 6
       },
       "hotspots": [
         {
@@ -681,7 +681,7 @@
         "AppLayout"
       ],
       "entry": "src/pages/MissionWorkspace.tsx",
-      "files": 228,
+      "files": 229,
       "totals": {
         "dialogs": 38,
         "portals": 2,
@@ -694,7 +694,7 @@
         "toastError": 235,
         "maybeSingle": 19,
         "windowConfirm": 1,
-        "localStorage": 33
+        "localStorage": 38
       },
       "hotspots": [
         {
@@ -1461,20 +1461,20 @@
         "AppLayout"
       ],
       "entry": "src/pages/Inbox.tsx",
-      "files": 90,
+      "files": 117,
       "totals": {
-        "dialogs": 11,
-        "portals": 0,
-        "inputs": 20,
+        "dialogs": 14,
+        "portals": 1,
+        "inputs": 25,
         "labels": 11,
         "forms": 1,
-        "writes": 38,
+        "writes": 49,
         "invokes": 6,
-        "toastSuccess": 52,
-        "toastError": 87,
-        "maybeSingle": 15,
+        "toastSuccess": 56,
+        "toastError": 98,
+        "maybeSingle": 21,
         "windowConfirm": 0,
-        "localStorage": 18
+        "localStorage": 23
       },
       "hotspots": [
         {
@@ -1489,6 +1489,21 @@
           "toastSuccess": 6,
           "toastError": 5,
           "maybeSingle": 3,
+          "windowConfirm": 0,
+          "localStorage": 0
+        },
+        {
+          "file": "src/components/outreach/EnrollmentPreviewModal.tsx",
+          "dialogs": 0,
+          "portals": 1,
+          "inputs": 1,
+          "labels": 0,
+          "forms": 0,
+          "writes": 6,
+          "invokes": 0,
+          "toastSuccess": 2,
+          "toastError": 5,
+          "maybeSingle": 2,
           "windowConfirm": 0,
           "localStorage": 0
         },
@@ -1568,6 +1583,21 @@
           "localStorage": 0
         },
         {
+          "file": "src/components/outreach/SequenceEnrollModal.tsx",
+          "dialogs": 1,
+          "portals": 0,
+          "inputs": 0,
+          "labels": 0,
+          "forms": 0,
+          "writes": 3,
+          "invokes": 0,
+          "toastSuccess": 1,
+          "toastError": 4,
+          "maybeSingle": 0,
+          "windowConfirm": 0,
+          "localStorage": 0
+        },
+        {
           "file": "src/hooks/useUserTemplateVariables.ts",
           "dialogs": 0,
           "portals": 0,
@@ -1598,6 +1628,21 @@
           "localStorage": 0
         },
         {
+          "file": "src/hooks/useEnrollmentPreview.ts",
+          "dialogs": 0,
+          "portals": 0,
+          "inputs": 0,
+          "labels": 0,
+          "forms": 0,
+          "writes": 2,
+          "invokes": 0,
+          "toastSuccess": 0,
+          "toastError": 0,
+          "maybeSingle": 2,
+          "windowConfirm": 0,
+          "localStorage": 0
+        },
+        {
           "file": "src/components/outreach/inbox/MessageView.tsx",
           "dialogs": 2,
           "portals": 0,
@@ -1608,51 +1653,6 @@
           "invokes": 0,
           "toastSuccess": 2,
           "toastError": 2,
-          "maybeSingle": 0,
-          "windowConfirm": 0,
-          "localStorage": 0
-        },
-        {
-          "file": "src/pages/Inbox.tsx",
-          "dialogs": 0,
-          "portals": 0,
-          "inputs": 0,
-          "labels": 0,
-          "forms": 0,
-          "writes": 1,
-          "invokes": 0,
-          "toastSuccess": 0,
-          "toastError": 0,
-          "maybeSingle": 0,
-          "windowConfirm": 0,
-          "localStorage": 0
-        },
-        {
-          "file": "src/hooks/useAuthReady.ts",
-          "dialogs": 0,
-          "portals": 0,
-          "inputs": 0,
-          "labels": 0,
-          "forms": 0,
-          "writes": 1,
-          "invokes": 0,
-          "toastSuccess": 0,
-          "toastError": 0,
-          "maybeSingle": 0,
-          "windowConfirm": 0,
-          "localStorage": 0
-        },
-        {
-          "file": "src/hooks/useAttendeePictures.ts",
-          "dialogs": 0,
-          "portals": 0,
-          "inputs": 0,
-          "labels": 0,
-          "forms": 0,
-          "writes": 1,
-          "invokes": 0,
-          "toastSuccess": 0,
-          "toastError": 0,
           "maybeSingle": 0,
           "windowConfirm": 0,
           "localStorage": 0

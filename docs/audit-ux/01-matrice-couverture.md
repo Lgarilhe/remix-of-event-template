@@ -31,7 +31,7 @@ Une route n'est **complète** que si les quatre axes sont faits. Tant qu'une cas
 | `/sourcing/:id` | SourcingSearchPage | 55 | fait | à faire | partiel | à faire | partiel | shortlist et selection reproduites en local |
 | `/agents` | AgentsPage | 8 | à faire | à faire | à faire | à faire | à faire |  |
 | `/pipeline` | ATS | 72 | fait | à faire | à faire | à faire | partiel |  |
-| `/inbox` | Inbox | 44 | fait | à faire | partiel | à faire | partiel | brouillons reproduits en local, superposition mobile non reproduite |
+| `/inbox` | Inbox | 55 | fait | à faire | partiel | à faire | partiel | brouillons reproduits en local, superposition mobile non reproduite |
 | `/calendar` | CalendarPage | 17 | partiel | à faire | à faire | à faire | partiel | revue ponctuelle seulement |
 | `/tasks` | TasksPage | 15 | partiel | à faire | à faire | à faire | partiel | revue ponctuelle seulement |
 | `/dashboard` | Dashboard | 75 | partiel | à faire | à faire | à faire | partiel | revue ponctuelle seulement |
