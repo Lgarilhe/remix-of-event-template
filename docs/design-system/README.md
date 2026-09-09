@@ -164,9 +164,28 @@ sont recopiés à l'identique dans quatre fichiers.
 L'échelle de notation change de dénominateur : le portail client affiche « Score n/100 »
 partout mais sa scorecard envoie une note sur 5.
 
+Les canaux de communication n'ont pas de couleur stable. L'email se peint en vert
+(`bg-emerald-500/15`) dans l'aperçu d'enrôlement, en violet (`bg-brand-purple/10`) dans
+l'éditeur visuel, en gris dans le constructeur de séquence et en bleu dans son badge.
+LinkedIn compte six représentations. Le composant `ChannelIcon` ne connaît que deux canaux,
+`linkedin` et `whatsapp`, et sa fonction de détection retombe sur `linkedin` par défaut : une
+conversation email affiche donc le logo LinkedIn dans la liste de l'inbox.
+
+Le ton des messages générés a quatre vocabulaires. Le constructeur de séquence propose
+Professionnel, Décontracté, Enthousiaste. Le module d'InMail groupé propose les mêmes
+valeurs sous les libellés Pro, Cool, Wow. L'inbox propose Formel, Décontracté, Direct,
+Empathique. Les trois écrans écrivent dans des champs différents.
+
 Les libellés d'entretien de la scorecard restent en anglais dans une interface française :
 « Phone Screen », « Culture Fit », « Strong Yes », « Maybe ». Les titres de l'assistant IA
 aussi : « Sourcing Assistant », « Brief Assistant ».
+
+Le franglais interne remonte jusqu'aux messages utilisateur : « step », « skippé »,
+« enrollment » et « preview » apparaissent dans des toasts et des libellés de bouton
+(« Séquence désactivée, enrollments mis en pause », « Générer la preview de ce step »).
+Deux syntaxes de variable circulent dans les modèles de message, `{{first_name}}` dans le
+champ principal et `{{firstName}}` dans les variantes de test A/B, et l'aide d'une modale
+en documente une troisième, `{firstName}`, qui ne fonctionne pas.
 
 ## 8. Le ton oscille entre tutoiement et vouvoiement
 
