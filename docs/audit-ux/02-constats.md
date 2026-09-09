@@ -28,9 +28,9 @@ La contre-vérification n'a infirmé aucun constat P1.
 | UX02 | P1 ✅ | Les actions groupées résolvent les profils dans les résultats de recherche seuls, alors que la liste affichée y ajoute le vivier | oui | résolution via `search.results.find`, fusion via `mergedResults` | 1 |
 | UX03 | P1 ✅ | Une sauvegarde qui ne renvoie aucune ligne est présentée comme réussie | oui | `useSourcingProjects.ts` : `maybeSingle()` puis `data \|\| { id, ...payload }` | 1 |
 | UX04 | P1 ✅ | Le brouillon perd la dernière frappe à la sortie, et un texte effacé peut revenir | oui | nettoyage du minuteur sans enregistrement, garde `if (!newMessage) return` dans `MessageView` | 1 |
-| UX05 | P1 | Choisir une séquence dans la messagerie inscrit le candidat immédiatement | oui | `MessagesInbox.tsx` : `onClick={() => inbox.enrollInSequence(sequence)}` | 1 |
-| UX06 | P1 | Fermer un éditeur long peut effacer un travail non enregistré | à confirmer | `CreateMissionV2.tsx`, `SequenceBuilder.tsx` | 1 |
-| UX07 | P1 | Le choix de séquence passe sous la conversation mobile | structurel | même composant : conversation `z-[2100]`, sélecteur `z-50` | 1 |
+| UX05 | P1 ✅ | Choisir une séquence dans la messagerie inscrit le candidat immédiatement | oui | `MessagesInbox.tsx` : `onClick={() => inbox.enrollInSequence(sequence)}` | 1 |
+| UX06 | P1 ✅ | Fermer un éditeur long peut effacer un travail non enregistré | oui | `CreateMissionV2.tsx` remettait les champs à vide 200 ms après la fermeture, `SequenceBuilder.tsx` perdait son état au démontage | 1 |
+| UX07 | P1 ✅ | Le choix de séquence passe sous la conversation mobile | structurel | même composant : conversation `z-[2100]`, sélecteur `z-50`. Corrigé par le dialogue partagé, **reste à confirmer sur un vrai téléphone** | 1 |
 | UX08 | P2 | Un échec de chargement s'affiche comme « rien à voir » ou comme une suppression | à confirmer | `SourcingSearches.tsx`, `MissionWorkspace.tsx` | 2 |
 | UX09 | P2 | Le compteur Messages tombe à zéro à l'ouverture de la page, sans lecture | oui | `Inbox.tsx` marque lues toutes les notifications `new_message` au montage | 2 |
 | UX10 | P2 | « Rechercher » ouvre l'assistant, les raccourcis ne sont pas cohérents | à confirmer | `AppSidebar.tsx`, `NavigationPalette.tsx` | 2 |
