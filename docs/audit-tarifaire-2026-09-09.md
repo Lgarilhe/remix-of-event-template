@@ -286,3 +286,32 @@ grille laisse au client, sans le facturer.
 
 Les points 1, 2 et 3 sont des correctifs de quelques lignes. Le reste demande une
 décision commerciale, pas du code.
+
+## 8. Ce qui a été corrigé le 9 septembre
+
+Migration `20260909164751` et deux fonctions edge, relus par une passe
+contradictoire de vingt-cinq constats dont sept retenus, puis corrigés :
+
+- Un mobile consomme dix unités de forfait, comme au barème à l'acte. Les écrans
+  qui annonçaient des « contacts » disent maintenant des emails, avec
+  l'équivalence mobile.
+- Une demande en cours retient sa réservation dans le forfait
+  (`candidate_enrichments.reserved_units`). Sans elle, un lot de cent mobiles
+  passait entier avant que le compteur, qui ne voit que les demandes terminées,
+  ne bouge.
+- Pendant un essai non payé, le forfait tombe à vingt unités, compté sur la
+  durée de l'essai et non sur le mois civil, et la date de remise à zéro
+  annoncée suit la même fenêtre.
+- Le plafond d'essai de la Base Konekt ne s'applique plus à une organisation qui
+  a déjà payé.
+- Le coaching en direct est facturé à la minute écoulée, réservée par une
+  écriture conditionnelle avant d'être débitée, et le compteur part de la
+  première analyse et non de l'ouverture du panneau.
+- La cascade de recherche ne court-circuite plus l'appel payant quand elle ne
+  couvre qu'une partie de la demande : un email en cache servait une demande de
+  mobile, et le mobile devenait inaccessible trente jours.
+
+Vérifié sur PostgreSQL 16 avec les fonctions réelles : lot de trente mobiles
+borné à la réservation puis ramené à la consommation réelle, essai plafonné à
+vingt, abonné pendant l'essai servi à cent recherches, report de coût
+incrémental. Plus tsc, tests unitaires et build.

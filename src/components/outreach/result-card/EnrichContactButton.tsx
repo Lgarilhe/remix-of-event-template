@@ -115,9 +115,11 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
     }
   }, [status, contact, invalidateBalance, refetchQuota]);
 
-  // Forfait : un email = 1 contact inclus, un téléphone = 1 contact inclus.
-  // Le serveur couvre la demande entière ou pas du tout (reste >= unités demandées).
-  const requestedUnits = (withEmail ? 1 : 0) + (withPhone ? 1 : 0);
+  // Forfait : un email = 1 unité, un mobile = 10, même rapport que le coût en
+  // crédits hors forfait. Le serveur couvre la demande entière ou pas du tout
+  // (reste >= unités demandées) : compter le mobile pour une unité annonçait
+  // « inclus » sur une demande que le serveur facturait.
+  const requestedUnits = (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
   const coveredByPlan = requestedUnits > 0 && includedRemaining >= requestedUnits;
   // Coût en crédits, seulement pour la part hors forfait
   const totalCost = coveredByPlan ? 0 : (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
@@ -389,7 +391,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
             insufficientCredits || isQuotaExhausted ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-muted/40'
           }`}>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Contacts inclus ce mois :</span>
+              <span className="text-muted-foreground">Forfait du mois (1 par email, 10 par mobile) :</span>
               <span className="font-bold tabular-nums text-foreground">
                 {includedUsed} / {includedMonthly}
                 {resetDay && <span className="font-normal text-muted-foreground"> (reset le {resetDay})</span>}

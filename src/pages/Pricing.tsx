@@ -39,7 +39,9 @@ const FAQS = [
 const COMPARISON_ROWS: { label: string; key: keyof SubscriptionPlan['limits'] }[] = [
   { label: 'Missions actives', key: 'max_jobs' },
   { label: 'Crédits IA / mois', key: 'ai_credits' },
-  { label: 'Contacts enrichis / mois', key: 'contacts_included' },
+  // Un email consomme une unité, un mobile dix : le libellé le dit, sinon le
+  // client compte des contacts et en obtient dix fois moins.
+  { label: 'Emails de contact / mois (un mobile en vaut 10)', key: 'contacts_included' },
   { label: 'Recherches Base Konekt / mois', key: 'database_searches_included' },
 ];
 

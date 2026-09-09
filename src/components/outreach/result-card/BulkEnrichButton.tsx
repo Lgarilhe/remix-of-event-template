@@ -114,9 +114,11 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
   const count = Math.min(eligibleProfiles.length, maxBatch);
   const tooMany = eligibleProfiles.length > maxBatch;
 
-  // Forfait : un email = 1 contact inclus, un téléphone = 1 contact inclus,
-  // couverture par profil entière ou nulle (comme côté serveur).
-  const unitsPerProfile = (withEmail ? 1 : 0) + (withPhone ? 1 : 0);
+  // Forfait : un email = 1 unité, un mobile = 10, même rapport que le coût en
+  // crédits hors forfait ; couverture par profil entière ou nulle (comme côté
+  // serveur). Compter le mobile pour une unité annonçait une couverture dix
+  // fois trop large et un coût maximum dix fois trop bas.
+  const unitsPerProfile = (withEmail ? 1 : 0) + (withPhone ? 10 : 0);
   const coveredProfiles = unitsPerProfile > 0
     ? Math.min(count, Math.floor(includedRemaining / unitsPerProfile))
     : 0;
@@ -294,7 +296,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Email professionnel</div>
                 <div className="text-[11px] text-muted-foreground">
-                  1 contact inclus par profil, sinon 1 crédit si trouvé
+                  1 unité de forfait par profil, sinon 1 crédit si trouvé
                 </div>
               </div>
             </label>
@@ -308,7 +310,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Téléphone mobile</div>
                 <div className="text-[11px] text-muted-foreground">
-                  1 contact inclus par profil, sinon 10 crédits si trouvé
+                  10 unités de forfait par profil, sinon 10 crédits si trouvé
                 </div>
               </div>
             </label>
@@ -319,7 +321,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
             insufficientCredits ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-muted/40'
           }`}>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Contacts inclus ce mois :</span>
+              <span className="text-muted-foreground">Forfait du mois (1 par email, 10 par mobile) :</span>
               <span className="font-bold tabular-nums text-foreground">
                 {includedUsed} / {includedMonthly}
                 {resetDay && <span className="font-normal text-muted-foreground"> (reset le {resetDay})</span>}
