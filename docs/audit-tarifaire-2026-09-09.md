@@ -339,27 +339,51 @@ fournisseur par recherche, la documentation du point multi-source en annonce
 vingt, et personne n'avait tranché : les seuls appels de production datent du
 8 juillet, hors de portée des journaux. La réponse HTTP porte pourtant le solde
 restant à chaque appel. Chaque ligne de `base_konekt_usage` garde désormais ce
-solde et l'instant du relevé, et la vue `base_konekt_provider_cost` donne la
-consommation d'une opération par différence entre deux relevés successifs.
+solde, l'instant du relevé, et la liste des appels que l'opération a déclenchés
+avec le solde après chacun.
 
-Trois précautions vont dans le même sens, une case vide plutôt qu'un chiffre
-faux. La mesure s'ordonne sur l'instant du relevé et non sur la création de la
-ligne, qui précède l'appel quand l'opération est prise sur le forfait. Une ligne
-sans relevé casse la chaîne au lieu de disparaître, sans quoi sa consommation
-serait reversée sur l'opération suivante, qui paraîtrait deux fois plus chère.
-Et comme la clé du fournisseur est partagée par défaut entre organisations, un
-écart ne compte que si l'opération précédente, toutes organisations confondues,
-vient de la même organisation.
-
-La mesure se fait à l'usage, sans rien à lancer. Après deux recherches
-consécutives depuis le même compte :
+Cette liste est ce qui donne la réponse. Une opération enchaîne ses appels
+séquentiellement dans la même invocation : l'écart entre deux relevés
+successifs est le coût du second appel, lu à l'intérieur d'une seule ligne. Rien
+n'est dérivé d'une autre ligne, donc ni la concurrence, ni une ligne manquante,
+ni un ordre d'arrivée ne peuvent la fausser. Un premier aperçu appelle le bloc
+d'identifiants puis l'aperçu proprement dit : cette opération-là donne à elle
+seule le prix des deux points.
 
 ```sql
-select action, provider_credits_read_at, provider_credits_consumed
-from base_konekt_provider_cost
+select endpoint, count(*) as mesures, round(avg(provider_credits_consumed), 1) as cout
+from base_konekt_call_cost
 where provider_credits_consumed is not null
+group by endpoint order by endpoint;
+```
+
+Une seconde vue, `base_konekt_provider_cost`, dérive le coût d'une opération
+entière d'une ligne à l'autre. Elle couvre ce que la première ne peut pas
+atteindre, le coût d'une opération qui n'a fait qu'un seul appel, comme une
+fiche complète. Elle repose en revanche sur des hypothèses que la production ne
+tient pas toujours : le scoring lance quatre fiches à la fois, et la première
+réponse revenue porte alors le décompte des quatre. D'où la colonne
+`mesure_isolee`, vraie seulement si aucune autre opération n'a relevé de solde
+dans la minute avant ni dans la minute après. Une minute borne la durée d'une
+opération, une fonction edge étant coupée à soixante secondes. Ne lire que ces
+lignes-là :
+
+```sql
+select action, provider_credits_consumed
+from base_konekt_provider_cost
+where mesure_isolee
 order by provider_credits_read_at desc;
 ```
+
+Trois corrections ont accompagné ces vues, chacune ayant produit un chiffre
+faux lors d'une vérification sur base réelle. Une réservation relâchée
+supprimait la ligne d'une opération dont les appels avaient pourtant été
+facturés, et la mesure suivante absorbait ces crédits : la ligne est désormais
+conservée, simplement dé-marquée, ce qui rend l'unité au forfait sans effacer la
+trace. Une ligne dont l'en-tête de solde manquait remettait la référence à zéro
+et doublait la mesure d'après. Et une opération en erreur après un premier appel
+réussi ne laissait rien : son relevé est maintenant écrit avant de rendre la
+main.
 
 Si un aperçu coûte vingt crédits et non deux, le prix de revient d'une page
 passe de 0,04 $ à 0,40 $, et le forfait de cent recherches du plan Cabinet de

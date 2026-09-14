@@ -107,10 +107,29 @@ function toFiniteInt(raw: string | null): number | null {
   return Math.abs(t) <= INT32_MAX ? t : null;
 }
 
+/**
+ * Relevé d'un appel fournisseur : le point appelé et le solde de crédits
+ * restant juste après. Les appels d'une opération étant séquentiels dans la
+ * même invocation, l'écart entre deux relevés successifs donne le coût du
+ * second, sans rien dériver d'une autre ligne d'usage. C'est la seule mesure
+ * qu'aucune concurrence ne peut fausser.
+ */
+interface ProviderCall {
+  endpoint: string;
+  remaining: number;
+}
+
+/**
+ * Trace portée par la requête, jamais par un global : deux requêtes servies par
+ * la même isolate mélangeraient sinon leurs appels.
+ */
+type CallTrace = ProviderCall[];
+
 async function callCoresignal(
   apiKey: string,
   path: string,
   init: { method: "GET" | "POST"; body?: unknown },
+  trace?: CallTrace,
 ): Promise<CoresignalHttp> {
   const res = await fetchWithTimeout(`${CORESIGNAL_BASE}/${path}`, {
     method: init.method,
@@ -119,8 +138,12 @@ async function callCoresignal(
   }, 20000);
 
   const totalResults = res.headers.get("x-total-results");
-  const creditsRemaining = res.headers.get("x-credits-remaining");
+  const remaining = toFiniteInt(res.headers.get("x-credits-remaining"));
   const nextAfter = res.headers.get("x-next-page-after");
+
+  // L'appel est relevé qu'il ait réussi ou non : un appel en erreur peut avoir
+  // été facturé, et la mesure doit pouvoir le voir.
+  if (trace && remaining != null) trace.push({ endpoint: path.split("?")[0], remaining });
   let body: unknown = null;
   try { body = await res.json(); } catch { /* peut être vide sur erreur */ }
 
@@ -128,7 +151,7 @@ async function callCoresignal(
     ok: res.ok,
     status: res.status,
     totalResults: toFiniteInt(totalResults),
-    creditsRemaining: toFiniteInt(creditsRemaining),
+    creditsRemaining: remaining,
     nextAfter: nextAfter != null && nextAfter !== "" ? nextAfter : null,
     body,
   };
@@ -165,12 +188,15 @@ async function stampProviderCredits(
   svc: ReturnType<typeof serviceClient>,
   usageId: string,
   remaining: number | null,
+  trace?: CallTrace,
 ): Promise<void> {
-  if (remaining == null || !Number.isFinite(remaining)) return;
+  const calls = trace && trace.length > 0 ? trace : null;
+  if ((remaining == null || !Number.isFinite(remaining)) && !calls) return;
   try {
     const { error } = await svc.rpc("stamp_base_konekt_provider_credits", {
       p_usage_id: usageId,
-      p_provider_credits_remaining: remaining,
+      p_provider_credits_remaining: remaining != null && Number.isFinite(remaining) ? remaining : null,
+      ...(calls ? { p_provider_calls: calls } : {}),
     });
     // La fonction peut ne pas encore exister si les fonctions edge sont
     // déployées avant la migration. La mesure est alors simplement absente,
@@ -178,6 +204,28 @@ async function stampProviderCredits(
     if (error) console.warn("[coresignal-search] solde fournisseur non inscrit (non bloquant):", error);
   } catch (e) {
     console.warn("[coresignal-search] solde fournisseur non inscrit (non bloquant):", e);
+  }
+}
+
+/**
+ * Sortie en erreur après qu'au moins un appel a été facturé : le relevé doit
+ * survivre. Sans lui, la réservation serait supprimée et la consommation déjà
+ * engagée se reporterait en silence sur la mesure suivante.
+ */
+async function keepTraceOnError(
+  svc: ReturnType<typeof serviceClient>,
+  orgId: string | null,
+  userId: string | null,
+  action: string,
+  reservationId: string | null | undefined,
+  trace: CallTrace,
+): Promise<void> {
+  if (trace.length === 0) return;
+  const remaining = trace[trace.length - 1].remaining;
+  if (reservationId) {
+    await stampProviderCredits(svc, reservationId, remaining, trace);
+  } else {
+    await recordUsage(svc, orgId, userId, action, 0, remaining, trace);
   }
 }
 
@@ -264,6 +312,8 @@ async function recordUsage(
    * point multi-source parle de vingt, et personne n'avait mesuré.
    */
   providerCreditsRemaining?: number | null,
+  /** Relevé de chaque appel de l'opération : la mesure qui ne dérive rien. */
+  trace?: CallTrace,
 ): Promise<void> {
   if (!orgId) return;
   // PostgREST résout une fonction par l'ENSEMBLE des noms d'arguments reçus. Un
@@ -278,13 +328,16 @@ async function recordUsage(
     p_action: action,
     p_credits: credits,
   };
-  const withProvider = providerCreditsRemaining != null
-    ? { ...base, p_provider_credits_remaining: providerCreditsRemaining }
-    : base;
+  const withProvider = {
+    ...base,
+    ...(providerCreditsRemaining != null ? { p_provider_credits_remaining: providerCreditsRemaining } : {}),
+    ...(trace && trace.length > 0 ? { p_provider_calls: trace } : {}),
+  };
+  const enrichi = Object.keys(withProvider).length > Object.keys(base).length;
   try {
     let { error } = await svc.rpc("record_base_konekt_usage", withProvider);
-    if (error && (error as { code?: string }).code === "PGRST202" && withProvider !== base) {
-      console.warn("[coresignal-search] signature à cinq arguments inconnue, rejeu sans le solde fournisseur");
+    if (error && (error as { code?: string }).code === "PGRST202" && enrichi) {
+      console.warn("[coresignal-search] signature de mesure inconnue, rejeu sans les arguments de mesure");
       ({ error } = await svc.rpc("record_base_konekt_usage", base));
     }
     if (error) console.warn("[coresignal-search] record_base_konekt_usage failed (non-blocking):", error);
@@ -421,9 +474,10 @@ async function fetchIdBlock(
   apiKey: string,
   dsl: unknown,
   after: string | null,
+  trace?: CallTrace,
 ): Promise<{ ok: true; ids: string[]; nextAfter: string | null; total: number | null } | { ok: false; http: CoresignalHttp }> {
   const qs = after ? `?after=${encodeURIComponent(after)}` : "";
-  const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl${qs}`, { method: "POST", body: dsl });
+  const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl${qs}`, { method: "POST", body: dsl }, trace);
   if (!http.ok) return { ok: false, http };
   const ids = Array.isArray(http.body) ? (http.body as unknown[]).map(String) : [];
   // On ne poursuit vers un bloc suivant que si celui-ci est plein — sinon c'est
@@ -462,18 +516,27 @@ async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClien
   //       s'arrête sur un lot vide. Chaque tour = au plus 1 preview (+1 bloc).
   let results: LinkedInProfileLite[] = [];
   let creditsRemaining: number | null = null;
+  // Un aperçu enchaîne jusqu'à dix appels : le bloc d'identifiants puis
+  // l'aperçu, cinq fois au pire. La trace les garde tous, dans l'ordre.
+  const trace: CallTrace = [];
   const MAX_SKIP = 5;
   for (let guard = 0; guard < MAX_SKIP; guard++) {
     // Charger un bloc d'IDs si le bloc courant est épuisé.
     if (state.offset >= state.ids.length) {
       if (state.ids.length === 0 && state.after === null) {
         // Tout premier appel de la recherche → 1er bloc (after=null).
-        const block = await fetchIdBlock(apiKey, dsl, null);
-        if (!block.ok) return mapCoresignalError(block.http);
+        const block = await fetchIdBlock(apiKey, dsl, null, trace);
+        if (!block.ok) {
+          await keepTraceOnError(svc, orgId, userId, "preview", quota.reservationId, trace);
+          return mapCoresignalError(block.http);
+        }
         state = { ids: block.ids, offset: 0, after: block.nextAfter, total: block.total ?? state.total };
       } else if (state.after) {
-        const block = await fetchIdBlock(apiKey, dsl, state.after);
-        if (!block.ok) return mapCoresignalError(block.http);
+        const block = await fetchIdBlock(apiKey, dsl, state.after, trace);
+        if (!block.ok) {
+          await keepTraceOnError(svc, orgId, userId, "preview", quota.reservationId, trace);
+          return mapCoresignalError(block.http);
+        }
         state = { ids: block.ids, offset: 0, after: block.nextAfter, total: block.total ?? state.total };
       } else {
         break; // plus aucun bloc → fin des résultats
@@ -488,8 +551,11 @@ async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClien
     const previewBody = {
       query: { bool: { filter: [{ terms: { id: slice.map((s) => Number(s)) } }, { term: { is_deleted: 0 } }] } },
     };
-    const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl/preview?page=1`, { method: "POST", body: previewBody });
-    if (!http.ok) return mapCoresignalError(http);
+    const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl/preview?page=1`, { method: "POST", body: previewBody }, trace);
+    if (!http.ok) {
+      await keepTraceOnError(svc, orgId, userId, "preview", quota.reservationId, trace);
+      return mapCoresignalError(http);
+    }
     creditsRemaining = http.creditsRemaining;
     const rawList = Array.isArray(http.body) ? (http.body as Record<string, unknown>[]) : [];
 
@@ -525,16 +591,23 @@ async function handlePreview(apiKey: string, svc: ReturnType<typeof serviceClien
       included = true;
     } else {
       const settled = await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — aperçu");
-      await recordUsage(svc, orgId, userId, "preview", settled ? PREVIEW_COST : 0, creditsRemaining);
+      await recordUsage(svc, orgId, userId, "preview", settled ? PREVIEW_COST : 0, creditsRemaining, trace);
     }
     // Aperçu pris sur le forfait : la ligne d'usage existe déjà, posée par la
-    // réservation avant l'appel. On y inscrit le solde relevé après coup.
+    // réservation avant l'appel. On y inscrit les relevés après coup.
     if (included && quota.reservationId) {
-      await stampProviderCredits(svc, quota.reservationId, creditsRemaining);
+      await stampProviderCredits(svc, quota.reservationId, creditsRemaining, trace);
     }
-  } else if (quota.reservationId) {
-    // Rien servi : l'unité réservée retourne au quota du mois.
-    await releaseIncluded(svc, quota.reservationId);
+  } else {
+    // Rien servi, mais les appels déjà partis ont bien été facturés par le
+    // fournisseur. Leur relevé reste dans la suite, à zéro crédit Konekt :
+    // sans lui, leur consommation serait reversée sur la mesure suivante.
+    if (quota.reservationId) {
+      await stampProviderCredits(svc, quota.reservationId, creditsRemaining, trace);
+      await releaseIncluded(svc, quota.reservationId);
+    } else if (trace.length > 0) {
+      await recordUsage(svc, orgId, userId, "preview", 0, creditsRemaining, trace);
+    }
   }
   const remaining = await includedRemaining(svc, orgId, quota.planId);
   console.log(`[coresignal-search] preview served=${results.length} offset=${state.offset}/${state.ids.length} hasMore=${hasMore} total=${state.total} credits=${creditsRemaining} included=${included} remaining=${remaining}`);
@@ -553,8 +626,12 @@ async function handleSearch(apiKey: string, svc: ReturnType<typeof serviceClient
   }
 
   const qs = after ? `?after=${encodeURIComponent(after)}` : "";
-  const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl${qs}`, { method: "POST", body: dsl });
-  if (!http.ok) return mapCoresignalError(http);
+  const trace: CallTrace = [];
+  const http = await callCoresignal(apiKey, `${EMPLOYEE}/search/es_dsl${qs}`, { method: "POST", body: dsl }, trace);
+  if (!http.ok) {
+    await keepTraceOnError(svc, orgId, userId, "search", quota.reservationId, trace);
+    return mapCoresignalError(http);
+  }
 
   const ids = Array.isArray(http.body) ? (http.body as unknown[]).map(String) : [];
 
@@ -564,14 +641,18 @@ async function handleSearch(apiKey: string, svc: ReturnType<typeof serviceClient
     if (quota.reservationId) {
       included = true;
       // La ligne d'usage existe déjà, posée par la réservation avant l'appel :
-      // on y inscrit le solde relevé après coup, comme pour l'aperçu.
-      await stampProviderCredits(svc, quota.reservationId, http.creditsRemaining);
+      // on y inscrit les relevés après coup, comme pour l'aperçu.
+      await stampProviderCredits(svc, quota.reservationId, http.creditsRemaining, trace);
     } else {
       const settled = await settle(svc, orgId, userId, "coresignal_preview", "Base Konekt — recherche (IDs)");
-      await recordUsage(svc, orgId, userId, "search", settled ? PREVIEW_COST : 0, http.creditsRemaining);
+      await recordUsage(svc, orgId, userId, "search", settled ? PREVIEW_COST : 0, http.creditsRemaining, trace);
     }
   } else if (quota.reservationId) {
+    // L'appel a bien été facturé : son relevé reste dans la suite.
+    await stampProviderCredits(svc, quota.reservationId, http.creditsRemaining, trace);
     await releaseIncluded(svc, quota.reservationId);
+  } else if (trace.length > 0) {
+    await recordUsage(svc, orgId, userId, "search", 0, http.creditsRemaining, trace);
   }
   const remaining = await includedRemaining(svc, orgId, quota.planId);
   console.log(`[coresignal-search] search ids=${ids.length} total=${http.totalResults} credits=${http.creditsRemaining} included=${included} remaining=${remaining}`);
@@ -601,8 +682,12 @@ async function handleCollect(apiKey: string, svc: ReturnType<typeof serviceClien
 
   // 2. Collect live (par id, sinon par shorthand extrait de l'URL)
   const key = id ?? linkedinUrl!.split("/in/").pop()!.replace(/\/+$/, "");
-  const http = await callCoresignal(apiKey, `${EMPLOYEE}/collect/${encodeURIComponent(key)}`, { method: "GET" });
+  const trace: CallTrace = [];
+  const http = await callCoresignal(apiKey, `${EMPLOYEE}/collect/${encodeURIComponent(key)}`, { method: "GET" }, trace);
   if (!http.ok) {
+    // La fiche n'est jamais prise sur le forfait : pas de réservation à
+    // estampiller, mais l'appel a pu être facturé et son relevé doit rester.
+    await keepTraceOnError(svc, orgId, userId, "collect", null, trace);
     if (http.status === 404) return json(404, { success: false, error: "Profil introuvable en Base Konekt", errorType: "NOT_FOUND" });
     return mapCoresignalError(http);
   }
@@ -634,7 +719,7 @@ async function handleCollect(apiKey: string, svc: ReturnType<typeof serviceClien
 
   // La fiche complète reste facturée en crédits, quota inclus ou non.
   const settled = await settle(svc, orgId, userId, "coresignal_collect", "Base Konekt — fiche complète");
-  await recordUsage(svc, orgId, userId, "collect", settled ? COLLECT_COST : 0, http.creditsRemaining);
+  await recordUsage(svc, orgId, userId, "collect", settled ? COLLECT_COST : 0, http.creditsRemaining, trace);
   console.log(`[coresignal-search] collect LIVE id=${key} credits=${http.creditsRemaining}`);
 
   return json(200, { success: true, profile, cached: false, included: false });
