@@ -352,7 +352,7 @@ seule le prix des deux points.
 
 ```sql
 select endpoint, count(*) as mesures, round(avg(provider_credits_consumed), 1) as cout
-from base_konekt_call_cost
+from mesure.base_konekt_call_cost
 where provider_credits_consumed is not null
 group by endpoint order by endpoint;
 ```
@@ -370,7 +370,7 @@ lignes-là :
 
 ```sql
 select action, provider_credits_consumed
-from base_konekt_provider_cost
+from mesure.base_konekt_provider_cost
 where mesure_isolee
 order by provider_credits_read_at desc;
 ```
