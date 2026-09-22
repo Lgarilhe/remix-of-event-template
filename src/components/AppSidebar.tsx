@@ -61,8 +61,9 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function AppSidebar() {
-  const { state, setOpenMobile } = useSidebar();
-  const collapsed = state === 'collapsed';
+  const { state, isMobile, setOpenMobile } = useSidebar();
+  // Le tiroir mobile s'affiche toujours déplié ; l'état replié (cookie) vaut pour le bureau.
+  const collapsed = state === 'collapsed' && !isMobile;
   const location = useLocation();
   const unreadMsgCount = useUnreadMessageNotifications();
   const { orgType, organization } = useOrganization();

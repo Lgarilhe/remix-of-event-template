@@ -17,7 +17,7 @@ import { ConnectorMenu, type ChatConnectorOption } from '@/components/assistant-
 import type { AgentConversation } from '@/types/agentChat';
 import { AgentToolApprovalCard } from './AgentToolApprovalCard';
 import { AgentBackgroundTasksBar } from './AgentBackgroundTasksBar';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isUsableNotionConnection, useNotionMcpStatus } from '@/hooks/useNotionMcpStatus';
 import { useEmailConnectorStatus, type EmailConnectorProvider } from '@/hooks/useEmailConnectorStatus';
 
@@ -113,6 +113,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   // reachable from the header control, not a launcher screen.
   const [showList, setShowList] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -475,7 +476,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         {/* Page complète des agents (/agents n'avait aucun lien entrant) */}
         <div className="px-4 py-3 border-t border-border/60 shrink-0">
           <button
-            onClick={() => { onClose?.(); navigate('/agents'); }}
+            onClick={() => {
+              onClose?.();
+              void queryClient.invalidateQueries({ queryKey: ['agent-conversations'] });
+              navigate('/agents');
+            }}
             className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
             <span>Voir tous les agents</span>

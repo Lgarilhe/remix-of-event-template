@@ -101,8 +101,11 @@ export const AgentDrawer: React.FC = () => {
     if (!session) return;
     const handler = (e: KeyboardEvent) => {
       // Dans l'éditeur de message, Ctrl+K insère un lien (preventDefault déjà appelé).
-      if (e.defaultPrevented) return;
-      if ((e.metaKey || e.ctrlKey) && e.key?.toLowerCase() === 'k') {
+      // Exception : la palette (cmdk) appelle aussi preventDefault sur Ctrl+K, alors
+      // qu'elle affiche « Ctrl K » pour ouvrir l'assistant.
+      const inPalette = !!(e.target as HTMLElement | null)?.closest?.('[cmdk-root]');
+      if (e.defaultPrevented && !inPalette) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         toggleAgent();
       }

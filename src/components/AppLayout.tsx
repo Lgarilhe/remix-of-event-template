@@ -5,7 +5,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { WelcomeOnboardingModal } from '@/components/onboarding/WelcomeOnboardingModal';
-import { GlobalTaskShortcut } from '@/components/tasks/GlobalTaskShortcut';
+import { GoShortcuts } from '@/components/layout/GoShortcuts';
 
 // État replié de la barre, écrit par SidebarProvider dans le cookie sidebar:state.
 function readSidebarOpen(): boolean {
@@ -62,8 +62,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           Auto-detect via flag localStorage konekt_welcome_pending (set par Auth.tsx). */}
       <WelcomeOnboardingModal />
 
-      {/* « Nouvelle tâche » de la palette Ctrl+J → ouvre CreateTaskModal n'importe où dans l'app */}
-      <GlobalTaskShortcut />
+      {/* G puis une lettre (G D, G M…) : navigation au clavier dans l'application */}
+      <GoShortcuts />
     </SidebarProvider>
   );
 };

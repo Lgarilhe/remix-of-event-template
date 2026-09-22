@@ -80,7 +80,7 @@ const SidebarProvider = React.forwardRef<
     const handleKeyDown = (event: KeyboardEvent) => {
       // Un éditeur qui a déjà traité Ctrl+B (gras) a appelé preventDefault : on lui laisse la touche.
       if (event.defaultPrevented) return;
-      if ((event.metaKey || event.ctrlKey) && event.key?.toLowerCase() === SIDEBAR_KEYBOARD_SHORTCUT) {
+      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         toggleSidebar();
       }

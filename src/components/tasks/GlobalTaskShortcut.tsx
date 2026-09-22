@@ -1,6 +1,6 @@
 /**
- * GlobalTaskShortcut — composant à monter une fois dans AppLayout pour
- * permettre la création rapide d'une tâche depuis n'importe quelle page,
+ * GlobalTaskShortcut — monté une fois par NavigationPalette pour permettre
+ * la création rapide d'une tâche depuis n'importe quelle page,
  * via l'action « Nouvelle tâche » de la palette Ctrl+J (événement
  * konekt:new-task).
  *
