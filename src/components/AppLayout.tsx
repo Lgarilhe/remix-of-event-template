@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -7,12 +7,32 @@ import { AppHeader } from '@/components/AppHeader';
 import { WelcomeOnboardingModal } from '@/components/onboarding/WelcomeOnboardingModal';
 import { GlobalTaskShortcut } from '@/components/tasks/GlobalTaskShortcut';
 
+// État replié de la barre, écrit par SidebarProvider dans le cookie sidebar:state.
+function readSidebarOpen(): boolean {
+  try {
+    const match = document.cookie.match(/(?:^|;\s*)sidebar:state=(true|false)/);
+    return match ? match[1] === 'true' : true;
+  } catch {
+    return true;
+  }
+}
+
+// Chargement d'une page : seule la zone principale attend, la barre et
+// l'en-tête restent affichés (le Suspense global d'App.tsx remplaçait tout l'écran).
+const pageFallback = (
+  <div className="flex-1 flex items-center justify-center py-24" role="status">
+    <div className="w-7 h-7 rounded-full border border-border border-t-foreground animate-spin" aria-hidden="true" />
+    <span className="sr-only">Chargement de la page</span>
+  </div>
+);
+
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const reduceMotion = useReducedMotion();
+  const [sidebarDefaultOpen] = React.useState(readSidebarOpen);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={sidebarDefaultOpen}>
       <a href="#main-content" className="skip-to-content">
         Aller au contenu principal
       </a>
@@ -33,7 +53,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               className="flex-1 min-h-0 flex flex-col"
             >
-              {children}
+              <Suspense fallback={pageFallback}>{children}</Suspense>
             </motion.div>
           </main>
         </div>
@@ -42,7 +62,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           Auto-detect via flag localStorage konekt_welcome_pending (set par Auth.tsx). */}
       <WelcomeOnboardingModal />
 
-      {/* Cmd+T / Ctrl+T global → ouvre CreateTaskModal n'importe où dans l'app */}
+      {/* « Nouvelle tâche » de la palette Ctrl+J → ouvre CreateTaskModal n'importe où dans l'app */}
       <GlobalTaskShortcut />
     </SidebarProvider>
   );

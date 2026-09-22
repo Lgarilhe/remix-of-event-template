@@ -7,6 +7,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { Bot, Play, Pause, CheckCircle, Clock, AlertCircle, ChevronRight, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAgent } from '@/contexts/AgentContext';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 const STATUS_CONFIG: Record<string, { label: string; icon: typeof Play; cls: string }> = {
   calibrating: { label: 'Calibration', icon: Clock, cls: 'text-warning bg-warning/10 border-warning/30' },
@@ -21,20 +22,25 @@ const AgentsPage = () => {
   const navigate = useNavigate();
   const { organizationId } = useOrganization();
   const { openConversation } = useAgent();
+  const { user } = useAuthReady();
+  const userId = user?.id;
 
+  // Mes conversations seulement, comme l'historique du tiroir : la page est
+  // désormais reliée depuis la palette et le tiroir de l'assistant.
   const { data: conversations, isLoading } = useQuery({
-    queryKey: ['agent-conversations', organizationId],
+    queryKey: ['agent-conversations', organizationId, userId],
     queryFn: async () => {
       const { data, error } = await (supabase
         .from('agent_conversations')
         .select('*')
         .eq('organization_id', organizationId)
+        .eq('created_by', userId)
         .is('archived_at', null)
         .order('updated_at', { ascending: false }) as any);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!organizationId,
+    enabled: !!organizationId && !!userId,
     staleTime: 30_000,
   });
 

@@ -25,7 +25,6 @@ import {
 import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
 import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature, type Feature } from '@/lib/featureGates';
-import { useAgent } from '@/contexts/AgentContext';
 import {
   Sidebar,
   SidebarContent,
@@ -67,7 +66,8 @@ export function AppSidebar() {
   const location = useLocation();
   const unreadMsgCount = useUnreadMessageNotifications();
   const { orgType, organization } = useOrganization();
-  const { toggleAgent } = useAgent();
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+  const paletteShortcut = isMac ? '⌘J' : 'Ctrl J';
 
   const isActive = (path: string) => {
     if (path === '/missions') {
@@ -95,6 +95,11 @@ export function AppSidebar() {
   };
 
   const closeMobile = () => setOpenMobile(false);
+  // « Aller à… » ouvre la palette Ctrl J (NavigationPalette), pas l'assistant.
+  const openPalette = () => {
+    closeMobile();
+    window.dispatchEvent(new CustomEvent('konekt:open-palette'));
+  };
 
   const filteredItems = NAV_ITEMS.filter(
     (item) => !item.feature || hasFeature(orgType, item.feature),
@@ -141,23 +146,23 @@ export function AppSidebar() {
 
       {/* Content */}
       <SidebarContent className={cn(collapsed ? 'px-1.5' : 'px-2')}>
-        {/* Search */}
+        {/* Aller à… : palette de navigation */}
         {!collapsed ? (
           <button
-            onClick={() => toggleAgent()}
+            onClick={openPalette}
             className="w-full flex items-center gap-2 h-9 px-2.5 mb-2 rounded-md bg-sidebar-accent/40 text-muted-foreground text-[12px] hover:bg-sidebar-accent/60 transition-colors"
-            aria-label="Rechercher (Ctrl+K)"
+            aria-label={`Aller à (${paletteShortcut})`}
           >
             <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-            <span className="flex-1 text-left">Rechercher…</span>
-            <kbd className="text-[10px] font-mono text-muted-foreground/70">⌘K</kbd>
+            <span className="flex-1 text-left">Aller à…</span>
+            <kbd className="text-[10px] font-mono text-muted-foreground/70">{paletteShortcut}</kbd>
           </button>
         ) : (
           <button
-            onClick={() => toggleAgent()}
+            onClick={openPalette}
             className="h-9 w-9 mx-auto flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors mb-2"
-            aria-label="Rechercher"
-            title="Rechercher (⌘K)"
+            aria-label="Aller à"
+            title={`Aller à (${paletteShortcut})`}
           >
             <Search className="h-5 w-5" strokeWidth={1.5} />
           </button>
@@ -215,7 +220,7 @@ export function AppSidebar() {
                         <span className="flex-1 truncate">{item.label}</span>
                         {showBadge && (
                           <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold tabular-nums bg-destructive text-destructive-foreground rounded-full">
-                            {unreadMsgCount > 99 ? '99+' : unreadMsgCount}
+                            {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
                           </span>
                         )}
                       </>

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { History, Bot, ArrowLeft, SquarePen, X } from 'lucide-react';
+import { History, Bot, ArrowLeft, SquarePen, X, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
 import { AgentConversationsList } from './AgentConversationsList';
@@ -111,6 +112,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   // Notion-AI-style: land directly in the chat. History/new conversation is
   // reachable from the header control, not a launcher screen.
   const [showList, setShowList] = useState(false);
+  const navigate = useNavigate();
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -468,6 +470,17 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         {/* Recent conversations */}
         <div className="flex-1 overflow-hidden flex flex-col">
           <AgentConversationsList onSelect={handleSelectConversation} listConversations={listConversations} />
+        </div>
+
+        {/* Page complète des agents (/agents n'avait aucun lien entrant) */}
+        <div className="px-4 py-3 border-t border-border/60 shrink-0">
+          <button
+            onClick={() => { onClose?.(); navigate('/agents'); }}
+            className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <span>Voir tous les agents</span>
+            <ChevronRight className="w-4 h-4" aria-hidden="true" />
+          </button>
         </div>
       </div>
     );

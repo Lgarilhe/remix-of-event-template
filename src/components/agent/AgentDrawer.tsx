@@ -100,7 +100,9 @@ export const AgentDrawer: React.FC = () => {
   useEffect(() => {
     if (!session) return;
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      // Dans l'éditeur de message, Ctrl+K insère un lien (preventDefault déjà appelé).
+      if (e.defaultPrevented) return;
+      if ((e.metaKey || e.ctrlKey) && e.key?.toLowerCase() === 'k') {
         e.preventDefault();
         toggleAgent();
       }

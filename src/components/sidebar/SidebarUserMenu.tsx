@@ -138,7 +138,7 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
           <span className="flex-1">Notifications</span>
           {unreadNotifications > 0 && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold tabular-nums bg-destructive text-destructive-foreground rounded-full">
-              {unreadNotifications > 99 ? '99+' : unreadNotifications}
+              {unreadNotifications > 9 ? '9+' : unreadNotifications}
             </span>
           )}
         </DropdownMenuItem>

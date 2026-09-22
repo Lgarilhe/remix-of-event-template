@@ -219,7 +219,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
           <button
             onClick={() => setCreateTaskOpen(true)}
             className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-            title="Ajouter une tâche (Cmd+T)"
+            title="Ajouter une tâche"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
