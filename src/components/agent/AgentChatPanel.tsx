@@ -507,6 +507,22 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         >
           <SquarePen className="w-4 h-4 text-foreground" />
         </button>
+        {/* Fermeture. Le tiroir masque la croix native du Sheet
+            (`[&>button]:hidden` dans AgentDrawer), et sur mobile il occupe
+            toute la largeur : sans ce bouton il n'y a ni zone extérieure à
+            toucher ni touche Échap, donc aucun moyen de sortir. La vue
+            « Conversations » a le sien depuis toujours, celle-ci l'avait
+            oublié. */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            title="Fermer"
+            aria-label="Fermer le Copilot"
+            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Tool approval banner — Sprint 1 (RAG_AGENT_AUDIT.md §8) */}
