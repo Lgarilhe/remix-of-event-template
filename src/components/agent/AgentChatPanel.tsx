@@ -298,6 +298,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         created_by: user.id,
         job_id: job?.id || null,
         job_title: job?.title || null,
+        // Mission d'origine (Copilot ouvert depuis une mission ou une recherche) :
+        // rattache la conversation à son projet.
+        project_id: projectId || null,
         status: 'calibrating',
       })
       .select()
@@ -307,7 +310,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     setConversationId(data.id);
     setShowList(false);
     return data.id;
-  }, [organizationId, selectedJob, autoJob, setConversationId]);
+  }, [organizationId, selectedJob, autoJob, projectId, setConversationId]);
 
   const adapter = useMemo(
     () =>

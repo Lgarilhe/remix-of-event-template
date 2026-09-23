@@ -2,6 +2,8 @@
  * TasksFiltersBar — barre de filtres pills pour la page /tasks.
  *
  * Filtres :
+ * - Périmètre (Mes tâches / Équipe) : piloté par la page, hors TasksFilters
+ *   pour que « Effacer » ne le réinitialise pas
  * - Catégorie (multi) : general / follow_up / interview_prep / debrief /
  *   admin / client / sourcing
  * - Mission (multi) : dérivée des reminders ayant un job_title
@@ -25,7 +27,7 @@ import {
 } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import type { Reminder, TaskCategory } from '@/hooks/useAllReminders';
+import type { Reminder, TaskCategory, TaskScope } from '@/hooks/useAllReminders';
 
 export interface TasksFilters {
   /** Catégories autorisées. Vide = toutes. */
@@ -45,6 +47,9 @@ export const DEFAULT_TASKS_FILTERS: TasksFilters = {
 interface TasksFiltersBarProps {
   filters: TasksFilters;
   onFiltersChange: (filters: TasksFilters) => void;
+  /** Périmètre : tâches de l'utilisateur ou de toute l'équipe */
+  scope: TaskScope;
+  onScopeChange: (scope: TaskScope) => void;
   /** Tous les reminders — sert à dériver les options uniques (jobs) */
   allReminders: Reminder[];
 }
@@ -57,6 +62,11 @@ const CATEGORY_OPTIONS: { value: TaskCategory; label: string; emoji: string }[] 
   { value: 'admin', label: 'Admin', emoji: '📂' },
   { value: 'client', label: 'Client', emoji: '🤝' },
   { value: 'sourcing', label: 'Sourcing', emoji: '🔍' },
+];
+
+const SCOPE_OPTIONS: { value: TaskScope; label: string; title: string }[] = [
+  { value: 'mine', label: 'Mes tâches', title: 'Afficher les tâches que vous avez créées' },
+  { value: 'team', label: 'Équipe', title: "Afficher les tâches de toute l'équipe" },
 ];
 
 const FilterPill: React.FC<{
@@ -93,6 +103,8 @@ const FilterPill: React.FC<{
 export const TasksFiltersBar: React.FC<TasksFiltersBarProps> = ({
   filters,
   onFiltersChange,
+  scope,
+  onScopeChange,
   allReminders,
 }) => {
   // Dérive les jobs uniques depuis les reminders
@@ -101,8 +113,10 @@ export const TasksFiltersBar: React.FC<TasksFiltersBarProps> = ({
     for (const r of allReminders) {
       if (r.job_title) set.add(r.job_title);
     }
+    // Une mission cochée reste décochable même si le périmètre ne la montre plus.
+    for (const j of filters.jobTitles) set.add(j);
     return Array.from(set).sort();
-  }, [allReminders]);
+  }, [allReminders, filters.jobTitles]);
 
   const activeCount =
     filters.categories.length +
@@ -113,6 +127,34 @@ export const TasksFiltersBar: React.FC<TasksFiltersBarProps> = ({
 
   return (
     <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-wrap">
+      {/* Périmètre : Mes tâches / Équipe */}
+      <div
+        role="group"
+        aria-label="Périmètre des tâches"
+        className="inline-flex items-center bg-muted/40 p-0.5 rounded-full border border-border shrink-0"
+      >
+        {SCOPE_OPTIONS.map((opt) => {
+          const isActive = scope === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onScopeChange(opt.value)}
+              aria-pressed={isActive}
+              title={opt.title}
+              className={cn(
+                'inline-flex items-center h-7 px-3 rounded-full text-[11.5px] font-medium transition-all shrink-0',
+                isActive
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+              )}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Catégorie */}
       <FilterPill
         label="Catégorie"

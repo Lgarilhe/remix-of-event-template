@@ -14,7 +14,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
-import { useAllReminders, type Reminder, type ReminderBucket } from '@/hooks/useAllReminders';
+import { useAllReminders, type Reminder, type ReminderBucket, type TaskScope } from '@/hooks/useAllReminders';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   CheckSquare,
@@ -158,7 +158,9 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const { user } = useAuthReady();
   const { organizationId } = useOrganization();
-  const { grouped, counts, isLoading, refetch, toggleComplete, deleteReminder, reminders } = useAllReminders();
+  // Périmètre : « Mes tâches » par défaut ; les compteurs du hook suivent ce choix
+  const [scope, setScope] = useState<TaskScope>('mine');
+  const { grouped, counts, isLoading, refetch, toggleComplete, deleteReminder, reminders } = useAllReminders({ scope });
   const [view, setView] = useState<'active' | 'all'>('active');
   const [createOpen, setCreateOpen] = useState(false);
   const [filters, setFilters] = useState<TasksFilters>(DEFAULT_TASKS_FILTERS);
@@ -392,6 +394,8 @@ export default function TasksPage() {
         <TasksFiltersBar
           filters={filters}
           onFiltersChange={setFilters}
+          scope={scope}
+          onScopeChange={setScope}
           allReminders={reminders}
         />
       </div>

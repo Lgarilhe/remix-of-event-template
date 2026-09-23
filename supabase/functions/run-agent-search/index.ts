@@ -196,6 +196,43 @@ Deno.serve(async (req) => {
     const orgId = conv.organization_id;
     const jobId = conv.job_id;
 
+    // Notification « résultats prêts » pour l'utilisateur qui a lancé l'agent :
+    // la recherche tourne en tâche de fond (lancée depuis le chat), il faut
+    // le prévenir que des profils l'attendent. Même écriture que
+    // process-agent-tasks ; un échec est journalisé sans bloquer la réponse.
+    async function notifyResultsReady(goCount: number, body: string) {
+      try {
+        // Nom de la mission d'origine pour le titre : colonne de la
+        // conversation, sinon le plan de recherche. Relue dans l'organisation
+        // pour ne pas exposer le nom d'un projet d'une autre organisation.
+        // Le lien mène à /agents : les profils retenus sont dans la
+        // conversation, pas dans la page de la mission.
+        const projectRef = conv.project_id || searchPlan.project_id || null;
+        let label: string | null = conv.title || conv.job_title || null;
+        if (projectRef && orgId) {
+          const { data: project } = await supabase
+            .from("sourcing_projects")
+            .select("name")
+            .eq("id", projectRef)
+            .eq("organization_id", orgId)
+            .maybeSingle();
+          if (project?.name) label = project.name;
+        }
+        const { error: notifError } = await supabase.from("notifications").insert({
+          user_id: user!.id,
+          organization_id: orgId,
+          type: "success",
+          title: label ? `Recherche terminée : ${label}` : "Recherche terminée",
+          body,
+          link: "/agents",
+          metadata: { source: "agent_search", conversation_id, go_count: goCount },
+        });
+        if (notifError) console.warn("[run-agent-search] notif insert failed:", notifError.message);
+      } catch (e) {
+        console.warn("[run-agent-search] notif failed:", e instanceof Error ? e.message : e);
+      }
+    }
+
     // ── 1. Load existing data for deduplication & cache ──
 
     // 1a. Load already-treated candidates for this job (from job_candidate_status)
@@ -835,6 +872,20 @@ Deno.serve(async (req) => {
         },
       })
       .eq("id", conversation_id);
+
+    // Seulement quand des profils attendent l'utilisateur. Pas sur un arrêt
+    // faute de crédits (interruption, pas une fin). Sans profil retenu, on ne
+    // sait pas distinguer « rien trouvé » d'un appel de recherche ou de scoring
+    // en échec : pas de notification de succès dans ce cas.
+    if (!creditStopMessage && goCount > 0) {
+      const s = goCount > 1 ? "s" : "";
+      const body = `${goCount} profil${s} retenu${s} sur ${totalScored} analysé${totalScored > 1 ? "s" : ""}. ` +
+        "Les résultats sont dans la conversation avec l'assistant.";
+      await notifyResultsReady(
+        goCount,
+        timedOut ? `${body} Résultats partiels : le temps maximal a été atteint.` : body,
+      );
+    }
 
     return new Response(JSON.stringify({
       success: true,

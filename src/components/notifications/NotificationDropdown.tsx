@@ -5,6 +5,8 @@
  * badge de non-lus (les messages LinkedIn sont exclus du compteur : ils ont
  * déjà leur pastille « Messages » dans la sidebar). S'ouvre aussi sur
  * l'événement DOM 'konekt:open-notifications' (menu utilisateur).
+ * Si le chargement échoue, la liste précédente reste affichée sous un message
+ * court avec « Réessayer » (jamais « Aucune notification » sur une panne).
  */
 
 import React, { useEffect, useState } from 'react';
@@ -19,7 +21,7 @@ import { cn } from '@/lib/utils';
 export const NotificationDropdown: React.FC = () => {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, error, markAsRead, markAllAsRead, refresh } = useNotifications();
 
   useEffect(() => {
     const handler = () => setOpen(true);
@@ -74,7 +76,19 @@ export const NotificationDropdown: React.FC = () => {
         </div>
 
         <div className="max-h-[400px] overflow-y-auto">
-          {notifications.length === 0 ? (
+          {error && (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
+              <p className="text-xs text-muted-foreground">Impossible de charger les notifications.</p>
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                className="shrink-0 text-xs font-medium text-foreground hover:underline"
+              >
+                Réessayer
+              </button>
+            </div>
+          )}
+          {notifications.length === 0 && !error ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
               <Bell className="w-5 h-5 mb-2 opacity-30" />
               <p className="text-xs font-medium uppercase tracking-wider">Aucune notification</p>

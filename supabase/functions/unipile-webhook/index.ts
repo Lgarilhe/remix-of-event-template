@@ -319,6 +319,10 @@ interface SequenceEnrollment {
   account_id: string;
   status: string;
   connection_status: string | null;
+  // Présents avec select('*') : servent à la notification new_message.
+  organization_id?: string | null;
+  profile_name?: string | null;
+  profile_headline?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -859,6 +863,42 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
   }
 }
 
+// Réponse envoyée hors de l'application (LinkedIn mobile par exemple) : la
+// conversation est traitée, ses notifications new_message non lues passent en
+// lues pour les utilisateurs liés à ce compte. Non bloquant.
+// Limite connue : un envoi automatique de séquence dans la même conversation
+// a le même effet. Il est rare après une réponse, puisque la réponse du
+// candidat annule les étapes restantes.
+async function markChatNotificationsRead(
+  supabase: SupabaseClient,
+  accountId: string | undefined,
+  chatId: string | undefined,
+): Promise<void> {
+  if (!chatId || !accountId) return;
+  try {
+    const { data: accountUsers, error: usersError } = await supabase
+      .from('member_linkedin_accounts')
+      .select('user_id')
+      .eq('linkedin_account_id', accountId);
+    if (usersError) {
+      console.warn('[unipile-webhook] Own message: linked users lookup failed:', usersError);
+      return;
+    }
+    const userIds = [...new Set((accountUsers ?? []).map((u: { user_id: string }) => u.user_id))];
+    if (userIds.length === 0) return;
+    const { error: readError } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .in('user_id', userIds)
+      .eq('type', 'new_message')
+      .is('read_at', null)
+      .eq('metadata->>chat_id', chatId);
+    if (readError) console.warn('[unipile-webhook] Own message: marking notifications read failed:', readError);
+  } catch (e) {
+    console.warn('[unipile-webhook] Own message: marking notifications read failed:', e);
+  }
+}
+
 async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload, uCreds: { apiKey: string; dsn: string }) {
   const { account_id, data } = payload;
   
@@ -912,6 +952,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   
   // Skip if this is a message WE sent
   if (isSenderSelf === true) {
+    await markChatNotificationsRead(supabase, account_id, chatId);
     console.log('[unipile-webhook] Skipping - this is our own sent message');
     return;
   }
@@ -933,6 +974,9 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         if (ownAttendee) {
           const ownIds = [ownAttendee.id, ownAttendee.provider_id, ownAttendee.attendee_id].filter(Boolean);
           if (ownIds.includes(senderAttendeeId)) {
+            // Format v1 (message_received) : c'est ici qu'une réponse envoyée
+            // depuis LinkedIn (mobile par exemple) est reconnue comme la nôtre.
+            await markChatNotificationsRead(supabase, account_id, chatId);
             console.log('[unipile-webhook] Skipping - sender is our own attendee');
             return;
           }
@@ -1153,19 +1197,73 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     .select('user_id, organization_id')
     .eq('linkedin_account_id', account_id);
 
+  // Candidat déjà sorti de la séquence (a déjà répondu, séquence terminée ou en
+  // pause) : aucune inscription active, mais c'est bien un candidat. Lecture
+  // seule, pour la notification uniquement : aucun statut n'est modifié.
+  let notifEnrollments: SequenceEnrollment[] = enrollments;
+  if (notifEnrollments.length === 0 && linkedMembers && linkedMembers.length > 0) {
+    const past = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+      (column) => supabase
+        .from('sequence_enrollments')
+        .select('*')
+        .eq(column, account_id)
+        .in('status', ['replied', 'completed', 'paused'])
+        .or(`profile_id.eq.${sanitizeFilterId(senderId)},resolved_profile_id.eq.${sanitizeFilterId(senderId)}`)
+        .order('updated_at', { ascending: false })
+        .limit(5),
+    );
+    if (past.error) console.warn('[unipile-webhook] Past enrollments lookup failed:', past.error);
+    notifEnrollments = past.rows ?? [];
+  }
+
+  // Mission des séquences concernées : outreach_sequences.project_id (clé
+  // étrangère vers sourcing_projects), nul pour une séquence globale.
+  // enrollment.job_id n'est pas utilisé : il vaut tantôt sourcing_projects.id,
+  // tantôt sourcing_projects.job_id.
+  const projectBySequence = new Map<string, string>();
+  if (linkedMembers && linkedMembers.length > 0 && notifEnrollments.length > 0) {
+    const sequenceIds = [...new Set(notifEnrollments.map(e => e.sequence_id).filter(Boolean))];
+    const { data: sequences, error: sequencesError } = await supabase
+      .from('outreach_sequences')
+      .select('id, project_id')
+      .in('id', sequenceIds);
+    if (sequencesError) console.warn('[unipile-webhook] Could not load sequence missions:', sequencesError);
+    for (const s of (sequences ?? []) as Array<{ id: string; project_id: string | null }>) {
+      if (s.project_id) projectBySequence.set(s.id, s.project_id);
+    }
+  }
+
   if (linkedMembers && linkedMembers.length > 0) {
     for (const member of linkedMembers) {
+      // Inscriptions de l'org du destinataire uniquement (même compte LinkedIn
+      // rattaché à plusieurs orgs), comme pour job_candidate_status plus haut.
+      const memberEnrollments = notifEnrollments.filter(e => !e.organization_id || e.organization_id === member.organization_id);
+      const primary = memberEnrollments[0];
+      const candidateName = primary?.profile_name || senderName;
+      const projectId = primary ? projectBySequence.get(primary.sequence_id) : undefined;
+      const metadata: Record<string, unknown> = {
+        ...(chatId ? { chat_id: chatId } : {}),
+        is_candidate: !!primary,
+        ...(primary ? {
+          enrollment_id: primary.id,
+          enrollment_ids: memberEnrollments.map(e => e.id),
+          sequence_id: primary.sequence_id,
+          profile_name: primary.profile_name ?? null,
+          profile_headline: primary.profile_headline ?? null,
+          ...(projectId ? { project_id: projectId } : {}),
+        } : {}),
+      };
       await supabase
         .from('notifications')
         .insert({
           user_id: member.user_id,
           organization_id: member.organization_id,
           type: 'new_message',
-          title: `Nouveau message de ${senderName}`,
+          title: `Nouveau message de ${candidateName}`,
           body: chatId ? `Vous avez reçu un nouveau message LinkedIn` : null,
           // /outreach est une route legacy (redirigée vers /missions, query perdue).
           link: chatId ? `/inbox?chatId=${encodeURIComponent(chatId)}` : '/inbox',
-          metadata: chatId ? { chat_id: chatId } : {},
+          metadata,
         });
     }
     console.log(`[unipile-webhook] Created notifications for ${linkedMembers.length} user(s)`);
