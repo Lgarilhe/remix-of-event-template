@@ -24,15 +24,15 @@ const FAQS = [
   },
   {
     q: 'Comment sont comptés les sièges ?',
-    a: "Chaque membre de votre espace occupe un siège, quel que soit son rôle. Les prix s'entendent par siège et par mois. Pour inviter au-delà des sièges facturés, ajustez la quantité depuis Paramètres, Abonnement.",
+    a: "Chaque membre de votre espace occupe un siège, quel que soit son rôle. Les prix s'entendent par siège et par mois. Pour inviter au-delà des sièges facturés, ajustez la quantité depuis Paramètres, Abonnement et crédits.",
   },
   {
     q: 'Les crédits IA sont-ils inclus ?',
-    a: "Oui. Chaque plan inclut un volume mensuel de crédits IA pour le scoring des profils, la rédaction des messages et l'assistant. Au-delà, des packs de crédits sont disponibles depuis Paramètres, Crédits IA.",
+    a: "Oui. Chaque plan inclut un volume mensuel de crédits IA pour le scoring des profils, la rédaction des messages et l'assistant. Au-delà, des packs de crédits sont disponibles depuis Paramètres, Abonnement et crédits.",
   },
   {
     q: 'Puis-je changer de plan ou résilier ?',
-    a: "Oui, à tout moment et sans engagement de durée. Le changement de plan, le moyen de paiement, les factures et la résiliation se gèrent depuis Paramètres, Abonnement.",
+    a: "Oui, à tout moment et sans engagement de durée. Le changement de plan, le moyen de paiement, les factures et la résiliation se gèrent depuis Paramètres, Abonnement et crédits.",
   },
 ];
 

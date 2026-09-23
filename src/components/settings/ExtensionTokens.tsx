@@ -8,9 +8,13 @@
  * - Génération : modal de création avec label optionnel
  * - Affichage du clair : alerte verte avec bouton Copy + warning "ne sera plus affiché"
  * - Liste : préfixe + label + dernière utilisation + bouton revoke
+ *
+ * Lot 3 des Paramètres : carte masquée tant qu'aucun jeton n'est actif, sauf si
+ * `revealWhenEmpty` la demande (lien #extension, ancien ?tab=account de
+ * l'extension installée). Une fois affichée, elle reste pendant la visite.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,8 +62,13 @@ interface ListResponse {
   error?: string;
 }
 
-export const ExtensionTokens: React.FC = () => {
+export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revealWhenEmpty = false }) => {
   const [tokens, setTokens] = useState<ExtensionToken[]>([]);
+  // Carte révélée : demandée par l'appelant, ou un jeton actif existe. Ne se referme plus.
+  const [revealed, setRevealed] = useState(revealWhenEmpty);
+  // Lu par loadTokens sans en faire une dépendance (le chargement ne se rejoue pas).
+  const revealedRef = useRef(revealWhenEmpty);
+  useEffect(() => { revealedRef.current = revealed; }, [revealed]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -73,10 +82,13 @@ export const ExtensionTokens: React.FC = () => {
     try {
       const { data, error } = await invokeEdgeFunction<ListResponse>('extension-token', { action: 'list' });
       if (error || !data?.success) {
-        toast.error(data?.error || error?.message || 'Erreur de chargement');
+        // Pas de toast pour une carte cachée : l'erreur ne concernerait rien de visible.
+        if (revealedRef.current) toast.error(data?.error || error?.message || 'Erreur de chargement');
         return;
       }
-      setTokens(data.tokens || []);
+      const list = data.tokens || [];
+      setTokens(list);
+      if (list.some((t) => !t.revoked_at)) setRevealed(true);
     } finally {
       setLoading(false);
     }
@@ -137,6 +149,9 @@ export const ExtensionTokens: React.FC = () => {
   };
 
   const activeTokens = tokens.filter(t => !t.revoked_at);
+
+  // Rien pendant le chargement ni sans jeton actif, sauf carte révélée.
+  if (!revealed) return null;
 
   return (
     <Card>

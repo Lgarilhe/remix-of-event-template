@@ -41,7 +41,7 @@ export const LowCreditBanner = () => {
           : `Il vous reste ${creditsRemaining} crédits IA${remainingPercent !== null ? ` (${remainingPercent}% du forfait du mois)` : ''}.`}
       </span>
       <button
-        onClick={() => navigate('/settings?tab=credits')}
+        onClick={() => navigate('/settings/org/billing#credits')}
         className={cn(
           "inline-flex items-center gap-1 font-bold underline underline-offset-2 hover:no-underline",
           isCritical ? "text-destructive" : "text-warning"

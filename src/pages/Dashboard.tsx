@@ -121,7 +121,6 @@ export default function Dashboard() {
     connections: !connections.isLoading ? (
       <DashboardConnections
         linkedin={connections.linkedin}
-        whatsapp={connections.whatsapp}
         email={connections.email}
         hasIssue={connections.hasIssue}
         allConnected={connections.allConnected}

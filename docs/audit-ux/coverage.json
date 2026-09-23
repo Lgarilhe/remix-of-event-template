@@ -183,7 +183,7 @@
     "mobile_clavier": "a_faire",
     "note": ""
   },
-  "/settings": {
+  "/settings/*": {
     "ecran": "Settings",
     "code": "partiel",
     "interface": "a_faire",

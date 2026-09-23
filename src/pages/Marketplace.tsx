@@ -75,7 +75,7 @@ export default function Marketplace() {
           de recruteurs partenaires.
         </p>
         <Link
-          to="/settings"
+          to="/settings/org/general"
           className="inline-flex items-center h-9 px-4 border border-border text-xs font-medium uppercase tracking-wider hover:bg-muted"
         >
           Ouvrir les paramètres

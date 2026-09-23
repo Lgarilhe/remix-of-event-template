@@ -3,7 +3,7 @@
  *
  * Pourquoi : n'importe quel membre de l'organisation peut écrire une signature
  * (policy org_members_all en prod, email_signatures_* en base neuve) et les
- * autres l'ouvrent dans Paramètres > Mon compte. Injectée telle quelle, une
+ * autres l'ouvrent dans Paramètres › Rédaction. Injectée telle quelle, une
  * balise <img onerror> ou un lien javascript: s'exécutait dans la session de
  * celui qui l'ouvre (XSS stockée entre membres).
  *

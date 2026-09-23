@@ -13,6 +13,7 @@ import { AgentProvider } from "@/contexts/AgentContext";
 import { AgentDrawer } from "@/components/agent";
 import { AppLayout } from "@/components/AppLayout";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { LegacySettingsRedirect } from "@/components/settings/shell/LegacySettingsRedirect";
 import { NavigationPalette } from "@/components/layout/NavigationPalette";
 import { supabase } from "@/integrations/supabase/client";
 import { clearOrgIdCache } from "@/lib/orgContext";
@@ -184,7 +185,7 @@ const AppContent = () => {
               ProtectedRoute + OrganizationGuard restent pour la sécurité. */}
           <Route path="/pipeline/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
           <Route path="/ats/scorecard/:candidateId" element={<ProtectedRoute><OrganizationGuard><ScorecardFullPage /></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/settings/*" element={<LegacySettingsRedirect><ProtectedRoute><OrganizationGuard><AppLayout><Settings /></AppLayout></OrganizationGuard></ProtectedRoute></LegacySettingsRedirect>} />
           {/* Tarifs : page publique (sans session ni organisation), la page gère elle-même l'état connecté */}
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/marketplace" element={<ProtectedRoute><OrganizationGuard><AppLayout><Marketplace /></AppLayout></OrganizationGuard></ProtectedRoute>} />

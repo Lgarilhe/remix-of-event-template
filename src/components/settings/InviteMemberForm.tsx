@@ -73,7 +73,7 @@ export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps)
       {seatsExhausted && (
         <p className="text-xs text-muted-foreground">
           {isFree ? 'Choisissez un plan pour inviter votre équipe.' : seatLimitMessage}{' '}
-          <Link to={isFree ? '/pricing' : '/settings?tab=billing'} className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/80">
+          <Link to={isFree ? '/pricing' : '/settings/org/billing'} className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/80">
             {isFree ? 'Voir les plans' : 'Ajouter un siège'}
           </Link>
         </p>

@@ -9,21 +9,18 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-  Briefcase, Sliders, ChevronDown, X, Plus, Save, Loader2,
+  Sliders, ChevronDown, Save, Loader2,
   Gauge, Link2, Unlink, UserCog, Users,
-  Trash2, Activity, Crown, Shield, User as UserIcon,
+  Trash2, Crown, Shield, User as UserIcon,
 } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
-import { useJobAssignments } from '@/hooks/useJobAssignments';
 import {
   useMemberQuotas, DEFAULT_QUOTAS,
   MAX_ACTIONS_PER_DAY_MIN, MAX_ACTIONS_PER_DAY_MAX, isValidMaxActionsPerDay,
 } from '@/hooks/useMemberQuotas';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
-import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
-import { useMemberStats } from '@/hooks/useMemberStats';
-import { useOrganization, OrganizationMember } from '@/hooks/useOrganization';
+import type { OrganizationMember } from '@/hooks/useOrganization';
 import { cn } from '@/lib/utils';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { ErrorBox } from '@/components/marketplace/ErrorBox';
@@ -80,15 +77,12 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   onUpdateRole,
   onRemove,
 }) => {
-  const { organizationId } = useOrganization();
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
-  const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [selectedLinkedInId, setSelectedLinkedInId] = useState<string>('');
   const [removeConfirm, setRemoveConfirm] = useState<OrganizationMember | null>(null);
   // accountId : compte affiché à l'ouverture de la confirmation, transmis au
   // serveur qui refuse une liaison repointée entre-temps.
   const [unlinkConfirm, setUnlinkConfirm] = useState<{ mappingId: string; accountId: string; name: string } | null>(null);
-  const { assignments, assign, unassign, isAssigning } = useJobAssignments();
   const {
     upsertQuota, isSaving, getQuotaForUser, isReady: quotasReady, isError: quotasError, refetch: refetchQuotas,
   } = useMemberQuotas();
@@ -98,31 +92,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     getMappingForUser, getMappingForAccount,
   } = useMemberLinkedInAccounts();
   const { accounts: linkedInAccounts } = useLinkedInAccounts();
-  // Liste des missions internes (sourcing_projects) — remplace Notion comme
-  // source primaire des "postes" depuis la migration de Lovable vers Supabase.
-  const { projects } = useSourcingProjects();
-  const jobs = React.useMemo(
-    () => projects.map(p => ({ id: p.id, title: p.name })),
-    [projects],
-  );
-  const userIds = members.map(m => m.user_id);
-  const { data: statsMap = {} } = useMemberStats(organizationId, userIds);
   const [editingQuotas, setEditingQuotas] = useState<Record<string, Partial<typeof DEFAULT_QUOTAS>>>({});
-
-  const getMemberAssignments = (userId: string) =>
-    assignments.filter(a => a.user_id === userId);
-
-  const handleAssignJob = (member: OrganizationMember) => {
-    if (!selectedJobId) return;
-    const job = jobs.find(j => j.id === selectedJobId);
-    assign({
-      memberId: member.id,
-      userId: member.user_id,
-      jobId: selectedJobId,
-      jobTitle: job?.title || selectedJobId,
-    });
-    setSelectedJobId('');
-  };
 
   const handleLinkLinkedIn = (member: OrganizationMember) => {
     if (!selectedLinkedInId) return;
@@ -186,11 +156,9 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           <div className="divide-y divide-border">
             {members.map((member) => {
               const isExpanded = expandedMember === member.user_id;
-              const memberJobs = getMemberAssignments(member.user_id);
               const memberQuota = getQuotaForUser(member.user_id);
               const linkedInMapping = getMappingForUser(member.user_id);
               const isEditingQ = !!editingQuotas[member.user_id];
-              const stats = statsMap[member.user_id] || { active_sequences: 0, candidates_30d: 0 };
               const RoleIcon = roleIcons[member.role] || UserIcon;
               const canManage = isOwner && member.role !== 'owner';
               const memberName = getDisplayName(member.user_id);
@@ -246,14 +214,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           ) : (
                             <span className="italic text-muted-foreground/50">Pas de LinkedIn</span>
                           )}
-                          <Badge variant="secondary" className="text-xs px-1.5 py-0 gap-1 font-normal">
-                            <Activity className="w-2.5 h-2.5" />
-                            {stats.active_sequences} séq
-                          </Badge>
-                          <Badge variant="secondary" className="text-xs px-1.5 py-0 gap-1 font-normal">
-                            <Briefcase className="w-2.5 h-2.5" />
-                            {stats.candidates_30d} cand/30j
-                          </Badge>
                         </div>
                       </div>
                     </button>
@@ -300,30 +260,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   {/* Expanded panel (admin only) */}
                   {isExpanded && isAdmin && (
                     <div className="bg-muted/30 border-t border-border">
-                      {/* Stats détaillées */}
-                      <div className="px-4 py-4 grid grid-cols-2 gap-3">
-                        <Card>
-                          <CardContent className="p-3">
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
-                              <Activity className="w-3 h-3" />
-                              Séquences actives
-                            </div>
-                            <p className="text-2xl font-bold tabular-nums mt-1">{stats.active_sequences}</p>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="p-3">
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider">
-                              <Briefcase className="w-3 h-3" />
-                              Candidats (30j)
-                            </div>
-                            <p className="text-2xl font-bold tabular-nums mt-1">{stats.candidates_30d}</p>
-                          </CardContent>
-                        </Card>
-                      </div>
-
-                      <div className="border-t border-border" />
-
                       {/* LinkedIn Account */}
                       <SectionRow
                         icon={<img src={linkedinLogo} alt="" className="w-4 h-4 object-contain" />}
@@ -390,69 +326,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             >
                               {isLinking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
                               Lier
-                            </Button>
-                          </div>
-                        )}
-                      </SectionRow>
-
-                      <div className="border-t border-border" />
-
-                      {/* Mission Assignments */}
-                      <SectionRow
-                        icon={<Briefcase className="w-3.5 h-3.5 text-muted-foreground" />}
-                        label="Missions assignées"
-                      >
-                        {memberJobs.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mb-3">
-                            {memberJobs.map(a => (
-                              <Badge
-                                key={a.id}
-                                variant="default"
-                                className="gap-1 font-medium"
-                              >
-                                {a.job_title || a.job_id}
-                                <button
-                                  type="button"
-                                  onClick={() => unassign(a.id)}
-                                  className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
-                                  aria-label="Retirer"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-
-                        {jobs.length === 0 ? (
-                          <p className="text-xs text-muted-foreground italic px-2 py-1.5">
-                            Aucune mission créée. Créez d'abord une mission depuis l'onglet Missions pour pouvoir y assigner ce membre.
-                          </p>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <Select value={selectedJobId} onValueChange={setSelectedJobId}>
-                              <SelectTrigger className="h-8 text-xs flex-1">
-                                <SelectValue placeholder="Sélectionner une mission…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {jobs
-                                  .filter(j => !memberJobs.some(a => a.job_id === j.id))
-                                  .map(j => (
-                                    <SelectItem key={j.id} value={j.id} className="text-xs">
-                                      {j.title}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 gap-1"
-                              onClick={() => handleAssignJob(member)}
-                              disabled={!selectedJobId || isAssigning}
-                            >
-                              {isAssigning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                              Assigner
                             </Button>
                           </div>
                         )}
@@ -570,7 +443,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   {/* Non-admin expanded note */}
                   {isExpanded && !isAdmin && (
                     <div className="bg-muted/30 border-t border-border px-4 py-4 text-xs text-muted-foreground italic">
-                      Les détails de gestion (LinkedIn, missions, quota) sont visibles uniquement par les administrateurs.
+                      Les détails de gestion (LinkedIn, quota) sont visibles uniquement par les administrateurs.
                     </div>
                   )}
                 </div>

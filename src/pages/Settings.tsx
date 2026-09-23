@@ -1,515 +1,243 @@
-import { useState, useCallback, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useOrganization, useOrganizationMembers, type Organization } from '@/hooks/useOrganization';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  Building2, Users, Plug, Check, Loader2, Pencil,
-  UserCircle, CreditCard, Sparkles, MessageSquare, Bookmark, Briefcase, Store, Wand2,
-  UserPlus, History,
-} from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SEOHead } from '@/components/SEOHead';
-import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
-import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
-import { PendingInvitations } from '@/components/settings/PendingInvitations';
-import { TeamManagement } from '@/components/settings/TeamManagement';
-import { MyLinkedInAccount } from '@/components/settings/MyLinkedInAccount';
-import { ExtensionTokens } from '@/components/settings/ExtensionTokens';
-import { MyWhatsAppAccount } from '@/components/settings/MyWhatsAppAccount';
-import { MyEmailAccount } from '@/components/settings/MyEmailAccount';
-import { EmailSignatures } from '@/components/settings/EmailSignatures';
-import { BillingSettings } from '@/components/settings/BillingSettings';
-import { AICreditsSettings } from '@/components/settings/AICreditsSettings';
-import { MessageTemplatesSettings } from '@/components/settings/MessageTemplatesSettings';
-import { OrgLogoEditor } from '@/components/settings/OrgLogoEditor';
-import { ConnectorSettings } from '@/components/settings/ConnectorSettings';
-import { AgencySettings } from '@/components/settings/AgencySettings';
-import { MarketplaceActivation } from '@/components/settings/MarketplaceActivation';
-import { OrgTypeSetting } from '@/components/settings/OrgTypeSetting';
-import { PedigreePresetsSettings } from '@/components/settings/PedigreePresetsSettings';
-import { AiContextSettings } from '@/components/settings/AiContextSettings';
-import { AgentActionsSettings } from '@/components/settings/AgentActionsSettings';
-import { toast } from 'sonner';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useOrgManagerName } from '@/hooks/useOrgManagerName';
 import { hasFeature } from '@/lib/featureGates';
-import { updateOrganization } from '@/lib/organizationUpdate';
+import { SETTINGS_PATHS, landingPath, managedBySentence, sectionAccess, type SettingsDoor, type SettingsSectionId, type SettingsViewer } from '@/lib/settingsRoutes';
+import { SETTINGS_SECTIONS, type SettingsSection } from '@/components/settings/shell/sections';
 
+/**
+ * Paramètres : coquille à deux portes (Mon compte, Mon organisation).
+ * Les rubriques viennent du registre shell/sections.tsx ; les anciennes adresses
+ * à ?tab=… sont redirigées avant la garde de connexion (LegacySettingsRedirect).
+ */
+
+/** Seuil = lg de Tailwind (1024 px), lu en JS et synchrone dès le premier rendu. Le hook mobile
+ *  partagé (768 px, false au premier rendu) redirigerait un téléphone avant qu'il voie la liste. */
+const DESKTOP_QUERY = '(min-width: 1024px)';
+const subscribeDesktop = (onChange: () => void) => {
+  const mql = window.matchMedia(DESKTOP_QUERY);
+  mql.addEventListener('change', onChange);
+  return () => mql.removeEventListener('change', onChange);
+};
+const readDesktop = () => window.matchMedia(DESKTOP_QUERY).matches;
+const useIsDesktop = () => useSyncExternalStore(subscribeDesktop, readDesktop);
+
+type NavState = { focusHeading?: boolean; fromList?: boolean } | null;
+
+/** Téléphone : rubrique quittée par le lien « Paramètres ». La liste lui rend le focus. */
+let lastPhoneSection: SettingsSectionId | null = null;
 
 const Settings = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { organization, organizationId, isOwner, isAdmin, isCollaborator, orgType, refetchOrganization } = useOrganization();
-  const queryClient = useQueryClient();
-  // Droits par type d'organisation (src/lib/featureGates.ts) : un freelance
-  // n'a pas d'équipe à gérer ; les réglages agence sont réservés aux cabinets.
-  const canManageTeam = !isCollaborator && hasFeature(orgType, 'team_management');
-  const canAgencySettings = hasFeature(orgType, 'agency_settings');
-  const { members, isLoading, pendingInvitations, inviteMember, isInviting, resendInvitation, isResendingInvitation, cancelInvitation, updateRole, removeMember } = useOrganizationMembers(organizationId);
+  const isDesktop = useIsDesktop();
+  const { isAdmin, isOwner, orgType } = useOrganization();
+  const viewer: SettingsViewer = { isAdmin, isOwner, orgType, hasTeam: hasFeature(orgType, 'team_management') };
+  const { pathname } = useLocation();
+  const current = SETTINGS_SECTIONS.find((s) => pathname === SETTINGS_PATHS[s.id]);
 
-  const [editingName, setEditingName] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [savingName, setSavingName] = useState(false);
-
-  const { data: memberProfiles = [] } = useQuery({
-    queryKey: ['member-profiles', members.map(m => m.user_id)],
-    queryFn: async () => {
-      if (!members.length) return [];
-      const userIds = members.map(m => m.user_id);
-      const { data } = await supabase
-        .from('profiles')
-        .select('user_id, display_name')
-        .in('user_id', userIds);
-      return data || [];
-    },
-    enabled: members.length > 0,
-  });
-
-  // Connectors tab is hidden when no connector is registered (registry empty)
-  // — avoids surfacing a feature that has no content to show. Re-appears
-  // automatically once admins add rows to public.connector_registry.
-  const { data: hasConnectors = false } = useQuery({
-    queryKey: ['connector-registry-any'],
-    queryFn: async () => {
-      const { count } = await supabase
-        .from('connector_registry')
-        .select('id', { count: 'exact', head: true })
-        .eq('is_active', true);
-      return (count ?? 0) > 0;
-    },
-    staleTime: 10 * 60 * 1000,
-  });
-
-  // L'e-mail des membres vit dans auth.users (profiles n'a pas de colonne email) :
-  // lu par get_org_member_emails, réservée aux membres internes de l'organisation.
-  // Échec (fonction pas encore déployée, réseau) : repli sur le nom seul.
-  const { data: memberEmails = [] } = useQuery({
-    queryKey: ['org-member-emails', organizationId, members.map(m => m.user_id)],
-    queryFn: async (): Promise<Array<{ user_id: string; email: string }>> => {
-      const { data, error } = await supabase.rpc('get_org_member_emails', { p_organization_id: organizationId! });
-      if (error) { console.warn('[Settings] member emails:', error); return []; }
-      return data ?? [];
-    },
-    enabled: !!organizationId && canManageTeam && members.length > 0,
-    staleTime: 5 * 60 * 1000,
-  });
-  const getMemberEmail = (userId: string) =>
-    memberEmails.find(e => e.user_id === userId)?.email || null;
-
-  // Plus de repli sur 8 caractères d'identifiant : nom, sinon e-mail.
-  const getDisplayName = (userId: string) => {
-    const profile = memberProfiles.find(p => p.user_id === userId);
-    return profile?.display_name?.trim() || getMemberEmail(userId) || 'Membre sans nom';
-  };
-
-  const handleSaveName = async () => {
-    if (!organizationId || !newName.trim()) return;
-    setSavingName(true);
-    try {
-      const row = await updateOrganization(organizationId, { name: newName.trim() });
-      // La carte, la barre latérale et le menu lisent ['active-organization']
-      // (10 min, pas de rechargement au focus). La ligne écrite va directement
-      // dans ce cache : un rechargement raté ne lève pas d'erreur et gardait
-      // l'ancien nom après le toast de succès. Le rechargement suit, sans attente.
-      queryClient.setQueriesData<{ organization: Organization } | null>(
-        { queryKey: ['active-organization'] },
-        (old) => (old?.organization?.id === row.id ? { ...old, organization: { ...old.organization, ...row } } : old),
-      );
-      void refetchOrganization();
-      toast.success('Nom mis à jour');
-      setEditingName(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Le nom n’a pas pu être enregistré.');
-    } finally {
-      setSavingName(false);
-    }
-  };
-
-  // Résout ?tab= selon les droits. Au premier rendu, isAdmin / isCollaborator /
-  // hasConnectors ne sont pas encore chargés : un lien profond vers un onglet
-  // conditionnel (?tab=connectors, ?tab=billing, ?tab=team) retombait sur
-  // « Général ». L'effet ci-dessous réapplique la résolution une fois les
-  // droits connus. ?tab=account est inconditionnel et se résout toujours.
-  const resolveTab = useCallback((tab: string | null) => {
-    if (tab === 'credits') return 'credits';
-    if (tab === 'billing' && isAdmin) return 'billing';
-    if (tab === 'integrations' && isAdmin) return 'integrations';
-    if (tab === 'account') return 'account';
-    if (tab === 'templates') return 'templates';
-    if (tab === 'ai-context') return 'ai-context';
-    if (tab === 'agent-actions') return 'agent-actions';
-    if (tab === 'connectors' && !isCollaborator && hasConnectors) return 'connectors';
-    if (tab === 'team' && canManageTeam) return 'team';
-    if (tab === 'presets' && !isCollaborator) return 'presets';
-    if (tab === 'agency' && canAgencySettings) return 'agency';
-    if (tab === 'marketplace') return 'marketplace';
-    return 'general';
-  }, [isAdmin, isCollaborator, hasConnectors, canManageTeam, canAgencySettings]);
-
-  const requestedTab = searchParams.get('tab');
-  const [activeTab, _setActiveTab] = useState(() => resolveTab(requestedTab));
-
-  useEffect(() => {
-    if (!requestedTab) return;
-    // Onglet demandé pas (encore) autorisé : on garde l'onglet courant.
-    if (resolveTab(requestedTab) !== requestedTab) return;
-    _setActiveTab((prev) => (prev === requestedTab ? prev : requestedTab));
-  }, [requestedTab, resolveTab]);
-
-  // Sync activeTab → URL pour bookmark / partage de lien direct
-  const setActiveTab = useCallback(
-    (next: string) => {
-      _setActiveTab(next);
-      const params = new URLSearchParams(searchParams);
-      if (next === 'general') params.delete('tab');
-      else params.set('tab', next);
-      setSearchParams(params, { replace: true });
-    },
-    [searchParams, setSearchParams],
+  const routes = (
+    <Routes>
+      <Route index element={<SettingsIndex viewer={viewer} isDesktop={isDesktop} />} />
+      {SETTINGS_SECTIONS.map((s) => (
+        // key sur SectionFrame : sans elle, React réutiliserait le même cadre d'une rubrique à l'autre.
+        <Route key={s.id} path={s.path} element={<SectionFrame key={s.id} section={s} viewer={viewer} isDesktop={isDesktop} />} />
+      ))}
+      <Route path="*" element={<Navigate to="/settings" replace />} />
+    </Routes>
   );
-
-  // Tabs groupés par section pour aérer la navigation (pattern Linear/Vercel)
-  const tabGroups = [
-    {
-      label: 'Workspace',
-      items: [
-        { value: 'general', label: 'Général', icon: Building2 },
-        ...(!isCollaborator ? [{ value: 'presets', label: 'ICP sociétés', icon: Bookmark }] : []),
-        { value: 'templates', label: 'Templates', icon: MessageSquare },
-        { value: 'ai-context', label: 'Contexte IA', icon: Wand2 },
-        { value: 'agent-actions', label: 'Actions IA', icon: History },
-      ],
-    },
-    {
-      label: 'Compte & accès',
-      items: [
-        { value: 'account', label: 'Mon compte', icon: UserCircle },
-        ...(canManageTeam ? [{ value: 'team', label: 'Équipe', icon: Users }] : []),
-        ...(!isCollaborator && hasConnectors ? [{ value: 'connectors', label: 'Connecteurs', icon: Plug }] : []),
-        ...(isAdmin ? [{ value: 'integrations', label: 'Intégrations', icon: Plug }] : []),
-      ],
-    },
-    {
-      label: 'Facturation',
-      items: [
-        ...(isAdmin ? [{ value: 'billing', label: 'Abonnement', icon: CreditCard }] : []),
-        { value: 'credits', label: 'Crédits IA', icon: Sparkles },
-      ],
-    },
-    {
-      label: 'Plus',
-      items: [
-        ...(canAgencySettings ? [{ value: 'agency', label: 'Agence', icon: Briefcase }] : []),
-        { value: 'marketplace', label: 'Marketplace', icon: Store },
-      ],
-    },
-  ].filter(g => g.items.length > 0);
-
-  // Flat list pour navigation clavier
-  const tabs = tabGroups.flatMap(g => g.items);
 
   return (
     <div className="min-h-screen bg-background">
-      <SEOHead
-        title="Paramètres | Konekt"
-        description="Gérez les paramètres de votre organisation"
-      />
-
-      <div className="py-6 pb-8">
-        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
-          {/* Header */}
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight mb-4">Paramètres</h1>
-
-          {/* Layout : sidebar groupée (lg+) avec indicateur animé framer-motion
-              qui glisse entre les onglets (layoutId="settings-active-pill"),
-              ou tabs horizontales scrollables (mobile/tablet). Pattern Linear/
-              Vercel/Cal.com — clean, premium, accessible. */}
-          <div className="flex flex-col lg:flex-row lg:gap-10">
-            <nav
-              role="tablist"
-              aria-label="Sections des paramètres"
-              className={cn(
-                'lg:w-60 lg:shrink-0 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto',
-                'mb-4 lg:mb-0 pb-2 lg:pb-1',
-                'border-b border-border lg:border-b-0',
-                'overflow-x-auto lg:overflow-x-visible no-scrollbar',
-              )}
-              onKeyDown={(e) => {
-                const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
-                if (!navKeys.includes(e.key)) return;
-                e.preventDefault();
-                const currentIdx = tabs.findIndex(t => t.value === activeTab);
-                let nextIdx = currentIdx;
-                if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') nextIdx = (currentIdx - 1 + tabs.length) % tabs.length;
-                else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextIdx = (currentIdx + 1) % tabs.length;
-                else if (e.key === 'Home') nextIdx = 0;
-                else if (e.key === 'End') nextIdx = tabs.length - 1;
-                setActiveTab(tabs[nextIdx].value);
-                const target = e.currentTarget.querySelector<HTMLButtonElement>(`[data-tab-value="${tabs[nextIdx].value}"]`);
-                target?.focus();
-              }}
-            >
-              {/* Mobile : tous les onglets en row, pas de groupes (manque de
-                  place pour des labels de section + tabs). Desktop : sections. */}
-              <div className="flex lg:hidden gap-1 px-1">
-                {tabs.map(tab => {
-                  const isActive = activeTab === tab.value;
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.value}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      aria-controls={`settings-panel-${tab.value}`}
-                      id={`settings-tab-${tab.value}-mobile`}
-                      data-tab-value={tab.value}
-                      tabIndex={isActive ? 0 : -1}
-                      onClick={() => setActiveTab(tab.value)}
-                      className={cn(
-                        'flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-medium whitespace-nowrap transition-colors shrink-0',
-                        isActive
-                          ? 'bg-foreground text-background'
-                          : 'text-foreground/70 hover:bg-muted'
-                      )}
-                    >
-                      <Icon className="w-3.5 h-3.5 shrink-0" />
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Desktop : sections groupées avec indicateur animé glissant */}
-              <div className="hidden lg:flex lg:flex-col gap-6">
-                {tabGroups.map((group, gi) => (
-                  <div key={group.label} className="flex flex-col gap-0.5">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground/70 px-3 mb-1.5">
-                      {group.label}
-                    </p>
-                    {group.items.map(tab => {
-                      const isActive = activeTab === tab.value;
-                      const Icon = tab.icon;
-                      return (
-                        <button
-                          key={tab.value}
-                          type="button"
-                          role="tab"
-                          aria-selected={isActive}
-                          aria-controls={`settings-panel-${tab.value}`}
-                          id={`settings-tab-${tab.value}`}
-                          data-tab-value={tab.value}
-                          tabIndex={isActive ? 0 : -1}
-                          onClick={() => setActiveTab(tab.value)}
-                          className={cn(
-                            'group relative flex items-center gap-2.5 px-3 h-9 rounded-lg text-sm font-medium transition-colors',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                            isActive
-                              ? 'text-background'
-                              : 'text-foreground/70 hover:text-foreground hover:bg-muted/60'
-                          )}
-                        >
-                          {/* Indicateur animé qui glisse entre les onglets */}
-                          {isActive && (
-                            <motion.span
-                              layoutId="settings-active-pill"
-                              className="absolute inset-0 bg-foreground rounded-lg shadow-sm"
-                              transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                            />
-                          )}
-                          <Icon
-                            className={cn(
-                              'relative w-4 h-4 shrink-0 transition-colors',
-                              isActive
-                                ? 'text-background'
-                                : 'text-muted-foreground group-hover:text-foreground',
-                            )}
-                          />
-                          <span className="relative">{tab.label}</span>
-                        </button>
-                      );
-                    })}
-                    {/* Séparateur entre groupes (sauf le dernier) */}
-                    {gi < tabGroups.length - 1 && (
-                      <div className="mt-3 -mx-1 border-t border-border/60" aria-hidden="true" />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </nav>
-
-            {/* Tab content */}
-            <div
-              role="tabpanel"
-              id={`settings-panel-${activeTab}`}
-              aria-labelledby={`settings-tab-${activeTab}`}
-              tabIndex={0}
-              className="flex-1 min-w-0 max-w-3xl space-y-6 focus:outline-none"
-            >
-            {activeTab === 'general' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-                    <Building2 className="w-4 h-4" />
-                    Organisation
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Logo */}
-                  {organizationId && (
-                    <OrgLogoEditor
-                      organizationId={organizationId}
-                      logoUrl={organization?.logo_url ?? null}
-                      website={organization?.website ?? null}
-                      orgName={organization?.name || ''}
-                      canEdit={isAdmin}
-                    />
-                  )}
-
-                  <div className="border-t border-border pt-3 space-y-3">
-                  <div>
-                    <label className="text-sm text-muted-foreground">Nom</label>
-                    {editingName ? (
-                      <div className="flex items-center gap-2 mt-1">
-                        <Input
-                          value={newName}
-                          onChange={e => setNewName(e.target.value)}
-                          className="h-9 text-sm max-w-xs"
-                          autoFocus
-                          onKeyDown={e => e.key === 'Enter' && handleSaveName()}
-                        />
-                        <Button size="sm" className="h-9 gap-1" onClick={handleSaveName} disabled={savingName || !newName.trim()}>
-                          {savingName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                          Sauver
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-9" onClick={() => setEditingName(false)}>
-                          Annuler
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <p className="text-foreground font-medium">{organization?.name}</p>
-                        {isAdmin && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground"
-                            onClick={() => { setNewName(organization?.name || ''); setEditingName(true); }}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <OrgTypeSetting />
-                  <div>
-                    <label className="text-sm text-muted-foreground">Identifiant</label>
-                    <p className="text-foreground font-mono text-sm">{organization?.slug}</p>
-                  </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {activeTab === 'account' && (
-              <div className="space-y-6">
-                <MyLinkedInAccount />
-                {/* L'extension Chrome renvoie ici (/settings?tab=account) pour créer son token */}
-                <ExtensionTokens />
-                <MyEmailAccount />
-                <EmailSignatures />
-                <MyWhatsAppAccount />
-              </div>
-            )}
-
-            {activeTab === 'team' && canManageTeam && (
-              <div className="space-y-6">
-                <TeamManagement
-                  members={members}
-                  getDisplayName={getDisplayName}
-                  getEmail={getMemberEmail}
-                  isAdmin={isAdmin}
-                  isOwner={isOwner}
-                  isLoading={isLoading}
-                  onUpdateRole={updateRole}
-                  onRemove={removeMember}
-                />
-
-                {isAdmin && !isCollaborator && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-                        <UserPlus className="w-4 h-4" />
-                        Invitations
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <PendingInvitations
-                        invitations={pendingInvitations}
-                        onCancel={cancelInvitation}
-                        onResend={async (email, role) => { await resendInvitation({ email, role }); }}
-                        canManage={isAdmin}
-                        isResending={isResendingInvitation}
-                      />
-                      <InviteMemberForm
-                        onInvite={async (email, role) => { await inviteMember({ email, role }); }}
-                        isLoading={isInviting}
-                      />
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'billing' && isAdmin && (
-              <BillingSettings />
-            )}
-
-            {activeTab === 'credits' && (
-              <AICreditsSettings />
-            )}
-
-            {activeTab === 'templates' && (
-              <MessageTemplatesSettings />
-            )}
-
-            {activeTab === 'ai-context' && (
-              <AiContextSettings />
-            )}
-
-            {activeTab === 'agent-actions' && (
-              <AgentActionsSettings />
-            )}
-
-            {activeTab === 'connectors' && (
-              <ConnectorSettings />
-            )}
-
-            {activeTab === 'presets' && !isCollaborator && (
-              <PedigreePresetsSettings />
-            )}
-
-            {activeTab === 'integrations' && isAdmin && (
-              <IntegrationsSettings />
-            )}
-            {activeTab === 'agency' && canAgencySettings && (
-              <AgencySettings />
-            )}
-            {activeTab === 'marketplace' && (
-              <MarketplaceActivation />
-            )}
-            </div>
-          </div>
+      <SEOHead title={current ? `${current.label} · Paramètres` : 'Paramètres'} description="Vos réglages et ceux de votre organisation" />
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-8">
+        {/* Même arbre dans les deux dispositions : seuls le titre, le rail et les classes changent.
+            Déplacer {routes} d'un parent à l'autre remontait la rubrique ouverte au passage du
+            seuil (fenêtre redimensionnée, tablette tournée) et perdait la saisie en cours. */}
+        {isDesktop && <h1 className="text-2xl font-bold text-foreground tracking-tight mb-4">Paramètres</h1>}
+        <div className={isDesktop ? 'flex gap-10' : undefined}>
+          {isDesktop && <SettingsNav viewer={viewer} variant="rail" className="w-60 shrink-0 sticky top-6 self-start max-h-[calc(100vh-3rem)] overflow-y-auto" />}
+          <div className={isDesktop ? 'flex-1 min-w-0 max-w-3xl' : undefined}>{routes}</div>
         </div>
       </div>
     </div>
   );
 };
-
 export default Settings;
+
+function SettingsIndex({ viewer, isDesktop }: { viewer: SettingsViewer; isDesktop: boolean }) {
+  const location = useLocation();
+  if (isDesktop) return <Navigate replace to={{ pathname: landingPath(viewer), search: location.search, hash: location.hash }} />;
+  return <SettingsList viewer={viewer} />;
+}
+
+function SettingsNav({ viewer, variant, className }: { viewer: SettingsViewer; variant: 'rail' | 'list'; className?: string }) {
+  const manager = useOrgManagerName(!viewer.isAdmin);
+  const group = (door: SettingsDoor, title: string) => {
+    const headingId = `settings-nav-${door}`;
+    const managed = door === 'org' && !viewer.isAdmin;
+    const items = SETTINGS_SECTIONS.filter((s) => s.door === door && sectionAccess(s.id, viewer) === 'open');
+    return (
+      <section aria-labelledby={headingId}>
+        <h2 id={headingId} className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h2>
+        {managed ? (
+          manager.isLoading
+            ? <div className="mx-3 h-5 w-56 max-w-full rounded bg-muted animate-pulse" aria-hidden="true" />
+            : <p className="px-3 text-sm text-muted-foreground">{managedBySentence(manager.name)}</p>
+        ) : (
+          <ul className="flex flex-col gap-0.5">
+            {items.map((s) => <li key={s.id}><SectionLink section={s} variant={variant} /></li>)}
+          </ul>
+        )}
+      </section>
+    );
+  };
+  return (
+    <nav aria-label="Rubriques des paramètres" className={cn('flex flex-col gap-6', className)}>
+      {group('account', 'Mon compte')}
+      {group('org', 'Mon organisation')}
+    </nav>
+  );
+}
+
+function SectionLink({ section, variant }: { section: SettingsSection; variant: 'rail' | 'list' }) {
+  const Icon = section.icon;
+  return (
+    <NavLink
+      to={SETTINGS_PATHS[section.id]}
+      state={{ focusHeading: true, fromList: variant === 'list' }}
+      data-section={section.id}
+      className={({ isActive }) => cn(
+        'flex items-center gap-2.5 rounded-lg px-3 text-sm font-medium transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        variant === 'rail' ? 'h-9' : 'min-h-12',
+        variant === 'rail' && isActive ? 'bg-foreground text-background' : 'text-foreground/80 hover:bg-muted hover:text-foreground',
+      )}
+    >
+      <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+      <span className="flex-1">{section.label}</span>
+      {variant === 'list' && <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />}
+    </NavLink>
+  );
+}
+
+function SettingsList({ viewer }: { viewer: SettingsViewer }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const id = lastPhoneSection;
+    lastPhoneSection = null;
+    if (id) listRef.current?.querySelector<HTMLElement>(`[data-section="${id}"]`)?.focus();
+  }, []);
+  return (
+    <div ref={listRef}>
+      <h1 className="text-xl font-bold text-foreground tracking-tight mb-4">Paramètres</h1>
+      <SettingsNav viewer={viewer} variant="list" />
+    </div>
+  );
+}
+
+function SectionFrame({ section, viewer, isDesktop }: { section: SettingsSection; viewer: SettingsViewer; isDesktop: boolean }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const access = sectionAccess(section.id, viewer);
+  const Heading = (isDesktop ? 'h2' : 'h1') as 'h2';
+  const fromList = (location.state as NavState)?.fromList === true;
+
+  // Focus au titre seulement après un choix dans la navigation ; une arrivée par lien ne vole pas le focus.
+  useEffect(() => {
+    if (!(location.state as NavState)?.focusHeading) return;
+    headingRef.current?.focus({ preventScroll: true });
+    if (!location.hash) window.scrollTo({ top: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useHashScroll(paneRef);
+
+  const Body = section.Component;
+  return (
+    <div ref={paneRef}>
+      {!isDesktop && (
+        <Link
+          to="/settings"
+          aria-label="Retour aux paramètres"
+          onClick={(e) => {
+            lastPhoneSection = section.id;
+            // Venu de la liste : on y revient dans l'historique, sans empiler une entrée de plus (D14).
+            if (fromList) { e.preventDefault(); navigate(-1); }
+          }}
+          className="inline-flex items-center gap-1 h-11 -ml-2 px-2 mb-1 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+          Paramètres
+        </Link>
+      )}
+      <header className="mb-6">
+        <Heading ref={headingRef} tabIndex={-1} className="text-lg font-semibold tracking-tight text-foreground focus:outline-none">{section.label}</Heading>
+        <p className="text-sm text-muted-foreground mt-1">{section.intro}</p>
+      </header>
+      {access === 'open' ? <div className="space-y-6"><Body /></div>
+        : access === 'managed' ? <ManagedNotice note={section.managedNote} />
+        : <TeamUnavailable isOwner={viewer.isOwner} />}
+    </div>
+  );
+}
+
+function ManagedNotice({ note }: { note?: string }) {
+  const { name, isLoading } = useOrgManagerName(true);
+  if (isLoading) return <div className="h-16 rounded-xl bg-muted animate-pulse" aria-hidden="true" />;
+  return (
+    <div role="note" className="rounded-xl border border-border bg-card p-5 space-y-1.5">
+      <p className="text-sm text-foreground">{managedBySentence(name)}</p>
+      {note && <p className="text-sm text-muted-foreground">{note}</p>}
+    </div>
+  );
+}
+
+function TeamUnavailable({ isOwner }: { isOwner: boolean }) {
+  return (
+    <div role="note" className="rounded-xl border border-border bg-card p-5">
+      {/* Le type est réservé au propriétaire : un admin n'est pas envoyé vers un réglage fermé. */}
+      {isOwner ? (
+        <p className="text-sm text-foreground">
+          Équipe n’est proposée qu’aux organisations Entreprise et Cabinet. Le type se règle dans{' '}
+          <Link to={SETTINGS_PATHS.general} className="font-medium underline underline-offset-2">Général</Link>.
+        </p>
+      ) : (
+        <p className="text-sm text-foreground">
+          Équipe n’est proposée qu’aux organisations Entreprise et Cabinet. Seul le propriétaire peut choisir le type de l’organisation.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const safeDecode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };
+
+/** #ancre : recale tant que les blocs au-dessus passent du chargement à leur taille finale,
+ *  jusqu'au premier geste (3 s au plus). Seule une navigation qui porte un hash fixe une
+ *  nouvelle cible (lien vers une ancre de la rubrique déjà ouverte, même rejoué). Les lecteurs
+ *  de retour (paiement, Notion) réécrivent l'adresse sans hash via setSearchParams : ce
+ *  remplacement n'interrompt pas l'alignement en cours. */
+function useHashScroll(paneRef: RefObject<HTMLElement>) {
+  const { hash, key } = useLocation();
+  const target = useRef({ id: safeDecode(hash.slice(1)), key });
+  if (hash.length > 1 && key !== target.current.key) target.current = { id: safeDecode(hash.slice(1)), key };
+  const trigger = target.current.key;
+  useEffect(() => {
+    const id = target.current.id;
+    const pane = paneRef.current;
+    if (!id || !pane || typeof ResizeObserver === 'undefined') return;
+    let done = false;
+    const stop = () => { done = true; };
+    const align = () => { if (!done) document.getElementById(id)?.scrollIntoView({ block: 'start' }); };
+    const observer = new ResizeObserver(align);
+    observer.observe(pane);
+    align();
+    const timer = window.setTimeout(stop, 3000);
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+    events.forEach((e) => window.addEventListener(e, stop, { passive: true, once: true }));
+    return () => { stop(); observer.disconnect(); window.clearTimeout(timer); events.forEach((e) => window.removeEventListener(e, stop)); };
+  }, [paneRef, trigger]);
+}

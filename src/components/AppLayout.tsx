@@ -30,6 +30,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const location = useLocation();
   const reduceMotion = useReducedMotion();
   const [sidebarDefaultOpen] = React.useState(readSidebarOpen);
+  // Les rubriques des Paramètres partagent une clé : changer de rubrique ne remonte ni la coquille ni sa navigation.
+  const transitionKey = location.pathname.startsWith('/settings/') ? '/settings' : location.pathname;
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
@@ -47,7 +49,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
                 d'AnimatePresence : une exit-animation remonterait la page
                 sortante et coûterait un aller-retour de layout. */}
             <motion.div
-              key={location.pathname}
+              key={transitionKey}
               initial={reduceMotion ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}

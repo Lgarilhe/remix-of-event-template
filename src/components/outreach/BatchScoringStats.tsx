@@ -53,7 +53,7 @@ export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, dur
         )}
         {/* Pas de compteur de crédits ici : llmCalled compte des profils, alors
             que la facturation se fait par appel serveur et au prorata des
-            jetons. Le coût réel est dans Paramètres, Crédits IA. */}
+            jetons. Le coût réel est dans Paramètres › Abonnement et crédits. */}
       </div>
     </div>
   );

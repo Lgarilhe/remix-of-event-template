@@ -1,13 +1,12 @@
 /**
- * Paramètres, lot 1 — rédaction : templates, variables et signatures (R5a, R5b,
- * R9).
+ * Paramètres, lot 1 — rédaction : templates et signatures (R5a, R5b, R9).
  *
  * R5a/R5b : une lecture ratée affichait l'état vide (« Démarrer avec des
- * templates suggérés », « Aucune variable custom encore », « Aucune
- * signature ») avec la création active. L'utilisateur croyait ses données
- * perdues, et une signature « par défaut » créée à l'aveugle retirait ce
- * statut à des signatures qu'il n'avait pas vues. Ces tests épinglent le bloc
- * d'erreur (ErrorBox + Réessayer) et la création désactivée.
+ * templates suggérés », « Aucune signature ») avec la création active.
+ * L'utilisateur croyait ses données perdues. Ces tests épinglent le bloc
+ * d'erreur (ErrorBox + Réessayer) et la création désactivée. L'écran des
+ * variables personnalisées est retiré au lot 3 ; leur hook, encore lu par la
+ * messagerie, garde isError et refetch.
  *
  * R9 : l'aperçu d'une signature injectait le HTML saisi tel quel
  * (XSS stockée entre membres). Il passe désormais par sanitizeSignatureHtml
@@ -39,7 +38,6 @@ const returnBlock = (src) => src.slice(src.lastIndexOf('return {'));
 const templatesHook = read('src/hooks/useMessageTemplates.ts');
 const templatesUi = read('src/components/settings/MessageTemplatesSettings.tsx');
 const variablesHook = read('src/hooks/useUserTemplateVariables.ts');
-const variablesUi = read('src/components/settings/CustomVariablesSettings.tsx');
 const signaturesHook = read('src/hooks/useEmailSignatures.ts');
 const signaturesUi = read('src/components/settings/EmailSignatures.tsx');
 const signatureHtml = read('src/lib/signatureHtml.ts');
@@ -76,16 +74,6 @@ test('R5a — templates : bloc d\'erreur, ni suggestions ni liste, création dé
   assert.match(section, /!isLoading && !isError && templates\.length > 0/, 'liste affichée en erreur');
   assert.doesNotMatch(section, /!isLoading && templates\.length/, 'une condition sans !isError subsiste');
   assert.match(templatesUi, /import \{ ErrorBox \} from '@\/components\/marketplace\/ErrorBox'/);
-});
-
-test('R5a — variables : bloc d\'erreur, pas de faux « aucune variable », création désactivée', () => {
-  const card = between(variablesUi, 'export const CustomVariablesSettings', 'interface VariableFormDialogProps');
-  assert.match(card, /isLoading, isError, refetch, create, update, remove \} = useUserTemplateVariables\(\)/);
-  assert.match(card, /disabled=\{isLoading \|\| isError\}/, '« Nouvelle variable » doit être grisé');
-  assert.match(card, /<ErrorBox title="Impossible de charger vos variables\." onRetry=/);
-  assert.match(card, /!isLoading && !isError && variables\.length === 0/);
-  assert.match(card, /!isLoading && !isError && variables\.length > 0/);
-  assert.doesNotMatch(card, /!isLoading && variables\.length/, 'une condition sans !isError subsiste');
 });
 
 // ---------------------------------------------------------------- R5b

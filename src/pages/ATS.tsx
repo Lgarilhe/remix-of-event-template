@@ -406,7 +406,7 @@ export default function ATS() {
                               title="Aucune shortlist client"
                               description="Connectez Notion dans les paramètres pour synchroniser votre base candidats."
                               actionLabel="Paramètres"
-                              actionHref="/settings?tab=integrations"
+                              actionHref="/settings/org/general#outils"
                             />
                           ) : (
                             <>

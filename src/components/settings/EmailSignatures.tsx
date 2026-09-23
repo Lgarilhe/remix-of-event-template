@@ -14,11 +14,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useEmailSignatures, EmailSignature } from '@/hooks/useEmailSignatures';
-import { Mail, Plus, Pencil, Trash2, Star } from 'lucide-react';
+import { Mail, Plus, Pencil, Trash2 } from 'lucide-react';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { ErrorBox } from '@/components/marketplace/ErrorBox';
 import { sanitizeSignatureHtml } from '@/lib/signatureHtml';
@@ -27,20 +25,20 @@ export const EmailSignatures: React.FC = () => {
   const { signatures, isLoading, isError, refetch, createSignature, updateSignature, deleteSignature } = useEmailSignatures();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<EmailSignature | null>(null);
-  const [form, setForm] = useState({ name: '', content: '', is_default: false });
+  const [form, setForm] = useState({ name: '', content: '' });
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   // Aperçu assaini : tout membre peut écrire une signature, les autres l'ouvrent ici.
   const previewHtml = useMemo(() => sanitizeSignatureHtml(form.content), [form.content]);
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: '', content: '', is_default: false });
+    setForm({ name: '', content: '' });
     setDialogOpen(true);
   };
 
   const openEdit = (sig: EmailSignature) => {
     setEditing(sig);
-    setForm({ name: sig.name, content: sig.content, is_default: sig.is_default });
+    setForm({ name: sig.name, content: sig.content });
     setDialogOpen(true);
   };
 
@@ -95,12 +93,6 @@ export const EmailSignatures: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm">{sig.name}</span>
-                      {sig.is_default && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 gap-0.5">
-                          <Star className="w-2.5 h-2.5" />
-                          Par défaut
-                        </Badge>
-                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                       {sig.content.replace(/<[^>]*>/g, '').slice(0, 120)}
@@ -185,13 +177,6 @@ export const EmailSignatures: React.FC = () => {
                 />
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={form.is_default}
-                onCheckedChange={(checked) => setForm(f => ({ ...f, is_default: checked }))}
-              />
-              <Label className="text-sm">Signature par défaut</Label>
-            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
               <Button

@@ -2,18 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAICredits, useAICreditHistory, AI_CREDIT_COSTS } from '@/hooks/useAICredits';
-import { estimateCredits, CREDIT_PACKS, MODEL_CATALOG } from '@/types/aiCredits';
+import { estimateCredits, CREDIT_PACKS } from '@/types/aiCredits';
 import { useOrganization } from '@/hooks/useOrganization';
-import { useModelPreference } from '@/hooks/useModelPreference';
-import { ModelLogo, ProviderLabel } from '@/components/ai/ModelLogo';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { readCheckoutReturn, withoutCheckoutReturn } from '@/lib/checkoutReturn';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sparkles, TrendingDown, Clock, ArrowUpRight, Coins, ShoppingCart, Loader2, CheckCircle2, Brain } from 'lucide-react';
+import { Sparkles, TrendingDown, Clock, ArrowUpRight, Coins, ShoppingCart, Loader2, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { EnrichmentAnalytics } from '@/components/settings/EnrichmentAnalytics';
 import { BaseKonektCard } from '@/components/settings/BaseKonektCard';
@@ -70,11 +67,10 @@ const historyDescription = (description: string | null | undefined): string | nu
 export const AICreditsSettings = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { organizationId, isAdmin, isOwner } = useOrganization();
+  const { organizationId, isAdmin } = useOrganization();
   const queryClient = useQueryClient();
   const { creditsRemaining, planCredits, topupCredits, usagePercent, isLoading, isLow, isOut, hasBalance, periodEnd, refetch } = useAICredits();
   const { data: history = [], isLoading: isLoadingHistory, isError: isHistoryError } = useAICreditHistory();
-  const { modelId: defaultModel, setModelId: setDefaultModel, loadError: modelLoadError, reload: reloadModel } = useModelPreference(organizationId);
   const [buyingPack, setBuyingPack] = useState<string | null>(null);
 
   // Retour d'un achat de pack (kind=pack). Un retour d'abonnement appartient à
@@ -212,74 +208,6 @@ export const AICreditsSettings = () => {
             </div>
           )}
           </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Default Model Selector */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-            <Brain className="w-4 h-4" />
-            Modèle IA par défaut
-          </CardTitle>
-          <p className="text-xs text-muted-foreground mt-1">
-            Ce modèle sera utilisé pour toutes les actions IA (sauf classification et tri qui restent sur modèles rapides).
-            Chaque utilisateur peut changer ponctuellement sur chaque action.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {/* Réglage du propriétaire (garde serveur organizations_update_guard) :
-              le toast de succès n'arrive qu'après l'écriture confirmée. Lecture
-              ratée : pas de sélecteur, qui afficherait « Automatique » à tort. */}
-          {modelLoadError ? (
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">
-                Modèle enregistré indisponible pour le moment. Réessayez dans quelques instants.
-              </p>
-              <Button size="sm" variant="outline" onClick={reloadModel}>
-                Réessayer
-              </Button>
-            </div>
-          ) : (
-          <Select
-            value={defaultModel || '__auto__'}
-            disabled={!isOwner}
-            onValueChange={async (v) => {
-              try {
-                await setDefaultModel(v === '__auto__' ? null : v);
-                toast.success(v === '__auto__' ? 'Modèle auto-routé activé' : `Modèle par défaut : ${MODEL_CATALOG[v]?.name}`);
-              } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Le modèle n'a pas pu être enregistré.");
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-w-[calc(100vw-2rem)]">
-              <SelectItem value="__auto__">
-                <div className="flex items-center gap-3 py-1">
-                  <span className="text-base shrink-0">✨</span>
-                  <span className="text-sm font-medium">Automatique</span>
-                </div>
-              </SelectItem>
-              {Object.values(MODEL_CATALOG).map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  <div className="flex items-center gap-3 py-1">
-                    <ModelLogo modelId={model.id} size={22} className="shrink-0" />
-                    <span className="text-sm font-medium">{model.name}</span>
-                    <span className="text-xs px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm">
-                      ×{model.multiplier}
-                    </span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          )}
-          {!isOwner && (
-            <p className="text-xs text-muted-foreground mt-2">Réglé par le propriétaire de l'organisation.</p>
           )}
         </CardContent>
       </Card>

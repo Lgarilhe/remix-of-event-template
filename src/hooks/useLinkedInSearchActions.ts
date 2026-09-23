@@ -1079,14 +1079,14 @@ export function useLinkedInSearchActions(
         // NEVER auto-retry on session conflicts
         toast.error(
           isStandaloneSearch
-            ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Paramètres > Mon compte) : elle partage la session au lieu d’en créer une deuxième.'
-            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si ça se répète, reconnectez votre compte avec la méthode cookie (Paramètres > Mon compte) : elle partage la session au lieu d’en créer une deuxième.',
+            ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Paramètres › Connexions) : elle partage la session au lieu d’en créer une deuxième.'
+            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si ça se répète, reconnectez votre compte avec la méthode cookie (Paramètres › Connexions) : elle partage la session au lieu d’en créer une deuxième.',
           {
             id: 'search-error',
             duration: 15000,
             action: {
               label: 'Reconnecter',
-              onClick: () => window.location.href = '/settings?tab=account',
+              onClick: () => window.location.href = '/settings/account/connections',
             },
           }
         );
@@ -1101,7 +1101,7 @@ export function useLinkedInSearchActions(
         // pointer l'user vers la bonne action (avant : message générique
         // "reconnectez votre compte" identique pour tous les cas)
         const lowerErr = errorMessage?.toLowerCase() || '';
-        let detail = 'Reconnectez votre compte dans Paramètres > Mon compte.';
+        let detail = 'Reconnectez votre compte dans Paramètres › Connexions.';
         if (lowerErr.includes('captcha')) {
           detail = 'LinkedIn demande une vérification captcha. Allez sur linkedin.com pour la valider, puis revenez.';
         } else if (lowerErr.includes('rate') || lowerErr.includes('429')) {
@@ -1117,7 +1117,7 @@ export function useLinkedInSearchActions(
           duration: 15000,
           action: {
             label: "Reconnecter",
-            onClick: () => { window.location.href = "/settings?tab=account"; },
+            onClick: () => { window.location.href = "/settings/account/connections"; },
           },
         });
       } else if (isUnprocessableSearch) {

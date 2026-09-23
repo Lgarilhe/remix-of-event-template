@@ -1,13 +1,13 @@
 /**
  * Paramètres, lot 1 — écritures sur l'organisation (R1, R1b/R11 front, R2, R4,
- * R5e, repli du nom de R13 dans Settings.tsx).
+ * R5e, repli du nom de R13 dans TeamSection.tsx).
  *
  * Un UPDATE PostgREST filtré par la RLS répond « succès » avec 0 ligne : l'écran
  * affichait « Type mis à jour » sans rien changer. Ces tests épinglent le passage
  * de toutes les écritures sur organizations par src/lib/organizationUpdate.ts
  * (ligne relue, erreur en français), les droits affichés (admin : nom, logo,
- * site, consignes IA ; propriétaire seul : type, permissions agence), le type
- * écrit dès l'INSERT à l'inscription et le verrou d'écriture du contexte IA.
+ * site, consignes IA ; propriétaire seul : type), le type écrit dès l'INSERT
+ * à l'inscription et le verrou d'écriture du contexte IA.
  *
  * Inspection de source et fonctions pures, sans navigateur ni base.
  * Lancer : node --test tests/ux/lot1-organisation.test.mjs (ou npm run test:ux)
@@ -29,10 +29,10 @@ const between = (src, start, end) => {
 const count = (src, re) => (src.match(re) || []).length;
 
 const helper = read('src/lib/organizationUpdate.ts');
-const settings = read('src/pages/Settings.tsx');
+const general = read('src/components/settings/shell/GeneralSection.tsx');
+const team = read('src/components/settings/shell/TeamSection.tsx');
 const orgType = read('src/components/settings/OrgTypeSetting.tsx');
 const logo = read('src/components/settings/OrgLogoEditor.tsx');
-const agency = read('src/components/settings/AgencySettings.tsx');
 const aiHook = read('src/hooks/useAiContext.ts');
 const aiCard = read('src/components/settings/AiContextSettings.tsx');
 const onboarding = read('src/pages/Onboarding.tsx');
@@ -80,25 +80,15 @@ test('R1 — le type est réservé au propriétaire, avec une mention en lecture
   assert.match(orgType, /Seul le propriétaire peut changer le type\./);
 });
 
-test('R1 — Settings : nom, logo et site ouverts aux administrateurs', () => {
-  assert.match(settings, /canEdit=\{isAdmin\}/);
-  assert.doesNotMatch(between(settings, '<OrgLogoEditor', '/>'), /isOwner=/);
-  assert.match(between(settings, '>Nom</label>', '<OrgTypeSetting />'), /\{isAdmin && \(/);
-});
-
-test('R1 — permissions agence : écriture honnête et cache mis à jour', () => {
-  const toggle = between(agency, 'const handleToggle', '// Member stats');
-  assert.match(toggle, /updateOrganization\(organizationId, \{ agency_permissions: updated \}\)/);
-  assert.match(toggle, /setQueryData\(\['agency-permissions', organizationId\]/);
-  assert.doesNotMatch(toggle, /as any/);
-  assert.match(toggle, /catch \(err\)/);
-  assert.match(agency, /type AgencyPermissions = \{/, 'un type (et non une interface) est assignable à Json');
-  assert.match(toggle, /!isOwner/, 'le réglage reste au propriétaire');
+test('R1 — Général : nom, logo et site ouverts aux administrateurs', () => {
+  assert.match(general, /canEdit=\{isAdmin\}/);
+  assert.doesNotMatch(between(general, '<OrgLogoEditor', '/>'), /isOwner=/);
+  assert.match(between(general, '>Nom</label>', '<OrgTypeSetting />'), /\{isAdmin && \(/);
 });
 
 // ------------------------------------------------------------------ R2
 test('R2/C5 — la ligne écrite va dans le cache de l’organisation avant de fermer l’édition', () => {
-  const save = between(settings, 'const handleSaveName', 'const resolveTab');
+  const save = between(general, 'const handleSaveName', 'return (');
   const write = save.indexOf('const row = await updateOrganization(');
   const cache = save.indexOf("setQueriesData");
   const refetch = save.indexOf('refetchOrganization()');
@@ -112,18 +102,18 @@ test('R2/C5 — la ligne écrite va dans le cache de l’organisation avant de f
   assert.match(update, /old\?\.organization\?\.id === row\.id/, 'jamais la ligne d’une autre organisation');
   assert.match(update, /organization: \{ \.\.\.old\.organization, \.\.\.row \}/);
   assert.match(save, /catch \(err\)/, 'le message du helper doit être affiché');
-  assert.match(settings, /refetchOrganization \} = useOrganization\(\)/);
-  assert.match(settings, /const queryClient = useQueryClient\(\);/);
+  assert.match(general, /refetchOrganization \} = useOrganization\(\)/);
+  assert.match(general, /const queryClient = useQueryClient\(\);/);
 });
 
-// ------------------------------------------------------------------ R13 (Settings)
+// ------------------------------------------------------------------ R13 (TeamSection)
 test('R13 — plus de repli sur 8 caractères d’identifiant dans l’équipe', () => {
-  assert.doesNotMatch(settings, /userId\.slice\(0, 8\)/);
-  assert.match(settings, /'Membre sans nom'/);
-  assert.match(settings, /rpc\('get_org_member_emails'/);
-  const name = between(settings, 'const getDisplayName', '};');
+  assert.doesNotMatch(team, /userId\.slice\(0, 8\)/);
+  assert.match(team, /'Membre sans nom'/);
+  assert.match(team, /rpc\('get_org_member_emails'/);
+  const name = between(team, 'const getDisplayName', '};');
   assert.match(name, /display_name\?\.trim\(\) \|\| getMemberEmail\(userId\) \|\| 'Membre sans nom'/);
-  const query = between(settings, "queryKey: ['org-member-emails'", 'staleTime');
+  const query = between(team, "queryKey: ['org-member-emails'", 'staleTime');
   assert.match(query, /enabled: !!organizationId && canManageTeam/, 'la RPC ne sert qu’à l’onglet Équipe');
 });
 
@@ -294,17 +284,4 @@ test('C1 — logo : l’échec de chargement est un état React, plus une retouc
   assert.equal(logoSrcOf('https://a.example/ancien.png', 'https://a.example/ancien.png'), null);
   assert.equal(logoSrcOf('https://a.example/nouveau.png', 'https://a.example/ancien.png'), 'https://a.example/nouveau.png');
   assert.equal(logoSrcOf(null, null), null);
-});
-
-test('C3/C25 — permissions agence : lecture ratée levée, erreur affichée, bascules retirées', () => {
-  const query = between(agency, "queryKey: ['agency-permissions'", 'staleTime');
-  assert.match(query, /const \{ data, error \} = await supabase/);
-  assert.match(query, /if \(error\) throw error;/, 'une erreur avalée se lisait comme les valeurs par défaut');
-  assert.doesNotMatch(query, /as any/);
-  assert.match(agency, /const \{ data: permissions, isLoading, isError, refetch \} = useQuery\(/);
-  assert.match(agency, /const permissionsUnavailable = isError && !permissions;/);
-  const view = between(agency, '{permissionsUnavailable ? (', 'PERMISSION_CONFIG.map(');
-  assert.match(view, /<ErrorBox[^>]*onRetry=\{\(\) => \{ void refetch\(\); \}\}/);
-  assert.ok(view.indexOf('<ErrorBox') < view.indexOf(') : ('), 'les bascules ne sont montées que hors erreur');
-  assert.match(between(agency, 'const handleToggle', 'const updated'), /!permissions/, 'aucune écriture sans lecture réussie');
 });

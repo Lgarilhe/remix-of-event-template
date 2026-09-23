@@ -521,8 +521,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 onClose={() => setSlashQuery(null)}
                 onCreateNew={() => {
                   setSlashQuery(null);
-                  // Ouvre les Settings → onglet Templates dans un nouvel onglet
-                  window.open('/settings?tab=templates', '_blank');
+                  // Ouvre Paramètres › Rédaction (modèles) dans un nouvel onglet
+                  window.open('/settings/account/writing#modeles', '_blank');
                 }}
               />
             )}

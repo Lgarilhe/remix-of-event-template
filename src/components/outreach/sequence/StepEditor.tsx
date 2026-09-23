@@ -384,7 +384,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                       <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue placeholder="Aucune" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">Aucune</SelectItem>
-                        {signatures.map(sig => <SelectItem key={sig.id} value={sig.id}>{sig.name}{sig.is_default ? ' ⭐' : ''}</SelectItem>)}
+                        {signatures.map(sig => <SelectItem key={sig.id} value={sig.id}>{sig.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

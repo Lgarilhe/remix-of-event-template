@@ -145,13 +145,15 @@ export const useOrganization = () => {
         if (!org) return null;
       }
 
-      // Get user's role in org
-      const { data: membership } = await supabase
+      // Get user's role in org. Une lecture en échec lève (nouvel essai) au lieu de
+      // passer pour un simple membre ; aucune ligne garde le repli 'member'.
+      const { data: membership, error: membershipError } = await supabase
         .from('organization_members')
         .select('role')
         .eq('organization_id', org.id)
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
+      if (membershipError) throw membershipError;
 
       return {
         organization: org as Organization,

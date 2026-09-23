@@ -148,7 +148,7 @@ async function ingestPendingFiles(config: SkalrAdapterConfig, files: File[]): Pr
  * Le serveur, lui, indique le restant et le requis.
  */
 const CREDITS_EXHAUSTED_TEXT =
-  "Crédits IA insuffisants : je ne peux pas répondre. Rechargez-les depuis Paramètres, onglet Crédits IA, puis renvoyez votre message.";
+  "Crédits IA insuffisants : je ne peux pas répondre. Un administrateur peut en ajouter dans Paramètres › Abonnement et crédits. Renvoyez ensuite votre message.";
 
 /**
  * Pré-autorisation des crédits, sur la même action `ai-credits` que
@@ -181,7 +181,7 @@ async function preauthCredits(
     const remaining = data.remaining ?? 0;
     const estimated = data.estimated_credits ?? 1;
     return `Crédits IA insuffisants (${remaining} restants, ${estimated} requis). `
-      + 'Rechargez-les depuis Paramètres, onglet Crédits IA, puis renvoyez votre message.';
+      + 'Un administrateur peut en ajouter dans Paramètres › Abonnement et crédits. Renvoyez ensuite votre message.';
   } catch (e) {
     console.warn('[chat-adapter] Pré-autorisation des crédits en échec, appel laissé passer :', e);
     return null;

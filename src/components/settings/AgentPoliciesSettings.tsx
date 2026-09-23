@@ -1,7 +1,8 @@
 /**
  * AgentPoliciesSettings — Politiques d'autonomie de l'agent IA (P2.1).
  *
- * Rendu dans l'onglet /settings?tab=agent-actions, au-dessus de l'audit.
+ * Rendu dans Paramètres › Règles de l’assistant (ancre #resume), sous les consignes
+ * de l'organisation. L'audit des actions est dans Journal de l’assistant.
  * Une ligne par action de l'agent : Automatique / Avec approbation / Désactivée.
  *
  * - Défaut (aucune row en base) : « Avec approbation ».
@@ -129,8 +130,8 @@ export function AgentPoliciesSettings() {
             Politiques d'autonomie
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Pour chaque action, choisissez si le copilot l'exécute directement (visible dans
-            l'audit ci-dessous) ou attend votre approbation. Les envois externes et les actions
+            Pour chaque action, choisissez si le copilot l'exécute directement
+            (visible dans le journal de l’assistant) ou attend votre approbation. Les envois externes et les actions
             destructives exigent toujours une approbation.
             {!isAdmin && ' Réservé aux administrateurs.'}
           </p>

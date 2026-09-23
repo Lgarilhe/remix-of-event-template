@@ -2,8 +2,6 @@
  * Lot 1 des Paramètres — onglets Crédits IA et Abonnement.
  *
  * Invariants épinglés :
- *   - R1/D6 : le modèle IA par défaut n'affiche plus de faux succès (écriture
- *     attendue, réservée au propriétaire) ;
  *   - R8/D10 : l'historique des crédits n'affiche ni identifiant de modèle ni
  *     code interne, et le signe des ajouts est juste ;
  *   - R10/D12 : le retour de paiement porte kind=pack|subscription, un seul
@@ -47,7 +45,6 @@ const VENDORS = /claude|anthropic|unipile|apollo|coresignal|better ?contact|pdl|
 
 const credits = read('src/components/settings/AICreditsSettings.tsx');
 const billing = read('src/components/settings/BillingSettings.tsx');
-const modelPref = read('src/hooks/useModelPreference.ts');
 const analytics = read('src/components/settings/EnrichmentAnalytics.tsx');
 const permission = read('src/hooks/useEnrichmentPermission.ts');
 const subState = read('src/hooks/useSubscriptionState.ts');
@@ -236,46 +233,6 @@ test('R8 — toute action réglée côté serveur a un libellé', () => {
     }
   }
   assert.deepEqual(missing, []);
-});
-
-// ---------------------------------------------------------------- R1 / D6
-test('D6 — modèle par défaut : écriture attendue, propriétaire seul', () => {
-  const card = credits.slice(credits.indexOf('{/* Default Model Selector */}'), credits.indexOf('{/* Packs de crédits'));
-  assert.ok(card.length > 0, 'carte du modèle introuvable');
-  assert.match(card, /disabled=\{!isOwner\}/);
-  const iAwait = card.indexOf('await setDefaultModel(');
-  const iSuccess = card.indexOf('toast.success(');
-  assert.ok(iAwait !== -1 && iAwait < iSuccess, 'le succès doit suivre l\'écriture attendue');
-  assert.match(card, /catch \(err\)[\s\S]*toast\.error\(/);
-  assert.match(card, /Réglé par le propriétaire/);
-});
-
-test('D6 — useModelPreference passe par updateOrganization, sans état optimiste', () => {
-  const fn = modelPref.slice(modelPref.indexOf('const setModelId'));
-  assert.match(fn, /useCallback\(async/);
-  assert.match(fn, /await updateOrganization\(orgId, \{ ai_model_default: id \}\)/);
-  assert.ok(fn.indexOf('await updateOrganization(') < fn.indexOf('setModelIdState('), 'état modifié avant l\'écriture');
-  assert.ok(fn.indexOf('await updateOrganization(') < fn.indexOf('localStorage.setItem('), 'copie locale écrite avant l\'écriture');
-  assert.doesNotMatch(modelPref, /\.update\(/, 'plus d\'UPDATE direct');
-  assert.doesNotMatch(modelPref, /as never|: any\b/);
-});
-
-test('C4 — une lecture ratée du modèle ne l\'efface pas et n\'affiche pas « Automatique »', () => {
-  const effect = modelPref.slice(modelPref.indexOf('useEffect('), modelPref.indexOf('const setModelId'));
-  assert.match(effect, /const \{ data, error \} = await/);
-  const iError = effect.indexOf('if (error) {');
-  const iReturn = effect.indexOf('return;', iError);
-  assert.ok(iError !== -1 && iReturn !== -1, 'l\'erreur de lecture doit arrêter l\'hydratation');
-  assert.ok(iReturn < effect.indexOf('setModelIdState('), 'état modifié malgré l\'échec');
-  assert.ok(iReturn < effect.indexOf('localStorage.removeItem('), 'copie locale effacée malgré l\'échec');
-  assert.match(effect.slice(iError, iReturn), /setLoadError\(true\)/);
-  assert.match(modelPref, /return \{ modelId, setModelId, loadError, reload \};/);
-
-  const card = credits.slice(credits.indexOf('{/* Default Model Selector */}'), credits.indexOf('{/* Packs de crédits'));
-  assert.match(credits, /loadError: modelLoadError, reload: reloadModel \} = useModelPreference\(/);
-  const iErr = card.indexOf('{modelLoadError ? (');
-  assert.ok(iErr !== -1 && iErr < card.indexOf('<Select'), 'le sélecteur ne doit pas être monté en erreur');
-  assert.match(card.slice(iErr, card.indexOf('<Select')), /onClick=\{reloadModel\}[\s\S]*Réessayer/);
 });
 
 // ---------------------------------------------------------------- R5c

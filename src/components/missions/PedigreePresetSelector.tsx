@@ -237,7 +237,7 @@ export const PedigreePresetSelector: React.FC<Props> = ({
         {!selected && !isCustom && presets.length === 0 && !loading && (
           <p className="text-xs text-muted-foreground mt-3">
             Aucun ICP n'est configuré.{' '}
-            <a href="/settings?tab=presets" className="underline font-medium">
+            <a href="/settings/org/assistant#icp" className="underline font-medium">
               Créer un ICP →
             </a>
           </p>

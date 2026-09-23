@@ -183,16 +183,15 @@ test('R6 — channelStatusOf : les 8 états vers les 4 cartes du tableau de bord
 });
 
 // --------------------------------------------------------------- Lecteurs R6
-test('R6 — tableau de bord : liaison stricte, plus de repli, WhatsApp neutre', () => {
+test('R6 — tableau de bord : liaison stricte, plus de repli, WhatsApp retiré', () => {
   assert.match(dashboardHook, /resolveMyLinkedInStatus\(/);
   assert.match(dashboardHook, /accountsLoaded: unipileReady/);
   assert.match(dashboardHook, /mappingsLoaded: linkedinMappingReady/);
   assert.match(dashboardHook, /const channels = \[linkedin, email\];/, 'WhatsApp ne compte ni pour hasIssue ni pour Tout actif');
   assert.doesNotMatch(dashboardHook, /type !== 'WHATSAPP'/, 'le repli prenait le premier compte de la liste');
-  // D16 : la carte WhatsApp n'est plus signalée « à traiter »
-  const whatsappCard = dashboardCards.slice(dashboardCards.indexOf('channel={whatsapp}'));
-  assert.match(whatsappCard.slice(0, whatsappCard.indexOf('\n        />')), /^\s+neutral$/m);
-  assert.match(dashboardCards, /const needsAction = !neutral && /);
+  assert.doesNotMatch(dashboardCards, /whatsapp/i, 'carte WhatsApp retirée au lot 3');
+  assert.match(dashboardCards, /sm:grid-cols-2/);
+  assert.match(dashboardCards, /const needsAction = channel\.status === 'error' \|\| channel\.status === 'disconnected';/);
 });
 
 test('R6 — Mon compte LinkedIn : état partagé, formulaire qui ne se rouvre plus seul', () => {

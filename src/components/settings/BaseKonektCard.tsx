@@ -1,5 +1,5 @@
 /**
- * BaseKonektCard : réglage de la Base Konekt dans Paramètres > Crédits IA (lot K).
+ * BaseKonektCard : réglage de la Base Konekt dans Paramètres › Abonnement et crédits (lot K).
  *
  * Lecture ouverte à tous les membres (ils consomment le quota), interrupteur
  * réservé aux propriétaires et administrateurs sur une formule payante. La règle

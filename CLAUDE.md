@@ -143,7 +143,10 @@ This applies to (non-exhaustive) :
 /calendar                → CalendarPage
 /tasks                   → TasksPage
 /marketplace             → Marketplace
-/settings                → Settings (deep links: ?tab=general|presets|templates|ai-context|agent-actions|account|team|connectors|integrations|billing|credits|agency|marketplace)
+/settings                → Settings, coquille à deux portes (src/pages/Settings.tsx, registre src/components/settings/shell/sections.tsx).
+  Mon compte : /settings/account/connections | writing | journal (provisoire, part dans /agents au lot 9).
+  Mon organisation (propriétaire et admin) : /settings/org/general | team | billing | assistant.
+  Anciens ?tab= redirigés par resolveLegacySettingsUrl (src/lib/settingsRoutes.ts), paramètres conservés.
 /qualification/:id       → Qualification session (deep-linked from modals)
 Public (no AppLayout): / (landing), /auth, /onboarding (protected, no org guard), /portal/:token (CandidatePortal),
   /client/:token (ClientPortalV2), /r/:slug (RecruiterPublicProfile), /unsubscribe, /privacy, /privacy-extension,
@@ -451,7 +454,7 @@ Second axe, par plan d'abonnement : `hasPlanFeature(planId, feature)` dans le m�
 
 **Plan effectif = `get_subscription_state`, jamais `organization_subscriptions` en direct côté front.** Le hook `useSubscriptionState` appelle la RPC, qui expire un essai échu à la lecture et renvoie `effective_plan_id`, `status`, `trial_days_left`, `seat_count`, `limits`. Lire `organization_subscriptions.plan_id` directement donne un essai expiré non encore basculé ou un abonnement annulé comme s'il était actif (`useSubscription` ne lit la ligne brute que pour les identifiants Stripe et prend le plan effectif de `useSubscriptionState`).
 
-Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `src/lib/featureGates.ts`. Décision produit 2026-09 : **un freelance a les mêmes droits qu'un cabinet sur ses missions** (`create_missions`, `edit_brief`, `edit_process`, `sourcing`, `outreach`, `pipeline`, `client_portal`, `marketplace_browse`), **sauf** `team_management` (pas d'onglet Équipe) et `agency_settings` (pas de paramètres agence). `marketplace_publish` reste réservé aux entreprises. Les onglets de Settings (`canManageTeam`, `canAgencySettings`) et les `readOnly` de MissionBriefV2/MissionProcessV2 découlent de cette matrice.
+Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `src/lib/featureGates.ts`. Décision produit 2026-09 : **un freelance a les mêmes droits qu'un cabinet sur ses missions** (`create_missions`, `edit_brief`, `edit_process`, `sourcing`, `outreach`, `pipeline`, `client_portal`, `marketplace_browse`), **sauf** `team_management` (pas d'onglet Équipe) et `agency_settings` (plus aucun lecteur depuis le retrait de l'onglet Agence). `marketplace_publish` reste réservé aux entreprises. Les rubriques des Paramètres (`sectionAccess`, `src/lib/settingsRoutes.ts` : Équipe exige `team_management`) et les `readOnly` de MissionBriefV2/MissionProcessV2 découlent de cette matrice.
 
 ### Écritures sur `organizations` — passer par `updateOrganization`
 `src/lib/organizationUpdate.ts` relit la ligne écrite : sans `.select()`, un refus RLS répond « succès » sur 0 ligne. Côté base (lot 1 des Paramètres, migration 20260923095813) : une seule policy UPDATE `admins_update` (owner/admin) et le trigger `organizations_update_guard`. L'admin modifie `name`, `logo_url`, `website`, `ai_context` ; tout le reste (`org_type`, `agency_permissions`, `ai_model_default`…) reste au propriétaire (HINT `ORG_OWNER_ONLY`). Passage en `freelance` refusé s'il reste un autre membre ou une invitation en attente (HINT `ORG_FREELANCE_NOT_SOLO`). Bucket `org-logos` : écriture owner/admin dans le dossier `{organization_id}/`, un nom de fichier unique par envoi.

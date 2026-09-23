@@ -37,10 +37,10 @@ export function NavigationPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { toggleAgent } = useAgent();
-  const { orgType, isCollaborator, isAdmin, organizationId } = useOrganization();
-  // Mêmes règles que les onglets des paramètres : Équipe (freelance : pas de
-  // gestion d'équipe) et Facturation (admins et propriétaires seulement).
-  const canManageTeam = !isCollaborator && hasFeature(orgType, 'team_management');
+  const { orgType, isAdmin, organizationId } = useOrganization();
+  // Mêmes règles que les rubriques des Paramètres : Équipe (propriétaire et admin,
+  // Entreprise ou Cabinet), Abonnement et crédits (propriétaire et admin).
+  const canManageTeam = isAdmin && hasFeature(orgType, 'team_management');
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
   const { session } = useAuthReady();
   // « Nouvelle tâche » a besoin d'une session et d'une organisation (CreateTaskModal).
@@ -160,15 +160,15 @@ export function NavigationPalette() {
               Créer une mission
             </CommandItem>
             {canManageTeam && (
-              <CommandItem onSelect={() => go('/settings?tab=team')}>
+              <CommandItem onSelect={() => go('/settings/org/team')}>
                 <Users className="mr-2 h-4 w-4" aria-hidden="true" />
                 Gérer l'équipe
               </CommandItem>
             )}
             {isAdmin && (
-              <CommandItem onSelect={() => go('/settings?tab=billing')}>
+              <CommandItem onSelect={() => go('/settings/org/billing')}>
                 <CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />
-                Abonnement & facturation
+                Abonnement et crédits
               </CommandItem>
             )}
           </CommandGroup>

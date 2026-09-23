@@ -982,7 +982,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                                 <SelectTrigger className="mt-1"><SelectValue placeholder="Aucune" /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="__none__">Aucune</SelectItem>
-                                  {signatures.map(sig => <SelectItem key={sig.id} value={sig.id}>{sig.name}{sig.is_default ? ' ⭐' : ''}</SelectItem>)}
+                                  {signatures.map(sig => <SelectItem key={sig.id} value={sig.id}>{sig.name}</SelectItem>)}
                                 </SelectContent>
                               </Select>
                             </div>

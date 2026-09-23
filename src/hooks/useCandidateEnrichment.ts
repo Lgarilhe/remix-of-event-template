@@ -152,7 +152,7 @@ export function useCandidateEnrichment() {
       const code = data?.error_code || edgeError?.code;
       toast.error(msg, {
         description: code === 'PLAN_REQUIRED'
-          ? 'Choisissez un forfait dans Paramètres > Abonnement.'
+          ? 'Choisissez un forfait dans Paramètres › Abonnement et crédits.'
           : undefined,
       });
       return null;

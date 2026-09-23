@@ -435,7 +435,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
             ) : insufficientCredits ? (
               <div className="flex items-start gap-1.5 text-destructive pt-1 border-t border-destructive/30">
                 <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
-                <span>Forfait du mois épuisé et crédits insuffisants. Achetez un pack ou changez de forfait dans Paramètres &gt; Abonnement.</span>
+                <span>Forfait du mois épuisé et crédits insuffisants. Achetez un pack ou changez de forfait dans Paramètres › Abonnement et crédits.</span>
               </div>
             ) : coveredByPlan ? (
               <div className="text-[10px] text-muted-foreground">
@@ -459,7 +459,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
               </AlertDialogAction>
             ) : insufficientCredits ? (
               <AlertDialogAction
-                onClick={() => { setConfirmOpen(false); navigate('/settings?tab=credits'); }}
+                onClick={() => { setConfirmOpen(false); navigate('/settings/org/billing#credits'); }}
                 className="bg-info hover:bg-info/90"
               >
                 Acheter des crédits

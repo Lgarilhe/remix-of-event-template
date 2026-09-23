@@ -79,7 +79,7 @@ function humanizeError(err: Error | string): string {
   // `error` et le jeton technique dans `error_code` ; cette règle sert de filet
   // si les deux champs sont inversés, sinon l'utilisateur lirait le jeton brut.
   if (lower.includes('insufficient_credits') || lower.includes('credits_exhausted')) {
-    return 'Crédits IA insuffisants. Rechargez depuis Paramètres, onglet Crédits IA.';
+    return 'Crédits IA insuffisants. Un administrateur peut en ajouter dans Paramètres › Abonnement et crédits.';
   }
   if (lower.includes('internal') || lower.includes('500') || lower.includes('502') || lower.includes('503')) {
     return 'Erreur serveur temporaire. Réessayez dans quelques instants.';

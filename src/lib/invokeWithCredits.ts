@@ -14,17 +14,6 @@ import { invokeEdgeFunction, isInsufficientCreditsError, type EdgeFunctionError 
 import { toast } from 'sonner';
 import { ACTION_COSTS, estimateCredits, resolveModel } from '@/types/aiCredits';
 
-const MODEL_PREF_KEY = 'konekt_ai_model_default';
-
-/** Read org default model from localStorage (set in Settings > Crédits IA) */
-function getOrgModelDefault(): string | null {
-  try {
-    return localStorage.getItem(MODEL_PREF_KEY) || null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Identifiant unique du toast de crédits insuffisants. Une même action peut
  * lancer plusieurs appels en parallèle (dix profils par lot de scoring) : sans
@@ -33,7 +22,7 @@ function getOrgModelDefault(): string | null {
 export const CREDITS_TOAST_ID = 'ai-credits-insufficient';
 
 /**
- * Toast de refus de crédits, avec le renvoi vers Paramètres, onglet Crédits IA.
+ * Toast de refus de crédits, avec le renvoi vers Paramètres › Abonnement et crédits.
  *
  * Exporté parce que tous les appels IA ne passent pas par invokeWithCredits :
  * le flux du copilot part en fetch direct (chat-adapter). Sans point unique,
@@ -44,18 +33,18 @@ export function notifyInsufficientCredits(message = 'Crédits IA insuffisants.')
     id: CREDITS_TOAST_ID,
     action: {
       label: 'Acheter des crédits',
-      onClick: () => { window.location.href = '/settings?tab=credits'; },
+      onClick: () => { window.location.href = '/settings/org/billing#credits'; },
     },
   });
 }
 
 /**
  * Modèle réellement utilisé pour une action, dans l'ordre appliqué à l'appel :
- * choix ponctuel, défaut de l'organisation, défaut de l'action, défaut du tier.
+ * choix ponctuel, défaut de l'action, défaut du tier.
  */
 export function resolveActionModel(aiAction: string, modelOverride?: string | null): string {
   const routingTier = ACTION_COSTS[aiAction]?.routingTier ?? 'default';
-  return resolveModel(routingTier, modelOverride, getOrgModelDefault(), aiAction);
+  return resolveModel(routingTier, modelOverride, null, aiAction);
 }
 
 /**
@@ -76,8 +65,6 @@ interface InvokeWithCreditsOptions {
   skipCreditCheck?: boolean;
   /** User-selected model override (e.g. from ModelPicker) */
   modelOverride?: string;
-  /** Organization's default model preference */
-  orgModelDefault?: string;
 }
 
 interface InvokeResult<T> {
@@ -96,9 +83,8 @@ export async function invokeWithCredits<T = Record<string, unknown>>(
   const action = ACTION_COSTS[aiAction];
   const routingTier = action?.routingTier ?? 'default';
 
-  // Resolve which model to use (user override > org default from localStorage > action.autoDefault > tier default)
-  const orgDefault = options?.orgModelDefault || getOrgModelDefault();
-  const model = resolveModel(routingTier, options?.modelOverride, orgDefault, aiAction);
+  // Modèle : choix ponctuel > défaut de l'action > défaut du tier
+  const model = resolveModel(routingTier, options?.modelOverride, null, aiAction);
 
   // Step 1: PRE-AUTH — verify credits before calling the AI
   // Graceful: if pre-auth fails (no balance table, network error), proceed anyway

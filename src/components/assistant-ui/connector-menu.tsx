@@ -35,7 +35,7 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
     ? `Ajouter un fichier ou gérer les connecteurs — ${activeCount} actif${activeCount > 1 ? 's' : ''}`
     : 'Ajouter un fichier ou gérer les connecteurs — aucun actif';
 
-  const manageConnectors = (href = '/settings?tab=agent-actions') => {
+  const manageConnectors = (href = '/settings/account/connections#notion') => {
     setOpen(false);
     navigate(href);
     closeAgent();
@@ -135,7 +135,7 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
                 {canConnectEmail ? (
                   <button
                     type="button"
-                    onClick={() => manageConnectors(connector.manageHref ?? '/settings?tab=account')}
+                    onClick={() => manageConnectors(connector.manageHref ?? '/settings/account/connections#email')}
                     className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-background"
                   >
                     Connecter

@@ -56,6 +56,8 @@ interface IntegrationConfig {
   connectedKey: string;
   fields: IntegrationField[];
   hostedAuth?: boolean;
+  /** Retirée de « Ajouter une intégration » : la carte ne reste que si une clé est posée, pour pouvoir la retirer. */
+  retired?: boolean;
 }
 
 const INTEGRATIONS: IntegrationConfig[] = [
@@ -78,6 +80,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     description: 'Synchronisation automatique des rendez-vous de qualification.',
     logoSrc: calendlyLogo,
     connectedKey: 'calendly_connected',
+    retired: true,
     fields: [
       { key: 'calendly_api_key', label: 'Clé API Calendly', placeholder: 'eyJ...', secret: true },
     ],
@@ -85,7 +88,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
   {
     id: 'unipile',
     name: 'Comptes LinkedIn de l\'agence',
-    description: 'Gérez tous les comptes LinkedIn connectés par les membres : statut, proxys par compte, dissociation admin. Pour connecter votre propre compte, allez dans Mon compte.',
+    description: 'Gérez tous les comptes LinkedIn connectés par les membres : statut, proxys par compte, dissociation admin. Pour connecter votre propre compte, allez dans Connexions.',
     logoSrc: linkedinLogo,
     connectedKey: 'unipile_connected',
     hostedAuth: true,
@@ -97,6 +100,7 @@ const INTEGRATIONS: IntegrationConfig[] = [
     description: 'Suivi des appels et correspondance automatique avec les candidats.',
     logoSrc: aircallLogo,
     connectedKey: 'aircall_connected',
+    retired: true,
     fields: [
       { key: 'aircall_api_id', label: 'API ID Aircall', placeholder: 'xxx...' },
       { key: 'aircall_api_token', label: 'API Token Aircall', placeholder: 'xxx...', secret: true },
@@ -291,6 +295,10 @@ const LinkedInHostedAuthCard = ({
                   {account.status === 'OK' && (() => {
                     const mapping = getMappingForAccount(account.id);
                     const cached = proxyCache[account.id];
+                    // Lot 3 : réglage du proxy montré seulement là où un proxy est posé (mode, pays ou hôte), réglage de la session compris.
+                    const proxyMode = cached?.mode ?? mapping?.proxy_mode ?? null;
+                    const hasProxy = (!!proxyMode && proxyMode !== 'none') || !!(cached?.country ?? mapping?.proxy_country) || !!mapping?.proxy_host;
+                    if (!hasProxy) return null;
                     return (
                       <ProxyConfigPanel
                         accountId={account.id}
@@ -528,11 +536,13 @@ export const IntegrationsSettings = () => {
   // Only show API-key integrations (Notion, Calendly, Aircall) if already configured
   const visibleIntegrations = INTEGRATIONS.filter(config => {
     if (config.hostedAuth) return true;
-    return !!values[config.connectedKey];
+    if (values[config.connectedKey]) return true;
+    // Une clé encore enregistrée garde la carte retirée, pour pouvoir la retirer.
+    return !!config.retired && config.fields.some(f => f.secret && !!values[`${f.key}_hint`]);
   });
 
   const hiddenIntegrations = INTEGRATIONS.filter(config => 
-    !config.hostedAuth && !values[config.connectedKey]
+    !config.hostedAuth && !config.retired && !values[config.connectedKey]
   );
 
   const allVisible = [

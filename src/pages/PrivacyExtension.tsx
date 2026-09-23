@@ -84,7 +84,7 @@ export default function PrivacyExtensionPage() {
 
           <Section icon={Key} title="Token API Konekt">
             <p>
-              <strong>Quand</strong> : vous collez une fois votre token généré depuis les paramètres Konekt (<Link to="/settings?tab=account" className="text-info underline">Paramètres → Mon compte</Link>).
+              <strong>Quand</strong> : vous collez une fois votre token généré depuis les paramètres Konekt (<Link to="/settings/account/connections#extension" className="text-info underline">Paramètres → Connexions</Link>).
             </p>
             <p>
               <strong>Stockage</strong> : <code className="text-xs bg-muted px-1">chrome.storage.local</code> (sandbox isolé de l'extension, non accessible aux pages web). Le token transite en header <code className="text-xs bg-muted px-1">X-Konekt-Extension-Token</code> uniquement vers l'API Konekt, via HTTPS.
@@ -135,7 +135,7 @@ export default function PrivacyExtensionPage() {
               <li><strong>Droit d'accès</strong> : voir toutes vos données dans Konekt (<Link to="/settings" className="text-info underline">Paramètres</Link>)</li>
               <li><strong>Droit de rectification</strong> : modifier vos données depuis l'app Konekt</li>
               <li><strong>Droit à l'effacement</strong> : contactez <a href="mailto:l.garilhe@konekt.fr" className="text-info underline">l.garilhe@konekt.fr</a></li>
-              <li><strong>Droit de révocation</strong> : révoquez les tokens extension à tout moment depuis <Link to="/settings?tab=account" className="text-info underline">Paramètres → Mon compte</Link></li>
+              <li><strong>Droit de révocation</strong> : révoquez les tokens extension à tout moment depuis <Link to="/settings/account/connections#extension" className="text-info underline">Paramètres → Connexions</Link></li>
               <li><strong>Droit d'opposition</strong> : désinstallez l'extension à tout moment (suppression automatique du token local)</li>
             </ul>
           </Section>

@@ -207,7 +207,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             : emailConnected
               ? 'connected'
               : 'disconnected',
-        manageHref: '/settings?tab=account',
+        manageHref: '/settings/account/connections#email',
       },
       ...organizationMcpServers
         .filter((server) => !RESERVED_BUILTIN_CONNECTORS.has(server.name.toLowerCase()))

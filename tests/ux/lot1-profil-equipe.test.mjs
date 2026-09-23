@@ -168,12 +168,12 @@ test('C14/C19 — onglet Équipe : pendant la lecture des quotas, ni 80 ni « Mo
 test('C20 — onglet Équipe : liaisons LinkedIn non lues, erreur avec « Réessayer »', () => {
   assert.match(team, /isError: mappingsError, refetch: refetchMappings,/);
   // Ligne repliée : plus de « Pas de LinkedIn » quand la lecture a échoué
-  const row = sliceBetween(team, '{linkedInMapping ? (', '<Badge variant="secondary"');
+  const row = sliceBetween(team, '{linkedInMapping ? (', '{/* Expanded panel (admin only) */}');
   const errAt = row.indexOf(') : mappingsError ? (');
   assert.ok(errAt !== -1 && errAt < row.indexOf('Pas de LinkedIn'), 'erreur testée avant « Pas de LinkedIn »');
   assert.match(row, /Liaison LinkedIn non chargée/);
   // Panneau : bloc d'erreur à la place du sélecteur d'association
-  const panel = sliceBetween(team, 'label="Compte LinkedIn"', 'Mission Assignments');
+  const panel = sliceBetween(team, 'label="Compte LinkedIn"', '{/* Quotas */}');
   const boxAt = panel.indexOf('<ErrorBox title="Impossible de charger les comptes LinkedIn liés." onRetry={() => { void refetchMappings(); }} />');
   assert.ok(boxAt !== -1 && boxAt < panel.indexOf('Associer un compte LinkedIn…'), 'erreur à la place du sélecteur');
   // « Lier » reste bloqué tant que les liaisons ne sont pas lues

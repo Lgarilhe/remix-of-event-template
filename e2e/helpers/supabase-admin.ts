@@ -9,7 +9,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { E2E } from './env';
 
 export type OrgType = 'enterprise' | 'agency' | 'freelance';
-export type OrgRole = 'owner' | 'admin' | 'collaborator';
+export type OrgRole = 'owner' | 'admin' | 'member' | 'collaborator';
 
 export interface TestUser {
   userId: string;

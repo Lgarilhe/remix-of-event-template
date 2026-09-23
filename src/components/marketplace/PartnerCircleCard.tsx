@@ -2,7 +2,7 @@
  * PartnerCircleCard : carte « Cercle partenaires » pour un cabinet ou un
  * indépendant. Explique le fonctionnement, porte le formulaire de demande et
  * reflète le statut de l'organisation (inactive, en attente, active, suspendue).
- * Partagée entre la page Marketplace et Paramètres > Marketplace.
+ * Affichée sur la page Marketplace (l'onglet Marketplace des Paramètres est retiré au lot 3).
  */
 
 import React, { useEffect, useRef, useState } from 'react';

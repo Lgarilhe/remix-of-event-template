@@ -1,7 +1,8 @@
 /**
  * AgentConnectorsSettings — Connecteurs MCP du Copilot (P3.1).
  *
- * Rendu dans /settings?tab=agent-actions, sous les politiques d'autonomie.
+ * Rendu dans Paramètres › Règles de l’assistant (ancre #connecteurs), sous les ICP.
+ * La carte Notion n'est plus ici : elle est dans Paramètres › Connexions.
  * Un connecteur = un serveur MCP distant (Model Context Protocol, standard
  * ouvert) : Notion, Slack, calendrier, outil interne… Ses outils deviennent
  * disponibles dans le chat du Copilot.
@@ -42,7 +43,6 @@ import {
 import { Plug, Plus, Trash2, AlertTriangle, Loader2, Pencil, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { NotionConnectionCard } from './NotionConnectionCard';
 
 interface McpServerRow {
   id: string;
@@ -204,8 +204,6 @@ export function AgentConnectorsSettings() {
 
   return (
     <div className="space-y-3">
-      <NotionConnectionCard />
-
       <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
         <CollapsibleTrigger asChild>
           <button

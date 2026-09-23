@@ -1,9 +1,11 @@
 /**
  * AgentActionsSettings — Historique des actions IA (lecture).
  *
- * Onglet /settings?tab=agent-actions. Liste les rows de agent_tool_executions
- * pour l'user (par défaut) ou toute l'org (admin/owner uniquement). Realtime
- * via la publication supabase_realtime (cf. migration
+ * Rubrique Paramètres › Journal de l’assistant (/settings/account/journal),
+ * provisoire jusqu'au lot 9 (vue Journal de /agents). Les politiques et les
+ * connecteurs n'y sont plus : ils sont dans Règles de l’assistant.
+ * Liste les rows de agent_tool_executions pour l'user (par défaut) ou toute
+ * l'org (admin/owner uniquement). Realtime via la publication supabase_realtime (cf. migration
  * 20260520150000_realtime_publication_copilot_tables.sql).
  *
  * Trois usages :
@@ -58,8 +60,6 @@ import { fr } from 'date-fns/locale';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { AgentPoliciesSettings } from './AgentPoliciesSettings';
-import { AgentConnectorsSettings } from './AgentConnectorsSettings';
 
 type ActionStatus = 'proposed' | 'approved' | 'executed' | 'auto_executed' | 'failed' | 'rejected';
 
@@ -436,12 +436,6 @@ export const AgentActionsSettings = () => {
           Rafraîchir
         </Button>
       </div>
-
-      {/* Politiques d'autonomie par action (P2.1) */}
-      <AgentPoliciesSettings />
-
-      {/* Connecteurs MCP du copilot (P3.1) */}
-      <AgentConnectorsSettings />
 
       {/* Quick stats — count par statut */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

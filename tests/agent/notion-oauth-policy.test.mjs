@@ -33,6 +33,16 @@ test('Notion OAuth return URLs are limited to Konekt and local development', () 
     'http://localhost:5173/settings?tab=agent-actions',
   );
 
+  // Paramètres, lot 2 : le retour se fait sur Connexions. La règle ne dépend pas du chemin.
+  assert.equal(
+    normalizeNotionReturnUrl(
+      'https://konekt-app-navy.vercel.app/settings/account/connections?x=1#notion',
+      undefined,
+      undefined,
+    ),
+    'https://konekt-app-navy.vercel.app/settings/account/connections?x=1',
+  );
+
   assert.equal(normalizeNotionReturnUrl('https://evil.example/callback', undefined, undefined), null);
   assert.equal(normalizeNotionReturnUrl('javascript:alert(1)', undefined, undefined), null);
   assert.equal(normalizeNotionReturnUrl('https://user:pass@konekt-app-navy.vercel.app/', undefined, undefined), null);

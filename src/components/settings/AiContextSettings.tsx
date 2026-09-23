@@ -1,9 +1,10 @@
 /**
- * AiContextSettings — UI pour configurer le contexte IA persistant.
- *
- * 2 niveaux :
- *  - User (chaque user édite le sien) — Mon contexte IA
- *  - Org (admin/owner only) — Contexte IA agence
+ * AiContextSettings — cartes du contexte IA persistant, montées séparément
+ * par les rubriques des Paramètres (src/components/settings/shell/sections.tsx) :
+ *  - UserContextCard (chaque user édite le sien) — Mon contexte IA, dans
+ *    Mon compte › Rédaction (#style) ;
+ *  - OrgContextCard (propriétaire et admin) — Contexte IA agence, dans
+ *    Mon organisation › Règles de l’assistant (#consignes).
  *
  * Lecture ratée : bloc d'erreur à la place du formulaire. Un formulaire vide
  * enregistré par-dessus écraserait le contexte existant.
@@ -29,7 +30,6 @@ import {
   type AiContextTone,
   EMPTY_AI_CONTEXT,
 } from '@/hooks/useAiContext';
-import { useOrganization } from '@/hooks/useOrganization';
 
 const MAX_FREE_TEXT = 1000;
 const MAX_SPECIALTY = 200;
@@ -43,20 +43,9 @@ const TONE_OPTIONS: { value: AiContextTone; label: string; hint: string }[] = [
   { value: 'formal', label: 'Formel', hint: 'Soutenu (banque, conseil, secteurs régulés)' },
 ];
 
-export const AiContextSettings: React.FC = () => {
-  const { isAdmin } = useOrganization();
-
-  return (
-    <div className="space-y-6">
-      <UserContextCard />
-      {isAdmin && <OrgContextCard />}
-    </div>
-  );
-};
-
 // ─── User-level card ───────────────────────────────────────────────
 
-const UserContextCard: React.FC = () => {
+export const UserContextCard: React.FC = () => {
   const { aiContext, isLoading, isError, refetch, save, isSaving } = useUserAiContext();
   return (
     <Card>
@@ -94,7 +83,7 @@ const UserContextCard: React.FC = () => {
 
 // ─── Org-level card (admin only) ───────────────────────────────────
 
-const OrgContextCard: React.FC = () => {
+export const OrgContextCard: React.FC = () => {
   const { aiContext, isLoading, isError, refetch, save, isSaving } = useOrgAiContext();
   return (
     <Card>

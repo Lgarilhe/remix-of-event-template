@@ -154,7 +154,7 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
         duration: 12000,
         action: {
           label: 'Reconnecter',
-          onClick: () => navigate('/settings?tab=account'),
+          onClick: () => navigate('/settings/account/connections'),
         },
       });
     }

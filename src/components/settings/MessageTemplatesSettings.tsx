@@ -27,7 +27,6 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { PLACEHOLDERS_CATALOG } from '@/lib/templatePlaceholders';
-import { CustomVariablesSettings } from './CustomVariablesSettings';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
 import { ErrorBox } from '@/components/marketplace/ErrorBox';
 
@@ -123,7 +122,6 @@ export const MessageTemplatesSettings: React.FC = () => {
   return (
     <div className="space-y-6">
       <TemplatesSection />
-      <CustomVariablesSettings />
     </div>
   );
 };

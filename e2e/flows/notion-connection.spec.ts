@@ -34,32 +34,66 @@ async function mockNotionStatus(
   });
 }
 
-test('Notion is a one-click card and technical MCP fields stay hidden by default', async ({ asRole }) => {
+// Paramètres, lot 2 : la carte Notion est dans Connexions (#notion) ; les
+// serveurs MCP de l'organisation restent dans Règles de l’assistant (#connecteurs).
+test('Notion is a one-click card in Connexions and technical MCP fields stay hidden', async ({ asRole }) => {
   const page = await asRole('agencyOwner');
   await mockNotionStatus(page, false);
-  await page.goto('/settings?tab=agent-actions');
+  await page.goto('/settings/account/connections');
 
-  await expect(page.getByRole('heading', { name: 'Notion', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Connecter', exact: true })).toBeVisible();
+  const notion = page.locator('#notion');
+  await expect(notion.getByRole('heading', { name: 'Notion', exact: true })).toBeVisible();
+  await expect(notion.getByRole('button', { name: 'Connecter', exact: true })).toBeVisible();
   await expect(page.getByPlaceholder('URL du serveur MCP (https://…)')).toBeHidden();
+});
 
+test('MCP servers stay behind the developer options in Règles de l’assistant', async ({ asRole }) => {
+  const page = await asRole('agencyOwner');
+  await mockNotionStatus(page, false);
+  await page.goto('/settings/org/assistant');
+
+  await expect(page.getByPlaceholder('URL du serveur MCP (https://…)')).toBeHidden();
   const advanced = page.getByRole('button', { name: 'Options avancées pour développeurs', exact: true });
   await advanced.click();
 
   // Le formulaire de connecteur demande un second geste : le panneau déplié
-  // n'affiche que la description et le bouton d'ajout. Le test attendait le
-  // champ dès l'ouverture, ce que l'interface n'a jamais fait.
+  // n'affiche que la description et le bouton d'ajout. OrgContextCard a deux
+  // autres boutons « Ajouter » : on cherche celui des connecteurs.
   await expect(page.getByPlaceholder('URL du serveur MCP (https://…)')).toBeHidden();
-  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await page.locator('#connecteurs').getByRole('button', { name: 'Ajouter', exact: true }).click();
   await expect(page.getByPlaceholder('URL du serveur MCP (https://…)')).toBeVisible();
 });
+
 test('a connected Notion workspace is clearly available in the assistant', async ({ asRole }) => {
   const page = await asRole('agencyOwner');
   await mockNotionStatus(page, true);
-  await page.goto('/settings?tab=agent-actions');
+  await page.goto('/settings/account/connections');
 
-  await expect(page.getByText('Disponible immédiatement dans le chat IA')).toBeVisible();
-  await expect(page.getByText('workspace @konekt.fr')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Modifier l’accès', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Déconnecter', exact: true })).toBeVisible();
+  // Connexions a d'autres boutons « Déconnecter » (LinkedIn, e-mail) : tout est cherché dans #notion.
+  const notion = page.locator('#notion');
+  await expect(notion.getByText('Disponible immédiatement dans le chat IA')).toBeVisible();
+  await expect(notion.getByText('workspace @konekt.fr')).toBeVisible();
+  await expect(notion.getByRole('button', { name: 'Modifier l’accès', exact: true })).toBeVisible();
+  await expect(notion.getByRole('button', { name: 'Déconnecter', exact: true })).toBeVisible();
+});
+
+test('old OAuth return on ?tab=agent-actions lands on Connexions, message shown once', async ({ asRole }) => {
+  const page = await asRole('agencyOwner');
+  await mockNotionStatus(page, false);
+  await page.goto('/settings?tab=agent-actions&notion_oauth=error&notion_error=access_denied');
+
+  const message = page.getByText('Connexion Notion annulée. Aucun accès n’a été ajouté.', { exact: true });
+  await expect(message.first()).toBeVisible();
+  // Le lecteur de retour retire notion_* de l'adresse (et, avec setSearchParams, le hash).
+  await expect(page).toHaveURL(/\/settings\/account\/connections(?:#notion)?$/);
+  expect(page.url()).not.toMatch(/notion_(oauth|error)|[?&]tab=/);
+  // Un lecteur monté deux fois afficherait un second message juste après le premier.
+  await page.waitForTimeout(1_000);
+  await expect(message).toHaveCount(1);
+});
+
+test('old digest link ?tab=agent-actions opens Règles de l’assistant at the morning summary', async ({ asRole }) => {
+  const page = await asRole('agencyOwner');
+  await page.goto('/settings?tab=agent-actions');
+  await expect(page).toHaveURL(/\/settings\/org\/assistant#resume$/);
 });

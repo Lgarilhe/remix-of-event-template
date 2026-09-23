@@ -24,7 +24,7 @@
  * de continuer, les suivants échoueraient pareil.
  *
  * IMPORTANT : pas de polling groupé en v1 (simplification). Si l'user
- * veut tracker précisément, il peut regarder Settings > Crédits > Historique.
+ * veut tracker précisément, il peut regarder Paramètres › Abonnement et crédits › Historique.
  */
 
 import React, { useState } from 'react';
@@ -61,7 +61,7 @@ const ABORT_MESSAGES: Record<string, string> = {
   INSUFFICIENT_CREDITS: 'Lot arrêté : crédits insuffisants',
   QUOTA_EXCEEDED: 'Lot arrêté : plafond mensuel de votre compte atteint',
   PERMISSION_DENIED: "Lot arrêté : l'enrichissement de contact n'est pas autorisé pour votre compte",
-  PLAN_REQUIRED: 'Lot arrêté : un abonnement est nécessaire (Paramètres > Abonnement)',
+  PLAN_REQUIRED: 'Lot arrêté : un abonnement est nécessaire (Paramètres › Abonnement et crédits)',
 };
 
 function getCurrentCompany(profile: LinkedInProfile): string | undefined {
@@ -352,7 +352,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
             {insufficientCredits ? (
               <div className="flex items-start gap-1.5 text-destructive pt-1 border-t border-destructive/30">
                 <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" aria-hidden="true" />
-                <span>Solde insuffisant pour la part hors forfait. Achetez un pack ou changez de forfait dans Paramètres &gt; Abonnement.</span>
+                <span>Solde insuffisant pour la part hors forfait. Achetez un pack ou changez de forfait dans Paramètres › Abonnement et crédits.</span>
               </div>
             ) : beyondProfiles === 0 ? (
               <div className="text-[10px] text-muted-foreground">
@@ -392,7 +392,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
             <AlertDialogCancel disabled={submitting}>Annuler</AlertDialogCancel>
             {insufficientCredits ? (
               <AlertDialogAction
-                onClick={() => { setOpen(false); navigate('/settings?tab=credits'); }}
+                onClick={() => { setOpen(false); navigate('/settings/org/billing#credits'); }}
                 className="bg-info hover:bg-info/90"
               >
                 Acheter des crédits

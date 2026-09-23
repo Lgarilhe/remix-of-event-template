@@ -112,6 +112,14 @@ try {
   // localStorage indisponible (navigation privée stricte) : thème par défaut
 }
 
+// Lot 3 des Paramètres : le « modèle IA par défaut » n'a plus ni écran ni lecteur.
+// Clé exacte, pas de préfixe : konekt_scoring_model_* sert encore au score par mission (LinkedInSearch.tsx:193-194).
+try {
+  localStorage.removeItem('konekt_ai_model_default');
+} catch {
+  // stockage indisponible : rien à effacer
+}
+
 // Auto-reload on stale chunk errors (after deploys)
 window.addEventListener('error', (e) => {
   if (isRecoverableImportError(e.error ?? e.message)) {

@@ -9,7 +9,7 @@
  *
  * Étapes :
  *   1. Bienvenue dans l'équipe (org name + nom de l'inviter si dispo)
- *   2. Connectez votre LinkedIn (CTA → Settings > Connecteurs)
+ *   2. Connectez votre LinkedIn (CTA → Paramètres › Connexions)
  *   3. Découvrez les missions actives (CTA → /missions)
  */
 
@@ -76,8 +76,8 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
 
   const handleConnectLinkedIn = () => {
     handleClose();
-    // Settings > Mon compte (où se trouve MyLinkedInAccount)
-    navigate('/settings?tab=account');
+    // Paramètres › Connexions (où se trouve MyLinkedInAccount)
+    navigate('/settings/account/connections');
   };
 
   const handleGoToMissions = () => {

@@ -1,7 +1,7 @@
 /**
  * DashboardConnections — état temps réel des canaux outreach.
  *
- * 3 cartes compactes : LinkedIn / Email / WhatsApp avec :
+ * 2 cartes compactes : LinkedIn / Email avec :
  * - Logo du canal (couleur de marque ou icon mono)
  * - Statut visuel (dot pulse coloré) : connected / connecting / error / disconnected
  * - Label (nom du compte ou identifier)
@@ -18,14 +18,12 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Mail, AlertTriangle, ArrowRight, Plug, CheckCircle2 } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
-import whatsappLogo from '@/assets/whatsapp-logo.svg';
 import { cn } from '@/lib/utils';
 import type { ChannelConnection, ConnectionStatus } from '@/hooks/useDashboardConnections';
 import { LivePulse } from './LivePulse';
 
 interface DashboardConnectionsProps {
   linkedin: ChannelConnection;
-  whatsapp: ChannelConnection;
   email: ChannelConnection;
   hasIssue: boolean;
   allConnected: boolean;
@@ -52,12 +50,10 @@ const ConnectionCard: React.FC<{
   brandIcon?: React.ReactNode;
   index: number;
   onClick: () => void;
-  /** Canal affiché sans alerte : jamais signalé « à traiter » (WhatsApp, retiré au lot 3). */
-  neutral?: boolean;
-}> = ({ channel, name, brandLogo, brandIcon, index, onClick, neutral = false }) => {
+}> = ({ channel, name, brandLogo, brandIcon, index, onClick }) => {
   const tone = STATUS_TONE[channel.status];
   const isOk = channel.status === 'connected';
-  const needsAction = !neutral && (channel.status === 'error' || channel.status === 'disconnected');
+  const needsAction = channel.status === 'error' || channel.status === 'disconnected';
 
   return (
     <motion.button
@@ -138,13 +134,12 @@ const ConnectionCard: React.FC<{
 
 export const DashboardConnections: React.FC<DashboardConnectionsProps> = ({
   linkedin,
-  whatsapp,
   email,
   hasIssue,
   allConnected,
 }) => {
   const navigate = useNavigate();
-  const goToConnectors = () => navigate('/settings?tab=account');
+  const goToConnectors = () => navigate('/settings/account/connections');
 
   return (
     <motion.div
@@ -172,7 +167,7 @@ export const DashboardConnections: React.FC<DashboardConnectionsProps> = ({
       </div>
 
       <motion.div
-        className="grid grid-cols-1 sm:grid-cols-3 gap-2.5"
+        className="grid grid-cols-1 sm:grid-cols-2 gap-2.5"
         initial="hidden"
         animate="visible"
         variants={{
@@ -195,17 +190,6 @@ export const DashboardConnections: React.FC<DashboardConnectionsProps> = ({
           brandIcon={<Mail className="w-5 h-5 text-info" />}
           index={1}
           onClick={goToConnectors}
-        />
-        <ConnectionCard
-          channel={whatsapp}
-          name="WhatsApp"
-          brandLogo={
-            <img src={whatsappLogo} alt="WhatsApp" className="w-5 h-5 object-contain" />
-          }
-          index={2}
-          onClick={goToConnectors}
-          // Jamais dans la liste des comptes : « Non connecté » en permanence, sans alerte
-          neutral
         />
       </motion.div>
     </motion.div>

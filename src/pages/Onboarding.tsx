@@ -283,7 +283,7 @@ const Onboarding = () => {
     if (flow.includes('specializations')) {
       items.push({ key: 'activity', label: 'Activité & secteurs renseignés', done: completedScenes.has('specializations') });
     }
-    items.push({ key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings?tab=account' });
+    items.push({ key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings/account/connections' });
     return items;
   }, [orgCreated, organization, completedScenes, flow, linkedInConnected]);
 
