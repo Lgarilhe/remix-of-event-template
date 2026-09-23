@@ -34,17 +34,24 @@ export const isInActiveOrg = (
 
 /**
  * Applique une liste relue sans perdre ce qui s'est passé pendant la requête :
- * les notifications reçues en temps réel, plus récentes que la réponse, et les
- * marquages lus faits entre-temps.
+ * les notifications reçues en temps réel depuis son départ (`arrived`) et les
+ * marquages lus encore en cours d'écriture (`pendingReads`). Un marquage déjà
+ * terminé, réussi ou non, laisse la base faire foi.
  */
-function mergeFetched(prev: Notification[], fetched: Notification[]): Notification[] {
-  if (fetched.length === 0) return fetched;
-  const newest = fetched[0].created_at;
+function mergeFetched(
+  prev: Notification[],
+  fetched: Notification[],
+  arrived: ReadonlySet<string>,
+  pendingReads: ReadonlySet<string>,
+): Notification[] {
   const fetchedIds = new Set(fetched.map(n => n.id));
-  const arrived = prev.filter(n => !fetchedIds.has(n.id) && n.created_at > newest);
-  const readLocally = new Map(prev.filter(n => n.read_at).map(n => [n.id, n.read_at]));
-  const merged = fetched.map(n => (!n.read_at && readLocally.has(n.id) ? { ...n, read_at: readLocally.get(n.id) ?? null } : n));
-  return [...arrived, ...merged].slice(0, 50);
+  const kept = prev.filter(n => arrived.has(n.id) && !fetchedIds.has(n.id));
+  const merged = fetched.map((n) => {
+    if (n.read_at || !pendingReads.has(n.id)) return n;
+    const local = prev.find(p => p.id === n.id);
+    return local?.read_at ? { ...n, read_at: local.read_at } : n;
+  });
+  return [...kept, ...merged].slice(0, 50);
 }
 
 // Un topic realtime par instance du hook : supabase.channel(topic) renvoie le
@@ -57,11 +64,20 @@ export const useNotifications = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const { isReady, user } = useAuthReady();
+  // Identifiant seulement : l'objet user change à chaque relecture de session
+  // (retour sur l'onglet) sans que l'utilisateur change.
+  const userId = user?.id ?? null;
   const { organizationId, isLoading: orgLoading } = useOrganization();
   // Chaque chargement invalide ceux encore en vol : la réponse la plus récente gagne.
   const requestSeq = useRef(0);
   // Périmètre (utilisateur + organisation) de la liste affichée.
   const loadedScope = useRef<string | null>(null);
+  // Reçues en temps réel depuis le départ du dernier chargement.
+  const arrivedIds = useRef<Set<string>>(new Set());
+  // Marquages lus dont l'écriture n'a pas encore répondu.
+  const pendingReads = useRef<Set<string>>(new Set());
+  const notificationsRef = useRef(notifications);
+  notificationsRef.current = notifications;
 
   // Les messages LinkedIn (new_message) ont déjà leur pastille « Messages »
   // dans la sidebar : ils restent dans la liste mais sortent du compteur.
@@ -84,7 +100,7 @@ export const useNotifications = () => {
       return;
     }
 
-    if (!user) {
+    if (!userId) {
       loadedScope.current = null;
       setNotifications([]);
       setError(null);
@@ -92,12 +108,13 @@ export const useNotifications = () => {
       return;
     }
 
-    const scope = `${user.id}:${organizationId ?? ''}`;
+    const scope = `${userId}:${organizationId ?? ''}`;
+    arrivedIds.current = new Set();
     try {
       const { data, error: fetchError } = await supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .or(notificationOrgFilter(organizationId))
         .order('created_at', { ascending: false })
         .limit(50);
@@ -107,7 +124,8 @@ export const useNotifications = () => {
       const fetched = (data || []) as Notification[];
       const sameScope = loadedScope.current === scope;
       loadedScope.current = scope;
-      setNotifications(prev => (sameScope ? mergeFetched(prev, fetched) : fetched));
+      const arrived = arrivedIds.current;
+      setNotifications(prev => (sameScope ? mergeFetched(prev, fetched, arrived, pendingReads.current) : fetched));
       setError(null);
     } catch (err) {
       if (seq !== requestSeq.current) return;
@@ -119,7 +137,7 @@ export const useNotifications = () => {
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
-  }, [isReady, orgLoading, user, organizationId]);
+  }, [isReady, orgLoading, userId, organizationId]);
 
   useEffect(() => {
     void fetchNotifications();
@@ -127,7 +145,7 @@ export const useNotifications = () => {
 
   // Retour du réseau ou sur l'onglet : des événements ont pu être manqués.
   useEffect(() => {
-    if (!isReady || !user) return;
+    if (!isReady || !userId) return;
 
     const reload = () => void fetchNotifications();
     const onVisibilityChange = () => {
@@ -139,11 +157,11 @@ export const useNotifications = () => {
       window.removeEventListener('online', reload);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [isReady, user, fetchNotifications]);
+  }, [isReady, userId, fetchNotifications]);
 
   // Realtime subscription for new notifications
   useEffect(() => {
-    if (!isReady || !user) {
+    if (!isReady || !userId) {
       setNotifications([]);
       return;
     }
@@ -166,12 +184,13 @@ export const useNotifications = () => {
               event: 'INSERT',
               schema: 'public',
               table: 'notifications',
-              filter: `user_id=eq.${user.id}`,
+              filter: `user_id=eq.${userId}`,
             },
             (payload) => {
               if (!isMounted) return;
               const newNotif = payload.new as Notification;
               if (!isInActiveOrg(newNotif, organizationId)) return;
+              arrivedIds.current.add(newNotif.id);
               // Déjà présente si le rechargement l'a ramenée avant l'événement.
               setNotifications(prev => (
                 prev.some(n => n.id === newNotif.id) ? prev : [newNotif, ...prev]
@@ -184,7 +203,7 @@ export const useNotifications = () => {
               event: 'UPDATE',
               schema: 'public',
               table: 'notifications',
-              filter: `user_id=eq.${user.id}`,
+              filter: `user_id=eq.${userId}`,
             },
             (payload) => {
               if (!isMounted) return;
@@ -207,36 +226,50 @@ export const useNotifications = () => {
       isMounted = false;
       if (channel) supabase.removeChannel(channel);
     };
-  }, [isReady, user, orgLoading, organizationId, fetchNotifications]);
+  }, [isReady, userId, orgLoading, organizationId, fetchNotifications]);
 
-  const markAsRead = useCallback(async (notificationId: string) => {
-    await supabase
-      .from('notifications')
-      .update({ read_at: new Date().toISOString() })
-      .eq('id', notificationId);
-
-    setNotifications(prev =>
-      prev.map(n => n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n)
-    );
+  // Marquage local immédiat ; si l'écriture échoue, la notification redevient
+  // non lue plutôt que de rester lue à tort jusqu'au rechargement complet.
+  const applyRead = useCallback(async (ids: string[], write: () => PromiseLike<{ error: unknown }>) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const now = new Date().toISOString();
+    ids.forEach(id => pendingReads.current.add(id));
+    setNotifications(prev => prev.map(n => (idSet.has(n.id) && !n.read_at ? { ...n, read_at: now } : n)));
+    try {
+      const { error: writeError } = await write();
+      if (writeError) throw writeError;
+    } catch (err) {
+      console.warn('[useNotifications] Failed to mark notifications read:', err);
+      setNotifications(prev => prev.map(n => (idSet.has(n.id) && n.read_at === now ? { ...n, read_at: null } : n)));
+    } finally {
+      ids.forEach(id => pendingReads.current.delete(id));
+    }
   }, []);
 
+  const markAsRead = useCallback(async (notificationId: string) => {
+    await applyRead([notificationId], () => supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', notificationId));
+  }, [applyRead]);
+
   const markAllAsRead = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
 
     // Les messages LinkedIn restent gérés par la messagerie (pastille « Messages »).
     // Les autres organisations de l'utilisateur ne sont pas touchées.
-    await supabase
+    const ids = notificationsRef.current
+      .filter(n => !n.read_at && n.type !== 'new_message')
+      .map(n => n.id);
+    await applyRead(ids, () => supabase
       .from('notifications')
       .update({ read_at: new Date().toISOString() })
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .or(notificationOrgFilter(organizationId))
       .neq('type', 'new_message')
-      .is('read_at', null);
-
-    setNotifications(prev => prev.map(n => (
-      n.type === 'new_message' ? n : { ...n, read_at: n.read_at || new Date().toISOString() }
-    )));
-  }, [user, organizationId]);
+      .is('read_at', null));
+  }, [userId, organizationId, applyRead]);
 
   return {
     notifications,

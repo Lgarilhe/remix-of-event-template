@@ -1214,6 +1214,21 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     );
     if (past.error) console.warn('[unipile-webhook] Past enrollments lookup failed:', past.error);
     notifEnrollments = past.rows ?? [];
+    // Même repli que la recherche active : identifiant présent seulement dans profile_url.
+    if (notifEnrollments.length === 0 && !past.error) {
+      const pastByUrl = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+        (column) => supabase
+          .from('sequence_enrollments')
+          .select('*')
+          .eq(column, account_id)
+          .in('status', ['replied', 'completed', 'paused'])
+          .like('profile_url', `%${sanitizeFilterId(senderId)}%`)
+          .order('updated_at', { ascending: false })
+          .limit(5),
+      );
+      if (pastByUrl.error) console.warn('[unipile-webhook] Past enrollments lookup (url) failed:', pastByUrl.error);
+      notifEnrollments = pastByUrl.rows ?? [];
+    }
   }
 
   // Mission des séquences concernées : outreach_sequences.project_id (clé
