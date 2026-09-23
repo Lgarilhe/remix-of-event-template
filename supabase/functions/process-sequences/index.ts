@@ -892,9 +892,10 @@ async function handleProcess(supabase: any, force = false) {
         const enrollmentOrgId = enrollment.organization_id || enrollment.sequence?.organization_id;
         const uCreds = await resolveUnipileCreds(enrollmentOrgId, supabase);
 
-        // Load per-user quotas (business hours + daily cap) — overrides hardcoded defaults
+        // Expéditeur au sens « variables du message » (buildSequenceContext).
+        // Les quotas (heures ouvrées + plafond) sont chargés plus bas, une fois
+        // le compte d'envoi connu : ce sont ceux de son titulaire.
         const senderUserId = (step.sender_id as string) || (enrollment.created_by as string) || null;
-        const userQuotas = await getUserQuotas(supabase, senderUserId, enrollmentOrgId ?? null);
 
         // === INBOX ROTATION: assign sender BEFORE the quota/health gate ===
         // Doit se faire AVANT checkQuotaForAction : le message part depuis le
@@ -934,6 +935,34 @@ async function handleProcess(supabase: any, force = false) {
         const stepChannelForQuota = step.step_channel || (step.action_type === 'email' ? 'email' : step.action_type === 'whatsapp_message' ? 'whatsapp' : 'linkedin');
         const ledgerActionType = stepChannelForQuota === 'linkedin' ? (LEDGER_TYPE_BY_STEP[step.action_type] ?? null) : null;
 
+        // Quotas (heures ouvrées + plafond) du TITULAIRE du compte LinkedIn
+        // d'envoi dans l'organisation de l'inscription : ceux qu'affichent Équipe
+        // et « Plafonds du jour ». Chargés après la rotation, qui peut changer le
+        // compte. Repli sur l'inscripteur (liaison introuvable, étape non LinkedIn).
+        // maybeSingle : unicité (organization_id, linkedin_account_id).
+        let quotaUserId = senderUserId;
+        if (stepChannelForQuota === 'linkedin' && effectiveAccountId && enrollmentOrgId) {
+          const { data: accountOwner } = await supabase
+            .from('member_linkedin_accounts')
+            .select('user_id')
+            .eq('organization_id', enrollmentOrgId)
+            .eq('linkedin_account_id', effectiveAccountId)
+            .maybeSingle();
+          if (accountOwner?.user_id) quotaUserId = accountOwner.user_id as string;
+        }
+        const userQuotas = await getUserQuotas(supabase, quotaUserId, enrollmentOrgId ?? null);
+
+        // Heures ouvrées AVANT le gate quota : le gate journalise l'action au
+        // ledger (écriture optimiste). Une étape échue hors plage ou le week-end
+        // consommait une place du plafond du jour sans jamais partir.
+        const userTimezone = enrollment.user_timezone || userQuotas.timezone || 'Europe/Paris';
+        if (!force && !isWithinBusinessHours(userTimezone, userQuotas.business_hours_start, userQuotas.business_hours_end)) {
+          const nextSlot = getNextBusinessHourSlot(userTimezone, userQuotas.business_hours_start, userQuotas.business_hours_end);
+          await supabase.from('sequence_step_executions').update({ scheduled_at: nextSlot.toISOString() }).eq('id', exec.id);
+          results.skipped++;
+          continue;
+        }
+
         if (ledgerActionType) {
           const quotaCheck = await checkQuotaForAction(
             supabase,
@@ -941,7 +970,8 @@ async function handleProcess(supabase: any, force = false) {
             effectiveAccountId || enrollment.account_id,
             uCreds.apiKey,
             uCreds.dsn,
-            senderUserId,
+            quotaUserId,
+            enrollmentOrgId ?? null,
           );
           if (!quotaCheck.allowed) {
             await supabase.from('sequence_step_executions').update({
@@ -951,14 +981,6 @@ async function handleProcess(supabase: any, force = false) {
             results.quota_blocked++;
             continue;
           }
-        }
-
-        const userTimezone = enrollment.user_timezone || userQuotas.timezone || 'Europe/Paris';
-        if (!force && !isWithinBusinessHours(userTimezone, userQuotas.business_hours_start, userQuotas.business_hours_end)) {
-          const nextSlot = getNextBusinessHourSlot(userTimezone, userQuotas.business_hours_start, userQuotas.business_hours_end);
-          await supabase.from('sequence_step_executions').update({ scheduled_at: nextSlot.toISOString() }).eq('id', exec.id);
-          results.skipped++;
-          continue;
         }
 
         // Check LinkedIn account health before executing — on the account we'll
@@ -2440,7 +2462,7 @@ async function checkHasProspectReplied(accountId: string, profileId: string, api
 }
 
 // deno-lint-ignore no-explicit-any
-async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, apiKey?: string, dsn?: string, userId?: string | null): Promise<{ allowed: boolean; reason?: string }> {
+async function checkQuotaForAction(supabase: any, actionType: string, accountId: string, apiKey?: string, dsn?: string, userId?: string | null, organizationId?: string | null): Promise<{ allowed: boolean; reason?: string }> {
   const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
   const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   try {
@@ -2465,6 +2487,9 @@ async function checkQuotaForAction(supabase: any, actionType: string, accountId:
       accountId,
       actionType: actionType as LinkedInActionType,
       userId: userId ?? null,
+      // Sans organisation, getUserQuotas renvoie les défauts (80/j) et le
+      // plafond enregistré n'était pas appliqué.
+      organizationId: organizationId ?? null,
       source: 'sequence',
     });
     if (!gate.allowed) {

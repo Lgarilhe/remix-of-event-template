@@ -3,8 +3,11 @@
  *
  * 2 niveaux séparés :
  *  - user-level (profiles.ai_context) → géré par useUserAiContext (chaque user édite le sien)
- *  - org-level (organizations.ai_context) → géré par useOrgAiContext (admin/owner only en UI,
- *    contrainte côté RLS via owners_update)
+ *  - org-level (organizations.ai_context) → géré par useOrgAiContext. UPDATE ouvert au
+ *    propriétaire et aux administrateurs (policy admins_update, garde organizations_update_guard)
+ *
+ * Écriture verrouillée tant que la dernière lecture n'a pas réussi : un formulaire
+ * vide monté après une lecture ratée écraserait le contexte enregistré.
  *
  * Le payload est validé/normalisé avant écriture : tone whitelist, longueurs max,
  * arrays cappés à 10 entrées. Pas d'erreur si on overshoot — on tronque silencieusement.
@@ -16,17 +19,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthReady } from "./useAuthReady";
 import { useOrganization } from "./useOrganization";
+import { updateOrganization } from "@/lib/organizationUpdate";
 import { toast } from "sonner";
 
 export type AiContextTone = "tu" | "vous" | "casual" | "formal";
 
-export interface AiContext {
+// Type (et non interface) : assignable à Json, donc écrit sans cast.
+export type AiContext = {
   tone: AiContextTone | null;
   specialty: string;
   do: string[];
   dont: string[];
   free_text: string;
-}
+};
 
 export const EMPTY_AI_CONTEXT: AiContext = {
   tone: null,
@@ -73,7 +78,7 @@ export function useUserAiContext() {
   const queryClient = useQueryClient();
   const queryKey = ["ai-context", "user", user?.id];
 
-  const { data: aiContext = EMPTY_AI_CONTEXT, isLoading } = useQuery({
+  const { data: aiContext = EMPTY_AI_CONTEXT, isLoading, isError, refetch } = useQuery({
     queryKey,
     queryFn: async (): Promise<AiContext> => {
       if (!user?.id) return EMPTY_AI_CONTEXT;
@@ -91,16 +96,21 @@ export function useUserAiContext() {
 
   const save = useMutation({
     mutationFn: async (input: AiContext): Promise<AiContext> => {
+      if (queryClient.getQueryState(queryKey)?.status !== "success") throw new Error("Votre contexte IA n'a pas pu être chargé : réessayez avant d'enregistrer.");
       if (!user?.id) throw new Error("Non authentifié");
       const normalized = normalizeAiContext(input);
+      // Sans .single() : 0 ligne (profil absent) donnait une erreur brute en anglais.
       const { data, error } = await supabase
         .from("profiles")
         .update({ ai_context: normalized, updated_at: new Date().toISOString() })
         .eq("user_id", user.id)
-        .select("ai_context")
-        .single();
-      if (error) throw error;
-      return normalizeAiContext(data?.ai_context);
+        .select("ai_context");
+      if (error) {
+        console.error("[useUserAiContext] save", error);
+        throw new Error("L'enregistrement a échoué. Réessayez.");
+      }
+      if (!data?.length) throw new Error("Votre profil est introuvable : le contexte IA n'a pas été enregistré.");
+      return normalizeAiContext(data[0].ai_context);
     },
     onSuccess: (next) => {
       queryClient.setQueryData(queryKey, next);
@@ -111,16 +121,16 @@ export function useUserAiContext() {
     },
   });
 
-  return { aiContext, isLoading, save: save.mutate, isSaving: save.isPending };
+  return { aiContext, isLoading, isError, refetch, save: save.mutate, isSaving: save.isPending };
 }
 
-/** Organization-level AI context — RLS limits UPDATE to owners */
+/** Organization-level AI context — UPDATE ouvert au propriétaire et aux administrateurs (policy admins_update, garde organizations_update_guard) */
 export function useOrgAiContext() {
   const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
   const queryKey = ["ai-context", "org", organizationId];
 
-  const { data: aiContext = EMPTY_AI_CONTEXT, isLoading } = useQuery({
+  const { data: aiContext = EMPTY_AI_CONTEXT, isLoading, isError, refetch } = useQuery({
     queryKey,
     queryFn: async (): Promise<AiContext> => {
       if (!organizationId) return EMPTY_AI_CONTEXT;
@@ -138,16 +148,12 @@ export function useOrgAiContext() {
 
   const save = useMutation({
     mutationFn: async (input: AiContext): Promise<AiContext> => {
+      if (queryClient.getQueryState(queryKey)?.status !== "success") throw new Error("Le contexte IA de l'organisation n'a pas pu être chargé : réessayez avant d'enregistrer.");
       if (!organizationId) throw new Error("Pas d'organisation active");
       const normalized = normalizeAiContext(input);
-      const { data, error } = await supabase
-        .from("organizations")
-        .update({ ai_context: normalized })
-        .eq("id", organizationId)
-        .select("ai_context")
-        .single();
-      if (error) throw error;
-      return normalizeAiContext(data?.ai_context);
+      // Refus (0 ligne ou garde serveur) : erreur en français levée par le helper.
+      const row = await updateOrganization(organizationId, { ai_context: normalized });
+      return normalizeAiContext(row.ai_context);
     },
     onSuccess: (next) => {
       queryClient.setQueryData(queryKey, next);
@@ -158,5 +164,5 @@ export function useOrgAiContext() {
     },
   });
 
-  return { aiContext, isLoading, save: save.mutate, isSaving: save.isPending };
+  return { aiContext, isLoading, isError, refetch, save: save.mutate, isSaving: save.isPending };
 }

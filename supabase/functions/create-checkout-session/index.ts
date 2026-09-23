@@ -40,13 +40,21 @@ const CREDIT_PACKS: Record<string, { credits: number; price_cents: number }> = {
   pack_5000: { credits: 5000, price_cents: 11900 },
 };
 
+/**
+ * Message des échecs internes : l'écran affiche le champ error tel quel. Le
+ * détail (réponse du prestataire, exception) reste dans les journaux.
+ */
+const CHECKOUT_UNAVAILABLE = "Impossible d'ouvrir le paiement pour le moment. Réessayez dans quelques instants.";
+
 const BILLING_CYCLES = ["monthly", "yearly"] as const;
 type BillingCycle = (typeof BILLING_CYCLES)[number];
 
 /**
  * Une URL de retour fournie par le client n'est acceptée que si elle pointe
  * sur l'application (APP_URL suivi de "/", "?" ou "#", ou APP_URL exactement) ;
- * sinon on retombe sur l'URL par défaut.
+ * sinon on retombe sur l'URL par défaut. Une URL fournie par l'appelant doit
+ * porter kind=pack|subscription, sans quoi l'écran ne retrouve le type d'achat
+ * que par l'onglet (src/lib/checkoutReturn.ts).
  */
 function pickReturnUrl(candidate: unknown, appUrl: string, fallback: string): string {
   if (typeof candidate !== "string" || !candidate.startsWith(appUrl)) return fallback;
@@ -157,7 +165,7 @@ Deno.serve(async (req) => {
       if (!customerRes.ok) {
         const err = await customerRes.text();
         console.error("[create-checkout] Stripe customer creation failed:", err);
-        return json({ error: "Failed to create Stripe customer" }, 500);
+        return json({ error: CHECKOUT_UNAVAILABLE }, 500);
       }
 
       const customer = await customerRes.json();
@@ -187,15 +195,17 @@ Deno.serve(async (req) => {
 
       if (saveError) {
         console.error("[create-checkout] Failed to save Stripe customer ID", { error: saveError, organization_id, stripeCustomerId });
-        return json({ error: "Failed to save payment configuration" }, 500);
+        return json({ error: CHECKOUT_UNAVAILABLE }, 500);
       }
     }
 
     // Build base URLs. Les URLs venant du corps ne sont acceptées que si elles
-    // pointent sur l'application (voir pickReturnUrl).
+    // pointent sur l'application (voir pickReturnUrl). kind désigne l'écran qui
+    // lit le retour (pack : Crédits IA, subscription : Abonnement) ; tab ne
+    // choisit que l'onglet d'arrivée.
     const appUrl = Deno.env.get("APP_URL") || "https://konekt-app-navy.vercel.app";
-    const defaultSuccessUrl = `${appUrl}/settings?tab=credits&checkout=success`;
-    const defaultCancelUrl = `${appUrl}/settings?tab=credits&checkout=cancel`;
+    const defaultSuccessUrl = `${appUrl}/settings?tab=credits&checkout=success&kind=pack`;
+    const defaultCancelUrl = `${appUrl}/settings?tab=credits&checkout=cancel&kind=pack`;
 
     // ── Mode: Credit Pack Purchase ──────────────────────────────
     if (mode === "credit_pack") {
@@ -232,7 +242,7 @@ Deno.serve(async (req) => {
       if (!sessionRes.ok) {
         const err = await sessionRes.text();
         console.error("[create-checkout] Session creation failed:", err);
-        return json({ error: "Failed to create checkout session" }, 500);
+        return json({ error: CHECKOUT_UNAVAILABLE }, 500);
       }
 
       const session = await sessionRes.json();
@@ -296,8 +306,9 @@ Deno.serve(async (req) => {
         .neq("id", "free")
         .maybeSingle();
 
+      // Atteignable si le plan a été désactivé entre l'affichage des tarifs et le clic.
       if (!plan) {
-        return json({ error: "Invalid plan_id" }, 400);
+        return json({ error_code: "invalid_plan", error: "Ce plan n'est plus proposé. Rechargez la page." }, 400);
       }
 
       // Solo est réservé aux recruteurs indépendants (org_type freelance). Le
@@ -323,7 +334,7 @@ Deno.serve(async (req) => {
       const unitAmount = cycle === "monthly" ? plan.price_monthly : plan.price_yearly;
       if (!stripePriceId && (!Number.isInteger(unitAmount) || unitAmount <= 0)) {
         console.error("[create-checkout] Plan without usable price", { plan_id, cycle, unitAmount });
-        return json({ error: "Invalid plan_id" }, 400);
+        return json({ error_code: "invalid_plan", error: "Ce plan n'est pas disponible au paiement pour le moment. Contactez-nous." }, 400);
       }
 
       // Un siège = une ligne de organization_members (tous rôles) ; une
@@ -358,8 +369,8 @@ Deno.serve(async (req) => {
         "subscription_data[metadata][organization_id]": organization_id,
         "subscription_data[metadata][plan_id]": plan.id,
         "subscription_data[metadata][billing_cycle]": cycle,
-        success_url: pickReturnUrl(success_url, appUrl, `${appUrl}/settings?tab=billing&checkout=success`),
-        cancel_url: pickReturnUrl(cancel_url, appUrl, `${appUrl}/settings?tab=billing&checkout=cancel`),
+        success_url: pickReturnUrl(success_url, appUrl, `${appUrl}/settings?tab=billing&checkout=success&kind=subscription`),
+        cancel_url: pickReturnUrl(cancel_url, appUrl, `${appUrl}/settings?tab=billing&checkout=cancel&kind=subscription`),
       });
 
       // Essai en cours : les jours restants sont reportés sur l'abonnement
@@ -393,7 +404,7 @@ Deno.serve(async (req) => {
       if (!sessionRes.ok) {
         const err = await sessionRes.text();
         console.error("[create-checkout] Subscription session failed:", err);
-        return json({ error: "Failed to create checkout session" }, 500);
+        return json({ error: CHECKOUT_UNAVAILABLE }, 500);
       }
 
       const session = await sessionRes.json();
@@ -403,6 +414,6 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid mode. Use 'credit_pack' or 'subscription'" }, 400);
   } catch (err) {
     console.error("[create-checkout-session] Error:", err);
-    return json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    return json({ error: CHECKOUT_UNAVAILABLE }, 500);
   }
 });

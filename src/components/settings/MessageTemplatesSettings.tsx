@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { PLACEHOLDERS_CATALOG } from '@/lib/templatePlaceholders';
 import { CustomVariablesSettings } from './CustomVariablesSettings';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 
 // Templates pré-remplis suggérés au premier usage
 // Les placeholders sont AUTOMATIQUEMENT remplacés à l'insertion
@@ -128,7 +129,7 @@ export const MessageTemplatesSettings: React.FC = () => {
 };
 
 const TemplatesSection: React.FC = () => {
-  const { templates, isLoading, create, update, remove } = useMessageTemplates();
+  const { templates, isLoading, isError, refetch, create, update, remove } = useMessageTemplates();
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<MessageTemplate | null>(null);
@@ -148,6 +149,7 @@ const TemplatesSection: React.FC = () => {
           <Button
             size="sm"
             onClick={() => setCreating(true)}
+            disabled={isLoading || isError}
             className="gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -162,8 +164,13 @@ const TemplatesSection: React.FC = () => {
           du nom ou du raccourci.
         </p>
 
+        {/* Lecture ratée : ni suggestions ni liste, sinon on croirait les templates perdus */}
+        {isError && (
+          <ErrorBox title="Impossible de charger vos templates." onRetry={() => { void refetch(); }} />
+        )}
+
         {/* État vide : suggestions de templates pré-remplis */}
-        {!isLoading && templates.length === 0 && (
+        {!isLoading && !isError && templates.length === 0 && (
           <div className="border border-dashed border-border rounded-lg p-6 bg-muted/20">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles className="w-4 h-4 text-foreground" />
@@ -201,7 +208,7 @@ const TemplatesSection: React.FC = () => {
         )}
 
         {/* Liste des templates existants */}
-        {!isLoading && templates.length > 0 && (
+        {!isLoading && !isError && templates.length > 0 && (
           <div className="space-y-2">
             {templates.map((tpl) => (
               <div

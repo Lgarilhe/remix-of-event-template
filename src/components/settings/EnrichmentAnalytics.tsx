@@ -23,6 +23,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useEnrichmentPermission, formatResetDay } from '@/hooks/useEnrichmentPermission';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 import { Mail, Phone, TrendingUp, Loader2, Sparkles, BarChart3, Check, X, Package } from 'lucide-react';
 
 interface EnrichmentRow {
@@ -67,16 +68,16 @@ function formatDateTime(iso: string): string {
 
 export const EnrichmentAnalytics: React.FC = () => {
   const { organizationId } = useOrganization();
-  const { includedMonthly, includedUsed, periodEnd } = useEnrichmentPermission();
+  const { includedMonthly, includedUsed, periodEnd, isUsageError, isLoading: usageLoading, refetchQuota } = useEnrichmentPermission();
   const resetDay = formatResetDay(periodEnd);
 
-  const { data: rows, isLoading } = useQuery({
+  const { data: rows, isLoading, isLoadingError: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['enrichment-analytics', organizationId],
     queryFn: async (): Promise<EnrichmentRow[]> => {
       if (!organizationId) return [];
       // 30 derniers jours, status terminated only
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('candidate_enrichments')
         .select('contact_email, contact_phone, included, credits_consumed, status, requested_at')
         .eq('organization_id', organizationId)
@@ -84,6 +85,8 @@ export const EnrichmentAnalytics: React.FC = () => {
         .gte('requested_at', thirtyDaysAgo)
         .order('requested_at', { ascending: false })
         .limit(1000);
+      // Une erreur rendue comme liste vide se lisait « aucun enrichissement ».
+      if (error) throw error;
       return (data as EnrichmentRow[]) || [];
     },
     enabled: !!organizationId,
@@ -91,20 +94,22 @@ export const EnrichmentAnalytics: React.FC = () => {
   });
 
   // Les 20 derniers enrichissements, tous statuts, colonnes explicites.
-  const { data: recent, isLoading: recentLoading } = useQuery({
+  const { data: recent, isLoading: recentLoading, isLoadingError: recentError, refetch: refetchRecent } = useQuery({
     queryKey: ['enrichment-recent', organizationId],
     queryFn: async (): Promise<RecentEnrichmentRow[]> => {
       if (!organizationId) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('candidate_enrichments')
         .select('id, first_name, last_name, linkedin_url, contact_email, contact_phone, included, credits_consumed, status, requested_at, completed_at, requested_by_user_id')
         .eq('organization_id', organizationId)
         .order('requested_at', { ascending: false })
         .limit(20);
+      if (error) throw error;
       const list = (data || []) as Omit<RecentEnrichmentRow, 'requester_name'>[];
 
       const userIds = Array.from(new Set(list.map(r => r.requested_by_user_id).filter((id): id is string => !!id)));
       const names = new Map<string, string>();
+      // Lecture des noms tolérante : en cas d'échec, la colonne affiche « Membre ».
       if (userIds.length > 0) {
         const { data: profiles } = await supabase
           .from('profiles')
@@ -166,13 +171,28 @@ export const EnrichmentAnalytics: React.FC = () => {
     };
   }, [rows]);
 
-  if (isLoading || recentLoading) {
+  // Le chargeur attend aussi le forfait : sans lui, « 0 / 0 » et « aucune unité
+  // incluse » s'affichaient un instant sur un plan qui inclut des contacts.
+  if (isLoading || recentLoading || usageLoading) {
     return (
       <Card className="p-6">
         <div className="flex items-center justify-center py-8 text-muted-foreground">
           <Loader2 className="w-5 h-5 animate-spin mr-2" />
           Chargement des statistiques d'enrichissement de contact…
         </div>
+      </Card>
+    );
+  }
+
+  // Lecture en échec : ni « aucun enrichissement » ni « forfait vide », qui
+  // seraient faux.
+  if (rowsError || recentError || isUsageError) {
+    return (
+      <Card className="p-6">
+        <ErrorBox
+          title="Impossible de charger les statistiques d'enrichissement de contact."
+          onRetry={() => { void refetchRows(); void refetchRecent(); void refetchQuota(); }}
+        />
       </Card>
     );
   }

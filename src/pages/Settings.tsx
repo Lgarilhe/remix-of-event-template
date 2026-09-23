@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { useOrganization, useOrganizationMembers } from '@/hooks/useOrganization';
+import { useOrganization, useOrganizationMembers, type Organization } from '@/hooks/useOrganization';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SEOHead } from '@/components/SEOHead';
 import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
 import { InviteMemberForm } from '@/components/settings/InviteMemberForm';
@@ -39,11 +39,13 @@ import { AgentActionsSettings } from '@/components/settings/AgentActionsSettings
 import { toast } from 'sonner';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { hasFeature } from '@/lib/featureGates';
+import { updateOrganization } from '@/lib/organizationUpdate';
 
 
 const Settings = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { organization, organizationId, isOwner, isAdmin, isCollaborator, orgType } = useOrganization();
+  const { organization, organizationId, isOwner, isAdmin, isCollaborator, orgType, refetchOrganization } = useOrganization();
+  const queryClient = useQueryClient();
   // Droits par type d'organisation (src/lib/featureGates.ts) : un freelance
   // n'a pas d'équipe à gérer ; les réglages agence sont réservés aux cabinets.
   const canManageTeam = !isCollaborator && hasFeature(orgType, 'team_management');
@@ -83,24 +85,46 @@ const Settings = () => {
     staleTime: 10 * 60 * 1000,
   });
 
+  // L'e-mail des membres vit dans auth.users (profiles n'a pas de colonne email) :
+  // lu par get_org_member_emails, réservée aux membres internes de l'organisation.
+  // Échec (fonction pas encore déployée, réseau) : repli sur le nom seul.
+  const { data: memberEmails = [] } = useQuery({
+    queryKey: ['org-member-emails', organizationId, members.map(m => m.user_id)],
+    queryFn: async (): Promise<Array<{ user_id: string; email: string }>> => {
+      const { data, error } = await supabase.rpc('get_org_member_emails', { p_organization_id: organizationId! });
+      if (error) { console.warn('[Settings] member emails:', error); return []; }
+      return data ?? [];
+    },
+    enabled: !!organizationId && canManageTeam && members.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const getMemberEmail = (userId: string) =>
+    memberEmails.find(e => e.user_id === userId)?.email || null;
+
+  // Plus de repli sur 8 caractères d'identifiant : nom, sinon e-mail.
   const getDisplayName = (userId: string) => {
     const profile = memberProfiles.find(p => p.user_id === userId);
-    return profile?.display_name || userId.slice(0, 8) + '...';
+    return profile?.display_name?.trim() || getMemberEmail(userId) || 'Membre sans nom';
   };
 
   const handleSaveName = async () => {
     if (!organizationId || !newName.trim()) return;
     setSavingName(true);
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .update({ name: newName.trim() })
-        .eq('id', organizationId);
-      if (error) throw error;
+      const row = await updateOrganization(organizationId, { name: newName.trim() });
+      // La carte, la barre latérale et le menu lisent ['active-organization']
+      // (10 min, pas de rechargement au focus). La ligne écrite va directement
+      // dans ce cache : un rechargement raté ne lève pas d'erreur et gardait
+      // l'ancien nom après le toast de succès. Le rechargement suit, sans attente.
+      queryClient.setQueriesData<{ organization: Organization } | null>(
+        { queryKey: ['active-organization'] },
+        (old) => (old?.organization?.id === row.id ? { ...old, organization: { ...old.organization, ...row } } : old),
+      );
+      void refetchOrganization();
       toast.success('Nom mis à jour');
       setEditingName(false);
-    } catch {
-      toast.error('Erreur lors de la mise à jour');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Le nom n’a pas pu être enregistré.');
     } finally {
       setSavingName(false);
     }
@@ -343,7 +367,7 @@ const Settings = () => {
                       logoUrl={organization?.logo_url ?? null}
                       website={organization?.website ?? null}
                       orgName={organization?.name || ''}
-                      isOwner={isOwner}
+                      canEdit={isAdmin}
                     />
                   )}
 
@@ -370,7 +394,7 @@ const Settings = () => {
                     ) : (
                       <div className="flex items-center gap-2">
                         <p className="text-foreground font-medium">{organization?.name}</p>
-                        {isOwner && (
+                        {isAdmin && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -409,6 +433,7 @@ const Settings = () => {
                 <TeamManagement
                   members={members}
                   getDisplayName={getDisplayName}
+                  getEmail={getMemberEmail}
                   isAdmin={isAdmin}
                   isOwner={isOwner}
                   isLoading={isLoading}

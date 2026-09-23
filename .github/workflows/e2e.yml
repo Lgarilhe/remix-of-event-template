@@ -113,6 +113,24 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/rls_two_orgs_audit.sql -c 'ROLLBACK;'
 
+      # Paramètres, lot 1 : écritures sur l'organisation (policy et trigger de
+      # garde), e-mails des membres et plafonds LinkedIn en libre-service.
+      # Même forme que l'audit précédent :
+      # exception listant les contrôles en échec, écritures annulées.
+      # org_logos_storage_audit.sql reste manuel (voir son en-tête) : il écrit
+      # dans les tables internes du stockage, dont les déclencheurs varient
+      # selon la version de Supabase.
+      - name: Audits Paramètres lot 1 (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/org_writes_audit.sql -c 'ROLLBACK;'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/org_member_emails_audit.sql -c 'ROLLBACK;'
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/member_quotas_self_service.sql -c 'ROLLBACK;'
+
       - name: Build front
         run: npm run build
         env:

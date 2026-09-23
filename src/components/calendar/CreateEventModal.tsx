@@ -346,7 +346,6 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
                       <div className="flex items-center gap-2">
                         <CandidateAvatar
                           name={label}
-                          avatarUrl={m.avatarUrl}
                           size={20}
                         />
                         <span className="truncate">{label}</span>

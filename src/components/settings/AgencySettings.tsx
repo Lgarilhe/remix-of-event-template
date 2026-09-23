@@ -4,15 +4,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { Shield, Eye, EyeOff, Users, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { updateOrganization } from '@/lib/organizationUpdate';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 
-interface AgencyPermissions {
+// Type (et non interface) : assignable à Json, donc écrit sans cast.
+type AgencyPermissions = {
   hide_payments_from_members: boolean;
   share_candidates_between_members: boolean;
   share_calls_between_members: boolean;
   only_owners_can_submit: boolean;
   allow_members_create_missions: boolean;
-}
+};
 
 const DEFAULT_PERMISSIONS: AgencyPermissions = {
   hide_payments_from_members: false,
@@ -39,18 +42,22 @@ const PERMISSION_CONFIG: Array<{
 export const AgencySettings: React.FC = () => {
   const { organization, organizationId, isOwner } = useOrganization();
   const { members } = useOrganizationMembers(organizationId);
+  const queryClient = useQueryClient();
 
   // Load agency_permissions from organization metadata
-  const { data: permissions, isLoading } = useQuery({
+  // Lecture ratée levée : avalée, elle affichait les valeurs par défaut comme
+  // l'état réel, et la première bascule les écrivait par-dessus les réglages.
+  const { data: permissions, isLoading, isError, refetch } = useQuery({
     queryKey: ['agency-permissions', organizationId],
     queryFn: async () => {
       if (!organizationId) return DEFAULT_PERMISSIONS;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('organizations')
         .select('agency_permissions')
         .eq('id', organizationId)
         .maybeSingle();
-      return { ...DEFAULT_PERMISSIONS, ...((data as any)?.agency_permissions || {}) } as AgencyPermissions;
+      if (error) throw error;
+      return { ...DEFAULT_PERMISSIONS, ...((data?.agency_permissions as Partial<AgencyPermissions> | null) || {}) } as AgencyPermissions;
     },
     enabled: !!organizationId,
     staleTime: 5 * 60 * 1000,
@@ -63,14 +70,12 @@ export const AgencySettings: React.FC = () => {
     const updated = { ...permissions, [key]: !permissions[key] };
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .update({ agency_permissions: updated } as any)
-        .eq('id', organizationId);
-      if (error) throw error;
+      await updateOrganization(organizationId, { agency_permissions: updated });
+      // Sans cette mise à jour, le bouton gardait son ancien état malgré le succès.
+      queryClient.setQueryData(['agency-permissions', organizationId], updated);
       toast.success('Permission mise à jour');
-    } catch (err: any) {
-      toast.error(err?.message || 'Erreur');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'La permission n’a pas pu être enregistrée.');
     } finally {
       setSaving(false);
     }
@@ -90,6 +95,9 @@ export const AgencySettings: React.FC = () => {
   }
 
   const perms = permissions || DEFAULT_PERMISSIONS;
+  // Sans lecture réussie, pas de bascule : chaque clic écrit l'objet entier.
+  // Après un rechargement raté, React Query garde les dernières valeurs lues.
+  const permissionsUnavailable = isError && !permissions;
 
   return (
     <div className="space-y-6">
@@ -119,6 +127,10 @@ export const AgencySettings: React.FC = () => {
         <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
           Permissions agence
         </h3>
+        {permissionsUnavailable ? (
+          <ErrorBox title="Impossible de charger les permissions de l’agence." onRetry={() => { void refetch(); }} />
+        ) : (
+        <>
         {!isOwner && (
           <p className="text-xs text-muted-foreground mb-4">
             Seuls les propriétaires peuvent modifier les permissions.
@@ -150,6 +162,8 @@ export const AgencySettings: React.FC = () => {
             </div>
           ))}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

@@ -213,6 +213,8 @@ RPC (SECURITY DEFINER, authenticated) : `get_subscription_state(org)` (plan effe
 expire un essai échu à la lecture), `get_org_contact_usage(org)` (contacts inclus utilisés / forfait),
 `get_linkedin_quota_status(account)` (compteurs jour/semaine, facteur de montée en charge via `linkedin_ramp_factor`).
 Cron : `expire-subscription-trials` (horaire) → `expire_subscription_trials()`.
+`get_org_member_emails(org)` (e-mails de auth.users des membres ; appelant owner/admin/member de l'org, jamais collaborator ni anon) :
+`profiles` n'a pas de colonne `email` ni `avatar_url`, ne jamais les demander.
 
 ### Key Hooks
 ```
@@ -450,6 +452,13 @@ Second axe, par plan d'abonnement : `hasPlanFeature(planId, feature)` dans le m�
 **Plan effectif = `get_subscription_state`, jamais `organization_subscriptions` en direct côté front.** Le hook `useSubscriptionState` appelle la RPC, qui expire un essai échu à la lecture et renvoie `effective_plan_id`, `status`, `trial_days_left`, `seat_count`, `limits`. Lire `organization_subscriptions.plan_id` directement donne un essai expiré non encore basculé ou un abonnement annulé comme s'il était actif (`useSubscription` ne lit la ligne brute que pour les identifiants Stripe et prend le plan effectif de `useSubscriptionState`).
 
 Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `src/lib/featureGates.ts`. Décision produit 2026-09 : **un freelance a les mêmes droits qu'un cabinet sur ses missions** (`create_missions`, `edit_brief`, `edit_process`, `sourcing`, `outreach`, `pipeline`, `client_portal`, `marketplace_browse`), **sauf** `team_management` (pas d'onglet Équipe) et `agency_settings` (pas de paramètres agence). `marketplace_publish` reste réservé aux entreprises. Les onglets de Settings (`canManageTeam`, `canAgencySettings`) et les `readOnly` de MissionBriefV2/MissionProcessV2 découlent de cette matrice.
+
+### Écritures sur `organizations` — passer par `updateOrganization`
+`src/lib/organizationUpdate.ts` relit la ligne écrite : sans `.select()`, un refus RLS répond « succès » sur 0 ligne. Côté base (lot 1 des Paramètres, migration 20260923095813) : une seule policy UPDATE `admins_update` (owner/admin) et le trigger `organizations_update_guard`. L'admin modifie `name`, `logo_url`, `website`, `ai_context` ; tout le reste (`org_type`, `agency_permissions`, `ai_model_default`…) reste au propriétaire (HINT `ORG_OWNER_ONLY`). Passage en `freelance` refusé s'il reste un autre membre ou une invitation en attente (HINT `ORG_FREELANCE_NOT_SOLO`). Bucket `org-logos` : écriture owner/admin dans le dossier `{organization_id}/`, un nom de fichier unique par envoi.
+Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
+
+### État et liaison LinkedIn
+Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par `user_id` via `member_linkedin_accounts`, jamais le compte d'un collègue). Relier et dissocier passent par `unipile-accounts` (`claim_linkedin_account`, `unlink_linkedin_account`), pas par un upsert/delete du navigateur (RLS owner/admin). « Dissocier » ne ferme pas la session chez le prestataire : il retire la liaison et arrête les envois du compte (inscriptions en pause `manual`, étapes et InMails programmés annulés, compte retiré des rotations multi-expéditeurs).
 
 ### Destructive actions — ALWAYS use AlertDialog
 ```typescript

@@ -82,6 +82,9 @@ export const useSubscriptionState = () => {
     state,
     isLoading: query.isLoading,
     error: query.error,
+    // Première lecture en échec : un rechargement raté en arrière-plan garde
+    // l'état déjà affiché au lieu de le remplacer par une erreur.
+    isLoadingError: query.isLoadingError,
     refetch: query.refetch,
     effectivePlanId,
     isTrialing,

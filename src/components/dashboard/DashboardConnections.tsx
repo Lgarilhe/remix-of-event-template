@@ -52,10 +52,12 @@ const ConnectionCard: React.FC<{
   brandIcon?: React.ReactNode;
   index: number;
   onClick: () => void;
-}> = ({ channel, name, brandLogo, brandIcon, index, onClick }) => {
+  /** Canal affiché sans alerte : jamais signalé « à traiter » (WhatsApp, retiré au lot 3). */
+  neutral?: boolean;
+}> = ({ channel, name, brandLogo, brandIcon, index, onClick, neutral = false }) => {
   const tone = STATUS_TONE[channel.status];
   const isOk = channel.status === 'connected';
-  const needsAction = channel.status === 'error' || channel.status === 'disconnected';
+  const needsAction = !neutral && (channel.status === 'error' || channel.status === 'disconnected');
 
   return (
     <motion.button
@@ -202,6 +204,8 @@ export const DashboardConnections: React.FC<DashboardConnectionsProps> = ({
           }
           index={2}
           onClick={goToConnectors}
+          // Jamais dans la liste des comptes : « Non connecté » en permanence, sans alerte
+          neutral
         />
       </motion.div>
     </motion.div>

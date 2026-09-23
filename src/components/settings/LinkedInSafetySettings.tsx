@@ -6,8 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Shield, Save, RotateCcw, Info, Loader2, Lock, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useMemberQuotas, DEFAULT_QUOTAS } from '@/hooks/useMemberQuotas';
+import {
+  useMemberQuotas,
+  DEFAULT_QUOTAS,
+  MAX_ACTIONS_PER_DAY_MIN,
+  MAX_ACTIONS_PER_DAY_MAX,
+  isValidMaxActionsPerDay,
+} from '@/hooks/useMemberQuotas';
 import { useOrganization } from '@/hooks/useOrganization';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 
 /**
  * LinkedInSafetySettings — Plages horaires + cap journalier d'actions LinkedIn.
@@ -37,7 +44,7 @@ const PROTECTION_MECHANISMS = [
 
 export const LinkedInSafetySettings = () => {
   const [userId, setUserId] = useState<string | null>(null);
-  const { getQuotaForUser, upsertQuota, isSaving, isLoading } = useMemberQuotas();
+  const { getQuotaForUser, upsertQuota, isSaving, isLoading, isError, refetch } = useMemberQuotas();
   const { isAdmin } = useOrganization();
 
   const [startHour, setStartHour] = useState<number>(DEFAULT_QUOTAS.business_hours_start);
@@ -53,20 +60,23 @@ export const LinkedInSafetySettings = () => {
     });
   }, []);
 
-  // Hydrate form from existing quota row (or defaults)
+  // Hydrate depuis la ligne enregistrée de l'organisation courante, sinon depuis les défauts. Dépendances primitives : getQuotaForUser change d'identité à chaque rendu et ré-hydratait le formulaire après chaque saisie.
+  const saved = userId ? getQuotaForUser(userId) : null;
+  const savedStart = saved?.business_hours_start ?? DEFAULT_QUOTAS.business_hours_start;
+  const savedEnd = saved?.business_hours_end ?? DEFAULT_QUOTAS.business_hours_end;
+  const savedCap = saved?.max_actions_per_day ?? DEFAULT_QUOTAS.max_actions_per_day;
+  const savedTz = saved?.timezone ?? DEFAULT_QUOTAS.timezone;
   useEffect(() => {
-    if (!userId) return;
-    const existing = getQuotaForUser(userId);
-    if (existing) {
-      setStartHour(existing.business_hours_start ?? DEFAULT_QUOTAS.business_hours_start);
-      setEndHour(existing.business_hours_end ?? DEFAULT_QUOTAS.business_hours_end);
-      setMaxActionsPerDay(existing.max_actions_per_day ?? DEFAULT_QUOTAS.max_actions_per_day);
-      setTimezone(existing.timezone ?? DEFAULT_QUOTAS.timezone);
-    }
-  }, [userId, getQuotaForUser]);
+    setStartHour(savedStart);
+    setEndHour(savedEnd);
+    setMaxActionsPerDay(savedCap);
+    setTimezone(savedTz);
+    setDirty(false);
+  }, [savedStart, savedEnd, savedCap, savedTz]);
 
   const hoursValid = endHour > startHour;
-  const capValid = maxActionsPerDay >= 0 && maxActionsPerDay <= 500;
+  // Un membre n'envoie pas le plafond : il n'est pas bloqué par une valeur qu'il ne peut pas modifier.
+  const capValid = !isAdmin || isValidMaxActionsPerDay(maxActionsPerDay);
 
   const handleSave = () => {
     if (!userId || !hoursValid || !capValid) return;
@@ -80,8 +90,11 @@ export const LinkedInSafetySettings = () => {
         // le serveur refuse toute modification de plafond par un simple membre.
         ...(isAdmin ? { max_actions_per_day: maxActionsPerDay } : {}),
       },
+    }, {
+      // « Enregistrer » ne se grise qu'après un succès : sur erreur, il reste
+      // actif pour réessayer.
+      onSuccess: () => setDirty(false),
     });
-    setDirty(false);
   };
 
   const handleReset = () => {
@@ -133,6 +146,14 @@ export const LinkedInSafetySettings = () => {
             <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
             Chargement…
           </div>
+        ) : isError ? (
+          // Lecture ratée : ni champ ni « Enregistrer », sinon l'enregistrement
+          // écraserait la ligne existante par les valeurs par défaut.
+          <ErrorBox
+            title="Impossible de charger vos plages horaires et limites LinkedIn."
+            detail="Vos réglages enregistrés ne sont pas affectés. Réessayez pour les afficher et les modifier."
+            onRetry={() => { void refetch(); }}
+          />
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
@@ -197,8 +218,8 @@ export const LinkedInSafetySettings = () => {
               <Input
                 id="max-actions"
                 type="number"
-                min={0}
-                max={500}
+                min={MAX_ACTIONS_PER_DAY_MIN}
+                max={MAX_ACTIONS_PER_DAY_MAX}
                 value={maxActionsPerDay}
                 disabled={!isAdmin}
                 onChange={(e) => {
@@ -219,7 +240,7 @@ export const LinkedInSafetySettings = () => {
                 </p>
               )}
               {!capValid && (
-                <p className="text-xs text-destructive">Valeur entre 0 et 500.</p>
+                <p className="text-xs text-destructive">Valeur entre {MAX_ACTIONS_PER_DAY_MIN} et {MAX_ACTIONS_PER_DAY_MAX}.</p>
               )}
             </div>
 

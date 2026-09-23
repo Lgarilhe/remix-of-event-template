@@ -16,6 +16,13 @@ export interface PersistedProgress {
   orgDetails: OrgDetailsData | null;
   specializations: string[];
   completed: SceneKey[];
+  /**
+   * Id de l'espace créé par ce tunnel. Gardé seulement en mémoire, il se perdait
+   * au rechargement : un indépendant dont l'activité n'avait pas pu être écrite
+   * restait bloqué (« déjà membre d'un espace ») ou, avec ?new=1, créait un
+   * second espace. Facultatif : absent des progressions déjà enregistrées.
+   */
+  createdOrgId?: string | null;
 }
 
 export function loadOnboardingProgress(): PersistedProgress | null {

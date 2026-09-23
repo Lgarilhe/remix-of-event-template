@@ -23,9 +23,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Variable, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 
 export const CustomVariablesSettings: React.FC = () => {
-  const { variables, isLoading, create, update, remove } = useUserTemplateVariables();
+  const { variables, isLoading, isError, refetch, create, update, remove } = useUserTemplateVariables();
   const [editing, setEditing] = useState<UserTemplateVariable | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<UserTemplateVariable | null>(null);
@@ -38,7 +39,7 @@ export const CustomVariablesSettings: React.FC = () => {
             <Variable className="w-4 h-4" />
             Variables custom
           </CardTitle>
-          <Button size="sm" onClick={() => setCreating(true)} className="gap-1.5">
+          <Button size="sm" onClick={() => setCreating(true)} disabled={isLoading || isError} className="gap-1.5">
             <Plus className="w-3.5 h-3.5" />
             Nouvelle variable
           </Button>
@@ -51,7 +52,12 @@ export const CustomVariablesSettings: React.FC = () => {
           utiliser dans vos templates et les actualiser facilement.
         </p>
 
-        {!isLoading && variables.length === 0 && (
+        {/* Lecture ratée : pas de faux « aucune variable » */}
+        {isError && (
+          <ErrorBox title="Impossible de charger vos variables." onRetry={() => { void refetch(); }} />
+        )}
+
+        {!isLoading && !isError && variables.length === 0 && (
           <div className="border border-dashed border-border rounded-lg p-4 bg-muted/20 text-center">
             <p className="text-xs text-muted-foreground">
               Aucune variable custom encore. Ajoutez-en pour personnaliser vos templates.
@@ -59,7 +65,7 @@ export const CustomVariablesSettings: React.FC = () => {
           </div>
         )}
 
-        {!isLoading && variables.length > 0 && (
+        {!isLoading && !isError && variables.length > 0 && (
           <div className="border border-border rounded-lg divide-y divide-border">
             {variables.map((v) => (
               <div

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,13 +20,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useEmailSignatures, EmailSignature } from '@/hooks/useEmailSignatures';
 import { Mail, Plus, Pencil, Trash2, Star } from 'lucide-react';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { sanitizeSignatureHtml } from '@/lib/signatureHtml';
 
 export const EmailSignatures: React.FC = () => {
-  const { signatures, isLoading, createSignature, updateSignature, deleteSignature } = useEmailSignatures();
+  const { signatures, isLoading, isError, refetch, createSignature, updateSignature, deleteSignature } = useEmailSignatures();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<EmailSignature | null>(null);
   const [form, setForm] = useState({ name: '', content: '', is_default: false });
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  // Aperçu assaini : tout membre peut écrire une signature, les autres l'ouvrent ici.
+  const previewHtml = useMemo(() => sanitizeSignatureHtml(form.content), [form.content]);
 
   const openCreate = () => {
     setEditing(null);
@@ -62,7 +66,7 @@ export const EmailSignatures: React.FC = () => {
             <Mail className="w-4 h-4" />
             Signatures email
           </div>
-          <Button size="sm" onClick={openCreate} className="gap-1">
+          <Button size="sm" onClick={openCreate} disabled={isLoading || isError} className="gap-1">
             <Plus className="w-3.5 h-3.5" />
             Nouvelle
           </Button>
@@ -73,6 +77,9 @@ export const EmailSignatures: React.FC = () => {
           <div className="flex justify-center py-6">
             <BrutalLoader compact />
           </div>
+        ) : isError ? (
+          // Lecture ratée : pas de faux « Aucune signature », ni création à l'aveugle
+          <ErrorBox title="Impossible de charger les signatures email." onRetry={() => { void refetch(); }} />
         ) : signatures.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
             Aucune signature. Créez-en une pour l'utiliser dans vos séquences email.
@@ -172,8 +179,9 @@ export const EmailSignatures: React.FC = () => {
               <div>
                 <Label className="text-xs text-muted-foreground">Aperçu</Label>
                 <div
-                  className="mt-1 p-3 border border-border bg-muted/30 rounded text-sm"
-                  dangerouslySetInnerHTML={{ __html: form.content }}
+                  data-testid="signature-preview"
+                  className="mt-1 p-3 border border-border bg-muted/30 rounded text-sm max-h-64 overflow-auto [&_img]:max-w-full [&_img]:h-auto"
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
                 />
               </div>
             )}

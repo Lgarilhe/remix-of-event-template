@@ -2959,20 +2959,33 @@ const updateMemberQuota: AgentTool = {
   async dryRun(params, ctx) {
     const targetUserId = String(params.target_user_id);
 
-    const [{ data: profile }, { data: current }] = await Promise.all([
+    // Nom et e-mail de la cible pour la carte d'approbation. profiles n'a ni
+    // full_name ni email, et sa clé id n'est pas l'user_id : la lecture échouait
+    // et la carte n'affichait qu'un UUID. L'e-mail vient de l'API
+    // d'administration (client service role) : la RPC get_org_member_emails
+    // filtre sur auth.uid(), NULL ici, et renverrait un ensemble vide.
+    const [{ data: profile }, { data: authUser }, { data: current }] = await Promise.all([
       ctx.adminClient
         .from('profiles')
-        .select('full_name, email')
-        .eq('id', targetUserId)
+        .select('display_name')
+        .eq('user_id', targetUserId)
         .maybeSingle(),
+      ctx.adminClient.auth.admin
+        .getUserById(targetUserId)
+        .catch(() => ({ data: { user: null } })),
       ctx.adminClient
         .from('member_quotas')
         .select('max_actions_per_day, business_hours_start, business_hours_end, timezone')
         .eq('user_id', targetUserId)
+        // Ligne de l'organisation courante uniquement (client service role,
+        // RLS contournée) : sans ce filtre, le diff montrait une autre organisation.
+        .eq('organization_id', ctx.organizationId)
         .maybeSingle(),
     ]);
 
-    const memberLabel = profile?.full_name || profile?.email || targetUserId;
+    const targetName: string | null = profile?.display_name || null;
+    const targetEmail: string | null = authUser?.user?.email ?? null;
+    const memberLabel = targetName || targetEmail || targetUserId;
     const diff: Array<{ field: string; from: unknown; to: unknown }> = [];
     const fields = ['max_actions_per_day', 'business_hours_start', 'business_hours_end', 'timezone'] as const;
     for (const f of fields) {
@@ -2985,8 +2998,8 @@ const updateMemberQuota: AgentTool = {
       summary: `Mettre à jour les quotas LinkedIn de ${memberLabel} — ${diff.map((d) => d.field).join(', ')}`,
       details: {
         target_user_id: targetUserId,
-        target_name: profile?.full_name ?? null,
-        target_email: profile?.email ?? null,
+        target_name: targetName,
+        target_email: targetEmail,
         had_existing_row: !!current,
         diff,
       },
@@ -3010,6 +3023,9 @@ const updateMemberQuota: AgentTool = {
       .from('member_quotas')
       .select('id')
       .eq('user_id', targetUserId)
+      // Organisation courante uniquement : sinon la mise à jour par id
+      // modifiait la ligne d'une autre organisation de la cible.
+      .eq('organization_id', ctx.organizationId)
       .maybeSingle();
 
     if (existing) {

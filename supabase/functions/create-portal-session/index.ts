@@ -22,6 +22,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Message des échecs internes : l'écran affiche le champ error tel quel. Le
+ * détail (réponse du prestataire, exception) reste dans les journaux.
+ */
+const PORTAL_UNAVAILABLE = "Impossible d'ouvrir la gestion de l'abonnement pour le moment. Réessayez dans quelques instants.";
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -115,13 +121,13 @@ Deno.serve(async (req) => {
     if (!portalRes.ok) {
       const err = await portalRes.text();
       console.error("[create-portal-session] Portal session creation failed:", err);
-      return json({ error: "Failed to create portal session" }, 500);
+      return json({ error: PORTAL_UNAVAILABLE }, 500);
     }
 
     const portal = await portalRes.json();
     return json({ url: portal.url });
   } catch (err) {
     console.error("[create-portal-session] Error:", err);
-    return json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    return json({ error: PORTAL_UNAVAILABLE }, 500);
   }
 });

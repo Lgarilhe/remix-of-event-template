@@ -4,12 +4,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSubscriptionState, SUBSCRIPTION_STATE_QUERY_KEY, type SubscriptionState } from '@/hooks/useSubscriptionState';
 import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { readCheckoutReturn, withoutCheckoutReturn } from '@/lib/checkoutReturn';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { CreditCard, ArrowUpRight, Calendar, Sparkles, Download, Loader2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 import { toast } from 'sonner';
 
 /** Requêtes à rafraîchir au retour du paiement (le webhook met la base à jour). */
@@ -60,22 +62,23 @@ export const BillingSettings = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { state, isLoading, isFree, isPaid, isTrialing, isTrialPaid, seatLimit, seatCount } = useSubscriptionState();
+  const { state, isLoading, isLoadingError, refetch, isFree, isPaid, isTrialing, isTrialPaid, seatLimit, seatCount } = useSubscriptionState();
   const { organizationId } = useOrganization();
   const [exporting, setExporting] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
 
-  // Retour du paiement : ?checkout=success | cancel (URL nettoyée ensuite).
-  // Le ref évite un double traitement (double montage en développement,
-  // réécriture asynchrone de l'URL).
+  // Retour du paiement : ?checkout=success|cancel&kind=subscription (URL
+  // nettoyée ensuite) ; un retour d'achat de crédits (kind=pack) appartient à
+  // AICreditsSettings. Le ref évite un double traitement (double montage en
+  // développement, réécriture asynchrone de l'URL).
   const handledCheckoutRef = useRef<string | null>(null);
   useEffect(() => {
-    const checkout = searchParams.get('checkout');
-    if (!checkout) return;
-    if (handledCheckoutRef.current === checkout) return;
-    handledCheckoutRef.current = checkout;
+    const ret = readCheckoutReturn(searchParams);
+    if (!ret || ret.kind !== 'subscription') return;
+    if (handledCheckoutRef.current === ret.status) return;
+    handledCheckoutRef.current = ret.status;
 
-    if (checkout === 'success') {
+    if (ret.status === 'success') {
       toast.success('Abonnement activé');
       const refresh = () => {
         CHECKOUT_REFRESH_KEYS.forEach((key) => {
@@ -84,13 +87,11 @@ export const BillingSettings = () => {
       };
       refresh();
       window.setTimeout(refresh, CHECKOUT_REFRESH_DELAY_MS);
-    } else if (checkout === 'cancel') {
+    } else {
       toast.info('Paiement annulé, votre plan reste inchangé.');
     }
 
-    const next = new URLSearchParams(searchParams);
-    next.delete('checkout');
-    setSearchParams(next, { replace: true });
+    setSearchParams(withoutCheckoutReturn(searchParams), { replace: true });
   }, [searchParams, setSearchParams, queryClient]);
 
   const handleManageSubscription = async () => {
@@ -173,6 +174,25 @@ export const BillingSettings = () => {
 
   return (
     <div className="space-y-6">
+      {/* Lecture de l'abonnement en échec : aucun plan, badge ni bouton, sans
+          quoi l'écran annonçait « Gratuit » à un client payant. Le repli
+          « Gratuit » ne sert plus qu'à une organisation sans ligne d'abonnement.
+          Seulement sans données : une relecture ratée (React Query garde alors
+          les dernières valeurs lues) ne remplace pas un abonnement déjà affiché. */}
+      {isLoadingError ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+              <CreditCard className="w-4 h-4" />
+              Abonnement
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ErrorBox title="Impossible de charger votre abonnement." onRetry={() => { void refetch(); }} />
+          </CardContent>
+        </Card>
+      ) : (
+      <>
       {/* Current Plan */}
       <Card>
         <CardHeader>
@@ -296,6 +316,8 @@ export const BillingSettings = () => {
             </div>
           </CardContent>
         </Card>
+      )}
+      </>
       )}
 
       {/* RGPD Data Export */}

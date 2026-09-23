@@ -6239,6 +6239,10 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      get_org_member_emails: {
+        Args: { p_organization_id: string }
+        Returns: { email: string; user_id: string }[]
+      }
       expire_subscription_trials: { Args: never; Returns: number }
       set_integration_secret: {
         Args: { p_field: string; p_organization_id: string; p_value: string | null }

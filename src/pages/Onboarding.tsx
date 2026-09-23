@@ -7,6 +7,7 @@ import { useOrganization, ORG_ALREADY_EXISTS } from '@/hooks/useOrganization';
 import { withPreviewAccessToken } from '@/lib/previewToken';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { supabase } from '@/integrations/supabase/client';
+import { updateOrganization } from '@/lib/organizationUpdate';
 import { InvitationBanner } from '@/components/InvitationBanner';
 import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
 import { ChapterInterstitial } from '@/components/onboarding/ChapterInterstitial';
@@ -57,7 +58,9 @@ const Onboarding = () => {
   const orgCreateInFlightRef = useRef(false);
   // Id de l'espace créé dans CE tunnel. `orgCreated` ne convient pas comme
   // garde : il passe à true dès l'entrée pour un collaborateur venu via `?new=1`.
-  const createdOrgIdRef = useRef<string | null>(null);
+  // Sauvegardé avec la progression : après un rechargement, le réessai reprend
+  // cet espace au lieu d'échouer sur « déjà membre » ou d'en créer un second.
+  const [createdOrgId, setCreatedOrgId] = useState<string | null>(restored?.createdOrgId ?? null);
   const tunnelStartedRef = useRef(false);
   const [completedScenes, setCompletedScenes] = useState<Set<SceneKey>>(
     () => new Set(restored?.completed ?? [])
@@ -69,7 +72,7 @@ const Onboarding = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
-  const { organization, organizationId, createOrganization, isLoading: isOrgLoading } = useOrganization();
+  const { organization, createOrganization, refetchOrganization, isLoading: isOrgLoading } = useOrganization();
   const { accounts } = useLinkedInAccounts();
   // F3 : `?new=1` = création d'un second espace demandée explicitement
   // (accueil collaborateur dans Auth.tsx). Sans ce flag, un utilisateur qui a
@@ -110,8 +113,9 @@ const Onboarding = () => {
       orgDetails: orgDetailsData,
       specializations,
       completed: Array.from(completedScenes),
+      createdOrgId,
     });
-  }, [step, flow, orgType, orgDetailsData, specializations, completedScenes]);
+  }, [step, flow, orgType, orgDetailsData, specializations, completedScenes, createdOrgId]);
 
   useEffect(() => {
     if (organization && !orgCreated) {
@@ -169,76 +173,89 @@ const Onboarding = () => {
     async (specs: string[]) => {
       if (orgCreateInFlightRef.current) return; // double clic pendant la création
       setSpecializations(specs);
-      markCompleted('specializations');
       setDirection(1);
 
-      if (orgType === 'freelance' && orgDetailsData && !createdOrgIdRef.current) {
+      if (orgType === 'freelance' && orgDetailsData) {
         orgCreateInFlightRef.current = true;
         try {
-          const { data: { user } } = await supabase.auth.getUser();
-          const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
-          const slug = userName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
-          const org = await createOrganization({
-            name: userName,
-            slug: `${slug}-${Date.now().toString(36)}`,
-            // F3 : création silencieuse (pas de clic dédié) → autorisée pour un
-            // second espace uniquement si demandé explicitement via `?new=1`
-            confirmSecond: isExplicitNewWorkspace,
-          });
-          if (org?.id) {
-            createdOrgIdRef.current = org.id;
-            await supabase
-              .from('organizations')
-              .update({
-                org_type: 'freelance',
-                team_size: orgDetailsData.teamSize,
-                specializations: specs,
-                freelance_mode: orgDetailsData.freelanceMode,
-                annual_hires: orgDetailsData.annualHires ?? null,
-              } as any)
-              .eq('id', org.id);
+          // Réessai après un échec d'écriture de l'activité : l'espace existe
+          // déjà (créé avec son type), on ne le recrée pas.
+          let orgId = createdOrgId;
+          if (!orgId) {
+            const { data: { user } } = await supabase.auth.getUser();
+            const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mon espace';
+            const slug = userName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
+            try {
+              const org = await createOrganization({
+                name: userName,
+                slug: `${slug}-${Date.now().toString(36)}`,
+                // Type écrit dans l'INSERT : l'espace n'existe jamais sans type
+                orgType: 'freelance',
+                // F3 : création silencieuse (pas de clic dédié) → autorisée pour un
+                // second espace uniquement si demandé explicitement via `?new=1`
+                confirmSecond: isExplicitNewWorkspace,
+              });
+              orgId = org.id;
+            } catch (createErr) {
+              // Espace déjà créé par ce tunnel sans que l'id soit connu (réponse
+              // perdue après l'INSERT, progression sauvegardée avant l'ajout de
+              // createdOrgId) : on le reprend s'il a été créé par l'utilisateur et
+              // qu'il est de type indépendant, plutôt que de bloquer le tunnel.
+              if ((createErr as { code?: string })?.code !== ORG_ALREADY_EXISTS) throw createErr;
+              const { data: fresh } = await refetchOrganization();
+              const own = fresh?.organization as { id: string; created_by: string; org_type?: string | null } | undefined;
+              if (!user || !own || own.created_by !== user.id || own.org_type !== 'freelance') throw createErr;
+              orgId = own.id;
+            }
+            setCreatedOrgId(orgId);
+            setOrgCreated(true);
           }
-          setOrgCreated(true);
+          try {
+            await updateOrganization(orgId, {
+              team_size: orgDetailsData.teamSize,
+              specializations: specs,
+              freelance_mode: orgDetailsData.freelanceMode,
+              annual_hires: orgDetailsData.annualHires ?? null,
+            });
+          } catch (detailsErr) {
+            // Pas d'avancée sans écriture : l'utilisateur revalide depuis cet écran.
+            console.error('[Onboarding] freelance details update failed:', detailsErr);
+            toast.error("Votre activité n'a pas pu être enregistrée. Vérifiez votre connexion puis réessayez.");
+            return;
+          }
         } catch (err) {
           console.error('[Onboarding] Auto-create org failed:', err);
           if ((err as { code?: string })?.code === ORG_ALREADY_EXISTS) {
             // F3 : la mutation ne toaste pas ce cas ; l'utilisateur garde son
             // espace existant et ne poursuit pas un tunnel sans organisation
             toast.error('Vous faites déjà partie d’un espace de travail. Retrouvez-le depuis le tableau de bord.');
-            return;
+          } else if (/duplicate key|organizations_slug_key/.test((err as Error)?.message ?? '')) {
+            // onError de la mutation tait ce cas : sans ce toast, le clic ne produirait rien
+            toast.error("Votre espace n'a pas pu être créé. Réessayez.");
           }
+          // Autre échec : la mutation l'a déjà signalé (onError) ; on reste sur cet écran.
+          return;
         } finally {
           orgCreateInFlightRef.current = false;
         }
       }
 
+      markCompleted('specializations');
       setStep((s) => Math.min(s + 1, flow.length - 1));
     },
-    [markCompleted, createOrganization, orgType, orgDetailsData, flow.length, isExplicitNewWorkspace]
+    [markCompleted, createOrganization, refetchOrganization, createdOrgId, orgType, orgDetailsData, flow.length, isExplicitNewWorkspace]
   );
 
   const handleOrgCreated = useCallback(
     (data: OnboardingCompanyData) => {
       setOrgCreated(true);
-      if (data.orgId) createdOrgIdRef.current = data.orgId;
+      if (data.orgId) setCreatedOrgId(data.orgId);
       markCompleted('org');
-
-      // org_type pilote les droits (featureGates) : on le pose dès la création,
-      // sur l'id renvoyé par la scène (le hook n'est pas encore rafraîchi).
-      const targetOrgId = data.orgId ?? organizationId;
-      if (targetOrgId && orgType) {
-        supabase
-          .from('organizations')
-          .update({ org_type: orgType })
-          .eq('id', targetOrgId)
-          .then(({ error }) => {
-            if (error) console.error('[Onboarding] org_type update failed:', error);
-          });
-      }
-
+      // org_type est écrit dans l'INSERT (SceneOrganization → createOrganization) :
+      // plus d'UPDATE séparé ici, donc plus d'espace sans type.
       goNext();
     },
-    [markCompleted, goNext, organizationId, orgType]
+    [markCompleted, goNext]
   );
 
   const handleLinkedInNext = useCallback(
@@ -354,8 +371,8 @@ const Onboarding = () => {
                 savedSpecializations={specializations}
               />
             )}
-            {currentScene === 'org' && (
-              <SceneOrganization onComplete={handleOrgCreated} onBack={goBack} allowSecondWorkspace={isExplicitNewWorkspace} />
+            {currentScene === 'org' && orgType && (
+              <SceneOrganization orgType={orgType} onComplete={handleOrgCreated} onBack={goBack} allowSecondWorkspace={isExplicitNewWorkspace} />
             )}
             {/* Pas de retour : la scène précédente crée l'espace de travail */}
             {currentScene === 'linkedin' && (

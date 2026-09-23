@@ -18,7 +18,7 @@ export function useEmailSignatures() {
   const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
 
-  const { data: signatures = [], isLoading } = useQuery({
+  const { data: signatures = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['email-signatures', organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
@@ -106,6 +106,8 @@ export function useEmailSignatures() {
   return {
     signatures,
     isLoading,
+    isError,
+    refetch,
     createSignature,
     updateSignature,
     deleteSignature,

@@ -169,12 +169,15 @@ export const useOrganization = () => {
       slug,
       website,
       logoUrl,
+      orgType,
       confirmSecond = false,
     }: {
       name: string;
       slug: string;
       website?: string | null;
       logoUrl?: string | null;
+      /** Type choisi à l'inscription, écrit dans l'INSERT : une organisation n'existe jamais sans type */
+      orgType: 'enterprise' | 'agency' | 'freelance';
       /** true = l'utilisateur a explicitement confirmé la création d'un SECOND espace */
       confirmSecond?: boolean;
     }) => {
@@ -206,6 +209,7 @@ export const useOrganization = () => {
           created_by: user.id,
           website: normalizedWebsite,
           logo_url: normalizedLogoUrl,
+          org_type: orgType,
         })
         .select()
         .single();

@@ -60,15 +60,20 @@ function getRandomDelay(): number {
 
 // Load per-user quotas from member_quotas. Used to enforce business hours
 // and timezone configured by the user (cf. migration 20260513220000).
+// La ligne est propre à l'organisation (unicité organization_id, user_id) :
+// sans organisation connue on garde les défauts, comme getUserQuotas du module
+// partagé. Lue par user_id seul, un membre de deux organisations avait deux
+// lignes, maybeSingle échouait et ses plages enregistrées étaient ignorées.
 // deno-lint-ignore no-explicit-any
-async function loadUserQuotas(supabase: any, userId: string): Promise<{ startHour: number; endHour: number; timezone: string }> {
+async function loadUserQuotas(supabase: any, userId: string, orgId: string | null): Promise<{ startHour: number; endHour: number; timezone: string }> {
   const defaults = { startHour: 8, endHour: 19, timezone: 'Europe/Paris' };
-  if (!userId) return defaults;
+  if (!userId || !orgId) return defaults;
   try {
     const { data } = await supabase
       .from('member_quotas')
       .select('business_hours_start, business_hours_end, timezone')
       .eq('user_id', userId)
+      .eq('organization_id', orgId)
       .maybeSingle();
     if (!data) return defaults;
     return {
@@ -162,6 +167,9 @@ Deno.serve(async (req: Request) => {
       // enqueue un InMail en passant le linkedin_account_id d'une AUTRE org →
       // l'envoi (et la consommation de crédits/quotas InMail) partirait depuis
       // le compte LinkedIn d'un tiers (impersonation cross-tenant).
+      // callerOrgId est déclaré hors du bloc : il est écrit sur chaque ligne de
+      // la file (organization_id) et sert à lire les plages de l'organisation.
+      let callerOrgId: string | null = null;
       {
         const requestedAccountIds = [
           ...new Set(items.map((it: any) => it?.account_id).filter(Boolean)),
@@ -169,7 +177,6 @@ Deno.serve(async (req: Request) => {
         if (requestedAccountIds.length === 0) {
           throw new Error("Missing account_id");
         }
-        let callerOrgId: string | null = null;
         try {
           const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
           callerOrgId = await resolveOrgIdFromUser(user.id, supabase);
@@ -199,7 +206,7 @@ Deno.serve(async (req: Request) => {
       }
 
       // Load user's configured business hours + timezone (default 8h-19h Paris)
-      const userQuotas = await loadUserQuotas(supabase, user.id);
+      const userQuotas = await loadUserQuotas(supabase, user.id, callerOrgId);
       const timezone = user_timezone || userQuotas.timezone;
       const startHour = userQuotas.startHour;
       const endHour = userQuotas.endHour;
@@ -251,6 +258,11 @@ Deno.serve(async (req: Request) => {
           scheduled_at: scheduledAt.toISOString(),
           user_timezone: timezone,
           created_by: user.id,
+          // Organisation du compte, vérifiée plus haut (jamais null ici : sans
+          // organisation, ownedSet est vide et l'action a déjà répondu 403).
+          // Sans elle, « Dissocier » n'annulait pas la ligne, et plafond et
+          // plages suivaient l'organisation active au moment de l'envoi.
+          organization_id: callerOrgId,
           network_distance: item.network_distance || null,
         };
       });
@@ -292,10 +304,32 @@ Deno.serve(async (req: Request) => {
 
       // Quotas (heures ouvrées + timezone) et credentials LinkedIn résolus PAR
       // user propriétaire de l'item (multi-user en mode cron), cachés par run.
+      // Plages lues dans la ligne de l'organisation de l'item : clé org + user.
       const quotasCache = new Map<string, { startHour: number; endHour: number; timezone: string }>();
-      const getQuotasFor = async (userId: string) => {
-        if (!quotasCache.has(userId)) quotasCache.set(userId, await loadUserQuotas(supabase, userId));
-        return quotasCache.get(userId)!;
+      const getQuotasFor = async (userId: string, orgId: string | null) => {
+        const key = `${orgId}:${userId}`;
+        if (!quotasCache.has(key)) quotasCache.set(key, await loadUserQuotas(supabase, userId, orgId));
+        return quotasCache.get(key)!;
+      };
+      // Titulaire du compte d'envoi dans l'organisation de l'item : ses plages et
+      // son plafond s'appliquent (ceux qu'affichent Équipe et « Plafonds du
+      // jour »), pas ceux de la personne qui a mis l'InMail en file. Repli sur
+      // l'auteur de l'item si la liaison est introuvable. Cache par run.
+      const accountOwnerCache = new Map<string, string | null>();
+      const getAccountOwner = async (accountId: string, orgId: string | null): Promise<string | null> => {
+        if (!orgId) return null;
+        const key = `${orgId}:${accountId}`;
+        if (!accountOwnerCache.has(key)) {
+          const { data: ownerRow, error: ownerErr } = await supabase
+            .from("member_linkedin_accounts")
+            .select("user_id")
+            .eq("organization_id", orgId)
+            .eq("linkedin_account_id", accountId)
+            .maybeSingle();
+          if (ownerErr) console.warn(`[process-inmail-queue] account owner unreadable for ${accountId}:`, ownerErr.message);
+          accountOwnerCache.set(key, (ownerRow?.user_id as string | undefined) ?? null);
+        }
+        return accountOwnerCache.get(key) ?? null;
       };
       const credsCache = new Map<string, { apiKey: string; dsn: string } | null>();
       const getCredsFor = async (userId: string) => {
@@ -420,8 +454,14 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
+        // Organisation de l'item : colonne organization_id, sinon organisation
+        // active du créateur (orgIdByUser, rempli par canSendForSubscription
+        // juste au-dessus). Même valeur que celle passée au gate quota.
+        const itemOrgId = item.organization_id ?? orgIdByUser.get(item.created_by) ?? null;
+        const quotaUserId = (await getAccountOwner(item.account_id, itemOrgId)) ?? item.created_by;
+
         // Check if we're within business hours (per-user configurable via member_quotas)
-        const itemQuotas = await getQuotasFor(item.created_by);
+        const itemQuotas = await getQuotasFor(quotaUserId, itemOrgId);
         const itemTz = item.user_timezone || itemQuotas.timezone;
         if (!isWithinBusinessHours(itemTz, itemQuotas.startHour, itemQuotas.endHour)) {
           // Prochain créneau ouvré (week-end exclu, jitter 0-45 min), helper partagé
@@ -569,7 +609,12 @@ Deno.serve(async (req: Request) => {
           const gate = await enforceLinkedInAction(supabase, {
             accountId: item.account_id,
             actionType: isFirstDegreeMsg ? 'message' : 'inmail',
-            userId: item.created_by,
+            // Plafond du titulaire du compte d'envoi (repli : auteur de l'item).
+            userId: quotaUserId,
+            // Sans organisation, getUserQuotas renvoie les défauts (80/j) et le
+            // plafond enregistré n'était pas appliqué. orgIdByUser est rempli
+            // par canSendForSubscription, appelé plus haut pour chaque item.
+            organizationId: item.organization_id ?? orgIdByUser.get(item.created_by) ?? null,
             source: 'inmail_queue',
           });
           if (!gate.allowed) {

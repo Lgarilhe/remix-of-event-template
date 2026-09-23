@@ -2,14 +2,17 @@
  * OrgTypeSetting : type de l'organisation (entreprise, cabinet, indépendant).
  * Il est choisi à l'inscription et commande les droits (missions, équipe,
  * marketplace). Sans cet écran, un espace créé sans type restait bloqué.
- * Modifiable par un propriétaire ou un administrateur.
+ * Modifiable par le propriétaire uniquement (garde serveur
+ * organizations_update_guard, indice ORG_OWNER_ONLY). Le passage en
+ * Indépendant est refusé tant qu'il reste un autre membre ou une invitation en
+ * attente (ORG_FREELANCE_NOT_SOLO) : le message vient de updateOrganization.
  */
 
 import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useOrganization } from '@/hooks/useOrganization';
+import { useOrganization, type Organization } from '@/hooks/useOrganization';
+import { updateOrganization } from '@/lib/organizationUpdate';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -20,7 +23,7 @@ const ORG_TYPES: Array<{ value: 'enterprise' | 'agency' | 'freelance'; label: st
 ];
 
 export const OrgTypeSetting: React.FC = () => {
-  const { organizationId, orgType, isAdmin, refetchOrganization } = useOrganization();
+  const { organizationId, orgType, isOwner, refetchOrganization } = useOrganization();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -28,12 +31,15 @@ export const OrgTypeSetting: React.FC = () => {
     if (!organizationId || value === orgType) return;
     setSaving(value);
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .update({ org_type: value })
-        .eq('id', organizationId);
-      if (error) throw error;
-      await refetchOrganization();
+      const row = await updateOrganization(organizationId, { org_type: value });
+      // La ligne écrite va directement dans le cache de l'organisation active :
+      // un rechargement raté ne lève pas d'erreur et laissait l'ancien type
+      // (droits, onglets) après le toast de succès. Le rechargement suit.
+      queryClient.setQueriesData<{ organization: Organization } | null>(
+        { queryKey: ['active-organization'] },
+        (old) => (old?.organization?.id === row.id ? { ...old, organization: { ...old.organization, ...row } } : old),
+      );
+      void refetchOrganization();
       queryClient.invalidateQueries({ queryKey: ['marketplace'] });
       toast.success('Type mis à jour');
     } catch (err: unknown) {
@@ -46,7 +52,7 @@ export const OrgTypeSetting: React.FC = () => {
   return (
     <div>
       <label className="text-sm text-muted-foreground">Type</label>
-      {isAdmin ? (
+      {isOwner ? (
         <>
           <div className="flex flex-wrap gap-2 mt-1.5">
             {ORG_TYPES.map((t) => (
@@ -73,9 +79,12 @@ export const OrgTypeSetting: React.FC = () => {
           </p>
         </>
       ) : (
-        <p className="text-foreground font-medium">
-          {ORG_TYPES.find((t) => t.value === orgType)?.label ?? 'Non renseigné'}
-        </p>
+        <>
+          <p className="text-foreground font-medium">
+            {ORG_TYPES.find((t) => t.value === orgType)?.label ?? 'Non renseigné'}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">Seul le propriétaire peut changer le type.</p>
+        </>
       )}
     </div>
   );

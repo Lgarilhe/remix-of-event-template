@@ -11,6 +11,7 @@ import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useLinkedInQuotaStatus, rampStageLabel } from '@/hooks/useLinkedInQuotaStatus';
 import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { resolveMyLinkedInStatus, classifyLinkedInStatus } from '@/lib/linkedinStatus';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -26,11 +27,12 @@ import { LinkedInSafetySettings } from './LinkedInSafetySettings';
  * MyLinkedInAccount — Settings > Mon compte LinkedIn.
  *
  * Refonte (Opus audit) :
- * - Quand le compte est en erreur (status !== 'OK'), affiche directement le formulaire
- *   de reconnexion par cookie li_at (avant : juste "Dissocier" sans action de fix → dead-end)
+ * - Quand le compte est à reconnecter (classifyLinkedInStatus), affiche directement le
+ *   formulaire de reconnexion par cookie li_at (avant : juste "Dissocier" sans action de fix → dead-end)
  * - Après connect_cookie réussi : auto-link le nouvel account_id retourné par Unipile
  *   au user courant (si pas déjà mappé) — fix le bug "compte créé mais invisible"
- * - Confirm AlertDialog sur Dissocier (action destructive)
+ * - Confirm AlertDialog sur Dissocier (action destructive). Liaison et dissociation
+ *   passent par le serveur (claim_linkedin_account, unlink_linkedin_account)
  * - Affiche failure_reason si dispo (geoloc, captcha, etc.)
  */
 export const MyLinkedInAccount = () => {
@@ -42,8 +44,13 @@ export const MyLinkedInAccount = () => {
   const [userAgent, setUserAgent] = useState('');
   const [country, setCountry] = useState('FR');
   const [reconnecting, setReconnecting] = useState(false);
-  const { accounts, loading: loadingAccounts, reload: reloadAccounts } = useLinkedInAccounts();
-  const { mappings, linkAccount, unlinkAccount, getMappingForUser, getMappingForAccount } = useMemberLinkedInAccounts();
+  const {
+    accounts, loading: loadingAccounts, ready: accountsReady, loadError: accountsLoadError, reload: reloadAccounts,
+  } = useLinkedInAccounts();
+  const {
+    mappings, isReady: mappingsReady, isError: mappingsError, refetch: refetchMappings,
+    linkAccount, linkAccountAsync, unlinkAccount, isUnlinking, getMappingForAccount,
+  } = useMemberLinkedInAccounts();
   const { organization } = useOrganization();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   /** Ref pour stocker l'interval de polling LinkedIn auto-detect, qu'on puisse cleanup au unmount */
@@ -65,20 +72,30 @@ export const MyLinkedInAccount = () => {
     });
   }, []);
 
-  const myMapping = currentUserId ? getMappingForUser(currentUserId) : null;
-  const myAccount = myMapping
-    ? accounts.find(a => a.id === myMapping.linkedin_account_id)
-    : null;
+  const li = resolveMyLinkedInStatus({
+    userId: currentUserId, mappings, mappingsLoaded: mappingsReady, mappingsFailed: mappingsError,
+    accounts, accountsLoaded: accountsReady, accountsFailed: accountsLoadError,
+  });
+  const myMapping = li.mapping;
+  const myAccount = li.account;
+  const isAccountHealthy = li.isUsable;
+  const accountStatus = li.rawStatus;
+  // Panne avérée : formulaire ouvert d'office. État inconnu (compte sans source
+  // chez le prestataire) : bouton proposé, formulaire fermé. Connexion en cours :
+  // ni l'un ni l'autre.
+  const mustReconnect = li.state === 'needs_reconnect';
+  const canReconnect = mustReconnect || li.state === 'unknown';
 
-  const isAccountHealthy = myAccount && (myAccount as any).status === 'OK';
-  const accountStatus = myAccount ? (myAccount as any).status : null;
-
-  // Auto-open reconnect form if account is in error
+  // Ouvre le formulaire une fois par passage en erreur : « Annuler » le referme
+  // pour de bon et « Reconnecter » le rouvre.
+  const autoOpenedForRef = useRef<string | null>(null);
+  const myAccountId = myAccount?.id ?? null;
   useEffect(() => {
-    if (myAccount && !isAccountHealthy && !reconnectOpen) {
-      setReconnectOpen(true);
-    }
-  }, [myAccount, isAccountHealthy, reconnectOpen]);
+    if (!myAccountId || !mustReconnect) { autoOpenedForRef.current = null; return; }
+    if (autoOpenedForRef.current === myAccountId) return;
+    autoOpenedForRef.current = myAccountId;
+    setReconnectOpen(true);
+  }, [myAccountId, mustReconnect]);
 
   // Détecte quand le compte LinkedIn apparait pendant le polling auto
   // (= webhook account_connected a fini son boulot) → stop polling + toast success
@@ -129,9 +146,9 @@ export const MyLinkedInAccount = () => {
           }
           try {
             await reloadAccounts();
-            // Le hook reloadAccounts updates via React Query → si nouveau compte
-            // détecté côté webhook, le composant re-render avec myAccount défini.
-            // Le useEffect surveillant myAccount déclenchera le toast success.
+            // Chaque liste reçue relit aussi les liaisons (LinkedInAccountsContext) :
+            // dès que le webhook a relié le compte, le composant re-render avec
+            // myAccount défini et le useEffect surveillant myAccount déclenche le toast.
           } catch {
             // ignore polling errors transitoires
           }
@@ -162,6 +179,16 @@ export const MyLinkedInAccount = () => {
     }
   }, [currentUserId, reloadAccounts]);
 
+  // Liaisons non lues : relit les liaisons et la liste, sans rien écrire.
+  const handleRetryLoad = useCallback(async () => {
+    setLinking(true);
+    try {
+      await Promise.all([refetchMappings(), reloadAccounts(true)]);
+    } finally {
+      setLinking(false);
+    }
+  }, [refetchMappings, reloadAccounts]);
+
   // Auto-reload en mode include_org_accounts si l'user n'a pas de mapping.
   // Cas typique : invité fraîchement connecté à Unipile, mais webhook foiré.
   // Sans ça, accounts=[] et il ne peut jamais voir/claim son propre compte.
@@ -175,20 +202,20 @@ export const MyLinkedInAccount = () => {
 
   const handleLinkAccount = (accountId: string) => {
     if (!currentUserId) return;
-    const account = accounts.find(a => a.id === accountId);
-    linkAccount({
-      userId: currentUserId,
-      linkedinAccountId: accountId,
-      linkedinAccountName: (account as any)?.name || (account as any)?.identifier || accountId,
-    });
+    // Le serveur vérifie le compte et prend son nom chez le prestataire.
+    linkAccount({ userId: currentUserId, linkedinAccountId: accountId });
   };
 
   const handleUnlink = () => {
-    if (myMapping) {
-      unlinkAccount(myMapping.id);
-      setReconnectOpen(false);
-      toast.success('Compte dissocié. Vous pouvez maintenant reconnecter.');
-    }
+    if (!myMapping) return;
+    // La session LinkedIn n'est jamais fermée : le serveur retire la liaison et
+    // arrête les envois du compte. expectedAccountId : le compte affiché, une
+    // liaison repointée entre-temps est refusée. Un seul message, émis par le
+    // hook après la réponse.
+    unlinkAccount(
+      { mappingId: myMapping.id, expectedAccountId: myMapping.linkedin_account_id },
+      { onSuccess: () => { setReconnectOpen(false); void reloadAccounts(); } },
+    );
   };
 
   /**
@@ -253,27 +280,20 @@ export const MyLinkedInAccount = () => {
         return;
       }
 
-      // Reload pour récupérer le nouveau status
-      await reloadAccounts();
-
-      // Si l'account_id retourné est différent de l'existant (rare), mettre à jour le mapping
-      if (myMapping && newAccountId !== myMapping.linkedin_account_id) {
-        // Dissocier l'ancien + lier le nouveau
-        await unlinkAccount(myMapping.id);
-        await new Promise(r => setTimeout(r, 200));
-        linkAccount({
-          userId: currentUserId,
-          linkedinAccountId: newAccountId,
-          linkedinAccountName: organization?.name || 'Mon compte LinkedIn',
-        });
-      } else if (!myMapping) {
-        // Pas de mapping existant → on en crée un (cas user qui a cliqué Dissocier puis reconnecté)
-        linkAccount({
-          userId: currentUserId,
-          linkedinAccountId: newAccountId,
-          linkedinAccountName: organization?.name || 'Mon compte LinkedIn',
-        });
+      // Nouvel identifiant : le serveur remplace la liaison. À la création,
+      // connect_cookie a déjà relié le compte ; l'appel, idempotent, rattrape un
+      // rattachement serveur manqué.
+      if (newAccountId !== myMapping?.linkedin_account_id) {
+        try {
+          await linkAccountAsync({ userId: currentUserId, linkedinAccountId: newAccountId, silent: true });
+        } catch {
+          void reloadAccounts();
+          return; // erreur déjà affichée par le hook
+        }
       }
+
+      // Reload pour récupérer le nouveau status (la liaison est relue avec la liste)
+      await reloadAccounts();
 
       // Reset form
       setLiAtCookie('');
@@ -305,7 +325,22 @@ export const MyLinkedInAccount = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {myMapping && myAccount ? (
+        {li.state === 'loading' ? (
+          // Liaison ou liste pas encore reçue : jamais de faux « introuvable » ni de faux « non relié »
+          <div role="status" className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            Chargement de votre compte LinkedIn…
+          </div>
+        ) : li.state === 'load_error' && !myMapping ? (
+          // Liaisons non lues : on ne sait pas si un compte est relié, seul « Réessayer » a un sens
+          <div className="space-y-3">
+            <LinkedInLoadError />
+            <Button variant="outline" size="sm" onClick={handleRetryLoad} disabled={linking}>
+              <RefreshCw className={cn('w-4 h-4 mr-1', linking && 'animate-spin')} aria-hidden="true" />
+              Réessayer
+            </Button>
+          </div>
+        ) : myMapping && myAccount ? (
           // Connected and linked
           <>
             <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
@@ -328,11 +363,11 @@ export const MyLinkedInAccount = () => {
                   <div className="flex items-center gap-1.5">
                     <div className={cn(
                       'w-1.5 h-1.5 rounded-full',
-                      isAccountHealthy ? 'bg-success' : 'bg-destructive',
+                      isAccountHealthy ? 'bg-success' : mustReconnect ? 'bg-destructive' : 'bg-warning',
                     )} />
                     <span className={cn(
                       'text-xs',
-                      isAccountHealthy ? 'text-muted-foreground' : 'text-destructive font-medium',
+                      isAccountHealthy ? 'text-muted-foreground' : mustReconnect ? 'text-destructive font-medium' : 'text-warning font-medium',
                     )}>
                       {isAccountHealthy ? 'Actif' : statusLabel(accountStatus)}
                     </span>
@@ -341,7 +376,7 @@ export const MyLinkedInAccount = () => {
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
-                {!isAccountHealthy && (
+                {canReconnect && (
                   <Button
                     variant="default"
                     size="sm"
@@ -355,7 +390,7 @@ export const MyLinkedInAccount = () => {
                 )}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" disabled={isUnlinking}>
                       <Unlink className="w-4 h-4 mr-1" aria-hidden="true" />
                       Dissocier
                     </Button>
@@ -364,9 +399,11 @@ export const MyLinkedInAccount = () => {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Dissocier ce compte LinkedIn ?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Vous ne pourrez plus envoyer de messages ou faire de recherches LinkedIn
-                        depuis Konekt jusqu'à ce que vous reconnectiez un compte. Cette action n'efface
-                        pas votre compte côté LinkedIn ni les messages déjà envoyés.
+                        Le compte ne sera plus rattaché à votre profil Konekt. Les relances qui partent
+                        de ce compte sont mises en pause et ses InMails programmés sont annulés. La session
+                        LinkedIn reste ouverte : si vous reliez de nouveau ce compte, les relances pourront
+                        être reprises depuis la liste des inscrits. Votre compte LinkedIn et les messages
+                        déjà envoyés ne sont pas touchés.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -383,8 +420,8 @@ export const MyLinkedInAccount = () => {
               </div>
             </div>
 
-            {/* Inline reconnect form si compte en erreur */}
-            {!isAccountHealthy && reconnectOpen && (
+            {/* Inline reconnect form si compte à reconnecter (ou état inconnu, sur demande) */}
+            {canReconnect && reconnectOpen && (
               <ReconnectForm
                 liAtCookie={liAtCookie}
                 setLiAtCookie={setLiAtCookie}
@@ -402,26 +439,55 @@ export const MyLinkedInAccount = () => {
             )}
           </>
         ) : myMapping && !myAccount ? (
-          // Linked but account not found (loading or removed côté Unipile)
+          // Relié, compte absent de la liste : disparu (« missing ») ou liste non
+          // reçue (« load_error », panne passagère : aucun conseil de dissocier,
+          // mais Rafraîchir et Dissocier restent utilisables).
           <div className="space-y-3">
-            <div className="p-3 bg-warning/5 border border-warning/30 rounded-lg flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
-              <div className="text-sm text-foreground">
-                <p className="font-medium">Compte LinkedIn introuvable</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Le mapping pointe vers <code className="text-xs bg-muted px-1">{myMapping.linkedin_account_name || myMapping.linkedin_account_id}</code> mais ce compte n'existe plus.
-                </p>
+            {li.state === 'load_error' ? (
+              <LinkedInLoadError accountName={myMapping.linkedin_account_name || myMapping.linkedin_account_id} />
+            ) : (
+              <div className="p-3 bg-warning/5 border border-warning/30 rounded-lg flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+                <div className="text-sm text-foreground">
+                  <p className="font-medium">Compte LinkedIn introuvable</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Le compte <code className="text-xs bg-muted px-1">{myMapping.linkedin_account_name || myMapping.linkedin_account_id}</code> n'est plus disponible. Dissociez-le puis connectez de nouveau votre LinkedIn.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleRefreshAndLink} disabled={linking}>
                 <RefreshCw className={cn('w-4 h-4 mr-1', linking && 'animate-spin')} aria-hidden="true" />
-                Rafraîchir
+                {li.state === 'load_error' ? 'Réessayer' : 'Rafraîchir'}
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleUnlink} className="text-destructive">
-                <Unlink className="w-3 h-3 mr-1" aria-hidden="true" />
-                Dissocier
-              </Button>
+              {/* Relances mises en pause, InMails annulés : confirmation obligatoire */}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-destructive" disabled={isUnlinking}>
+                    <Unlink className="w-3 h-3 mr-1" aria-hidden="true" />
+                    Dissocier
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Dissocier ce compte LinkedIn ?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      La liaison vers ce compte{li.state === 'missing' ? ' introuvable' : ''} est retirée. Les
+                      relances qui en partent sont mises en pause et ses InMails programmés sont annulés.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleUnlink}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Dissocier
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         ) : (
@@ -441,7 +507,7 @@ export const MyLinkedInAccount = () => {
                     <div className="flex items-center gap-2">
                       <img src={linkedinLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
                       <span className="text-sm">{(acc as any).name || (acc as any).identifier || acc.id}</span>
-                      {(acc as any).status === 'OK' && (
+                      {classifyLinkedInStatus((acc as any).status) === 'connected' && (
                         <Badge variant="secondary" className="text-xs">Actif</Badge>
                       )}
                     </div>
@@ -513,6 +579,24 @@ export const MyLinkedInAccount = () => {
   );
 };
 
+/** Lecture ratée de la liste ou des liaisons : une erreur, jamais un chargement sans fin. */
+function LinkedInLoadError({ accountName }: { accountName?: string }) {
+  return (
+    <div role="alert" className="p-3 bg-destructive/5 border border-destructive/30 rounded-lg flex items-start gap-2">
+      <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+      <div className="text-sm text-foreground">
+        <p className="font-medium">Impossible de charger votre compte LinkedIn pour le moment.</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {accountName && (
+            <>Le compte <code className="text-xs bg-muted px-1">{accountName}</code> reste relié à votre profil. </>
+          )}
+          Réessayez dans un instant.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Mappe un statut Unipile brut vers un label FR lisible.
  * Liste complète selon la doc Unipile :
@@ -521,7 +605,7 @@ export const MyLinkedInAccount = () => {
  */
 function statusLabel(status: string | null): string {
   if (!status) return 'Inconnu';
-  const upper = status.toUpperCase();
+  const upper = status.trim().toUpperCase();
   switch (upper) {
     case 'OK':                 return 'Actif';
     case 'CREDENTIALS':        return 'Session LinkedIn expirée';
@@ -532,9 +616,14 @@ function statusLabel(status: string | null): string {
     case 'ERROR':
     case 'STOPPED':            return 'Erreur — arrêté';
     case 'DELETED':            return 'Supprimé';
-    case 'RATE_LIMITED':       return 'Rate limit LinkedIn (patientez)';
+    case 'PERMISSIONS':        return 'Autorisations LinkedIn à renouveler';
+    case 'PAUSED':             return 'En pause';
+    case 'DISCONNECTED':       return 'Déconnecté';
+    case 'RATE_LIMITED':       return 'Limite LinkedIn atteinte (patientez)';
     case 'CAPTCHA':            return 'Captcha LinkedIn requis';
-    default:                   return status;
+    case 'UNKNOWN':            return 'État à vérifier';
+    // Jamais le code brut à l'écran
+    default:                   return 'État à vérifier';
   }
 }
 
@@ -907,8 +996,8 @@ function LinkedInQuotaCard({ accountId }: { accountId: string }) {
   // Erreur ou compte non rattaché à un membre : rien à afficher.
   if (!status) return null;
 
-  const accountStatus = (status.account_status || '').toUpperCase();
-  const disconnected = accountStatus === 'CREDENTIALS' || accountStatus === 'ERROR';
+  // Même classement que « Mon compte LinkedIn » (STOPPED, PERMISSIONS, DELETED compris).
+  const disconnected = classifyLinkedInStatus(status.account_status) === 'needs_reconnect';
   const paused = !!status.paused_until && new Date(status.paused_until).getTime() > Date.now();
   const pad = (h: number) => String(h).padStart(2, '0');
 

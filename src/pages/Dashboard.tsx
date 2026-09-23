@@ -73,12 +73,12 @@ export default function Dashboard() {
   const { data: scheduledMessages = [], isLoading: messagesLoading } = useTodayScheduledMessages();
   const { grouped: groupedReminders, isLoading: remindersLoading } = useAllReminders();
   const unreadMessages = useUnreadMessageNotifications();
-  const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
+  const { displayName } = useCurrentProfile();
   const connections = useDashboardConnections();
   const { order, setOrder, resetOrder, isCustomized } = useDashboardLayout();
 
-  // Avatar prioritaire : LinkedIn (photo réelle) > profil custom upload > fallback initiales
-  const greetingAvatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl;
+  // Avatar : photo LinkedIn si un compte est connecté, sinon initiales
+  const greetingAvatarUrl = connections.linkedin.avatarUrl;
 
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);

@@ -12,6 +12,8 @@
  *   - includedMonthly / includedUsed / includedRemaining : forfait de contacts
  *     inclus par organisation et par mois (RPC get_org_contact_usage)
  *   - periodEnd : fin de la période du forfait (ISO), pour afficher la date de reset
+ *   - isUsageError : première lecture du forfait en échec (les compteurs valent
+ *     alors 0) ; un rechargement raté garde les valeurs déjà affichées
  *
  * Usage dans EnrichContactButton, BulkEnrichButton, EnrichmentAnalytics :
  *   - Désactive le bouton si !canEnrich (tooltip "Demandez à votre admin")
@@ -98,16 +100,18 @@ export function useEnrichmentPermission() {
   });
 
   // 3. Forfait de contacts inclus de l'organisation (RPC get_org_contact_usage)
-  const { data: orgUsage, isLoading: orgUsageLoading, refetch: refetchOrgUsage } = useQuery({
+  const { data: orgUsage, isLoading: orgUsageLoading, isLoadingError: orgUsageError, refetch: refetchOrgUsage } = useQuery({
     queryKey: ['org-contact-usage', organizationId],
     queryFn: async (): Promise<OrgContactUsage | null> => {
       if (!organizationId) return null;
       const { data, error } = await supabase.rpc('get_org_contact_usage', {
         p_organization_id: organizationId,
       });
+      // Un échec rendu comme null se lisait « forfait vide » (0 / 0, « aucune
+      // unité incluse ») : on laisse la requête échouer, isUsageError le signale.
       if (error) {
         console.warn('[useEnrichmentPermission] get_org_contact_usage failed:', error.message);
-        return null;
+        throw error;
       }
       return (data as unknown as OrgContactUsage | null) ?? null;
     },
@@ -146,6 +150,7 @@ export function useEnrichmentPermission() {
     includedUsed,
     includedRemaining,
     periodEnd,
+    isUsageError: orgUsageError,
     isLoading: membershipLoading || quotaLoading || orgUsageLoading,
     refetchQuota,
     creditsUsedThisMonth: quotaUsedRow?.total_credits_used ?? 0,

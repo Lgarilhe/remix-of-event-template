@@ -45,7 +45,7 @@ export function useMessageTemplates() {
   const queryClient = useQueryClient();
   const queryKey = ['message-templates', user?.id];
 
-  const { data: templates = [], isLoading } = useQuery({
+  const { data: templates = [], isLoading, isError, refetch } = useQuery({
     queryKey,
     queryFn: async (): Promise<MessageTemplate[]> => {
       if (!user?.id) return [];
@@ -149,6 +149,8 @@ export function useMessageTemplates() {
   return {
     templates,
     isLoading,
+    isError,
+    refetch,
     create: create.mutate,
     update: update.mutate,
     remove: remove.mutate,

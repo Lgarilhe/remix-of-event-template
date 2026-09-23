@@ -42,13 +42,15 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   // L'ouverture du panneau attend la fermeture du menu : sinon le retour de
   // focus sur l'avatar est vu comme un clic hors du panneau, qui se referme.
   const openNotificationsRef = React.useRef(false);
-  const { displayName, avatarUrl: profileAvatarUrl } = useCurrentProfile();
+  const { displayName } = useCurrentProfile();
   const connections = useDashboardConnections();
   const { organizationName } = useOrganization();
   const { creditsRemaining, isLow, isOut, hasBalance: hasCredits, isLoading: creditsLoading } = useAICredits();
   const { unreadCount: unreadNotifications } = useNotifications();
 
-  const avatarUrl = connections.linkedin.avatarUrl || profileAvatarUrl || null;
+  // Photo LinkedIn si un compte est connecté, sinon initiales (aucun avatar
+  // n'est stocké dans le profil).
+  const avatarUrl = connections.linkedin.avatarUrl || null;
 
   // Solde non chargé : on l'annonce comme tel plutôt que d'afficher un zéro,
   // qui se lirait « plus aucun crédit » alors que le solde est peut-être intact.

@@ -5,6 +5,9 @@
  *  - User (chaque user édite le sien) — Mon contexte IA
  *  - Org (admin/owner only) — Contexte IA agence
  *
+ * Lecture ratée : bloc d'erreur à la place du formulaire. Un formulaire vide
+ * enregistré par-dessus écraserait le contexte existant.
+ *
  * Le contexte sera injecté dans les prompts des appels IA user-facing
  * (génération outreach, suggestions réponses, chat IA, etc.) en Phase 2.
  */
@@ -18,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sparkles, Building2, User as UserIcon, Plus, X, Info } from 'lucide-react';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 import {
   useUserAiContext,
   useOrgAiContext,
@@ -53,7 +57,7 @@ export const AiContextSettings: React.FC = () => {
 // ─── User-level card ───────────────────────────────────────────────
 
 const UserContextCard: React.FC = () => {
-  const { aiContext, isLoading, save, isSaving } = useUserAiContext();
+  const { aiContext, isLoading, isError, refetch, save, isSaving } = useUserAiContext();
   return (
     <Card>
       <CardHeader>
@@ -74,6 +78,12 @@ const UserContextCard: React.FC = () => {
           <div className="flex justify-center py-6">
             <BrutalLoader compact />
           </div>
+        ) : isError ? (
+          <ErrorBox
+            title="Impossible de charger votre contexte IA."
+            detail="Vos consignes enregistrées ne sont pas affectées. Réessayez pour les afficher et les modifier."
+            onRetry={() => { void refetch(); }}
+          />
         ) : (
           <AiContextForm initial={aiContext} onSave={save} isSaving={isSaving} />
         )}
@@ -85,7 +95,7 @@ const UserContextCard: React.FC = () => {
 // ─── Org-level card (admin only) ───────────────────────────────────
 
 const OrgContextCard: React.FC = () => {
-  const { aiContext, isLoading, save, isSaving } = useOrgAiContext();
+  const { aiContext, isLoading, isError, refetch, save, isSaving } = useOrgAiContext();
   return (
     <Card>
       <CardHeader>
@@ -109,6 +119,12 @@ const OrgContextCard: React.FC = () => {
           <div className="flex justify-center py-6">
             <BrutalLoader compact />
           </div>
+        ) : isError ? (
+          <ErrorBox
+            title="Impossible de charger le contexte IA de l'organisation."
+            detail="Vos consignes enregistrées ne sont pas affectées. Réessayez pour les afficher et les modifier."
+            onRetry={() => { void refetch(); }}
+          />
         ) : (
           <AiContextForm initial={aiContext} onSave={save} isSaving={isSaving} scope="org" />
         )}

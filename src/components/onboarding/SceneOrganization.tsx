@@ -25,9 +25,12 @@ const WTTJ_LOGO = 'https://www.welcometothejungle.com/assets/images/logos/wttj.s
 const WTTJ_FALLBACK = 'https://cdn.welcometothejungle.com/wttj-front/production/assets/images/logos/wttj.svg';
 
 import type { OnboardingCompanyData } from '@/pages/Onboarding';
+import type { OrgType } from './onboardingMeta';
 
 /* ─── Types ─── */
 interface Props {
+  /** Type choisi à l'étape précédente, écrit dans l'INSERT de l'organisation */
+  orgType: OrgType;
   onComplete: (companyData: OnboardingCompanyData) => void;
   onBack?: () => void;
   /** true = second espace explicitement demandé (`?new=1`) : pas de confirmation */
@@ -110,7 +113,7 @@ const AGENT_MESSAGES = [
 ];
 
 /* ─── Component ─── */
-export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack, allowSecondWorkspace = false }) => {
+export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack, allowSecondWorkspace = false }) => {
   const [query, setQuery] = useState('');
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'disambiguate' | 'results'>('idle');
   const [sources, setSources] = useState<Source[]>(SCAN_SOURCES);
@@ -253,6 +256,7 @@ export const SceneOrganization: React.FC<Props> = ({ onComplete, onBack, allowSe
         slug: generateSlug(company.name),
         website: company.websiteUrl || (company.domain ? `https://${company.domain}` : null),
         logoUrl: company.logoUrl || (company.domain ? `https://logo.clearbit.com/${company.domain}` : null),
+        orgType,
         confirmSecond,
       });
 
