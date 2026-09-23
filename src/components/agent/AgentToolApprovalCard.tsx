@@ -20,6 +20,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Check, X, AlertTriangle, Loader2, Pencil, ShieldAlert } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { businessDaysCutoff } from '@/lib/businessDays';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -337,11 +338,11 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
     let cancelled = false;
 
     const refetch = async () => {
-      // On ignore les rows 'proposed' de + de 24h — sessions de debug
-      // abandonnées qui squattent le bandeau. La row reste en DB pour audit,
-      // mais l'UI ne l'affiche plus (l'utilisateur n'a aucun contexte pour
-      // décider rationnellement à plus de 24h d'écart).
-      const dayAgoIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      // On ignore les rows 'proposed' de plus de 3 jours ouvrés : même fenêtre
+      // que la section « À valider » de la barre latérale (D28), sinon une
+      // ligne de la barre ouvrirait une conversation sans rien à valider.
+      // La row reste en DB pour audit, mais l'UI ne l'affiche plus.
+      const dayAgoIso = businessDaysCutoff(new Date(), 3).toISOString();
       const { data, error } = await supabase
         .from('agent_tool_executions')
         .select('id, tool_name, status, params, dry_run_result, proposed_at')

@@ -275,7 +275,7 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
                 ? "Cette action n'est pas autorisée pour ton compte dans cette organisation."
                 : resp.status === 429
                   ? 'Trop de demandes en même temps. Attends quelques secondes puis réessaie.'
-                  : 'Le copilote est momentanément indisponible. Réessaie dans un instant.';
+                  : "L'assistant est momentanément indisponible. Réessayez dans un instant.";
         yield { content: [{ type: 'text' as const, text: errorText }] };
         return;
       }

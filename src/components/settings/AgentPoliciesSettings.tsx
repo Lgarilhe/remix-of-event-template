@@ -130,7 +130,7 @@ export function AgentPoliciesSettings() {
             Politiques d'autonomie
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Pour chaque action, choisissez si le copilot l'exécute directement
+            Pour chaque action, choisissez si l'assistant l'exécute directement
             (visible dans le journal de l’assistant) ou attend votre approbation. Les envois externes et les actions
             destructives exigent toujours une approbation.
             {!isAdmin && ' Réservé aux administrateurs.'}
@@ -144,7 +144,7 @@ export function AgentPoliciesSettings() {
             <div className="min-w-0">
               <div className="text-[13px] font-medium">Digest matinal</div>
               <div className="text-[11px] text-muted-foreground">
-                Chaque matin de semaine, le copilot résume vos missions actives, les entretiens des
+                Chaque matin de semaine, l'assistant résume vos missions actives, les entretiens des
                 prochaines 24 h et les actions IA en attente d'approbation dans une conversation, et
                 envoie ce digest par email au propriétaire de l'organisation (ou à un administrateur).
               </div>

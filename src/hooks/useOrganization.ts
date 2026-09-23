@@ -391,6 +391,8 @@ export const useOrganizationMembers = (orgId: string | null) => {
       });
 
       await queryClient.refetchQueries({ queryKey: ['org-invitations', orgId], type: 'active' });
+      // Siège réservé par l'invitation (useQuotaGate, premiers pas de la barre).
+      void queryClient.invalidateQueries({ queryKey: ['quota-pending-invitations', orgId] });
       toast.success('Invitation envoyée par email');
     },
     onError: (err: Error) => {
@@ -430,6 +432,7 @@ export const useOrganizationMembers = (orgId: string | null) => {
     },
     onSuccess: async () => {
       await queryClient.refetchQueries({ queryKey: ['org-invitations', orgId], type: 'active' });
+      void queryClient.invalidateQueries({ queryKey: ['quota-pending-invitations', orgId] });
       toast.success('Invitation annulée');
     },
   });

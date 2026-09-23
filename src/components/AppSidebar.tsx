@@ -1,81 +1,71 @@
 /**
- * AppSidebar — sidebar principale de l'app, version minimaliste.
+ * AppSidebar : barre latérale à onglets (lots 5 et 6).
  *
- * Pattern Linear / Vercel : pas de décorations superflues, juste le strict
- * nécessaire — logo org, search, nav (sans labels eyebrow), footer = user
- * menu en 1 ligne.
+ * Haut : organisation (→ /dashboard) et « Aller à… » (palette Ctrl J).
+ * Onglets : À traiter (par défaut), Missions, Assistant ; l'onglet est mémorisé.
+ * Panneau : celui de l'onglet actif, seul monté ; masqué en mode replié.
+ * Bas : rangée Tâches, Agenda, Marketplace, Paramètres, Aide ; menu de l'avatar ;
+ * marque Konekt.
  *
- * V3 (mai 2026) : refonte minimaliste. Avant trop d'éléments visuels (eyebrow
- * labels, tagline, "Powered by", credits en card, branding en bas), maintenant
- * tout est inline ou dans le dropdown user.
+ * Toujours montés, hors du contenu de la feuille mobile (démonté à sa
+ * fermeture) : les hooks de signal (chiffre d'À traiter, agent au travail,
+ * tâches en retard, canal temps réel) et le relevé de la mission ouverte.
+ * Les fenêtres du menu Aide sont rendues hors de <Sidebar>, pour survivre à la
+ * fermeture de la feuille.
  */
 
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import {
-  Home,
-  Briefcase,
-  Columns3,
-  Inbox,
-  Search,
-  Calendar,
-  ListTodo,
-  Store,
-} from 'lucide-react';
-import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import { useOrganization } from '@/hooks/useOrganization';
-import { hasFeature, type Feature } from '@/lib/featureGates';
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SIDEBAR_TABS } from '@/lib/sidebarTabs';
+import { useSidebarTab } from '@/hooks/sidebar/useSidebarTab';
+import { useTodoSignal } from '@/hooks/sidebar/useTodoSignal';
+import { useAgentSignals } from '@/hooks/sidebar/useAgentSignals';
+import { useOverdueTasksCount } from '@/hooks/sidebar/useOverdueTasksCount';
+import { useSidebarRealtime } from '@/hooks/sidebar/useSidebarRealtime';
+import { useSidebarOffline } from '@/hooks/sidebar/useSidebarOffline';
 import { SidebarUserMenu } from './sidebar/SidebarUserMenu';
+import { SidebarTabs } from './sidebar/SidebarTabs';
+import { SidebarBottomRow } from './sidebar/SidebarBottomRow';
+import { OfflineBanner } from './sidebar/OfflineBanner';
+import { KeyboardShortcutsDialog } from './sidebar/KeyboardShortcutsDialog';
+import { TodoPanel } from './sidebar/todo/TodoPanel';
+import { MissionsPanel } from './sidebar/missions/MissionsPanel';
+import { MissionVisitTracker } from './sidebar/missions/MissionVisitTracker';
+import { AssistantPanel } from './sidebar/assistant/AssistantPanel';
+import { TutorialVideoDialog } from './help/TutorialVideoDialog';
+import { PIPELINE_TUTORIAL } from './help/tutorials';
 import { KonektLogo } from './KonektLogo';
-
-interface NavItem {
-  to: string;
-  label: string;
-  icon: React.ComponentType<any>;
-  badgeKey?: 'unread';
-  feature?: Feature;
-}
-
-// Couleur unique pour tous les items — pas d'arc-en-ciel.
-// Tile : vert clair (bg-emerald-500/15), icône noire (text-foreground).
-const NAV_ITEMS: NavItem[] = [
-  { to: '/dashboard',   label: 'Dashboard',   icon: Home      },
-  { to: '/missions',    label: 'Missions',    icon: Briefcase },
-  { to: '/sourcing',    label: 'Recherche',   icon: Search    },
-  { to: '/pipeline',    label: 'Pipeline',    icon: Columns3  },
-  { to: '/calendar',    label: 'Calendrier',  icon: Calendar  },
-  { to: '/tasks',       label: 'Tâches',      icon: ListTodo  },
-  { to: '/inbox',       label: 'Messages',    icon: Inbox,    badgeKey: 'unread' },
-  { to: '/marketplace', label: 'Marketplace', icon: Store    },
-];
 
 export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   // Le tiroir mobile s'affiche toujours déplié ; l'état replié (cookie) vaut pour le bureau.
   const collapsed = state === 'collapsed' && !isMobile;
-  const location = useLocation();
-  const unreadMsgCount = useUnreadMessageNotifications();
-  const { orgType, organization } = useOrganization();
+  const { organization } = useOrganization();
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
   const paletteShortcut = isMac ? '⌘J' : 'Ctrl J';
 
-  const isActive = (path: string) => {
-    if (path === '/missions') {
-      return location.pathname === '/missions' || location.pathname.startsWith('/missions/');
-    }
-    return location.pathname === path || location.pathname.startsWith(path + '/');
-  };
+  // Onglet unique : passé en props aux onglets, il choisit aussi le panneau.
+  const [tab, setTab] = useSidebarTab();
+  const { count: todoCount } = useTodoSignal();
+  const { running } = useAgentSignals();
+  const overdueCount = useOverdueTasksCount();
+  useSidebarRealtime();
+  const { offline } = useSidebarOffline();
+
+  // Fenêtres du menu Aide : état tenu ici, rendu hors de <Sidebar>.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
 
   const orgName = organization?.name || 'Konekt';
   const orgInitial = orgName.charAt(0).toUpperCase();
@@ -102,163 +92,157 @@ export function AppSidebar() {
     window.dispatchEvent(new CustomEvent('konekt:open-palette'));
   };
 
-  const filteredItems = NAV_ITEMS.filter(
-    (item) => !item.feature || hasFeature(orgType, item.feature),
+  const orgLink = (
+    <Link
+      to="/dashboard"
+      onClick={closeMobile}
+      aria-label={`${orgName}, tableau de bord`}
+      className={cn(
+        'flex items-center rounded-lg transition-colors hover:bg-sidebar-accent/40',
+        collapsed ? 'h-9 w-9 justify-center mx-auto' : 'gap-2.5 px-1.5 py-1',
+      )}
+    >
+      {organization?.logo_url ? (
+        <img
+          src={organization.logo_url}
+          alt={orgName}
+          className="h-7 w-7 rounded-md object-cover shrink-0"
+        />
+      ) : (
+        <div className="h-7 w-7 rounded-md bg-foreground text-background flex items-center justify-center shrink-0 font-display font-bold text-xs">
+          {orgInitial}
+        </div>
+      )}
+      {!collapsed && (
+        <span className="text-[13px] font-display font-bold tracking-tight text-sidebar-foreground truncate">
+          {orgName}
+        </span>
+      )}
+    </Link>
   );
 
+  const activeTab = SIDEBAR_TABS.find((t) => t.id === tab) ?? SIDEBAR_TABS[0];
+
   return (
-    <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
-      {/* Header — logo org seulement */}
-      <SidebarHeader className={cn(collapsed ? 'px-2 py-3' : 'px-3 py-3')}>
-        <Link
-          to="/dashboard"
-          onClick={closeMobile}
-          className={cn(
-            'flex items-center rounded-lg transition-colors hover:bg-sidebar-accent/40',
-            collapsed ? 'h-9 w-9 justify-center mx-auto' : 'gap-2.5 px-1.5 py-1',
-          )}
-        >
-          {organization?.logo_url ? (
-            <img
-              src={organization.logo_url}
-              alt={orgName}
-              className={cn(
-                'rounded-md object-cover shrink-0',
-                collapsed ? 'h-7 w-7' : 'h-7 w-7',
-              )}
-            />
+    <>
+      <MissionVisitTracker />
+
+      <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
+        {/* Haut : organisation, « Aller à… », onglets */}
+        <SidebarHeader className={cn(collapsed ? 'px-2 py-3 gap-2' : 'px-3 py-3 gap-2')}>
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>{orgLink}</TooltipTrigger>
+              <TooltipContent side="right">Tableau de bord</TooltipContent>
+            </Tooltip>
           ) : (
-            <div
-              className={cn(
-                'rounded-md bg-foreground text-background flex items-center justify-center shrink-0 font-display font-bold text-xs',
-                collapsed ? 'h-7 w-7' : 'h-7 w-7',
-              )}
+            orgLink
+          )}
+
+          {/* Aller à… : palette de navigation */}
+          {!collapsed ? (
+            <button
+              onClick={openPalette}
+              className="w-full flex items-center gap-2 h-9 px-2.5 rounded-md bg-sidebar-accent/40 text-muted-foreground text-[12px] hover:bg-sidebar-accent/60 transition-colors"
+              aria-label={`Aller à (${paletteShortcut})`}
             >
-              {orgInitial}
-            </div>
+              <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+              <span className="flex-1 text-left">Aller à…</span>
+              <kbd className="text-[10px] font-mono text-muted-foreground/70">{paletteShortcut}</kbd>
+            </button>
+          ) : (
+            <button
+              onClick={openPalette}
+              className="h-9 w-9 mx-auto flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors"
+              aria-label="Aller à"
+              title={`Aller à (${paletteShortcut})`}
+            >
+              <Search className="h-5 w-5" strokeWidth={1.5} />
+            </button>
           )}
-          {!collapsed && (
-            <span className="text-[13px] font-display font-bold tracking-tight text-sidebar-foreground truncate">
-              {orgName}
-            </span>
-          )}
-        </Link>
-      </SidebarHeader>
 
-      {/* Content */}
-      <SidebarContent className={cn(collapsed ? 'px-1.5' : 'px-2')}>
-        {/* Aller à… : palette de navigation */}
-        {!collapsed ? (
-          <button
-            onClick={openPalette}
-            className="w-full flex items-center gap-2 h-9 px-2.5 mb-2 rounded-md bg-sidebar-accent/40 text-muted-foreground text-[12px] hover:bg-sidebar-accent/60 transition-colors"
-            aria-label={`Aller à (${paletteShortcut})`}
-          >
-            <Search className="h-4 w-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-            <span className="flex-1 text-left">Aller à…</span>
-            <kbd className="text-[10px] font-mono text-muted-foreground/70">{paletteShortcut}</kbd>
-          </button>
-        ) : (
-          <button
-            onClick={openPalette}
-            className="h-9 w-9 mx-auto flex items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors mb-2"
-            aria-label="Aller à"
-            title={`Aller à (${paletteShortcut})`}
-          >
-            <Search className="h-5 w-5" strokeWidth={1.5} />
-          </button>
-        )}
-
-        {/* Nav — pas d'eyebrow, juste les items.
-            Chaque item a un tile coloré (h-9 w-9) avec icône color-coded
-            par section. Saturation plus forte sur l'item actif. */}
-        <SidebarMenu className={cn('gap-1', collapsed ? 'px-0 items-center' : 'px-0')}>
-          {filteredItems.map((item) => {
-            const active = isActive(item.to);
-            const showBadge = item.badgeKey === 'unread' && unreadMsgCount > 0;
-            return (
-              <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={active}
-                  tooltip={item.label}
-                  className={cn(
-                    'rounded-lg text-[13.5px] font-medium transition-colors',
-                    collapsed ? 'h-10 w-10 px-0 justify-center' : 'h-11 px-2',
-                    active
-                      ? 'bg-sidebar-accent text-sidebar-foreground'
-                      : 'text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent/50',
-                  )}
-                >
-                  <Link
-                    to={item.to}
-                    onClick={closeMobile}
-                    className={cn(
-                      'flex items-center',
-                      collapsed ? 'justify-center' : 'gap-3 w-full',
-                    )}
-                  >
-                    {/* Tile uniforme — vert clair pour tous les items,
-                        icône noire (foreground). Saturation +25% si actif. */}
-                    <span
-                      className={cn(
-                        'flex items-center justify-center rounded-lg shrink-0 transition-colors',
-                        collapsed ? 'h-7 w-7' : 'h-8 w-8',
-                        active ? 'bg-emerald-500/30' : 'bg-emerald-500/15',
-                      )}
-                    >
-                      <item.icon
-                        className={cn(
-                          'shrink-0 text-foreground',
-                          collapsed ? 'h-[18px] w-[18px]' : 'h-[19px] w-[19px]',
-                        )}
-                        strokeWidth={2}
-                        aria-hidden="true"
-                      />
-                    </span>
-                    {!collapsed && (
-                      <>
-                        <span className="flex-1 truncate">{item.label}</span>
-                        {showBadge && (
-                          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold tabular-nums bg-destructive text-destructive-foreground rounded-full">
-                            {unreadMsgCount > 9 ? '9+' : unreadMsgCount}
-                          </span>
-                        )}
-                      </>
-                    )}
-                    {showBadge && collapsed && (
-                      <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-destructive rounded-full ring-2 ring-sidebar" />
-                    )}
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
-        </SidebarMenu>
-      </SidebarContent>
-
-      {/* Footer — user menu + branding Konekt subtil */}
-      <SidebarFooter className={cn(collapsed ? 'px-2 py-2' : 'px-2 py-2')}>
-        <SidebarUserMenu collapsed={collapsed} isDark={isDark} onToggleTheme={toggleTheme} />
-        {/* Branding Konekt — pattern Linear / Vercel : marque produit en
-            tout bas, après l'identité user. Subtil, n'écrase pas l'org. */}
-        <div className={cn(
-          'flex items-center pt-2 mt-2 border-t border-sidebar-border',
-          collapsed ? 'justify-center' : 'gap-1.5 px-1',
-        )}>
-          <KonektLogo
-            variant="mark"
-            theme={isDark ? 'light' : 'dark'}
-            size={14}
-            className="opacity-50"
+          <SidebarTabs
+            tab={tab}
+            onSelect={setTab}
+            collapsed={collapsed}
+            todoCount={todoCount}
+            agentWorking={running.length > 0}
+            offline={offline}
           />
-          {!collapsed && (
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-medium">
-              Konekt
-            </span>
-          )}
-        </div>
-      </SidebarFooter>
-    </Sidebar>
+        </SidebarHeader>
+
+        {/* Panneau de l'onglet actif (seul monté), masqué en mode replié */}
+        <SidebarContent className={cn('overflow-hidden', collapsed ? 'px-1.5' : 'px-2')}>
+          <div
+            role="tabpanel"
+            id="sidebar-panel"
+            aria-labelledby={`sidebar-tab-${tab}`}
+            hidden={collapsed}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {!collapsed && (
+              <>
+                <OfflineBanner />
+                <h2 className="px-2 pb-1 text-[12px] font-semibold text-muted-foreground">
+                  {activeTab.page ? (
+                    <Link
+                      to={activeTab.page}
+                      onClick={closeMobile}
+                      className="inline-flex items-center rounded-md min-h-11 md:min-h-7 hover:text-sidebar-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                    >
+                      {activeTab.label}
+                    </Link>
+                  ) : (
+                    activeTab.label
+                  )}
+                </h2>
+                <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+                  {tab === 'todo' && <TodoPanel />}
+                  {tab === 'missions' && <MissionsPanel />}
+                  {tab === 'assistant' && <AssistantPanel />}
+                </div>
+              </>
+            )}
+          </div>
+        </SidebarContent>
+
+        {/* Bas : rangée basse, menu de l'avatar, marque Konekt */}
+        <SidebarFooter className="px-2 py-2">
+          <SidebarBottomRow
+            collapsed={collapsed}
+            overdueCount={overdueCount}
+            onOpenShortcuts={() => setShortcutsOpen(true)}
+            onOpenTutorial={() => setTutorialOpen(true)}
+          />
+          <SidebarUserMenu collapsed={collapsed} isDark={isDark} onToggleTheme={toggleTheme} />
+          {/* Branding Konekt — pattern Linear / Vercel : marque produit en
+              tout bas, après l'identité user. Subtil, n'écrase pas l'org. */}
+          <div className={cn(
+            'flex items-center pt-2 mt-2 border-t border-sidebar-border',
+            collapsed ? 'justify-center' : 'gap-1.5 px-1',
+          )}>
+            <KonektLogo
+              variant="mark"
+              theme={isDark ? 'light' : 'dark'}
+              size={14}
+              className="opacity-50"
+            />
+            {!collapsed && (
+              <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-medium">
+                Konekt
+              </span>
+            )}
+          </div>
+        </SidebarFooter>
+      </Sidebar>
+
+      <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <TutorialVideoDialog
+        {...PIPELINE_TUTORIAL}
+        open={tutorialOpen}
+        onOpenChange={setTutorialOpen}
+        hideTrigger
+      />
+    </>
   );
 }

@@ -12,8 +12,8 @@ test.describe('@smoke Accès authentifié par rôle', () => {
     const page = await asRole('agencyOwner');
     await page.goto('/dashboard');
     await expect(page).not.toHaveURL(/\/auth/);
-    // La nav principale est présente (repère stable : item Missions).
-    await expect(page.getByRole('link', { name: 'Missions' })).toBeVisible();
+    // La barre latérale est présente (repère stable : onglet Missions).
+    await expect(page.getByRole('tab', { name: 'Missions' })).toBeVisible();
   });
 
   test('agency-owner voit la nav Prospection/Marketplace (accès agence)', async ({ asRole }) => {

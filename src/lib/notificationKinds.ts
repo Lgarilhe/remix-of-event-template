@@ -82,3 +82,37 @@ export function notificationKind(n: ClassifiableNotification): NotificationKind 
 export function isActionable(n: ClassifiableNotification): boolean {
   return notificationKind(n) === 'action';
 }
+
+// ─── Lecture de la table (barre latérale, messagerie) ───────────────────────
+
+/**
+ * Ligne de la table notifications, telle que la lit la barre latérale.
+ * `metadata` est typé unknown : ce module reste sans import (le type Json
+ * vient du client généré).
+ */
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  read_at: string | null;
+  created_at: string;
+  organization_id: string | null;
+  metadata: unknown;
+}
+
+/**
+ * Filtre PostgREST (.or) : notifications de l'organisation active, plus celles
+ * écrites sans organisation. Sans organisation active, seules ces dernières.
+ */
+export const notificationOrgFilter = (organizationId: string | null) =>
+  organizationId
+    ? `organization_id.eq.${organizationId},organization_id.is.null`
+    : 'organization_id.is.null';
+
+/** Même règle pour une ligne isolée (le temps réel ne filtre que sur user_id). */
+export const isInActiveOrg = (
+  row: { organization_id?: string | null } | null | undefined,
+  organizationId: string | null,
+) => !row?.organization_id || row.organization_id === organizationId;

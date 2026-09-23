@@ -26,8 +26,8 @@
  *   │                                                      │
  *   └──────────────────────────────────────────────────────┘
  *
- * Note : le copilot IA est accessible via le bouton flottant 👁
- * en bas à droite (pas un rail latéral persistant).
+ * Note : l'assistant s'ouvre depuis l'onglet Assistant de la barre latérale
+ * ou par Ctrl K (pas de rail latéral persistant).
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -47,6 +47,8 @@ import { MissionOutreach } from '@/components/missions/MissionOutreach';
 import { MissionPipeline } from '@/components/missions/MissionPipeline';
 import { MissionInsights } from '@/components/missions/MissionInsights';
 
+import { MISSION_PHASES, VIEW_TO_PHASE, parseMissionView, type MissionViewId } from '@/lib/missionViews';
+
 import { PhaseStepper, PhaseId } from './PhaseStepper';
 import { MissionOverviewV2 } from './MissionOverviewV2';
 import { MissionBriefV2 } from './MissionBriefV2';
@@ -55,49 +57,15 @@ import { MissionConfigV2 } from './MissionConfigV2';
 
 // ── Mapping ancien tab → phase + sous-onglet ───────────────────────
 // Pour préserver la rétrocompat des deep links (?tab=brief continue de
-// marcher en redirigeant vers ?phase=1&sub=brief).
-type SubTab =
-  | 'overview' // phase 1, vue par défaut (dashboard)
-  | 'brief'    // phase 1
-  | 'process'  // phase 1
-  | 'config'   // phase 1
-  | 'sourcing' // phase 2
-  | 'outreach' // phase 2
-  | 'pipeline' // phase 3
-  | 'insights'; // phase 3
+// marcher). Libellés et ordre : src/lib/missionViews.ts, partagé avec la
+// barre latérale (une vue porte le même nom partout).
+type SubTab = MissionViewId;
 
-const SUB_TO_PHASE: Record<SubTab, PhaseId> = {
-  overview: 1,
-  brief: 1,
-  process: 1,
-  config: 1,
-  sourcing: 2,
-  outreach: 2,
-  pipeline: 3,
-  insights: 3,
-};
+const SUB_TO_PHASE: Readonly<Record<SubTab, PhaseId>> = VIEW_TO_PHASE;
 
-const PHASE_SUBS: Record<PhaseId, { id: SubTab; label: string }[]> = {
-  1: [
-    { id: 'overview', label: 'Vue d\'ensemble' },
-    { id: 'brief', label: 'Brief' },
-    { id: 'process', label: 'Process' },
-    { id: 'config', label: 'Configuration' },
-  ],
-  2: [
-    { id: 'sourcing', label: 'Sourcing' },
-    { id: 'outreach', label: 'Outreach' },
-  ],
-  3: [
-    { id: 'pipeline', label: 'Pipeline' },
-    { id: 'insights', label: 'Insights' },
-  ],
-};
-
-const ALL_SUBS: SubTab[] = [
-  'overview', 'brief', 'process', 'config',
-  'sourcing', 'outreach', 'pipeline', 'insights',
-];
+const PHASE_SUBS: Record<PhaseId, { id: SubTab; label: string }[]> = Object.fromEntries(
+  MISSION_PHASES.map(phase => [phase.id, [...phase.views]]),
+) as Record<PhaseId, { id: SubTab; label: string }[]>;
 
 // Sub-tabs qui doivent être limités en largeur pour rester lisibles
 // (forms / dashboards). Les autres (sourcing/pipeline) prennent toute
@@ -137,10 +105,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
 
   // Lit le sous-tab depuis ?tab=, fallback overview (rétrocompat avec
   // les anciens deep links).
-  const tabFromUrl = searchParams.get('tab');
-  const activeSub: SubTab = ALL_SUBS.includes((tabFromUrl || '') as SubTab)
-    ? (tabFromUrl as SubTab)
-    : 'overview';
+  const activeSub: SubTab = parseMissionView(searchParams.get('tab'));
   const activePhase: PhaseId = SUB_TO_PHASE[activeSub];
 
   const setActiveSub = useCallback((sub: SubTab) => {
@@ -246,7 +211,7 @@ export const MissionWorkspaceV2: React.FC<MissionWorkspaceV2Props> = ({ project 
         })}
       </div>
 
-      {/* ── Body : main content (le copilot est accessible via le bouton flottant en bas à droite) ── */}
+      {/* ── Body : main content (l'assistant s'ouvre depuis la barre latérale ou par Ctrl K) ── */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 overflow-y-auto min-w-0">
           <div

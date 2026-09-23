@@ -421,7 +421,7 @@ export const AgentActionsSettings = () => {
             Actions IA
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Toutes les actions proposées par le copilot et leur statut d'exécution.
+            Toutes les actions proposées par l'assistant et leur statut d'exécution.
             Source de vérité — mis à jour en temps réel.
           </p>
         </div>

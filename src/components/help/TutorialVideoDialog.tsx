@@ -28,6 +28,14 @@ interface TutorialVideoDialogProps {
    */
   autoOpenKey?: string;
   className?: string;
+  /**
+   * Mode contrôlé (menu Aide de la barre latérale) : si `open` est fourni,
+   * l'état interne est ignoré, et l'ouverture automatique ne s'applique pas.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Masque le bouton « ? » (la fenêtre s'ouvre d'ailleurs). */
+  hideTrigger?: boolean;
 }
 
 const seenStorageKey = (key: string) => `konekt:tuto:seen:${key}`;
@@ -39,26 +47,32 @@ export const TutorialVideoDialog: React.FC<TutorialVideoDialogProps> = ({
   points,
   autoOpenKey,
   className,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
 }) => {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : internalOpen;
   const [dontShowAgain, setDontShowAgain] = useState(true);
   const autoOpenFiredRef = useRef(false);
 
   useEffect(() => {
-    if (!autoOpenKey || autoOpenFiredRef.current) return;
+    if (controlled || !autoOpenKey || autoOpenFiredRef.current) return;
     try {
       if (localStorage.getItem(seenStorageKey(autoOpenKey)) === '1') return;
     } catch { /* localStorage indisponible → pas d'auto-open */ return; }
     // Petit délai pour laisser l'écran se peindre derrière avant le popup
     const t = setTimeout(() => {
       autoOpenFiredRef.current = true;
-      setOpen(true);
+      setInternalOpen(true);
     }, 700);
     return () => clearTimeout(t);
-  }, [autoOpenKey]);
+  }, [autoOpenKey, controlled]);
 
   const handleOpenChange = (next: boolean) => {
-    setOpen(next);
+    if (!controlled) setInternalOpen(next);
+    onOpenChange?.(next);
     if (!next && autoOpenKey && dontShowAgain) {
       try { localStorage.setItem(seenStorageKey(autoOpenKey), '1'); } catch { /* noop */ }
     }
@@ -66,18 +80,20 @@ export const TutorialVideoDialog: React.FC<TutorialVideoDialogProps> = ({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        title="Aide — tutoriel vidéo"
-        aria-label="Ouvrir le tutoriel vidéo"
-        className={cn(
-          'inline-flex items-center justify-center h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors',
-          className,
-        )}
-      >
-        <CircleHelp className="w-3.5 h-3.5" />
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          onClick={() => handleOpenChange(true)}
+          title="Aide — tutoriel vidéo"
+          aria-label="Ouvrir le tutoriel vidéo"
+          className={cn(
+            'inline-flex items-center justify-center h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors',
+            className,
+          )}
+        >
+          <CircleHelp className="w-3.5 h-3.5" />
+        </button>
+      )}
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-2xl p-0 overflow-hidden gap-0">
           <DialogHeader className="px-5 pt-4 pb-3">

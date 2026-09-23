@@ -28,7 +28,8 @@ import { LivePulse } from './LivePulse';
 export interface FocusItem {
   key: string;
   label: string;
-  count: number;
+  /** null : inconnu (chargement ou lecture en échec), affiché « – ». */
+  count: number | null;
   description: string;
   icon: React.ReactNode;
   href: string;
@@ -38,7 +39,10 @@ export interface FocusItem {
 }
 
 interface DashboardFocusPanelProps {
-  unreadMessages: number;
+  /** Réponses de candidats comptées par la barre latérale ; null tant qu'inconnu. */
+  unreadMessages: number | null;
+  /** Lecture des réponses en échec ou hors ligne, sans donnée : « Indisponible » au lieu de « Chargement ». */
+  unreadMessagesUnavailable?: boolean;
   stagnantCandidates: number;
   remindersToday: number;
   pendingResponses: number;
@@ -81,8 +85,8 @@ const TONE_STYLES: Record<
 const FocusCard: React.FC<{ item: FocusItem; index: number }> = ({ item, index }) => {
   const navigate = useNavigate();
   const styles = TONE_STYLES[item.tone];
-  const isActive = item.count > 0;
-  const animatedCount = useCountUp(item.count, { duration: 900 });
+  const isActive = (item.count ?? 0) > 0;
+  const animatedCount = useCountUp(item.count ?? 0, { duration: 900 });
 
   return (
     <motion.button
@@ -141,7 +145,7 @@ const FocusCard: React.FC<{ item: FocusItem; index: number }> = ({ item, index }
           isActive ? 'text-foreground' : 'text-muted-foreground/60',
         )}
       >
-        {animatedCount}
+        {item.count === null ? '–' : animatedCount}
       </div>
       <div
         className={cn(
@@ -160,6 +164,7 @@ const FocusCard: React.FC<{ item: FocusItem; index: number }> = ({ item, index }
 
 export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
   unreadMessages,
+  unreadMessagesUnavailable = false,
   stagnantCandidates,
   remindersToday,
   pendingResponses,
@@ -169,7 +174,10 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
       key: 'unread',
       label: 'Réponses non lues',
       count: unreadMessages,
-      description: unreadMessages > 0 ? "À traiter dans l'inbox" : 'Inbox à jour',
+      description:
+        unreadMessages === null
+          ? unreadMessagesUnavailable ? 'Indisponible' : 'Chargement'
+          : unreadMessages > 0 ? "À traiter dans l'inbox" : 'Inbox à jour',
       icon: <MessageCircle className="w-4 h-4" />,
       href: '/inbox',
       tone: 'info',
@@ -204,9 +212,10 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
     },
   ];
 
-  const totalActionable = items.reduce((s, i) => s + i.count, 0);
+  const totalActionable = items.reduce((s, i) => s + (i.count ?? 0), 0);
 
-  if (totalActionable === 0) {
+  // Un compteur inconnu ne permet pas d'annoncer « Tout est à jour ».
+  if (totalActionable === 0 && items.every((i) => i.count !== null)) {
     return (
       <motion.div
         className="rounded-xl bg-card border border-border p-6 flex items-center gap-4 mb-6 relative overflow-hidden"

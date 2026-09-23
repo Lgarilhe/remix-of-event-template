@@ -47,6 +47,7 @@ import { cn } from '@/lib/utils';
 import type { ScheduledMessage } from '@/hooks/useTodayScheduledMessages';
 import type { Reminder } from '@/hooks/useAllReminders';
 import { useCalendarEvents, type CalendarEvent } from '@/hooks/useCalendarEvents';
+import { useTodoInterviews } from '@/hooks/sidebar/useTodoInterviews';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 import { EventDetailSheet } from '@/components/calendar/EventDetailSheet';
@@ -90,10 +91,26 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
   const today = useMemo(() => startOfDay(new Date()), []);
   const { data: todayEvents = [] } = useCalendarEvents({ from: today, days: 1 });
 
+  // Entretiens que j'anime dans l'organisation active, lus comme la barre
+  // latérale (D40) : le calendrier, lui, montre ceux de toute l'équipe.
+  // Tant que la liste est inconnue, aucun entretien : le panneau reste en
+  // chargement, sauf lecture en échec ou hors ligne (jamais sans fin).
+  const { mineTodayIds, status: interviewsStatus } = useTodoInterviews();
+  const interviewsLoading = mineTodayIds === null && interviewsStatus === 'loading';
+
   // Filter pour qualif uniquement (les inmails/sequences arrivent déjà via scheduledMessages)
   const qualifEvents = useMemo(
-    () => todayEvents.filter((e) => e.type === 'qualification' && isToday(parseISO(e.startAt))),
-    [todayEvents],
+    () =>
+      mineTodayIds
+        ? todayEvents.filter(
+            (e) =>
+              e.type === 'qualification' &&
+              isToday(parseISO(e.startAt)) &&
+              // Identifiant de l'événement : `qualif-{id de qualification_sessions}`.
+              mineTodayIds.has(e.id.replace(/^qualif-/, '')),
+          )
+        : [],
+    [todayEvents, mineTodayIds],
   );
 
   const now = new Date();
@@ -249,7 +266,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
 
       {/* Body */}
       <div className="p-2 flex-1 overflow-y-auto">
-        {isLoading ? (
+        {isLoading || interviewsLoading ? (
           <div className="space-y-1.5 p-2">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-16 rounded-lg bg-muted/40 animate-pulse" />

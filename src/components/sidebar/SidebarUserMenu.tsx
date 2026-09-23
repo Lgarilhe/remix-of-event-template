@@ -1,21 +1,22 @@
 /**
  * SidebarUserMenu — bloc profil utilisateur en bas du sidebar.
  *
- * V3 minimaliste : juste avatar + nom + chevron. Tout le reste (settings,
- * theme, logout, notifs) dans un dropdown qui s'ouvre vers le haut.
+ * V3 minimaliste : juste avatar + nom + chevron. Tout le reste (crédits IA,
+ * compte, thème, déconnexion) dans un dropdown qui s'ouvre vers le haut.
+ * Les Paramètres sont dans la rangée basse de la barre ; les notifications
+ * sont dans l'onglet À traiter (lots 5 et 6).
  *
  * Pattern Linear / Vercel : 1 ligne, pas de sous-titre encombrant.
  */
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, LogOut, Sun, Moon, ChevronsUpDown, User as UserIcon, Sparkles, Bell } from 'lucide-react';
+import { LogOut, Sun, Moon, ChevronsUpDown, User as UserIcon, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAICredits } from '@/hooks/useAICredits';
-import { useNotifications } from '@/hooks/useNotifications';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,14 +40,10 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
   onToggleTheme,
 }) => {
   const navigate = useNavigate();
-  // L'ouverture du panneau attend la fermeture du menu : sinon le retour de
-  // focus sur l'avatar est vu comme un clic hors du panneau, qui se referme.
-  const openNotificationsRef = React.useRef(false);
   const { displayName } = useCurrentProfile();
   const connections = useDashboardConnections();
   const { organizationName } = useOrganization();
   const { creditsRemaining, isLow, isOut, hasBalance: hasCredits, isLoading: creditsLoading } = useAICredits();
-  const { unreadCount: unreadNotifications } = useNotifications();
 
   // Photo LinkedIn si un compte est connecté, sinon initiales (aucun avatar
   // n'est stocké dans le profil).
@@ -104,13 +101,6 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
         side="top"
         sideOffset={8}
         className="w-60 rounded-xl"
-        onCloseAutoFocus={(e) => {
-          if (openNotificationsRef.current) {
-            openNotificationsRef.current = false;
-            e.preventDefault();
-            window.dispatchEvent(new CustomEvent('konekt:open-notifications'));
-          }
-        }}
       >
         <DropdownMenuLabel className="font-normal">
           <div className="flex items-center gap-2.5">
@@ -130,20 +120,6 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-
-        {/* Notifications : ouvre le panneau de l'en-tête (même compteur, hors messages) */}
-        <DropdownMenuItem
-          onSelect={() => { openNotificationsRef.current = true; }}
-          className="cursor-pointer"
-        >
-          <Bell className="w-4 h-4 mr-2" />
-          <span className="flex-1">Notifications</span>
-          {unreadNotifications > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold tabular-nums bg-destructive text-destructive-foreground rounded-full">
-              {unreadNotifications > 9 ? '9+' : unreadNotifications}
-            </span>
-          )}
-        </DropdownMenuItem>
 
         {/* Credits inline */}
         <DropdownMenuItem
@@ -171,10 +147,6 @@ export const SidebarUserMenu: React.FC<SidebarUserMenuProps> = ({
         <DropdownMenuItem onClick={() => navigate('/settings/account/connections')} className="cursor-pointer">
           <UserIcon className="w-4 h-4 mr-2" />
           Mon compte
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
-          <Settings className="w-4 h-4 mr-2" />
-          Paramètres
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onToggleTheme} className="cursor-pointer">
           {isDark ? (

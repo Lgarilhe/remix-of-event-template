@@ -20,8 +20,9 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MISSION_PHASES, type MissionPhaseId } from '@/lib/missionViews';
 
-export type PhaseId = 1 | 2 | 3;
+export type PhaseId = MissionPhaseId;
 export type PhaseState = 'done' | 'active' | 'todo';
 
 export interface Phase {
@@ -30,11 +31,8 @@ export interface Phase {
   desc: string;
 }
 
-const PHASES: Phase[] = [
-  { id: 1, label: 'Cadrage', desc: 'Brief & process' },
-  { id: 2, label: 'Sourcing & Outreach', desc: 'Recherche & contact' },
-  { id: 3, label: 'Pipeline', desc: 'Entretiens & embauche' },
-];
+// Libellés partagés avec la page et la barre latérale (src/lib/missionViews.ts).
+const PHASES: Phase[] = MISSION_PHASES.map(({ id, label, desc }) => ({ id, label, desc }));
 
 export interface PhaseStepperProps {
   /** Phase courante (1, 2, ou 3). */

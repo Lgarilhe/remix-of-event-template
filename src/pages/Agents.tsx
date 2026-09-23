@@ -66,7 +66,7 @@ const AgentsPage = () => {
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-xl font-bold text-foreground uppercase tracking-tight">Agents IA</h1>
+              <h1 className="text-xl font-bold text-foreground uppercase tracking-tight">Assistant</h1>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Vos agents de sourcing autonomes
               </p>

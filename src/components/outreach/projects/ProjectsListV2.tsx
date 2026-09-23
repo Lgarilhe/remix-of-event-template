@@ -45,6 +45,9 @@ import { CreateMissionV2 } from '@/components/missions/v2/CreateMissionV2';
 import { EmptyMissionState } from '@/components/missions/EmptyMissionState';
 import { Pill } from '@/components/missions/v2/Pill';
 import { PartnerMissionsSection } from '@/components/marketplace/PartnerMissionsSection';
+import { MissionQuotaNotice } from '@/components/missions/MissionQuotaNotice';
+import { missionQuotaMessage } from '@/lib/sidebarMissions';
+import { toast } from 'sonner';
 
 // ── Types ──
 
@@ -359,7 +362,7 @@ export const ProjectsListV2: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, createProject } = useSourcingProjects();
   const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
-  const { canCreateJob } = useQuotaGate();
+  const { canCreateJob, jobQuotaKnown, maxJobs } = useQuotaGate();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchive, setShowArchive] = useState(false);
@@ -367,19 +370,26 @@ export const ProjectsListV2: React.FC = () => {
   const [createInitialTab, setCreateInitialTab] = useState<string | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = useState<UnifiedProject | null>(null);
 
-  // Honor ?create=mode deep links (rétrocompat)
+  // Honor ?create=mode deep links (barre latérale, palette, tableau de bord,
+  // onboarding). Attend que le plafond de missions soit connu : au plafond, le
+  // formulaire ne s'ouvre pas, le paramètre est retiré et l'encart gris est déjà
+  // à la place du bouton.
+  const createParam = searchParams.get('create');
   useEffect(() => {
-    const createMode = searchParams.get('create');
-    if (createMode && ['brief', 'import', 'manual'].includes(createMode)) {
-      setCreateInitialTab(createMode);
+    if (!createParam || !['brief', 'import', 'manual'].includes(createParam)) return;
+    if (!jobQuotaKnown) return;
+    if (canCreateJob) {
+      setCreateInitialTab(createParam);
       setShowCreateModal(true);
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.delete('create');
-        return next;
-      }, { replace: true });
+    } else if (maxJobs !== null) {
+      toast.info(missionQuotaMessage(maxJobs));
     }
-  }, [searchParams, setSearchParams]);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('create');
+      return next;
+    }, { replace: true });
+  }, [createParam, jobQuotaKnown, canCreateJob, maxJobs, setSearchParams]);
 
   const unifiedProjects = useMemo(
     () => mergeProjectsAndJobs(notionJobs, sourcingProjects),
@@ -553,21 +563,21 @@ export const ProjectsListV2: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            if (!canCreateJob) {
-              import('sonner').then(({ toast }) => toast.error("Quota de missions atteint"));
-              return;
-            }
-            setCreateInitialTab('brief');
-            setShowCreateModal(true);
-          }}
-          className="h-10 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-2 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] flex-shrink-0"
-        >
-          <Plus className="w-4 h-4" strokeWidth={2.5} />
-          Nouvelle mission
-        </button>
+        {!canCreateJob && maxJobs !== null ? (
+          <MissionQuotaNotice maxJobs={maxJobs} className="max-w-xs flex-shrink-0" />
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setCreateInitialTab('brief');
+              setShowCreateModal(true);
+            }}
+            className="h-10 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-2 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] flex-shrink-0"
+          >
+            <Plus className="w-4 h-4" strokeWidth={2.5} />
+            Nouvelle mission
+          </button>
+        )}
       </div>
 
       {/* ── KPI strip ── */}

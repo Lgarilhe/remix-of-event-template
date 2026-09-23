@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -166,6 +166,9 @@ const Sidebar = React.forwardRef<
           }
           side={side}
         >
+          {/* Nom et description de la fenêtre pour les lecteurs d'écran (Radix les exige). */}
+          <SheetTitle className="sr-only">Barre latérale</SheetTitle>
+          <SheetDescription className="sr-only">Onglets, raccourcis et compte.</SheetDescription>
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
       </Sheet>

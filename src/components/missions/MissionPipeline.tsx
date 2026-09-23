@@ -12,6 +12,7 @@ import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { ProjectCandidatesTableEnhanced } from '@/components/outreach/projects/ProjectCandidatesTableEnhanced';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { TutorialVideoDialog } from '@/components/help/TutorialVideoDialog';
+import { PIPELINE_TUTORIAL } from '@/components/help/tutorials';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
@@ -536,18 +537,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
                 <LayoutGrid className="w-3 h-3" /> Kanban
               </button>
             </div>
-            <TutorialVideoDialog
-              title="Le pipeline en 30 secondes"
-              description="Funnel, kanban et fiches candidat : l'essentiel en vidéo."
-              videoSrc="/tutos/pipeline-tour.webm"
-              autoOpenKey="pipeline"
-              points={[
-                'Cliquez sur une étape du funnel pour ouvrir le board à cet endroit',
-                'Glissez une carte pour faire avancer un candidat dans le process',
-                'Cliquez sur une carte pour ouvrir la fiche complète',
-                'Vos étapes se personnalisent dans Cadrage → Process',
-              ]}
-            />
+            <TutorialVideoDialog {...PIPELINE_TUTORIAL} autoOpenKey="pipeline" />
           </div>
         </div>
       )}

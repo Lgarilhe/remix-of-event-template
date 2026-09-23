@@ -378,11 +378,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   // Reprise explicite (openConversation depuis /agents ou ailleurs) : le nonce
   // bump force le re-seed même si le panel est déjà monté. Le create-path lazy
   // (ensureConversationId) ne touche pas au nonce → pas de reseed mid-stream.
+  // startNewConversation (barre latérale) bumpe aussi le nonce avec un
+  // conversationId nul : fil vide, sans poste choisi, comme handleNewConversation.
   const handledNonceRef = useRef(openRequestNonce);
   useEffect(() => {
     if (openRequestNonce !== handledNonceRef.current) {
       handledNonceRef.current = openRequestNonce;
       setShowList(false);
+      if (!conversationId) setSelectedJob(null);
       seedFrom(conversationId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -445,7 +448,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <AnimatedOrb size={24} speed={4} />
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold truncate text-foreground">Conversations</h3>
-            <p className="text-[11px] text-muted-foreground">Historique du Copilot</p>
+            <p className="text-[11px] text-muted-foreground">Historique de l'assistant</p>
           </div>
           {onClose && (
             <button
@@ -486,7 +489,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             }}
             className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
-            <span>Voir tous les agents</span>
+            <span>Toutes les conversations</span>
             <ChevronRight className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
@@ -511,11 +514,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </AnimatedOrb>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold truncate text-foreground">
-            {effectiveContextMode === 'sourcing' ? 'Sourcing Assistant'
-              : effectiveContextMode === 'brief' ? 'Brief Assistant'
-              : effectiveContextMode === 'process' ? 'Process Assistant'
-              : effectiveContextMode === 'outreach' ? 'Outreach Assistant'
-              : 'Copilot IA'}
+            {effectiveContextMode === 'sourcing' ? 'Assistant · Sourcing'
+              : effectiveContextMode === 'brief' ? 'Assistant · Brief'
+              : effectiveContextMode === 'process' ? 'Assistant · Process'
+              : effectiveContextMode === 'outreach' ? 'Assistant · Outreach'
+              : 'Assistant'}
           </h3>
           <p className="text-[11px] text-muted-foreground">
             {effectiveContextMode ? 'Mode contextuel' : 'Conversation libre'}
@@ -538,7 +541,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <button
             onClick={onClose}
             title="Fermer"
-            aria-label="Fermer le Copilot"
+            aria-label="Fermer l'assistant"
             className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
           >
             <X className="w-4 h-4" />

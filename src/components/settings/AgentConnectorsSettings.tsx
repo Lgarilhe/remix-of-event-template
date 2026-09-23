@@ -224,11 +224,11 @@ export function AgentConnectorsSettings() {
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <Plug className="w-4 h-4" />
-              Connecteurs du copilot (MCP)
+              Connecteurs de l'assistant (MCP)
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
               Branchez des serveurs MCP (Notion, Slack, calendrier, outils internes…) : leurs
-              outils deviennent utilisables par le copilot dans le chat.
+              outils deviennent utilisables par l'assistant dans le chat.
             </p>
           </div>
           {isAdmin && (
@@ -243,7 +243,7 @@ export function AgentConnectorsSettings() {
           <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" />
           <span>
             Sécurité renforcée : seuls les outils en lecture seule inscrits dans la liste blanche
-            sont exposés au copilot. Les écritures via MCP sont interdites ; utilisez les actions
+            sont exposés à l'assistant. Les écritures via MCP sont interdites ; utilisez les actions
             Konekt avec approbation pour modifier ou envoyer des données.
           </span>
         </div>
@@ -388,7 +388,7 @@ export function AgentConnectorsSettings() {
             <AlertDialogHeader>
               <AlertDialogTitle>Supprimer le connecteur ?</AlertDialogTitle>
               <AlertDialogDescription>
-                Le copilot perdra immédiatement l'accès aux outils de
+                L'assistant perdra immédiatement l'accès aux outils de
                 « {deleteTarget?.name} ». Cette action est irréversible (le token devra être
                 ressaisi pour le rebrancher).
               </AlertDialogDescription>

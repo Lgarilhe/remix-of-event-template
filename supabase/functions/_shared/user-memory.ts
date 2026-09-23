@@ -92,7 +92,7 @@ export async function extractInsightsFromConversation(
       aiAction: 'memory_extract',
       usage: result.usage,
       modelId: result.model,
-      description: 'Mémorisation du copilot',
+      description: "Mémorisation de l'assistant",
     });
     const parsed = JSON.parse(result.content.replace(/```json\n?|```/g, '').trim());
     extracted = Array.isArray(parsed.insights) ? parsed.insights : [];

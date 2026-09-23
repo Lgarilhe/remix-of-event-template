@@ -10,7 +10,7 @@
  *   - Layout direct CSS Grid 2 cols : sidebar | conversation
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
@@ -52,22 +52,30 @@ export default function Inbox() {
     }
   }, [accounts, selectedAccount]);
 
-  // À l'ouverture de la messagerie, les notifications de nouveaux messages
-  // sont considérées lues : useUnreadMessageNotifications (pastille
-  // « Messages » de la sidebar) redescend via les événements UPDATE realtime.
-  useEffect(() => {
-    if (!user?.id) return;
-    const markMessageNotificationsRead = async () => {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read_at: new Date().toISOString() })
-        .eq('user_id', user.id)
-        .eq('type', 'new_message')
-        .is('read_at', null);
-      if (error) console.warn('[Inbox] Failed to mark message notifications as read:', error);
-    };
-    void markMessageNotificationsRead();
+  // Lecture par conversation (D35) : seules les notifications de message de la
+  // conversation ouverte sont marquées lues, par le lien ?chatId= (réponse
+  // ouverte depuis la barre latérale) ou par le choix d'une conversation dans
+  // la liste. Sans conversation, rien n'est marqué : les autres réponses
+  // restent dans « À traiter » et dans son chiffre.
+  const markChatRead = useCallback(async (chatId: string | null) => {
+    if (!user?.id || !chatId) return;
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('type', 'new_message')
+      .is('read_at', null)
+      .eq('metadata->>chat_id', chatId); // même filtre que le webhook (réponse envoyée depuis LinkedIn)
+    if (error) console.warn('[Inbox] marquage lu de la conversation en échec :', error);
   }, [user?.id]);
+
+  useEffect(() => {
+    markChatRead(initialChatId).catch((err) => console.warn('[Inbox] marquage lu en échec :', err));
+  }, [markChatRead, initialChatId]);
+
+  const handleChatChange = useCallback((chatId: string | null) => {
+    markChatRead(chatId).catch((err) => console.warn('[Inbox] marquage lu en échec :', err));
+  }, [markChatRead]);
 
   return (
     <>
@@ -86,6 +94,7 @@ export default function Inbox() {
             selectedAccount={selectedAccount}
             onAccountChange={setSelectedAccount}
             initialChatId={initialChatId}
+            onChatChange={handleChatChange}
             loading={accountsLoading}
             fullHeight
           />

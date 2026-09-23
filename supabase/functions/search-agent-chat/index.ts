@@ -772,7 +772,7 @@ Aide l'utilisateur a:
 
 Propose des exemples concrets de messages.`;
 
-    const freeSystemPrompt = `Tu es le Copilot IA de Konekt, assistant recrutement pour des recruteurs tech.
+    const freeSystemPrompt = `Tu es l'assistant IA de Konekt, assistant recrutement pour des recruteurs tech.
 
 STYLE: conversationnel, concis (2-4 phrases sauf si on te demande un livrable detaille), comme un collegue senior. Pas de listes mecaniques, pas de jargon creux, pas de flatterie.
 
@@ -967,7 +967,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
           aiAction: "intent_routing",
           usage: clf.usage,
           modelId: clf.model || "claude-haiku-4-5",
-          description: "Routage d'intention du copilot",
+          description: "Routage d'intention de l'assistant",
         });
         try { (globalThis as any).EdgeRuntime?.waitUntil?.(classifierSettle); } catch { /* no-op */ }
         classifierSettle.catch(() => {});

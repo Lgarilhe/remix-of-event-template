@@ -88,3 +88,20 @@ export function channelStatusOf(state: MyLinkedInState): 'connected' | 'error' |
     default: return 'connecting'; // loading, load_error, connecting, unknown : ni panne du compte ni succès
   }
 }
+
+/**
+ * Panne du compte LinkedIn de l'utilisateur, pour « À traiter » (D41).
+ * - liaisons non reçues (ou utilisateur inconnu) → null (inconnu) ;
+ * - aucune liaison à moi → false ;
+ * - liste des comptes reçue → needsAction (à reconnecter, ou compte disparu) ;
+ * - sinon → statut enregistré sur la liaison (écrit par le webhook) : une
+ *   panne de la liste des comptes ne rend pas le chiffre inconnu.
+ */
+export function myLinkedInNeedsAction(input: Parameters<typeof resolveMyLinkedInStatus>[0]): boolean | null {
+  const { userId, mappings, mappingsLoaded, accountsLoaded } = input;
+  if (!userId || !mappingsLoaded) return null;
+  const mapping = mappings.find((m) => m.user_id === userId);
+  if (!mapping) return false;
+  if (accountsLoaded) return resolveMyLinkedInStatus(input).needsAction;
+  return classifyLinkedInStatus(mapping.account_status) === 'needs_reconnect';
+}

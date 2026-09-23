@@ -927,7 +927,7 @@ CONTRAINTES:
         aiAction: 'outreach_message',
         usage: result.usage,
         modelId: result.model,
-        description: 'Brouillon de message proposé par le copilot',
+        description: "Brouillon de message proposé par l'assistant",
       });
       const parsed = JSON.parse(result.content.replace(/```json\n?|```/g, '').trim());
       return {
@@ -1812,7 +1812,7 @@ const updateMissionBrief: AgentTool = {
     if (invalidFields.length > 0) {
       return {
         allowed: false,
-        reason: `Champs non modifiables via le copilot : ${invalidFields.join(', ')}. Ces champs nécessitent l'éditeur brief.`,
+        reason: `Champs non modifiables par l'assistant : ${invalidFields.join(', ')}. Ces champs nécessitent l'éditeur brief.`,
       };
     }
 
@@ -1853,7 +1853,7 @@ const updateMissionBrief: AgentTool = {
     );
 
     return {
-      summary: `Mettre à jour le brief de "${jobLabel}" — champs : ${fieldsChanged}`,
+      summary: `Mettre à jour le brief de "${jobLabel}" : champs ${fieldsChanged}`,
       details: {
         job_id: jobId,
         job_label: jobLabel,
@@ -2995,7 +2995,7 @@ const updateMemberQuota: AgentTool = {
     }
 
     return {
-      summary: `Mettre à jour les quotas LinkedIn de ${memberLabel} — ${diff.map((d) => d.field).join(', ')}`,
+      summary: `Mettre à jour les quotas LinkedIn de ${memberLabel} : ${diff.map((d) => d.field).join(', ')}`,
       details: {
         target_user_id: targetUserId,
         target_name: targetName,

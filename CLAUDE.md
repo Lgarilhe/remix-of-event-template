@@ -242,6 +242,14 @@ AgentContext                — agent drawer state (open/close, modes: brief/pro
 OutreachSearchContext       — legacy global search (mostly replaced by useLinkedInSearch)
 ```
 
+### Barre latérale (lots 5 et 6, 2026-09)
+`src/components/AppSidebar.tsx` : trois onglets (À traiter par défaut, Missions, Assistant ; `src/lib/sidebarTabs.ts`), panneau de l'onglet actif, rangée basse (Tâches, Agenda, Marketplace, Paramètres, Aide), menu de l'avatar. Plus de cloche ni de bulle flottante de l'assistant (Ctrl K reste).
+- Composants dans `src/components/sidebar/**`, hooks dans `src/hooks/sidebar/**`, clés React Query sous `['sidebar', …]`, un seul canal temps réel (`useSidebarRealtime`).
+- Un seul chiffre coloré : À traiter = panne LinkedIn + réponses de candidats non lues (3 jours ouvrés) + mes validations + notifications « action » non lues (`src/lib/sidebarSignals.ts`, `todoCount` : `null` si une source n'a rien renvoyé, jamais 0 inventé).
+- La messagerie ne marque lues que les notifications de la conversation ouverte (`metadata->>chat_id`, `Inbox.tsx`).
+- Épingles de missions : `job_favorites`, index unique `(user_id, job_id)`, une seule policy `own_rows_all` ; le front n'écrit jamais `organization_id` (absent en prod).
+- Plafond de missions : `useQuotaGate` compte les missions non terminées ni archivées (`sourcing_projects` n'a pas `archived_at`).
+
 ### Edge Functions (supabase/functions/)
 ```
 Search & scoring:   unipile-search, coresignal-search, generate-search-filters, refine-search-filters, nl-filter-edit,
@@ -458,7 +466,7 @@ Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `sr
 
 ### Écritures sur `organizations` — passer par `updateOrganization`
 `src/lib/organizationUpdate.ts` relit la ligne écrite : sans `.select()`, un refus RLS répond « succès » sur 0 ligne. Côté base (lot 1 des Paramètres, migration 20260923095813) : une seule policy UPDATE `admins_update` (owner/admin) et le trigger `organizations_update_guard`. L'admin modifie `name`, `logo_url`, `website`, `ai_context` ; tout le reste (`org_type`, `agency_permissions`, `ai_model_default`…) reste au propriétaire (HINT `ORG_OWNER_ONLY`). Passage en `freelance` refusé s'il reste un autre membre ou une invitation en attente (HINT `ORG_FREELANCE_NOT_SOLO`). Bucket `org-logos` : écriture owner/admin dans le dossier `{organization_id}/`, un nom de fichier unique par envoi.
-Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
+Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
 
 ### État et liaison LinkedIn
 Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par `user_id` via `member_linkedin_accounts`, jamais le compte d'un collègue). Relier et dissocier passent par `unipile-accounts` (`claim_linkedin_account`, `unlink_linkedin_account`), pas par un upsert/delete du navigateur (RLS owner/admin). « Dissocier » ne ferme pas la session chez le prestataire : il retire la liaison et arrête les envois du compte (inscriptions en pause `manual`, étapes et InMails programmés annulés, compte retiré des rotations multi-expéditeurs).

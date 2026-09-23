@@ -26,7 +26,7 @@ import { useATSData, type ATSCandidate } from '@/hooks/useATSData';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
 import { useAllReminders } from '@/hooks/useAllReminders';
-import { useUnreadMessageNotifications } from '@/hooks/useUnreadMessageNotifications';
+import { useSidebarNotifications } from '@/hooks/sidebar/useSidebarNotifications';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
 import { useDashboardLayout, type DashboardSectionKey } from '@/hooks/useDashboardLayout';
@@ -72,7 +72,11 @@ export default function Dashboard() {
   const { projects, isLoading: projectsLoading } = useSourcingProjects();
   const { data: scheduledMessages = [], isLoading: messagesLoading } = useTodayScheduledMessages();
   const { grouped: groupedReminders, isLoading: remindersLoading } = useAllReminders();
-  const unreadMessages = useUnreadMessageNotifications();
+  // Réponses de candidats comptées par la barre (D40) : mêmes clés, même
+  // nombre que les lignes en gras de la section Réponses. null : inconnu.
+  const { replies } = useSidebarNotifications();
+  const unreadMessages = replies.data ? replies.data.candidates.filter((c) => c.counted).length : null;
+  const unreadMessagesUnavailable = replies.status === 'error' || replies.status === 'offline';
   const { displayName } = useCurrentProfile();
   const connections = useDashboardConnections();
   const { order, setOrder, resetOrder, isCustomized } = useDashboardLayout();
@@ -129,6 +133,7 @@ export default function Dashboard() {
     focus: !loading ? (
       <DashboardFocusPanel
         unreadMessages={unreadMessages}
+        unreadMessagesUnavailable={unreadMessagesUnavailable}
         stagnantCandidates={focusCounters.stagnant}
         remindersToday={focusCounters.remindersToday}
         pendingResponses={focusCounters.pending}

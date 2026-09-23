@@ -16,11 +16,15 @@ export const SEAT_LIMIT_MESSAGE = 'Tous vos sièges sont utilisés. Ajoutez un s
  *     seatsRemaining : plan gratuit, allocation d'essai ou quantité facturée).
  */
 export const useQuotaGate = () => {
-  const { state, isLoading, isFree, seatLimit, seatCount, seatsRemaining } = useSubscriptionState();
+  const { state, isLoading, isLoadingError, isFree, seatLimit, seatCount, seatsRemaining } = useSubscriptionState();
   const { organizationId } = useOrganization();
 
-  // Count active jobs (sourcing projects) for this org
-  const { data: jobCount = 0 } = useQuery({
+  // Missions actives de l'organisation (libellé de la grille tarifaire).
+  // `sourcing_projects` n'a pas de colonne de date d'archivage : le filtre porte sur le
+  // statut, comme le rangement de /missions (terminées et archivées exclues).
+  // Une erreur est levée, jamais comptée 0 : tant que le compte est inconnu,
+  // rien n'est refusé (jobCountLoaded).
+  const jobCountQuery = useQuery({
     queryKey: ['quota-job-count', organizationId],
     queryFn: async () => {
       if (!organizationId) return 0;
@@ -30,9 +34,9 @@ export const useQuotaGate = () => {
         .eq('organization_id', organizationId)
         // Les recherches autonomes (/sourcing) ne consomment pas le quota missions
         .eq('kind', 'mission')
-        .is('archived_at', null);
-      if (error) return 0;
-      return count || 0;
+        .not('status', 'in', '(completed,archived)');
+      if (error) throw error;
+      return count ?? 0;
     },
     enabled: !!organizationId,
     staleTime: 60_000,
@@ -41,7 +45,7 @@ export const useQuotaGate = () => {
   // Une invitation en attente réserve un siège (même règle que send-team-invitation).
   // Seules les invitations encore valides comptent : rien ne fait sortir une
   // invitation périmée du statut « pending ».
-  const { data: pendingInvitations = 0 } = useQuery({
+  const pendingInvitationsQuery = useQuery({
     queryKey: ['quota-pending-invitations', organizationId],
     queryFn: async () => {
       if (!organizationId) return 0;
@@ -51,18 +55,33 @@ export const useQuotaGate = () => {
         .eq('organization_id', organizationId)
         .eq('status', 'pending')
         .gt('expires_at', new Date().toISOString());
-      if (error) return 0;
-      return count || 0;
+      if (error) throw error;
+      return count ?? 0;
     },
     enabled: !!organizationId,
     staleTime: 60_000,
   });
 
+  const jobCountLoaded = jobCountQuery.data !== undefined;
+  const jobCount = jobCountQuery.data ?? 0;
+  const pendingInvitationsLoaded = pendingInvitationsQuery.data !== undefined;
+  // Inconnu : 0, comportement de canInviteMember inchangé.
+  const pendingInvitations = pendingInvitationsQuery.data ?? 0;
+
   const limits = state?.limits ?? {};
   const maxJobs = typeof limits.max_jobs === 'number' ? limits.max_jobs : null;
 
-  // Tant que l'état n'est pas chargé, on n'affiche pas de refus (le serveur reste la référence).
-  const canCreateJob = maxJobs === null ? true : maxJobs === -1 || jobCount < maxJobs;
+  // Tant que l'état ou le compte ne sont pas connus, on ne refuse rien.
+  const canCreateJob = maxJobs === null || !jobCountLoaded ? true : maxJobs === -1 || jobCount < maxJobs;
+  // Vrai quand la réponse de canCreateJob est définitive (ni supposée ni en
+  // attente). Une lecture en échec compte comme une réponse (on ne refuse
+  // rien) : sinon un lien ?create= attendrait sans fin. Un compte en cours de
+  // relecture (périmé au montage, ou invalidé après une création) n'est pas
+  // définitif : ?create= attend le chiffre relu.
+  const subscriptionSettled = state !== null || isLoadingError || (!!organizationId && !isLoading);
+  const jobQuotaKnown =
+    subscriptionSettled &&
+    (maxJobs === null || maxJobs === -1 || (jobCountLoaded && !jobCountQuery.isFetching) || jobCountQuery.isError);
   const seatsRemainingAfterInvitations = Math.max(0, seatsRemaining - pendingInvitations);
   const canInviteMember = isLoading ? true : seatsRemainingAfterInvitations > 0;
 
@@ -71,11 +90,15 @@ export const useQuotaGate = () => {
     isFree,
     limits,
     jobCount,
+    jobCountLoaded,
+    maxJobs,
     canCreateJob,
+    jobQuotaKnown,
     seatLimit,
     seatCount,
     seatsRemaining: seatsRemainingAfterInvitations,
     pendingInvitations,
+    pendingInvitationsLoaded,
     canInviteMember,
     seatLimitMessage: SEAT_LIMIT_MESSAGE,
     planName: state?.plan_name || 'Gratuit',

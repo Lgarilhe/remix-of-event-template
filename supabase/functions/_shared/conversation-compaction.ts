@@ -128,7 +128,7 @@ export async function maybeCompactConversation(
         aiAction: "context_compaction",
         usage: result.usage,
         modelId: result.model,
-        description: "Résumé de conversation du copilot",
+        description: "Résumé de conversation de l'assistant",
       });
     }
     const newSummary = (result.content || "").trim();

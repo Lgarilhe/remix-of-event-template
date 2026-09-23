@@ -14,7 +14,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
@@ -24,9 +24,13 @@ const { notificationKind, isActionable } = await import(
   `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
 );
 
-const useNotifications = read('src/hooks/useNotifications.ts');
-const useUnreadMessages = read('src/hooks/useUnreadMessageNotifications.ts');
-const dropdown = read('src/components/notifications/NotificationDropdown.tsx');
+// Lectures de la barre latérale (lot 6) : la cloche, useNotifications et le
+// compteur de messages n'existent plus (A2, D24). Aucun fichier supprimé n'est
+// lu au chargement du module, pour que l'inventaire reste testé.
+const sidebarNotifications = read('src/hooks/sidebar/useSidebarNotifications.ts');
+const sidebarRealtime = read('src/hooks/sidebar/useSidebarRealtime.ts');
+const todoSignal = read('src/hooks/sidebar/useTodoSignal.ts');
+const dashboard = read('src/pages/Dashboard.tsx');
 
 // ---------------------------------------------------------------- Inventaire
 // Une ligne par écriture de la table notifications, avec les valeurs réellement
@@ -109,49 +113,46 @@ test('classement — les messages ne sont pas des actions (compteur à part)', (
 });
 
 // ---------------------------------------------------------------- Périmètre
-test('périmètre — liste, « tout marquer lu » et temps réel limités à l’organisation active', () => {
-  assert.match(useNotifications, /organization_id\.eq\.\$\{organizationId\},organization_id\.is\.null/);
-  const filtres = useNotifications.match(/\.or\(notificationOrgFilter\(organizationId\)\)/g) ?? [];
-  assert.ok(filtres.length >= 2, 'la lecture et « tout marquer lu » doivent filtrer par organisation');
-  const markAll = useNotifications.slice(useNotifications.indexOf('const markAllAsRead'));
+test('périmètre — lectures et « tout marquer lu » limités à l’organisation active', () => {
+  const filtres = sidebarNotifications.match(/\.or\(notificationOrgFilter\(organizationId\)\)/g) ?? [];
+  assert.ok(filtres.length >= 3, 'Réponses, Pour vous et « tout marquer lu » doivent filtrer par organisation');
+  const markAll = sidebarNotifications.slice(sidebarNotifications.indexOf('const markAllForYouRead'));
   assert.match(markAll, /\.or\(notificationOrgFilter\(organizationId\)\)/);
-  assert.match(useNotifications, /if \(!isInActiveOrg\(newNotif, organizationId\)\) return;/);
+  // Le temps réel invalide les lectures, qui filtrent déjà : aucune ligne
+  // reçue par le canal n'est insérée telle quelle, d'où l'absence de garde
+  // isInActiveOrg dans le hook.
+  assert.doesNotMatch(sidebarNotifications, /isInActiveOrg/);
+  assert.doesNotMatch(sidebarRealtime, /setQueryData/);
+  assert.match(sidebarRealtime, /invalidateQueries/);
 });
 
-test('périmètre — le compteur de messages suit la même règle', () => {
-  assert.match(useUnreadMessages, /\.or\(notificationOrgFilter\(organizationId\)\)/);
-  const gardes = useUnreadMessages.match(/isInActiveOrg\(row, organizationId\)/g) ?? [];
-  assert.equal(gardes.length, 2, 'INSERT et UPDATE doivent vérifier l’organisation');
-  assert.match(useUnreadMessages, /\[isReady, user, orgLoading, organizationId\]/);
+test('périmètre — le compteur du tableau de bord lit les Réponses de la barre', () => {
+  assert.doesNotMatch(dashboard, /useUnreadMessageNotifications/);
+  assert.match(dashboard, /useSidebarNotifications\(\)/);
+  assert.match(dashboard, /candidates\.filter\(\(c\) => c\.counted\)\.length : null/);
 });
 
 // ---------------------------------------------------------------- Pannes
-test('panne — une erreur de lecture garde la liste et remonte un état error', () => {
-  const fetchFn = useNotifications.slice(
-    useNotifications.indexOf('const fetchNotifications'),
-    useNotifications.indexOf('useEffect(', useNotifications.indexOf('const fetchNotifications')),
-  );
-  assert.match(fetchFn, /if \(fetchError\) throw fetchError;/, 'l’erreur PostgREST ne doit plus être ignorée');
-  const catchBlock = fetchFn.slice(fetchFn.indexOf('} catch (err) {'), fetchFn.indexOf('} finally {'));
-  assert.match(catchBlock, /setError\(/);
-  assert.doesNotMatch(catchBlock, /^\s*setNotifications\(\[\]\);/m, 'une panne ne doit pas vider la liste');
-  assert.match(useNotifications, /\n\s+error,\n/, 'le hook doit exposer error');
+test('panne — une erreur de lecture remonte au lieu d’être ignorée', () => {
+  const erreurs = sidebarNotifications.match(/if \(error\) throw error;/g) ?? [];
+  assert.ok(erreurs.length >= 2, 'Réponses et Pour vous lèvent l’erreur PostgREST');
+  assert.doesNotMatch(sidebarNotifications, /placeholderData/);
 });
 
 test('panne — rechargement à la reconnexion, au retour du réseau et sur l’onglet', () => {
-  assert.match(useNotifications, /status === 'SUBSCRIBED' && isMounted\) void fetchNotifications\(\)/);
-  assert.match(useNotifications, /addEventListener\('online', reload\)/);
-  assert.match(useNotifications, /addEventListener\('visibilitychange', onVisibilityChange\)/);
+  assert.match(sidebarRealtime, /status !== 'SUBSCRIBED'/);
+  assert.match(sidebarRealtime, /addEventListener\('online', catchUp\)/);
+  assert.match(sidebarRealtime, /addEventListener\('visibilitychange', onVisibilityChange\)/);
 });
 
-test('panne — la cloche propose « Réessayer » au lieu de « Aucune notification »', () => {
-  assert.match(dropdown, /Réessayer/);
-  assert.match(dropdown, /onClick=\{\(\) => void refresh\(\)\}/);
-  assert.match(dropdown, /notifications\.length === 0 && !error \?/);
+// ---------------------------------------------------------------- Cloche retirée
+test('la cloche n’existe plus', () => {
+  assert.equal(existsSync(new URL('../../src/components/notifications/NotificationDropdown.tsx', import.meta.url)), false);
+  assert.doesNotMatch(read('src/components/AppHeader.tsx'), /NotificationDropdown/);
 });
 
-test('compteur d’actions exposé sans changer le badge de la cloche', () => {
-  assert.match(useNotifications, /actionUnreadCount/);
-  assert.match(useNotifications, /!n\.read_at && n\.type !== 'new_message'/, 'le badge garde sa règle actuelle');
-  assert.doesNotMatch(dropdown, /actionUnreadCount/);
+test('le chiffre d’actions passe par todoCount', () => {
+  assert.match(todoSignal, /todoCount\(/);
+  assert.match(todoSignal, /forYouActionCount: \{ status: forYou\.status, data: forYou\.data\?\.actions\.length \}/);
+  assert.match(sidebarNotifications, /actions: rows\.filter\(\(n\) => isActionable\(n\)\)/);
 });

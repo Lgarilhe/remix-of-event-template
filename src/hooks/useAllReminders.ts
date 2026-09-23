@@ -137,6 +137,8 @@ export function useAllReminders({ scope = 'mine' }: { scope?: TaskScope } = {}) 
         r.id === reminder.id ? { ...r, completed_at: nextCompletedAt } : r,
       ),
     );
+    // Chiffre gris de la barre (tâches en retard) : clé à part, non couverte par setQueryData.
+    void qc.invalidateQueries({ queryKey: ['all-reminders', 'overdue-count'] });
 
     toast.success(nextCompletedAt ? 'Tâche terminée' : 'Tâche réactivée');
   }, [qc]);
@@ -155,6 +157,7 @@ export function useAllReminders({ scope = 'mine' }: { scope?: TaskScope } = {}) 
     qc.setQueryData<Reminder[]>(['all-reminders'], (prev) =>
       (prev ?? []).filter((r) => r.id !== reminderId),
     );
+    void qc.invalidateQueries({ queryKey: ['all-reminders', 'overdue-count'] });
     toast.success('Tâche supprimée');
   }, [qc]);
 

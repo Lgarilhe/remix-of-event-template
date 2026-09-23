@@ -72,7 +72,17 @@ export interface UpdateProjectInput {
   hunt_status?: string | null;
 }
 
-export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
+export interface SourcingProjectsOptions {
+  /** Relecture périodique posée par cet observateur (la barre latérale : 5 min). */
+  refetchInterval?: number;
+  /** Combiné par ET avec la condition existante (session et organisation prêtes). */
+  enabled?: boolean;
+}
+
+export const useSourcingProjects = (
+  kind: 'mission' | 'search' = 'mission',
+  options?: SourcingProjectsOptions,
+) => {
   const queryClient = useQueryClient();
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
@@ -81,7 +91,7 @@ export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
   // Use useSourcingProject(id) to fetch a single project with all fields.
   // Filtré par kind : les missions et les recherches autonomes (/sourcing)
   // partagent la table mais jamais les listes.
-  const { data: projects = [], isLoading, error, refetch } = useQuery({
+  const query = useQuery({
     queryKey: ['sourcing-projects', organizationId, user?.id, kind],
     queryFn: async () => {
       if (!user) throw new Error('Not authenticated');
@@ -96,10 +106,12 @@ export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
       if (error) throw error;
       return data as SourcingProject[];
     },
-    enabled: isReady && !!user && !!organizationId,
+    enabled: isReady && !!user && !!organizationId && (options?.enabled ?? true),
+    refetchInterval: options?.refetchInterval,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes cache
   });
+  const { data: projects = [], isLoading, error, refetch } = query;
 
   // Create project mutation
   const createMutation = useMutation({
@@ -123,6 +135,8 @@ export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+      // Compte du plafond de missions (useQuotaGate) : création, fin ou archivage le changent.
+      queryClient.invalidateQueries({ queryKey: ['quota-job-count'] });
       toast.success(data?.kind === 'search' ? 'Recherche créée' : 'Projet créé avec succès');
     },
     onError: (err: Error) => {
@@ -158,6 +172,8 @@ export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+      // Compte du plafond de missions (useQuotaGate) : création, fin ou archivage le changent.
+      queryClient.invalidateQueries({ queryKey: ['quota-job-count'] });
       if (data?.id) {
         queryClient.invalidateQueries({ queryKey: ['sourcing-project', data.id] });
       }
@@ -179,6 +195,7 @@ export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['quota-job-count'] });
       toast.success('Projet supprimé');
     },
     onError: (err: Error) => {
@@ -221,6 +238,12 @@ export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
     isLoading,
     error,
     refetch,
+    // `projects` vaut [] tant que rien n'est reçu (et quand la requête est
+    // désactivée) : hasData distingue « pas encore de données » d'une liste vide.
+    hasData: query.data !== undefined,
+    isError: query.isError,
+    // 'paused' : hors ligne, la requête attend le réseau (ni chargement ni erreur).
+    fetchStatus: query.fetchStatus,
     createProject: createMutation.mutateAsync,
     updateProject: updateMutation.mutateAsync,
     deleteProject: deleteMutation.mutateAsync,
@@ -233,6 +256,39 @@ export const useSourcingProjects = (kind: 'mission' | 'search' = 'mission') => {
   };
 };
 
+/**
+ * Options de la fiche complète d'une mission (clé ['sourcing-project', id]).
+ * Seule queryFn de cette clé : useSourcingProject l'utilise, et la barre
+ * latérale la lit avec `enabled: false` (jamais skipToken : ses options sont
+ * recopiées dans la requête partagée, et une invalidation déclenchée par la
+ * page relancerait sinon une requête sans queryFn).
+ */
+export function sourcingProjectQueryOptions(projectId: string, userId: string | null): {
+  queryKey: ['sourcing-project', string];
+  queryFn: () => Promise<SourcingProject | null>;
+  staleTime: number;
+  gcTime: number;
+} {
+  return {
+    queryKey: ['sourcing-project', projectId],
+    queryFn: async () => {
+      if (!projectId) return null;
+      if (!userId) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('sourcing_projects')
+        .select('*')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as SourcingProject | null;
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes cache
+  };
+}
+
 // Hook to get a single project with all fields (including job_details and filters_snapshot)
 //
 // Realtime : subscribes to UPDATE events on this row and invalidates the React
@@ -244,23 +300,8 @@ export const useSourcingProject = (projectId: string | null | undefined) => {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ['sourcing-project', projectId],
-    queryFn: async () => {
-      if (!projectId) return null;
-      if (!user) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('sourcing_projects')
-        .select('*')
-        .eq('id', projectId)
-        .maybeSingle();
-
-      if (error) throw error;
-      return data as SourcingProject | null;
-    },
+    ...sourcingProjectQueryOptions(projectId ?? '', user?.id ?? null),
     enabled: isReady && !!user && !!projectId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 30 * 60 * 1000, // 30 minutes cache
   });
 
   // Realtime invalidation on row UPDATE (filters_snapshot, job_details, status, ...)
@@ -279,6 +320,7 @@ export const useSourcingProject = (projectId: string | null | undefined) => {
         () => {
           queryClient.invalidateQueries({ queryKey: ['sourcing-project', projectId] });
           queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+          queryClient.invalidateQueries({ queryKey: ['quota-job-count'] });
         },
       )
       .subscribe();

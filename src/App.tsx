@@ -194,7 +194,7 @@ const AppContent = () => {
       </Suspense>
       {/* AgentDrawer wrapped in error boundary — un crash du chat IA ne doit
           pas faire planter toute l'app (audit I8). */}
-      <SectionErrorBoundary fallbackTitle="Erreur dans le copilot IA">
+      <SectionErrorBoundary fallbackTitle="Erreur dans l'assistant">
         <AgentDrawer />
       </SectionErrorBoundary>
       {/* NavigationPalette — Cmd+J / Ctrl+J pour navigation rapide + actions */}

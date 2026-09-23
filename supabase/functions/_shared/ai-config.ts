@@ -195,7 +195,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   },
   conversation_title: {
     action: "conversation_title",
-    label: "Copilot — titre de conversation",
+    label: "Assistant, titre de conversation",
     floor: 1,
     typicalTokens: 1_000,
     routingTier: "fast",
@@ -205,7 +205,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   },
   intent_routing: {
     action: "intent_routing",
-    label: "Copilot — routage d'intention",
+    label: "Assistant, routage d'intention",
     floor: 1,
     typicalTokens: 2_000,
     routingTier: "fast",
@@ -215,7 +215,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   },
   context_compaction: {
     action: "context_compaction",
-    label: "Copilot — résumé de conversation",
+    label: "Assistant, résumé de conversation",
     floor: 1,
     typicalTokens: 4_000,
     routingTier: "fast",
@@ -225,7 +225,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   },
   memory_extract: {
     action: "memory_extract",
-    label: "Copilot — mémorisation",
+    label: "Assistant, mémorisation",
     floor: 1,
     typicalTokens: 3_000,
     routingTier: "fast",
@@ -244,7 +244,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   },
   agent_chat: {
     action: "agent_chat",
-    label: "Copilot — chat (par message)",
+    label: "Assistant, chat (par message)",
     floor: 1,
     typicalTokens: 2_500,
     routingTier: "thinking",

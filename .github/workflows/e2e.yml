@@ -131,6 +131,16 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/member_quotas_self_service.sql -c 'ROLLBACK;'
 
+      # Barre latérale, lot 5 : épingles de missions (job_favorites). Une seule
+      # policy « mes lignes », plus de lecture entre collègues, unicité
+      # (user_id, job_id). Même forme que les audits précédents.
+      - name: Audit épingles de missions (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/job_favorites_audit.sql -c 'ROLLBACK;'
+
       - name: Build front
         run: npm run build
         env:

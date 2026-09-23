@@ -984,7 +984,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
           <Sparkles className="w-3 h-3 text-white" strokeWidth={2.5} />
         </div>
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-          {analyzing ? 'Copilot analyse…' : analysis ? 'Copilot a détecté' : 'Copilot prêt'}
+          {analyzing ? "L'assistant analyse…" : analysis ? "L'assistant a détecté" : 'Assistant prêt'}
         </p>
         {analyzing && (
           <div className="flex items-end gap-0.5 h-3 ml-auto" style={{ color: 'hsl(330 81% 70%)' }}>

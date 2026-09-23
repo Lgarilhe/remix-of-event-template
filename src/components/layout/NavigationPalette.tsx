@@ -123,7 +123,7 @@ export function NavigationPalette() {
             </CommandItem>
             <CommandItem onSelect={() => go('/calendar')}>
               <CalendarIcon className="mr-2 h-4 w-4" aria-hidden="true" />
-              Calendrier
+              Agenda
               <CommandShortcut>G E</CommandShortcut>
             </CommandItem>
             <CommandItem onSelect={() => go('/tasks')}>
@@ -133,12 +133,12 @@ export function NavigationPalette() {
             </CommandItem>
             <CommandItem onSelect={() => go('/inbox')}>
               <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
-              Messages
+              Messagerie
               <CommandShortcut>G C</CommandShortcut>
             </CommandItem>
             <CommandItem onSelect={() => go('/agents')}>
               <Bot className="mr-2 h-4 w-4" aria-hidden="true" />
-              Agents IA
+              Assistant
               <CommandShortcut>G I</CommandShortcut>
             </CommandItem>
           </CommandGroup>
@@ -146,7 +146,7 @@ export function NavigationPalette() {
           <CommandGroup heading="Actions">
             <CommandItem onSelect={() => run(() => toggleAgent())}>
               <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
-              Ouvrir le copilot IA
+              Ouvrir l'assistant
               <CommandShortcut>{isMac ? '⌘K' : 'Ctrl K'}</CommandShortcut>
             </CommandItem>
             {canCreateTask && (
