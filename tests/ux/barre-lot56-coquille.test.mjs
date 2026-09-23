@@ -298,15 +298,52 @@ test('B-C14 — en-tête : chiffre sur le bouton du menu, téléphone seulement'
 });
 
 // ---------------------------------------------------------------- B-C15
-test('B-C15 — cibles de 44 px sur téléphone', () => {
-  for (const rel of [
-    'src/components/sidebar/SidebarRow.tsx',
-    'src/components/sidebar/SidebarTabs.tsx',
-    'src/components/sidebar/SidebarBottomRow.tsx',
-    'src/components/sidebar/missions/MissionNavRow.tsx',
-  ]) {
-    assert.ok(read(rel).includes('min-h-11'), `${rel} : min-h-11 absent`);
-  }
+/** Code sans commentaires : un commentaire qui cite min-h-11 ne pose aucune classe. */
+const codeOnly = (src) => src
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+
+/** Littéraux de chaîne, lus de gauche à droite (une apostrophe dans "…" n'ouvre rien). */
+const literalsOf = (code) =>
+  [...code.matchAll(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g)].map((m) => m[0].slice(1, -1));
+
+const classesOf = (literal) => literal.split(/\s+/).filter(Boolean);
+
+/** Classes posées par l'initialiseur d'une constante (jusqu'au premier « ; »). */
+const constantClasses = (code, name) => {
+  const m = code.match(new RegExp(`\\bconst ${name}\\s*=([^;]*);`));
+  assert.ok(m, `constante ${name} introuvable`);
+  return literalsOf(m[1]).flatMap(classesOf);
+};
+
+/** Littéraux qui posent la classe `cls` (classe entière, pas un préfixe md: ni [&_button]:). */
+const literalsWithClass = (code, cls) => literalsOf(code).filter((l) => classesOf(l).includes(cls));
+
+test('B-C15 — cibles de 44 px sur téléphone, dans les classes du code', () => {
+  // SidebarRow : cible principale (lien, bouton) et tout bouton de l'action.
+  const row = codeOnly(read('src/components/sidebar/SidebarRow.tsx'));
+  assert.ok(constantClasses(row, 'TARGET_CLASS').includes('min-h-11'), 'SidebarRow : TARGET_CLASS sans min-h-11');
+  assert.ok(countOf(row, 'cn(TARGET_CLASS') >= 2, 'SidebarRow : lien et bouton sans TARGET_CLASS');
+  assert.ok(
+    literalsOf(row).some((l) => classesOf(l).includes('[&_button]:min-h-11') && classesOf(l).includes('[&_button]:min-w-11')),
+    'SidebarRow : boutons de l\'action sans [&_button]:min-h-11 [&_button]:min-w-11',
+  );
+
+  // MissionNavRow : épingle et chevron (ICON_BUTTON_CLASS), nom de la mission, vues.
+  const nav = codeOnly(read('src/components/sidebar/missions/MissionNavRow.tsx'));
+  const iconButton = constantClasses(nav, 'ICON_BUTTON_CLASS');
+  assert.ok(iconButton.includes('min-h-11') && iconButton.includes('min-w-11'), 'MissionNavRow : ICON_BUTTON_CLASS sans min-h-11 min-w-11');
+  assert.ok(countOf(nav, 'ICON_BUTTON_CLASS') >= 3, 'MissionNavRow : épingle et chevron sans ICON_BUTTON_CLASS');
+  assert.ok(literalsWithClass(nav, 'min-h-11').length >= 3, 'MissionNavRow : moins de trois classes min-h-11');
+
+  // Onglets.
+  assert.ok(literalsWithClass(codeOnly(tabsTsx), 'min-h-11').length >= 1, 'SidebarTabs : aucune classe min-h-11');
+
+  // Rangée basse : les quatre liens et l'Aide partagent targetClass.
+  const bottom = codeOnly(bottomRow);
+  const target = constantClasses(bottom, 'targetClass');
+  assert.ok(target.includes('min-h-11') && target.includes('min-w-11'), 'SidebarBottomRow : targetClass sans min-h-11 min-w-11');
+  assert.ok((bottom.match(/\btargetClass\b/g) ?? []).length >= 3, 'SidebarBottomRow : liens et Aide sans targetClass');
 });
 
 // ---------------------------------------------------------------- B-C16
