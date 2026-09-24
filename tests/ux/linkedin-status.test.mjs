@@ -43,13 +43,13 @@ const caseBlock = (name) => {
 
 // ------------------------------------------------------ classifyLinkedInStatus
 test('R6 — statuts « actif » : OK et statuts d\'événement, sans tenir compte de la casse', () => {
-  for (const s of ['OK', 'ok', ' Ok ', 'RECONNECTED', 'SYNC_SUCCESS', 'CREATION_SUCCESS', 'CONNECTED']) {
+  for (const s of ['OK', 'ok', ' Ok ', 'RECONNECTED', 'SYNC_SUCCESS', 'CREATION_SUCCESS', 'CONNECTED', 'running']) {
     assert.equal(classifyLinkedInStatus(s), 'connected', s);
   }
 });
 
 test('R6 — statuts « à reconnecter »', () => {
-  for (const s of ['CREDENTIALS', 'ERROR', 'STOPPED', 'PERMISSIONS', 'DELETED', 'DISCONNECTED', 'CAPTCHA']) {
+  for (const s of ['CREDENTIALS', 'ERROR', 'STOPPED', 'PERMISSIONS', 'DELETED', 'DISCONNECTED', 'CAPTCHA', 'errored', 'disconnected', 'PARTIAL', 'partial']) {
     assert.equal(classifyLinkedInStatus(s), 'needs_reconnect', s);
   }
 });
@@ -59,7 +59,7 @@ test('R6 — CONNECTING : connexion en cours, jamais une panne', () => {
 });
 
 test('R6 — statut inconnu, vide ou nouveau : « unknown », jamais une panne', () => {
-  for (const s of ['UNKNOWN', 'PAUSED', 'RATE_LIMITED', '', null, undefined, 'NOUVEAU']) {
+  for (const s of ['UNKNOWN', 'PAUSED', 'RATE_LIMITED', 'DEGRADED', 'degraded', 'LOCKED', '', null, undefined, 'NOUVEAU']) {
     assert.equal(classifyLinkedInStatus(s), 'unknown', String(s));
   }
 });
@@ -245,7 +245,7 @@ test('R6 — statusLabel n\'affiche jamais le code brut', () => {
   const fn = myAccount.slice(myAccount.indexOf('function statusLabel'), myAccount.indexOf('function looksLikeUserAgent'));
   assert.ok(fn.length > 0, 'statusLabel introuvable');
   assert.doesNotMatch(fn, /default:\s*return status;/);
-  for (const code of ['PERMISSIONS', 'PAUSED', 'DISCONNECTED', 'UNKNOWN', 'RATE_LIMITED']) {
+  for (const code of ['PERMISSIONS', 'PAUSED', 'DISCONNECTED', 'UNKNOWN', 'RATE_LIMITED', 'RUNNING', 'ERRORED', 'PARTIAL', 'DEGRADED', 'LOCKED']) {
     assert.match(fn, new RegExp(`case '${code}':`), code);
   }
 });

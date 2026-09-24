@@ -77,24 +77,34 @@ export function unipileV2Fetch(
  * Événements v2 auxquels Konekt s'abonne (parité v1 + captures utiles).
  * Correspondance v1 → v2 :
  *   message_received → message.new | message_reaction → message.reaction.new
- *   message_read → message.receipt.read | new_relation → relation.new (+ relation.request.accept)
+ *   message_read → message.receipt.read | new_relation → relation.new
  *   account_status (source) → account.add / account.reconnect / account.remove /
- *     account.status.* / account.initial_sync.* | mail_received → email.new
+ *     account.status.* / account.locked / account.unlocked / account.initial_sync.*
+ *   mail_received → email.new
  *   mail_opened → tracking.open (+ tracking.click, email.new.bounce : nouveaux)
+ *
+ * Chaque valeur doit figurer dans l'enum `trigger_events` de
+ * `POST /v2/webhooks/endpoints/` (sinon la création de l'endpoint est refusée).
+ * Vérifié sur @unipile/sdk 2.48.0 (2026-09-24) : `account.status.paused` et
+ * `relation.request.accept`, présents en 2.21.0, ont été retirés par Unipile ;
+ * `account.status.degraded|partial` et `account.locked|unlocked` sont apparus.
+ * Garde-fou : tests/ux/unipile-v2-webhooks.test.mjs.
  */
 export const V2_TRIGGER_EVENTS = [
   "message.new",
   "message.reaction.new",
   "message.receipt.read",
   "relation.new",
-  "relation.request.accept",
   "account.add",
   "account.reconnect",
   "account.remove",
   "account.status.running",
-  "account.status.paused",
+  "account.status.degraded",
+  "account.status.partial",
   "account.status.disconnected",
   "account.status.errored",
+  "account.locked",
+  "account.unlocked",
   "account.initial_sync.completed",
   "account.initial_sync.failed",
   "email.new",

@@ -398,14 +398,10 @@ Deno.serve(async (req) => {
 
     // ─── Aliases API v2 (BETA) ─────────────────────────────────────────────
     // La v2 renomme les événements — on les remappe sur les handlers v1
-    // existants (dont le parsing est défensif multi-format). Particularité :
-    // account.status.{running|paused} portent le statut dans le NOM de l'event
-    // → on l'injecte dans payload.status avant remap. relation.request.accept
-    // (invitation envoyée acceptée) a la même sémantique que new_relation ;
-    // le handler est idempotent, les deux peuvent pointer dessus.
+    // existants (dont le parsing est défensif multi-format). Chaque clé doit
+    // figurer dans V2_TRIGGER_EVENTS (_shared/unipile-v2.ts).
     const V2_EVENT_ALIASES: Record<string, string> = {
       'relation.new': 'new_relation',
-      'relation.request.accept': 'new_relation',
       'message.new': 'new_message',
       'email.new': 'mail_received',
       'account.add': 'account_connected',
@@ -414,12 +410,28 @@ Deno.serve(async (req) => {
       'account.status.disconnected': 'account_disconnected',
       'account.status.errored': 'account_error',
       'account.status.running': 'account_status_updated',
-      'account.status.paused': 'account_status_updated',
+      'account.status.degraded': 'account_status_updated',
+      'account.status.partial': 'account_status_updated',
+      'account.locked': 'account_locked',
+      'account.unlocked': 'account_unlocked',
+    };
+    // account.status.{running|degraded|partial} portent le statut dans le NOM
+    // de l'événement : il fait foi et remplace un éventuel payload.status (une
+    // valeur v2 en minuscules comme 'running' n'est pas 'OK' pour les gardes
+    // d'envoi de process-sequences et process-inmail-queue).
+    // - running : compte opérationnel → OK ;
+    // - degraded : un produit (ex. Recruiter) en erreur de service, un autre
+    //   actif → DEGRADED, envois reportés d'heure en heure jusqu'au retour à OK ;
+    // - partial : un produit à réauthentifier, un autre actif → PARTIAL,
+    //   « à reconnecter » côté front (src/lib/linkedinStatus.ts).
+    const V2_STATUS_BY_EVENT: Record<string, string> = {
+      'account.status.running': 'OK',
+      'account.status.degraded': 'DEGRADED',
+      'account.status.partial': 'PARTIAL',
     };
     const v2OriginEvent = V2_EVENT_ALIASES[payload.event] ? payload.event : null;
     if (v2OriginEvent) {
-      if (v2OriginEvent === 'account.status.running') payload.status = payload.status || 'OK';
-      if (v2OriginEvent === 'account.status.paused') payload.status = payload.status || 'PAUSED';
+      if (V2_STATUS_BY_EVENT[v2OriginEvent]) payload.status = V2_STATUS_BY_EVENT[v2OriginEvent];
       payload.event = V2_EVENT_ALIASES[v2OriginEvent];
     }
 
@@ -449,7 +461,10 @@ Deno.serve(async (req) => {
       || ((payload as any).AccountStatus
           ? `${(payload as any).AccountStatus.account_id}:${(payload as any).AccountStatus.message}:${Math.floor(Date.now() / 60000)}`
           : null)
-      || `${payload.account_id || 'no-acc'}:${payload.event}:${(payload as any).chat_id || ''}:${(payload as any).user_provider_id || ''}:${Math.floor(Date.now() / 60000)}`;
+      // Nom v2 d'origine : degraded, partial et running partagent le même
+      // alias (account_status_updated) ; sans lui, un retour à running dans la
+      // même minute qu'un degraded serait écarté comme doublon.
+      || `${payload.account_id || 'no-acc'}:${v2OriginEvent || payload.event}:${(payload as any).chat_id || ''}:${(payload as any).user_provider_id || ''}:${Math.floor(Date.now() / 60000)}`;
     const eventKey = `unipile:${payload.event}:${eventIdRaw}`.slice(0, 500);
     dedupKeyForCleanup = eventKey;
     supabaseForCleanup = supabase;
@@ -719,7 +734,46 @@ Deno.serve(async (req) => {
         }
         break;
       }
-      
+
+      // API v2 : accès au compte verrouillé puis déverrouillé (drapeau is_locked,
+      // indépendant du statut). LOCKED bloque les envois comme tout statut
+      // différent de OK, sans pause ni notification : l'utilisateur n'a rien à
+      // faire. Il n'écrase pas CREDENTIALS ni ERROR, sinon le déverrouillage
+      // rendrait OK un compte à reconnecter. Le déverrouillage ne relève que
+      // les comptes encore LOCKED ; un changement de statut entre-temps a déjà
+      // posé sa propre valeur.
+      case 'account_locked':
+      case 'account_unlocked': {
+        const locking = payload.event === 'account_locked';
+        const accId = payload.account_id;
+        if (!accId) break;
+        try {
+          const linkedinUpdate = supabase
+            .from('member_linkedin_accounts')
+            .update({ account_status: locking ? 'LOCKED' : 'OK', last_checked_at: new Date().toISOString() })
+            .eq('linkedin_account_id', accId);
+          const emailUpdate = supabase
+            .from('member_email_accounts')
+            .update({ account_status: locking ? 'LOCKED' : 'OK' })
+            .eq('email_account_id', accId);
+          const results = locking
+            ? await Promise.all([
+                linkedinUpdate.or('account_status.is.null,account_status.not.in.(CREDENTIALS,ERROR)'),
+                emailUpdate.or('account_status.is.null,account_status.not.in.(CREDENTIALS,ERROR)'),
+              ])
+            : await Promise.all([
+                linkedinUpdate.eq('account_status', 'LOCKED'),
+                emailUpdate.eq('account_status', 'LOCKED'),
+              ]);
+          for (const { error } of results) {
+            if (error) console.warn(`[unipile-webhook] ${payload.event} update failed:`, error.message);
+          }
+        } catch (e) {
+          console.warn(`[unipile-webhook] ${payload.event} handler failed:`, e);
+        }
+        break;
+      }
+
       default:
         console.log('[unipile-webhook] Unknown event type:', payload.event);
     }

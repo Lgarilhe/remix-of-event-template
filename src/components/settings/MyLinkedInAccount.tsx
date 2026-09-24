@@ -601,20 +601,26 @@ function LinkedInLoadError({ accountName }: { accountName?: string }) {
  * Mappe un statut Unipile brut vers un label FR lisible.
  * Liste complète selon la doc Unipile :
  *   OK, CREDENTIALS, ERROR/STOPPED, CONNECTING, CREATION_SUCCESS, RECONNECTED,
- *   SYNC_SUCCESS, DELETED + extensions (RATE_LIMITED, CAPTCHA).
+ *   SYNC_SUCCESS, DELETED + extensions (RATE_LIMITED, CAPTCHA)
+ *   + API v2 (RUNNING, ERRORED, PARTIAL, DEGRADED, LOCKED).
  */
 function statusLabel(status: string | null): string {
   if (!status) return 'Inconnu';
   const upper = status.trim().toUpperCase();
   switch (upper) {
-    case 'OK':                 return 'Actif';
+    case 'OK':
+    case 'RUNNING':            return 'Actif';
     case 'CREDENTIALS':        return 'Session LinkedIn expirée';
     case 'CONNECTING':         return 'Connexion en cours…';
     case 'CREATION_SUCCESS':   return 'Connexion réussie (sync initiale)';
     case 'RECONNECTED':        return 'Reconnecté';
     case 'SYNC_SUCCESS':       return 'Synchronisation terminée';
     case 'ERROR':
+    case 'ERRORED':
     case 'STOPPED':            return 'Erreur — arrêté';
+    case 'PARTIAL':            return 'Une partie du compte est à reconnecter';
+    case 'DEGRADED':           return 'Service LinkedIn perturbé, reprise automatique';
+    case 'LOCKED':             return 'Accès temporairement suspendu';
     case 'DELETED':            return 'Supprimé';
     case 'PERMISSIONS':        return 'Autorisations LinkedIn à renouveler';
     case 'PAUSED':             return 'En pause';
