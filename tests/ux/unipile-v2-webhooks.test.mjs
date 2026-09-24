@@ -88,11 +88,39 @@ test('v2 — le statut porté par le nom de l\'événement fait foi', () => {
   assert.match(webhook, /\$\{v2OriginEvent \|\| payload\.event\}/);
 });
 
-test('v2 — verrouillage : ne masque pas un compte à reconnecter, le déverrouillage ne relève que LOCKED', () => {
+/** Filtre PostgREST `.or('a,b')` réduit aux opérateurs utilisés ici : is.null, eq.X, in.(…), not.in.(…). */
+const matchesOr = (filter, status) => filter.split(/,(?![^(]*\))/).some((clause) => {
+  const m = clause.match(/^account_status\.(not\.)?(is|eq|in)\.(.+)$/);
+  assert.ok(m, `clause non gérée : ${clause}`);
+  const [, not, op, arg] = m;
+  let hit;
+  if (op === 'is') hit = arg === 'null' ? status === null : false;
+  else if (op === 'eq') hit = status === arg;
+  else hit = status !== null && arg.replace(/^\(|\)$/g, '').split(',').includes(status);
+  // SQL : NOT (NULL IN (…)) reste NULL, donc faux
+  return not ? (status !== null && !hit) : hit;
+});
+
+test('v2 — verrouillage puis déverrouillage rend exactement le statut d\'avant', () => {
   const start = webhook.indexOf("case 'account_locked':");
   assert.ok(start >= 0, 'case account_locked introuvable');
   const block = webhook.slice(start, webhook.indexOf('\n      default:', start));
   assert.match(block, /case 'account_unlocked':/);
-  assert.equal((block.match(/account_status\.not\.in\.\(CREDENTIALS,ERROR\)/g) || []).length, 2, 'garde sur les deux tables');
-  assert.equal((block.match(/\.eq\('account_status', 'LOCKED'\)/g) || []).length, 2, 'déverrouillage limité à LOCKED');
+  const lockFilters = [...block.matchAll(/Update\.or\('([^']+)'\)/g)].map((m) => m[1]);
+  assert.equal(lockFilters.length, 2, 'garde sur les deux tables');
+  assert.equal(new Set(lockFilters).size, 1, 'même garde sur les deux tables');
+  assert.equal((block.match(/Update\.eq\('account_status', 'LOCKED'\)/g) || []).length, 2, 'déverrouillage limité à LOCKED');
+
+  const lock = (status) => (matchesOr(lockFilters[0], status) ? 'LOCKED' : status);
+  const unlock = (status) => (status === 'LOCKED' ? 'OK' : status);
+  for (const status of ['OK', 'CREDENTIALS', 'ERROR', 'PARTIAL', 'DEGRADED', 'CONNECTING', 'STOPPED', 'PERMISSIONS']) {
+    assert.equal(unlock(lock(status)), status, `${status} → verrouillé → déverrouillé`);
+  }
+  assert.equal(lock('OK'), 'LOCKED', 'un compte actif est bien bloqué');
+  assert.equal(lock(null), 'LOCKED', 'une liaison sans statut est bien bloquée');
+});
+
+test('v2 — dédoublonnage : identifiant evt_ retenu seulement s\'il en a la forme', () => {
+  assert.match(webhook, /v\.startsWith\('evt_'\)/);
+  assert.match(webhook, /v2OriginEvent && v2EventId \? `\$\{payload\.account_id \|\| 'no-acc'\}:\$\{v2OriginEvent\}:\$\{v2EventId\}`/);
 });

@@ -430,6 +430,13 @@ Deno.serve(async (req) => {
       'account.status.partial': 'PARTIAL',
     };
     const v2OriginEvent = V2_EVENT_ALIASES[payload.event] ? payload.event : null;
+    // Le schéma des payloads v2 n'est pas documenté : l'identifiant d'événement
+    // (préfixe evt_, cf. GET /v2/webhooks/conversations/) n'est retenu que s'il
+    // en a la forme.
+    const v2EventId = v2OriginEvent
+      ? [(rawPayload as any).event_id, (rawPayload as any).id]
+          .find((v): v is string => typeof v === 'string' && v.startsWith('evt_')) ?? null
+      : null;
     if (v2OriginEvent) {
       if (V2_STATUS_BY_EVENT[v2OriginEvent]) payload.status = V2_STATUS_BY_EVENT[v2OriginEvent];
       payload.event = V2_EVENT_ALIASES[v2OriginEvent];
@@ -441,6 +448,7 @@ Deno.serve(async (req) => {
     // métadonnées structurelles de l'event.
     console.log('[unipile-webhook] event:', payload.event,
       'v2_origin:', v2OriginEvent,
+      'v2_evt:', v2EventId,
       'account:', payload.account_id,
       'chat:', (payload as any).chat_id ?? null,
       'msg:', (payload as any).message_id ?? null,
@@ -461,6 +469,11 @@ Deno.serve(async (req) => {
       || ((payload as any).AccountStatus
           ? `${(payload as any).AccountStatus.account_id}:${(payload as any).AccountStatus.message}:${Math.floor(Date.now() / 60000)}`
           : null)
+      // Identifiant d'événement v2 (evt_…, commun à toutes les tentatives d'un
+      // même événement) quand le payload le porte : dédoublonnage exact, sans
+      // fenêtre à la minute qui écarterait un retour running → degraded →
+      // running rapide.
+      || (v2OriginEvent && v2EventId ? `${payload.account_id || 'no-acc'}:${v2OriginEvent}:${v2EventId}` : null)
       // Nom v2 d'origine : degraded, partial et running partagent le même
       // alias (account_status_updated) ; sans lui, un retour à running dans la
       // même minute qu'un degraded serait écarté comme doublon.
@@ -738,10 +751,10 @@ Deno.serve(async (req) => {
       // API v2 : accès au compte verrouillé puis déverrouillé (drapeau is_locked,
       // indépendant du statut). LOCKED bloque les envois comme tout statut
       // différent de OK, sans pause ni notification : l'utilisateur n'a rien à
-      // faire. Il n'écrase pas CREDENTIALS ni ERROR, sinon le déverrouillage
-      // rendrait OK un compte à reconnecter. Le déverrouillage ne relève que
-      // les comptes encore LOCKED ; un changement de statut entre-temps a déjà
-      // posé sa propre valeur.
+      // faire. Le verrouillage ne touche qu'un compte OK (ou sans statut) et le
+      // déverrouillage ne relève que LOCKED : l'aller-retour est exact. Un
+      // compte déjà bloqué (CREDENTIALS, PARTIAL, DEGRADED…) garde son statut,
+      // sinon le déverrouillage le rendrait OK et les envois repartiraient.
       case 'account_locked':
       case 'account_unlocked': {
         const locking = payload.event === 'account_locked';
@@ -758,8 +771,8 @@ Deno.serve(async (req) => {
             .eq('email_account_id', accId);
           const results = locking
             ? await Promise.all([
-                linkedinUpdate.or('account_status.is.null,account_status.not.in.(CREDENTIALS,ERROR)'),
-                emailUpdate.or('account_status.is.null,account_status.not.in.(CREDENTIALS,ERROR)'),
+                linkedinUpdate.or('account_status.is.null,account_status.eq.OK'),
+                emailUpdate.or('account_status.is.null,account_status.eq.OK'),
               ])
             : await Promise.all([
                 linkedinUpdate.eq('account_status', 'LOCKED'),
