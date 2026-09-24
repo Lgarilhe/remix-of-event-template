@@ -3,147 +3,159 @@
 -- À exécuter DANS UNE TRANSACTION puis ROLLBACK, après la migration
 -- 20260923095813_parametres_lot1_organisation.sql :
 --   BEGIN; \i supabase/tests/org_member_emails_audit.sql; ROLLBACK;
--- Les contrôles sont accumulés ; une exception finale liste ceux en échec.
 -- Utilisateurs et organisations synthétiques (ids fixes). Le rôle de u_b dans
 -- l'organisation A évolue en cours de test : admin, membre, collaborateur.
+--
+-- Chaque appel de la fonction est une instruction de premier niveau, jouée
+-- sous le rôle authenticated, dont le résultat va dans une table temporaire.
+-- La première version appelait la fonction depuis des blocs d'exception d'un
+-- seul DO : le Postgres local de la CI s'y est arrêté net (24/09/2026), alors
+-- que la production répond. Un DO final lève une exception listant les
+-- contrôles en échec.
 -- =====================================================================
+
+CREATE TEMP TABLE emails_audit_results (n int, ok boolean, detail text) ON COMMIT DROP;
+GRANT INSERT, SELECT ON emails_audit_results TO authenticated;
+
+-- 1 à 4. Privilèges et définition.
+INSERT INTO emails_audit_results
+SELECT 1, NOT has_function_privilege('anon', 'public.get_org_member_emails(uuid)', 'EXECUTE'), 'anon peut exécuter'
+UNION ALL
+SELECT 2, NOT has_function_privilege('service_role', 'public.get_org_member_emails(uuid)', 'EXECUTE'), 'service_role peut exécuter'
+UNION ALL
+SELECT 3, has_function_privilege('authenticated', 'public.get_org_member_emails(uuid)', 'EXECUTE'), 'authenticated sans EXECUTE'
+UNION ALL
+SELECT 4, count(*) = 1, 'pas SECURITY DEFINER, ou search_path non vide'
+FROM pg_proc p
+WHERE p.oid = 'public.get_org_member_emails(uuid)'::regprocedure
+  AND p.prosecdef AND p.proconfig @> ARRAY['search_path=""'];
+
+-- Jeu de données (propriétaire = créateur, posé par handle_new_organization).
+INSERT INTO auth.users (id, email, aud, role, instance_id, raw_user_meta_data)
+VALUES ('91111111-1111-4111-8111-111111111111', 'a@emails.test', 'authenticated', 'authenticated', '00000000-0000-0000-0000-000000000000', '{}'::jsonb),
+       ('92222222-2222-4222-8222-222222222222', 'b@emails.test', 'authenticated', 'authenticated', '00000000-0000-0000-0000-000000000000', '{}'::jsonb),
+       ('93333333-3333-4333-8333-333333333333', 'c@emails.test', 'authenticated', 'authenticated', '00000000-0000-0000-0000-000000000000', '{}'::jsonb);
+INSERT INTO public.organizations (id, name, slug, created_by)
+VALUES ('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Emails Org A', 'emails-audit-a', '91111111-1111-4111-8111-111111111111'),
+       ('9bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Emails Org B', 'emails-audit-b', '93333333-3333-4333-8333-333333333333');
+INSERT INTO public.organization_members (organization_id, user_id, role)
+VALUES ('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '92222222-2222-4222-8222-222222222222', 'admin');
+
+-- ===== 5. Propriétaire de A : les e-mails de A, et rien de B =====
+SELECT set_config('request.jwt.claims', '{"sub":"91111111-1111-4111-8111-111111111111","role":"authenticated"}', true),
+       set_config('request.jwt.claim.sub', '91111111-1111-4111-8111-111111111111', true),
+       set_config('request.jwt.claim.role', 'authenticated', true);
+SET LOCAL ROLE authenticated;
+INSERT INTO emails_audit_results
+SELECT 5, coalesce(v = 'a@emails.test,b@emails.test', false), 'propriétaire de A lit ' || coalesce(v, 'rien')
+FROM (SELECT string_agg(email, ',' ORDER BY email) AS v
+      FROM public.get_org_member_emails('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')) s;
+INSERT INTO emails_audit_results
+SELECT 5, count(*) = 0, 'propriétaire de A lit ' || count(*) || ' e-mail(s) de B'
+FROM public.get_org_member_emails('9bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+RESET ROLE;
+
+-- ===== 6. u_b administrateur de A =====
+SELECT set_config('request.jwt.claims', '{"sub":"92222222-2222-4222-8222-222222222222","role":"authenticated"}', true),
+       set_config('request.jwt.claim.sub', '92222222-2222-4222-8222-222222222222', true),
+       set_config('request.jwt.claim.role', 'authenticated', true);
+SET LOCAL ROLE authenticated;
+INSERT INTO emails_audit_results
+SELECT 6, coalesce(v = 'a@emails.test,b@emails.test', false), 'admin de A lit ' || coalesce(v, 'rien')
+FROM (SELECT string_agg(email, ',' ORDER BY email) AS v
+      FROM public.get_org_member_emails('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')) s;
+INSERT INTO emails_audit_results
+SELECT 6, count(*) = 0, 'admin de A lit ' || count(*) || ' e-mail(s) de B'
+FROM public.get_org_member_emails('9bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+RESET ROLE;
+
+-- u_b devient membre simple de A (claims vides : enforce_role_hierarchy
+-- ne bloque que le rôle owner).
+SELECT set_config('request.jwt.claims', '', true),
+       set_config('request.jwt.claim.sub', '', true),
+       set_config('request.jwt.claim.role', '', true);
+UPDATE public.organization_members SET role = 'member'
+WHERE organization_id = '9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' AND user_id = '92222222-2222-4222-8222-222222222222';
+
+-- ===== 7. u_b membre simple de A =====
+SELECT set_config('request.jwt.claims', '{"sub":"92222222-2222-4222-8222-222222222222","role":"authenticated"}', true),
+       set_config('request.jwt.claim.sub', '92222222-2222-4222-8222-222222222222', true),
+       set_config('request.jwt.claim.role', 'authenticated', true);
+SET LOCAL ROLE authenticated;
+INSERT INTO emails_audit_results
+SELECT 7, coalesce(v = 'a@emails.test,b@emails.test', false), 'membre de A lit ' || coalesce(v, 'rien')
+FROM (SELECT string_agg(email, ',' ORDER BY email) AS v
+      FROM public.get_org_member_emails('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')) s;
+INSERT INTO emails_audit_results
+SELECT 7, count(*) = 0, 'membre de A lit ' || count(*) || ' e-mail(s) de B'
+FROM public.get_org_member_emails('9bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+RESET ROLE;
+
+SELECT set_config('request.jwt.claims', '', true),
+       set_config('request.jwt.claim.sub', '', true),
+       set_config('request.jwt.claim.role', '', true);
+UPDATE public.organization_members SET role = 'collaborator'
+WHERE organization_id = '9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' AND user_id = '92222222-2222-4222-8222-222222222222';
+
+-- ===== 8. u_b collaborateur externe de A : rien, sans erreur =====
+SELECT set_config('request.jwt.claims', '{"sub":"92222222-2222-4222-8222-222222222222","role":"authenticated"}', true),
+       set_config('request.jwt.claim.sub', '92222222-2222-4222-8222-222222222222', true),
+       set_config('request.jwt.claim.role', 'authenticated', true);
+SET LOCAL ROLE authenticated;
+INSERT INTO emails_audit_results
+SELECT 8, count(*) = 0, 'un collaborateur lit ' || count(*) || ' e-mail(s)'
+FROM public.get_org_member_emails('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+RESET ROLE;
+
+-- ===== 9. Propriétaire de B, étranger à A : rien de A ; les siens, oui =====
+SELECT set_config('request.jwt.claims', '{"sub":"93333333-3333-4333-8333-333333333333","role":"authenticated"}', true),
+       set_config('request.jwt.claim.sub', '93333333-3333-4333-8333-333333333333', true),
+       set_config('request.jwt.claim.role', 'authenticated', true);
+SET LOCAL ROLE authenticated;
+INSERT INTO emails_audit_results
+SELECT 9, count(*) = 0, 'un étranger lit ' || count(*) || ' e-mail(s) de A'
+FROM public.get_org_member_emails('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+INSERT INTO emails_audit_results
+SELECT 9, coalesce(v = 'c@emails.test', false), 'propriétaire de B lit ' || coalesce(v, 'rien')
+FROM (SELECT string_agg(email, ',' ORDER BY email) AS v
+      FROM public.get_org_member_emails('9bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')) s;
+RESET ROLE;
+
+-- ===== 10. Anonyme : appel refusé (pas d'EXECUTE) =====
+-- Le refus a lieu au contrôle du privilège, avant toute exécution de la
+-- fonction ; le bloc d'exception ne sert qu'à le constater.
+SELECT set_config('request.jwt.claims', '{"role":"anon"}', true),
+       set_config('request.jwt.claim.sub', '', true),
+       set_config('request.jwt.claim.role', 'anon', true);
 DO $$
 DECLARE
-  u_a uuid := '91111111-1111-4111-8111-111111111111';  -- propriétaire de A
-  u_b uuid := '92222222-2222-4222-8222-222222222222';  -- admin, puis membre, puis collaborateur de A
-  u_c uuid := '93333333-3333-4333-8333-333333333333';  -- propriétaire de B, étranger à A
-  org_a uuid := '9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-  org_b uuid := '9bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-  claims_a text := json_build_object('sub', u_a, 'role', 'authenticated')::text;
-  claims_b text := json_build_object('sub', u_b, 'role', 'authenticated')::text;
-  claims_c text := json_build_object('sub', u_c, 'role', 'authenticated')::text;
-  fn regprocedure := 'public.get_org_member_emails(uuid)'::regprocedure;
-  -- E-mails attendus pour A, triés : propriétaire et u_b.
-  emails_a text := 'a@emails.test,b@emails.test';
-  v_list text;
-  n int;
-  failures text := '';
+  refused boolean := false;
 BEGIN
-  -- 1 à 4. Privilèges et définition.
-  IF has_function_privilege('anon', fn, 'EXECUTE') THEN failures := failures || '[1 : anon peut exécuter] '; END IF;
-  IF has_function_privilege('service_role', fn, 'EXECUTE') THEN failures := failures || '[2 : service_role peut exécuter] '; END IF;
-  IF NOT has_function_privilege('authenticated', fn, 'EXECUTE') THEN failures := failures || '[3 : authenticated sans EXECUTE] '; END IF;
-  SELECT count(*) INTO n FROM pg_proc p
-   WHERE p.oid = fn AND p.prosecdef AND p.proconfig @> ARRAY['search_path=""'];
-  IF n <> 1 THEN failures := failures || '[4 : pas SECURITY DEFINER, ou search_path non vide] '; END IF;
-
-  -- Jeu de données (propriétaire = créateur, posé par handle_new_organization).
-  INSERT INTO auth.users (id, email, aud, role, instance_id, raw_user_meta_data)
-  VALUES (u_a, 'a@emails.test', 'authenticated', 'authenticated', '00000000-0000-0000-0000-000000000000', '{}'::jsonb),
-         (u_b, 'b@emails.test', 'authenticated', 'authenticated', '00000000-0000-0000-0000-000000000000', '{}'::jsonb),
-         (u_c, 'c@emails.test', 'authenticated', 'authenticated', '00000000-0000-0000-0000-000000000000', '{}'::jsonb);
-  INSERT INTO public.organizations (id, name, slug, created_by)
-  VALUES (org_a, 'Emails Org A', 'emails-audit-a', u_a), (org_b, 'Emails Org B', 'emails-audit-b', u_c);
-  INSERT INTO public.organization_members (organization_id, user_id, role) VALUES (org_a, u_b, 'admin');
-
-  -- ===== Propriétaire de A =====
-  PERFORM set_config('request.jwt.claims', claims_a, true);
-  PERFORM set_config('request.jwt.claim.sub', u_a::text, true);
-  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
-  SET LOCAL ROLE authenticated;
-  -- 5. Les e-mails de A, et rien de B.
-  BEGIN
-    SELECT string_agg(email, ',' ORDER BY email) INTO v_list FROM public.get_org_member_emails(org_a);
-    IF v_list IS DISTINCT FROM emails_a THEN failures := failures || format('[5 : propriétaire de A lit %s] ', v_list); END IF;
-    SELECT count(*) INTO n FROM public.get_org_member_emails(org_b);
-    IF n <> 0 THEN failures := failures || format('[5 : propriétaire de A lit %s e-mail(s) de B] ', n); END IF;
-  EXCEPTION WHEN OTHERS THEN failures := failures || format('[5 : %s] ', SQLERRM);
-  END;
-  RESET ROLE;
-
-  -- ===== u_b administrateur de A =====
-  PERFORM set_config('request.jwt.claims', claims_b, true);
-  PERFORM set_config('request.jwt.claim.sub', u_b::text, true);
-  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
-  SET LOCAL ROLE authenticated;
-  -- 6. Les e-mails de A, et rien de B.
-  BEGIN
-    SELECT string_agg(email, ',' ORDER BY email) INTO v_list FROM public.get_org_member_emails(org_a);
-    IF v_list IS DISTINCT FROM emails_a THEN failures := failures || format('[6 : admin de A lit %s] ', v_list); END IF;
-    SELECT count(*) INTO n FROM public.get_org_member_emails(org_b);
-    IF n <> 0 THEN failures := failures || format('[6 : admin de A lit %s e-mail(s) de B] ', n); END IF;
-  EXCEPTION WHEN OTHERS THEN failures := failures || format('[6 : %s] ', SQLERRM);
-  END;
-  RESET ROLE;
-
-  -- u_b devient membre simple de A (claims vides : enforce_role_hierarchy
-  -- ne bloque que le rôle owner).
-  PERFORM set_config('request.jwt.claims', '', true);
-  PERFORM set_config('request.jwt.claim.sub', '', true);
-  PERFORM set_config('request.jwt.claim.role', '', true);
-  UPDATE public.organization_members SET role = 'member' WHERE organization_id = org_a AND user_id = u_b;
-
-  -- ===== u_b membre simple de A =====
-  PERFORM set_config('request.jwt.claims', claims_b, true);
-  PERFORM set_config('request.jwt.claim.sub', u_b::text, true);
-  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
-  SET LOCAL ROLE authenticated;
-  -- 7. Les e-mails de A, et rien de B.
-  BEGIN
-    SELECT string_agg(email, ',' ORDER BY email) INTO v_list FROM public.get_org_member_emails(org_a);
-    IF v_list IS DISTINCT FROM emails_a THEN failures := failures || format('[7 : membre de A lit %s] ', v_list); END IF;
-    SELECT count(*) INTO n FROM public.get_org_member_emails(org_b);
-    IF n <> 0 THEN failures := failures || format('[7 : membre de A lit %s e-mail(s) de B] ', n); END IF;
-  EXCEPTION WHEN OTHERS THEN failures := failures || format('[7 : %s] ', SQLERRM);
-  END;
-  RESET ROLE;
-
-  PERFORM set_config('request.jwt.claims', '', true);
-  PERFORM set_config('request.jwt.claim.sub', '', true);
-  PERFORM set_config('request.jwt.claim.role', '', true);
-  UPDATE public.organization_members SET role = 'collaborator' WHERE organization_id = org_a AND user_id = u_b;
-
-  -- ===== u_b collaborateur de A =====
-  PERFORM set_config('request.jwt.claims', claims_b, true);
-  PERFORM set_config('request.jwt.claim.sub', u_b::text, true);
-  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
-  SET LOCAL ROLE authenticated;
-  -- 8. Collaborateur externe : rien, sans erreur.
-  BEGIN
-    SELECT count(*) INTO n FROM public.get_org_member_emails(org_a);
-    IF n <> 0 THEN failures := failures || format('[8 : un collaborateur lit %s e-mail(s)] ', n); END IF;
-  EXCEPTION WHEN OTHERS THEN failures := failures || format('[8 : %s] ', SQLERRM);
-  END;
-  RESET ROLE;
-
-  -- ===== Propriétaire de B, étranger à A =====
-  PERFORM set_config('request.jwt.claims', claims_c, true);
-  PERFORM set_config('request.jwt.claim.sub', u_c::text, true);
-  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
-  SET LOCAL ROLE authenticated;
-  -- 9. Rien de A, sans erreur ; ses propres e-mails, oui.
-  BEGIN
-    SELECT count(*) INTO n FROM public.get_org_member_emails(org_a);
-    IF n <> 0 THEN failures := failures || format('[9 : un étranger lit %s e-mail(s) de A] ', n); END IF;
-    SELECT string_agg(email, ',' ORDER BY email) INTO v_list FROM public.get_org_member_emails(org_b);
-    IF v_list IS DISTINCT FROM 'c@emails.test' THEN failures := failures || format('[9 : propriétaire de B lit %s] ', v_list); END IF;
-  EXCEPTION WHEN OTHERS THEN failures := failures || format('[9 : %s] ', SQLERRM);
-  END;
-  RESET ROLE;
-
-  -- ===== Anonyme =====
-  PERFORM set_config('request.jwt.claims', json_build_object('role', 'anon')::text, true);
-  PERFORM set_config('request.jwt.claim.sub', '', true);
-  PERFORM set_config('request.jwt.claim.role', 'anon', true);
   SET LOCAL ROLE anon;
-  -- 10. Appel refusé (pas d'EXECUTE).
   BEGIN
-    PERFORM public.get_org_member_emails(org_a);
-    failures := failures || '[10 : l''anonyme appelle la fonction] ';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
-  WHEN OTHERS THEN failures := failures || format('[10 : %s] ', SQLERRM);
+    PERFORM public.get_org_member_emails('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  EXCEPTION WHEN insufficient_privilege THEN refused := true;
   END;
   RESET ROLE;
-  PERFORM set_config('request.jwt.claims', '', true);
-  PERFORM set_config('request.jwt.claim.role', '', true);
+  INSERT INTO emails_audit_results VALUES (10, refused, 'l''anonyme appelle la fonction');
+END $$;
+SELECT set_config('request.jwt.claims', '', true),
+       set_config('request.jwt.claim.role', '', true);
 
-  IF failures <> '' THEN
+-- ===== Bilan =====
+DO $$
+DECLARE
+  failures text;
+  checks int;
+BEGIN
+  SELECT string_agg(format('[%s : %s]', n, detail), ' ' ORDER BY n) INTO failures
+  FROM emails_audit_results WHERE ok IS NOT TRUE;
+  SELECT count(DISTINCT n) INTO checks FROM emails_audit_results;
+  IF failures IS NOT NULL THEN
     RAISE EXCEPTION 'org_member_emails_audit : contrôles en échec %', failures;
+  END IF;
+  IF checks <> 10 THEN
+    RAISE EXCEPTION 'org_member_emails_audit : % contrôles joués sur 10', checks;
   END IF;
   RAISE NOTICE 'org_member_emails_audit : 10 contrôles OK';
 END $$;

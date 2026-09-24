@@ -183,6 +183,15 @@ jobs:
             npx playwright test
           fi
 
+      # Un audit SQL a arrêté net le Postgres local (24/09/2026) sans autre trace
+      # que « server closed the connection unexpectedly » : en cas d'échec, le
+      # journal du conteneur de la base donne la cause (signal, assertion).
+      - name: Journal de la base locale en cas d'échec
+        if: failure() && steps.target.outputs.mode == 'local'
+        run: |
+          db=$(docker ps -a --format '{{.Names}}' | grep '^supabase_db_' | head -1)
+          if [ -n "$db" ]; then docker logs --tail 200 "$db" 2>&1; else echo "conteneur de base introuvable"; fi
+
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
