@@ -153,3 +153,70 @@ export async function resolveV2WebhookToken(): Promise<string | null> {
   if (legacy) return deriveV2WebhookToken(legacy);
   return null;
 }
+
+/**
+ * Enveloppe des webhooks v2, relevée sur un vrai `message.new` (2026-09-24) :
+ *   { id: "evt_…", type: "message.new", created_at, account_id: "acc_…",
+ *     account_name, account_provider: "linkedin", application_id,
+ *     payload: { id, chat_id, sender_id, sender: { id, display_name, … },
+ *                is_sender, text, timestamp, … } }
+ * Le nom de l'événement est dans `type` (pas `event`) et le contenu dans
+ * `payload`. Cette fonction remet l'événement au format lu par les handlers
+ * v1 de unipile-webhook. Retourne null si le corps n'est pas une enveloppe v2.
+ *
+ * Seul message.new a été observé ; relation.new, account.add|reconnect et les
+ * e-mails suivent le schéma des objets de la spec (User, Account, Email) et
+ * restent à confirmer sur un premier événement réel.
+ */
+export function flattenV2WebhookEnvelope(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const env = raw as Record<string, unknown>;
+  if (env.event || typeof env.type !== "string" || !env.payload || typeof env.payload !== "object") return null;
+  // deno-lint-ignore no-explicit-any
+  const p = env.payload as Record<string, any>;
+  const out: Record<string, unknown> = {
+    event: env.type,
+    account_id: typeof env.account_id === "string" ? env.account_id : "",
+    account_type: typeof env.account_provider === "string" ? env.account_provider : undefined,
+    event_id: typeof env.id === "string" ? env.id : undefined,
+  };
+  switch (env.type) {
+    case "message.new": {
+      const senderId = p.sender_id ?? p.sender?.id;
+      out.message_id = p.id;
+      // Forme « new_message » (data.message) : is_sender est fourni, le
+      // handler n'a pas besoin de relire les participants de la conversation.
+      out.data = {
+        message: {
+          id: p.id,
+          chat_id: p.chat_id,
+          sender_id: senderId,
+          is_sender: p.is_sender,
+          sender: { id: senderId, name: p.sender?.display_name },
+        },
+        chat: { id: p.chat_id },
+      };
+      break;
+    }
+    case "relation.new": {
+      const user = p.user ?? p;
+      out.user_provider_id = user.id;
+      out.user_full_name = user.display_name;
+      out.user_public_identifier = user.public_identifier;
+      out.user_profile_url = user.profile_url;
+      break;
+    }
+    case "account.add":
+    case "account.reconnect": {
+      out.state = p.state ?? env.state;
+      out.data = { name: env.account_name, account_type: env.account_provider };
+      break;
+    }
+    default: {
+      // E-mails et autres : champs du contenu à plat, sans écraser l'enveloppe.
+      for (const [k, v] of Object.entries(p)) if (!(k in out)) out[k] = v;
+      if (env.type === "email.new" && out.email_id === undefined) out.email_id = p.id;
+    }
+  }
+  return out;
+}

@@ -20,7 +20,7 @@ import { transformSync } from 'esbuild';
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
 
 const { code } = transformSync(read('supabase/functions/_shared/unipile-v2.ts'), { loader: 'ts', format: 'esm' });
-const { V2_TRIGGER_EVENTS } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { V2_TRIGGER_EVENTS, flattenV2WebhookEnvelope } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 const webhook = read('supabase/functions/unipile-webhook/index.ts');
 
@@ -123,4 +123,68 @@ test('v2 — verrouillage puis déverrouillage rend exactement le statut d\'avan
 test('v2 — dédoublonnage : identifiant evt_ retenu seulement s\'il en a la forme', () => {
   assert.match(webhook, /v\.startsWith\('evt_'\)/);
   assert.match(webhook, /v2OriginEvent && v2EventId \? `\$\{payload\.account_id \|\| 'no-acc'\}:\$\{v2OriginEvent\}:\$\{v2EventId\}`/);
+});
+
+// message.new réel reçu le 2026-09-24 (texte et identité masqués par le fournisseur).
+const REAL_MESSAGE_NEW = {
+  created_at: '2026-09-24T13:58:19.577Z',
+  type: 'message.new',
+  hash: 'b8cde60b',
+  account_scope_id: null,
+  id: 'evt_01m39vbgn3e8p8a3zcnjq98ark',
+  account_id: 'acc_01kyex2j0pexzt3v8prstne0ey',
+  application_id: 'app_x',
+  application_production: true,
+  account_name: 'Compte test',
+  account_provider: 'linkedin',
+  payload: {
+    id: 'CLASSIC_2-MSG',
+    text: '<scrubbed for privacy>',
+    object: 'Message',
+    sender: { id: 'ACoAADKm2akB', object: 'User', display_name: '<scrubbed for privacy>' },
+    chat_id: 'CLASSIC_2-CHAT',
+    is_seen: false,
+    is_sender: false,
+    sender_id: 'ACoAADKm2akB',
+    timestamp: '2026-09-24T13:58:19.184Z',
+    attachments: [],
+  },
+};
+
+test('v2 — enveloppe message.new réelle remise au format des handlers', () => {
+  const flat = flattenV2WebhookEnvelope(REAL_MESSAGE_NEW);
+  assert.equal(flat.event, 'message.new');
+  assert.equal(flat.account_id, 'acc_01kyex2j0pexzt3v8prstne0ey');
+  assert.equal(flat.account_type, 'linkedin');
+  assert.equal(flat.event_id, 'evt_01m39vbgn3e8p8a3zcnjq98ark');
+  assert.equal(flat.message_id, 'CLASSIC_2-MSG');
+  assert.equal(flat.data.message.chat_id, 'CLASSIC_2-CHAT');
+  assert.equal(flat.data.message.sender_id, 'ACoAADKm2akB');
+  assert.equal(flat.data.message.is_sender, false);
+  assert.equal(flat.data.chat.id, 'CLASSIC_2-CHAT');
+  // Pas de sender + chat_id à la racine : sinon le handler prendrait la forme v1
+  // message_received et interrogerait les participants par l'API v1.
+  assert.equal(flat.sender, undefined);
+  assert.equal(flat.chat_id, undefined);
+});
+
+test('v2 — un corps v1 n\'est pas pris pour une enveloppe v2', () => {
+  assert.equal(flattenV2WebhookEnvelope({ event: 'message_received', chat_id: 'c', sender: {} }), null);
+  assert.equal(flattenV2WebhookEnvelope({ AccountStatus: { account_id: 'a', message: 'OK' } }), null);
+  assert.equal(flattenV2WebhookEnvelope(null), null);
+  assert.equal(flattenV2WebhookEnvelope({ type: 'message.new' }), null, 'sans payload');
+});
+
+test('v2 — statut de compte : nom d\'événement et fournisseur conservés', () => {
+  const flat = flattenV2WebhookEnvelope({
+    type: 'account.status.partial', id: 'evt_1', account_id: 'acc_1', account_provider: 'linkedin', payload: { object: 'Account' },
+  });
+  assert.equal(flat.event, 'account.status.partial');
+  assert.equal(flat.account_id, 'acc_1');
+  assert.equal(flat.account_type, 'linkedin');
+});
+
+test('v2 — le webhook lit l\'enveloppe aplatie', () => {
+  assert.match(webhook, /flattenV2WebhookEnvelope\(rawPayload\) \?\? rawPayload/);
+  assert.match(webhook, /\.\.\.source,/);
 });

@@ -1,7 +1,7 @@
 // Deno.serve used directly
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
-import { resolveV2WebhookToken } from "../_shared/unipile-v2.ts";
+import { flattenV2WebhookEnvelope, resolveV2WebhookToken } from "../_shared/unipile-v2.ts";
 import { ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON } from "../_shared/linkedin-quotas.ts";
 
 const corsHeaders = {
@@ -388,12 +388,15 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    // API v2 : enveloppe { type, id: evt_…, account_id, payload: {…} } remise
+    // au format des handlers v1 (voir flattenV2WebhookEnvelope).
+    const source = (flattenV2WebhookEnvelope(rawPayload) ?? rawPayload) as Partial<WebhookPayload>;
     const payload: WebhookPayload = {
-      ...rawPayload,
-      event: rawPayload.event
-        || (rawPayload.AccountStatus ? 'account_status_updated' : '')
+      ...source,
+      event: source.event
+        || (source.AccountStatus ? 'account_status_updated' : '')
         || (hostedAuthSucceeded ? 'account_connected' : ''),
-      account_id: rawPayload.account_id || rawPayload.AccountStatus?.account_id || '',
+      account_id: source.account_id || source.AccountStatus?.account_id || '',
     };
 
     // ─── Aliases API v2 (BETA) ─────────────────────────────────────────────
@@ -434,7 +437,7 @@ Deno.serve(async (req) => {
     // (préfixe evt_, cf. GET /v2/webhooks/conversations/) n'est retenu que s'il
     // en a la forme.
     const v2EventId = v2OriginEvent
-      ? [(rawPayload as any).event_id, (rawPayload as any).id]
+      ? [(source as any).event_id, (rawPayload as any).event_id, (rawPayload as any).id]
           .find((v): v is string => typeof v === 'string' && v.startsWith('evt_')) ?? null
       : null;
     if (v2OriginEvent) {
