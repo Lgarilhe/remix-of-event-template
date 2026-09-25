@@ -27,23 +27,21 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
   const maxReplyRate = Math.max(...withRates.map(r => r.replyRate));
 
   return (
-    <div className="border border-border bg-background">
-      <div className="px-3 py-2 border-b border-border bg-muted flex items-center gap-2">
-        <FlaskConical className="w-3.5 h-3.5 text-foreground" />
-        <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-          Résultats A/B Test
-        </span>
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <FlaskConical className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+        <span className="text-sm font-semibold text-foreground">Résultats du test A/B</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-border">
-              <th className="text-left p-2 font-bold uppercase tracking-wider text-muted-foreground">Variante</th>
-              <th className="text-right p-2 font-bold uppercase tracking-wider text-muted-foreground">Envoyés</th>
-              <th className="text-right p-2 font-bold uppercase tracking-wider text-muted-foreground">Ouverts</th>
-              <th className="text-right p-2 font-bold uppercase tracking-wider text-muted-foreground">Cliqués</th>
-              <th className="text-right p-2 font-bold uppercase tracking-wider text-muted-foreground">Réponses</th>
-              <th className="text-right p-2 font-bold uppercase tracking-wider text-muted-foreground">Taux rép.</th>
+            <tr className="border-b border-border text-muted-foreground">
+              <th scope="col" className="p-2 text-left font-medium">Variante</th>
+              <th scope="col" className="p-2 text-right font-medium">Envoyés</th>
+              <th scope="col" className="p-2 text-right font-medium">Ouverts</th>
+              <th scope="col" className="p-2 text-right font-medium">Cliqués</th>
+              <th scope="col" className="p-2 text-right font-medium">Réponses</th>
+              <th scope="col" className="p-2 text-right font-medium">Taux de réponse</th>
             </tr>
           </thead>
           <tbody>
@@ -51,21 +49,23 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
               const isWinner = r.replyRate === maxReplyRate && r.replyRate > 0 && withRates.length > 1;
               return (
                 <tr key={r.variant} className="border-b border-border last:border-b-0">
-                  <td className="p-2 font-medium text-foreground flex items-center gap-1.5">
-                    Variante {r.variant}
-                    {isWinner && (
-                      <Badge className="bg-accent text-foreground text-3xs px-1 py-0 h-4 rounded-full">
-                        <Star className="w-2.5 h-2.5 mr-0.5" />
-                        Gagnant
-                      </Badge>
-                    )}
-                  </td>
+                  <th scope="row" className="p-2 text-left font-medium text-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      Variante {r.variant}
+                      {isWinner && (
+                        <Badge variant="success" className="px-1.5 py-0 text-3xs">
+                          <Star className="h-2.5 w-2.5" aria-hidden="true" />
+                          Gagnante
+                        </Badge>
+                      )}
+                    </span>
+                  </th>
                   <td className="p-2 text-right tabular-nums">{r.sent}</td>
-                  <td className="p-2 text-right tabular-nums">{r.opened} ({r.openRate.toFixed(0)}%)</td>
-                  <td className="p-2 text-right tabular-nums">{r.clicked} ({r.clickRate.toFixed(0)}%)</td>
+                  <td className="p-2 text-right tabular-nums">{r.opened} ({r.openRate.toFixed(0)} %)</td>
+                  <td className="p-2 text-right tabular-nums">{r.clicked} ({r.clickRate.toFixed(0)} %)</td>
                   <td className="p-2 text-right tabular-nums">{r.replied}</td>
-                  <td className="p-2 text-right tabular-nums font-bold">
-                    {r.replyRate.toFixed(1)}%
+                  <td className="p-2 text-right font-semibold tabular-nums">
+                    {r.replyRate.toFixed(1).replace('.', ',')} %
                   </td>
                 </tr>
               );

@@ -1,34 +1,43 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Plus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 type AddNodeData = {
   onClick: () => void;
   variant?: 'true' | 'false';
 };
 
+const LABELS = {
+  true: 'Ajouter une étape à la branche Connecté',
+  false: 'Ajouter une étape à la branche Non connecté',
+  none: 'Ajouter une étape',
+} as const;
+
+/** Bouton « + » du déroulé : neutre, nommé, sans agrandissement au survol. */
 export const WorkflowAddNode = memo(({ data }: NodeProps) => {
   const { onClick, variant } = data as unknown as AddNodeData;
-
-  const variantStyles = variant === 'true'
-    ? 'border-emerald-400 text-emerald-500 hover:bg-success/20 hover:border-emerald-500 hover:text-emerald-600'
-    : variant === 'false'
-    ? 'border-orange-400 text-orange-500 hover:bg-warning/20 hover:border-orange-500 hover:text-orange-600'
-    : 'border-border text-muted-foreground hover:bg-primary/10 hover:border-primary/50 hover:text-primary';
+  const label = LABELS[variant ?? 'none'];
 
   return (
     <>
-      <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-transparent !border-transparent" />
-      <button
-        onClick={(e) => { e.stopPropagation(); onClick(); }}
-        className={cn(
-          "w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center transition-all duration-200 hover:scale-110 hover:shadow-md",
-          variantStyles,
-        )}
-      >
-        <Plus className="w-4 h-4" />
-      </button>
+      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-transparent !bg-transparent" />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            aria-label={label}
+            className="rounded-full border-dashed border-border-strong bg-background text-muted-foreground hover:text-foreground"
+          >
+            <Plus aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
     </>
   );
 });

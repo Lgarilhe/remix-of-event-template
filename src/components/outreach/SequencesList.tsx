@@ -1,33 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import React, { useState, useEffect, useId } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { hasPlanFeature } from '@/lib/featureGates';
+import { ENROLLMENT_STATUSES, sequenceActionMeta } from '@/lib/sequenceCatalog';
+import type { Channel } from '@/lib/channels';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Banner, bannerActionClass } from '@/components/ui/banner';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { ErrorState } from '@/components/layout/ErrorState';
 import {
   Plus,
   Search,
   BarChart3,
   MoreHorizontal,
-  Trash2, 
-  Edit2,
+  Trash2,
+  Pencil,
   Users,
-  Sparkles,
-  Send,
-  Mail,
-  UserPlus,
-  Eye,
-  MessageSquare,
+  Copy,
+  FastForward,
   Activity,
-  Zap,
   FileText,
-  BookTemplate,
+  Lock,
+  AlertTriangle,
+  Workflow,
+  ScrollText,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -47,17 +53,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
-import { SequenceEnrollModal } from './SequenceEnrollModal';
+import { SequenceBuilder, Sequence, SenderAccountConfig, StopConditions } from './SequenceBuilder';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { SequenceActivityLog } from './SequenceActivityLog';
 import { SequenceDiagnostic } from './SequenceDiagnostic';
 // Q5 — SequenceAnalytics contient recharts (~100KB), lazy-load pour split chunk
 const SequenceAnalytics = React.lazy(() => import('./SequenceAnalytics'));
 import { SequenceTemplateSelector, SaveAsTemplateModal } from './SequenceTemplateSelector';
-import { LinkedInProfile } from './types';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface SequenceWithStats {
@@ -68,6 +71,10 @@ interface SequenceWithStats {
   created_at: string;
   project_id: string | null;
   steps: any[];
+  stop_conditions?: StopConditions | null;
+  sender_accounts?: SenderAccountConfig[] | null;
+  rotation_mode?: string | null;
+  multi_sender_enabled?: boolean | null;
   enrollments: {
     total: number;
     active: number;
@@ -77,24 +84,32 @@ interface SequenceWithStats {
 }
 
 interface SequencesListProps {
-  accounts: { id: string; name: string }[];
-  selectedAccount: string | null;
-  selectedProfiles?: LinkedInProfile[];
-  selectedJob?: any;
-  onClearSelection?: () => void;
+  // Passés par l'onglet Outreach. La liste n'en a plus besoin depuis le
+  // retrait de l'inscription par clic sur une ligne, jamais branchée (revue
+  // design D-27) : l'inscription passe par la messagerie et la recherche.
+  accounts?: { id: string; name: string }[];
+  selectedAccount?: string | null;
   isVisible?: boolean;
   projectId?: string | null;
 }
 
-// Emoji pour les séquences
-const SEQUENCE_EMOJIS = ['🎯', '🚀', '💼', '✨', '🔥', '💡', '📈', '🎨', '⚡', '🏆', '💪', '🌟'];
+const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
+
+/** Canaux employés par une séquence, dans un ordre stable (revue design D-24). */
+const CHANNEL_ORDER: Channel[] = ['linkedin', 'email', 'whatsapp', 'call'];
+function sequenceChannels(steps: { action_type?: string | null }[]): Channel[] {
+  const used = new Set<Channel>();
+  for (const step of steps) {
+    const channel = sequenceActionMeta(step.action_type)?.channel;
+    if (channel) used.add(channel);
+  }
+  return CHANNEL_ORDER.filter(c => used.has(c));
+}
+
+/** Même grille pour l'en-tête et les lignes, à partir de 1 024 px. */
+const ROW_GRID = 'lg:grid-cols-[2.75rem_minmax(0,1fr)_7.5rem_minmax(0,14rem)_9rem_2.25rem]';
 
 export const SequencesList: React.FC<SequencesListProps> = ({
-  accounts,
-  selectedAccount,
-  selectedProfiles = [],
-  selectedJob,
-  onClearSelection,
   isVisible = true,
   projectId,
 }) => {
@@ -103,6 +118,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // création et la duplication étaient refusées par RLS.
   const { organizationId } = useOrganization();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const planNoticeId = useId();
   // Gating par plan (lot P0-C) : l'activation d'une séquence est refusée sur le
   // plan gratuit. Tant que l'état d'abonnement charge, on ne refuse rien (le
   // moteur d'envoi côté serveur reste la référence).
@@ -110,12 +127,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const canSendSequences = isPlanLoading || hasPlanFeature(effectivePlanId, 'sequences_send');
   const [sequences, setSequences] = useState<SequenceWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSequence, setEditingSequence] = useState<Sequence | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [toggleConfirm, setToggleConfirm] = useState<{ id: string; nextActive: boolean; activeCount: number } | null>(null);
-  const [enrollModalSequence, setEnrollModalSequence] = useState<SequenceWithStats | null>(null);
   const [enrollmentsPanelSequence, setEnrollmentsPanelSequence] = useState<SequenceWithStats | null>(null);
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
@@ -125,6 +143,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [saveTemplateSeq, setSaveTemplateSeq] = useState<SequenceWithStats | null>(null);
 
+  /**
+   * « Avancer les envois » : avance à maintenant les étapes planifiées des
+   * inscriptions en cours de l'organisation, hors invitations LinkedIn. Le
+   * cron les envoie au passage suivant, avec ses garde-fous (revue design D-23).
+   */
   const handleForceReschedule = async () => {
     setForceRescheduling(true);
     try {
@@ -139,17 +162,19 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       });
       if (error) throw error;
       const payload = data as { success?: boolean; rescheduled?: number; error?: string } | null;
-      if (!payload?.success) throw new Error(payload?.error || 'Échec de l\'accélération');
+      if (!payload?.success) throw new Error(payload?.error || "Échec de l'avance des envois");
       const count = payload.rescheduled || 0;
       if (count > 0) {
-        toast.success(`${count} action(s) avancée(s) — elles partent dans la minute qui vient.`);
+        toast.success(`${plural(count, 'étape avancée', 'étapes avancées')}`, {
+          description: 'Elles partent au prochain passage des envois, dans le respect des heures et des limites de vos comptes.',
+        });
       } else {
-        toast.info('Aucune action à avancer pour le moment');
+        toast.info('Aucune étape planifiée à avancer');
       }
     } catch (err) {
       console.error('Force reschedule error:', err);
-      toast.error('Erreur lors de l\'accélération', {
-        description: err instanceof Error ? err.message : undefined,
+      toast.error("Impossible d'avancer les envois", {
+        description: 'Réessayez dans un instant. Si le problème persiste, ouvrez le diagnostic des envois.',
       });
     } finally {
       setForceRescheduling(false);
@@ -177,21 +202,24 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       if (seqError) throw seqError;
 
       const sequenceIds = seqData?.map(s => s.id) || [];
-      const { data: stepsData } = await supabase
+      const { data: stepsData, error: stepsError } = await supabase
         .from('sequence_steps')
         .select('*')
         .in('sequence_id', sequenceIds)
         .order('step_order', { ascending: true });
+      // Une lecture en échec ne s'affiche pas en « 0 inscrit » : elle remonte.
+      if (stepsError) throw stepsError;
 
-      const { data: enrollData } = await supabase
+      const { data: enrollData, error: enrollError } = await supabase
         .from('sequence_enrollments')
         .select('sequence_id, status')
         .in('sequence_id', sequenceIds);
+      if (enrollError) throw enrollError;
 
-      const enriched: SequenceWithStats[] = (seqData || []).map((seq, index) => {
+      const enriched: SequenceWithStats[] = (seqData || []).map((seq) => {
         const steps = stepsData?.filter(s => s.sequence_id === seq.id) || [];
         const enrollments = enrollData?.filter(e => e.sequence_id === seq.id) || [];
-        
+
         return {
           ...seq,
           steps,
@@ -205,9 +233,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       });
 
       setSequences(enriched);
+      setLoadError(null);
     } catch (err) {
       console.error('Error fetching sequences:', err);
-      toast.error('Erreur lors du chargement des séquences');
+      const message = err instanceof Error ? err.message : (err as { message?: string })?.message ?? String(err);
+      setLoadError(message);
     } finally {
       setLoading(false);
     }
@@ -238,11 +268,17 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     }
   }, [isVisible, fetchSequences]);
 
+  const handleRetry = async () => {
+    setRetrying(true);
+    await fetchSequences();
+    setRetrying(false);
+  };
+
   const handleSaveSequence = async (sequence: Sequence) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
-      if (!organizationId) throw new Error('Organisation introuvable — rechargez la page');
+      if (!organizationId) throw new Error('Organisation introuvable : rechargez la page');
 
       // Payload de steps envoyé à la RPC transactionnelle `save_sequence_steps`.
       // On garde `id` = id CLIENT (= id DB pour un step existant, id généré pour
@@ -282,6 +318,16 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         next_step_id: step.nextStepId === '__end__' ? null : (step.nextStepId ?? null),
       }));
 
+      // Réglages « Expéditeurs » et « Garde-fous » : les mêmes colonnes à la
+      // création et en modification (revue design D-30). Avant, la création
+      // n'écrivait que le nom, la description et le statut.
+      const sequenceSettings = {
+        stop_conditions: sequence.stopConditions || null,
+        sender_accounts: sequence.senderAccounts || null,
+        rotation_mode: sequence.rotationMode || null,
+        multi_sender_enabled: sequence.multiSenderEnabled || false,
+      };
+
       let targetSequenceId: string;
 
       if (sequence.id) {
@@ -292,10 +338,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             name: sequence.name,
             description: sequence.description,
             is_active: sequence.isActive,
-            stop_conditions: sequence.stopConditions || null,
-            sender_accounts: sequence.senderAccounts || null,
-            rotation_mode: sequence.rotationMode || null,
-            multi_sender_enabled: sequence.multiSenderEnabled || false,
+            ...sequenceSettings,
           } as any)
           .eq('id', sequence.id);
 
@@ -312,6 +355,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             created_by: user.id,
             organization_id: organizationId,
             project_id: projectId || null,
+            ...sequenceSettings,
           } as any)
           .select()
           .single();
@@ -330,15 +374,23 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
       if (stepsError) throw stepsError;
 
-      toast.success(sequence.id ? 'Séquence mise à jour' : 'Séquence créée');
+      // Un seul message, qui dit ce qui a été fait (revue design D-34).
+      if (sequence.id) {
+        toast.success(`Modifications de « ${sequence.name} » enregistrées`);
+      } else if (sequence.isActive) {
+        toast.success(`Séquence « ${sequence.name} » créée et activée`);
+      } else {
+        toast.success(`Séquence « ${sequence.name} » enregistrée`, {
+          description: 'Elle reste inactive : activez-la depuis la liste quand vous le souhaitez.',
+        });
+      }
 
       fetchSequences();
       setShowBuilder(false);
       setEditingSequence(null);
     } catch (err) {
-      // Relancé pour que SequenceBuilder.handleSave n'affiche pas
-      // « Séquence enregistrée » et ne ferme pas le builder sur un échec
-      // (les modifications étaient perdues).
+      // Relancé pour que SequenceBuilder.handleSave garde l'éditeur ouvert et
+      // annonce l'échec (les modifications étaient perdues).
       console.error('Error saving sequence:', err);
       throw err;
     }
@@ -347,14 +399,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const handleToggleActive = async (sequenceId: string, isActive: boolean) => {
     // Activer (pas désactiver) exige un plan qui autorise l'envoi de séquences.
     if (!isActive && !canSendSequences) {
-      toast.error("L'envoi de séquences nécessite un abonnement", {
-        action: { label: 'Voir les plans', onClick: () => navigate('/pricing') },
+      toast.error("Votre offre ne permet pas d'envoyer des séquences", {
+        action: { label: 'Voir les offres', onClick: () => navigate('/pricing') },
       });
       return;
     }
     try {
       const newActive = !isActive;
-      
+
       // 1. Update sequence is_active flag
       const { error } = await supabase
         .from('outreach_sequences')
@@ -364,19 +416,22 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       if (error) throw error;
 
       // 2. Pause or resume enrollments accordingly
+      let changedEnrollments = 0;
       if (newActive) {
         // Reactivate paused enrollments
-        const { data: pausedEnrollments } = await supabase
+        const { data: pausedEnrollments, error: resumeError } = await supabase
           .from('sequence_enrollments')
           .update({ status: 'active', pause_reason: null })
           .eq('sequence_id', sequenceId)
           .eq('status', 'paused')
           .select('id, current_step_order');
+        if (resumeError) throw resumeError;
+        changedEnrollments = pausedEnrollments?.length ?? 0;
 
         // Only reschedule the NEXT pending step per enrollment (not all future steps)
         if (pausedEnrollments && pausedEnrollments.length > 0) {
           const now = new Date().toISOString();
-          
+
           for (const enrollment of pausedEnrollments) {
             // Find the earliest stuck execution for this enrollment
             const { data: nextExec } = await supabase
@@ -397,25 +452,43 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         }
       } else {
         // Pause active enrollments
-        await supabase
+        const { data: pausedNow, error: pauseError } = await supabase
           .from('sequence_enrollments')
           .update({ status: 'paused', pause_reason: 'manual' })
           .eq('sequence_id', sequenceId)
-          .eq('status', 'active');
+          .eq('status', 'active')
+          .select('id');
+        if (pauseError) throw pauseError;
+        changedEnrollments = pausedNow?.length ?? 0;
       }
-      
+
       setSequences(prev =>
         prev.map(s => s.id === sequenceId ? { ...s, is_active: newActive } : s)
       );
-      
-      toast.success(isActive ? 'Séquence désactivée — enrollments mis en pause' : 'Séquence réactivée — enrollments relancés');
+
+      if (newActive) {
+        toast.success('Séquence activée', {
+          description: changedEnrollments > 0
+            ? `${plural(changedEnrollments, 'inscription en pause reprend', 'inscriptions en pause reprennent')}.`
+            : undefined,
+        });
+      } else {
+        toast.success('Séquence désactivée', {
+          description: changedEnrollments > 0
+            ? `${plural(changedEnrollments, 'inscription mise', 'inscriptions mises')} en pause.`
+            : undefined,
+        });
+      }
     } catch (err) {
       console.error('Error toggling sequence:', err);
-      toast.error('Erreur lors de la modification');
+      toast.error(isActive ? 'Impossible de désactiver la séquence' : "Impossible d'activer la séquence", {
+        description: 'Vérifiez votre connexion, puis réessayez.',
+      });
     }
   };
 
   const handleDelete = async (sequenceId: string) => {
+    const name = sequences.find(s => s.id === sequenceId)?.name;
     try {
       const { error } = await supabase
         .from('outreach_sequences')
@@ -425,10 +498,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       if (error) throw error;
 
       setSequences(prev => prev.filter(s => s.id !== sequenceId));
-      toast.success('Séquence supprimée');
+      toast.success(name ? `Séquence « ${name} » supprimée` : 'Séquence supprimée');
     } catch (err) {
       console.error('Error deleting sequence:', err);
-      toast.error('Erreur lors de la suppression');
+      toast.error('Impossible de supprimer la séquence', { description: 'Réessayez dans un instant.' });
     } finally {
       setDeleteConfirmId(null);
     }
@@ -437,8 +510,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const handleDuplicate = async (seq: SequenceWithStats) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      if (!organizationId) throw new Error('Organisation introuvable — rechargez la page');
+      if (!user) throw new Error('Non authentifié');
+      if (!organizationId) throw new Error('Organisation introuvable : rechargez la page');
 
       // 1. Charge les steps réelles depuis la DB
       const { data: steps, error: stepsErr } = await (supabase
@@ -448,7 +521,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         .order('step_order', { ascending: true }) as any);
       if (stepsErr) throw stepsErr;
 
-      // 2. Crée la nouvelle séquence avec un nom suffixé "(copie)"
+      // 2. Crée la nouvelle séquence avec un nom suffixé "(copie)", avec les
+      // mêmes expéditeurs et garde-fous que l'originale.
       const { data: newSeq, error: seqErr } = await (supabase
         .from('outreach_sequences')
         .insert({
@@ -457,6 +531,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           is_active: false, // toujours inactive par défaut, l'user choisit quand activer
           created_by: user.id,
           organization_id: organizationId,
+          stop_conditions: seq.stop_conditions ?? null,
+          sender_accounts: seq.sender_accounts ?? null,
+          rotation_mode: seq.rotation_mode ?? null,
+          multi_sender_enabled: seq.multi_sender_enabled ?? false,
           ...(projectId ? { project_id: projectId } : {}),
         } as any)
         .select()
@@ -501,16 +579,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         if (stepsCreateErr) throw stepsCreateErr;
       }
 
-      toast.success(`Séquence dupliquée : "${newSeq.name}"`, {
-        description: 'Inactive par défaut. Active-la quand tu es prêt.',
+      toast.success(`Séquence dupliquée : « ${newSeq.name} »`, {
+        description: "La copie reste inactive tant que vous ne l'activez pas.",
       });
       // Refresh la liste
       await fetchSequences();
     } catch (err) {
       console.error('Error duplicating sequence:', err);
-      toast.error('Erreur lors de la duplication', {
-        description: err instanceof Error ? err.message : undefined,
-      });
+      toast.error('Impossible de dupliquer la séquence', { description: 'Réessayez dans un instant.' });
     }
   };
 
@@ -520,6 +596,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       name: seq.name,
       description: seq.description || undefined,
       isActive: seq.is_active,
+      // Réglages relus pour que l'enregistrement ne les remplace pas par des
+      // valeurs vides (revue design D-30).
+      stopConditions: seq.stop_conditions ?? undefined,
+      senderAccounts: seq.sender_accounts ?? undefined,
+      rotationMode: seq.rotation_mode ?? undefined,
+      multiSenderEnabled: seq.multi_sender_enabled ?? undefined,
       steps: seq.steps.map(s => ({
         id: s.id,
         order: s.step_order,
@@ -556,12 +638,6 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     setShowBuilder(true);
   };
 
-  const handleEnrollSuccess = () => {
-    setEnrollModalSequence(null);
-    onClearSelection?.();
-    fetchSequences();
-  };
-
   const handleCreateNew = () => {
     setShowTemplateSelector(true);
   };
@@ -582,363 +658,322 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     seq.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getSequenceEmoji = (index: number) => {
-    return SEQUENCE_EMOJIS[index % SEQUENCE_EMOJIS.length];
+  const advanceHelp =
+    "Avance à maintenant les étapes planifiées de toutes les séquences de l'organisation, sauf les invitations LinkedIn. Elles partent au prochain passage des envois, dans le respect des heures d'envoi et des limites de vos comptes.";
+
+  const deleteTarget = sequences.find(s => s.id === deleteConfirmId);
+  const toggleTarget = sequences.find(s => s.id === toggleConfirm?.id);
+
+  // ── Une ligne par séquence, la même sur téléphone et sur ordinateur (revue design D-24, D-26) ──
+  const renderRow = (seq: SequenceWithStats) => {
+    const channels = sequenceChannels(seq.steps);
+    const activationBlocked = !seq.is_active && !canSendSequences;
+    const createdAt = new Date(seq.created_at);
+    const { total, active, replied, completed } = seq.enrollments;
+
+    return (
+      <li
+        key={seq.id}
+        className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors duration-150 hover:bg-accent/40 lg:items-center lg:gap-x-4 ${ROW_GRID}`}
+      >
+        {/* Activation (revue design D-25) */}
+        <div className="flex items-center gap-1">
+          <label className="-m-2.5 inline-flex cursor-pointer items-center justify-center p-2.5 lg:m-0 lg:p-0">
+            <Switch
+              checked={seq.is_active}
+              disabled={activationBlocked}
+              aria-label={`Activer la séquence « ${seq.name} »`}
+              aria-describedby={activationBlocked ? planNoticeId : undefined}
+              onCheckedChange={(next) => {
+                // Confirmation requise si on désactive ET qu'il y a des actifs
+                // (peut couper l'envoi pour 50+ candidats par clic).
+                if (!next && seq.enrollments.active > 0) {
+                  setToggleConfirm({ id: seq.id, nextActive: false, activeCount: seq.enrollments.active });
+                  return;
+                }
+                handleToggleActive(seq.id, seq.is_active);
+              }}
+            />
+          </label>
+          {activationBlocked && <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground lg:hidden" aria-hidden="true" />}
+        </div>
+
+        {/* Nom, canaux, description */}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {channels.length > 0 && (
+              <span className="flex shrink-0 items-center gap-1">
+                {channels.map(channel => <ChannelIcon key={channel} channel={channel} size="sm" />)}
+              </span>
+            )}
+            <p className="min-w-0 break-words text-sm font-medium text-foreground">{seq.name}</p>
+            {!seq.project_id && <Badge variant="muted">Toutes les missions</Badge>}
+          </div>
+          {seq.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{seq.description}</p>}
+        </div>
+
+        {/* Inscrits, statuts, date, actions : sous le nom sur téléphone, en colonnes à partir de 1 024 px */}
+        <div className="col-start-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 lg:contents">
+          <div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => setEnrollmentsPanelSequence(seq)}
+              className="-ml-2.5 gap-1.5 text-foreground max-md:h-11"
+            >
+              <Users aria-hidden="true" />
+              {total > 0 ? plural(total, 'inscrit') : 'Aucun inscrit'}
+              <span className="sr-only"> dans « {seq.name} » : voir les inscriptions</span>
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            {active > 0 && <Badge variant={ENROLLMENT_STATUSES.active.tone}>{active} en cours</Badge>}
+            {replied > 0 && <Badge variant={ENROLLMENT_STATUSES.replied.tone}>{replied} {replied > 1 ? 'ont répondu' : 'a répondu'}</Badge>}
+            {completed > 0 && <Badge variant={ENROLLMENT_STATUSES.completed.tone}>{plural(completed, 'terminée')}</Badge>}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            <span className="lg:sr-only">Créée </span>
+            <time dateTime={seq.created_at} title={format(createdAt, "d MMMM yyyy 'à' HH:mm", { locale: fr })}>
+              {formatDistanceToNow(createdAt, { addSuffix: true, locale: fr })}
+            </time>
+          </p>
+          <div className="ml-auto lg:ml-0 lg:justify-self-end">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                      aria-label={`Actions de la séquence « ${seq.name} »`}
+                    >
+                      <MoreHorizontal aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Actions</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleEdit(seq)} className="gap-2 max-md:min-h-11">
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                  Modifier
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setAnalyticsSequence(seq)} className="gap-2 max-md:min-h-11">
+                  <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                  Statistiques
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDuplicate(seq)} className="gap-2 max-md:min-h-11">
+                  <Copy className="h-4 w-4" aria-hidden="true" />
+                  Dupliquer
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSaveTemplateSeq(seq)} className="gap-2 max-md:min-h-11">
+                  <FileText className="h-4 w-4" aria-hidden="true" />
+                  Enregistrer comme modèle
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeleteConfirmId(seq.id)}
+                  className="gap-2 text-destructive focus:text-destructive max-md:min-h-11"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  Supprimer
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </li>
+    );
   };
 
-  if (loading) {
-    return <BrutalLoader variant="sequences" rows={4} />;
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h1 className="text-lg sm:text-xl font-semibold text-foreground tracking-tight">Séquences</h1>
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-          <button
-            onClick={() => setShowGlobalAnalytics(true)}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-background text-foreground hover:bg-muted/50 transition-colors shrink-0"
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Analytics</span>
-          </button>
-          <button
-            onClick={handleForceReschedule}
-            disabled={forceRescheduling}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-accent/40 text-foreground hover:bg-accent/60 transition-colors shrink-0 disabled:opacity-50"
-            title="Avance toutes les actions du jour à maintenant (sauf invitations LinkedIn — quota safety)"
-          >
-            <Zap className={cn("w-3.5 h-3.5", forceRescheduling && "animate-pulse")} />
-            <span className="hidden sm:inline">{forceRescheduling ? 'En cours…' : 'Envoyer tout'}</span>
-          </button>
-          <button
-            onClick={() => setShowDiagnostic(true)}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-background text-foreground hover:bg-muted/50 transition-colors shrink-0"
-            title="Vérifier l'état du système d'envoi"
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Diagnostic</span>
-          </button>
-          <button
-            onClick={() => setShowActivityLog(true)}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg border border-border bg-background text-foreground hover:bg-muted/50 transition-colors shrink-0"
-            title="Voir le journal détaillé des actions envoyées"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Journal</span>
-          </button>
-          <button
-            onClick={handleCreateNew}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-colors shrink-0"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Créer une séquence</span>
-            <span className="sm:hidden">Créer</span>
-          </button>
+  const renderBody = () => {
+    // Un seul chargement, en forme de tableau, sans phrase simulée (revue design D-22).
+    if (loading) {
+      return (
+        <div role="status" aria-label="Chargement des séquences" className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="hidden border-b border-border bg-muted/40 px-4 py-2.5 lg:block">
+            <Skeleton className="h-3 w-40" />
+          </div>
+          {[0, 1, 2].map(i => (
+            <div key={i} className="flex items-center gap-4 border-b border-border px-4 py-4 last:border-b-0">
+              <Skeleton className="h-6 w-11 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="hidden h-7 w-24 lg:block" />
+              <Skeleton className="hidden h-5 w-36 lg:block" />
+            </div>
+          ))}
         </div>
-      </div>
+      );
+    }
 
-      {/* Search & Filters */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+    // Une panne s'affiche comme une panne, jamais comme une liste vide.
+    if (loadError && sequences.length === 0) {
+      return (
+        <ErrorState
+          title="Impossible de charger les séquences"
+          description="Vérifiez votre connexion, puis réessayez. Vos séquences ne sont pas perdues."
+          detail={loadError}
+          onRetry={handleRetry}
+          retrying={retrying}
+        />
+      );
+    }
+
+    if (sequences.length === 0) {
+      return (
+        <EmptyState
+          icon={Workflow}
+          title="Aucune séquence pour cette mission"
+          description="Une séquence contacte vos candidats en plusieurs étapes : invitation, message, relance. L'IA Konekt peut adapter chaque message au profil et au poste."
+          action={
+            <Button type="button" variant="outline" size="sm" onClick={handleCreateNew} className="max-md:h-11">
+              <Plus aria-hidden="true" />
+              Nouvelle séquence
+            </Button>
+          }
+        />
+      );
+    }
+
+    return (
+      <>
+        {loadError && (
+          <Banner tone="warning" icon={AlertTriangle} role="alert" className="rounded-lg border" action={
+            <Button type="button" variant="link" onClick={handleRetry} loading={retrying} className={`h-auto p-0 ${bannerActionClass}`}>
+              Réessayer
+            </Button>
+          }>
+            La liste n'a pas pu être actualisée : elle date du dernier chargement.
+          </Banner>
+        )}
+
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
-            placeholder="Rechercher une séquence..."
+            type="search"
+            aria-label="Rechercher une séquence"
+            placeholder="Rechercher une séquence…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-background border-border rounded-lg"
+            className="pl-9"
           />
+        </div>
+
+        {filteredSequences.length === 0 ? (
+          <EmptyState
+            variant="compact"
+            icon={Search}
+            title={`Aucune séquence ne correspond à « ${searchQuery.trim()} »`}
+            action={
+              <Button type="button" variant="outline" size="sm" onClick={() => setSearchQuery('')} className="max-md:h-11">
+                Effacer la recherche
+              </Button>
+            }
+          />
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            {/* En-tête de colonnes, à partir de 1 024 px ; chaque cellule se lit aussi seule */}
+            <div
+              aria-hidden="true"
+              className={`hidden gap-4 border-b border-border bg-muted/40 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid ${ROW_GRID}`}
+            >
+              <span>Active</span>
+              <span>Séquence</span>
+              <span>Inscrits</span>
+              <span>Statuts</span>
+              <span>Créée</span>
+              <span />
+            </div>
+            <ul className="divide-y divide-border" aria-label="Séquences">
+              {filteredSequences.map(renderRow)}
+            </ul>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <section className="space-y-4" aria-labelledby="sequences-title">
+      {/* En-tête et barre d'outils (revue design D-23) */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="sequences-title" className="text-base font-semibold text-foreground">Séquences</h2>
+        <div className="flex items-center gap-2">
+          {!isMobile && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="sm" onClick={handleForceReschedule} loading={forceRescheduling}>
+                  {!forceRescheduling && <FastForward aria-hidden="true" />}
+                  Avancer les envois
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">{advanceHelp}</TooltipContent>
+            </Tooltip>
+          )}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="icon-sm" aria-label="Plus d'actions" className="max-md:h-11 max-md:w-11">
+                    <MoreHorizontal aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Plus d'actions</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end" className="w-72">
+              {isMobile && (
+                <>
+                  <DropdownMenuItem onClick={handleForceReschedule} disabled={forceRescheduling} className="items-start gap-2 max-md:min-h-11">
+                    <FastForward className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>
+                      <span className="block">{forceRescheduling ? 'Envois en cours d\'avance…' : 'Avancer les envois'}</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">{advanceHelp}</span>
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem onClick={() => setShowGlobalAnalytics(true)} className="gap-2 max-md:min-h-11">
+                <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                Statistiques
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowActivityLog(true)} className="gap-2 max-md:min-h-11">
+                <ScrollText className="h-4 w-4" aria-hidden="true" />
+                Journal des envois
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowDiagnostic(true)} className="gap-2 max-md:min-h-11">
+                <Activity className="h-4 w-4" aria-hidden="true" />
+                Diagnostic des envois
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button type="button" variant="primary" size="sm" onClick={handleCreateNew} className="max-md:h-11">
+            <Plus aria-hidden="true" />
+            Nouvelle séquence
+          </Button>
         </div>
       </div>
 
-      {/* Selected profiles banner */}
-      {selectedProfiles.length > 0 && (
-        <div className="p-3 bg-accent/20 border border-border flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-foreground" />
-            <span className="font-medium text-foreground">{selectedProfiles.length} candidat(s) sélectionné(s)</span>
-            {selectedJob && (
-              <Badge variant="outline" className="bg-background">{selectedJob.title}</Badge>
-            )}
-          </div>
-          <p className="text-sm text-foreground/70">
-            Cliquez sur une séquence pour y inscrire les candidats
-          </p>
-        </div>
+      {/* Sans abonnement : on prépare, on n'active pas (revue design D-25) */}
+      {!canSendSequences && (
+        <Banner
+          tone="info"
+          icon={Lock}
+          className="rounded-lg border"
+          action={<Link to="/pricing" className={bannerActionClass}>Voir les offres</Link>}
+        >
+          <span id={planNoticeId}>Votre offre ne permet pas d'envoyer des séquences : vous pouvez les préparer, pas les activer.</span>
+        </Banner>
       )}
 
-      {/* Table */}
-      {sequences.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-card rounded-xl border border-border">
-          <div className="text-4xl mb-4">🔗</div>
-          <h3 className="font-semibold text-base text-foreground mb-2 tracking-tight">Séquences automatisées</h3>
-          <p className="text-muted-foreground text-center mb-6 max-w-md text-sm">
-            Les séquences envoient automatiquement des messages personnalisés à vos candidats en plusieurs étapes.
-            L'IA adapte chaque message au profil du candidat et au poste.
-          </p>
-          <button
-            onClick={handleCreateNew}
-            className="flex items-center gap-2 h-9 px-5 bg-foreground text-background hover:bg-foreground/90 rounded-lg text-sm font-semibold transition-colors"
-          >
-            <Send className="w-4 h-4" />
-            Créer ma première séquence
-          </button>
-        </div>
-      ) : (
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
-          {/* Table header - hidden on mobile */}
-          <div className="hidden sm:grid grid-cols-[auto_auto_1fr_100px_80px_100px_100px_80px] gap-4 px-4 py-3 bg-muted/40 border-b border-border text-[11px] font-semibold text-muted-foreground">
-            <div className="w-5" />
-            <div>Statut</div>
-            <div>Nom de la séquence</div>
-            <div className="text-center">Prospects</div>
-            <div className="text-center">Funnel</div>
-            <div className="text-center">Créé à</div>
-            <div className="text-center">Actions</div>
-            <div />
-          </div>
-
-          {/* Table body */}
-          <div className="divide-y divide-foreground/5">
-            {filteredSequences.map((seq, index) => (
-              <div
-                key={seq.id}
-                className={cn(
-                  "hidden sm:grid grid-cols-[auto_auto_1fr_100px_80px_100px_100px_80px] gap-4 px-4 py-3 items-center hover:bg-accent/10 transition-colors",
-                  selectedProfiles.length > 0 && selectedAccount && "cursor-pointer"
-                )}
-                onClick={() => {
-                  if (selectedProfiles.length > 0 && selectedAccount) {
-                    setEnrollModalSequence(seq);
-                  }
-                }}
-              >
-                <div className="w-5" />
-                <Switch
-                  checked={seq.is_active}
-                  onCheckedChange={(next) => {
-                    // Confirmation requise si on désactive ET qu'il y a des actifs
-                    // (peut couper l'envoi pour 50+ candidats par clic).
-                    if (!next && seq.enrollments.active > 0) {
-                      setToggleConfirm({ id: seq.id, nextActive: false, activeCount: seq.enrollments.active });
-                      return;
-                    }
-                    handleToggleActive(seq.id, seq.is_active);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="data-[state=checked]:bg-foreground"
-                />
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-lg">{getSequenceEmoji(index)}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <div className="font-medium text-foreground truncate">{seq.name}</div>
-                      {/* Badge "Template" si la séquence n'est pas attachée à une mission
-                          (visible et utilisable depuis toutes les missions) */}
-                      {!seq.project_id && (
-                        <span
-                          className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-info/10 text-info border border-info/30"
-                          title="Séquence globale réutilisable depuis toutes les missions"
-                        >
-                          ✨ Template
-                        </span>
-                      )}
-                    </div>
-                    {seq.description && (
-                      <div className="text-xs text-muted-foreground truncate">{seq.description}</div>
-                    )}
-                  </div>
-                </div>
-                <button
-                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-sm bg-muted text-foreground hover:bg-accent/20 transition-colors cursor-pointer border border-border"
-                  onClick={(e) => { e.stopPropagation(); setEnrollmentsPanelSequence(seq); }}
-                  title={`${seq.enrollments.active} actif(s) • ${seq.enrollments.replied} répondu(s) • ${seq.enrollments.completed} terminé(s) — clic pour voir le détail`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span className="font-medium tabular-nums">{seq.enrollments.active}</span>
-                  <span className="text-muted-foreground">/</span>
-                  <span className="tabular-nums">{seq.enrollments.total}</span>
-                </button>
-                {/* Status pills : breakdown réel par état d'inscription.
-                    Remplace l'ancien faux "funnel décroissance ~70%" qui ne
-                    reflétait AUCUNE donnée réelle (juste de la déco).
-                    Maintenant on lit vraiment seq.enrollments.{active,replied,completed}. */}
-                {seq.enrollments.total > 0 ? (
-                  <div className="flex items-center gap-1 flex-wrap" title="Statuts des inscriptions">
-                    {seq.enrollments.active > 0 && (
-                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
-                        <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                        {seq.enrollments.active} actif{seq.enrollments.active > 1 ? 's' : ''}
-                      </span>
-                    )}
-                    {seq.enrollments.replied > 0 && (
-                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
-                        💬 {seq.enrollments.replied}
-                      </span>
-                    )}
-                    {seq.enrollments.completed > 0 && (
-                      <span
-                        className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-muted text-foreground/70 border border-border"
-                        title={`${seq.enrollments.completed} candidat(s) ont parcouru toute la séquence sans répondre`}
-                      >
-                        ✓ {seq.enrollments.completed}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground/60 italic">
-                    Aucune inscription
-                  </span>
-                )}
-                <div className="text-center text-sm text-muted-foreground">
-                  {formatDistanceToNow(new Date(seq.created_at), { addSuffix: false, locale: fr })}
-                </div>
-                <div className="flex items-center justify-center gap-1">
-                  <button
-                    className="p-1.5 rounded-md hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={(e) => { e.stopPropagation(); setAnalyticsSequence(seq); }}
-                    title="Voir les analytics"
-                    aria-label="Voir les analytics de la séquence"
-                  >
-                    <BarChart3 className="w-4 h-4" />
-                  </button>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <button className="p-1.5 hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-background border-border">
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
-                      <Edit2 className="w-4 h-4 mr-2" />
-                      Modifier
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDuplicate(seq); }}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Dupliquer
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSaveTemplateSeq(seq); }}>
-                      <FileText className="w-4 h-4 mr-2" />
-                      Sauvegarder comme template
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(seq.id); }}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Supprimer
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-
-            {/* Mobile: card layout */}
-            {filteredSequences.map((seq, index) => (
-              <div
-                key={`mobile-${seq.id}`}
-                className={cn(
-                  "sm:hidden p-3 space-y-2.5 hover:bg-accent/10 transition-colors",
-                  selectedProfiles.length > 0 && selectedAccount && "cursor-pointer"
-                )}
-                onClick={() => {
-                  if (selectedProfiles.length > 0 && selectedAccount) {
-                    setEnrollModalSequence(seq);
-                  }
-                }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className="text-base">{getSequenceEmoji(index)}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <div className="font-medium text-sm text-foreground truncate">{seq.name}</div>
-                        {!seq.project_id && (
-                          <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-info/10 text-info border border-info/30">
-                            ✨ Template
-                          </span>
-                        )}
-                      </div>
-                      {seq.description && (
-                        <div className="text-xs text-muted-foreground truncate">{seq.description}</div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Switch
-                      checked={seq.is_active}
-                      onCheckedChange={(next) => {
-                        // Même garde que le Switch desktop : confirmation si on
-                        // désactive avec des candidats actifs (un tap mobile
-                        // coupait l'envoi pour N candidats sans AlertDialog —
-                        // audit 2026-07, Frontend M1).
-                        if (!next && seq.enrollments.active > 0) {
-                          setToggleConfirm({ id: seq.id, nextActive: false, activeCount: seq.enrollments.active });
-                          return;
-                        }
-                        handleToggleActive(seq.id, seq.is_active);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="data-[state=checked]:bg-foreground scale-90"
-                    />
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <button className="p-1 hover:bg-accent/20 text-muted-foreground">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-background border-border">
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
-                          <Edit2 className="w-4 h-4 mr-2" />
-                          Modifier
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setAnalyticsSequence(seq); }}>
-                          <BarChart3 className="w-4 h-4 mr-2" />
-                          Analytics
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          className="text-destructive"
-                          onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(seq.id); }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Supprimer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs bg-muted text-foreground hover:bg-accent/20 border border-border"
-                    onClick={(e) => { e.stopPropagation(); setEnrollmentsPanelSequence(seq); }}
-                  >
-                    <Users className="w-3 h-3" />
-                    <span className="font-medium tabular-nums">{seq.enrollments.active}/{seq.enrollments.total}</span>
-                  </button>
-                  {/* Breakdown statuses (mobile) — pills compacts */}
-                  {seq.enrollments.replied > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
-                      💬 {seq.enrollments.replied}
-                    </span>
-                  )}
-                  {seq.enrollments.completed > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-muted text-foreground/70 border border-border">
-                      ✓ {seq.enrollments.completed}
-                    </span>
-                  )}
-                  <span className="text-xs text-muted-foreground ml-auto">
-                    {formatDistanceToNow(new Date(seq.created_at), { addSuffix: true, locale: fr })}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {renderBody()}
 
       {/* Template Selector */}
       <SequenceTemplateSelector
@@ -960,7 +995,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         />
       )}
 
-      {/* Builder modal */}
+      {/* Éditeur */}
       {showBuilder && (
         <SequenceBuilder
           isOpen={showBuilder}
@@ -970,19 +1005,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           }}
           onSave={handleSaveSequence}
           initialSequence={editingSequence || undefined}
-        />
-      )}
-
-      {/* Enroll modal */}
-      {enrollModalSequence && selectedAccount && (
-        <SequenceEnrollModal
-          isOpen={!!enrollModalSequence}
-          onClose={() => setEnrollModalSequence(null)}
-          sequence={enrollModalSequence}
-          profiles={selectedProfiles}
-          accountId={selectedAccount}
-          job={selectedJob}
-          onSuccess={handleEnrollSuccess}
+          canActivate={canSendSequences}
         />
       )}
 
@@ -1031,33 +1054,28 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         </React.Suspense>
       )}
 
-      {/* Delete confirmation — affiche le count d'enrollments impactés */}
+      {/* Confirmation de suppression, avec l'impact chiffré */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
-        <AlertDialogContent className="bg-background border-border rounded-lg">
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer cette séquence ?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {deleteTarget ? `Supprimer la séquence « ${deleteTarget.name} » ?` : 'Supprimer cette séquence ?'}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p>
-                  Cette action est <strong>irréversible</strong>. Tous les candidats inscrits seront retirés
-                  et leur historique d'envoi (étapes programmées et envoyées) supprimé.
+                  Cette action est irréversible : les candidats inscrits sont retirés et leur historique d'envoi
+                  (étapes planifiées et envoyées) est supprimé.
                 </p>
-                {(() => {
-                  const seq = sequences.find(s => s.id === deleteConfirmId);
-                  if (!seq) return null;
-                  const total = seq.enrollments.total || 0;
-                  const active = seq.enrollments.active || 0;
-                  if (total === 0) return null;
-                  return (
-                    <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 text-sm">
-                      <p className="font-semibold text-destructive">⚠ Impact :</p>
-                      <p className="text-destructive/90 mt-1">
-                        {total} candidat{total > 1 ? 's' : ''} inscrit{total > 1 ? 's' : ''}
-                        {active > 0 && ` (dont ${active} actif${active > 1 ? 's' : ''} en cours d'envoi)`}.
-                      </p>
-                    </div>
-                  );
-                })()}
+                {deleteTarget && deleteTarget.enrollments.total > 0 && (
+                  <p className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-muted px-3 py-2 text-sm text-foreground">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+                    <span>
+                      {plural(deleteTarget.enrollments.total, 'candidat inscrit', 'candidats inscrits')}
+                      {deleteTarget.enrollments.active > 0 && `, dont ${deleteTarget.enrollments.active} en cours d'envoi`}.
+                    </span>
+                  </p>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1067,25 +1085,27 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
               className="bg-destructive hover:bg-destructive/90"
             >
-              Supprimer définitivement
+              Supprimer la séquence
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirmation Pause séquence avec actifs */}
+      {/* Désactivation d'une séquence qui a des candidats en cours */}
       <AlertDialog open={!!toggleConfirm} onOpenChange={() => setToggleConfirm(null)}>
-        <AlertDialogContent className="bg-background border-border rounded-lg">
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Désactiver cette séquence ?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {toggleTarget ? `Désactiver la séquence « ${toggleTarget.name} » ?` : 'Désactiver cette séquence ?'}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
                 <p>
-                  Les <strong>{toggleConfirm?.activeCount}</strong> candidat{(toggleConfirm?.activeCount || 0) > 1 ? 's' : ''} actuellement
-                  en cours seront mis en pause. Aucun nouveau message ne partira tant que la séquence est désactivée.
+                  {plural(toggleConfirm?.activeCount || 0, 'candidat en cours sera mis', 'candidats en cours seront mis')} en
+                  pause. Aucun message ne partira tant que la séquence restera désactivée.
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Tu pourras la réactiver à tout moment — les enrollments reprendront là où ils en étaient.
+                <p>
+                  Vous pourrez la réactiver à tout moment : les inscriptions reprendront là où elles en étaient.
                 </p>
               </div>
             </AlertDialogDescription>
@@ -1098,11 +1118,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 setToggleConfirm(null);
               }}
             >
-              Désactiver
+              Désactiver la séquence
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </section>
   );
 };

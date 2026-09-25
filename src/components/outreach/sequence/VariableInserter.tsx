@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,6 +10,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Braces } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { VARIABLE_EXAMPLE } from './messageTypeUtils';
 
 interface Variable {
   code: string;
@@ -22,25 +24,26 @@ interface VariableGroup {
   variables: Variable[];
 }
 
+// Exemples : les mêmes que l'aperçu du message (messageTypeUtils, revue design D-36).
 const CANDIDATE_VARIABLES: Variable[] = [
-  { code: '{{first_name}}', label: 'Prénom', example: 'Marie' },
-  { code: '{{last_name}}', label: 'Nom', example: 'Dupont' },
-  { code: '{{company}}', label: 'Entreprise', example: 'Acme Corp' },
-  { code: '{{job_title}}', label: 'Poste', example: 'CTO' },
-  { code: '{{city}}', label: 'Ville', example: 'Paris' },
+  { code: '{{first_name}}', label: 'Prénom', example: VARIABLE_EXAMPLE.first_name },
+  { code: '{{last_name}}', label: 'Nom', example: VARIABLE_EXAMPLE.last_name },
+  { code: '{{company}}', label: 'Entreprise', example: VARIABLE_EXAMPLE.company },
+  { code: '{{job_title}}', label: 'Poste', example: VARIABLE_EXAMPLE.job_title },
+  { code: '{{city}}', label: 'Ville', example: VARIABLE_EXAMPLE.city },
 ];
 
 const RECRUITER_VARIABLES: Variable[] = [
-  { code: '{{sender_name}}', label: 'Votre nom', example: 'Jean Martin' },
-  { code: '{{calendly_link}}', label: 'Lien Calendly', example: 'https://cal.com/...' },
+  { code: '{{sender_name}}', label: 'Votre prénom', example: 'Jean' },
+  { code: '{{calendly_link}}', label: 'Lien Calendly', example: 'calendly.com/…' },
 ];
 
 const EMAIL_ONLY_VARIABLES: Variable[] = [
-  { code: '{{signature}}', label: 'Signature email', example: '— Jean Martin, Recruiter' },
+  { code: '{{signature}}', label: "Signature de l'e-mail", example: 'Votre signature' },
 ];
 
 const AI_VARIABLES: Variable[] = [
-  { code: '{{ai_snippet}}', label: 'Passage IA', example: '(personnalisé à l\'envoi)' },
+  { code: '{{ai_snippet}}', label: "Passage rédigé par l'IA", example: "À l'envoi" },
 ];
 
 interface VariableInserterProps {
@@ -52,6 +55,8 @@ interface VariableInserterProps {
   currentValue: string;
   /** Show email-only variables */
   showEmailVariables?: boolean;
+  /** Champ visé (« l'objet », « le message »), pour le nom du bouton. */
+  fieldLabel?: string;
   className?: string;
 }
 
@@ -60,6 +65,7 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
   onInsert,
   currentValue,
   showEmailVariables = false,
+  fieldLabel,
   className,
 }) => {
   const handleInsert = (code: string) => {
@@ -84,8 +90,8 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
 
   const groups: VariableGroup[] = [
     { label: 'Candidat', variables: CANDIDATE_VARIABLES },
-    { label: 'Recruteur', variables: RECRUITER_VARIABLES },
-    ...(showEmailVariables ? [{ label: 'Email', variables: EMAIL_ONLY_VARIABLES }] : []),
+    { label: 'Vous', variables: RECRUITER_VARIABLES },
+    ...(showEmailVariables ? [{ label: 'E-mail', variables: EMAIL_ONLY_VARIABLES }] : []),
     { label: 'IA', variables: AI_VARIABLES },
   ];
 
@@ -95,32 +101,31 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
         <Button
           type="button"
           variant="ghost"
-          size="sm"
-          className={className || "h-6 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"}
+          size="xs"
+          className={cn('gap-1 text-muted-foreground hover:text-foreground max-md:h-11', className)}
+          aria-label={fieldLabel ? `Variables à insérer dans ${fieldLabel}` : undefined}
         >
-          <Braces className="w-3 h-3" />
+          <Braces aria-hidden="true" />
           Variables
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
+      <DropdownMenuContent align="end" className="w-72">
         {groups.map((group, gi) => (
           <React.Fragment key={group.label}>
             {gi > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              {group.label}
-            </DropdownMenuLabel>
+            <DropdownMenuLabel className="eyebrow text-2xs">{group.label}</DropdownMenuLabel>
             <DropdownMenuGroup>
               {group.variables.map((v) => (
                 <DropdownMenuItem
                   key={v.code}
                   onClick={() => handleInsert(v.code)}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex cursor-pointer items-center justify-between gap-3"
                 >
-                  <div className="flex items-center gap-2">
-                    <code className="text-[11px] font-mono bg-muted px-1 py-0.5 rounded">{v.code}</code>
-                    <span className="text-xs">{v.label}</span>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground italic">{v.example}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <code className="rounded-sm bg-muted px-1 py-0.5 font-mono text-2xs">{v.code}</code>
+                    <span className="truncate text-xs">{v.label}</span>
+                  </span>
+                  <span className="shrink-0 text-2xs text-muted-foreground">{v.example}</span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>

@@ -3,7 +3,50 @@ import { SequenceStep } from '../SequenceBuilder';
 export interface MessageTypeInfo {
   label: string;
   shortLabel: string;
-  color: string; // tailwind classes
+}
+
+/**
+ * Exemple neutre des variables, pour le menu « Variables » et l'aperçu d'un
+ * message (revue design D-36) : jamais le nom d'une vraie personne ni d'un
+ * vrai client. La syntaxe est celle que lit le moteur d'envoi
+ * (`{{first_name}}`, supabase/functions/_shared/template-interpolation.ts).
+ */
+export const VARIABLE_EXAMPLE = {
+  first_name: 'Marie',
+  last_name: 'Dupont',
+  company: 'Cabinet Horizon',
+  job_title: 'Directrice technique',
+  city: 'Lyon',
+  calendly_link: 'https://calendly.com/votre-lien',
+  ai_snippet: "[passage rédigé par l'IA pour chaque candidat]",
+};
+
+/**
+ * Aperçu d'un message avec l'exemple neutre. L'expéditeur est l'utilisateur
+ * connecté : le moteur remplace `{{sender_name}}` par le prénom de
+ * l'expéditeur.
+ */
+export function previewMessageTemplate(template: string, senderName?: string | null): string {
+  const sender = senderName?.trim() || 'Jean Martin';
+  const values: Record<string, string> = {
+    ...VARIABLE_EXAMPLE,
+    sender_name: sender.split(/\s+/)[0],
+    signature: sender,
+  };
+  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (match, key: string) => values[key] ?? match);
+}
+
+/**
+ * Délai avant une étape, en entier : « 2 j 4 h 30 min ». Les heures et les
+ * minutes comptent autant que les jours (revue design D-40). Chaîne vide
+ * quand il n'y a aucun délai.
+ */
+export function formatStepDelay(days?: number | null, hours?: number | null, minutes?: number | null): string {
+  return [
+    days ? `${days} j` : '',
+    hours ? `${hours} h` : '',
+    minutes ? `${minutes} min` : '',
+  ].filter(Boolean).join(' ');
 }
 
 /**
@@ -21,7 +64,7 @@ export function getStepMessageType(
   }
 
   if (step.actionType === 'connection_request') {
-    return { label: 'Invitation (pas de note)', shortLabel: 'Invitation', color: 'bg-success/10 text-success' };
+    return { label: 'Invitation (sans note)', shortLabel: 'Invitation' };
   }
 
   // Walk backwards through the graph to find previous message steps in this branch
@@ -30,9 +73,9 @@ export function getStepMessageType(
   if (step.actionType === 'whatsapp_message') {
     const prevWhatsApp = previousSteps.filter(s => s.actionType === 'whatsapp_message');
     if (prevWhatsApp.length === 0) {
-      return { label: 'WhatsApp initial', shortLabel: 'WhatsApp', color: 'bg-green-500/10 text-green-500' };
+      return { label: 'Premier message WhatsApp', shortLabel: 'WhatsApp' };
     }
-    return { label: 'WhatsApp relance', shortLabel: 'WA relance', color: 'bg-green-500/10 text-green-500' };
+    return { label: 'Relance WhatsApp', shortLabel: 'Relance WhatsApp' };
   }
 
   const prevMessages = previousSteps.filter(s =>
@@ -43,24 +86,24 @@ export function getStepMessageType(
   if (step.actionType === 'inmail') {
     const prevInMails = prevMessages.filter(s => s.actionType === 'inmail');
     if (prevInMails.length === 0) {
-      return { label: 'InMail initial (formel)', shortLabel: 'InMail initial', color: 'bg-info/10 text-info' };
+      return { label: 'Premier InMail (formel)', shortLabel: 'Premier InMail' };
     }
-    return { label: 'InMail relance', shortLabel: 'InMail relance', color: 'bg-info/10 text-info' };
+    return { label: 'Relance par InMail', shortLabel: 'Relance InMail' };
   }
 
   // message or smart_message
   const prevDirectMsgs = prevMessages.filter(s => ['message', 'smart_message'].includes(s.actionType));
 
   if (prevDirectMsgs.length === 0 && !hadInvite) {
-    return { label: 'Premier message (accroche)', shortLabel: '1er message', color: 'bg-brand-purple/10 text-brand-purple' };
+    return { label: 'Premier message (accroche)', shortLabel: 'Premier message' };
   }
   if (prevDirectMsgs.length === 0 && hadInvite) {
-    return { label: 'Suite invitation (merci + pitch)', shortLabel: 'Post-connexion', color: 'bg-brand-purple/10 text-brand-purple' };
+    return { label: "Après l'invitation (remerciement et présentation)", shortLabel: 'Après connexion' };
   }
   if (prevDirectMsgs.length === 1) {
-    return { label: 'Relance 1', shortLabel: 'Relance 1', color: 'bg-warning/10 text-warning' };
+    return { label: 'Relance 1', shortLabel: 'Relance 1' };
   }
-  return { label: 'Relance 2', shortLabel: 'Relance 2', color: 'bg-destructive/10 text-destructive' };
+  return { label: 'Relance 2', shortLabel: 'Relance 2' };
 }
 
 /**
