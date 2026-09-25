@@ -170,3 +170,19 @@ export function skipReasonLabel(reason: string | null | undefined): string | nul
   }
   return 'Étape non exécutée';
 }
+
+// ─── Tons ────────────────────────────────────────────────────────────────
+
+/**
+ * Tons de rédaction des messages générés pour les séquences et les InMails :
+ * les mêmes mots partout, sans emoji ni abréviation (« Pro », « Cool »,
+ * « Wow » : revue design D-62). Les réponses de la messagerie ont leurs
+ * propres tons, envoyés à une autre fonction.
+ */
+export const MESSAGE_TONES = [
+  { value: 'professional', label: 'Professionnel' },
+  { value: 'casual', label: 'Décontracté' },
+  { value: 'enthusiastic', label: 'Enthousiaste' },
+] as const;
+
+export type MessageTone = (typeof MESSAGE_TONES)[number]['value'];

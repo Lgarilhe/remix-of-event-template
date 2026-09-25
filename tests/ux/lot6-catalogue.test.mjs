@@ -94,3 +94,10 @@ test('D-66 : la pastille de canal ne lit pas le nom deux fois', () => {
   assert.match(icon, /alt=\{showLabel \? '' : label\}/);
   assert.doesNotMatch(icon, /text-linkedin|text-whatsapp/, 'le libellé reste en texte neutre');
 });
+
+test('D-62 : trois tons de rédaction, en mots entiers', () => {
+  assert.deepEqual(
+    catalog.MESSAGE_TONES.map((t) => t.label),
+    ['Professionnel', 'Décontracté', 'Enthousiaste'],
+  );
+});
