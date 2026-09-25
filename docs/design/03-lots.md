@@ -65,22 +65,24 @@ Ce que la revue G a relevé et que le lot 1 laissait ouvert.
 
 Reste : l'onglet actif et l'item de menu survolé se distinguent de leurs voisins sous 3:1 (fond, filet, couleur du texte). Relever ces fonds alourdirait tous les menus ; le choix est soumis à la contre-revue.
 
-### Lot 4 · Tableau de bord
+### Lot 4 · Tableau de bord (fait)
 
-Périmètre : `src/pages/Dashboard.tsx`, `src/components/dashboard/**`, `MissionCompanyLogo`.
+Périmètre : `src/pages/Dashboard.tsx`, `src/components/dashboard/**`.
 
-Constats : A-22 à A-33, dont A-23 (P1) ; A-27 (logos, qui touche aussi les tâches et l'agenda) ; A-53 à A-57 pour ces fichiers.
+- En-tête sur `PageHeader` : « Bon après-midi, Camille », la date et le récapitulatif, sans emoji, avatar, dégradé ni tache floue. Trois actions : « Nouvelle mission » (principale), « Rechercher » (qui mène enfin à `/sourcing`), « Messagerie » (A-22, A-32).
+- Plus aucune animation : ni boucle, ni entrée décalée, ni compteur qui défile. La transition de page de la coquille suffit (A-23).
+- Canaux : statut en texte avec un point, action « Connecter » ou « Reconnecter » visible (A-31).
+- « Pour aujourd'hui » : tuiles neutres, un zéro reste gris, un chiffre non nul passe en texte principal avec un point d'accent ; le total concurrent de la barre latérale est retiré ; « Rappels du jour » devient « Tâches du jour » (A-26, A-32).
+- Missions : initiales neutres, « 140 sourcés · 24 contactés · 12 retenus » en mots, détail dépliable par un bouton toujours visible, progression en accent (A-29).
+- Journée : `Checkbox` du kit, liens au lieu de rechargements, sous-titre « 3 en retard · 2 à venir », « En cours », « Dans 12 min », « Rejoindre » en bouton principal (A-30).
+- Semaine : courbes monochromes, variation écrite en couleur de statut, « Voir l'analyse » (A-24).
+- Chaque section a ses états : squelette, erreur avec « Réessayer » (panne simulée vérifiée), vide avec la prochaine action (A-25).
+- Réorganisation : le glisser-déposer laisse place à un mode « Personnaliser la page » avec « Monter » et « Descendre », au clavier comme au doigt, annonce du déplacement aux lecteurs d'écran (A-28).
+- Code mort retiré : `JobDetailSheet` jamais ouvert (A-33).
 
-- En-tête sur `PageHeader` ; salutation sans emoji, sans dégradé ni tache floue.
-- Indicateurs sur `StatTile` : chiffre monochrome, un zéro ne se colore pas.
-- Chaque section a ses quatre états : squelette, `EmptyState` qui mène à l'action, `ErrorState` compact avec « Réessayer ».
-- « Pour aujourd'hui » : tuiles neutres, couleur de statut sur le seul signal.
-- Aucune animation en boucle ; entrées de 200 ms au plus.
-- Réorganisation : poignée qui ne chevauche rien sur téléphone, déplaçable au clavier.
-- Logos : plus d'appel à un service tiers depuis le navigateur avec le nom du client ; logo enregistré ou initiales.
-- Textes : « Tableau de bord », « Messagerie », « Agenda » ; chaque lien mène où il le dit.
+Composants partagés modifiés : `CandidateAvatar` (initiales neutres, image décorative), `MissionCompanyLogo` (plus aucun appel à un service tiers : logo enregistré ou initiales, A-27), `LivePulse` (point fixe), `Sparkline` (monochrome), `Section` (niveau de titre, `aria-labelledby`), `StatGrid` (classes écrites en entier), `PageHeader` (actions qui passent à la ligne sur téléphone), `useAllReminders` (une lecture en échec remonte au lieu de renvoyer une liste vide). `CandidateAvatar` sert aussi au menu de l'avatar de la barre latérale : les initiales y deviennent neutres.
 
-Fini quand : les quatre variantes, compte rempli et compte vide, passent la relecture ; `components/dashboard/**` ne porte plus d'emoji, de couleur brute ni de taille arbitraire.
+Reste : dans Tâches, le logo reçoit l'intitulé du poste au lieu du client (A-27, lot 5). Le logo des clients pourrait être résolu côté serveur et enregistré sur la mission ; c'est une évolution du modèle de données, hors du chantier.
 
 ### Lot 5 · Tâches et agenda
 

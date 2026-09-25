@@ -1,15 +1,14 @@
 /**
- * LivePulse — petit dot avec pulse animé qui signale "en temps réel" / "actif".
+ * LivePulse — point fixe qui signale un état en cours (« en direct », « en
+ * cours »). Il ne pulse pas : une animation en boucle distrait et ne dit rien
+ * de plus (docs/design/01-direction.md, § 7). Le sens passe par le texte qui
+ * l'accompagne, jamais par la couleur seule.
  *
  * Usage :
- *   <LivePulse tone="success" />  → dot vert qui ping
- *   <LivePulse tone="info" label="Live" />  → dot + texte
- *
- * Animation infinie en CSS (via framer-motion), respecte prefers-reduced-motion.
+ *   <LivePulse tone="success" label="En cours" />
  */
 
 import React from 'react';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 interface LivePulseProps {
@@ -18,32 +17,16 @@ interface LivePulseProps {
   className?: string;
 }
 
-const TONE_BG: Record<NonNullable<LivePulseProps['tone']>, string> = {
-  success: 'bg-success',
-  warning: 'bg-warning',
-  destructive: 'bg-destructive',
-  info: 'bg-info',
+const TONE: Record<NonNullable<LivePulseProps['tone']>, { dot: string; text: string }> = {
+  success: { dot: 'bg-success', text: 'text-success' },
+  warning: { dot: 'bg-warning', text: 'text-warning' },
+  destructive: { dot: 'bg-danger', text: 'text-danger' },
+  info: { dot: 'bg-info', text: 'text-info' },
 };
 
-export const LivePulse: React.FC<LivePulseProps> = ({ tone = 'success', label, className }) => {
-  const bgColor = TONE_BG[tone];
-
-  return (
-    <span className={cn('inline-flex items-center gap-1.5', className)}>
-      <span className="relative flex h-2 w-2">
-        <motion.span
-          className={cn('absolute inset-0 rounded-full', bgColor)}
-          initial={{ opacity: 0.6, scale: 1 }}
-          animate={{ opacity: 0, scale: 2.4 }}
-          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeOut' }}
-        />
-        <span className={cn('relative inline-flex h-2 w-2 rounded-full', bgColor)} />
-      </span>
-      {label && (
-        <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
-          {label}
-        </span>
-      )}
-    </span>
-  );
-};
+export const LivePulse: React.FC<LivePulseProps> = ({ tone = 'success', label, className }) => (
+  <span className={cn('inline-flex items-center gap-1.5', className)}>
+    <span className={cn('inline-flex h-1.5 w-1.5 shrink-0 rounded-full', TONE[tone].dot)} aria-hidden="true" />
+    {label && <span className={cn('text-2xs font-medium', TONE[tone].text)}>{label}</span>}
+  </span>
+);

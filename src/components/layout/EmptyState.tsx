@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 
 export interface EmptyStateProps {
   /** Composant d'icône (lucide) ou élément déjà rendu */
-  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }> | React.ReactNode;
+  icon?: React.ElementType | React.ReactNode;
   title: string;
   description?: React.ReactNode;
   /** Action principale (bouton, lien) */
@@ -33,7 +33,7 @@ function renderIcon(icon: EmptyStateProps['icon'], compact: boolean) {
   const size = compact ? 'h-4 w-4' : 'h-5 w-5';
   let content: React.ReactNode = icon as React.ReactNode;
   if (typeof icon === 'function' || (typeof icon === 'object' && icon !== null && '$$typeof' in icon && !React.isValidElement(icon))) {
-    const Icon = icon as React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+    const Icon = icon as React.ElementType;
     content = <Icon className={size} aria-hidden={true} />;
   }
   return (

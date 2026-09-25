@@ -18,7 +18,7 @@ export type StatTileVariant = 'default' | 'primary' | 'success' | 'warning' | 'd
 export interface StatTileProps {
   label: string;
   value: React.ReactNode;
-  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  icon?: React.ElementType;
   /** Petit indicateur à droite de la value (ex. trend) */
   trailing?: React.ReactNode;
   /** Variant pour accentuer (couleur + bg) */
@@ -91,33 +91,27 @@ export interface StatGridProps {
   className?: string;
 }
 
-const COL_CLASSES = (col: number): string => {
-  switch (col) {
-    case 1: return 'grid-cols-1';
-    case 2: return 'grid-cols-2';
-    case 3: return 'grid-cols-3';
-    case 4: return 'grid-cols-4';
-    case 5: return 'grid-cols-5';
-    case 6: return 'grid-cols-6';
-    case 7: return 'grid-cols-7';
-    default: return 'grid-cols-1';
-  }
+// Classes écrites en entier : Tailwind ne génère que les classes qu'il lit
+// telles quelles dans le code (un `sm:${…}` construit à l'exécution n'existe pas).
+const COLS: Record<number, { base: string; sm: string; md: string; lg: string }> = {
+  1: { base: 'grid-cols-1', sm: 'sm:grid-cols-1', md: 'md:grid-cols-1', lg: 'lg:grid-cols-1' },
+  2: { base: 'grid-cols-2', sm: 'sm:grid-cols-2', md: 'md:grid-cols-2', lg: 'lg:grid-cols-2' },
+  3: { base: 'grid-cols-3', sm: 'sm:grid-cols-3', md: 'md:grid-cols-3', lg: 'lg:grid-cols-3' },
+  4: { base: 'grid-cols-4', sm: 'sm:grid-cols-4', md: 'md:grid-cols-4', lg: 'lg:grid-cols-4' },
+  5: { base: 'grid-cols-5', sm: 'sm:grid-cols-5', md: 'md:grid-cols-5', lg: 'lg:grid-cols-5' },
+  6: { base: 'grid-cols-6', sm: 'sm:grid-cols-6', md: 'md:grid-cols-6', lg: 'lg:grid-cols-6' },
+  7: { base: 'grid-cols-7', sm: 'sm:grid-cols-7', md: 'md:grid-cols-7', lg: 'lg:grid-cols-7' },
 };
 
 export const StatGrid: React.FC<StatGridProps> = ({ children, cols, className }) => {
-  const base = COL_CLASSES(cols?.base ?? 2);
-  const sm = cols?.sm ? `sm:${COL_CLASSES(cols.sm)}` : '';
-  const md = cols?.md ? `md:${COL_CLASSES(cols.md)}` : '';
-  const lg = cols?.lg ? `lg:${COL_CLASSES(cols.lg)}` : '';
-
   return (
     <div
       className={cn(
         'grid gap-3',
-        base,
-        sm,
-        md,
-        lg,
+        COLS[cols?.base ?? 2]?.base,
+        cols?.sm && COLS[cols.sm]?.sm,
+        cols?.md && COLS[cols.md]?.md,
+        cols?.lg && COLS[cols.lg]?.lg,
         className,
       )}
     >

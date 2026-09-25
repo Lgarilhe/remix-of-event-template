@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 
 export interface PageHeaderProps {
   /** Icône lucide-react (optionnelle), rendue en ton neutre */
-  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  icon?: React.ElementType;
   /** Titre principal (h1) */
   title: string;
   /** Méta à droite du titre (compteur, badge…) */
@@ -53,7 +53,7 @@ export const PageHeader: React.FC<PageHeaderProps> = React.memo(({
         </div>
         {subtitle && <p className="max-w-2xl text-sm text-muted-foreground">{subtitle}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
     </header>
   );
 });

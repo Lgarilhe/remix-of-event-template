@@ -43,6 +43,7 @@ La session « Audit complet du dépôt » refond l'expérience mission, la barre
 | 1 | Socle commun | fait (`b90f07a1`) |
 | 2 | Coquille | fait (`b90f07a1`) |
 | 3 | Socle, suite | fait |
-| 4 à 9 | Écrans du chantier | à faire |
+| 4 | Tableau de bord | fait |
+| 5 à 9 | Écrans du chantier | à faire |
 | 10 | Passe texte | à faire |
 | 11 | Nettoyage, après la fusion de la refonte mission | à faire |

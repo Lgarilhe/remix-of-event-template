@@ -191,7 +191,10 @@ test('R6 — tableau de bord : liaison stricte, plus de repli, WhatsApp retiré'
   assert.doesNotMatch(dashboardHook, /type !== 'WHATSAPP'/, 'le repli prenait le premier compte de la liste');
   assert.doesNotMatch(dashboardCards, /whatsapp/i, 'carte WhatsApp retirée au lot 3');
   assert.match(dashboardCards, /sm:grid-cols-2/);
-  assert.match(dashboardCards, /const needsAction = channel\.status === 'error' \|\| channel\.status === 'disconnected';/);
+  // Seuls « À reconnecter » et « Non connecté » portent une action (lot 4 du chantier design).
+  assert.match(dashboardCards, /error: \{ label: 'À reconnecter', dot: 'bg-danger', action: 'Reconnecter' \}/);
+  assert.match(dashboardCards, /disconnected: \{ label: 'Non connecté', dot: 'bg-muted-foreground', action: 'Connecter' \}/);
+  assert.match(dashboardCards, /connected: \{ label: 'Connecté', dot: 'bg-success', action: null \}/);
 });
 
 test('R6 — Mon compte LinkedIn : état partagé, formulaire qui ne se rouvre plus seul', () => {

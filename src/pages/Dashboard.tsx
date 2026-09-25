@@ -1,27 +1,26 @@
 /**
- * Dashboard — page d'accueil de l'app Konekt.
+ * Dashboard — page d'accueil de l'application.
  *
- * Pattern SaaS moderne (Linear / Pipedrive / Notion) : pas un wall of stats
- * mais une page d'**action** + **personnalisable** (drag-to-reorder).
+ * Une page d'action plutôt qu'un mur de chiffres : l'en-tête, puis cinq
+ * sections dans l'ordre choisi par l'utilisateur (mode « Personnaliser »,
+ * mémorisé par useDashboardLayout) :
+ *   1. Canaux        — état de LinkedIn et de l'e-mail
+ *   2. Pour aujourd'hui — ce qui attend une action
+ *   3. Missions et journée — missions actives, programme du jour
+ *   4. Cette semaine — variation et chiffres de la semaine
+ *   5. Activité      — derniers mouvements sur les candidats
  *
- * Layout :
- * - Greeting (fixe, en haut)
- * - 5 sections sortables (drag handle au hover) :
- *   1. Connections — état temps réel des 3 canaux outreach
- *   2. Focus       — alertes color-coded "à traiter aujourd'hui"
- *   3. Missions+Today — combo 2 colonnes (missions actives + agenda)
- *   4. Week        — highlight perf hebdo
- *   5. Activity    — feed des derniers mouvements candidats
- *
- * L'ordre est persisté par user dans localStorage via useDashboardLayout.
+ * Chaque section a ses états : chargement (squelette à hauteur fixe), erreur
+ * avec « Réessayer », vide avec la prochaine action (docs/design/01-direction.md, § 8).
  */
 
 import React, { useMemo, useState } from 'react';
-import { Reorder } from 'framer-motion';
 import { differenceInDays, parseISO } from 'date-fns';
-import { Undo2 } from 'lucide-react';
+import { Check, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
-import { PageLayout } from '@/components/layout';
+import { PageLayout, Section, ErrorState } from '@/components/layout';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useATSData, type ATSCandidate } from '@/hooks/useATSData';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
@@ -31,7 +30,6 @@ import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
 import { useDashboardLayout, type DashboardSectionKey } from '@/hooks/useDashboardLayout';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
-import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
 import { DashboardFocusPanel } from '@/components/dashboard/DashboardFocusPanel';
 import { DashboardConnections } from '@/components/dashboard/DashboardConnections';
@@ -41,7 +39,7 @@ import { DashboardWeekHighlight } from '@/components/dashboard/DashboardWeekHigh
 import { DashboardActivityFeed } from '@/components/dashboard/DashboardActivityFeed';
 import { DashboardSortableItem } from '@/components/dashboard/DashboardSortableItem';
 
-// Helpers (used to derive focus panel counters)
+// Délais indicatifs par étape, au-delà desquels un candidat est « stagnant ».
 const STAGE_GUIDE_TIMES: Record<string, number> = {
   'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5,
   'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7,
@@ -67,13 +65,60 @@ const isPendingResponse = (c: ATSCandidate): boolean => {
   }
 };
 
+const SECTION_LABELS: Record<DashboardSectionKey, string> = {
+  connections: 'Vos canaux',
+  focus: "Pour aujourd'hui",
+  'missions-today': 'Missions et journée',
+  week: 'Cette semaine',
+  activity: 'Activité récente',
+};
+
+/** Section dont les données chargent ou n'ont pas pu être lues. */
+const PanelPlaceholder: React.FC<{
+  title: string;
+  loading: boolean;
+  error: string | null;
+  errorTitle: string;
+  onRetry: () => void;
+}> = ({ title, loading, error, errorTitle, onRetry }) => (
+  <Section headingLevel={2} title={title}>
+    <div className="p-3">
+      {loading ? (
+        <div role="status" aria-label="Chargement">
+          <Skeleton className="h-32 rounded-lg" />
+        </div>
+      ) : (
+        <ErrorState
+          variant="compact"
+          className="border-0 bg-transparent"
+          title={errorTitle}
+          description="Vérifiez votre connexion, puis réessayez."
+          detail={error}
+          onRetry={onRetry}
+        />
+      )}
+    </div>
+  </Section>
+);
+
 export default function Dashboard() {
-  const { candidates, loading, handleStageChange, handleTagsChange, refetch } = useATSData();
-  const { projects, isLoading: projectsLoading } = useSourcingProjects();
-  const { data: scheduledMessages = [], isLoading: messagesLoading } = useTodayScheduledMessages();
-  const { grouped: groupedReminders, isLoading: remindersLoading } = useAllReminders();
-  // Réponses de candidats comptées par la barre (D40) : mêmes clés, même
-  // nombre que les lignes en gras de la section Réponses. null : inconnu.
+  const { candidates, loading, error: candidatesError, handleStageChange, handleTagsChange, refetch } = useATSData();
+  const { projects, isLoading: projectsLoading, error: projectsError, refetch: refetchProjects } = useSourcingProjects();
+  const {
+    data: scheduledMessages = [],
+    isLoading: messagesLoading,
+    error: messagesError,
+    refetch: refetchMessages,
+  } = useTodayScheduledMessages();
+  const {
+    grouped: groupedReminders,
+    isLoading: remindersLoading,
+    error: remindersError,
+    refetch: refetchReminders,
+    toggleComplete,
+  } = useAllReminders();
+  // Réponses de candidats comptées par la barre : mêmes clés, même nombre que
+  // les lignes en gras de la section Réponses. null : inconnu.
   const { replies } = useSidebarNotifications();
   const unreadMessages = replies.data ? replies.data.candidates.filter((c) => c.counted).length : null;
   const unreadMessagesUnavailable = replies.status === 'error' || replies.status === 'offline';
@@ -81,25 +126,19 @@ export default function Dashboard() {
   const connections = useDashboardConnections();
   const { order, setOrder, resetOrder, isCustomized } = useDashboardLayout();
 
-  // Avatar : photo LinkedIn si un compte est connecté, sinon initiales
-  const greetingAvatarUrl = connections.linkedin.avatarUrl;
-
   const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
 
-  // Derived counters for the Focus Panel
-  const focusCounters = useMemo(() => {
-    const stagnant = candidates.filter(isStagnant).length;
-    const pending = candidates.filter(isPendingResponse).length;
-    const remindersToday = groupedReminders.today.length + groupedReminders.overdue.length;
-    return {
-      stagnant,
-      pending,
-      remindersToday,
-    };
-  }, [candidates, groupedReminders.today.length, groupedReminders.overdue.length]);
+  const candidatesUnavailable = !!candidatesError && candidates.length === 0;
 
-  // Active candidates count (exclude terminal)
+  const focusCounters = useMemo(() => ({
+    stagnant: candidatesUnavailable ? null : candidates.filter(isStagnant).length,
+    pending: candidatesUnavailable ? null : candidates.filter(isPendingResponse).length,
+    remindersToday: remindersError ? null : groupedReminders.today.length + groupedReminders.overdue.length,
+  }), [candidates, candidatesUnavailable, remindersError, groupedReminders.today.length, groupedReminders.overdue.length]);
+
+  // Candidats actifs : hors étapes terminales.
   const activeCandidatesCount = useMemo(
     () => candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu').length,
     [candidates],
@@ -110,112 +149,151 @@ export default function Dashboard() {
     [projects],
   );
 
-  // Reminders due today (today + overdue, not done)
+  // Tâches du jour : aujourd'hui et en retard, non terminées.
   const remindersToday = useMemo(
     () => [...groupedReminders.overdue, ...groupedReminders.today],
     [groupedReminders.overdue, groupedReminders.today],
   );
 
-  /**
-   * Map clé → contenu rendu. Chaque section gère son propre skeleton/empty
-   * state en interne. Si une section n'a rien à afficher (loading initial,
-   * etc.), on retourne `null` pour la skipper du flux Reorder.
-   */
+  const todayError = remindersError ?? (messagesError ? (messagesError as { message?: string }).message ?? 'Erreur' : null);
+  const retryToday = () => {
+    void refetchReminders();
+    void refetchMessages();
+  };
+
+  const moveSection = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= order.length) return;
+    const next = [...order];
+    [next[index], next[target]] = [next[target], next[index]];
+    setOrder(next);
+    setAnnouncement(`${SECTION_LABELS[next[target]]} : position ${target + 1} sur ${next.length}.`);
+  };
+
   const sections: Record<DashboardSectionKey, React.ReactNode> = {
-    connections: !connections.isLoading ? (
-      <DashboardConnections
-        linkedin={connections.linkedin}
-        email={connections.email}
-        hasIssue={connections.hasIssue}
-        allConnected={connections.allConnected}
-      />
-    ) : null,
-    focus: !loading ? (
+    connections: (
+      <DashboardConnections linkedin={connections.linkedin} email={connections.email} isLoading={connections.isLoading} />
+    ),
+    focus: (
       <DashboardFocusPanel
+        isLoading={loading || remindersLoading}
         unreadMessages={unreadMessages}
         unreadMessagesUnavailable={unreadMessagesUnavailable}
         stagnantCandidates={focusCounters.stagnant}
         remindersToday={focusCounters.remindersToday}
         pendingResponses={focusCounters.pending}
       />
-    ) : null,
+    ),
     'missions-today': (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <DashboardMissionsPanel projects={projects} isLoading={projectsLoading} />
-        </div>
-        <div>
-          <DashboardTodayPanel
-            scheduledMessages={scheduledMessages}
-            remindersToday={remindersToday}
-            isLoading={messagesLoading || remindersLoading}
+          <DashboardMissionsPanel
+            projects={projects}
+            isLoading={projectsLoading}
+            error={projectsError ? (projectsError as { message?: string }).message ?? 'Erreur' : null}
+            onRetry={() => void refetchProjects()}
           />
         </div>
+        <DashboardTodayPanel
+          scheduledMessages={scheduledMessages}
+          remindersToday={remindersToday}
+          isLoading={messagesLoading || remindersLoading}
+          error={todayError}
+          onRetry={retryToday}
+          onToggleReminder={toggleComplete}
+        />
       </div>
     ),
     week:
-      !loading && candidates.length > 0 ? (
-        <div className="mb-6">
-          <DashboardWeekHighlight candidates={candidates} />
-        </div>
-      ) : null,
-    activity: !loading ? (
-      <div className="mb-6">
-        <DashboardActivityFeed
-          candidates={candidates}
-          onCandidateClick={(c) => setSelectedCandidate(c)}
+      loading || candidatesUnavailable ? (
+        <PanelPlaceholder
+          title="Cette semaine"
+          loading={loading}
+          error={candidatesError}
+          errorTitle="Impossible de calculer la semaine"
+          onRetry={refetch}
         />
-      </div>
-    ) : null,
+      ) : candidates.length > 0 ? (
+        <DashboardWeekHighlight candidates={candidates} />
+      ) : null,
+    activity:
+      loading || candidatesUnavailable ? (
+        <PanelPlaceholder
+          title="Activité récente"
+          loading={loading}
+          error={candidatesError}
+          errorTitle="Impossible de charger l'activité"
+          onRetry={refetch}
+        />
+      ) : (
+        <DashboardActivityFeed candidates={candidates} onCandidateClick={(c) => setSelectedCandidate(c)} />
+      ),
   };
 
   return (
     <PageLayout maxWidth="2xl">
       <SEOHead
-        title="Dashboard | Konekt"
+        title="Tableau de bord | Konekt"
         description="Votre point de départ : ce qui demande votre attention aujourd'hui."
       />
 
-      {/* 1. Greeting (fixe en haut) */}
       <DashboardGreeting
         userName={displayName}
-        avatarUrl={greetingAvatarUrl}
         activeCandidatesCount={activeCandidatesCount}
         activeMissionsCount={activeMissionsCount}
       />
 
-      {/* 2. Sections sortables — drag handle visible au hover */}
-      <Reorder.Group
-        axis="y"
-        values={order}
-        onReorder={setOrder}
-        className="space-y-0 list-none"
-      >
-        {order.map((key) => {
+      {editing && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/60 px-4 py-3">
+          <p className="text-sm text-foreground">Réordonnez les sections avec les flèches. L'ordre est enregistré pour vous.</p>
+          <div className="flex items-center gap-2">
+            {isCustomized && (
+              <Button type="button" variant="ghost" size="sm" onClick={resetOrder}>
+                <RotateCcw aria-hidden="true" />
+                Rétablir l'ordre par défaut
+              </Button>
+            )}
+            <Button type="button" variant="primary" size="sm" onClick={() => setEditing(false)}>
+              <Check aria-hidden="true" />
+              Terminé
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <ul className="space-y-6">
+        {order.map((key, index) => {
           const content = sections[key];
           if (!content) return null;
           return (
-            <DashboardSortableItem key={key} value={key}>
+            <DashboardSortableItem
+              key={key}
+              label={SECTION_LABELS[key]}
+              editing={editing}
+              isFirst={index === 0}
+              isLast={index === order.length - 1}
+              onMoveUp={() => moveSection(index, -1)}
+              onMoveDown={() => moveSection(index, 1)}
+            >
               {content}
             </DashboardSortableItem>
           );
         })}
-      </Reorder.Group>
+      </ul>
 
-      {/* Reset order — discret en bas, visible seulement si customisé */}
-      {isCustomized && (
-        <div className="flex justify-end mt-2">
-          <button
-            onClick={resetOrder}
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Undo2 className="w-3 h-3" />
-            Réinitialiser l'ordre
-          </button>
+      <p className="sr-only" aria-live="polite">
+        {announcement}
+      </p>
+
+      {!editing && (
+        <div className="mt-6 flex justify-end">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+            <SlidersHorizontal aria-hidden="true" />
+            Personnaliser la page
+          </Button>
         </div>
       )}
 
-      {/* Modals */}
       {selectedCandidate && (
         <CandidateDetailModal
           candidate={selectedCandidate}
@@ -225,12 +303,6 @@ export default function Dashboard() {
           onRefresh={refetch}
         />
       )}
-
-      <JobDetailSheet
-        jobId={selectedJobId}
-        open={!!selectedJobId}
-        onOpenChange={(open) => !open && setSelectedJobId(null)}
-      />
     </PageLayout>
   );
 }
