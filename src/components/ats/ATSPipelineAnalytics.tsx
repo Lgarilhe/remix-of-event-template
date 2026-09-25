@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, daysSinceLastAction } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 
 interface Props {
   candidates: ATSCandidate[];
@@ -27,8 +28,6 @@ const ACTIVE_STAGES = ATS_STAGES.filter(s => s.key !== 'Gagné' && s.key !== 'Pe
 
 const days = (n: number) => `${n}\u00a0j`;
 const percent = (n: number) => `${n}\u00a0%`;
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
-
 interface StageMetrics {
   key: string;
   label: string;

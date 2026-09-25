@@ -39,6 +39,7 @@ import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandid
 import { PIPELINE_STAGES, type ShortlistEntry } from '@/types/shortlist';
 import { useATSData, ATS_STAGES, type ATSCandidate } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 
 type PipelineView = 'kanban' | 'table' | 'timeline' | 'analytics' | 'shortlist';
 
@@ -60,8 +61,6 @@ const parseView = (value: string | null): PipelineView =>
   VIEWS.some((v) => v.value === value) ? (value as PipelineView) : 'kanban';
 
 const STAGE_KEYS = new Set(ATS_STAGES.map((s) => s.key));
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 const EMPTY_FILTERS: ATSFiltersValue = { search: '', stage: [], source: [], job: [], tag: [], hasReminder: false };
 

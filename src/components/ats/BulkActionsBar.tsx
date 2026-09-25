@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { X, ArrowRightLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { plural } from '@/lib/plural';
 
 /** Bilan d'un déplacement groupé. */
 export interface BulkMoveResult {
@@ -36,8 +37,6 @@ export interface BulkActionsBarProps {
   /** Déplace le lot ; la page garde cochés les candidats non déplacés. */
   onBulkStageChange: (candidateIds: string[], newStage: string) => Promise<BulkMoveResult>;
 }
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
   selectedIds,

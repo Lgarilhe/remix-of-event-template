@@ -180,6 +180,19 @@ Constats : E-04, E-05 (scorecard), E-09, E-13, E-14 (P1) ; E-11 hors mission ; E
 
 Remis à la refonte mission : E-02, E-03, E-05 (fiche), E-06 à E-08, E-29 à E-31, E-41, E-42, E-49, E-52.
 
+Fait (pipeline global, `/pipeline`) :
+
+- En-tête « Pipeline », indicateurs neutres (`StatTile`), cinq vues en `SegmentedControl` à icônes, état vide « Aucun candidat pour l'instant » avec « Aller aux missions » ; plus d'icônes 3D, d'entonnoir animé (`AnimatedFunnel` supprimé) ni de « Sync… » (E-14, E-24).
+- Carte sur trois lignes : nom, score (`ScoreBadge`), poste ; une seule étape ; signal de réponse en texte, seulement en Nouveau et Contacté ; statut de séquence par `EnrollmentStatusBadge` ; « Sans mouvement depuis N j » en texte d'alerte, une seule table de seuils pour la carte, le tableau et l'analyse (E-11, E-15, E-17 partiel, E-19, E-43 partiel).
+- Glisser-déposer au clavier : Espace saisit, les flèches changent de colonne, Espace ou Entrée dépose, Échap annule ; consignes et annonces en français ; le focus revient à la carte déposée. Menu « Déplacer vers… » sur chaque carte, au doigt comme à la souris (E-21 partiel, E-22).
+- Déplacement groupé : un toast avec le nombre exact, les échecs comptés et « Annuler » ; les candidats en échec restent cochés ; tout échec remet l'état précédent. Chaque écriture est relue (E-23).
+- Provenance en mots (« Mission », « Séquence », « InMail ») au lieu du badge « PIPELINE » ; filtre « Avec rappel » ; Rappels dans un `Sheet` (E-18, E-20).
+- Tableau : nom en bouton qui ouvre la fiche, tri annoncé (`aria-sort`), liens nommés ; chronologie datée, atteignable au clavier ; analyse aux métriques renommées, barres monochromes avec valeur écrite et définitions (E-25 à E-27).
+- Shortlist client sur les primitives du kit, « Taux de placement » distinct du « Taux de réussite » (E-28 partiel).
+- Squelettes à la forme de chaque vue, `ErrorState` avec « Réessayer », plus de « Failed to load data » (E-44). Test `tests/ux/lot7a-pipeline.test.mjs`.
+
+Reste pour le pipeline : une colonne à la fois avec sélecteur d'étape sur téléphone (E-21) ; la fusion de la shortlist dans le pipeline, décision produit (E-28) ; les gabarits communs de candidat et un avatar neutre unique (E-43) ; le module d'étapes commun, qui attend la décision sur la table d'étapes (E-01) : aujourd'hui une étape de mission inconnue s'affiche « Nouveau » dans le pipeline global.
+
 Fait (assistant, page Agents, IA en ligne, sheet de poste) :
 
 - Page `/agents` renommée « Assistant » comme l'onglet de la barre latérale et la palette ; « Nouvelle conversation » ouvre le tiroir ; erreur avec « Réessayer », squelette, état vide ; statuts partagés avec l'historique du tiroir (`src/lib/agentConversations.ts`, E-35, E-39).

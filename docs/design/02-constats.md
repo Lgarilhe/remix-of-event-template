@@ -117,10 +117,10 @@ Statut tenu à jour à chaque lot (derniers : lots 8, 9 et l'assistant du lot 7)
 | E-08 | Quatre actions IA de la fiche sans effet | remis à la refonte mission (fiche) |
 | E-09 | Coaching : boutons sans effet | corrigé (lot 7 : actions sans effet retirées ; « Programmer l'entretien suivant » ouvre la vraie fenêtre, sans candidat prérempli) |
 | E-10 | « Deepgram » visible (règle de marque) | corrigé (lot 3) |
-| E-11 | Scores illisibles en clair | partiel (lot 1 : statuts par thème) ; lot 7 hors mission, refonte mission pour la mission |
+| E-11 | Scores illisibles en clair | corrigé hors mission (lot 7 : `ScoreBadge` partout sur /pipeline, la scorecard, l'assistant et les portails) ; remis à la refonte mission pour la mission |
 | E-12 | `text-accent` invisible (page Agents, outils de l'assistant) | corrigé (lot 1) |
 | E-13 | Coaching : textes à 1,06:1 et 1,24:1 (`*-foreground` sur teinte) | corrigé (lot 7) |
-| E-14 | Œil animé de l'assistant, entonnoir à particules, boucles infinies | partiel (lot 7 : œil retiré, monogramme fixe ; l'entonnoir de /pipeline part avec la vue pipeline du lot 7) |
+| E-14 | Œil animé de l'assistant, entonnoir à particules, boucles infinies | corrigé (lot 7 : œil retiré, monogramme fixe ; entonnoir animé supprimé avec `AnimatedFunnel`) |
 
 ### F. Paramètres, marketplace, pages publiques
 
