@@ -34,7 +34,7 @@ Puis, à part et jamais mêlées au tableau : les propositions de changement de 
 
 ## Après la relecture
 
-L'IA qui a codé traite chaque ligne « bloquant » et « à corriger » : correctif poussé, ou réponse argumentée. La décision est notée dans `03-lots.md`, à la ligne du lot. Une proposition de changement de la direction se tranche avec le propriétaire du produit avant d'être appliquée.
+L'IA qui a codé traite chaque ligne « bloquant » et « à corriger » : correctif poussé, ou réponse argumentée. La décision est notée dans `03-lots.md`, dans la section du lot. Une proposition de changement de la direction se tranche avec le propriétaire du produit avant d'être appliquée.
 
 ## Demande prête à copier
 
