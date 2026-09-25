@@ -109,7 +109,8 @@ test('SEQ-009 — une étape prend toujours l’organisation de sa séquence, et
 test('SEQ-009 / SEQ-216 — toutes les policies des tables du module sont retirées avant le nouveau jeu', () => {
   const sweep = between(b6, 'SELECT tablename, policyname FROM pg_policies', 'END $$;');
   for (const t of ['outreach_sequences', 'sequence_steps', 'sequence_enrollments', 'sequence_step_executions',
-    'sequence_templates', 'sequence_snippets', 'sequence_analytics', 'inmail_queue']) {
+    'sequence_templates', 'sequence_snippets', 'sequence_analytics', 'inmail_queue',
+    'sequence_email_tracking', 'sequence_processing_lock']) {
     assert.ok(sweep.includes(`'${t}'`), `table non balayée : ${t}`);
   }
   assert.match(sweep, /DROP POLICY IF EXISTS %I ON public\.%I/);

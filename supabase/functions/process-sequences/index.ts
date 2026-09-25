@@ -3672,6 +3672,7 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
  * gardées (contrat §1 : une pause ne les touche pas) et l'issue est
  * 'unknown' : rien n'est envoyé.
  */
+// deno-lint-ignore no-explicit-any
 async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string): Promise<ReplyCheckState> {
   const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
   const effectiveDsn = dsn || ENV_UNIPILE_DSN;
@@ -3856,7 +3857,6 @@ async function checkHasProspectReplied(accountId: string, profileId: string, api
  * si la lecture échoue.
  */
 // deno-lint-ignore no-explicit-any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
 async function loadReplyReferenceDate(supabase: any, enrollmentId: string | null | undefined, enrollment?: { tracking_data?: unknown } | null): Promise<string> {
   const td = enrollment?.tracking_data;
   const reEnrolledAt = (td && typeof td === 'object' && !Array.isArray(td)

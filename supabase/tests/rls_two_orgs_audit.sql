@@ -277,7 +277,8 @@ BEGIN
   FROM pg_policies
   WHERE schemaname = 'public'
     AND tablename IN ('outreach_sequences', 'sequence_steps', 'sequence_enrollments', 'sequence_step_executions',
-                      'sequence_templates', 'sequence_snippets', 'sequence_analytics', 'inmail_queue')
+                      'sequence_templates', 'sequence_snippets', 'sequence_analytics', 'inmail_queue',
+                      'sequence_email_tracking', 'sequence_processing_lock')
     AND policyname NOT IN ('org_members_select', 'org_members_insert', 'org_members_update', 'org_members_delete',
                            'org_members_all', 'org_or_system_select', 'mission_team_select', 'service_role_all');
   IF v_text IS NOT NULL THEN failures := failures || format('[SEQ-216 : policies héritées %s] ', v_text); END IF;

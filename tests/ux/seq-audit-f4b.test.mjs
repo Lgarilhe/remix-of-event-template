@@ -76,14 +76,25 @@ const resultsPanel = read('src/components/outreach/search/SearchResultsPanel.tsx
 const sidebarCard = read('src/components/outreach/enrollment-preview/CandidateSidebarCard.tsx');
 const treeView = read('src/components/outreach/enrollment-preview/SequenceTreeView.tsx');
 
-const helpers = await loadModule('src/components/outreach/enrollment-preview/enrollmentHelpers.ts');
-const previewHook = await loadModule('src/hooks/useEnrollmentPreview.ts', {
+/**
+ * Chargement tolérant : un module absent ou cassé fait échouer les seuls tests
+ * qui l'utilisent (chaque défaut reste vérifiable séparément).
+ */
+async function tryLoad(rel, stubs) {
+  try {
+    return await loadModule(rel, stubs);
+  } catch (err) {
+    return new Proxy({}, { get: (_, key) => { if (key === 'then') return undefined; throw new Error(`${rel} : ${err.message}`); } });
+  }
+}
+const helpers = await tryLoad('src/components/outreach/enrollment-preview/enrollmentHelpers.ts');
+const previewHook = await tryLoad('src/hooks/useEnrollmentPreview.ts', {
   react: REACT_STUB,
   '@/lib/invokeWithCredits': 'export const invokeWithCredits = async () => ({ data: null, error: null }); export const estimateActionCredits = () => 3;',
   '@/integrations/supabase/client': 'export const supabase = {};',
   '@/hooks/useAuthReady': 'export const useAuthReady = () => ({ user: null });',
 });
-const duplicates = await loadModule('src/lib/enrollmentDuplicates.ts');
+const duplicates = await tryLoad('src/lib/enrollmentDuplicates.ts');
 
 /** Client Supabase factice : enregistre chaque requête (table, filtres) et renvoie `rowsFor(table, query)`. */
 function fakeSupabase(rowsFor) {
