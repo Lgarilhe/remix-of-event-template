@@ -1,18 +1,20 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ArrowRight, ChevronDown, X, Loader2, Menu,
-  Search, Brain, Send, MessageSquare, LayoutGrid
-} from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { ArrowRight, Brain, LayoutGrid, Menu, Search, Send } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import { KonektLogo } from '@/components/KonektLogo';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { IconTile } from '@/components/ui/IconTile';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { PublicFooter, publicFooterLinkClass } from '@/components/public/PublicFooter';
+import { LandingProductDemo } from '@/components/landing/LandingProductDemo';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { useToast } from '@/hooks/use-toast';
-import { LandingProductDemo } from '@/components/landing/LandingProductDemo';
 import { getValidatedSession } from '@/lib/authSession';
 import { withPreviewAccessToken, withPreviewAccessTokenFromSearch } from '@/lib/previewToken';
 
@@ -48,63 +50,97 @@ const useRedirectIfAuthenticated = () => {
   }, [navigate]);
 };
 
-const CALENDLY_URL = 'https://calendly.com/demo/30min';
+/**
+ * Sections de la page atteintes par ancre. La prise de rendez-vous n'a pas
+ * d'adresse connue : « Demander une démo » mène au formulaire de contact.
+ */
+const SECTION_IDS = ['produit', 'faq', 'contact'] as const;
+type SectionId = (typeof SECTION_IDS)[number];
 
-/* ── Brutal button with offset shadow ── */
-const BrutalButton = ({
-  children,
-  onClick,
-  variant = 'primary',
-  className = '',
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  variant?: 'primary' | 'outline';
-  className?: string;
-}) => (
-  <button
-    onClick={onClick}
-    className={`
-      relative group inline-flex items-center gap-2 h-12 px-7 text-xs font-semibold uppercase tracking-wider
-      border-2 border-border transition-all duration-200
-      ${variant === 'primary'
-        ? 'bg-foreground text-background hover:shadow-md'
-        : 'bg-background text-foreground hover:shadow-md'
-      }
-      ${className}
-    `}
-  >
-    {children}
-  </button>
-);
+const NAV_LINKS: { label: string; id: SectionId }[] = [
+  { label: 'Produit', id: 'produit' },
+  { label: 'FAQ', id: 'faq' },
+];
+
+const DEMO_MESSAGE = 'Bonjour, je souhaite une démonstration de Konekt.';
+const TRIAL_NOTE = "14 jours d'essai, sans carte bancaire.";
+
+const features = [
+  { title: 'Sourcer', icon: Search, description: 'Recherche LinkedIn avancée, avec des filtres intelligents, sur tout votre vivier de talents.' },
+  { title: 'Qualifier', icon: Brain, description: "Score de chaque profil par l'IA, au regard de vos offres d'emploi." },
+  { title: 'Engager', icon: Send, description: "Séquences d'InMails personnalisées par l'IA, avec relances automatiques." },
+  { title: 'Suivre', icon: LayoutGrid, description: 'Pipeline en colonnes, messagerie unifiée et notes partagées pour tout centraliser.' },
+];
+
+const values = [
+  { title: 'La vitesse crée la valeur', description: "Contactez davantage de candidats qualifiés chaque semaine grâce à l'automatisation." },
+  { title: 'Le recrutement est un système', description: "Sourcing, prise de contact et suivi s'enchaînent dans un flux continu et mesurable." },
+  { title: 'La qualité avant le volume', description: "Le score de l'IA met en avant les profils pertinents pour améliorer votre taux de conversion." },
+];
+
+const faqs = [
+  { question: 'Comment ça marche ?', answer: "Connectez votre compte LinkedIn via notre intégration sécurisée, configurez vos filtres de recherche, et laissez Konekt trouver, scorer et contacter les meilleurs profils pour vous." },
+  { question: 'Mon compte LinkedIn est-il protégé ?', answer: "Oui. Konekt n'agit que pendant vos heures ouvrées, dans votre fuseau horaire, et espace chaque action comme le ferait une personne. Les volumes quotidiens et hebdomadaires sont plafonnés, un compte nouvellement connecté monte en charge progressivement, et l'activité se met en pause d'elle-même dès qu'une limite approche ou que LinkedIn envoie un signal. Un même profil n'est pas sollicité deux fois par votre organisation sans avertissement, et vos identifiants ne sont jamais stockés en clair." },
+  { question: 'Combien de messages puis-je envoyer ?', answer: "Cela dépend de votre abonnement LinkedIn et de votre plan Konekt. Nous optimisons automatiquement le volume et les horaires d'envoi." },
+  { question: "C'est gratuit ?", answer: 'Konekt propose un essai gratuit pour découvrir la plateforme. Nos plans sont ensuite adaptés à la taille de votre équipe.' },
+];
+
+const EMPTY_FORM = { name: '', email: '', company: '', message: '' };
+
+/** Fait défiler jusqu'à une section ; le formulaire de contact reçoit le focus. */
+function goToSection(id: SectionId, focusTarget?: HTMLElement | null) {
+  const target = document.getElementById(id);
+  if (!target) return;
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  focusTarget?.focus({ preventScroll: true });
+}
 
 const SkalrLanding = () => {
   useRedirectIfAuthenticated();
-  // La landing est dessinée en thème clair (dégradés ciel, cartes blanches)
-  // alors que l'app est sombre par défaut : sans ce forçage, les titres du
-  // hero et du bloc final sont blancs sur fond clair. On restaure le thème
-  // de l'utilisateur en quittant la page.
-  useEffect(() => {
-    const root = document.documentElement;
-    const hadLight = root.classList.contains('light');
-    root.classList.add('light');
-    return () => {
-      if (!hadLight) root.classList.remove('light');
-    };
-  }, []);
-  const navigate = useNavigate();
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [showCalendly, setShowCalendly] = useState(false);
-  const [showContact, setShowContact] = useState(false);
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [contactForm, setContactForm] = useState({ name: '', email: '', company: '', message: '' });
+  const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [contactForm, setContactForm] = useState(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { toast } = useToast();
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const handleContactSubmit = async (e: React.FormEvent) => {
+  // L'essai ouvre directement le formulaire d'inscription de /auth.
+  const trialLink = { to: withPreviewAccessToken('/auth'), state: { mode: 'signup' } };
+
+  const scrollToSection = (id: SectionId) => goToSection(id, id === 'contact' ? nameInputRef.current : null);
+
+  /** « Demander une démo » : le formulaire de contact, message prérempli s'il est vide. */
+  const requestDemo = (event?: MouseEvent) => {
+    event?.preventDefault();
+    setContactForm((form) => (form.message.trim() ? form : { ...form, message: DEMO_MESSAGE }));
+    scrollToSection('contact');
+  };
+
+  const onAnchorClick = (id: SectionId) => (event: MouseEvent) => {
+    event.preventDefault();
+    scrollToSection(id);
+  };
+
+  // Menu du téléphone : on le ferme, puis on défile une fois le verrou de défilement levé.
+  const onMenuAnchorClick = (id: SectionId, demo = false) => (event: MouseEvent) => {
+    event.preventDefault();
+    setMenuOpen(false);
+    window.setTimeout(() => (demo ? requestDemo() : scrollToSection(id)), 250);
+  };
+
+  // Arrivée par une ancre (/#contact depuis une autre page).
+  useEffect(() => {
+    const id = location.hash.slice(1) as SectionId;
+    if (!SECTION_IDS.includes(id)) return;
+    const timer = window.setTimeout(() => goToSection(id, id === 'contact' ? nameInputRef.current : null), 0);
+    return () => window.clearTimeout(timer);
+  }, [location.hash]);
+
+  const handleContactSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!contactForm.name.trim() || !contactForm.email.trim() || !contactForm.message.trim()) {
-      toast({ title: "Erreur", description: "Veuillez remplir tous les champs obligatoires.", variant: "destructive" });
+      toast.error('Formulaire incomplet', { description: 'Renseignez votre nom, votre e-mail et votre message.' });
       return;
     }
     setIsSubmitting(true);
@@ -123,592 +159,316 @@ const SkalrLanding = () => {
           company: contactForm.company.trim() || null,
           message: contactForm.message.trim(),
         });
-      } catch (e) { console.warn('Notion sync error:', e); }
-      toast({ title: "Message envoyé !", description: "Nous vous recontacterons très vite." });
-      setContactForm({ name: '', email: '', company: '', message: '' });
-      setShowContact(false);
+      } catch (err) {
+        console.warn('Notion sync error:', err);
+      }
+      toast.success('Message envoyé', { description: 'Nous vous recontactons rapidement.' });
+      setContactForm(EMPTY_FORM);
     } catch (error) {
       console.error('Contact form error:', error);
-      toast({ title: "Erreur", description: "Une erreur est survenue.", variant: "destructive" });
+      toast.error("Votre message n'a pas pu être envoyé", {
+        description: 'Vérifiez votre connexion, puis réessayez.',
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const features = [
-    { num: '001', title: 'Sourcer', icon: Search, description: 'Recherche LinkedIn avancée avec filtres intelligents sur tout votre vivier de talents.' },
-    { num: '002', title: 'Qualifier', icon: Brain, description: "Scoring IA automatique de chaque profil par rapport à vos offres d'emploi." },
-    { num: '003', title: 'Engager', icon: Send, description: "Séquences d'InMails personnalisées par l'IA avec relances automatiques." },
-    { num: '004', title: 'Suivre', icon: LayoutGrid, description: "Pipeline kanban, inbox unifiée et notes collaboratives pour tout centraliser." },
-  ];
-
-  const values = [
-    { title: 'La vitesse crée la valeur', description: "Contactez 3× plus de candidats qualifiés chaque semaine grâce à l'automatisation intelligente." },
-    { title: 'Le recrutement est un système', description: "Nous connectons sourcing, engagement et suivi dans un flux continu et mesurable." },
-    { title: "La qualité avant le volume", description: "Le scoring IA priorise les profils pertinents pour maximiser votre taux de conversion." },
-  ];
-
-  const stats = [
-    { value: '×3', label: 'Profils contactés par semaine' },
-    { value: '−60%', label: 'Temps de sourcing' },
-    { value: '+80%', label: 'Taux de réponse' },
-  ];
-
-  const faqs = [
-    { question: 'Comment ça marche ?', answer: "Connectez votre compte LinkedIn via notre intégration sécurisée, configurez vos filtres de recherche, et laissez Konekt trouver, scorer et contacter les meilleurs profils pour vous." },
-    { question: 'Mon compte LinkedIn est-il protégé ?', answer: "Oui. Konekt n'agit que pendant vos heures ouvrées, dans votre fuseau horaire, et espace chaque action comme le ferait une personne. Les volumes quotidiens et hebdomadaires sont plafonnés, un compte nouvellement connecté monte en charge progressivement, et l'activité se met en pause d'elle-même dès qu'une limite approche ou que LinkedIn envoie un signal. Un même profil n'est pas sollicité deux fois par votre organisation sans avertissement, et vos identifiants ne sont jamais stockés en clair." },
-    { question: "Combien de messages puis-je envoyer ?", answer: "Cela dépend de votre abonnement LinkedIn et de votre plan Konekt. Nous optimisons automatiquement le volume et les horaires d'envoi." },
-    { question: "C'est gratuit ?", answer: "Konekt propose un essai gratuit pour découvrir la plateforme. Nos plans sont ensuite adaptés à la taille de votre équipe." },
-  ];
+  const updateField = (field: keyof typeof EMPTY_FORM) => (value: string) =>
+    setContactForm((form) => ({ ...form, [field]: value }));
 
   return (
     <>
-      <SEOHead 
-        title="Konekt — Plateforme de recrutement tout-en-un"
+      <SEOHead
+        title="Konekt, plateforme de recrutement tout-en-un"
         description="Trouvez, engagez et recrutez vos meilleurs talents. Sourcing LinkedIn, séquences automatisées et suivi candidat."
         keywords="recrutement saas, sourcing linkedin, ats, talent acquisition"
       />
 
       <div className="min-h-screen bg-background text-foreground">
-
-        {/* ===== NAV ===== */}
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
-          <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-            <KonektLogo variant="full" theme="dark" size={28} ariaLabel="Konekt — accueil" />
-
-            <div className="hidden md:flex items-center gap-8">
-              {[
-                { label: 'Produit', id: 'produit' },
-                { label: 'Résultats', id: 'resultats' },
-                { label: 'FAQ', id: 'faq' },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' })}
-                  className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
-                >
-                  {item.label}
-                </button>
-              ))}
-              <button
-                onClick={() => navigate(withPreviewAccessToken('/pricing'))}
-                className="text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
-                Tarifs
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowCalendly(true)}
-                className="hidden sm:inline-flex text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
-                Démo
-              </button>
-              <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))} className="h-9 px-5 text-xs">
-                Commencer <ArrowRight className="h-3 w-3" />
-              </BrutalButton>
-              {/* Burger menu — mobile uniquement */}
-              <button
-                type="button"
-                onClick={() => setShowMobileMenu(true)}
-                aria-label="Ouvrir le menu"
-                className="md:hidden h-9 w-9 grid place-items-center rounded-md border border-border text-foreground hover:bg-foreground/[0.04] transition-colors"
-              >
-                <Menu className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </nav>
-
-        {/* ===== Mobile menu drawer ===== */}
-        <AnimatePresence>
-          {showMobileMenu && (
-            <motion.div
-              key="mobile-menu"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[60] md:hidden bg-background"
+        {/* ===== En-tête ===== */}
+        <header className="fixed inset-x-0 top-0 z-sticky border-b border-border bg-background">
+          <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+            <Link
+              to={withPreviewAccessToken('/')}
+              aria-label="Konekt, accueil"
+              className="-mx-1 inline-flex min-h-11 items-center rounded-md px-1 md:min-h-0"
             >
-              <div className="flex items-center justify-between px-6 h-14 border-b border-border">
-                <KonektLogo variant="full" theme="dark" size={28} />
-                <button
-                  type="button"
-                  onClick={() => setShowMobileMenu(false)}
-                  aria-label="Fermer le menu"
-                  className="h-9 w-9 grid place-items-center rounded-md border border-border text-foreground hover:bg-foreground/[0.04] transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <nav className="flex flex-col px-6 py-6 gap-1">
-                {[
-                  { label: 'Produit', id: 'produit' },
-                  { label: 'Résultats', id: 'resultats' },
-                  { label: 'FAQ', id: 'faq' },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      setShowMobileMenu(false);
-                      // Délai pour laisser le menu se fermer avant de scroller
-                      setTimeout(() => {
-                        document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
-                      }, 250);
-                    }}
-                    className="text-left py-4 text-base font-display font-bold uppercase tracking-wide text-foreground hover:text-foreground/70 transition-colors border-b border-border"
-                  >
+              <KonektLogo theme="auto" size={26} ariaLabel="" />
+            </Link>
+
+            <nav aria-label="Navigation principale" className="hidden items-center gap-1 md:flex">
+              {NAV_LINKS.map((item) => (
+                <Button key={item.id} asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                  <a href={`#${item.id}`} onClick={onAnchorClick(item.id)}>
                     {item.label}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    setTimeout(() => navigate(withPreviewAccessToken('/pricing')), 200);
-                  }}
-                  className="text-left py-4 text-base font-display font-bold uppercase tracking-wide text-foreground hover:text-foreground/70 transition-colors border-b border-border"
-                >
-                  Tarifs
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    setTimeout(() => setShowCalendly(true), 250);
-                  }}
-                  className="text-left py-4 text-base font-display font-bold uppercase tracking-wide text-foreground hover:text-foreground/70 transition-colors border-b border-border"
-                >
-                  Démo
-                </button>
-              </nav>
-              <div className="px-6 mt-4">
-                <BrutalButton
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    setTimeout(() => navigate(withPreviewAccessToken('/auth')), 200);
-                  }}
-                  className="w-full h-12 text-sm"
-                >
-                  Commencer <ArrowRight className="h-4 w-4" />
-                </BrutalButton>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  </a>
+                </Button>
+              ))}
+              <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <Link to={withPreviewAccessToken('/pricing')}>Tarifs</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <a href="#contact" onClick={onAnchorClick('contact')}>
+                  Contact
+                </a>
+              </Button>
+            </nav>
 
-        {/* ===== HERO ===== */}
-        <section className="landing-sky-gradient pt-28 pb-20 px-6">
-          <div className="max-w-5xl mx-auto text-center">
-            {/* Label */}
-            <motion.div
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="mb-8"
-            >
-              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-foreground border-2 border-border px-4 py-1.5 bg-background shadow-sm">
-                <span className="w-2 h-2 bg-accent" />
-                Plateforme de recrutement
-              </span>
-            </motion.div>
-
-            <motion.h1
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.1 }}
-              className="font-brand font-extrabold text-5xl sm:text-6xl md:text-7xl lg:text-[5.25rem] leading-[1.0] tracking-[-0.035em] text-foreground mb-6"
-            >
-              Le recrutement,{' '}
-              <em className="font-editorial italic font-normal">simplifié</em>{' '}
-              et accéléré
-            </motion.h1>
-
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed"
-            >
-              Trouvez, engagez et recrutez vos meilleurs talents — avec clarté et efficacité.
-            </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="flex flex-wrap justify-center gap-3 mb-16"
-            >
-              <BrutalButton onClick={() => setShowCalendly(true)}>
-                Réserver une démo
-              </BrutalButton>
-              <BrutalButton variant="outline" onClick={() => navigate(withPreviewAccessToken('/auth'))}>
-                Essai gratuit 14 jours, sans carte
-                <ArrowRight className="h-3.5 w-3.5" />
-              </BrutalButton>
-            </motion.div>
-
-            {/* Démo produit vivante — l'app qui travaille, en boucle */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-              className="max-w-3xl mx-auto"
-            >
-              <LandingProductDemo />
-            </motion.div>
+            <div className="flex items-center gap-2">
+              <Button asChild variant="ghost" size="sm" className="hidden md:inline-flex">
+                <Link to={withPreviewAccessToken('/auth')}>Se connecter</Link>
+              </Button>
+              <Button asChild variant="primary" size="sm" className="hidden sm:inline-flex">
+                <Link to={trialLink.to} state={trialLink.state}>
+                  Commencer l'essai gratuit
+                </Link>
+              </Button>
+              <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-11 w-11 md:hidden" aria-label="Ouvrir le menu">
+                    <Menu />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="flex w-full max-w-xs flex-col gap-0 p-0">
+                  <div className="flex h-14 items-center border-b border-border px-4">
+                    <SheetTitle className="text-sm">Menu</SheetTitle>
+                  </div>
+                  <SheetDescription className="sr-only">Navigation de la page d'accueil de Konekt</SheetDescription>
+                  <nav aria-label="Menu" className="flex flex-col p-2">
+                    {NAV_LINKS.map((item) => (
+                      <a
+                        key={item.id}
+                        href={`#${item.id}`}
+                        onClick={onMenuAnchorClick(item.id)}
+                        className="flex min-h-11 items-center rounded-md px-3 text-md font-medium text-foreground transition-colors hover:bg-accent"
+                      >
+                        {item.label}
+                      </a>
+                    ))}
+                    <Link
+                      to={withPreviewAccessToken('/pricing')}
+                      className="flex min-h-11 items-center rounded-md px-3 text-md font-medium text-foreground transition-colors hover:bg-accent"
+                    >
+                      Tarifs
+                    </Link>
+                    <a
+                      href="#contact"
+                      onClick={onMenuAnchorClick('contact', true)}
+                      className="flex min-h-11 items-center rounded-md px-3 text-md font-medium text-foreground transition-colors hover:bg-accent"
+                    >
+                      Demander une démo
+                    </a>
+                  </nav>
+                  <div className="mt-auto flex flex-col gap-2 border-t border-border p-4">
+                    <Button asChild variant="outline" size="lg" className="h-11">
+                      <Link to={withPreviewAccessToken('/auth')}>Se connecter</Link>
+                    </Button>
+                    <Button asChild variant="primary" size="lg" className="h-11">
+                      <Link to={trialLink.to} state={trialLink.state}>
+                        Commencer l'essai gratuit
+                      </Link>
+                    </Button>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
           </div>
-        </section>
+        </header>
 
-        {/* ===== FEATURES ===== */}
-        <section id="produit" className="py-24 px-6 bg-background">
-          <div className="max-w-6xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="text-center mb-16"
-            >
-              <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-4 block">
-                Fonctionnalités
-              </span>
-              <h2 className="font-editorial text-4xl sm:text-5xl md:text-6xl tracking-tight text-foreground leading-[1.1]">
-                Tout ce qu'il faut pour sourcer,<br className="hidden md:block" />
-                qualifier et recruter
-              </h2>
-            </motion.div>
-
-            <div className="grid md:grid-cols-2 gap-12 items-start">
-              {/* Left: visual card */}
-              <motion.div
-                initial={{ opacity: 0, x: -30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                className="relative"
+        <main className="pt-14">
+          {/* ===== Présentation ===== */}
+          <section aria-labelledby="accueil-titre" className="px-4 pb-16 pt-16 sm:px-6 sm:pt-24">
+            <div className="mx-auto max-w-5xl text-center">
+              <p className="eyebrow">Plateforme de recrutement</p>
+              <h1
+                id="accueil-titre"
+                className="mx-auto mt-4 max-w-3xl text-balance font-brand text-4xl font-bold leading-tight tracking-tight text-foreground sm:text-5xl md:text-6xl"
               >
-                <div className="aspect-[4/3] border-2 border-border bg-gradient-to-br from-[hsl(var(--landing-sky-start))] to-[hsl(var(--landing-sky-end))] shadow-md">
-                  <div className="absolute bottom-6 left-6">
-                    <div className="bg-background border-2 border-border p-4 max-w-[280px] shadow-sm">
-                      <span className="inline-block px-2 py-0.5 bg-[hsl(var(--landing-accent-yellow))] text-xs font-bold uppercase tracking-wider mb-2">
-                        Match IA
-                      </span>
-                      <p className="text-sm font-semibold text-foreground">Score 94% — profil idéal pour votre poste</p>
-                      <p className="text-xs text-muted-foreground mt-1 uppercase tracking-wider">Ajuster les critères →</p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
+                Le recrutement, simplifié et accéléré
+              </h1>
+              <p className="mx-auto mt-5 max-w-2xl text-base text-foreground-secondary md:text-lg">
+                Trouvez, engagez et recrutez vos meilleurs talents, avec clarté et efficacité.
+              </p>
+              <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+                <Button asChild variant="primary" size="lg" className="max-md:h-11">
+                  <Link to={trialLink.to} state={trialLink.state}>
+                    Commencer l'essai gratuit
+                    <ArrowRight aria-hidden="true" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="lg" className="max-md:h-11">
+                  <a href="#contact" onClick={requestDemo}>
+                    Demander une démo
+                  </a>
+                </Button>
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">{TRIAL_NOTE}</p>
 
-              {/* Right: numbered list */}
-              <div>
-                {features.map((feature, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: i * 0.08 }}
-                    className="flex items-start gap-4 py-6 border-b border-border last:border-b-0 group"
-                  >
-                    <div className="w-10 h-10 border-2 border-border flex items-center justify-center shrink-0 bg-background group-hover:bg-accent group-hover:shadow-sm transition-all">
-                      <feature.icon className="h-4 w-4 text-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <h3 className="text-base font-bold text-foreground uppercase tracking-wide">{feature.title}</h3>
-                        <span className="text-xs text-muted-foreground font-mono">{feature.num}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
-                    </div>
-                  </motion.div>
+              <div className="mx-auto mt-14 max-w-3xl">
+                <LandingProductDemo />
+              </div>
+            </div>
+          </section>
+
+          {/* ===== Fonctionnalités ===== */}
+          <section id="produit" aria-labelledby="produit-titre" className="scroll-mt-14 border-t border-border px-4 py-20 sm:px-6">
+            <div className="mx-auto max-w-6xl">
+              <div className="mx-auto max-w-2xl text-center">
+                <p className="eyebrow">Fonctionnalités</p>
+                <h2 id="produit-titre" className="mt-3 text-balance font-brand text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                  Tout ce qu'il faut pour sourcer, qualifier et recruter
+                </h2>
+              </div>
+              <ul className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {features.map((feature) => (
+                  <li key={feature.title} className="rounded-xl border border-border bg-card p-5">
+                    <IconTile icon={feature.icon} aria-hidden="true" />
+                    <h3 className="mt-4 text-md font-semibold text-foreground">{feature.title}</h3>
+                    <p className="mt-1.5 text-sm text-muted-foreground">{feature.description}</p>
+                  </li>
                 ))}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  whileInView={{ opacity: 1 }}
-                  viewport={{ once: true }}
-                  className="pt-6"
-                >
-                  <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))}>
-                    Découvrir la plateforme
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </BrutalButton>
-                </motion.div>
-              </div>
+              </ul>
             </div>
-          </div>
-        </section>
+          </section>
 
-        {/* ===== VALUES ===== */}
-        <section className="py-24 px-6 border-t border-b border-border bg-muted/30">
-          <div className="max-w-6xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="text-center mb-16"
-            >
-              <h2 className="font-editorial text-4xl sm:text-5xl tracking-tight text-foreground leading-[1.1]">
-                Conçu pour la clarté.<br />
-                <em className="italic">Pensé pour l'action.</em>
+          {/* ===== Valeurs ===== */}
+          <section aria-labelledby="valeurs-titre" className="border-t border-border bg-card px-4 py-20 sm:px-6">
+            <div className="mx-auto max-w-6xl">
+              <h2
+                id="valeurs-titre"
+                className="mx-auto max-w-2xl text-balance text-center font-brand text-3xl font-semibold tracking-tight text-foreground sm:text-4xl"
+              >
+                Conçu pour la clarté, pensé pour l'action
               </h2>
-            </motion.div>
-
-            <div className="grid md:grid-cols-3 gap-6">
-              {values.map((value, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  className="border-2 border-border bg-background p-6 hover:shadow-md transition-shadow"
-                >
-                  <div className="w-8 h-8 border-2 border-border flex items-center justify-center mb-5 bg-accent">
-                    <span className="text-xs font-bold text-foreground">{String(i + 1).padStart(2, '0')}</span>
-                  </div>
-                  <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2">{value.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{value.description}</p>
-                </motion.div>
-              ))}
+              <ul className="mt-12 grid gap-4 md:grid-cols-3">
+                {values.map((value) => (
+                  <li key={value.title} className="rounded-xl border border-border bg-background p-6">
+                    <h3 className="text-md font-semibold text-foreground">{value.title}</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">{value.description}</p>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-        </section>
+          </section>
 
-        {/* ===== STATS ===== */}
-        <section id="resultats" className="py-24 px-6 bg-background">
-          <div className="max-w-6xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="text-center mb-16"
-            >
-              <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-4 block">
-                Résultats
-              </span>
-              <h2 className="font-editorial text-4xl sm:text-5xl tracking-tight text-foreground">
-                Des résultats concrets
-              </h2>
-            </motion.div>
-
-            <div className="grid md:grid-cols-3 gap-6">
-              {stats.map((stat, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.12 }}
-                  className="text-center py-14 px-6 border-2 border-border bg-background hover:shadow-md transition-shadow"
-                >
-                  <span className="text-5xl md:text-6xl font-bold text-foreground tracking-tight block mb-3">
-                    {stat.value}
-                  </span>
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{stat.label}</p>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ===== TESTIMONIAL ===== */}
-        <section className="py-20 px-6 border-t border-b border-border bg-foreground text-background">
-          <div className="max-w-3xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="text-center"
-            >
-              <span className="text-xs uppercase tracking-wider font-semibold text-background/60 mb-6 block">
-                Témoignage
-              </span>
-              <blockquote className="font-editorial text-2xl sm:text-3xl md:text-4xl leading-[1.3] text-background mb-8">
-                "Konekt a transformé notre façon de recruter. On contacte 3× plus de candidats qualifiés,
-                et notre taux de réponse a explosé."
-              </blockquote>
-              <div className="flex items-center justify-center gap-3">
-                <div className="w-10 h-10 border-2 border-background flex items-center justify-center text-background text-sm font-bold bg-accent text-foreground">
-                  T
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-semibold text-background">Head of Talent, Scale-up Tech</div>
-                  <div className="text-xs text-background/60 uppercase tracking-wider">Équipe de 80 personnes</div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* ===== FAQ ===== */}
-        <section id="faq" className="py-24 px-6 bg-background">
-          <div className="max-w-2xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="text-center mb-14"
-            >
-              <h2 className="font-editorial text-3xl sm:text-4xl tracking-tight text-foreground">
+          {/* ===== Questions fréquentes ===== */}
+          <section id="faq" aria-labelledby="faq-titre" className="scroll-mt-14 border-t border-border px-4 py-20 sm:px-6">
+            <div className="mx-auto max-w-2xl">
+              <h2 id="faq-titre" className="text-center font-brand text-3xl font-semibold tracking-tight text-foreground">
                 Questions fréquentes
               </h2>
-            </motion.div>
+              <Accordion type="single" collapsible className="mt-10 rounded-xl border border-border bg-card px-5">
+                {faqs.map((faq, i) => (
+                  <AccordionItem key={faq.question} value={`question-${i}`} className="last:border-b-0">
+                    <AccordionTrigger className="min-h-11 gap-4 text-left text-md font-semibold hover:no-underline [&>svg]:text-muted-foreground">
+                      {faq.question}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-sm leading-relaxed text-muted-foreground">{faq.answer}</AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </div>
+          </section>
 
-            <div className="border-2 border-border divide-y-2 divide-foreground">
-              {faqs.map((faq, i) => (
-                <div key={i}>
-                  <button
-                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                    className="w-full py-5 px-6 flex items-center justify-between text-left group hover:bg-muted/30 transition-colors"
-                  >
-                    <span className="font-semibold text-sm text-foreground uppercase tracking-wide">{faq.question}</span>
-                    <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200 ${openFaq === i ? 'rotate-180' : ''}`} />
-                  </button>
-                  <AnimatePresence>
-                    {openFaq === i && (
-                      <motion.div
-                        initial={{ height: 0 }}
-                        animate={{ height: 'auto' }}
-                        exit={{ height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <p className="px-6 pb-5 text-sm text-muted-foreground leading-relaxed">{faq.answer}</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+          {/* ===== Essai et contact ===== */}
+          <section aria-labelledby="contact-titre" className="border-t border-border bg-card px-4 py-20 sm:px-6">
+            <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-2 lg:items-start">
+              <div>
+                <h2 id="contact-titre" className="text-balance font-brand text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                  Vos prochains talents vous attendent
+                </h2>
+                <p className="mt-4 max-w-xl text-base text-foreground-secondary">
+                  Rejoignez les équipes qui recrutent mieux, plus vite et à moindre coût.
+                </p>
+                <div className="mt-8">
+                  <Button asChild variant="primary" size="lg" className="max-md:h-11 max-sm:w-full">
+                    <Link to={trialLink.to} state={trialLink.state}>
+                      Commencer l'essai gratuit
+                      <ArrowRight aria-hidden="true" />
+                    </Link>
+                  </Button>
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ===== CTA FINAL ===== */}
-        <section className="py-28 px-6 landing-sky-gradient border-t border-border">
-          <div className="max-w-3xl mx-auto text-center">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="font-editorial text-4xl sm:text-5xl md:text-6xl tracking-tight text-foreground mb-6 leading-[1.1]">
-                Vos prochains talents{' '}
-                <em className="italic">vous attendent</em>
-              </h2>
-              <p className="text-base text-muted-foreground mb-10 max-w-xl mx-auto">
-                Rejoignez les équipes qui recrutent mieux, plus vite et à moindre coût.
-              </p>
-              <div className="flex flex-wrap justify-center gap-3">
-                <BrutalButton onClick={() => navigate(withPreviewAccessToken('/auth'))}>
-                  Essai gratuit 14 jours, sans carte
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </BrutalButton>
-                <BrutalButton variant="outline" onClick={() => setShowCalendly(true)}>
-                  Réserver une démo
-                </BrutalButton>
+                <p className="mt-3 text-sm text-muted-foreground">{TRIAL_NOTE}</p>
               </div>
-            </motion.div>
-          </div>
-        </section>
 
-        {/* ===== FOOTER ===== */}
-        <footer className="py-8 px-6 border-t-2 border-border bg-background">
-          <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <KonektLogo variant="full" theme="dark" size={24} />
-            <div className="flex items-center gap-6 text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              <button onClick={() => navigate(withPreviewAccessToken('/pricing'))} className="uppercase hover:text-foreground transition-colors">Tarifs</button>
-              <a href="/privacy#mentions" className="hover:text-foreground transition-colors">Mentions légales</a>
-              <a href="/privacy" className="hover:text-foreground transition-colors">Confidentialité</a>
-              <button onClick={() => setShowContact(true)} className="hover:text-foreground transition-colors">Contact</button>
-            </div>
-            <span className="text-xs uppercase tracking-wider text-muted-foreground">© {new Date().getFullYear()} Konekt</span>
-          </div>
-        </footer>
-
-        {/* ===== CALENDLY MODAL ===== */}
-        <AnimatePresence>
-          {showCalendly && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
-              onClick={() => setShowCalendly(false)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="relative w-full max-w-3xl h-[80vh] bg-background border-2 border-border shadow-lg overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => setShowCalendly(false)}
-                  className="absolute top-3 right-3 z-10 w-9 h-9 border-2 border-border bg-background hover:bg-accent flex items-center justify-center transition-colors"
-                >
-                  <X className="h-4 w-4 text-foreground" />
-                </button>
-                <iframe src={CALENDLY_URL} className="w-full h-full border-0" title="Réserver une démo" />
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ===== CONTACT MODAL ===== */}
-        <AnimatePresence>
-          {showContact && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
-              onClick={() => setShowContact(false)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="relative w-full max-w-lg bg-background border-2 border-border shadow-lg overflow-hidden p-8"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => setShowContact(false)}
-                  className="absolute top-3 right-3 w-9 h-9 border-2 border-border bg-background hover:bg-accent flex items-center justify-center transition-colors"
-                >
-                  <X className="h-4 w-4 text-foreground" />
-                </button>
-
-                <h3 className="text-lg font-bold text-foreground uppercase tracking-wide mb-1">Nous contacter</h3>
-                <p className="text-sm text-muted-foreground mb-6">Laissez-nous un message, nous revenons vers vous rapidement.</p>
-
-                <form onSubmit={handleContactSubmit} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Nom *</label>
-                      <Input value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} placeholder="Votre nom" className="rounded-lg border-2 border-border" required />
+              <div id="contact" className="scroll-mt-20 rounded-xl border border-border bg-background p-6 sm:p-8">
+                <h3 className="text-lg font-semibold text-foreground">Demander une démo ou nous écrire</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Laissez-nous un message : nous vous recontactons rapidement pour organiser une démonstration ou répondre à vos questions.
+                </p>
+                <form onSubmit={handleContactSubmit} className="mt-6 space-y-4" aria-busy={isSubmitting}>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="contact-nom">Nom</Label>
+                      <Input
+                        ref={nameInputRef}
+                        id="contact-nom"
+                        autoComplete="name"
+                        value={contactForm.name}
+                        onChange={(e) => updateField('name')(e.target.value)}
+                        placeholder="Votre nom"
+                        className="max-md:h-11"
+                        required
+                      />
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Email *</label>
-                      <Input type="email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} placeholder="vous@entreprise.com" className="rounded-lg border-2 border-border" required />
+                    <div className="space-y-1.5">
+                      <Label htmlFor="contact-email">E-mail</Label>
+                      <Input
+                        id="contact-email"
+                        type="email"
+                        autoComplete="email"
+                        value={contactForm.email}
+                        onChange={(e) => updateField('email')(e.target.value)}
+                        placeholder="vous@entreprise.fr"
+                        className="max-md:h-11"
+                        required
+                      />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Entreprise</label>
-                    <Input value={contactForm.company} onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })} placeholder="Nom de votre entreprise" className="rounded-lg border-2 border-border" />
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contact-entreprise">
+                      Entreprise <span className="font-normal text-muted-foreground">(facultatif)</span>
+                    </Label>
+                    <Input
+                      id="contact-entreprise"
+                      autoComplete="organization"
+                      value={contactForm.company}
+                      onChange={(e) => updateField('company')(e.target.value)}
+                      placeholder="Nom de votre entreprise"
+                      className="max-md:h-11"
+                    />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1">Message *</label>
-                    <Textarea value={contactForm.message} onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })} placeholder="Comment pouvons-nous vous aider ?" className="min-h-[120px] rounded-lg border-2 border-border" required />
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contact-message">Message</Label>
+                    <Textarea
+                      id="contact-message"
+                      value={contactForm.message}
+                      onChange={(e) => updateField('message')(e.target.value)}
+                      placeholder="Comment pouvons-nous vous aider ?"
+                      className="min-h-[120px]"
+                      required
+                    />
                   </div>
-                  <BrutalButton className="w-full justify-center">
-                    {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Envoi...</> : <>Envoyer <ArrowRight className="h-3.5 w-3.5" /></>}
-                  </BrutalButton>
+                  <Button type="submit" variant="primary" loading={isSubmitting} className="max-md:h-11 max-sm:w-full">
+                    {isSubmitting ? 'Envoi…' : 'Envoyer le message'}
+                  </Button>
                 </form>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <PublicFooter
+          width="wide"
+          extra={
+            <li>
+              <a href="#contact" onClick={onAnchorClick('contact')} className={publicFooterLinkClass}>
+                Contact
+              </a>
+            </li>
+          }
+        />
       </div>
     </>
   );

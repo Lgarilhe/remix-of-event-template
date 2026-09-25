@@ -1,38 +1,51 @@
 /**
- * ClientPortalV2 — Portail client refondu avec design v2.
+ * ClientPortalV2 : portail du client (/client/:token).
  *
- * Le hiring manager arrive ici via un lien /client/{token} partagé par
- * le recruteur Konekt. Il voit les candidats sourcés pour son recrutement,
- * peut les évaluer (scorecard) et suivre le pipeline.
+ * Le client (le responsable du recrutement) arrive par un lien partagé par son
+ * recruteur. Il voit les candidats de ses missions, suit leur avancement et
+ * peut les évaluer.
  *
- * Architecture :
- *   - Header brandé (logo recruteur + nom + nav)
- *   - Onboarding overlay au first visit (localStorage flag)
- *   - 3 tabs principaux :
- *     1. Vue d'ensemble : KPIs + funnel + top candidats
- *     2. Pipeline : kanban par stage (read-only pour le client)
- *     3. Tous les candidats : liste filtrable + recherche
- *   - Sheet de détail candidat (slide-in droite) avec scorecard + actions
+ *   - En-tête : logo ou initiales de l'organisation, nom du client.
+ *   - Accueil au premier passage (dialogue, mémorisé par lien).
+ *   - Trois onglets : vue d'ensemble (indicateurs, répartition, meilleurs
+ *     profils, activité), pipeline (colonnes par étape, lecture seule), tous
+ *     les candidats (recherche et filtres).
+ *   - Fiche candidat en panneau latéral, avec l'évaluation.
  *
- * Design :
- *   - Layout 1280px max
- *   - DA v2 : Outfit display, Pills colorées, gradient Skalr pour WOW
- *   - Mobile-friendly (sheet plein écran sur mobile)
+ * Les étapes affichées viennent de src/components/portal/clientStages.ts :
+ * jamais une clé technique ni un identifiant.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { SEOHead } from '@/components/SEOHead';
-import { PortalCandidateScoring } from '@/components/portal/PortalCandidateScoring';
-import { Pill } from '@/components/missions/v2/Pill';
 import {
-  Users, Clock, Search, Briefcase, TrendingUp, Star, Filter,
-  Sparkles, X, ChevronRight, Award, Eye, ArrowRight,
-  CheckCircle, Loader2,
+  Award, Briefcase, ClipboardCheck, Clock, Eye, Lock, Search, Star, TrendingUp, UserPlus, Users,
+  type LucideIcon,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { SEOHead } from '@/components/SEOHead';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { EmptyState, Section, StatGrid, StatTile } from '@/components/layout';
+import { PublicDeadEnd } from '@/components/public/PublicDeadEnd';
+import { PoweredByKonekt } from '@/components/public/PublicFooter';
+import { PortalCandidateScoring } from '@/components/portal/PortalCandidateScoring';
+import {
+  CLIENT_FUNNEL,
+  CLIENT_STAGES,
+  resolveClientStage,
+  type ClientStage,
+  type ClientStageKey,
+} from '@/components/portal/clientStages';
+import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -66,145 +79,200 @@ interface ClientPortalData {
   };
 }
 
-// ─── Stage config ─────────────────────────────────────────────────
+type Permissions = ClientPortalData['permissions'];
+type CandidateItem = { candidate: PortalCandidate; project: PortalProject };
+type Tab = 'overview' | 'pipeline' | 'candidates';
+type LoadState = 'loading' | 'ready' | 'invalid' | 'expired' | 'error';
 
-const STAGE_CONFIG: Record<string, {
-  label: string;
-  emoji: string;
-  variant: 'muted' | 'info' | 'warning' | 'success';
-  order: number;
-}> = {
-  sourced:     { label: 'Nouveau',     emoji: '🆕', variant: 'muted',   order: 1 },
-  presented:   { label: 'Présenté',    emoji: '👋', variant: 'info',    order: 2 },
-  to_evaluate: { label: 'À évaluer',   emoji: '🔍', variant: 'warning', order: 3 },
-  interview:   { label: 'Entretien',   emoji: '🎯', variant: 'info',    order: 4 },
-  offer:       { label: 'Offre',       emoji: '📨', variant: 'warning', order: 5 },
-  hired:       { label: 'Embauché',    emoji: '✅', variant: 'success', order: 6 },
-  rejected:    { label: 'Refusé',      emoji: '❌', variant: 'muted',   order: 7 },
-};
-
-function getStageInfo(stage: string | null) {
-  if (!stage) return STAGE_CONFIG.sourced;
-  const normalized = stage.toLowerCase().replace(/\s+/g, '_');
-  return STAGE_CONFIG[normalized] || { label: stage, emoji: '📋', variant: 'muted' as const, order: 99 };
+interface PortalStats {
+  total: number;
+  toEvaluate: number;
+  inProcess: number;
+  hired: number;
+  avgScore: number | null;
 }
 
-// ─── Main ──────────────────────────────────────────────────────────
+// ─── Aides ─────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'pipeline' | 'candidates';
+const relative = (iso: string) => formatDistanceToNow(new Date(iso), { addSuffix: true, locale: fr });
+
+const initialsOf = (name: string | null | undefined) =>
+  (name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? '')
+    .join('');
+
+const displayNameOf = (candidate: PortalCandidate, permissions: Permissions) =>
+  permissions.can_see_names ? candidate.candidate_name || 'Candidat' : `Candidat n° ${candidate.id.slice(0, 6)}`;
+
+/** Évaluations envoyées depuis ce navigateur, par lien (le serveur ne les renvoie pas encore). */
+const evaluatedStorageKey = (token: string) => `konekt:portal:evaluated:${token}`;
+
+function readEvaluated(token: string | undefined): Record<string, string> {
+  if (!token) return {};
+  try {
+    const raw = JSON.parse(localStorage.getItem(evaluatedStorageKey(token)) || '{}');
+    return raw && typeof raw === 'object' ? (raw as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+// ─── Page ──────────────────────────────────────────────────────────
 
 export default function ClientPortalV2() {
   const { token } = useParams<{ token: string }>();
   const [data, setData] = useState<ClientPortalData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [status, setStatus] = useState<LoadState>('loading');
+  const [retrying, setRetrying] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
-  const [selectedCandidate, setSelectedCandidate] = useState<{ candidate: PortalCandidate; project: PortalProject } | null>(null);
+  const [selected, setSelected] = useState<CandidateItem | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [stageFilter, setStageFilter] = useState<string | 'all'>('all');
+  const [stageFilter, setStageFilter] = useState<ClientStageKey | 'all'>('all');
   const [projectFilter, setProjectFilter] = useState<string | 'all'>('all');
+  const [evaluated, setEvaluated] = useState<Record<string, string>>(() => readEvaluated(token));
+
+  const fetchPortal = useCallback(async () => {
+    if (!token) {
+      setStatus('invalid');
+      return;
+    }
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/client-portal-data?token=${encodeURIComponent(token)}`,
+        { headers: { 'Authorization': `Bearer ${anonKey}`, 'apikey': anonKey } },
+      );
+      // 403 : lien expiré ; 404 et 400 : lien inconnu ; le reste est une panne.
+      if (res.status === 403) { setStatus('expired'); return; }
+      if (res.status === 404 || res.status === 400) { setStatus('invalid'); return; }
+      if (!res.ok) { setStatus('error'); return; }
+      const portalData: ClientPortalData = await res.json();
+      if (!portalData?.client_name) { setStatus('invalid'); return; }
+      setData(portalData);
+      setStatus('ready');
+
+      // Accueil au premier passage (mémorisé par lien)
+      const seenKey = `konekt:portal:onboarding:${token}`;
+      try {
+        if (!localStorage.getItem(seenKey)) setShowOnboarding(true);
+      } catch {
+        // stockage indisponible : pas d'accueil plutôt qu'un accueil à chaque visite
+      }
+    } catch {
+      setStatus('error');
+    }
+  }, [token]);
 
   useEffect(() => {
-    if (!token) { setNotFound(true); setLoading(false); return; }
+    void fetchPortal();
+  }, [fetchPortal]);
 
-    (async () => {
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-        const res = await fetch(
-          `${supabaseUrl}/functions/v1/client-portal-data?token=${encodeURIComponent(token)}`,
-          { headers: { 'Authorization': `Bearer ${anonKey}`, 'apikey': anonKey } },
-        );
-        if (!res.ok) { setNotFound(true); setLoading(false); return; }
-        const portalData: ClientPortalData = await res.json();
-        if (!portalData.client_name) { setNotFound(true); setLoading(false); return; }
-        setData(portalData);
-
-        // Onboarding au first visit (localStorage flag par token)
-        const seenKey = `konekt:portal:onboarding:${token}`;
-        if (typeof localStorage !== 'undefined' && !localStorage.getItem(seenKey)) {
-          setShowOnboarding(true);
-        }
-      } catch {
-        setNotFound(true);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [token]);
+  const retry = () => {
+    setRetrying(true);
+    void fetchPortal().finally(() => setRetrying(false));
+  };
 
   const handleCloseOnboarding = () => {
     setShowOnboarding(false);
-    if (token && typeof localStorage !== 'undefined') {
+    if (!token) return;
+    try {
       localStorage.setItem(`konekt:portal:onboarding:${token}`, '1');
+    } catch {
+      // stockage indisponible : l'accueil reviendra à la prochaine visite
     }
   };
 
-  // Aggregated stats
-  const stats = useMemo(() => {
-    if (!data) return null;
-    const all: PortalCandidate[] = [];
-    data.projects.forEach(p => all.push(...p.candidates));
-    const total = all.length;
-    const newCount = all.filter(c => {
-      const stage = getStageInfo(c.pipeline_stage);
-      return stage.order <= 2;
-    }).length;
-    const toEvaluate = all.filter(c => getStageInfo(c.pipeline_stage).order === 3).length;
-    const inProcess = all.filter(c => {
-      const stage = getStageInfo(c.pipeline_stage);
-      return stage.order >= 4 && stage.order <= 5;
-    }).length;
-    const hired = all.filter(c => getStageInfo(c.pipeline_stage).order === 6).length;
-    const avgScore = all.filter(c => c.score != null).length > 0
-      ? Math.round(all.filter(c => c.score != null).reduce((s, c) => s + (c.score || 0), 0) / all.filter(c => c.score != null).length)
-      : null;
-    return { total, newCount, toEvaluate, inProcess, hired, avgScore };
-  }, [data]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">Chargement du portail…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (notFound || !data) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <SEOHead title="Portail client | Konekt" description="Accès client" />
-        <div className="text-center max-w-md">
-          <div className="text-5xl mb-4">🔒</div>
-          <h1 className="font-display text-[24px] font-bold mb-2">Lien invalide ou expiré</h1>
-          <p className="text-[14px] text-muted-foreground">
-            Ce lien d'accès n'est plus valide. Contactez votre recruteur pour obtenir un nouveau lien.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Tous les candidats à plat (avec leur projet)
-  const allCandidates: { candidate: PortalCandidate; project: PortalProject }[] = [];
-  data.projects.forEach(project => {
-    project.candidates.forEach(candidate => {
-      allCandidates.push({ candidate, project });
+  const markEvaluated = (candidateId: string, iso: string) => {
+    setEvaluated((prev) => {
+      const next = { ...prev, [candidateId]: iso };
+      if (token) {
+        try {
+          localStorage.setItem(evaluatedStorageKey(token), JSON.stringify(next));
+        } catch {
+          // stockage indisponible : l'envoi reste affiché pour cette visite
+        }
+      }
+      return next;
     });
-  });
+  };
 
-  // Filtered candidates pour le tab "Tous les candidats"
+  // Tous les candidats à plat, avec leur mission
+  const allCandidates = useMemo<CandidateItem[]>(
+    () => (data ? data.projects.flatMap((project) => project.candidates.map((candidate) => ({ candidate, project }))) : []),
+    [data],
+  );
+
+  const stats = useMemo<PortalStats | null>(() => {
+    if (!data) return null;
+    const count = (key: ClientStageKey) =>
+      allCandidates.filter(({ candidate }) => resolveClientStage(candidate.pipeline_stage).key === key).length;
+    const scored = allCandidates.filter(({ candidate }) => candidate.score != null);
+    return {
+      total: allCandidates.length,
+      toEvaluate: count('to_evaluate'),
+      inProcess: count('interview') + count('offer'),
+      hired: count('hired'),
+      avgScore: scored.length > 0
+        ? Math.round(scored.reduce((sum, { candidate }) => sum + (candidate.score || 0), 0) / scored.length)
+        : null,
+    };
+  }, [data, allCandidates]);
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Spinner size="lg" label="Chargement du portail" />
+          <p className="text-sm text-muted-foreground" aria-hidden="true">Chargement du portail…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <PublicDeadEnd
+        kind="network"
+        title="Impossible d'afficher le portail"
+        description="La connexion au service a échoué. Vérifiez votre connexion internet, puis réessayez."
+        onRetry={retry}
+        retrying={retrying}
+        seo={{ title: 'Portail client', description: 'Accès client' }}
+      />
+    );
+  }
+
+  if (status === 'expired') {
+    return (
+      <PublicDeadEnd
+        kind="link"
+        title="Ce lien d'accès a expiré"
+        description="Demandez un nouveau lien à votre recruteur pour retrouver le portail."
+        seo={{ title: 'Portail client', description: 'Accès client' }}
+      />
+    );
+  }
+
+  if (status === 'invalid' || !data) {
+    return (
+      <PublicDeadEnd
+        kind="link"
+        title="Ce lien d'accès n'est pas valide"
+        description="Il a peut-être été désactivé. Demandez un nouveau lien à votre recruteur."
+        seo={{ title: 'Portail client', description: 'Accès client' }}
+      />
+    );
+  }
+
+  // Candidats filtrés de l'onglet « Tous les candidats »
   const filteredCandidates = allCandidates.filter(({ candidate, project }) => {
     if (projectFilter !== 'all' && project.id !== projectFilter) return false;
-    if (stageFilter !== 'all') {
-      const stage = getStageInfo(candidate.pipeline_stage);
-      const filterStage = STAGE_CONFIG[stageFilter];
-      if (filterStage && stage.order !== filterStage.order) return false;
-    }
+    if (stageFilter !== 'all' && resolveClientStage(candidate.pipeline_stage).key !== stageFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const name = (candidate.candidate_name || '').toLowerCase();
@@ -215,467 +283,348 @@ export default function ClientPortalV2() {
     return true;
   });
 
+  const resetFilters = () => {
+    setSearchQuery('');
+    setStageFilter('all');
+    setProjectFilter('all');
+  };
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <SEOHead
-        title={`Portail — ${data.client_name} | ${data.org_name || 'Konekt'}`}
+        title={`Portail recrutement, ${data.client_name}`}
         description="Suivez vos missions de recrutement"
       />
 
-      {/* Onboarding overlay */}
-      {showOnboarding && <OnboardingOverlay clientName={data.client_name} orgName={data.org_name} onClose={handleCloseOnboarding} />}
+      <OnboardingDialog
+        open={showOnboarding}
+        clientName={data.client_name}
+        orgName={data.org_name}
+        canEvaluate={data.permissions.can_fill_scorecard}
+        onClose={handleCloseOnboarding}
+      />
 
-      {/* Header brandé */}
       <PortalHeader data={data} stats={stats} />
 
-      {/* Nav tabs */}
-      <nav className="border-b border-border bg-background sticky top-0 z-20">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 flex items-center gap-1 overflow-x-auto scrollbar-hide">
-          <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} icon={<TrendingUp className="w-3.5 h-3.5" />}>
-            Vue d'ensemble
-          </TabButton>
-          <TabButton active={activeTab === 'pipeline'} onClick={() => setActiveTab('pipeline')} icon={<Briefcase className="w-3.5 h-3.5" />}>
-            Pipeline
-          </TabButton>
-          <TabButton active={activeTab === 'candidates'} onClick={() => setActiveTab('candidates')} icon={<Users className="w-3.5 h-3.5" />}>
-            Tous les candidats
-            {stats && <span className="ml-1.5 text-[10px] tabular-nums opacity-60">({stats.total})</span>}
-          </TabButton>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as Tab)} className="flex flex-1 flex-col">
+        <div className="sticky top-0 z-sticky border-b border-border bg-background">
+          <div className="mx-auto max-w-7xl overflow-x-auto px-4 py-2 sm:px-6">
+            <TabsList aria-label="Sections du portail" className="max-md:h-12">
+              {/* Sur téléphone : sans icône et libellé court, pour que les trois onglets tiennent. */}
+              <TabsTrigger value="overview" className="gap-1.5">
+                <TrendingUp className="h-3.5 w-3.5 max-sm:hidden" aria-hidden="true" />
+                Vue d'ensemble
+              </TabsTrigger>
+              <TabsTrigger value="pipeline" className="gap-1.5">
+                <Briefcase className="h-3.5 w-3.5 max-sm:hidden" aria-hidden="true" />
+                Pipeline
+              </TabsTrigger>
+              <TabsTrigger value="candidates" className="gap-1.5">
+                <Users className="h-3.5 w-3.5 max-sm:hidden" aria-hidden="true" />
+                <span className="sm:hidden">Candidats</span>
+                <span className="max-sm:hidden">Tous les candidats</span>
+                {stats && <span className="tabular-nums text-muted-foreground">({stats.total})</span>}
+              </TabsTrigger>
+            </TabsList>
+          </div>
         </div>
-      </nav>
 
-      {/* Content */}
-      <main className="max-w-[1280px] mx-auto px-4 sm:px-6 py-6 pb-12">
-        {activeTab === 'overview' && (
-          <OverviewTab data={data} stats={stats} onSelectCandidate={setSelectedCandidate} onJumpTo={(t) => setActiveTab(t)} />
-        )}
-        {activeTab === 'pipeline' && (
-          <PipelineTab data={data} onSelectCandidate={setSelectedCandidate} />
-        )}
-        {activeTab === 'candidates' && (
-          <CandidatesTab
-            data={data}
-            candidates={filteredCandidates}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            stageFilter={stageFilter}
-            setStageFilter={setStageFilter}
-            projectFilter={projectFilter}
-            setProjectFilter={setProjectFilter}
-            onSelectCandidate={setSelectedCandidate}
-          />
-        )}
-      </main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-12 pt-6 sm:px-6">
+          <TabsContent value="overview" className="mt-0">
+            <OverviewTab
+              data={data}
+              stats={stats}
+              allCandidates={allCandidates}
+              onSelectCandidate={setSelected}
+              onJumpTo={setActiveTab}
+            />
+          </TabsContent>
+          <TabsContent value="pipeline" className="mt-0">
+            <PipelineTab data={data} onSelectCandidate={setSelected} onShowAll={() => setActiveTab('candidates')} />
+          </TabsContent>
+          <TabsContent value="candidates" className="mt-0">
+            <CandidatesTab
+              data={data}
+              candidates={filteredCandidates}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              stageFilter={stageFilter}
+              setStageFilter={setStageFilter}
+              projectFilter={projectFilter}
+              setProjectFilter={setProjectFilter}
+              onReset={resetFilters}
+              onSelectCandidate={setSelected}
+            />
+          </TabsContent>
+        </main>
+      </Tabs>
 
-      {/* Footer */}
-      <footer className="border-t border-border py-6 text-center bg-background">
-        <p className="text-[11px] text-muted-foreground">
-          Portail propulsé par <span className="font-display font-bold">Konekt</span>
-        </p>
+      <footer className="border-t border-border py-6">
+        <PoweredByKonekt />
       </footer>
 
-      {/* Detail sheet */}
-      {selectedCandidate && (
-        <CandidateSheet
-          item={selectedCandidate}
-          permissions={data.permissions}
-          clientName={data.client_name}
-          portalToken={token!}
-          onClose={() => setSelectedCandidate(null)}
-        />
-      )}
+      <CandidateSheet
+        item={selected}
+        permissions={data.permissions}
+        clientName={data.client_name}
+        portalToken={token!}
+        evaluatedAt={selected ? evaluated[selected.candidate.id] ?? null : null}
+        onEvaluated={markEvaluated}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }
 
-// ─── Header ────────────────────────────────────────────────────────
+// ─── En-tête ───────────────────────────────────────────────────────
 
-const PortalHeader: React.FC<{ data: ClientPortalData; stats: any }> = ({ data, stats }) => (
+const PortalHeader: React.FC<{ data: ClientPortalData; stats: PortalStats | null }> = ({ data, stats }) => (
   <header className="border-b border-border bg-background">
-    {/* Accent gradient bar */}
-    <div className="h-1 konekt-skalr-bg" />
-
-    <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
-      <div className="flex items-center gap-3 min-w-0">
+    <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
+      <div className="flex min-w-0 items-center gap-3">
         {data.org_logo ? (
-          <img src={data.org_logo} alt={data.org_name || ''} className="h-10 w-10 object-contain rounded-md" />
+          <img src={data.org_logo} alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain" />
         ) : (
-          <div className="h-10 w-10 rounded-md konekt-skalr-bg konekt-shine grid place-items-center">
-            <Sparkles className="w-5 h-5 text-white" strokeWidth={2.5} />
-          </div>
+          <span
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-sm font-semibold text-foreground-secondary"
+            aria-hidden="true"
+          >
+            {initialsOf(data.org_name) || 'K'}
+          </span>
         )}
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Portail recrutement · {data.org_name || 'Konekt'}
-          </p>
-          <h1 className="font-display text-[18px] sm:text-[22px] font-bold leading-tight">
-            Bienvenue, <span className="font-editorial italic font-normal">{data.client_name}</span>
+          <p className="eyebrow truncate">Portail recrutement · {data.org_name || 'Konekt'}</p>
+          <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+            Bienvenue, {data.client_name}
           </h1>
         </div>
       </div>
       {stats && stats.total > 0 && (
-        <div className="flex items-center gap-3 text-[12px] text-muted-foreground flex-shrink-0">
+        <p className="flex shrink-0 items-center gap-3 text-sm text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
-            <Briefcase className="w-3.5 h-3.5" />
+            <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
             {data.projects.length} mission{data.projects.length > 1 ? 's' : ''}
           </span>
-          <span className="text-muted-foreground/40">·</span>
+          <span aria-hidden="true">·</span>
           <span className="inline-flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5" />
+            <Users className="h-3.5 w-3.5" aria-hidden="true" />
             {stats.total} candidat{stats.total > 1 ? 's' : ''}
           </span>
-        </div>
+        </p>
       )}
     </div>
   </header>
 );
 
-const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }> = ({
-  active, onClick, icon, children,
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={cn(
-      'px-4 py-3 inline-flex items-center gap-2 text-[13px] font-medium border-b-2 transition-colors flex-shrink-0',
-      active
-        ? 'border-foreground text-foreground'
-        : 'border-transparent text-muted-foreground hover:text-foreground',
-    )}
-  >
-    {icon}
-    {children}
-  </button>
-);
+// ─── Accueil (premier passage) ─────────────────────────────────────
 
-// ─── Onboarding overlay (first visit) ─────────────────────────────
-
-const OnboardingOverlay: React.FC<{
+const OnboardingDialog: React.FC<{
+  open: boolean;
   clientName: string;
   orgName: string | null;
+  canEvaluate: boolean;
   onClose: () => void;
-}> = ({ clientName, orgName, onClose }) => (
-  <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 konekt-fade-up">
-    <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
-      <div className="h-1 konekt-skalr-bg" />
-      <div className="p-6 sm:p-8">
-        <div className="h-14 w-14 rounded-2xl konekt-skalr-bg konekt-shine grid place-items-center mb-5">
-          <Sparkles className="w-7 h-7 text-white" strokeWidth={2.5} />
-        </div>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-          Bienvenue sur ton portail
-        </p>
-        <h2 className="font-display text-[28px] font-bold leading-tight mb-3">
-          Bonjour <span className="font-editorial italic font-normal">{clientName}</span>
-        </h2>
-        <p className="text-[14px] text-muted-foreground leading-relaxed mb-5">
-          {orgName ? <strong className="text-foreground">{orgName}</strong> : 'Ton recruteur'} a préparé un espace dédié pour suivre les candidatures de ton recrutement. Voici ce que tu peux faire ici :
-        </p>
-
-        <div className="space-y-3 mb-6">
+}> = ({ open, clientName, orgName, canEvaluate, onClose }) => (
+  <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+    <DialogContent className="max-w-md">
+      <DialogHeader>
+        <p className="eyebrow">Portail recrutement</p>
+        <DialogTitle className="text-xl">Bonjour {clientName}</DialogTitle>
+        <DialogDescription>
+          {orgName ? `${orgName} a préparé` : 'Votre recruteur a préparé'} cet espace pour suivre les candidatures de votre recrutement.
+        </DialogDescription>
+      </DialogHeader>
+      <ul className="space-y-3">
+        <FeatureRow icon={TrendingUp} title="Suivre l'avancement" desc="Voyez où en est chaque candidature, étape par étape." />
+        {canEvaluate && (
           <FeatureRow
-            emoji="📊"
-            title="Suivre l'avancement"
-            desc="Vois en temps réel où en sont les candidatures, étape par étape."
-          />
-          <FeatureRow
-            emoji="🎯"
+            icon={ClipboardCheck}
             title="Évaluer les candidats"
-            desc="Donne ton feedback via la scorecard pour chaque profil présenté."
+            desc="Donnez votre avis sur chaque profil présenté : il est transmis à votre recruteur."
           />
-          <FeatureRow
-            emoji="🔒"
-            title="Confidentiel & sécurisé"
-            desc="Ce lien est privé. Toi seul peux y accéder."
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full h-11 rounded-full inline-flex items-center justify-center gap-2 text-[14px] font-semibold text-white konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97]"
-        >
-          C'est parti
-          <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
-        </button>
-      </div>
-    </div>
-  </div>
+        )}
+        <FeatureRow icon={Lock} title="Un accès personnel" desc="Ce lien vous est personnel : ne le transférez pas." />
+      </ul>
+      <DialogFooter>
+        <Button variant="primary" onClick={onClose} className="max-md:h-11">
+          Accéder au portail
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 );
 
-const FeatureRow: React.FC<{ emoji: string; title: string; desc: string }> = ({ emoji, title, desc }) => (
-  <div className="flex items-start gap-3">
-    <span className="text-2xl flex-shrink-0">{emoji}</span>
+const FeatureRow: React.FC<{ icon: LucideIcon; title: string; desc: string }> = ({ icon: Icon, title, desc }) => (
+  <li className="flex items-start gap-3">
+    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary" aria-hidden="true">
+      <Icon className="h-4 w-4" />
+    </span>
     <div className="min-w-0">
-      <p className="text-[14px] font-semibold leading-tight">{title}</p>
-      <p className="text-[12px] text-muted-foreground leading-snug mt-0.5">{desc}</p>
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-0.5 text-sm text-muted-foreground">{desc}</p>
     </div>
-  </div>
+  </li>
 );
 
-// ─── Tab : Vue d'ensemble ─────────────────────────────────────────
+// ─── Onglet : vue d'ensemble ───────────────────────────────────────
 
 const OverviewTab: React.FC<{
   data: ClientPortalData;
-  stats: any;
-  onSelectCandidate: (item: { candidate: PortalCandidate; project: PortalProject }) => void;
+  stats: PortalStats | null;
+  allCandidates: CandidateItem[];
+  onSelectCandidate: (item: CandidateItem) => void;
   onJumpTo: (tab: Tab) => void;
-}> = ({ data, stats, onSelectCandidate, onJumpTo }) => {
-  // Top candidats : score >= 70 ou stage avancé
-  const topCandidates = useMemo(() => {
-    const all: { candidate: PortalCandidate; project: PortalProject }[] = [];
-    data.projects.forEach(project => {
-      project.candidates.forEach(candidate => {
-        all.push({ candidate, project });
-      });
-    });
-    return all
+}> = ({ data, stats, allCandidates, onSelectCandidate, onJumpTo }) => {
+  // Meilleurs profils : score d'au moins 70
+  const topCandidates = useMemo(
+    () => allCandidates
       .filter(({ candidate }) => (candidate.score || 0) >= 70)
       .sort((a, b) => (b.candidate.score || 0) - (a.candidate.score || 0))
-      .slice(0, 5);
-  }, [data]);
+      .slice(0, 5),
+    [allCandidates],
+  );
 
-  // Recent activity (last 5 updated)
-  const recentActivity = useMemo(() => {
-    const all: { candidate: PortalCandidate; project: PortalProject }[] = [];
-    data.projects.forEach(project => {
-      project.candidates.forEach(candidate => {
-        all.push({ candidate, project });
-      });
-    });
-    return all
+  // Activité récente : les cinq dernières mises à jour
+  const recentActivity = useMemo(
+    () => [...allCandidates]
       .sort((a, b) => new Date(b.candidate.updated_at).getTime() - new Date(a.candidate.updated_at).getTime())
-      .slice(0, 5);
-  }, [data]);
+      .slice(0, 5),
+    [allCandidates],
+  );
 
   if (!stats || stats.total === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border p-12 text-center">
-        <Users className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
-        <h3 className="font-display text-[16px] font-bold mb-2">Aucun candidat pour le moment</h3>
-        <p className="text-[13px] text-muted-foreground max-w-md mx-auto">
-          Ton recruteur n'a pas encore présenté de candidat. Tu seras notifié dès qu'il en partagera.
-        </p>
-      </div>
+      <EmptyState
+        icon={Users}
+        title="Aucun candidat pour le moment"
+        description="Les candidats apparaîtront ici dès que votre recruteur les partagera."
+      />
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard label="Total candidats" value={stats.total} icon={<Users className="w-4 h-4" />} />
-        <KpiCard
-          label="À évaluer"
-          value={stats.toEvaluate}
-          icon={<Eye className="w-4 h-4" />}
-          highlight={stats.toEvaluate > 0 ? 'warning' : undefined}
-        />
-        <KpiCard label="En process" value={stats.inProcess} icon={<TrendingUp className="w-4 h-4" />} />
-        <KpiCard
-          label="Embauchés"
-          value={stats.hired}
-          icon={<Award className="w-4 h-4" />}
-          highlight={stats.hired > 0 ? 'success' : undefined}
-        />
-      </div>
+      <StatGrid cols={{ base: 2, sm: 4 }}>
+        <StatTile label="Candidats" value={stats.total} icon={Users} />
+        <StatTile label="À évaluer" value={stats.toEvaluate} icon={Eye} variant="warning" accent={stats.toEvaluate > 0} />
+        <StatTile label="Entretiens et offres" value={stats.inProcess} icon={TrendingUp} />
+        <StatTile label="Embauchés" value={stats.hired} icon={Award} variant="success" accent={stats.hired > 0} />
+      </StatGrid>
 
-      {/* Funnel */}
-      <div className="bg-card border border-border rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Funnel de recrutement
-            </p>
-            <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-              Répartition des candidats par étape
-            </p>
-          </div>
-          {stats.avgScore !== null && (
-            <Pill variant="ai" icon={Star}>
+      <Section
+        title="Répartition par étape"
+        headingLevel={2}
+        action={
+          stats.avgScore !== null && (
+            <Badge variant="outline">
+              <Star className="h-3 w-3" aria-hidden="true" />
               Score moyen {stats.avgScore}/100
-            </Pill>
-          )}
-        </div>
+            </Badge>
+          )
+        }
+      >
+        <FunnelRows candidates={allCandidates} />
+      </Section>
 
-        <FunnelChart data={data} />
-      </div>
-
-      {/* Top candidats + Activité récente */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-card border border-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              ⭐ Top candidats
-            </p>
-            <button
-              type="button"
-              onClick={() => onJumpTo('candidates')}
-              className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-            >
-              Voir tous <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Section
+          title="Meilleurs profils"
+          headingLevel={2}
+          action={
+            <Button variant="ghost" size="xs" onClick={() => onJumpTo('candidates')} className="max-md:h-11">
+              Voir tous les candidats
+            </Button>
+          }
+        >
           {topCandidates.length === 0 ? (
-            <p className="text-[12px] text-muted-foreground italic py-4 text-center">
-              Aucun candidat avec score ≥ 70 pour le moment.
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+              Aucun candidat avec un score d'au moins 70 pour le moment.
             </p>
           ) : (
-            <div className="space-y-2">
-              {topCandidates.map(({ candidate, project }) => (
-                <CandidateRow
-                  key={candidate.id}
-                  candidate={candidate}
-                  project={project}
-                  permissions={data.permissions}
-                  onClick={() => onSelectCandidate({ candidate, project })}
-                  compact
-                />
-              ))}
-            </div>
+            <CandidateList items={topCandidates} permissions={data.permissions} onSelect={onSelectCandidate} compact />
           )}
-        </div>
+        </Section>
 
-        <div className="bg-card border border-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              📈 Activité récente
-            </p>
-            <button
-              type="button"
-              onClick={() => onJumpTo('pipeline')}
-              className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-            >
-              Pipeline <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="space-y-2">
-            {recentActivity.map(({ candidate, project }) => (
-              <CandidateRow
-                key={candidate.id}
-                candidate={candidate}
-                project={project}
-                permissions={data.permissions}
-                onClick={() => onSelectCandidate({ candidate, project })}
-                compact
-                showTime
-              />
-            ))}
-          </div>
-        </div>
+        <Section
+          title="Activité récente"
+          headingLevel={2}
+          action={
+            <Button variant="ghost" size="xs" onClick={() => onJumpTo('pipeline')} className="max-md:h-11">
+              Voir le pipeline
+            </Button>
+          }
+        >
+          <CandidateList items={recentActivity} permissions={data.permissions} onSelect={onSelectCandidate} compact showTime />
+        </Section>
       </div>
     </div>
   );
 };
 
-const KpiCard: React.FC<{
-  label: string;
-  value: number;
-  icon?: React.ReactNode;
-  highlight?: 'warning' | 'success';
-}> = ({ label, value, icon, highlight }) => {
-  const color =
-    highlight === 'warning' ? 'hsl(var(--status-warning))'
-    : highlight === 'success' ? 'hsl(var(--status-success))'
-    : undefined;
+/** Répartition des candidats par étape du parcours ; les non-retenus sont comptés à part. */
+const FunnelRows: React.FC<{ candidates: CandidateItem[] }> = ({ candidates }) => {
+  const stages = candidates.map(({ candidate }) => resolveClientStage(candidate.pipeline_stage));
+  const counts = CLIENT_FUNNEL.map((key) => ({
+    key,
+    label: CLIENT_STAGES[key].label,
+    count: stages.filter((stage) => stage.key === key).length,
+  }));
+  const inFunnel = counts.reduce((sum, stage) => sum + stage.count, 0);
+  const outside = candidates.length - inFunnel;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
-      <div className="flex items-center gap-1.5 text-muted-foreground mb-2">
-        {icon}
-        <p className="text-[10px] uppercase tracking-wider font-semibold">{label}</p>
-      </div>
-      <p
-        className="font-display text-[28px] font-bold tabular-nums leading-none"
-        style={color && value > 0 ? { color } : undefined}
-      >
-        {value}
-      </p>
+    <div className="p-4">
+      <ul className="space-y-2.5">
+        {counts.map((stage) => {
+          const pct = inFunnel > 0 ? Math.round((stage.count / inFunnel) * 100) : 0;
+          return (
+            <li key={stage.key} className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-3 text-sm">
+              <span className={cn(stage.count === 0 ? 'text-muted-foreground' : 'text-foreground')}>{stage.label}</span>
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="text-xs tabular-nums text-foreground">
+                {stage.count} <span className="text-muted-foreground">({pct} %)</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {outside > 0 && (
+        <p className="mt-4 text-xs text-muted-foreground">
+          {outside} candidat{outside > 1 ? 's' : ''} hors parcours (non retenu{outside > 1 ? 's' : ''} ou étape non précisée).
+        </p>
+      )}
     </div>
   );
 };
 
-// Funnel chart simple (barres horizontales)
-const FunnelChart: React.FC<{ data: ClientPortalData }> = ({ data }) => {
-  const stages = ['sourced', 'presented', 'to_evaluate', 'interview', 'offer', 'hired'];
-  const counts = stages.map(stageKey => {
-    let count = 0;
-    data.projects.forEach(project => {
-      project.candidates.forEach(c => {
-        const stage = getStageInfo(c.pipeline_stage);
-        if (stage.order === STAGE_CONFIG[stageKey]?.order) count++;
-      });
-    });
-    return { key: stageKey, ...STAGE_CONFIG[stageKey], count };
-  });
-
-  const max = Math.max(...counts.map(c => c.count), 1);
-
-  return (
-    <div className="space-y-2">
-      {counts.map(s => {
-        const pct = (s.count / max) * 100;
-        const variantColor = {
-          muted: 'hsl(var(--muted-foreground))',
-          info: 'hsl(var(--status-info))',
-          warning: 'hsl(var(--status-warning))',
-          success: 'hsl(var(--status-success))',
-        }[s.variant];
-        return (
-          <div key={s.key} className="flex items-center gap-3">
-            <div className="w-32 text-[12px] inline-flex items-center gap-1.5 flex-shrink-0">
-              <span>{s.emoji}</span>
-              <span className={cn(s.count === 0 && 'text-muted-foreground')}>{s.label}</span>
-            </div>
-            <div className="flex-1 h-7 bg-muted/40 rounded-md overflow-hidden relative">
-              {s.count > 0 && (
-                <div
-                  className="h-full rounded-md flex items-center px-3 transition-all"
-                  style={{
-                    width: `${Math.max(pct, 6)}%`,
-                    background: variantColor + '33',
-                    borderLeft: `3px solid ${variantColor}`,
-                  }}
-                >
-                  <span className="font-display text-[13px] font-bold tabular-nums" style={{ color: variantColor }}>
-                    {s.count}
-                  </span>
-                </div>
-              )}
-              {s.count === 0 && (
-                <div className="h-full grid place-items-center text-[11px] text-muted-foreground/50">—</div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-// ─── Tab : Pipeline ────────────────────────────────────────────────
+// ─── Onglet : pipeline ─────────────────────────────────────────────
 
 const PipelineTab: React.FC<{
   data: ClientPortalData;
-  onSelectCandidate: (item: { candidate: PortalCandidate; project: PortalProject }) => void;
-}> = ({ data, onSelectCandidate }) => {
+  onSelectCandidate: (item: CandidateItem) => void;
+  onShowAll: () => void;
+}> = ({ data, onSelectCandidate, onShowAll }) => {
   if (data.projects.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border p-12 text-center">
-        <Briefcase className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
-        <p className="text-[13px] text-muted-foreground">Aucune mission active.</p>
-      </div>
+      <EmptyState
+        icon={Briefcase}
+        title="Aucune mission partagée"
+        description="Les missions que votre recruteur partage avec vous apparaîtront ici."
+      />
     );
   }
 
   return (
     <div className="space-y-6">
-      {data.projects.map(project => (
+      {data.projects.map((project) => (
         <ProjectPipeline
           key={project.id}
           project={project}
           permissions={data.permissions}
-          onSelectCandidate={(c) => onSelectCandidate({ candidate: c, project })}
+          onSelectCandidate={(candidate) => onSelectCandidate({ candidate, project })}
+          onShowAll={onShowAll}
         />
       ))}
     </div>
@@ -684,393 +633,382 @@ const PipelineTab: React.FC<{
 
 const ProjectPipeline: React.FC<{
   project: PortalProject;
-  permissions: ClientPortalData['permissions'];
-  onSelectCandidate: (c: PortalCandidate) => void;
-}> = ({ project, permissions, onSelectCandidate }) => {
-  const stages = ['sourced', 'presented', 'to_evaluate', 'interview', 'offer', 'hired'];
-
-  const candidatesByStage: Record<string, PortalCandidate[]> = {};
-  stages.forEach(s => candidatesByStage[s] = []);
-  project.candidates.forEach(c => {
-    const stage = getStageInfo(c.pipeline_stage);
-    const matchingStage = stages.find(s => STAGE_CONFIG[s].order === stage.order);
-    if (matchingStage) candidatesByStage[matchingStage].push(c);
-    else candidatesByStage.sourced.push(c);
+  permissions: Permissions;
+  onSelectCandidate: (candidate: PortalCandidate) => void;
+  onShowAll: () => void;
+}> = ({ project, permissions, onSelectCandidate, onShowAll }) => {
+  const byStage: Record<ClientStageKey, PortalCandidate[]> = {
+    sourced: [], presented: [], to_evaluate: [], interview: [], offer: [], hired: [], rejected: [],
+  };
+  let outside = 0;
+  project.candidates.forEach((candidate) => {
+    const stage = resolveClientStage(candidate.pipeline_stage);
+    if (stage.key && stage.key !== 'rejected') byStage[stage.key].push(candidate);
+    else outside += 1;
   });
+  const count = project.candidates.length;
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-border flex items-center gap-2 flex-wrap">
-        <Briefcase className="w-4 h-4 text-muted-foreground" />
-        <h2 className="font-display text-[15px] font-bold">{project.name}</h2>
-        <span className="text-[11px] text-muted-foreground">
-          · {project.candidates.length} candidat{project.candidates.length > 1 ? 's' : ''}
-        </span>
-      </div>
-      <div className="overflow-x-auto">
-        <div className="flex gap-3 p-4 min-w-max">
-          {stages.map(stageKey => {
-            const cfg = STAGE_CONFIG[stageKey];
-            const candidates = candidatesByStage[stageKey] || [];
+    <Section
+      title={project.name}
+      subtitle={`${count} candidat${count > 1 ? 's' : ''}`}
+      icon={Briefcase}
+      headingLevel={2}
+    >
+      <div className="thin-scrollbar overflow-x-auto">
+        <div className="flex min-w-max gap-3 p-4">
+          {CLIENT_FUNNEL.map((key) => {
+            const candidates = byStage[key];
+            const label = CLIENT_STAGES[key].label;
             return (
-              <div key={stageKey} className="w-[260px] flex flex-col bg-background/40 rounded-lg border border-border flex-shrink-0">
-                <div className="px-3 py-2.5 border-b border-border flex items-center gap-2">
-                  <span>{cfg.emoji}</span>
-                  <p className="text-[12px] font-semibold flex-1">{cfg.label}</p>
-                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono tabular-nums">
+              <section
+                key={key}
+                aria-label={`${label}, ${candidates.length} candidat${candidates.length > 1 ? 's' : ''}`}
+                className="flex w-64 shrink-0 flex-col rounded-lg border border-border bg-background"
+              >
+                <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+                  <h3 className="flex-1 text-xs font-semibold text-foreground">{label}</h3>
+                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs tabular-nums text-muted-foreground">
                     {candidates.length}
                   </span>
                 </div>
-                <div className="flex-1 p-2 space-y-2 max-h-[400px] overflow-y-auto">
+                <div className="thin-scrollbar max-h-[25rem] flex-1 space-y-2 overflow-y-auto p-2">
                   {candidates.length === 0 ? (
-                    <div className="py-6 text-center text-[10.5px] text-muted-foreground/50 italic">—</div>
+                    <p className="py-6 text-center text-xs text-muted-foreground">Aucun candidat</p>
                   ) : (
-                    candidates.map(c => (
+                    candidates.map((candidate) => (
                       <PipelineCard
-                        key={c.id}
-                        candidate={c}
+                        key={candidate.id}
+                        candidate={candidate}
                         permissions={permissions}
-                        onClick={() => onSelectCandidate(c)}
+                        onClick={() => onSelectCandidate(candidate)}
                       />
                     ))
                   )}
                 </div>
-              </div>
+              </section>
             );
           })}
         </div>
       </div>
-    </div>
+      {outside > 0 && (
+        <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          {outside} candidat{outside > 1 ? 's' : ''} hors de ces étapes (non retenu{outside > 1 ? 's' : ''} ou étape non précisée).{' '}
+          <Button variant="link" size="xs" className="h-auto px-0 text-xs" onClick={onShowAll}>
+            Voir tous les candidats
+          </Button>
+        </p>
+      )}
+    </Section>
   );
 };
 
 const PipelineCard: React.FC<{
   candidate: PortalCandidate;
-  permissions: ClientPortalData['permissions'];
+  permissions: Permissions;
   onClick: () => void;
 }> = ({ candidate, permissions, onClick }) => {
-  const displayName = permissions.can_see_names
-    ? (candidate.candidate_name || 'Candidat')
-    : `Candidat #${candidate.id.slice(0, 6)}`;
-  const initial = permissions.can_see_names
-    ? (candidate.candidate_name?.[0] || '?').toUpperCase()
-    : '#';
-
+  const displayName = displayNameOf(candidate, permissions);
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
       onClick={onClick}
-      className="w-full text-left bg-card border border-border rounded-md p-2.5 hover:border-foreground/30 hover:shadow-sm transition-all group"
+      className="h-auto w-full flex-col items-stretch gap-1.5 whitespace-normal bg-card p-2.5 text-left font-normal active:scale-100"
     >
-      <div className="flex items-center gap-2 mb-1.5">
-        <div className="w-7 h-7 rounded-full bg-foreground/10 grid place-items-center text-[10px] font-semibold flex-shrink-0">
-          {initial}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-semibold truncate">{displayName}</p>
+      <span className="flex items-center gap-2">
+        <Initials name={permissions.can_see_names ? candidate.candidate_name : null} size="sm" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-semibold text-foreground">{displayName}</span>
           {candidate.candidate_headline && permissions.can_see_names && (
-            <p className="text-[10px] text-muted-foreground truncate">{candidate.candidate_headline}</p>
+            <span className="block truncate text-2xs text-muted-foreground">{candidate.candidate_headline}</span>
           )}
-        </div>
-        {candidate.score != null && (
-          <ScoreBadge score={candidate.score} compact />
-        )}
-      </div>
-      <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
-        <Clock className="w-2.5 h-2.5" />
-        {formatDistanceToNow(new Date(candidate.updated_at), { addSuffix: true, locale: fr })}
-      </p>
-    </button>
+        </span>
+        {candidate.score != null && <ScoreChip score={candidate.score} />}
+      </span>
+      <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
+        <Clock className="!size-3" aria-hidden="true" />
+        Mis à jour {relative(candidate.updated_at)}
+      </span>
+    </Button>
   );
 };
 
-// ─── Tab : Tous les candidats ──────────────────────────────────────
+// ─── Onglet : tous les candidats ───────────────────────────────────
+
+const STAGE_OPTIONS = Object.values(CLIENT_STAGES).sort((a, b) => a.order - b.order);
 
 const CandidatesTab: React.FC<{
   data: ClientPortalData;
-  candidates: { candidate: PortalCandidate; project: PortalProject }[];
+  candidates: CandidateItem[];
   searchQuery: string;
-  setSearchQuery: (v: string) => void;
-  stageFilter: string | 'all';
-  setStageFilter: (v: string | 'all') => void;
+  setSearchQuery: (value: string) => void;
+  stageFilter: ClientStageKey | 'all';
+  setStageFilter: (value: ClientStageKey | 'all') => void;
   projectFilter: string | 'all';
-  setProjectFilter: (v: string | 'all') => void;
-  onSelectCandidate: (item: { candidate: PortalCandidate; project: PortalProject }) => void;
-}> = ({ data, candidates, searchQuery, setSearchQuery, stageFilter, setStageFilter, projectFilter, setProjectFilter, onSelectCandidate }) => (
+  setProjectFilter: (value: string | 'all') => void;
+  onReset: () => void;
+  onSelectCandidate: (item: CandidateItem) => void;
+}> = ({ data, candidates, searchQuery, setSearchQuery, stageFilter, setStageFilter, projectFilter, setProjectFilter, onReset, onSelectCandidate }) => (
   <div>
-    {/* Filters */}
-    <div className="flex items-center gap-2 mb-4 flex-wrap">
-      <div className="relative flex-1 min-w-[200px]">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-        <input
+    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="relative flex-1 sm:min-w-[16rem]">
+        <Label htmlFor="portail-recherche" className="sr-only">
+          Rechercher un candidat ou une mission
+        </Label>
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          id="portail-recherche"
+          type="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Rechercher un candidat, une mission…"
-          className="w-full h-9 pl-9 pr-3 rounded-md border border-border bg-card text-[13px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+          className="pl-9 max-md:h-11"
         />
       </div>
 
-      <select
-        value={stageFilter}
-        onChange={(e) => setStageFilter(e.target.value)}
-        className="h-9 px-3 rounded-md border border-border bg-card text-[12.5px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-      >
-        <option value="all">Toutes étapes</option>
-        {Object.entries(STAGE_CONFIG)
-          .sort(([, a], [, b]) => a.order - b.order)
-          .map(([key, cfg]) => (
-            <option key={key} value={key}>{cfg.emoji} {cfg.label}</option>
+      <Select value={stageFilter} onValueChange={(value) => setStageFilter(value as ClientStageKey | 'all')}>
+        <SelectTrigger aria-label="Filtrer par étape" className="sm:w-48 max-md:h-11">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Toutes les étapes</SelectItem>
+          {STAGE_OPTIONS.map((stage) => (
+            <SelectItem key={stage.key} value={stage.key as string}>
+              {stage.label}
+            </SelectItem>
           ))}
-      </select>
+        </SelectContent>
+      </Select>
 
       {data.projects.length > 1 && (
-        <select
-          value={projectFilter}
-          onChange={(e) => setProjectFilter(e.target.value)}
-          className="h-9 px-3 rounded-md border border-border bg-card text-[12.5px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-        >
-          <option value="all">Toutes missions</option>
-          {data.projects.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+        <Select value={projectFilter} onValueChange={setProjectFilter}>
+          <SelectTrigger aria-label="Filtrer par mission" className="sm:w-56 max-md:h-11">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes les missions</SelectItem>
+            {data.projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                {project.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       )}
     </div>
 
-    {/* Results */}
     {candidates.length === 0 ? (
-      <div className="rounded-xl border border-dashed border-border p-12 text-center">
-        <Search className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
-        <h3 className="font-display text-[14px] font-bold mb-1">Aucun candidat trouvé</h3>
-        <p className="text-[12px] text-muted-foreground">
-          Essaie d'autres mots-clés ou enlève les filtres.
-        </p>
-      </div>
+      <EmptyState
+        icon={Search}
+        title="Aucun candidat trouvé"
+        description="Essayez d'autres mots-clés ou retirez des filtres."
+        action={
+          <Button variant="outline" onClick={onReset} className="max-md:h-11">
+            Effacer les filtres
+          </Button>
+        }
+      />
     ) : (
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="divide-y divide-border">
-          {candidates.map(({ candidate, project }) => (
-            <CandidateRow
-              key={candidate.id}
-              candidate={candidate}
-              project={project}
-              permissions={data.permissions}
-              onClick={() => onSelectCandidate({ candidate, project })}
-              showProject
-              showTime
-            />
-          ))}
-        </div>
+      <div className="rounded-xl border border-border bg-card">
+        <CandidateList items={candidates} permissions={data.permissions} onSelect={onSelectCandidate} showProject showTime />
       </div>
     )}
   </div>
 );
 
-// ─── Candidate Row (utilisée dans Top + Activity + List) ──────────
+// ─── Liste et ligne de candidat ────────────────────────────────────
+
+const CandidateList: React.FC<{
+  items: CandidateItem[];
+  permissions: Permissions;
+  onSelect: (item: CandidateItem) => void;
+  compact?: boolean;
+  showTime?: boolean;
+  showProject?: boolean;
+}> = ({ items, permissions, onSelect, compact, showTime, showProject }) => (
+  <ul className="divide-y divide-border p-1.5">
+    {items.map((item) => (
+      <li key={item.candidate.id} className="py-0.5">
+        <CandidateRow
+          item={item}
+          permissions={permissions}
+          onClick={() => onSelect(item)}
+          compact={compact}
+          showTime={showTime}
+          showProject={showProject}
+        />
+      </li>
+    ))}
+  </ul>
+);
 
 const CandidateRow: React.FC<{
-  candidate: PortalCandidate;
-  project: PortalProject;
-  permissions: ClientPortalData['permissions'];
+  item: CandidateItem;
+  permissions: Permissions;
   onClick: () => void;
   compact?: boolean;
   showTime?: boolean;
   showProject?: boolean;
-}> = ({ candidate, project, permissions, onClick, compact, showTime, showProject }) => {
-  const displayName = permissions.can_see_names
-    ? (candidate.candidate_name || 'Candidat')
-    : `Candidat #${candidate.id.slice(0, 6)}`;
-  const initial = permissions.can_see_names
-    ? (candidate.candidate_name?.[0] || '?').toUpperCase()
-    : '#';
-  const stage = getStageInfo(candidate.pipeline_stage);
+}> = ({ item, permissions, onClick, compact, showTime, showProject }) => {
+  const { candidate, project } = item;
+  const displayName = displayNameOf(candidate, permissions);
+  const stage = resolveClientStage(candidate.pipeline_stage);
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
       className={cn(
-        'w-full text-left flex items-center gap-3 hover:bg-muted/40 transition-colors',
-        compact ? 'px-2.5 py-2 rounded-md' : 'px-4 py-3',
+        'h-auto min-h-11 w-full justify-start gap-3 whitespace-normal rounded-md text-left font-normal active:scale-100',
+        compact ? 'px-2.5 py-2' : 'px-3 py-2.5',
       )}
     >
-      <div className={cn(
-        'rounded-full bg-foreground/10 grid place-items-center font-semibold flex-shrink-0',
-        compact ? 'w-7 h-7 text-[10px]' : 'w-9 h-9 text-[12px]',
-      )}>
-        {initial}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className={cn('font-medium truncate', compact ? 'text-[12.5px]' : 'text-[13px]')}>
-            {displayName}
-          </p>
-          {showProject && (
-            <span className="text-[10px] text-muted-foreground truncate">· {project.name}</span>
-          )}
-        </div>
+      <Initials name={permissions.can_see_names ? candidate.candidate_name : null} size={compact ? 'sm' : 'md'} />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-foreground">{displayName}</span>
+          {showProject && <span className="hidden truncate text-xs text-muted-foreground sm:inline">· {project.name}</span>}
+        </span>
         {candidate.candidate_headline && permissions.can_see_names && (
-          <p className={cn('text-muted-foreground truncate', compact ? 'text-[10.5px]' : 'text-[11.5px]')}>
-            {candidate.candidate_headline}
-          </p>
+          <span className="block truncate text-xs text-muted-foreground">{candidate.candidate_headline}</span>
         )}
-      </div>
-
-      <Pill variant={stage.variant}>
-        {stage.emoji} {stage.label}
-      </Pill>
-
-      {candidate.score != null && <ScoreBadge score={candidate.score} compact={compact} />}
-
+      </span>
+      <StageBadge stage={stage} />
+      {candidate.score != null && <ScoreChip score={candidate.score} />}
       {showTime && (
-        <span className="text-[10.5px] text-muted-foreground inline-flex items-center gap-1 flex-shrink-0 hidden sm:inline-flex">
-          <Clock className="w-3 h-3" />
-          {formatDistanceToNow(new Date(candidate.updated_at), { addSuffix: true, locale: fr })}
+        <span className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
+          <Clock className="!size-3" aria-hidden="true" />
+          {relative(candidate.updated_at)}
         </span>
       )}
-    </button>
+    </Button>
   );
 };
 
-const ScoreBadge: React.FC<{ score: number; compact?: boolean }> = ({ score, compact }) => {
-  const config = score >= 80
-    ? { bg: 'hsl(var(--status-success-muted))', color: 'hsl(var(--status-success))' }
-    : score >= 60
-      ? { bg: 'hsl(var(--status-info-muted))', color: 'hsl(var(--status-info))' }
-      : { bg: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))' };
-  return (
-    <div
-      className={cn(
-        'rounded-md grid place-items-center font-display font-bold tabular-nums flex-shrink-0',
-        compact ? 'w-9 h-9 text-[12px]' : 'w-10 h-10 text-[13px]',
-      )}
-      style={config}
-    >
-      {score}
-    </div>
-  );
-};
+const StageBadge: React.FC<{ stage: ClientStage }> = ({ stage }) => (
+  <Badge variant={stage.tone} className="shrink-0 whitespace-nowrap">
+    {stage.label}
+  </Badge>
+);
 
-// ─── Detail Sheet (slide-in droite) ───────────────────────────────
+/** Score d'adéquation sur 100 : le chiffre porte l'information, la teinte la souligne. */
+const ScoreChip: React.FC<{ score: number }> = ({ score }) => (
+  <span
+    className={cn(
+      'inline-flex h-7 min-w-9 shrink-0 items-center justify-center rounded-md px-1.5 text-xs font-semibold tabular-nums',
+      score >= 80 ? 'bg-success-muted text-success' : score >= 60 ? 'bg-info-muted text-info' : 'bg-muted text-muted-foreground',
+    )}
+  >
+    <span className="sr-only">Score </span>
+    {score}
+    <span className="sr-only"> sur 100</span>
+  </span>
+);
+
+const Initials: React.FC<{ name: string | null; size: 'sm' | 'md' | 'lg' }> = ({ name, size }) => (
+  <span
+    className={cn(
+      'grid shrink-0 place-items-center rounded-full bg-muted font-semibold text-foreground-secondary',
+      size === 'sm' && 'h-7 w-7 text-3xs',
+      size === 'md' && 'h-9 w-9 text-xs',
+      size === 'lg' && 'h-12 w-12 text-sm',
+    )}
+    aria-hidden="true"
+  >
+    {initialsOf(name) || '#'}
+  </span>
+);
+
+// ─── Fiche candidat (panneau latéral) ──────────────────────────────
 
 const CandidateSheet: React.FC<{
-  item: { candidate: PortalCandidate; project: PortalProject };
-  permissions: ClientPortalData['permissions'];
+  item: CandidateItem | null;
+  permissions: Permissions;
   clientName: string;
   portalToken: string;
+  evaluatedAt: string | null;
+  onEvaluated: (candidateId: string, iso: string) => void;
   onClose: () => void;
-}> = ({ item, permissions, clientName, portalToken, onClose }) => {
-  const { candidate, project } = item;
-  const displayName = permissions.can_see_names
-    ? (candidate.candidate_name || 'Candidat')
-    : `Candidat #${candidate.id.slice(0, 6)}`;
-  const initial = permissions.can_see_names
-    ? (candidate.candidate_name?.[0] || '?').toUpperCase()
-    : '#';
-  const stage = getStageInfo(candidate.pipeline_stage);
-
-  // ESC to close
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+}> = ({ item, permissions, clientName, portalToken, evaluatedAt, onEvaluated, onClose }) => {
+  const candidate = item?.candidate;
+  const project = item?.project;
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm konekt-fade-up"
-        onClick={onClose}
-      />
-      {/* Sheet */}
-      <div className="fixed right-0 top-0 bottom-0 z-40 w-full sm:max-w-lg bg-background border-l border-border shadow-2xl flex flex-col konekt-fade-up overflow-hidden">
-        <div className="h-1 konekt-skalr-bg flex-shrink-0" />
+    <Sheet open={!!item} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
+        {candidate && project && (
+          <>
+            <SheetHeader className="space-y-0 border-b border-border px-5 py-4 pr-14 text-left">
+              <div className="flex items-center gap-3">
+                <Initials name={permissions.can_see_names ? candidate.candidate_name : null} size="lg" />
+                <div className="min-w-0">
+                  <SheetTitle className="truncate text-lg">{displayNameOf(candidate, permissions)}</SheetTitle>
+                  {candidate.candidate_headline && permissions.can_see_names ? (
+                    <SheetDescription className="truncate">{candidate.candidate_headline}</SheetDescription>
+                  ) : (
+                    <SheetDescription className="sr-only">Fiche du candidat</SheetDescription>
+                  )}
+                </div>
+              </div>
+            </SheetHeader>
 
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-12 w-12 rounded-full bg-foreground/10 grid place-items-center text-[14px] font-bold flex-shrink-0">
-              {initial}
-            </div>
-            <div className="min-w-0">
-              <h2 className="font-display text-[18px] font-bold leading-tight truncate">{displayName}</h2>
-              {candidate.candidate_headline && permissions.can_see_names && (
-                <p className="text-[12px] text-muted-foreground truncate">{candidate.candidate_headline}</p>
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <StageBadge stage={resolveClientStage(candidate.pipeline_stage)} />
+                {candidate.score != null && (
+                  <Badge variant="outline">
+                    <Star className="h-3 w-3" aria-hidden="true" />
+                    Score d'adéquation {candidate.score}/100
+                  </Badge>
+                )}
+                <Badge variant="outline">
+                  <Briefcase className="h-3 w-3" aria-hidden="true" />
+                  {project.name}
+                </Badge>
+              </div>
+
+              <section aria-labelledby="fiche-activite" className="rounded-lg border border-border bg-card p-4">
+                <h3 id="fiche-activite" className="text-xs font-semibold text-muted-foreground">
+                  Activité
+                </h3>
+                <ul className="mt-2 space-y-1.5 text-sm text-foreground-secondary">
+                  <li className="flex items-center gap-2">
+                    <UserPlus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    Ajouté à la mission {relative(candidate.created_at)}
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    Mis à jour {relative(candidate.updated_at)}
+                  </li>
+                </ul>
+              </section>
+
+              {permissions.can_fill_scorecard && (
+                <section aria-labelledby="fiche-evaluation" className="rounded-lg border border-border bg-card">
+                  <div className="border-b border-border px-4 py-3">
+                    <h3 id="fiche-evaluation" className="text-sm font-semibold text-foreground">
+                      Évaluation
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Donnez votre avis : il sera transmis à votre recruteur.</p>
+                  </div>
+                  <div className="p-4">
+                    <PortalCandidateScoring
+                      key={candidate.id}
+                      candidate={candidate}
+                      projectId={project.id}
+                      clientName={clientName}
+                      canFillScorecard={permissions.can_fill_scorecard}
+                      portalToken={portalToken}
+                      submittedAt={evaluatedAt}
+                      onSubmitted={(iso) => onEvaluated(candidate.id, iso)}
+                    />
+                  </div>
+                </section>
               )}
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-8 w-8 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
-            aria-label="Fermer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Meta */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Pill variant={stage.variant}>
-              {stage.emoji} {stage.label}
-            </Pill>
-            {candidate.score != null && (
-              <Pill variant="ai" icon={Star}>
-                Score {candidate.score}/100
-              </Pill>
-            )}
-            <Pill variant="muted">
-              <Briefcase className="w-2.5 h-2.5" /> {project.name}
-            </Pill>
-          </div>
-
-          {/* Timeline */}
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-              Activité
-            </p>
-            <div className="space-y-2 text-[12px]">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <CheckCircle className="w-3 h-3" style={{ color: 'hsl(var(--status-success))' }} />
-                Présenté <span className="text-muted-foreground/70">·</span>{' '}
-                {formatDistanceToNow(new Date(candidate.created_at), { addSuffix: true, locale: fr })}
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Clock className="w-3 h-3" />
-                Mise à jour <span className="text-muted-foreground/70">·</span>{' '}
-                {formatDistanceToNow(new Date(candidate.updated_at), { addSuffix: true, locale: fr })}
-              </div>
-            </div>
-          </div>
-
-          {/* Scorecard (if can_fill) */}
-          {permissions.can_fill_scorecard && (
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-4 py-3 border-b border-border">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  Évaluation
-                </p>
-                <p className="text-[12px] text-foreground mt-0.5">
-                  Donne ton feedback — il sera transmis à ton recruteur
-                </p>
-              </div>
-              <div className="p-4">
-                <PortalCandidateScoring
-                  candidate={candidate}
-                  projectId={project.id}
-                  clientName={clientName}
-                  canFillScorecard={permissions.can_fill_scorecard}
-                  portalToken={portalToken}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 };
