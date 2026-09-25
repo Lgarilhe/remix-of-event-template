@@ -1,183 +1,138 @@
+/**
+ * Barre de filtres du pipeline global : la recherche, puis les pastilles du
+ * kit (FilterPill), comme dans les Tâches et l'Agenda. « Avec rappel » est un
+ * filtre ; le bouton « Rappels » de l'en-tête ouvre la liste des rappels
+ * (revue design E-20). Sur téléphone, la barre passe à la ligne au lieu de
+ * couper ses pastilles (E-21).
+ */
 import React from 'react';
+import { Check, Search, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { FilterOption, FilterPill } from '@/components/ui/filter-pill';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Search, X, Bell } from 'lucide-react';
+import { ATS_SOURCE_LABELS, type ATSCandidate } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 
+export interface ATSFiltersValue {
+  search: string;
+  stage: string[];
+  source: string[];
+  job: string[];
+  tag: string[];
+  hasReminder: boolean;
+}
+
 interface ATSFiltersProps {
-  filters: {
-    search: string;
-    stage: string[];
-    source: string[];
-    job: string[];
-    tag: string[];
-    hasReminder: boolean;
-  };
-  onFiltersChange: (filters: ATSFiltersProps['filters']) => void;
+  filters: ATSFiltersValue;
+  onFiltersChange: (filters: ATSFiltersValue) => void;
   options: {
-    stages: string[];
-    sources: string[];
+    /** Étapes présentes, dans l'ordre du pipeline. */
+    stages: { key: string; label: string }[];
+    sources: ATSCandidate['source'][];
     jobs: { id: string; title: string }[];
     tags: string[];
   };
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  shortlist: 'Pipeline Notion',
-  sequence: 'Séquences',
-  inmail: 'InMails',
-};
-
-const FilterButton: React.FC<{
-  label: string;
-  count: number;
-  children: React.ReactNode;
-}> = ({ label, count, children }) => (
-  <Popover>
-    <PopoverTrigger asChild>
-      <button className={cn(
-        "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors shrink-0 whitespace-nowrap",
-        count > 0
-          ? "bg-foreground text-background border-foreground"
-          : "border-border bg-background hover:bg-accent text-foreground",
-      )}>
-        {label}
-        {count > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-background text-foreground text-[10px] font-bold tabular-nums">
-            {count}
-          </span>
-        )}
-      </button>
-    </PopoverTrigger>
-    <PopoverContent className="w-56 p-3 rounded-xl border-border" align="start">
-      {children}
-    </PopoverContent>
-  </Popover>
-);
+const toggle = (list: string[], value: string, on: boolean): string[] =>
+  on ? [...list, value] : list.filter((v) => v !== value);
 
 export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange, options }) => {
-  const activeFiltersCount = 
-    filters.stage.length + 
-    filters.source.length + 
-    filters.job.length + 
-    filters.tag.length +
-    (filters.hasReminder ? 1 : 0);
-
-  const clearAllFilters = () => {
-    onFiltersChange({ search: '', stage: [], source: [], job: [], tag: [], hasReminder: false });
-  };
+  const activeCount =
+    filters.stage.length + filters.source.length + filters.job.length + filters.tag.length + (filters.hasReminder ? 1 : 0);
+  const hasFilters = activeCount > 0 || filters.search.trim() !== '';
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
-      {/* Search */}
-      <div className="relative shrink-0">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="relative w-full sm:w-64">
+        <Search
+          className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
         <Input
-          placeholder="Rechercher…"
+          type="search"
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          className="pl-9 w-48 sm:w-56 rounded-full border-border bg-background text-[12px] h-8"
+          placeholder="Nom, poste, intitulé…"
+          aria-label="Rechercher un candidat"
+          className="h-8 pl-8 max-md:h-11"
         />
       </div>
 
-      {/* Stage Filter */}
-      <FilterButton label="Étape" count={filters.stage.length}>
-        <div className="space-y-2">
-          {options.stages.map(stage => (
-            <label key={stage} className="flex items-center gap-2 cursor-pointer text-sm">
-              <Checkbox
-                checked={filters.stage.includes(stage)}
-                onCheckedChange={(checked) => {
-                  if (checked) onFiltersChange({ ...filters, stage: [...filters.stage, stage] });
-                  else onFiltersChange({ ...filters, stage: filters.stage.filter(s => s !== stage) });
-                }}
-              />
-              {stage}
-            </label>
-          ))}
-        </div>
-      </FilterButton>
+      <FilterPill label="Étape" count={filters.stage.length} contentClassName="max-h-72 overflow-y-auto">
+        {options.stages.map((stage) => (
+          <FilterOption
+            key={stage.key}
+            checked={filters.stage.includes(stage.key)}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, stage: toggle(filters.stage, stage.key, on) })}
+          >
+            {stage.label}
+          </FilterOption>
+        ))}
+      </FilterPill>
 
-      {/* Source Filter */}
-      <FilterButton label="Source" count={filters.source.length}>
-        <div className="space-y-2">
-          {options.sources.map(source => (
-            <label key={source} className="flex items-center gap-2 cursor-pointer text-sm">
-              <Checkbox
-                checked={filters.source.includes(source)}
-                onCheckedChange={(checked) => {
-                  if (checked) onFiltersChange({ ...filters, source: [...filters.source, source] });
-                  else onFiltersChange({ ...filters, source: filters.source.filter(s => s !== source) });
-                }}
-              />
-              {SOURCE_LABELS[source] || source}
-            </label>
-          ))}
-        </div>
-      </FilterButton>
+      <FilterPill label="Source" count={filters.source.length}>
+        {options.sources.map((source) => (
+          <FilterOption
+            key={source}
+            checked={filters.source.includes(source)}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, source: toggle(filters.source, source, on) })}
+          >
+            {ATS_SOURCE_LABELS[source]}
+          </FilterOption>
+        ))}
+      </FilterPill>
 
-      {/* Job Filter */}
       {options.jobs.length > 0 && (
-        <FilterButton label="Poste" count={filters.job.length}>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {options.jobs.map(job => (
-              <label key={job.id} className="flex items-center gap-2 cursor-pointer text-sm">
-                <Checkbox
-                  checked={filters.job.includes(job.id)}
-                  onCheckedChange={(checked) => {
-                    if (checked) onFiltersChange({ ...filters, job: [...filters.job, job.id] });
-                    else onFiltersChange({ ...filters, job: filters.job.filter(j => j !== job.id) });
-                  }}
-                />
-                <span className="truncate">{job.title}</span>
-              </label>
-            ))}
-          </div>
-        </FilterButton>
+        <FilterPill label="Poste" count={filters.job.length} contentClassName="max-h-72 overflow-y-auto">
+          {options.jobs.map((job) => (
+            <FilterOption
+              key={job.id}
+              checked={filters.job.includes(job.id)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, job: toggle(filters.job, job.id, on) })}
+            >
+              {job.title}
+            </FilterOption>
+          ))}
+        </FilterPill>
       )}
 
-      {/* Tag Filter */}
       {options.tags.length > 0 && (
-        <FilterButton label="Tags" count={filters.tag.length}>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {options.tags.map(tag => (
-              <label key={tag} className="flex items-center gap-2 cursor-pointer text-sm">
-                <Checkbox
-                  checked={filters.tag.includes(tag)}
-                  onCheckedChange={(checked) => {
-                    if (checked) onFiltersChange({ ...filters, tag: [...filters.tag, tag] });
-                    else onFiltersChange({ ...filters, tag: filters.tag.filter(t => t !== tag) });
-                  }}
-                />
-                <span className="truncate">{tag}</span>
-              </label>
-            ))}
-          </div>
-        </FilterButton>
+        <FilterPill label="Étiquettes" count={filters.tag.length} contentClassName="max-h-72 overflow-y-auto">
+          {options.tags.map((tag) => (
+            <FilterOption
+              key={tag}
+              checked={filters.tag.includes(tag)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, tag: toggle(filters.tag, tag, on) })}
+            >
+              {tag}
+            </FilterOption>
+          ))}
+        </FilterPill>
       )}
-      <button
-        onClick={() => onFiltersChange({ ...filters, hasReminder: !filters.hasReminder })}
-        className={cn(
-          "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors shrink-0",
-          filters.hasReminder
-            ? "bg-foreground text-background border-foreground"
-            : "border-border bg-background hover:bg-accent text-foreground",
-        )}
-      >
-        <Bell className="w-3.5 h-3.5" />
-        Rappels
-      </button>
 
-      {/* Clear all */}
-      {activeFiltersCount > 0 && (
-        <button
-          onClick={clearAllFilters}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-destructive/40 bg-destructive/5 hover:bg-destructive/10 text-destructive text-[11.5px] font-medium transition-colors shrink-0"
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-pressed={filters.hasReminder}
+        onClick={() => onFiltersChange({ ...filters, hasReminder: !filters.hasReminder })}
+        className={cn(filters.hasReminder && 'border-border-strong bg-accent')}
+      >
+        {filters.hasReminder && <Check aria-hidden="true" />}
+        Avec rappel
+      </Button>
+
+      {hasFilters && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onFiltersChange({ search: '', stage: [], source: [], job: [], tag: [], hasReminder: false })}
         >
-          <X className="w-3.5 h-3.5" />
-          Effacer ({activeFiltersCount})
-        </button>
+          <X aria-hidden="true" />
+          Effacer les filtres
+        </Button>
       )}
     </div>
   );

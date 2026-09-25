@@ -1,154 +1,75 @@
-import React, { useState } from 'react';
-import { ShortlistEntry } from '@/types/shortlist';
-import { Mail, Phone, Linkedin, Calendar, Building2, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+/**
+ * Ligne d'une candidature dans l'affichage « Liste » de la shortlist client
+ * (revue design E-28) : primitives du kit, badges neutres lisibles dans les
+ * deux thèmes, bouton de détail nommé avec son état (aria-expanded).
+ */
+import React, { useId, useState } from 'react';
+import { ChevronDown, Mail, Phone } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { ShortlistEntry } from '@/types/shortlist';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 interface CandidateCardProps {
   entry: ShortlistEntry;
-  compact?: boolean;
 }
 
-export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = false }) => {
+const LINK = 'inline-flex items-center gap-1.5 rounded-sm text-sm text-foreground-secondary transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+export const CandidateCard: React.FC<CandidateCardProps> = ({ entry }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const detailsId = useId();
   const candidate = entry.candidate;
+  const name = candidate?.name || entry.name;
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return null;
     try {
-      return format(new Date(dateStr), 'dd MMM yyyy', { locale: fr });
+      return format(new Date(dateStr), 'd MMM yyyy', { locale: fr });
     } catch {
       return dateStr;
     }
   };
 
-  if (compact) {
-    return (
-      <div
-        className="bg-background border border-border p-3 hover:shadow-md transition-shadow cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-foreground truncate">
-              {candidate?.name || entry.name}
-            </h4>
-            {candidate?.expertise && candidate.expertise.length > 0 && (
-              <p className="text-xs text-muted-foreground truncate">
-                {candidate.expertise.slice(0, 2).join(', ')}
-              </p>
-            )}
-          </div>
-          {entry.entity && (
-            <span className={`text-xs px-2 py-0.5 ${
-              entry.entity === 'Konekt' ? 'bg-success/10 text-success' : 'bg-brand-purple/10 text-brand-purple'
-            }`}>
-              {entry.entity}
-            </span>
-          )}
-        </div>
+  const milestones = [
+    { label: 'Préqualification', date: formatDate(entry.preQualifDate) },
+    { label: 'CV présenté', date: formatDate(entry.cvPresentationDate) },
+    { label: 'Retour du manager', date: formatDate(entry.managerReturnDate) },
+    { label: 'Offre validée', date: formatDate(entry.offerValidationDate) },
+  ].filter((m) => m.date);
 
-        {isExpanded && (
-          <div className="mt-3 pt-3 border-t border-border space-y-2">
-            {candidate?.email && (
-              <a
-                href={`mailto:${candidate.email}`}
-                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={e => e.stopPropagation()}
-              >
-                <Mail className="w-3 h-3" />
-                {candidate.email}
-              </a>
-            )}
-            {candidate?.phone && (
-              <a
-                href={`tel:${candidate.phone}`}
-                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={e => e.stopPropagation()}
-              >
-                <Phone className="w-3 h-3" />
-                {candidate.phone}
-              </a>
-            )}
-            {candidate?.linkedin && (
-              <a
-                href={candidate.linkedin}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-xs text-info hover:text-info/80"
-                onClick={e => e.stopPropagation()}
-              >
-                <Linkedin className="w-3 h-3" />
-                LinkedIn
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            )}
-            {entry.presentiComments && (
-              <p className="text-xs text-muted-foreground italic mt-2">
-                "{entry.presentiComments}"
-              </p>
-            )}
-            {entry.cvPresentationDate && (
-              <p className="text-xs text-muted-foreground/70 flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                CV présenté: {formatDate(entry.cvPresentationDate)}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Full card for list view
   return (
-    <div className="bg-background border border-border p-4 hover:shadow-md transition-shadow">
+    <article className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <h3 className="font-semibold text-foreground">
-              {candidate?.name || entry.name}
-            </h3>
-            {entry.stage && (
-              <span className="text-xs px-2 py-1 bg-muted text-muted-foreground border border-border">
-                {entry.stage}
-              </span>
-            )}
-            {entry.entity && (
-              <span className={`text-xs px-2 py-1 ${
-                entry.entity === 'Konekt' ? 'bg-success/10 text-success' : 'bg-brand-purple/10 text-brand-purple'
-              }`}>
-                {entry.entity}
-              </span>
-            )}
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h3 className="text-md font-semibold text-foreground">{name}</h3>
+            {entry.stage && <Badge variant="outline">{entry.stage}</Badge>}
+            {entry.entity && <Badge variant="muted">{entry.entity}</Badge>}
           </div>
 
           {candidate?.expertise && candidate.expertise.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-2">
+            <div className="mb-2 flex flex-wrap gap-1">
               {candidate.expertise.map(exp => (
-                <span key={exp} className="text-xs px-2 py-0.5 bg-muted text-muted-foreground">
-                  {exp}
-                </span>
+                <Badge key={exp} variant="muted">{exp}</Badge>
               ))}
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {candidate?.email && (
-              <a
-                href={`mailto:${candidate.email}`}
-                className="flex items-center gap-1 hover:text-foreground"
-              >
-                <Mail className="w-4 h-4" />
+              <a href={`mailto:${candidate.email}`} className={LINK}>
+                <Mail className="h-4 w-4" aria-hidden="true" />
                 {candidate.email}
               </a>
             )}
             {candidate?.phone && (
-              <a
-                href={`tel:${candidate.phone}`}
-                className="flex items-center gap-1 hover:text-foreground"
-              >
-                <Phone className="w-4 h-4" />
+              <a href={`tel:${candidate.phone}`} className={LINK}>
+                <Phone className="h-4 w-4" aria-hidden="true" />
                 {candidate.phone}
               </a>
             )}
@@ -157,60 +78,57 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ entry, compact = f
                 href={candidate.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-info hover:text-info/80"
+                aria-label={`Profil LinkedIn de ${name}`}
+                className={LINK}
               >
-                <Linkedin className="w-4 h-4" />
-                LinkedIn
+                <ChannelIcon channel="linkedin" showLabel />
               </a>
             )}
           </div>
         </div>
 
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="p-2 text-muted-foreground hover:text-foreground"
-        >
-          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+              aria-expanded={isExpanded}
+              aria-controls={detailsId}
+              aria-label={`Détail de la candidature de ${name}`}
+              className="shrink-0 max-md:h-11 max-md:w-11"
+            >
+              <ChevronDown className={cn('transition-transform duration-150', isExpanded && 'rotate-180')} aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{isExpanded ? 'Masquer le détail' : 'Afficher le détail'}</TooltipContent>
+        </Tooltip>
       </div>
 
       {isExpanded && (
-        <div className="mt-4 pt-4 border-t border-border">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            {entry.preQualifDate && (
-              <div>
-                <p className="text-muted-foreground text-xs mb-1 uppercase tracking-wider">Pré-qualif</p>
-                <p className="text-foreground">{formatDate(entry.preQualifDate)}</p>
-              </div>
-            )}
-            {entry.cvPresentationDate && (
-              <div>
-                <p className="text-muted-foreground text-xs mb-1 uppercase tracking-wider">CV présenté</p>
-                <p className="text-foreground">{formatDate(entry.cvPresentationDate)}</p>
-              </div>
-            )}
-            {entry.managerReturnDate && (
-              <div>
-                <p className="text-muted-foreground text-xs mb-1 uppercase tracking-wider">Retour manager</p>
-                <p className="text-foreground">{formatDate(entry.managerReturnDate)}</p>
-              </div>
-            )}
-            {entry.offerValidationDate && (
-              <div>
-                <p className="text-muted-foreground text-xs mb-1 uppercase tracking-wider">Offre validée</p>
-                <p className="text-foreground">{formatDate(entry.offerValidationDate)}</p>
-              </div>
-            )}
-          </div>
+        <div id={detailsId} className="mt-4 border-t border-border pt-4">
+          {milestones.length > 0 ? (
+            <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+              {milestones.map((m) => (
+                <div key={m.label}>
+                  <dt className="mb-1 text-xs text-muted-foreground">{m.label}</dt>
+                  <dd className="text-foreground">{m.date}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="text-sm text-muted-foreground">Aucune date d'étape enregistrée.</p>
+          )}
 
           {entry.presentiComments && (
             <div className="mt-4">
-              <p className="text-muted-foreground text-xs mb-1 uppercase tracking-wider">Commentaires</p>
-              <p className="text-sm text-foreground/80">{entry.presentiComments}</p>
+              <p className="mb-1 text-xs text-muted-foreground">Commentaires</p>
+              <p className="text-sm text-foreground-secondary">{entry.presentiComments}</p>
             </div>
           )}
         </div>
       )}
-    </div>
+    </article>
   );
 };

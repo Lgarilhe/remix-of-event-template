@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { differenceInDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
@@ -50,15 +51,83 @@ export interface ATSCandidate {
 export const ATS_STAGES = [
   { key: 'Nouveau', label: 'Nouveau', color: 'bg-muted border-border' },
   { key: 'Contacté', label: 'Contacté', color: 'bg-info/10 border-info/30' },
-  { key: 'Répondu', label: 'Répondu', color: 'bg-brand-cyan/10 border-brand-cyan/30' },
+  { key: 'Répondu', label: 'Répondu', color: 'bg-muted border-border' },
   { key: 'Pressenti', label: 'Pressenti', color: 'bg-muted border-border' },
-  { key: 'Pré-qualif', label: 'Pré-qualif', color: 'bg-brand-cyan/10 border-brand-cyan/30' },
-  { key: 'CV envoyé', label: 'CV envoyé', color: 'bg-brand-purple/10 border-brand-purple/30' },
+  { key: 'Pré-qualif', label: 'Pré-qualif', color: 'bg-muted border-border' },
+  { key: 'CV envoyé', label: 'CV envoyé', color: 'bg-muted border-border' },
   { key: 'ITW en cours', label: 'ITW en cours', color: 'bg-warning/10 border-warning/30' },
-  { key: 'Offre', label: 'Offre', color: 'bg-brand-purple/10 border-brand-purple/30' },
+  { key: 'Offre', label: 'Offre', color: 'bg-muted border-border' },
   { key: 'Gagné', label: 'Gagné', color: 'bg-success/10 border-success/30' },
   { key: 'Perdu', label: 'Perdu', color: 'bg-destructive/10 border-destructive/30' },
 ];
+
+/** Provenance d'un candidat, écrite en mots et jamais par sa clé (revue design E-18). */
+export const ATS_SOURCE_LABELS: Record<ATSCandidate['source'], string> = {
+  local: 'Mission',
+  sequence: 'Séquence',
+  inmail: 'InMail',
+};
+
+/**
+ * Délai, en jours, au-delà duquel un candidat est « sans mouvement » dans son
+ * étape (revue design E-17). Une seule table pour la carte, le tableau et
+ * l'analyse du pipeline global, en attendant le module d'étapes commun (E-01).
+ * Les étapes terminales (Gagné, Perdu) n'en ont pas.
+ */
+export const STAGNATION_DAYS: Record<string, number> = {
+  'Nouveau': 3,
+  'Contacté': 5,
+  'Répondu': 3,
+  'Pressenti': 5,
+  'Pré-qualif': 7,
+  'CV envoyé': 5,
+  'ITW en cours': 10,
+  'Offre': 7,
+};
+
+/** Jours écoulés depuis la dernière action sur le candidat (à défaut, depuis son ajout). */
+export function daysSinceLastAction(
+  candidate: Pick<ATSCandidate, 'lastActivity' | 'createdAt'>,
+  now: Date = new Date(),
+): number | null {
+  const iso = candidate.lastActivity || candidate.createdAt;
+  const time = iso ? new Date(iso).getTime() : NaN;
+  return Number.isNaN(time) ? null : differenceInDays(now, time);
+}
+
+/** Jours sans mouvement quand le délai de l'étape est dépassé ; null sinon. */
+export function stagnantDays(
+  candidate: Pick<ATSCandidate, 'stage' | 'lastActivity' | 'createdAt'>,
+  now: Date = new Date(),
+): number | null {
+  const limit = STAGNATION_DAYS[candidate.stage];
+  const days = daysSinceLastAction(candidate, now);
+  return limit !== undefined && days !== null && days > limit ? days : null;
+}
+
+/**
+ * Âge d'une action, au même format sur la carte et dans le tableau (revue
+ * design E-25) : « à l'instant », « il y a 5 min », « il y a 3 h »,
+ * « il y a 6 j », puis la date courte au-delà de 30 jours (« 12 sept. »).
+ */
+export function timeAgoLabel(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  const ms = now.getTime() - date.getTime();
+  if (Number.isNaN(ms)) return null;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "à l'instant";
+  if (minutes < 60) return `il y a ${minutes}\u00a0min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `il y a ${hours}\u00a0h`;
+  const days = Math.floor(hours / 24);
+  if (days <= 30) return `il y a ${days}\u00a0j`;
+  return date.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' as const } : {}),
+  });
+}
 
 // Cache configuration
 // 🐛 TUNING Opus A4 : avant, staleTime=30min + refetchOnWindowFocus=false =
@@ -138,7 +207,10 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
       .select(JCS_DISPLAY_COLUMNS)
       .order('updated_at', { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
-    if (pageError || !page || page.length === 0) break;
+    // Une lecture en échec remonte : jamais une liste vide ou partielle
+    // présentée comme complète (revue design E-44).
+    if (pageError) throw new Error(pageError.message || 'Lecture des candidats impossible');
+    if (!page || page.length === 0) break;
     allRecords.push(...page);
     if (page.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
@@ -147,9 +219,6 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
     }
   }
   const records = allRecords;
-  const error = null;
-
-  if (error || !records) return [];
 
   return records.map((r: any) => {
     // Use pipeline_stage if set, otherwise derive from status
@@ -370,14 +439,24 @@ export function useATSData() {
     refetchOnWindowFocus: true, // Fix Opus A4 — voir commentaire sur STALE_TIME
   });
 
-  // Handle stage change: update local DB first, then propagate to Notion
-  const handleStageChange = useCallback(async (candidateId: string, newStage: string) => {
-    const candidate = candidates.find(c => c.id === candidateId);
-    if (!candidate) return;
+  // Handle stage change: update local DB first, then propagate to Notion.
+  // Renvoie true si le déplacement est enregistré. `silent` : pas de toast, le
+  // déplacement groupé en affiche un seul pour tout le lot (revue design E-23).
+  const handleStageChange = useCallback(async (
+    candidateId: string,
+    newStage: string,
+    options: { silent?: boolean } = {},
+  ): Promise<boolean> => {
+    // État courant du cache plutôt que la liste du rendu : un « Annuler » ou un
+    // déplacement groupé relit l'étape réelle du candidat.
+    const current = queryClient.getQueryData<ATSCandidate[]>(['ats-candidates']) ?? candidates;
+    const candidate = current.find(c => c.id === candidateId);
+    if (!candidate) return false;
 
     const oldStage = candidate.stage;
     const oldLastActivity = candidate.lastActivity;
     const nowIso = new Date().toISOString();
+    const stageLabel = ATS_STAGES.find(s => s.key === newStage)?.label ?? newStage;
 
     // 1. Optimistic UI update
     // 🐛 BUG FIX (Opus audit) : avant, l'optimistic ne mettait à jour que `stage`,
@@ -395,12 +474,15 @@ export function useATSData() {
       // sans écriture en DB). Fix : upsert dans job_candidate_status pour
       // sequence/inmail aussi → source de vérité unifiée.
       if (candidate.source === 'local') {
-        const { error: updateError } = await supabase
+        const { data: updated, error: updateError } = await supabase
           .from('job_candidate_status')
           .update({ pipeline_stage: newStage })
-          .eq('id', candidate.sourceId);
+          .eq('id', candidate.sourceId)
+          .select('id');
 
         if (updateError) throw updateError;
+        // Un refus des règles d'accès répond sans erreur, sur zéro ligne.
+        if (!updated || updated.length === 0) throw new Error('Aucune ligne mise à jour');
       } else if (candidate.source === 'sequence' || candidate.source === 'inmail') {
         // Récup user + org pour la row upsert
         const { data: { user } } = await supabase.auth.getUser();
@@ -430,11 +512,9 @@ export function useATSData() {
             ignoreDuplicates: false,
           });
 
-        if (upsertError) {
-          console.warn('[handleStageChange] upsert failed for sequence/inmail, falling back:', upsertError);
-          // Ne throw pas — on garde l'optimistic UI même si la persistence échoue
-          // (le toast informera l'user). Alternative : throw pour revert.
-        }
+        // Un échec d'écriture annule l'état optimiste, comme pour la table
+        // principale : plus de « Candidat déplacé » sur un déplacement perdu (E-23).
+        if (upsertError) throw upsertError;
       }
 
       // 3. Propagate to Notion in background (fire-and-forget)
@@ -448,22 +528,28 @@ export function useATSData() {
       }
 
       // Toast avec action Undo (Opus audit idée #E)
-      toast.success(`Candidat déplacé vers "${newStage}"`, {
-        action: {
-          label: 'Annuler',
-          onClick: () => {
-            // Re-run le change avec l'ancien stage (revert)
-            void handleStageChange(candidateId, oldStage);
+      if (!options.silent) {
+        toast.success(`${candidate.name} est maintenant à l'étape «\u00a0${stageLabel}\u00a0»`, {
+          action: {
+            label: 'Annuler',
+            onClick: () => {
+              // Re-run le change avec l'ancien stage (revert)
+              void handleStageChange(candidateId, oldStage);
+            },
           },
-        },
-      });
+        });
+      }
+      return true;
     } catch (error) {
       console.error('Error updating stage:', error);
-      toast.error('Erreur lors de la mise à jour');
       // Revert optimistic update — restaurer stage ET lastActivity
       queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) =>
         old?.map(c => c.id === candidateId ? { ...c, stage: oldStage, lastActivity: oldLastActivity } : c) ?? []
       );
+      if (!options.silent) {
+        toast.error(`Le déplacement de ${candidate.name} n'a pas été enregistré. Réessayez.`);
+      }
+      return false;
     }
   }, [candidates, queryClient]);
 
@@ -497,7 +583,7 @@ export function useATSData() {
     loading,
     isFetching,
     isFromCache,
-    error: error ? (error instanceof Error ? error.message : 'Failed to load data') : null,
+    error: error ? (error instanceof Error ? error.message : 'Lecture des candidats impossible') : null,
     refetch: () => refetch(),
     handleStageChange,
     handleTagsChange,

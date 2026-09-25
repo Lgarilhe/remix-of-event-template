@@ -1,14 +1,12 @@
+/**
+ * Filtres de la shortlist client : la recherche et les pastilles du kit
+ * (FilterPill), à la hauteur des filtres du pipeline global (revue design E-28).
+ */
 import React from 'react';
 import { Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { FilterOption, FilterPill } from '@/components/ui/filter-pill';
 
 interface FilterOptions {
   stages: string[];
@@ -31,12 +29,15 @@ interface CandidateFiltersProps {
   options: FilterOptions;
 }
 
+const toggle = (list: string[], value: string, on: boolean): string[] =>
+  on ? [...list, value] : list.filter((v) => v !== value);
+
 export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
   filters,
   onFiltersChange,
   options,
 }) => {
-  const hasActiveFilters = filters.search || filters.stage.length > 0 || 
+  const hasActiveFilters = filters.search || filters.stage.length > 0 ||
     filters.expertise.length > 0 || filters.entity.length > 0 || filters.position.length > 0;
 
   const clearFilters = () => {
@@ -50,93 +51,82 @@ export const CandidateFilters: React.FC<CandidateFiltersProps> = ({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="relative w-full sm:w-64">
+        <Search
+          className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
         <Input
-          type="text"
-          placeholder="Rechercher..."
+          type="search"
+          placeholder="Nom, e-mail, poste…"
+          aria-label="Rechercher dans la shortlist"
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          className="pl-9 w-[200px] h-9 text-sm bg-background border-border"
+          className="h-8 pl-8 max-md:h-11"
         />
       </div>
 
-      {/* Position filter */}
-      <Select
-        value={filters.position[0] || 'all'}
-        onValueChange={(value) => onFiltersChange({ ...filters, position: value === 'all' ? [] : [value] })}
-      >
-        <SelectTrigger className="w-[180px] h-9 text-sm bg-background border-border">
-          <SelectValue placeholder="Poste" />
-        </SelectTrigger>
-        <SelectContent className="bg-background z-50 max-h-[300px]">
-          <SelectItem value="all">Tous les postes</SelectItem>
+      {options.positions.length > 0 && (
+        <FilterPill label="Poste" count={filters.position.length} contentClassName="max-h-72 overflow-y-auto">
           {options.positions.map(pos => (
-            <SelectItem key={pos.id} value={pos.id}>{pos.name}</SelectItem>
+            <FilterOption
+              key={pos.id}
+              checked={filters.position.includes(pos.id)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, position: toggle(filters.position, pos.id, on) })}
+            >
+              {pos.name}
+            </FilterOption>
           ))}
-        </SelectContent>
-      </Select>
+        </FilterPill>
+      )}
 
-      {/* Stage filter */}
-      <Select
-        value={filters.stage[0] || 'all'}
-        onValueChange={(value) => onFiltersChange({ ...filters, stage: value === 'all' ? [] : [value] })}
-      >
-        <SelectTrigger className="w-[140px] h-9 text-sm bg-background border-border">
-          <SelectValue placeholder="Étape" />
-        </SelectTrigger>
-        <SelectContent className="bg-background z-50">
-          <SelectItem value="all">Toutes les étapes</SelectItem>
+      {options.stages.length > 0 && (
+        <FilterPill label="Étape" count={filters.stage.length}>
           {options.stages.map(stage => (
-            <SelectItem key={stage} value={stage}>{stage}</SelectItem>
+            <FilterOption
+              key={stage}
+              checked={filters.stage.includes(stage)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, stage: toggle(filters.stage, stage, on) })}
+            >
+              {stage}
+            </FilterOption>
           ))}
-        </SelectContent>
-      </Select>
+        </FilterPill>
+      )}
 
-      {/* Entity filter */}
-      <Select
-        value={filters.entity[0] || 'all'}
-        onValueChange={(value) => onFiltersChange({ ...filters, entity: value === 'all' ? [] : [value] })}
-      >
-        <SelectTrigger className="w-[120px] h-9 text-sm bg-background border-border">
-          <SelectValue placeholder="Entité" />
-        </SelectTrigger>
-        <SelectContent className="bg-background z-50">
-          <SelectItem value="all">Toutes</SelectItem>
+      {options.entities.length > 0 && (
+        <FilterPill label="Entité" count={filters.entity.length}>
           {options.entities.map(entity => (
-            <SelectItem key={entity} value={entity}>{entity}</SelectItem>
+            <FilterOption
+              key={entity}
+              checked={filters.entity.includes(entity)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, entity: toggle(filters.entity, entity, on) })}
+            >
+              {entity}
+            </FilterOption>
           ))}
-        </SelectContent>
-      </Select>
+        </FilterPill>
+      )}
 
-      {/* Expertise filter */}
-      <Select
-        value={filters.expertise[0] || 'all'}
-        onValueChange={(value) => onFiltersChange({ ...filters, expertise: value === 'all' ? [] : [value] })}
-      >
-        <SelectTrigger className="w-[150px] h-9 text-sm bg-background border-border">
-          <SelectValue placeholder="Expertise" />
-        </SelectTrigger>
-        <SelectContent className="bg-background z-50 max-h-[300px]">
-          <SelectItem value="all">Toutes</SelectItem>
+      {options.expertise.length > 0 && (
+        <FilterPill label="Expertise" count={filters.expertise.length} contentClassName="max-h-72 overflow-y-auto">
           {options.expertise.map(exp => (
-            <SelectItem key={exp} value={exp}>{exp}</SelectItem>
+            <FilterOption
+              key={exp}
+              checked={filters.expertise.includes(exp)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, expertise: toggle(filters.expertise, exp, on) })}
+            >
+              {exp}
+            </FilterOption>
           ))}
-        </SelectContent>
-      </Select>
+        </FilterPill>
+      )}
 
-      {/* Clear filters */}
       {hasActiveFilters && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={clearFilters}
-          className="h-9 text-muted-foreground hover:text-foreground"
-        >
-          <X className="w-4 h-4 mr-1" />
-          Effacer
+        <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+          <X aria-hidden="true" />
+          Effacer les filtres
         </Button>
       )}
     </div>

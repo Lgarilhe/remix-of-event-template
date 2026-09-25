@@ -1,29 +1,33 @@
+/**
+ * Affichage « Analyse » du pipeline global (revue design E-27).
+ *
+ * Chaque mesure porte le nom de ce qu'elle mesure : le temps écoulé depuis la
+ * dernière action (pas le temps passé dans l'étape), la répartition actuelle
+ * par étape, la progression d'après l'étape actuelle (pas un historique des
+ * passages). Barres monochromes à 3:1 au moins, valeur écrite à côté ;
+ * l'accent (warning) ne signale que l'écart au délai de l'étape. Définitions
+ * en infobulle, jugements avec leur barème.
+ */
 import React, { useMemo } from 'react';
-import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
-import { differenceInDays, parseISO } from 'date-fns';
-import {
-  AlertTriangle,
-  Clock,
-  TrendingDown,
-  ArrowRight,
-  Users,
-  Target,
-  Activity,
-  Gauge,
-} from 'lucide-react';
+import { ArrowRight, Info } from 'lucide-react';
+import { Section, StatGrid, StatTile } from '@/components/layout';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, daysSinceLastAction } from '@/hooks/useATSData';
+import { cn } from '@/lib/utils';
 
 interface Props {
   candidates: ATSCandidate[];
 }
 
-// Guide times per stage (days) — same as in card stagnation
-const GUIDE_TIMES: Record<string, number> = {
-  'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5,
-  'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7,
-};
-
 // Active stages only (exclude terminal)
 const ACTIVE_STAGES = ATS_STAGES.filter(s => s.key !== 'Gagné' && s.key !== 'Perdu');
+
+const days = (n: number) => `${n}\u00a0j`;
+const percent = (n: number) => `${n}\u00a0%`;
+const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 interface StageMetrics {
   key: string;
@@ -42,59 +46,34 @@ interface Bottleneck {
   severity: 'warning' | 'critical';
 }
 
-const KPICard: React.FC<{
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-  hint?: string;
-  tone?: 'default' | 'success' | 'warning' | 'destructive';
-}> = ({ icon, label, value, hint, tone = 'default' }) => {
-  const toneStyles = {
-    default: 'bg-emerald-500/15 text-foreground',
-    success: 'bg-success/10 text-success',
-    warning: 'bg-warning/10 text-warning',
-    destructive: 'bg-destructive/10 text-destructive',
-  };
+/** Bouton « i » d'une mesure : sa définition en infobulle. */
+const Definition: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Définition\u00a0: ${label}`}
+        className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
+      >
+        <Info aria-hidden="true" />
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent className="max-w-64">{children}</TooltipContent>
+  </Tooltip>
+);
 
-  return (
-    <div className="rounded-xl bg-card border border-border p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${toneStyles[tone]}`}>
-          {icon}
-        </div>
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-          {label}
-        </span>
-      </div>
-      <div className="font-display text-2xl font-bold text-foreground tabular-nums tracking-tight leading-none">
-        {value}
-      </div>
-      {hint && <div className="text-xs text-muted-foreground mt-1.5">{hint}</div>}
-    </div>
-  );
-};
-
-const SectionCard: React.FC<{
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}> = ({ icon, title, subtitle, children }) => (
-  <div className="rounded-xl bg-card border border-border overflow-hidden">
-    <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-muted/20">
-      <div className="h-9 w-9 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center shrink-0">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <h3 className="font-display font-bold text-foreground text-[15px] tracking-tight leading-none">
-          {title}
-        </h3>
-        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
-      </div>
-    </div>
-    {children}
+/** Barre horizontale monochrome : piste `muted`, remplissage `muted-foreground` (plus de 3:1 dans les deux thèmes). */
+const Bar: React.FC<{ value: number }> = ({ value }) => (
+  <div className="h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+    <div className="h-full rounded-full bg-muted-foreground" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
   </div>
 );
+
+const velocityOf = (avgDays: number) => (avgDays <= 5 ? 'Rapide' : avgDays <= 10 ? 'Modéré' : 'Lent');
+const fluidityOf = (stagnant: number) =>
+  stagnant === 0 ? 'Excellente' : stagnant < 3 ? 'Bonne' : stagnant < 8 ? 'Moyenne' : 'Faible';
 
 export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
   const { stageMetrics, bottlenecks, funnelSteps, kpis } = useMemo(() => {
@@ -103,18 +82,15 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
     // Stage metrics
     const metrics: StageMetrics[] = ACTIVE_STAGES.map(stage => {
       const stageCandidates = candidates.filter(c => c.stage === stage.key);
-      const guideTime = GUIDE_TIMES[stage.key] || 7;
+      const guideTime = STAGNATION_DAYS[stage.key] || 7;
 
-      const daysInStage = stageCandidates.map(c => {
-        const lastDate = c.lastActivity ? parseISO(c.lastActivity) : parseISO(c.createdAt);
-        return differenceInDays(now, lastDate);
-      });
+      const daysSinceAction = stageCandidates.map(c => daysSinceLastAction(c, now) ?? 0);
 
-      const avgDays = daysInStage.length > 0
-        ? Math.round(daysInStage.reduce((a, b) => a + b, 0) / daysInStage.length)
+      const avgDays = daysSinceAction.length > 0
+        ? Math.round(daysSinceAction.reduce((a, b) => a + b, 0) / daysSinceAction.length)
         : 0;
 
-      const stagnantCount = daysInStage.filter(d => d > guideTime).length;
+      const stagnantCount = daysSinceAction.filter(d => d > guideTime).length;
 
       return {
         key: stage.key,
@@ -138,7 +114,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Funnel conversion
+    // Progression d'après l'étape actuelle
     const orderedStages = ['Nouveau', 'Contacté', 'Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'];
 
     const STAGE_ORDER: Record<string, number> = {};
@@ -185,7 +161,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       stageMetrics: metrics,
       bottlenecks,
       funnelSteps,
-      kpis: { totalActive, totalWon, winRate, totalStagnant, overallAvgDays },
+      kpis: { totalActive, totalWon, totalEnded, winRate, totalStagnant, overallAvgDays },
     };
   }, [candidates]);
 
@@ -193,227 +169,196 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
 
   return (
     <div className="space-y-4">
-      {/* KPI Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KPICard
-          icon={<Users className="w-4 h-4" />}
-          label="Pipeline actif"
+      <StatGrid cols={{ base: 1, sm: 2 }} className="xl:grid-cols-4">
+        <StatTile
+          label="Candidats actifs"
           value={kpis.totalActive}
-          hint={`${kpis.totalWon} gagné${kpis.totalWon > 1 ? 's' : ''} au total`}
+          trailing={<Definition label="Candidats actifs">Candidats ni gagnés ni perdus. {plural(kpis.totalWon, 'gagné')} au total.</Definition>}
         />
-        <KPICard
-          icon={<Target className="w-4 h-4" />}
-          label="Taux de win"
-          value={`${kpis.winRate}%`}
-          hint={kpis.winRate >= 30 ? 'Très bon ratio' : 'À optimiser'}
-          tone={kpis.winRate >= 30 ? 'success' : kpis.winRate >= 15 ? 'default' : 'warning'}
+        <StatTile
+          label="Taux de réussite"
+          value={percent(kpis.winRate)}
+          trailing={
+            <Definition label="Taux de réussite">
+              Part des candidats gagnés parmi ceux qui ont quitté le pipeline, gagnés ou perdus ({kpis.totalEnded} à ce jour).
+            </Definition>
+          }
         />
-        <KPICard
-          icon={<Activity className="w-4 h-4" />}
-          label="Cycle moyen"
-          value={`${kpis.overallAvgDays}j`}
-          hint="Temps moyen en stage actif"
+        <StatTile
+          label="Jours depuis la dernière action"
+          value={days(kpis.overallAvgDays)}
+          trailing={
+            <Definition label="Jours depuis la dernière action">
+              Moyenne, sur les candidats actifs, du nombre de jours écoulés depuis leur dernière action. Ce n'est pas le temps passé dans l'étape.
+            </Definition>
+          }
         />
-        <KPICard
-          icon={<AlertTriangle className="w-4 h-4" />}
-          label="Stagnants"
+        <StatTile
+          label="Sans mouvement"
           value={kpis.totalStagnant}
-          hint={kpis.totalStagnant === 0 ? 'Aucun blocage' : 'Candidats à relancer'}
-          tone={kpis.totalStagnant === 0 ? 'success' : kpis.totalStagnant >= 5 ? 'destructive' : 'warning'}
+          variant="warning"
+          accent={kpis.totalStagnant > 0}
+          trailing={
+            <Definition label="Sans mouvement">
+              Candidats restés sans action plus longtemps que le délai de leur étape (de 3 à 10 jours selon l'étape).
+            </Definition>
+          }
         />
-      </div>
+      </StatGrid>
 
-      {/* Bottleneck Alerts */}
       {bottlenecks.length > 0 && (
-        <div className="rounded-xl bg-card border border-destructive/30 overflow-hidden">
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-destructive/20 bg-destructive/5">
-            <div className="h-9 w-9 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-display font-bold text-destructive text-[15px] tracking-tight leading-none">
-                Goulots d'étranglement
-              </h3>
-              <p className="text-xs text-destructive/80 mt-1">
-                {bottlenecks.length} étape{bottlenecks.length > 1 ? 's' : ''} avec des candidats bloqués
-              </p>
-            </div>
-          </div>
-          <div className="divide-y divide-border">
+        <Section
+          headingLevel={2}
+          title="Goulots d'étranglement"
+          subtitle={plural(bottlenecks.length, 'étape')}
+          action={
+            <Definition label="Goulots d'étranglement">
+              {"Étapes où des candidats dépassent le délai prévu sans action. Critique\u00a0: 5 candidats ou plus sans mouvement, ou une moyenne au-delà du double du délai de l'étape."}
+            </Definition>
+          }
+        >
+          <ul className="divide-y divide-border">
             {bottlenecks.map(b => (
-              <div
-                key={b.stage}
-                className={`flex items-center justify-between px-5 py-3 ${
-                  b.severity === 'critical' ? 'bg-destructive/[0.03]' : 'bg-warning/[0.03]'
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      b.severity === 'critical' ? 'bg-destructive' : 'bg-warning'
-                    }`}
-                  />
-                  <div className="min-w-0">
-                    <span className="text-sm font-display font-semibold text-foreground tracking-tight">
-                      {b.stage}
-                    </span>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {b.count} candidat{b.count > 1 ? 's' : ''} bloqué{b.count > 1 ? 's' : ''} · &gt; {b.guideTime}j
-                    </p>
-                  </div>
+              <li key={b.stage} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">{b.stage}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {plural(b.count, 'candidat')} sans mouvement depuis plus de {days(b.guideTime)}, {days(b.avgDays)} en moyenne depuis la dernière action
+                  </p>
                 </div>
-                <span
-                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold tabular-nums border shrink-0 ${
-                    b.severity === 'critical'
-                      ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                      : 'border-warning/40 bg-warning/10 text-warning'
-                  }`}
-                >
-                  ~{b.avgDays}j moy.
-                </span>
-              </div>
+                <Badge variant={b.severity === 'critical' ? 'danger' : 'warning'} className="shrink-0">
+                  {b.severity === 'critical' ? 'Critique' : 'À surveiller'}
+                </Badge>
+              </li>
             ))}
-          </div>
-        </div>
+          </ul>
+        </Section>
       )}
 
-      {/* Time in Stage Distribution */}
-      <SectionCard
-        icon={<Clock className="w-4 h-4" />}
-        title="Temps moyen par étape"
-        subtitle="Volume actuel et durée moyenne dans chaque étape, vs. temps cible"
+      <Section
+        headingLevel={2}
+        title="Répartition par étape"
+        subtitle="Candidats actifs"
+        action={
+          <Definition label="Répartition par étape">
+            Nombre de candidats actifs dans chaque étape. À droite, les jours écoulés en moyenne depuis leur dernière action, comparés au délai de l'étape.
+          </Definition>
+        }
       >
-        <div className="p-5 space-y-3">
+        <ul className="space-y-3 p-4">
           {stageMetrics.map(metric => {
-            const barWidth = metric.count > 0 ? (metric.count / maxCount) * 100 : 0;
             const isOverGuide = metric.avgDays > metric.guideTime;
-
             return (
-              <div key={metric.key} className="flex items-center gap-3">
-                <span className="text-xs font-medium text-foreground w-24 shrink-0 truncate">
-                  {metric.label}
+              <li
+                key={metric.key}
+                className="grid grid-cols-[6.5rem_minmax(0,1fr)_2rem] items-center gap-x-3 gap-y-1 sm:grid-cols-[7.5rem_minmax(0,1fr)_2.5rem_minmax(0,16rem)]"
+              >
+                <span className="truncate text-xs font-medium text-foreground">{metric.label}</span>
+                <Bar value={(metric.count / maxCount) * 100} />
+                <span className="text-right text-sm font-semibold tabular-nums text-foreground">
+                  {metric.count}
+                  <span className="sr-only"> candidat{metric.count > 1 ? 's' : ''}</span>
                 </span>
-                <div className="flex-1 h-8 bg-muted/40 rounded-full relative overflow-hidden border border-border">
-                  <div
-                    className={`h-full transition-all duration-500 rounded-full ${
-                      isOverGuide
-                        ? 'bg-gradient-to-r from-destructive/40 to-destructive/60'
-                        : 'bg-gradient-to-r from-foreground/15 to-foreground/25'
-                    }`}
-                    style={{ width: `${barWidth}%` }}
-                  />
-                  <div className="absolute inset-0 flex items-center px-3 justify-between">
-                    <span className="text-[11px] font-bold tabular-nums text-foreground">
-                      {metric.count}
-                    </span>
-                    <span
-                      className={`text-[11px] font-medium tabular-nums ${
-                        isOverGuide ? 'text-destructive font-bold' : 'text-muted-foreground'
-                      }`}
-                    >
-                      {metric.avgDays}j / {metric.guideTime}j
-                    </span>
-                  </div>
-                </div>
-                {metric.stagnantCount > 0 ? (
-                  <span className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-full border border-destructive/40 bg-destructive/10 text-destructive font-bold tabular-nums shrink-0">
-                    <AlertTriangle className="w-3 h-3" />
-                    {metric.stagnantCount}
-                  </span>
-                ) : (
-                  <span className="w-12 shrink-0" />
-                )}
-              </div>
+                <span className={cn('col-span-3 text-xs sm:col-span-1', isOverGuide ? 'font-medium text-warning' : 'text-muted-foreground')}>
+                  {metric.count === 0
+                    ? `Délai de l'étape\u00a0: ${days(metric.guideTime)}`
+                    : `${days(metric.avgDays)} en moyenne, ${isOverGuide ? 'au-delà du' : 'pour un'} délai de ${days(metric.guideTime)}`}
+                  {metric.stagnantCount > 0 && `, ${metric.stagnantCount} sans mouvement`}
+                </span>
+              </li>
             );
           })}
-        </div>
-      </SectionCard>
+        </ul>
+      </Section>
 
-      {/* Conversion Funnel */}
-      <SectionCard
-        icon={<TrendingDown className="w-4 h-4" />}
-        title="Taux de conversion entre étapes"
-        subtitle="Pourcentage de candidats qui passent d'une étape à la suivante"
+      <Section
+        headingLevel={2}
+        title="Progression d'une étape à la suivante"
+        subtitle="D'après l'étape actuelle"
+        action={
+          <Definition label="Progression d'une étape à la suivante">
+            Parmi les candidats arrivés à une étape, la part de ceux qui ont atteint au moins la suivante. Calculée d'après l'étape actuelle de chaque candidat, et non d'après l'historique de ses passages ; les candidats perdus sont exclus.
+          </Definition>
+        }
       >
-        <div className="p-5 space-y-2">
+        <ul className="space-y-3 p-4">
           {funnelSteps.map((step) => (
-            <div key={step.from} className="flex items-center gap-2">
-              <span className="text-xs font-medium text-foreground w-24 shrink-0 truncate">
-                {step.from}
+            <li
+              key={step.from}
+              className="grid grid-cols-[minmax(0,1fr)_3rem] items-center gap-x-3 gap-y-1.5 sm:grid-cols-[15rem_minmax(0,1fr)_3rem_5rem]"
+            >
+              <span className="col-span-2 flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground sm:col-span-1">
+                <span className="truncate">{step.from}</span>
+                <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="sr-only">vers</span>
+                <span className="truncate">{step.to}</span>
               </span>
-              <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
-              <span className="text-xs font-medium text-foreground w-24 shrink-0 truncate">
-                {step.to}
+              <Bar value={step.rate} />
+              <span className="text-right text-sm font-semibold tabular-nums text-foreground">{percent(step.rate)}</span>
+              <span className="hidden text-right text-xs tabular-nums text-muted-foreground sm:block">
+                {step.toCount} sur {step.fromCount}
               </span>
-              <div className="flex-1 h-7 bg-muted/40 rounded-full relative overflow-hidden border border-border">
-                <div
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    step.rate >= 50 ? 'bg-gradient-to-r from-success/40 to-success/60' :
-                    step.rate >= 20 ? 'bg-gradient-to-r from-foreground/15 to-foreground/25' :
-                    'bg-gradient-to-r from-destructive/30 to-destructive/40'
-                  }`}
-                  style={{ width: `${step.rate}%` }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-[11px] font-bold tabular-nums text-foreground">
-                    {step.rate}%
-                  </span>
-                </div>
-              </div>
-              <span className="text-xs text-muted-foreground tabular-nums shrink-0 w-16 text-right">
-                {step.fromCount} → {step.toCount}
-              </span>
-            </div>
+            </li>
           ))}
-        </div>
-      </SectionCard>
+        </ul>
+      </Section>
 
-      {/* Pipeline Health Score */}
-      <SectionCard
-        icon={<Gauge className="w-4 h-4" />}
-        title="Santé du pipeline"
-        subtitle="Indicateurs combinés pour évaluer la qualité de votre flux"
-      >
-        <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-xl bg-muted/20 border border-border p-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
-              Vélocité
+      <Section headingLevel={2} title="Santé du pipeline">
+        <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
+          <div className="rounded-lg border border-border p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Rythme</p>
+              <Definition label="Rythme">
+                {"D'après les jours écoulés depuis la dernière action, en moyenne\u00a0: rapide jusqu'à 5 jours, modéré de 6 à 10 jours, lent au-delà."}
+              </Definition>
             </div>
-            <div className="font-display text-xl font-bold text-foreground tabular-nums">
-              {kpis.overallAvgDays <= 5 ? 'Rapide' : kpis.overallAvgDays <= 10 ? 'Modérée' : 'Lente'}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {kpis.overallAvgDays}j en moyenne par étape
-            </div>
+            <p className="mt-1 text-xl font-semibold text-foreground">{velocityOf(kpis.overallAvgDays)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{days(kpis.overallAvgDays)} en moyenne depuis la dernière action</p>
           </div>
-
-          <div className="rounded-xl bg-muted/20 border border-border p-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
-              Fluidité
+          <div className="rounded-lg border border-border p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Fluidité</p>
+              <Definition label="Fluidité">
+                {"D'après le nombre de candidats sans mouvement\u00a0: excellente à zéro, bonne à 1 ou 2, moyenne de 3 à 7, faible à partir de 8."}
+              </Definition>
             </div>
-            <div className="font-display text-xl font-bold text-foreground tabular-nums">
-              {kpis.totalStagnant === 0 ? 'Excellente' :
-                kpis.totalStagnant < 3 ? 'Bonne' :
-                kpis.totalStagnant < 8 ? 'Moyenne' : 'Faible'}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {kpis.totalStagnant} candidat{kpis.totalStagnant > 1 ? 's' : ''} stagnant{kpis.totalStagnant > 1 ? 's' : ''}
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-muted/20 border border-border p-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
-              Conversion finale
-            </div>
-            <div className="font-display text-xl font-bold text-foreground tabular-nums">
-              {kpis.winRate}%
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {kpis.totalWon} placement{kpis.totalWon > 1 ? 's' : ''} confirmé{kpis.totalWon > 1 ? 's' : ''}
-            </div>
+            <p className="mt-1 text-xl font-semibold text-foreground">{fluidityOf(kpis.totalStagnant)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {plural(kpis.totalStagnant, 'candidat')} sans mouvement
+            </p>
           </div>
         </div>
-      </SectionCard>
+      </Section>
     </div>
   );
 };
+
+/** Squelette de l'analyse : quatre indicateurs, puis deux sections à barres. */
+export const ATSPipelineAnalyticsSkeleton: React.FC = () => (
+  <div className="space-y-4" role="status" aria-label="Chargement de l'analyse">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4">
+          <Skeleton className="h-4 w-32 rounded-sm" />
+          <Skeleton className="h-8 w-12" />
+        </div>
+      ))}
+    </div>
+    {[0, 1].map((section) => (
+      <div key={section} className="rounded-xl border border-border bg-card">
+        <div className="border-b border-border px-4 py-3">
+          <Skeleton className="h-4 w-44 rounded-sm" />
+        </div>
+        <div className="space-y-3 p-4">
+          {[0, 1, 2, 3, 4].map((row) => (
+            <div key={row} className="flex items-center gap-3">
+              <Skeleton className="h-3 w-24 rounded-sm" />
+              <Skeleton className="h-2 flex-1 rounded-full" />
+              <Skeleton className="h-4 w-8 rounded-sm" />
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);

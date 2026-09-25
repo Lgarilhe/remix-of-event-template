@@ -1,30 +1,35 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { ShortlistEntry } from '@/types/shortlist';
 import { DraggableCandidateCard } from './DraggableCandidateCard';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface PipelineStage {
   key: string;
   label: string;
-  color: string;
 }
 
 interface DroppableColumnProps {
   id: string;
   stage: PipelineStage;
+  /** Toutes les étapes, pour le menu « Déplacer vers… » des cartes. */
+  stages: PipelineStage[];
   entries: ShortlistEntry[];
   isOver?: boolean;
+  onMove: (entryId: string, stageKey: string) => void;
 }
 
 const INITIAL_DISPLAY_LIMIT = 10;
 const LOAD_MORE_INCREMENT = 10;
 
-export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, entries, isOver }) => {
+/** Colonne d'une étape de la shortlist client, au registre des colonnes du pipeline global (revue design E-28). */
+export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, stages, entries, isOver, onMove }) => {
+  const headingId = useId();
   const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY_LIMIT);
-  
-  const { setNodeRef } = useDroppable({ 
+
+  const { setNodeRef } = useDroppable({
     id,
     data: {
       type: 'column',
@@ -35,69 +40,75 @@ export const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, stage, ent
   const visibleEntries = entries.slice(0, displayLimit);
   const remainingCount = entries.length - displayLimit;
 
-  const handleLoadMore = () => {
-    setDisplayLimit(prev => prev + LOAD_MORE_INCREMENT);
-  };
-
-  const handleCollapse = () => {
-    setDisplayLimit(INITIAL_DISPLAY_LIMIT);
-  };
-
   return (
-    <div
+    <section
       ref={setNodeRef}
-      className={`w-[300px] flex-shrink-0 border border-border p-3 transition-all duration-200 bg-background ${
-        isOver ? 'ring-2 ring-foreground/30 shadow-lg bg-muted/20' : ''
-      }`}
+      aria-labelledby={headingId}
+      className={cn(
+        'flex w-[280px] shrink-0 flex-col rounded-xl border transition-colors duration-150',
+        isOver ? 'border-brand bg-muted' : 'border-border bg-card',
+      )}
     >
-      {/* Stage header */}
-      <div className="flex items-center justify-between mb-3 px-1">
-        <h3 className="font-semibold text-foreground uppercase tracking-wide text-sm">{stage.label}</h3>
-        <span className="text-sm text-foreground font-bold bg-muted px-2 py-0.5 border border-border">
+      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
+        <h2 id={headingId} className="truncate text-sm font-semibold text-foreground">{stage.label}</h2>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
           {entries.length}
+          <span className="sr-only"> candidature{entries.length > 1 ? 's' : ''}</span>
         </span>
-      </div>
+      </header>
 
-      {/* Cards */}
-      <div className="space-y-2 min-h-[100px]">
+      <ul className="flex-1 space-y-2 p-2 md:max-h-[600px] md:overflow-y-auto">
         {entries.length === 0 ? (
-          <div className={`text-center py-8 text-muted-foreground text-sm border-2 border-dashed transition-colors ${
-            isOver ? 'border-border bg-muted/30 text-foreground' : 'border-border'
-          }`}>
+          <li
+            className={cn(
+              'rounded-lg border border-dashed px-3 py-6 text-center text-xs',
+              isOver ? 'border-brand text-foreground' : 'border-border text-muted-foreground',
+            )}
+          >
             {isOver ? 'Déposer ici' : 'Aucun candidat'}
-          </div>
+          </li>
         ) : (
-          <>
-            {visibleEntries.map(entry => (
-              <DraggableCandidateCard key={entry.id} entry={entry} columnId={id} />
-            ))}
-            
-            {remainingCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLoadMore}
-                className="w-full text-muted-foreground hover:text-foreground hover:bg-muted/50 gap-1"
-              >
-                <ChevronDown className="w-4 h-4" />
-                Voir {Math.min(remainingCount, LOAD_MORE_INCREMENT)} de plus ({remainingCount} restants)
-              </Button>
-            )}
-            
-            {displayLimit > INITIAL_DISPLAY_LIMIT && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCollapse}
-                className="w-full text-muted-foreground hover:text-foreground hover:bg-muted/50 gap-1"
-              >
-                <ChevronUp className="w-4 h-4" />
-                Réduire
-              </Button>
-            )}
-          </>
+          visibleEntries.map(entry => (
+            <li key={entry.id}>
+              <DraggableCandidateCard
+                entry={entry}
+                columnId={id}
+                stages={stages}
+                onMove={(stageKey) => onMove(entry.id, stageKey)}
+              />
+            </li>
+          ))
         )}
-      </div>
-    </div>
+      </ul>
+
+      {(remainingCount > 0 || displayLimit > INITIAL_DISPLAY_LIMIT) && (
+        <footer className="flex gap-1.5 border-t border-border p-2">
+          {remainingCount > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="flex-1"
+              onClick={() => setDisplayLimit(prev => prev + LOAD_MORE_INCREMENT)}
+            >
+              <ChevronDown aria-hidden="true" />
+              Voir plus ({remainingCount})
+            </Button>
+          )}
+          {displayLimit > INITIAL_DISPLAY_LIMIT && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="flex-1"
+              onClick={() => setDisplayLimit(INITIAL_DISPLAY_LIMIT)}
+            >
+              <ChevronUp aria-hidden="true" />
+              Réduire
+            </Button>
+          )}
+        </footer>
+      )}
+    </section>
   );
 };

@@ -1,13 +1,13 @@
 /**
- * BulkActionsBar — barre d'actions groupées sticky en bas de l'écran quand
- * l'user a sélectionné ≥ 1 candidat via checkbox sur les cards kanban.
+ * BulkActionsBar — barre d'actions groupées, en bas de l'écran, dès qu'au
+ * moins un candidat est coché dans les colonnes.
  *
  * Actions :
- * - Déplacer vers un stage (dropdown)
+ * - Déplacer vers une étape (menu)
  * - Tout désélectionner
  *
- * Pattern Pipedrive/Linear : la barre slide-in depuis le bas, always visible
- * pendant le scroll, forte contrast pour ne pas se perdre.
+ * Un déplacement groupé donne un seul toast, avec le nombre exact de
+ * candidats déplacés, les échecs comptés et « Annuler » (revue design E-23).
  */
 
 import React, { useState } from 'react';
@@ -17,16 +17,27 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { X, ArrowRight, Loader2, CheckCheck } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { X, ArrowRightLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+/** Bilan d'un déplacement groupé. */
+export interface BulkMoveResult {
+  moved: number;
+  failed: number;
+  /** Remet les candidats déplacés à leur étape précédente. */
+  undo?: () => void | Promise<void>;
+}
 
 export interface BulkActionsBarProps {
   selectedIds: Set<string>;
   onClearSelection: () => void;
-  /** Appelé pour chaque candidat. Doit retourner la promesse pour suivre le loading. */
-  onBulkStageChange: (candidateIds: string[], newStage: string) => Promise<void>;
+  /** Déplace le lot ; la page garde cochés les candidats non déplacés. */
+  onBulkStageChange: (candidateIds: string[], newStage: string) => Promise<BulkMoveResult>;
 }
+
+const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
   selectedIds,
@@ -38,14 +49,24 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
 
   if (count === 0) return null;
 
-  const handleBulkMove = async (newStage: string) => {
+  const handleBulkMove = async (stage: { key: string; label: string }) => {
     setLoading(true);
     try {
-      await onBulkStageChange(Array.from(selectedIds), newStage);
-      toast.success(`${count} candidat${count > 1 ? 's' : ''} déplacé${count > 1 ? 's' : ''} vers "${newStage}"`);
-      onClearSelection();
-    } catch (err) {
-      toast.error('Erreur lors du déplacement groupé');
+      const { moved, failed, undo } = await onBulkStageChange(Array.from(selectedIds), stage.key);
+      const target = `«\u00a0${stage.label}\u00a0»`;
+      const undoAction = undo ? { action: { label: 'Annuler', onClick: () => void undo() } } : undefined;
+      if (failed === 0) {
+        toast.success(`${plural(moved, 'candidat déplacé', 'candidats déplacés')} vers ${target}`, undoAction);
+      } else if (moved === 0) {
+        toast.error(`Aucun candidat déplacé vers ${target}\u00a0: l'enregistrement a échoué. Réessayez.`);
+      } else {
+        toast.warning(
+          `${plural(moved, 'candidat déplacé', 'candidats déplacés')} vers ${target}, ${plural(failed, 'échec')}. Les candidats non déplacés restent cochés\u00a0: réessayez.`,
+          undoAction,
+        );
+      }
+    } catch {
+      toast.error('Le déplacement groupé a échoué. Réessayez.');
     } finally {
       setLoading(false);
     }
@@ -54,63 +75,53 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
   return (
     <div
       className={cn(
-        'fixed bottom-4 left-1/2 -translate-x-1/2 z-[200]',
-        'inline-flex items-center gap-2 px-3 py-2 rounded-full',
-        'bg-foreground text-background shadow-xl',
+        'fixed bottom-4 left-1/2 z-sticky -translate-x-1/2',
+        'inline-flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-xl border border-border bg-popover py-1.5 pl-4 pr-1.5 text-popover-foreground shadow-lg',
         'animate-in fade-in-0 slide-in-from-bottom-4 duration-200',
       )}
       role="toolbar"
-      aria-label={`${count} candidat${count > 1 ? 's' : ''} sélectionné${count > 1 ? 's' : ''}`}
+      aria-label={`Actions sur ${plural(count, 'candidat sélectionné', 'candidats sélectionnés')}`}
     >
-      <div className="flex items-center gap-2 px-2">
-        <CheckCheck className="w-4 h-4" aria-hidden="true" />
-        <span className="text-[12px] font-bold tabular-nums">
-          {count} sélectionné{count > 1 ? 's' : ''}
-        </span>
-      </div>
+      <span className="whitespace-nowrap text-sm font-medium tabular-nums" aria-live="polite">
+        {plural(count, 'candidat sélectionné', 'candidats sélectionnés')}
+      </span>
 
-      <div className="w-px h-5 bg-background/30" />
+      <div className="h-5 w-px bg-border" aria-hidden="true" />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild disabled={loading}>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1 text-background hover:bg-background/10 hover:text-background focus-visible:outline-background"
-          >
-            {loading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-            )}
-            <span className="text-xs font-medium">Déplacer vers…</span>
+          <Button type="button" variant="outline" size="sm" loading={loading} className="max-md:h-11">
+            {!loading && <ArrowRightLeft aria-hidden="true" />}
+            Déplacer vers…
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="center" side="top">
-          <DropdownMenuLabel className="text-xs">Choisir une étape</DropdownMenuLabel>
+        <DropdownMenuContent align="center" side="top" className="w-52">
+          <DropdownMenuLabel>Choisir une étape</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {ATS_STAGES.map((stage) => (
-            <DropdownMenuItem
-              key={stage.key}
-              onSelect={() => handleBulkMove(stage.key)}
-              className="text-sm"
-            >
+            <DropdownMenuItem key={stage.key} onSelect={() => handleBulkMove(stage)}>
               {stage.label}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onClearSelection}
-        disabled={loading}
-        aria-label="Tout désélectionner"
-        className="h-8 w-8 text-background hover:bg-background/10 hover:text-background focus-visible:outline-background"
-      >
-        <X className="w-3.5 h-3.5" aria-hidden="true" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClearSelection}
+            disabled={loading}
+            aria-label="Tout désélectionner"
+            className="max-md:h-11 max-md:w-11"
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Tout désélectionner</TooltipContent>
+      </Tooltip>
     </div>
   );
 };

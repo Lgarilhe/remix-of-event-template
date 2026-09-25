@@ -1,4 +1,6 @@
 import React from 'react';
+import { SearchX } from 'lucide-react';
+import { EmptyState } from '@/components/layout';
 import { ShortlistEntry } from '@/types/shortlist';
 import { CandidateCard } from './CandidateCard';
 
@@ -9,17 +11,22 @@ interface CandidateListProps {
 export const CandidateList: React.FC<CandidateListProps> = ({ entries }) => {
   if (entries.length === 0) {
     return (
-      <div className="bg-background border border-border p-12 text-center">
-        <p className="text-muted-foreground">Aucune candidature ne correspond à vos critères</p>
-      </div>
+      <EmptyState
+        variant="compact"
+        icon={SearchX}
+        title="Aucune candidature ne correspond aux filtres"
+        description="Modifiez ou effacez les filtres pour revoir toute la shortlist."
+      />
     );
   }
 
   return (
-    <div className="space-y-3">
+    <ul className="space-y-3">
       {entries.map(entry => (
-        <CandidateCard key={entry.id} entry={entry} />
+        <li key={entry.id}>
+          <CandidateCard entry={entry} />
+        </li>
       ))}
-    </div>
+    </ul>
   );
 };

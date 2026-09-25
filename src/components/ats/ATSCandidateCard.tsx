@@ -1,275 +1,284 @@
+/**
+ * Carte d'un candidat dans les colonnes du pipeline global (revue design E-18,
+ * E-19, E-22, E-43).
+ *
+ * Trois lignes : le nom et le score ; le poste (un bouton qui ouvre la fiche du
+ * poste) ou, à défaut, l'intitulé du candidat ; un seul signal daté (« Sans
+ * mouvement depuis 6 j », « A répondu il y a 2 h », le statut de séquence
+ * traduit, sinon la dernière action). La colonne porte l'étape : la carte ne
+ * la répète pas.
+ *
+ * Un seul arrêt de tabulation pour la carte : le nom, un bouton qui couvre
+ * toute la carte. Entrée ouvre la fiche, Espace saisit la carte pour la
+ * déplacer au clavier. La case de sélection apparaît au survol, au focus et
+ * dès qu'une carte est cochée ; « Déplacer vers… » remplace le glisser au
+ * doigt.
+ */
 import React from 'react';
-import { ATSCandidate } from '@/hooks/useATSData';
-import { differenceInDays, parseISO, formatDistanceToNowStrict } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import linkedinLogo from '@/assets/linkedin-logo.webp';
-import { 
-  Mail, 
-  StickyNote, 
-  Bell, 
-  GitBranch, 
-  FileText,
-  Send,
-  Target,
-  ThumbsUp,
-  ThumbsDown,
-  MessageCircle,
-  AlertTriangle,
-  Tag
-} from 'lucide-react';
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
+import { ArrowRightLeft, Bell, Briefcase, GitBranch } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScoreBadge } from '@/components/ui/score-badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
+import { type ATSCandidate, stagnantDays, timeAgoLabel } from '@/hooks/useATSData';
+import { cn } from '@/lib/utils';
+
+/** Liaison au glisser-déposer, fournie par `ATSDraggableCard`. */
+export interface CardDragBindings {
+  setNodeRef: (element: HTMLElement | null) => void;
+  setActivatorNodeRef: (element: HTMLElement | null) => void;
+  attributes: DraggableAttributes;
+  listeners: DraggableSyntheticListeners;
+}
 
 interface ATSCandidateCardProps {
   candidate: ATSCandidate;
-  isDragging?: boolean;
-  onClick: () => void;
+  /** Ouvre la fiche du candidat. */
+  onOpen?: () => void;
   onJobClick?: (jobId: string) => void;
-  /** Si défini, affiche une checkbox (bulk select) */
+  /** Case de sélection pour les actions groupées (absente sans `onToggleSelect`). */
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Au moins une carte est cochée : toutes les cases restent visibles. */
+  selectionMode?: boolean;
+  /** Étapes proposées par « Déplacer vers… » (menu absent sans `onMove`). */
+  stages?: { key: string; label: string }[];
+  onMove?: (stageKey: string) => void;
+  drag?: CardDragBindings;
+  isDragging?: boolean;
+  /** Aperçu qui suit le pointeur pendant un glisser : rendu statique, sans contrôle. */
+  overlay?: boolean;
 }
 
-const SOURCE_CONFIG: Record<string, { icon: React.ReactNode; label: string }> = {
-  shortlist: { icon: <FileText className="w-3 h-3" />, label: 'Pipeline' },
-  sequence: { icon: <GitBranch className="w-3 h-3" />, label: 'Séquence' },
-  inmail: { icon: <Send className="w-3 h-3" />, label: 'InMail' },
-  outreach: { icon: <Target className="w-3 h-3" />, label: 'Outreach' },
+/** Réponse du candidat, écrite en mots (jamais le statut brut). */
+const REPLY_LABELS: Record<string, string> = {
+  replied: 'A répondu',
+  interested: 'Réponse positive',
+  not_interested: 'Réponse négative',
 };
+
+/** Avant l'étape « Répondu » : la réponse est une nouvelle à traiter. Après, la colonne la dit déjà. */
+const STAGES_BEFORE_REPLY = new Set(['Nouveau', 'Contacté']);
+
+type CardSignal =
+  | { kind: 'stagnant' | 'reply' | 'activity'; text: string }
+  | { kind: 'sequence'; status: string; ago: string | null };
+
+function cardSignal(candidate: ATSCandidate, now: Date): CardSignal | null {
+  const stagnant = stagnantDays(candidate, now);
+  if (stagnant !== null) return { kind: 'stagnant', text: `Sans mouvement depuis ${stagnant}\u00a0j` };
+
+  const ago = timeAgoLabel(candidate.lastActivity || candidate.createdAt, now);
+  const reply =
+    REPLY_LABELS[candidate.outreachStatus ?? ''] ?? (candidate.sequenceStatus === 'replied' ? REPLY_LABELS.replied : null);
+  if (reply && STAGES_BEFORE_REPLY.has(candidate.stage)) {
+    return { kind: 'reply', text: ago ? `${reply} ${ago}` : reply };
+  }
+  if (candidate.sequenceStatus && candidate.sequenceStatus !== 'replied') {
+    return { kind: 'sequence', status: candidate.sequenceStatus, ago };
+  }
+  return ago ? { kind: 'activity', text: `Dernière action ${ago}` } : null;
+}
+
+/** Contrôle secondaire d'une carte : au-dessus du bouton qui couvre la carte, jamais une poignée de glisser. */
+const CONTROL = 'relative z-10';
+
+/**
+ * Le nom : un bouton du kit dont la surface cliquable (::after) couvre toute la
+ * carte, avec l'anneau de focus autour de la carte plutôt que du texte.
+ */
+const STRETCHED_BUTTON =
+  'h-auto max-w-full justify-start p-0 text-left hover:no-underline active:scale-100 after:absolute after:inset-0 after:rounded-lg focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-2 focus-visible:after:ring-offset-background';
+
+/** Puce du poste : un bouton du kit à la taille d'une puce, cible élargie au doigt. */
+const JOB_CHIP =
+  'flex h-auto w-fit max-w-full gap-1 rounded-full px-2 py-0.5 font-normal text-foreground-secondary hover:text-foreground [&_svg]:size-3 after:absolute after:inset-0 [@media(pointer:coarse)]:after:-inset-y-3';
+
+/** Révélé au survol et au focus ; toujours visible sur un écran tactile. */
+const REVEAL =
+  'opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100';
 
 export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
   candidate,
-  isDragging,
-  onClick,
+  onOpen,
   onJobClick,
-  selected,
+  selected = false,
   onToggleSelect,
+  selectionMode = false,
+  stages,
+  onMove,
+  drag,
+  isDragging = false,
+  overlay = false,
 }) => {
-  const sourceConfig = SOURCE_CONFIG[candidate.source] || SOURCE_CONFIG.shortlist;
+  const signal = cardSignal(candidate, new Date());
+  const jobClickable = !overlay && !!candidate.jobTitle && !!candidate.jobId && !!onJobClick;
 
-  // Stagnation detection: guide times per stage (days)
-  const GUIDE_TIMES: Record<string, number> = {
-    'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5,
-    'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7,
+  // Le glisser part de toute la carte, sauf de ses contrôles et des menus ouverts
+  // depuis elle (rendus hors de la carte, mais remontés par React).
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (!event.currentTarget.contains(target) || target.closest('[data-no-drag]')) return;
+    drag?.listeners?.onPointerDown?.(event);
   };
-  const guideTime = GUIDE_TIMES[candidate.stage];
-  const daysSince = candidate.lastActivity
-    ? differenceInDays(new Date(), parseISO(candidate.lastActivity))
-    : null;
-  const isStagnant = guideTime != null && daysSince != null && daysSince > guideTime;
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.target as Node)) return;
+    drag?.listeners?.onKeyDown?.(event);
+  };
+
+  const signalLine = signal && (
+    <p
+      className={cn(
+        'flex min-w-0 items-center gap-1.5 text-xs',
+        signal.kind === 'stagnant' ? 'font-medium text-warning' : 'text-muted-foreground',
+      )}
+    >
+      {signal.kind === 'sequence' ? (
+        <>
+          <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="sr-only">
+            {candidate.sequenceName ? `Séquence « ${candidate.sequenceName} » :` : 'Séquence :'}
+          </span>
+          <EnrollmentStatusBadge status={signal.status} className="shrink-0" />
+          {signal.ago && <span className="truncate">{signal.ago}</span>}
+        </>
+      ) : (
+        <span className="truncate">{signal.text}</span>
+      )}
+    </p>
+  );
+
+  if (overlay) {
+    return (
+      <div className="w-[264px] rounded-lg border border-border-strong bg-card p-3 shadow-lg">
+        <div className="flex items-center gap-2">
+          <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{candidate.name}</p>
+          <ScoreBadge score={candidate.score} className="shrink-0" />
+        </div>
+        {(candidate.jobTitle || candidate.headline) && (
+          <p className="mt-1 truncate text-xs text-foreground-secondary">{candidate.jobTitle || candidate.headline}</p>
+        )}
+        {signalLine && <div className="mt-2">{signalLine}</div>}
+      </div>
+    );
+  }
 
   return (
     <div
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
-      aria-label={`Candidat ${candidate.name}${candidate.score != null ? ', score ' + candidate.score + '%' : ''}, étape ${candidate.stage}`}
-      className={`
-        group rounded-xl bg-card border p-3 cursor-pointer transition-all hover:shadow-md hover:border-foreground/20 relative
-        ${selected ? 'border-foreground/40 ring-2 ring-foreground/20 bg-accent/30' : 'border-border'}
-        ${isDragging ? 'shadow-lg border-foreground/30' : ''}
-        ${isStagnant ? 'border-l-4 border-l-destructive' : ''}
-      `}
+      ref={drag?.setNodeRef}
+      data-card-id={candidate.id}
+      onPointerDown={drag ? handlePointerDown : undefined}
+      onKeyDown={drag ? handleKeyDown : undefined}
+      className={cn(
+        'group relative rounded-lg border bg-card p-3 transition-colors duration-150',
+        selected ? 'border-brand' : 'border-border hover:border-border-strong',
+        isDragging && 'opacity-50',
+      )}
     >
-      {/* Bulk select checkbox — visible au hover ou si déjà sélectionné */}
+      {/* Case de sélection posée sur le coin de la carte : elle n'occupe pas de place dans les lignes. */}
       {onToggleSelect && (
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={!!selected}
-          aria-label={`Sélectionner ${candidate.name} pour action groupée`}
-          onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              e.stopPropagation();
-              onToggleSelect();
-            }
-          }}
-          className={`absolute top-1.5 left-1.5 w-4 h-4 rounded-md border-2 flex items-center justify-center transition-opacity z-10 ${
-            selected
-              ? 'opacity-100 bg-foreground border-foreground'
-              : 'opacity-0 group-hover:opacity-100 hover:opacity-100 border-foreground/40 bg-background'
-          }`}
-        >
-          {selected && (
-            <svg className="w-3 h-3 text-background" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
-              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+        <Checkbox
+          data-no-drag
+          checked={selected}
+          onCheckedChange={() => onToggleSelect()}
+          aria-label={`Sélectionner ${candidate.name}`}
+          className={cn(
+            'absolute -left-1.5 -top-1.5 z-10 bg-card',
+            'after:absolute after:-inset-1.5 [@media(pointer:coarse)]:after:-inset-3.5',
+            !(selected || selectionMode) && REVEAL,
           )}
-        </button>
+        />
       )}
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="min-w-0 flex-1">
-          <h4 className="font-display font-bold text-foreground truncate text-[14px] tracking-tight leading-tight">
-            {candidate.name}
-          </h4>
-          {candidate.headline && (
-            <p className="text-xs text-muted-foreground truncate">
-              {candidate.headline}
-            </p>
-          )}
-        </div>
-        
-        {/* Indicators */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {candidate.score != null && candidate.score > 0 && (
-            <span
-              className={`inline-flex items-center text-2xs font-bold tabular-nums px-1.5 py-0.5 rounded-full border ${
-                candidate.score >= 70 ? 'border-success/40 bg-success/10 text-success' :
-                candidate.score >= 40 ? 'border-warning/40 bg-warning/10 text-warning' :
-                'border-destructive/40 bg-destructive/10 text-destructive'
-              }`}
-              title={`Score IA : ${candidate.score}/100`}
-            >
-              {candidate.score}
-            </span>
-          )}
-          {candidate.hasReminder && (
-            <Bell className="w-3.5 h-3.5 text-primary" />
-          )}
-          {(candidate.notesCount || 0) > 0 && (
-            <div className="flex items-center gap-0.5 text-muted-foreground">
-              <StickyNote className="w-3.5 h-3.5" />
-              <span className="text-xs">{candidate.notesCount}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Source & Job & Outreach Status */}
-      <div className="flex flex-wrap items-center gap-1.5 mb-2">
-        <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full border border-border bg-foreground/[0.06] uppercase tracking-wider font-semibold text-foreground/85">
-          {sourceConfig.icon}
-          {sourceConfig.label}
-        </span>
-
-        {candidate.outreachStatus === 'interested' && (
-          <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full border border-success/40 bg-success/10 text-success uppercase tracking-wider font-bold">
-            <ThumbsUp className="w-3 h-3" />
-            Intéressé
-          </span>
-        )}
-        {candidate.outreachStatus === 'not_interested' && (
-          <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full border border-destructive/40 bg-destructive/5 text-destructive uppercase tracking-wider font-bold">
-            <ThumbsDown className="w-3 h-3" />
-            Pas intéressé
-          </span>
-        )}
-        {candidate.outreachStatus === 'replied' && (
-          <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full border border-info/40 bg-info/10 text-info uppercase tracking-wider font-bold">
-            <MessageCircle className="w-3 h-3" />
-            Répondu
-          </span>
-        )}
-
-        {candidate.jobTitle && (
-          <span
-            className={`inline-flex items-center text-2xs px-2 py-0.5 rounded-full border border-border bg-background text-muted-foreground truncate max-w-[140px] ${candidate.jobId && onJobClick ? 'cursor-pointer hover:bg-accent hover:text-foreground transition-colors' : ''}`}
-            onClick={(e) => {
-              if (candidate.jobId && onJobClick) {
-                e.stopPropagation();
-                onJobClick(candidate.jobId);
-              }
-            }}
+      <div className="flex items-center gap-2">
+        <h3 className="min-w-0 flex-1 text-sm font-medium text-foreground">
+          <Button
+            ref={drag?.setActivatorNodeRef}
+            type="button"
+            variant="link"
+            data-card-activator
+            onClick={onOpen}
+            {...drag?.attributes}
+            className={STRETCHED_BUTTON}
           >
-            {candidate.jobTitle.length > 20 
-              ? candidate.jobTitle.slice(0, 20) + '...' 
-              : candidate.jobTitle}
-          </span>
+            <span className="truncate">{candidate.name}</span>
+          </Button>
+        </h3>
+        {candidate.hasReminder && (
+          <Bell className="h-3.5 w-3.5 shrink-0 text-muted-foreground" role="img" aria-label="Rappel en attente" />
         )}
+        <ScoreBadge score={candidate.score} className="shrink-0" />
       </div>
 
-      {/* Sequence info */}
-      {candidate.sequenceName && (
-        <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-          <GitBranch className="w-3 h-3" />
-          {candidate.sequenceName}
-          {candidate.sequenceStatus && (
-            <span className="inline-flex items-center rounded-full border border-border bg-foreground/[0.06] px-1.5 py-0 text-3xs uppercase tracking-wider font-semibold">
-              {candidate.sequenceStatus}
-            </span>
+      {jobClickable ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          data-no-drag
+          onClick={() => onJobClick?.(candidate.jobId as string)}
+          className={cn(CONTROL, JOB_CHIP, 'mt-1.5')}
+        >
+          <Briefcase aria-hidden="true" />
+          <span className="sr-only">Voir le poste </span>
+          <span className="truncate">{candidate.jobTitle}</span>
+        </Button>
+      ) : candidate.jobTitle || candidate.headline ? (
+        <p className="mt-1 truncate text-xs text-foreground-secondary">{candidate.jobTitle || candidate.headline}</p>
+      ) : null}
+
+      {(signalLine || (stages && onMove)) && (
+        <div className="mt-2 flex min-h-7 items-center justify-between gap-2">
+          {signalLine ?? <span />}
+          {stages && onMove && (
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      data-no-drag
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={`Déplacer ${candidate.name} vers une autre étape`}
+                      className={cn(CONTROL, 'shrink-0 text-muted-foreground after:absolute after:-inset-2', REVEAL)}
+                    >
+                      <ArrowRightLeft aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Déplacer vers…</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel>Déplacer vers…</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup
+                  value={candidate.stage}
+                  onValueChange={(stageKey) => {
+                    if (stageKey !== candidate.stage) onMove(stageKey);
+                  }}
+                >
+                  {stages.map((stage) => (
+                    <DropdownMenuRadioItem key={stage.key} value={stage.key}>
+                      {stage.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       )}
-
-      {/* Tags */}
-      {(candidate.tags || []).length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {(candidate.tags || []).slice(0, 3).map(tag => (
-            <span key={tag} className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-accent/20 text-foreground border border-accent/40 font-medium">
-              {tag}
-            </span>
-          ))}
-          {(candidate.tags || []).length > 3 && (
-            <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground border border-border">
-              +{(candidate.tags || []).length - 3}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Stagnation alert */}
-      {isStagnant && (
-        <div className="flex items-center gap-1 text-xs text-destructive font-medium mb-2">
-          <AlertTriangle className="w-3 h-3" />
-          Inactif depuis {daysSince}j (max {guideTime}j)
-        </div>
-      )}
-
-      {/* Expertise tags */}
-      {candidate.expertise.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {candidate.expertise.slice(0, 3).map(skill => (
-            <span
-              key={skill}
-              className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
-            >
-              {skill}
-            </span>
-          ))}
-          {candidate.expertise.length > 3 && (
-            <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground border border-border">
-              +{candidate.expertise.length - 3}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          {candidate.linkedin && (
-            <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3 object-contain" />
-          )}
-          {candidate.email && (
-            <Mail className="w-3 h-3" aria-label="Email disponible" />
-          )}
-        </div>
-
-        {candidate.lastActivity && (() => {
-          // Affichage temps relatif "il y a Xj/h" — plus parlant qu'une date sèche.
-          // Si > 30j, on bascule sur la date pour éviter "il y a 234 jours".
-          const days = daysSince ?? 0;
-          let label: string;
-          try {
-            label = days > 30
-              ? new Date(candidate.lastActivity).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-              : `il y a ${formatDistanceToNowStrict(parseISO(candidate.lastActivity), { locale: fr })}`;
-          } catch {
-            label = '—';
-          }
-          return (
-            <span
-              className={`tabular-nums ${isStagnant ? 'text-destructive font-medium' : ''}`}
-              title={new Date(candidate.lastActivity).toLocaleString('fr-FR')}
-            >
-              {label}
-            </span>
-          );
-        })()}
-      </div>
     </div>
   );
 };

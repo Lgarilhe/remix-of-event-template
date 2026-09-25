@@ -1,19 +1,21 @@
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
+/** Même grille que `ATSStats` : trois tuiles sous 1280 px, six au-delà. */
 export const ATSStatsSkeleton: React.FC = () => {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+    <div className="mb-4 grid grid-cols-3 gap-3 xl:grid-cols-6" role="status" aria-label="Chargement des indicateurs">
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="rounded-xl border border-border bg-card p-3 flex items-center gap-3"
+          className={cn(
+            'flex-col gap-1.5 rounded-xl border border-border bg-card p-4',
+            i === 2 || i >= 4 ? 'hidden xl:flex' : 'flex',
+          )}
         >
-          <Skeleton className="h-7 w-7 rounded-lg" />
-          <div className="space-y-1.5">
-            <Skeleton className="h-3 w-12 rounded-full" />
-            <Skeleton className="h-4 w-8 rounded-md" />
-          </div>
+          <Skeleton className="h-4 w-16 rounded-sm" />
+          <Skeleton className="h-8 w-10" />
         </div>
       ))}
     </div>

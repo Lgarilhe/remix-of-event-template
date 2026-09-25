@@ -9,39 +9,38 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+/** Les huit colonnes de `ATSTable`, aux mêmes largeurs. */
+const HEADER_WIDTHS = ['w-16', 'w-10', 'w-12', 'w-10', 'w-16', 'w-24', 'w-10', 'w-0'];
+
 export const ATSTableSkeleton: React.FC = () => {
   return (
-    <div className="rounded-xl bg-card border border-border overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-border bg-card" role="status" aria-label="Chargement du tableau">
       <Table>
         <TableHeader>
-          <TableRow className="bg-accent/50 border-b border-border">
-            <TableHead className="w-[250px]"><Skeleton className="h-4 w-20 rounded-lg" /></TableHead>
-            <TableHead><Skeleton className="h-4 w-16 rounded-lg" /></TableHead>
-            <TableHead><Skeleton className="h-4 w-16 rounded-lg" /></TableHead>
-            <TableHead><Skeleton className="h-4 w-24 rounded-lg" /></TableHead>
-            <TableHead><Skeleton className="h-4 w-20 rounded-lg" /></TableHead>
-            <TableHead className="text-right"><Skeleton className="h-4 w-16 ml-auto rounded-lg" /></TableHead>
+          <TableRow className="hover:bg-transparent">
+            {HEADER_WIDTHS.map((width, i) => (
+              <TableHead key={i} className="h-10 px-3">
+                {width !== 'w-0' && <Skeleton className={`h-3 ${width} rounded-sm`} />}
+              </TableHead>
+            ))}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {Array.from({ length: 10 }).map((_, i) => (
-            <TableRow key={i} className="border-b border-border">
-              <TableCell>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <TableRow key={i} className="hover:bg-transparent">
+              <TableCell className="px-3 py-2.5">
                 <div className="space-y-1.5">
-                  <Skeleton className="h-4 w-32 rounded-lg" />
-                  <Skeleton className="h-3 w-48 rounded-lg" />
+                  <Skeleton className="h-4 w-32 rounded-sm" />
+                  <Skeleton className="h-3 w-44 rounded-sm" />
                 </div>
               </TableCell>
-              <TableCell><Skeleton className="h-5 w-20 rounded-lg" /></TableCell>
-              <TableCell><Skeleton className="h-5 w-16 rounded-lg" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-24 rounded-lg" /></TableCell>
-              <TableCell><Skeleton className="h-4 w-20 rounded-lg" /></TableCell>
-              <TableCell className="text-right">
-                <div className="flex gap-1 justify-end">
-                  <Skeleton className="h-7 w-7 rounded-lg" />
-                  <Skeleton className="h-7 w-7 rounded-lg" />
-                </div>
-              </TableCell>
+              <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-20 rounded-sm" /></TableCell>
+              <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-16 rounded-sm" /></TableCell>
+              <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-32 rounded-sm" /></TableCell>
+              <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-28 rounded-sm" /></TableCell>
+              <TableCell className="px-3 py-2.5"><Skeleton className="h-4 w-20 rounded-sm" /></TableCell>
+              <TableCell className="px-3 py-2.5"><Skeleton className="h-5 w-8 rounded-full" /></TableCell>
+              <TableCell className="px-3 py-2.5"><Skeleton className="h-7 w-7" /></TableCell>
             </TableRow>
           ))}
         </TableBody>
