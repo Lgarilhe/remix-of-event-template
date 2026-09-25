@@ -8,10 +8,14 @@
 --
 -- Chaque appel de la fonction est une instruction de premier niveau, jouée
 -- sous le rôle authenticated, dont le résultat va dans une table temporaire.
--- La première version appelait la fonction depuis des blocs d'exception d'un
--- seul DO : le Postgres local de la CI s'y est arrêté net (24/09/2026), alors
--- que la production répond. Un DO final lève une exception listant les
--- contrôles en échec.
+-- Un DO final lève une exception listant les contrôles en échec.
+--
+-- Ne jamais appeler cette fonction depuis un bloc PL/pgSQL qui rattrape une
+-- erreur (DO … EXCEPTION) : le Postgres de l'image Supabase de la CI y meurt
+-- par erreur de segmentation (signal 11 ; runs du 24/09, appel sous
+-- authenticated, et du 25/09, appel refusé sous anon). Le refus d'un appel
+-- anonyme est donc contrôlé ici par les droits de la fonction (contrôles 1
+-- et 10), et en vrai par .github/workflows/e2e.yml, hors bloc PL/pgSQL.
 -- =====================================================================
 
 CREATE TEMP TABLE emails_audit_results (n int, ok boolean, detail text) ON COMMIT DROP;
@@ -121,26 +125,22 @@ FROM (SELECT string_agg(email, ',' ORDER BY email) AS v
       FROM public.get_org_member_emails('9bbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')) s;
 RESET ROLE;
 
--- ===== 10. Anonyme : appel refusé (pas d'EXECUTE) =====
--- Le refus a lieu au contrôle du privilège, avant toute exécution de la
--- fonction ; le bloc d'exception ne sert qu'à le constater.
-SELECT set_config('request.jwt.claims', '{"role":"anon"}', true),
-       set_config('request.jwt.claim.sub', '', true),
-       set_config('request.jwt.claim.role', 'anon', true);
-DO $$
-DECLARE
-  refused boolean := false;
-BEGIN
-  SET LOCAL ROLE anon;
-  BEGIN
-    PERFORM public.get_org_member_emails('9aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-  EXCEPTION WHEN insufficient_privilege THEN refused := true;
-  END;
-  RESET ROLE;
-  INSERT INTO emails_audit_results VALUES (10, refused, 'l''anonyme appelle la fonction');
-END $$;
+-- ===== 10. Anonyme : EXECUTE n'est accordé ni à anon ni à PUBLIC =====
+-- Lecture des droits explicites de la fonction. proacl nul voudrait dire les
+-- droits par défaut, donc EXECUTE pour PUBLIC : le contrôle échoue alors.
 SELECT set_config('request.jwt.claims', '', true),
+       set_config('request.jwt.claim.sub', '', true),
        set_config('request.jwt.claim.role', '', true);
+INSERT INTO emails_audit_results
+SELECT 10,
+       p.proacl IS NOT NULL AND NOT EXISTS (
+         SELECT 1 FROM aclexplode(p.proacl) AS a
+         WHERE a.privilege_type = 'EXECUTE'
+           AND a.grantee IN (0, 'anon'::regrole::oid)
+       ),
+       'EXECUTE accordé à anon ou à PUBLIC'
+FROM pg_proc AS p
+WHERE p.oid = 'public.get_org_member_emails(uuid)'::regprocedure;
 
 -- ===== Bilan =====
 DO $$
