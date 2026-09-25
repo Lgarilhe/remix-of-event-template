@@ -24,7 +24,6 @@ export const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
 export interface ChapterDef {
   id: string;
   title: string;
-  tagline: string;
   scenes: SceneKey[];
 }
 
@@ -32,19 +31,16 @@ export const CHAPTERS: ChapterDef[] = [
   {
     id: 'activity',
     title: 'Votre activité',
-    tagline: 'Quelques questions pour adapter Konekt à votre métier.',
     scenes: ['orgtype', 'orgdetails', 'specializations'],
   },
   {
     id: 'company',
     title: 'Votre société',
-    tagline: 'On construit votre espace de travail automatiquement.',
     scenes: ['org'],
   },
   {
     id: 'tools',
     title: 'Votre LinkedIn',
-    tagline: 'Connectez votre compte LinkedIn, le moteur du sourcing.',
     scenes: ['linkedin'],
   },
 ];
@@ -71,9 +67,4 @@ export function chaptersForFlow(flow: SceneKey[]): ChapterDef[] {
   return CHAPTERS
     .map((c) => ({ ...c, scenes: c.scenes.filter((s) => flow.includes(s)) }))
     .filter((c) => c.scenes.length > 0);
-}
-
-/** Index du chapitre contenant une scène (-1 si hors chapitre, ex. launch). */
-export function chapterIndexOfScene(scene: SceneKey, chapters: ChapterDef[]): number {
-  return chapters.findIndex((c) => c.scenes.includes(scene));
 }

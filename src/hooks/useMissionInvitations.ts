@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -130,31 +131,33 @@ export const useMissionInvitations = (projectId: string | undefined) => {
   };
 };
 
-/** Hook for the invited freelance to accept/reject an invitation */
+/**
+ * Issue d'une acceptation. `status` est le code HTTP de la fonction : 410
+ * invitation expirée, 403 autre adresse ou invitation invalide, 404 lien déjà
+ * utilisé ou inconnu, 401 session ; null quand le serveur n'a pas répondu.
+ */
+export type AcceptMissionInvitationResult =
+  | { ok: true; projectId: string | null; alreadyMember: boolean }
+  | { ok: false; status: number | null; message: string };
+
+/** Hook for the invited freelance to accept an invitation */
 export const useAcceptMissionInvitation = () => {
-  const accept = async (token: string) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Connectez-vous pour accepter l\'invitation');
+  // Mémorisée : la page l'appelle depuis un effet. Recréée à chaque rendu, elle
+  // relançait l'acceptation après un succès et le second appel échouait (B-01).
+  // Pas de toast ici : la page affiche un message par cause.
+  const accept = useCallback(async (token: string): Promise<AcceptMissionInvitationResult> => {
+    // Server-side acceptance: verifies token, expiration and that the
+    // invitation email matches the logged-in user, then adds to mission_team.
+    const { data, error } = await invokeEdgeFunction<{ project_id?: string; already_member?: boolean }>(
+      'accept-mission-invitation',
+      { token }
+    );
 
-      // Server-side acceptance: verifies token, expiration and that the
-      // invitation email matches the logged-in user, then adds to mission_team.
-      const { data, error } = await invokeEdgeFunction<{ project_id?: string }>(
-        'accept-mission-invitation',
-        { token }
-      );
-
-      if (error || !data?.success) {
-        throw new Error(data?.error || 'Erreur lors de l\'acceptation');
-      }
-
-      toast.success('Invitation acceptée — vous avez accès à la mission');
-      return (data.project_id as string) || null;
-    } catch (err: any) {
-      toast.error(err?.message || 'Erreur lors de l\'acceptation');
-      return null;
+    if (error || !data?.success) {
+      return { ok: false, status: error?.status ?? null, message: data?.error || error?.message || '' };
     }
-  };
+    return { ok: true, projectId: data.project_id ?? null, alreadyMember: data.already_member === true };
+  }, []);
 
   return { accept };
 };

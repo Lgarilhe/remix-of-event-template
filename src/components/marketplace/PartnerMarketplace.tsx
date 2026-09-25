@@ -4,14 +4,11 @@
  * en cours (équipe d'une mission d'une autre organisation).
  */
 
-import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import React, { useId, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  Search, Target, MapPin, Percent, Clock, Users, Calendar, Loader2, Building2, ArrowRight,
+  ArrowRight, Building2, Calendar, FileText, Handshake, MapPin, Percent, Search, Target, Users,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import {
   useOpenHuntMissions,
   useMyHuntApplications,
@@ -19,6 +16,15 @@ import {
   type OpenHuntMission,
   type MyHuntApplication,
 } from '@/hooks/useMarketplace';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -26,11 +32,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Textarea } from '@/components/ui/textarea';
 import {
-  CONTRACT_LABELS, REMOTE_LABELS, applicationStatusLabel, huntStatusLabel, formatDate,
+  CONTRACT_LABELS, REMOTE_LABELS, applicationStatusLabel, applicationStatusVariant, huntStatusLabel,
+  huntStatusVariant, formatDate,
 } from './huntLabels';
 import { ErrorBox } from './ErrorBox';
+import { CardsSkeleton, RowsSkeleton } from './MarketplaceSkeleton';
 
 type TabKey = 'open' | 'applications' | 'missions';
 
@@ -40,47 +47,23 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'missions', label: 'Missions en cours' },
 ];
 
-const Spinner: React.FC = () => (
-  <div className="flex items-center justify-center py-20">
-    <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
-  </div>
-);
+const ALL = 'all';
 
-const EmptyBox: React.FC<{ title: string; text: string }> = ({ title, text }) => (
-  <div className="border border-dashed border-border p-12 text-center">
-    <Target className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-    <h3 className="text-sm font-bold uppercase tracking-wider mb-2">{title}</h3>
-    <p className="text-xs text-muted-foreground">{text}</p>
-  </div>
-);
+const bountyText = (percent: number | null) =>
+  percent != null ? `${percent} % du salaire annuel` : "Rémunération à confirmer avec l'entreprise";
 
-const Tag: React.FC<{ children: React.ReactNode; muted?: boolean }> = ({ children, muted = true }) => (
-  <span
-    className={cn(
-      'inline-flex items-center gap-0.5 px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border',
-      muted ? 'text-muted-foreground' : 'text-foreground',
-    )}
-  >
-    {children}
-  </span>
-);
-
-// Badge d'état d'une candidature (à la place du bouton Postuler)
-const ApplicationBadge: React.FC<{ status: string }> = ({ status }) => {
-  const tone =
-    status === 'accepted' ? 'border-success/40 text-success'
-    : status === 'pending' ? 'border-warning/40 text-warning'
-    : 'border-border text-muted-foreground';
-  return (
-    <span className={cn('inline-flex items-center justify-center w-full h-9 border text-xs font-medium uppercase tracking-wider', tone)}>
+// État d'une candidature, à la place du bouton « Postuler »
+const ApplicationBadge: React.FC<{ status: string }> = ({ status }) => (
+  <div className="flex h-8 items-center justify-center">
+    <Badge variant={applicationStatusVariant(status)}>
       {status === 'pending'
         ? 'Candidature envoyée'
         : status === 'ended'
           ? 'Collaboration terminée'
           : `Candidature ${applicationStatusLabel(status).toLowerCase()}`}
-    </span>
-  );
-};
+    </Badge>
+  </div>
+);
 
 // ---------------------------------------------------------------------------
 // Onglet « Missions ouvertes »
@@ -93,6 +76,10 @@ const OpenMissionsTab: React.FC = () => {
   const [filterRemote, setFilterRemote] = useState('');
   const [target, setTarget] = useState<OpenHuntMission | null>(null);
   const [message, setMessage] = useState('');
+  const searchId = useId();
+  const contractId = useId();
+  const remoteId = useId();
+  const messageId = useId();
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -110,6 +97,13 @@ const OpenMissionsTab: React.FC = () => {
     });
   }, [missions, search, filterContract, filterRemote]);
 
+  const hasFilters = !!(search.trim() || filterContract || filterRemote);
+  const resetFilters = () => {
+    setSearch('');
+    setFilterContract('');
+    setFilterRemote('');
+  };
+
   const handleApply = async () => {
     if (!target) return;
     try {
@@ -123,43 +117,52 @@ const OpenMissionsTab: React.FC = () => {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div className="relative flex-1 min-w-[200px] max-w-[400px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <input
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-52 max-w-sm flex-1">
+          <Label htmlFor={searchId} className="sr-only">Rechercher une mission</Label>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            id={searchId}
+            type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un poste, une entreprise..."
-            className="w-full h-9 pl-9 pr-3 text-sm border border-border bg-background text-foreground focus:outline-none"
+            placeholder="Poste, entreprise ou ville"
+            className="h-11 pl-9 md:h-9"
           />
         </div>
-        <select
-          value={filterContract}
-          onChange={(e) => setFilterContract(e.target.value)}
-          className="h-9 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:outline-none"
-        >
-          <option value="">Tous les contrats</option>
-          {Object.entries(CONTRACT_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-        <select
-          value={filterRemote}
-          onChange={(e) => setFilterRemote(e.target.value)}
-          className="h-9 px-3 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground focus:outline-none"
-        >
-          <option value="">Tous les modes</option>
-          {Object.entries(REMOTE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-        <span className="text-xs text-muted-foreground uppercase tracking-wider ml-auto">
-          {filtered.length} mission{filtered.length > 1 ? 's' : ''}
-        </span>
+        <Label htmlFor={contractId} className="sr-only">Type de contrat</Label>
+        <Select value={filterContract || ALL} onValueChange={(v) => setFilterContract(v === ALL ? '' : v)}>
+          <SelectTrigger id={contractId} className="h-11 w-auto min-w-40 md:h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Tous les contrats</SelectItem>
+            {Object.entries(CONTRACT_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>{label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Label htmlFor={remoteId} className="sr-only">Mode de travail</Label>
+        <Select value={filterRemote || ALL} onValueChange={(v) => setFilterRemote(v === ALL ? '' : v)}>
+          <SelectTrigger id={remoteId} className="h-11 w-auto min-w-40 md:h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Tous les modes</SelectItem>
+            {Object.entries(REMOTE_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>{label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {!isLoading && !isError && (
+          <p className="text-sm text-muted-foreground sm:ml-auto" aria-live="polite">
+            {filtered.length} mission{filtered.length > 1 ? 's' : ''}
+          </p>
+        )}
       </div>
 
       {isLoading ? (
-        <Spinner />
+        <CardsSkeleton />
       ) : isError ? (
         <ErrorBox
           title="Impossible de charger les missions ouvertes."
@@ -167,67 +170,67 @@ const OpenMissionsTab: React.FC = () => {
           onRetry={refetch}
         />
       ) : filtered.length === 0 ? (
-        <EmptyBox
-          title="Aucune mission disponible"
-          text={missions.length === 0
-            ? 'Aucune entreprise ne propose de mission pour le moment.'
-            : 'Aucune mission ne correspond à vos filtres.'}
+        <EmptyState
+          icon={Target}
+          title={missions.length === 0 ? 'Aucune mission ouverte' : 'Aucune mission pour ces filtres'}
+          description={missions.length === 0
+            ? 'Aucune entreprise ne propose de mission pour le moment. Les nouvelles missions apparaîtront ici.'
+            : 'Élargissez la recherche ou retirez un filtre.'}
+          action={hasFilters && missions.length > 0 ? (
+            <Button variant="outline" size="sm" onClick={resetFilters} className="min-h-11 md:min-h-0">Effacer les filtres</Button>
+          ) : undefined}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((mission) => {
             const jd = mission.job_details ?? {};
             const skills = jd.skills_must_have ?? [];
             const max = mission.hunt_max_recruiters ?? 3;
             const full = mission.accepted_count >= max;
             return (
-              <div key={mission.id} className="border border-border bg-background hover:shadow-sm transition-all flex flex-col">
-                <div className="p-4 space-y-3 flex-1">
+              <Card key={mission.id} className="flex flex-col shadow-none transition-colors duration-150 hover:border-border-strong">
+                <div className="flex-1 space-y-3 p-4">
                   <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
-                      {jd.title || mission.name}
-                    </h3>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5 flex items-center gap-1">
-                      <Building2 className="w-3 h-3" />
+                    <h3 className="text-md font-semibold text-foreground">{jd.title || mission.name}</h3>
+                    <p className="mt-0.5 flex items-center gap-1 text-sm text-muted-foreground">
+                      <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                       {mission.client_name || mission.organization_name || 'Entreprise'}
                     </p>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
-                    {jd.contract_type && <Tag muted={false}>{CONTRACT_LABELS[jd.contract_type] ?? jd.contract_type}</Tag>}
-                    {jd.location && <Tag><MapPin className="w-2.5 h-2.5" /> {jd.location}</Tag>}
-                    {jd.remote_policy && <Tag>{REMOTE_LABELS[jd.remote_policy] ?? jd.remote_policy}</Tag>}
-                    {jd.seniority && <Tag>{jd.seniority}</Tag>}
+                    {jd.contract_type && <Badge variant="outline">{CONTRACT_LABELS[jd.contract_type] ?? jd.contract_type}</Badge>}
+                    {jd.location && (
+                      <Badge variant="outline">
+                        <MapPin className="h-3 w-3" aria-hidden="true" />
+                        {jd.location}
+                      </Badge>
+                    )}
+                    {jd.remote_policy && <Badge variant="outline">{REMOTE_LABELS[jd.remote_policy] ?? jd.remote_policy}</Badge>}
+                    {jd.seniority && <Badge variant="outline">{jd.seniority}</Badge>}
                   </div>
 
                   {skills.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {skills.slice(0, 5).map((skill, i) => (
-                        <span key={i} className="px-1.5 py-0.5 text-xs font-medium bg-foreground text-background uppercase tracking-wider">
-                          {skill}
-                        </span>
-                      ))}
-                      {skills.length > 5 && (
-                        <span className="text-xs text-muted-foreground self-center">+{skills.length - 5}</span>
-                      )}
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <span className="sr-only">Compétences : </span>
+                      {skills.slice(0, 5).join(' · ')}
+                      {skills.length > 5 ? ` · +${skills.length - 5}` : ''}
+                    </p>
                   )}
 
-                  <div className="pt-2 border-t border-border space-y-1 text-xs text-muted-foreground">
-                    <p className="flex items-center gap-1 text-foreground font-medium">
-                      <Percent className="w-3 h-3" />
-                      {mission.hunt_bounty_percent != null
-                        ? `${mission.hunt_bounty_percent} % du salaire annuel`
-                        : 'Rémunération à confirmer avec l\'entreprise'}
+                  <div className="space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+                    <p className="flex items-center gap-1.5 font-medium text-foreground">
+                      <Percent className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      {bountyText(mission.hunt_bounty_percent)}
                     </p>
-                    <p className="flex items-center gap-3 flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Users className="w-3 h-3" /> {mission.accepted_count}/{max} recruteurs
-                      </span>
+                    <p className="flex items-center gap-1.5">
+                      <Users className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      {mission.accepted_count}/{max} recruteurs
                     </p>
                     {mission.hunt_deadline && (
-                      <p className="flex items-center gap-1 text-warning">
-                        <Calendar className="w-3 h-3" /> Date limite : {formatDate(mission.hunt_deadline)}
+                      <p className="flex items-center gap-1.5">
+                        <Calendar className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        Date limite : {formatDate(mission.hunt_deadline)}
                       </p>
                     )}
                   </div>
@@ -237,17 +240,18 @@ const OpenMissionsTab: React.FC = () => {
                   {mission.my_application_status ? (
                     <ApplicationBadge status={mission.my_application_status} />
                   ) : (
-                    <button
-                      type="button"
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => { setTarget(mission); setMessage(''); }}
                       disabled={full}
-                      className="w-full h-9 border border-border text-xs font-medium uppercase tracking-wider bg-foreground text-background disabled:bg-muted disabled:text-muted-foreground"
+                      className="w-full min-h-11 md:min-h-0"
                     >
                       {full ? 'Places pourvues' : 'Postuler'}
-                    </button>
+                    </Button>
                   )}
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -263,11 +267,10 @@ const OpenMissionsTab: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-                Message (facultatif)
-              </label>
+            <div className="space-y-2">
+              <Label htmlFor={messageId}>Message (facultatif)</Label>
               <Textarea
+                id={messageId}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={4}
@@ -275,30 +278,19 @@ const OpenMissionsTab: React.FC = () => {
                 placeholder="Pourquoi cette mission vous correspond, vos placements similaires, votre disponibilité."
               />
             </div>
-            <p className="text-xs text-muted-foreground border border-border p-3">
+            <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
               {target?.hunt_bounty_percent != null
                 ? `Rémunération : ${target.hunt_bounty_percent} % du salaire annuel, facturée par vous à l'entreprise à l'embauche.`
                 : "L'entreprise n'a pas encore fixé la rémunération. Demandez-la dans votre message."}
             </p>
           </div>
           <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setTarget(null)}
-              disabled={isApplying}
-              className="h-9 px-4 border border-border text-xs font-medium uppercase tracking-wider"
-            >
+            <Button variant="outline" onClick={() => setTarget(null)} disabled={isApplying} className="min-h-11 md:min-h-0">
               Annuler
-            </button>
-            <button
-              type="button"
-              onClick={handleApply}
-              disabled={isApplying}
-              className="h-9 px-4 border border-border text-xs font-medium uppercase tracking-wider bg-foreground text-background inline-flex items-center gap-1.5 disabled:opacity-60"
-            >
-              {isApplying && <Loader2 className="w-3 h-3 animate-spin" />}
+            </Button>
+            <Button variant="primary" onClick={handleApply} loading={isApplying} className="min-h-11 md:min-h-0">
               Envoyer ma candidature
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -311,62 +303,59 @@ const OpenMissionsTab: React.FC = () => {
 // ---------------------------------------------------------------------------
 
 const MyApplicationsTab: React.FC = () => {
-  const navigate = useNavigate();
   const { applications, isLoading, isError, errorText, refetch, withdraw, isWithdrawing } = useMyHuntApplications(true);
   const [withdrawTarget, setWithdrawTarget] = useState<MyHuntApplication | null>(null);
 
-  if (isLoading) return <Spinner />;
+  if (isLoading) return <RowsSkeleton label="Chargement de vos candidatures" />;
   if (isError) {
     return <ErrorBox title="Impossible de charger vos candidatures." detail={errorText} onRetry={refetch} />;
   }
   if (applications.length === 0) {
-    return <EmptyBox title="Aucune candidature" text="Vos candidatures aux missions ouvertes apparaîtront ici." />;
+    return (
+      <EmptyState
+        icon={FileText}
+        title="Aucune candidature"
+        description="Postulez depuis l'onglet « Missions ouvertes » : vos candidatures et leur réponse apparaîtront ici."
+      />
+    );
   }
 
   return (
-    <div className="border border-border divide-y divide-border">
-      {applications.map((a) => (
-        <div key={a.id} className="p-4 flex items-center gap-4 flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <p className="text-sm font-bold uppercase tracking-wider text-foreground">
-              {a.job_title || a.mission_name}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {a.client_name || a.organization_name || 'Entreprise'}
-              {a.hunt_bounty_percent != null ? ` · ${a.hunt_bounty_percent} % du salaire annuel` : ''}
-              {' · '}envoyée le {formatDate(a.created_at)}
-              {a.hunt_status && a.hunt_status !== 'published' && a.hunt_status !== 'in_progress'
-                ? ` · ${huntStatusLabel(a.hunt_status)}`
-                : ''}
-            </p>
-            {a.message && (
-              <p className="text-xs text-muted-foreground mt-1 italic line-clamp-2">« {a.message} »</p>
+    <>
+      <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+        {applications.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
+            <div className="min-w-52 flex-1">
+              <p className="text-md font-semibold text-foreground">{a.job_title || a.mission_name}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {a.client_name || a.organization_name || 'Entreprise'}
+                {a.hunt_bounty_percent != null ? ` · ${a.hunt_bounty_percent} % du salaire annuel` : ''}
+                {' · '}envoyée le {formatDate(a.created_at)}
+                {a.hunt_status && a.hunt_status !== 'published' && a.hunt_status !== 'in_progress'
+                  ? ` · ${huntStatusLabel(a.hunt_status)}`
+                  : ''}
+              </p>
+              {a.message && (
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">« {a.message} »</p>
+              )}
+            </div>
+            <Badge variant={applicationStatusVariant(a.status)}>{applicationStatusLabel(a.status)}</Badge>
+            {a.status === 'pending' && (
+              <Button variant="outline" size="sm" onClick={() => setWithdrawTarget(a)} disabled={isWithdrawing} className="min-h-11 md:min-h-0">
+                Retirer la candidature
+              </Button>
             )}
-          </div>
-          <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground">
-            {applicationStatusLabel(a.status)}
-          </span>
-          {a.status === 'pending' && (
-            <button
-              type="button"
-              onClick={() => setWithdrawTarget(a)}
-              disabled={isWithdrawing}
-              className="h-8 px-3 border border-border text-xs font-medium uppercase tracking-wider hover:bg-muted disabled:opacity-50"
-            >
-              Retirer
-            </button>
-          )}
-          {a.status === 'accepted' && (
-            <button
-              type="button"
-              onClick={() => navigate(`/missions/${a.project_id}`)}
-              className="h-8 px-3 border border-border text-xs font-medium uppercase tracking-wider bg-foreground text-background inline-flex items-center gap-1"
-            >
-              Ouvrir la mission <ArrowRight className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-      ))}
+            {a.status === 'accepted' && (
+              <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
+                <Link to={`/missions/${a.project_id}`}>
+                  Ouvrir la mission
+                  <ArrowRight aria-hidden="true" />
+                </Link>
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
 
       <AlertDialog open={!!withdrawTarget} onOpenChange={(open) => !open && setWithdrawTarget(null)}>
         <AlertDialogContent>
@@ -387,12 +376,12 @@ const MyApplicationsTab: React.FC = () => {
                 if (id) withdraw(id).catch(() => undefined);
               }}
             >
-              Retirer
+              Retirer la candidature
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 };
 
@@ -401,42 +390,43 @@ const MyApplicationsTab: React.FC = () => {
 // ---------------------------------------------------------------------------
 
 const PartnerMissionsTab: React.FC = () => {
-  const navigate = useNavigate();
   const { missions, isLoading, isError, errorText, refetch } = usePartnerMissions(true);
 
-  if (isLoading) return <Spinner />;
+  if (isLoading) return <CardsSkeleton count={2} />;
   if (isError) {
     return <ErrorBox title="Impossible de charger vos missions en cours." detail={errorText} onRetry={refetch} />;
   }
   if (missions.length === 0) {
     return (
-      <EmptyBox
+      <EmptyState
+        icon={Handshake}
         title="Aucune mission en cours"
-        text="Les missions sur lesquelles une entreprise vous a accepté apparaîtront ici."
+        description="Les missions sur lesquelles une entreprise vous a accepté apparaîtront ici."
       />
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {missions.map((m) => (
-        <button
-          key={m.id}
-          type="button"
-          onClick={() => navigate(`/missions/${m.id}`)}
-          className="text-left border border-border bg-background p-4 hover:shadow-sm transition-all"
-        >
-          <p className="text-sm font-bold uppercase tracking-wider text-foreground">{m.job_title || m.name}</p>
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5 flex items-center gap-1">
-            <Building2 className="w-3 h-3" /> {m.client_name || m.organization_name || 'Entreprise'}
-          </p>
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
-            <span className="uppercase tracking-wider">{huntStatusLabel(m.hunt_status)}</span>
-            {m.hunt_bounty_percent != null ? <span>{m.hunt_bounty_percent} % du salaire annuel</span> : null}
-          </div>
-        </button>
+        <li key={m.id}>
+          <Link
+            to={`/missions/${m.id}`}
+            className="block h-full rounded-xl border border-border bg-card p-4 ring-offset-background transition-colors duration-150 hover:border-border-strong hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <p className="text-md font-semibold text-foreground">{m.job_title || m.name}</p>
+            <p className="mt-0.5 flex items-center gap-1 text-sm text-muted-foreground">
+              <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {m.client_name || m.organization_name || 'Entreprise'}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+              <Badge variant={huntStatusVariant(m.hunt_status)}>{huntStatusLabel(m.hunt_status)}</Badge>
+              {m.hunt_bounty_percent != null ? <span>{m.hunt_bounty_percent} % du salaire annuel</span> : null}
+            </div>
+          </Link>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 };
 
@@ -448,28 +438,29 @@ export const PartnerMarketplace: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('open');
 
   return (
-    <div>
-      <div className="flex items-center gap-1 border-b border-border mb-6 overflow-x-auto">
+    <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
+      {/* Téléphone : trois colonnes égales, libellés sur deux lignes au besoin. */}
+      <TabsList className="mb-6 grid h-auto w-full grid-cols-3 sm:inline-flex sm:w-auto">
         {TABS.map((t) => (
-          <button
+          <TabsTrigger
             key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              'h-10 px-4 text-xs font-medium uppercase tracking-wider border-b-2 -mb-px whitespace-nowrap transition-colors',
-              tab === t.key
-                ? 'border-foreground text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
+            value={t.key}
+            className="h-auto min-h-11 whitespace-normal px-2 py-1 text-center leading-tight sm:h-8 sm:min-h-0 sm:whitespace-nowrap sm:px-3"
           >
             {t.label}
-          </button>
+          </TabsTrigger>
         ))}
-      </div>
-      {tab === 'open' && <OpenMissionsTab />}
-      {tab === 'applications' && <MyApplicationsTab />}
-      {tab === 'missions' && <PartnerMissionsTab />}
-    </div>
+      </TabsList>
+      <TabsContent value="open" className="mt-0">
+        <OpenMissionsTab />
+      </TabsContent>
+      <TabsContent value="applications" className="mt-0">
+        <MyApplicationsTab />
+      </TabsContent>
+      <TabsContent value="missions" className="mt-0">
+        <PartnerMissionsTab />
+      </TabsContent>
+    </Tabs>
   );
 };
 

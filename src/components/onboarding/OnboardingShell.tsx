@@ -1,7 +1,6 @@
 import React from 'react';
-import { motion } from 'framer-motion';
-import skalrLogo from '@/assets/skalr-logo-concept-3.webp';
-import { OnboardingBackdrop } from './OnboardingBackdrop';
+import { Check } from 'lucide-react';
+import { KonektLogo } from '@/components/KonektLogo';
 import type { ChapterDef, SceneKey } from './onboardingMeta';
 import { remainingSeconds } from './onboardingMeta';
 import { cn } from '@/lib/utils';
@@ -16,12 +15,12 @@ interface Props {
 }
 
 /**
- * Shell éditorial de l'onboarding : fond texturé, header minimal
- * (logo · compteur · temps restant), une seule colonne alignée à gauche.
- * Un seul indicateur de progression : le fil en haut de page.
+ * Coquille de l'onboarding : fond uni, en-tête minimal (logo, étape, temps
+ * restant), fil des chapitres, une colonne de contenu. La progression est la
+ * barre du haut, en accent (docs/design/01-direction.md, § 2).
  */
 export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, chapters, completedScenes, orgName, children }) => {
-  const progress = ((stepIndex + 1) / flow.length) * 100;
+  const progress = Math.round(((stepIndex + 1) / flow.length) * 100);
   const currentScene = flow[stepIndex];
   const isFinale = currentScene === 'launch';
   const remainingMin = Math.max(1, Math.ceil(remainingSeconds(flow, stepIndex) / 60));
@@ -30,97 +29,65 @@ export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, chapters, co
     : chapters.findIndex((c) => c.scenes.includes(currentScene));
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-x-clip bg-background">
-      <OnboardingBackdrop />
-
-      {/* Fil de progression — l'unique indicateur */}
-      <div className="fixed top-0 inset-x-0 h-px z-50 bg-foreground/10">
-        <motion.div
-          className="h-full bg-foreground"
-          initial={{ width: 0 }}
-          animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        />
+    <div className="flex min-h-screen flex-col bg-background">
+      <div
+        role="progressbar"
+        aria-label="Progression de la configuration"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress}
+        className="fixed inset-x-0 top-0 z-sticky h-0.5 bg-border"
+      >
+        <div className="h-full bg-brand transition-[width] duration-200 ease-out" style={{ width: `${progress}%` }} />
       </div>
 
-      {/* Header minimal */}
-      <header className="relative z-30 flex items-center justify-between gap-3 px-5 sm:px-10 py-5">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <motion.img
-            src={skalrLogo}
-            alt="Konekt"
-            className="h-6 w-auto shrink-0"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-          />
+      <header className="flex items-center justify-between gap-3 px-4 py-5 sm:px-10">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <KonektLogo theme="auto" size={24} className="shrink-0" />
           {orgName && (
-            <motion.span
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.15 }}
-              className="text-xs text-muted-foreground truncate hidden sm:inline border-l border-border/60 pl-2.5"
-            >
+            <span className="hidden truncate border-l border-border pl-2.5 text-xs text-muted-foreground sm:inline">
               {orgName}
-            </motion.span>
+            </span>
           )}
         </div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="flex items-baseline gap-3 shrink-0 text-xs font-mono text-muted-foreground"
-        >
-          <span className="text-foreground/80 tabular-nums">
-            {String(stepIndex + 1).padStart(2, '0')}
-            <span className="text-muted-foreground/50"> / {flow.length}</span>
+        <p className="flex shrink-0 items-baseline gap-3 text-xs text-muted-foreground">
+          <span className="tabular-nums text-foreground-secondary">
+            Étape {stepIndex + 1} sur {flow.length}
           </span>
-          {!isFinale && (
-            <span className="hidden sm:inline text-muted-foreground/60">≈ {remainingMin} min</span>
-          )}
-        </motion.div>
+          {!isFinale && <span className="hidden sm:inline">Environ {remainingMin} min</span>}
+        </p>
       </header>
 
-      {/* Fil des chapitres — où on est, ce qui reste */}
-      <nav aria-label="Chapitres" className="relative z-10 mx-auto w-full max-w-2xl px-5 sm:px-8 pt-1">
-        <motion.ol
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.4 }}
-          className="flex items-center gap-x-2 gap-y-1 flex-wrap text-2xs font-mono uppercase tracking-wider"
-        >
+      <nav aria-label="Chapitres" className="mx-auto w-full max-w-2xl px-4 pt-1 sm:px-8">
+        <ol className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           {chapters.map((chapter, i) => {
-            const done = i < currentChapterIdx || chapter.scenes.every((s) => completedScenes.has(s));
+            // Coché seulement si ses scènes sont faites : un LinkedIn « connecté plus tard » reste à faire.
+            const done = chapter.scenes.every((s) => completedScenes.has(s));
             const current = i === currentChapterIdx;
             return (
-              <React.Fragment key={chapter.id}>
-                {i > 0 && <span aria-hidden="true" className="text-muted-foreground/25">·</span>}
-                <li
-                  className={cn(
-                    'flex items-center gap-1 transition-colors duration-300',
-                    current
-                      ? 'text-foreground underline decoration-emerald-500/70 decoration-2 underline-offset-4'
-                      : done
-                      ? 'text-muted-foreground'
-                      : 'text-muted-foreground/40'
-                  )}
-                  aria-current={current ? 'step' : undefined}
-                >
-                  {done && <span className="text-success">✓</span>}
-                  {chapter.title}
-                </li>
-              </React.Fragment>
+              <li
+                key={chapter.id}
+                aria-current={current ? 'step' : undefined}
+                className={cn(
+                  'flex items-center gap-1.5',
+                  current
+                    ? 'font-medium text-foreground underline decoration-brand decoration-2 underline-offset-4'
+                    : done
+                      ? 'text-foreground-secondary'
+                      : 'text-muted-foreground',
+                )}
+              >
+                {done && !current && <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />}
+                {chapter.title}
+                {done && !current && <span className="sr-only">(terminé)</span>}
+              </li>
             );
           })}
-        </motion.ol>
+        </ol>
       </nav>
 
-      {/* Contenu — colonne éditoriale */}
-      <main className="flex-1 relative z-10 w-full">
-        <div className="mx-auto w-full max-w-2xl px-5 sm:px-8 py-8 sm:py-12">
-          {children}
-        </div>
+      <main className="w-full flex-1">
+        <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-8 sm:py-12">{children}</div>
       </main>
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export interface EditorialChoice {
@@ -20,13 +21,16 @@ interface Props {
   dense?: boolean;
   /** Active les raccourcis clavier A, B, C… */
   keyboard?: boolean;
+  /** Identifiant du titre qui nomme la liste pour les lecteurs d'écran. */
+  labelledBy?: string;
 }
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 /**
- * Liste de réponses purement typographique — pas de cartes, pas d'icônes.
- * Lettre-raccourci, hover en décalage, sélection soulignée à l'émeraude.
+ * Liste de réponses : une ligne par choix, lettre-raccourci à gauche. Une
+ * réponse choisie prend l'accent (lettre pleine) et une coche : la sélection
+ * ne repose jamais sur la seule couleur.
  */
 export const EditorialChoiceList: React.FC<Props> = ({
   options,
@@ -36,6 +40,7 @@ export const EditorialChoiceList: React.FC<Props> = ({
   columns = 1,
   dense = false,
   keyboard = true,
+  labelledBy,
 }) => {
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -59,61 +64,48 @@ export const EditorialChoiceList: React.FC<Props> = ({
   return (
     <div
       role={mode === 'single' ? 'radiogroup' : 'group'}
-      className={cn(
-        columns === 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-x-8' : 'flex flex-col',
-        dense ? 'gap-y-0' : 'gap-y-0.5'
-      )}
+      aria-labelledby={labelledBy}
+      // -mx-3 : la lettre s'aligne sur le titre, le fond de survol garde sa marge.
+      className={cn(columns === 2 ? 'grid grid-cols-1 gap-x-4 sm:grid-cols-2' : 'flex flex-col', '-mx-3 gap-y-1')}
     >
       {options.map((option, i) => {
         const isSelected = selected.includes(option.value);
         return (
-          <motion.button
+          <Button
             key={option.value}
             type="button"
+            variant="ghost"
             role={mode === 'single' ? 'radio' : 'checkbox'}
             aria-checked={isSelected}
             onClick={() => onSelect(option.value)}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12 + i * 0.045, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            whileTap={{ scale: 0.995 }}
             className={cn(
-              'group flex items-baseline gap-3 w-full text-left transition-transform duration-200 hover:translate-x-1',
-              dense ? 'py-1.5' : 'py-2.5'
+              'group h-auto w-full items-start justify-start gap-3 whitespace-normal px-3 text-left font-normal',
+              dense ? 'min-h-11 py-2 md:min-h-0' : 'py-3',
+              isSelected && 'bg-accent',
             )}
           >
-            {/* Lettre-raccourci */}
+            {/* Lettre-raccourci : le clavier la tape, le lecteur d'écran lit le libellé. */}
             <span
-              className={cn(
-                'shrink-0 w-5 h-5 flex items-center justify-center text-2xs font-mono rounded-sm border transition-colors duration-200 translate-y-[-1px]',
-                isSelected
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'border-border text-muted-foreground/50 group-hover:text-foreground group-hover:border-foreground/40'
-              )}
               aria-hidden="true"
+              className={cn(
+                'mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border font-mono text-2xs transition-colors duration-150',
+                isSelected
+                  ? 'border-brand bg-brand text-brand-foreground'
+                  : 'border-input text-muted-foreground group-hover:border-muted-foreground group-hover:text-foreground',
+              )}
             >
               {LETTERS[i]}
             </span>
-
             <span className="min-w-0 flex-1">
-              <span
-                className={cn(
-                  'block transition-colors duration-200 leading-snug',
-                  dense ? 'text-[15px]' : 'text-lg',
-                  isSelected
-                    ? 'text-foreground underline decoration-emerald-500/70 decoration-2 underline-offset-[6px]'
-                    : 'text-foreground/70 group-hover:text-foreground'
-                )}
-              >
+              <span className={cn('block leading-snug text-foreground', dense ? 'text-md' : 'text-base font-medium')}>
                 {option.label}
               </span>
               {option.description && !dense && (
-                <span className="block text-sm text-muted-foreground mt-0.5 leading-relaxed max-w-md">
-                  {option.description}
-                </span>
+                <span className="mt-0.5 block text-sm text-muted-foreground">{option.description}</span>
               )}
             </span>
-          </motion.button>
+            {isSelected && <Check className="mt-0.5 shrink-0 text-brand" aria-hidden="true" />}
+          </Button>
         );
       })}
     </div>

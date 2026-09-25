@@ -1,5 +1,4 @@
-import React, { useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useId, useRef, useState } from 'react';
 import { EditorialChoiceList } from './EditorialChoiceList';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
@@ -23,13 +22,14 @@ const ORG_TYPE_OPTIONS = [
   {
     value: 'freelance',
     label: 'Je suis recruteur indépendant',
-    description: 'En solo — missions RPO, succès, chasse.',
+    description: 'En solo : missions RPO, au succès ou en chasse.',
   },
 ];
 
 export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   const [selected, setSelected] = useState<string[]>([]);
   const firedRef = useRef(false);
+  const titleId = useId();
 
   const handlePick = (value: string) => {
     if (firedRef.current) return;
@@ -41,10 +41,10 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
   return (
     <div className="w-full">
       <div className="mb-8">
-        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">
+        <h1 id={titleId} className="text-2xl font-semibold tracking-tight text-foreground">
           Qui êtes-vous ?
-        </h2>
-        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+        </h1>
+        <p className="mt-2 max-w-md text-md text-foreground-secondary">
           Konekt ne montre pas la même chose à une entreprise, un cabinet ou un indépendant.
           Tout part d'ici.
         </p>
@@ -55,16 +55,12 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
         selected={selected}
         mode="single"
         onSelect={handlePick}
+        labelledBy={titleId}
       />
 
-      <motion.p
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.6 }}
-        className="text-xs text-muted-foreground/60 mt-8"
-      >
-        Cliquez ou tapez la lettre — la suite s'enchaîne toute seule.
-      </motion.p>
+      <p className="mt-8 text-xs text-muted-foreground">
+        Cliquez sur une réponse ou tapez sa lettre : la suite s'enchaîne toute seule.
+      </p>
     </div>
   );
 };

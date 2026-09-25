@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useOrganization, ORG_ALREADY_EXISTS } from '@/hooks/useOrganization';
 import { withPreviewAccessToken } from '@/lib/previewToken';
@@ -9,8 +9,8 @@ import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { supabase } from '@/integrations/supabase/client';
 import { updateOrganization } from '@/lib/organizationUpdate';
 import { InvitationBanner } from '@/components/InvitationBanner';
+import { Spinner } from '@/components/ui/spinner';
 import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
-import { ChapterInterstitial } from '@/components/onboarding/ChapterInterstitial';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneLinkedIn } from '@/components/onboarding/SceneLinkedIn';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
@@ -21,7 +21,6 @@ import {
   FLOWS,
   DEFAULT_FLOW,
   chaptersForFlow,
-  chapterIndexOfScene,
   type OrgType,
   type SceneKey,
 } from '@/components/onboarding/onboardingMeta';
@@ -52,7 +51,6 @@ const Onboarding = () => {
     const idx = restored.scene ? flow.indexOf(restored.scene) : -1;
     return idx >= 0 ? idx : 0;
   });
-  const [direction, setDirection] = useState(1);
   const [orgCreated, setOrgCreated] = useState(false);
   // F3 : verrou anti double clic sur la création silencieuse (flux freelance)
   const orgCreateInFlightRef = useRef(false);
@@ -71,7 +69,6 @@ const Onboarding = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const reduceMotion = useReducedMotion();
   const { organization, createOrganization, refetchOrganization, isLoading: isOrgLoading } = useOrganization();
   const { accounts } = useLinkedInAccounts();
   // F3 : `?new=1` = création d'un second espace demandée explicitement
@@ -82,27 +79,10 @@ const Onboarding = () => {
   const flow = useMemo(() => (orgType ? FLOWS[orgType] : DEFAULT_FLOW), [orgType]);
   const chapters = useMemo(() => chaptersForFlow(flow), [flow]);
   const currentScene = flow[step] ?? 'orgtype';
-  const trackableSteps = flow.length - 1;
-  const completedInFlow = useMemo(
-    () => flow.filter((s) => s !== 'launch' && completedScenes.has(s)).length,
-    [flow, completedScenes]
-  );
-  const scorePercent = Math.round((completedInFlow / Math.max(trackableSteps, 1)) * 100);
 
   const linkedInConnected = accounts.some(
     (a: any) => a.type !== 'WHATSAPP' && a.provider !== 'WHATSAPP'
   );
-
-  // ─── Interstitiel de chapitre ───
-  const [interstitialIdx, setInterstitialIdx] = useState<number | null>(null);
-  const prevChapterRef = useRef(chapterIndexOfScene(currentScene, chapters));
-  useEffect(() => {
-    const idx = chapterIndexOfScene(currentScene, chapters);
-    if (idx > 0 && idx !== prevChapterRef.current && direction > 0) {
-      setInterstitialIdx(idx);
-    }
-    prevChapterRef.current = idx;
-  }, [currentScene, chapters, direction]);
 
   // ─── Persistance de la progression ───
   useEffect(() => {
@@ -133,12 +113,10 @@ const Onboarding = () => {
   }, []);
 
   const goNext = useCallback(() => {
-    setDirection(1);
     setStep((s) => Math.min(s + 1, flow.length - 1));
   }, [flow.length]);
 
   const goBack = useCallback(() => {
-    setDirection(-1);
     setStep((s) => Math.max(0, s - 1));
   }, []);
 
@@ -155,7 +133,6 @@ const Onboarding = () => {
     (type: OrgType) => {
       setOrgType(type);
       markCompleted('orgtype');
-      setDirection(1);
       setStep(1);
     },
     [markCompleted]
@@ -173,7 +150,6 @@ const Onboarding = () => {
     async (specs: string[]) => {
       if (orgCreateInFlightRef.current) return; // double clic pendant la création
       setSpecializations(specs);
-      setDirection(1);
 
       if (orgType === 'freelance' && orgDetailsData) {
         orgCreateInFlightRef.current = true;
@@ -281,34 +257,11 @@ const Onboarding = () => {
       { key: 'org', label: 'Espace de travail créé', done: orgCreated || !!organization },
     ];
     if (flow.includes('specializations')) {
-      items.push({ key: 'activity', label: 'Activité & secteurs renseignés', done: completedScenes.has('specializations') });
+      items.push({ key: 'activity', label: 'Activité et secteurs renseignés', done: completedScenes.has('specializations') });
     }
     items.push({ key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings/account/connections' });
     return items;
   }, [orgCreated, organization, completedScenes, flow, linkedInConnected]);
-
-  // ─── Transitions de scène ───
-  const variants = reduceMotion
-    ? {
-        enter: () => ({ opacity: 0 }),
-        center: { opacity: 1 },
-        exit: () => ({ opacity: 0 }),
-      }
-    : {
-        enter: (dir: number) => ({
-          x: dir > 0 ? 90 : -90,
-          opacity: 0,
-          scale: 0.96,
-          filter: 'blur(8px)',
-        }),
-        center: { x: 0, opacity: 1, scale: 1, filter: 'blur(0px)' },
-        exit: (dir: number) => ({
-          x: dir > 0 ? -90 : 90,
-          opacity: 0,
-          scale: 0.96,
-          filter: 'blur(8px)',
-        }),
-      };
 
   // F3 : un utilisateur qui a déjà un espace et arrive à l'ENTRÉE du tunnel
   // (step 0, pas de progression en cours) sans `?new=1` n'a rien à faire ici →
@@ -324,8 +277,8 @@ const Onboarding = () => {
   if (step === 0 && !isExplicitNewWorkspace && !tunnelStartedRef.current) {
     if (isOrgLoading) {
       return (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="w-6 h-6 border border-border border-t-foreground rounded-full animate-spin" />
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <Spinner size="lg" label="Chargement de votre espace" />
         </div>
       );
     }
@@ -346,61 +299,44 @@ const Onboarding = () => {
         <InvitationBanner />
       </div>
 
-      <div className="w-full relative" style={{ minHeight: 340 }}>
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.div
-            key={step}
-            custom={direction}
-            variants={variants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full"
-          >
-            {currentScene === 'orgtype' && (
-              <SceneOrgType onSelect={handleOrgTypeSelected} onBack={() => {}} />
-            )}
-            {currentScene === 'orgdetails' && orgType && (
-              <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
-            )}
-            {currentScene === 'specializations' && (
-              <SceneSpecializations
-                onSubmit={handleSpecializationsSubmitted}
-                onBack={goBack}
-                savedSpecializations={specializations}
-              />
-            )}
-            {currentScene === 'org' && orgType && (
-              <SceneOrganization orgType={orgType} onComplete={handleOrgCreated} onBack={goBack} allowSecondWorkspace={isExplicitNewWorkspace} />
-            )}
-            {/* Pas de retour : la scène précédente crée l'espace de travail */}
-            {currentScene === 'linkedin' && (
-              <SceneLinkedIn onNext={handleLinkedInNext} />
-            )}
-            {currentScene === 'launch' && (
-              <SceneLaunch
-                items={launchItems}
-                scorePercent={scorePercent}
-                orgName={organization?.name}
-                onFinish={handleFinish}
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
+      <div className="w-full min-h-80">
+        {/* Changement de scène : un fondu d'entrée de 200 ms, rien d'autre (01-direction.md, § 7). */}
+        <motion.div
+          key={step}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="w-full"
+        >
+          {currentScene === 'orgtype' && (
+            <SceneOrgType onSelect={handleOrgTypeSelected} onBack={() => {}} />
+          )}
+          {currentScene === 'orgdetails' && orgType && (
+            <SceneOrgDetails orgType={orgType} onSubmit={handleOrgDetailsSubmitted} onBack={goBack} />
+          )}
+          {currentScene === 'specializations' && (
+            <SceneSpecializations
+              onSubmit={handleSpecializationsSubmitted}
+              onBack={goBack}
+              savedSpecializations={specializations}
+            />
+          )}
+          {currentScene === 'org' && orgType && (
+            <SceneOrganization orgType={orgType} onComplete={handleOrgCreated} onBack={goBack} allowSecondWorkspace={isExplicitNewWorkspace} />
+          )}
+          {/* Pas de retour : la scène précédente crée l'espace de travail */}
+          {currentScene === 'linkedin' && (
+            <SceneLinkedIn onNext={handleLinkedInNext} />
+          )}
+          {currentScene === 'launch' && (
+            <SceneLaunch
+              items={launchItems}
+              orgName={organization?.name}
+              onFinish={handleFinish}
+            />
+          )}
+        </motion.div>
       </div>
-
-      {/* Interstitiel de chapitre */}
-      <AnimatePresence>
-        {interstitialIdx !== null && chapters[interstitialIdx] && (
-          <ChapterInterstitial
-            chapter={chapters[interstitialIdx]}
-            chapterIndex={interstitialIdx}
-            totalChapters={chapters.length}
-            onDismiss={() => setInterstitialIdx(null)}
-          />
-        )}
-      </AnimatePresence>
     </OnboardingShell>
   );
 };

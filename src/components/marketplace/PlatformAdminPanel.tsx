@@ -4,9 +4,12 @@
  * marketplace-admin, action whoami). Valide ou suspend une organisation.
  */
 
-import React, { useState } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import React, { useId, useState } from 'react';
+import { Inbox, RefreshCw } from 'lucide-react';
 import { usePlatformAdmin, type PlatformPartner } from '@/hooks/useMarketplace';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -16,12 +19,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { orgTypeLabel, formatDate } from './huntLabels';
 import { ErrorBox } from './ErrorBox';
+import { RowsSkeleton } from './MarketplaceSkeleton';
 
-const PARTNER_STATUS_LABELS: Record<string, string> = {
-  inactive: 'Inactif',
-  pending_validation: 'En attente',
-  active: 'Actif',
-  suspended: 'Suspendu',
+const PARTNER_STATUS: Record<string, { label: string; variant: 'muted' | 'warning' | 'success' | 'danger' }> = {
+  inactive: { label: 'Inactif', variant: 'muted' },
+  pending_validation: { label: 'En attente', variant: 'warning' },
+  active: { label: 'Actif', variant: 'success' },
+  suspended: { label: 'Suspendu', variant: 'danger' },
 };
 
 type PendingAction = { kind: 'validate' | 'suspend'; partner: PlatformPartner } | null;
@@ -29,6 +33,7 @@ type PendingAction = { kind: 'validate' | 'suspend'; partner: PlatformPartner } 
 export const PlatformAdminPanel: React.FC = () => {
   const { isPlatformAdmin, isLoading, isError, errorText, partners, refresh, validate, suspend, isMutating } = usePlatformAdmin();
   const [pending, setPending] = useState<PendingAction>(null);
+  const titleId = useId();
 
   if (!isPlatformAdmin) return null;
 
@@ -45,28 +50,22 @@ export const PlatformAdminPanel: React.FC = () => {
   };
 
   return (
-    <section className="mt-12 pt-8 border-t border-border">
-      <div className="flex items-center justify-between mb-4">
+    <section aria-labelledby={titleId} className="mt-12 border-t border-border pt-8">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Administration du cercle</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <h2 id={titleId} className="text-md font-semibold text-foreground">Administration du cercle</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Demandes d'adhésion des cabinets et indépendants. Visible de l'équipe Konekt seulement.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => { refresh().catch(() => undefined); }}
-          disabled={isLoading}
-          className="h-8 px-3 border border-border text-xs font-medium uppercase tracking-wider inline-flex items-center gap-1.5 hover:bg-muted"
-        >
-          <RefreshCw className="w-3 h-3" /> Actualiser
-        </button>
+        <Button variant="outline" size="sm" onClick={() => { refresh().catch(() => undefined); }} disabled={isLoading} className="min-h-11 md:min-h-0">
+          <RefreshCw aria-hidden="true" />
+          Actualiser la liste
+        </Button>
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-10">
-          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-        </div>
+        <RowsSkeleton label="Chargement des demandes" />
       ) : isError ? (
         <ErrorBox
           title="Impossible de charger les demandes."
@@ -74,65 +73,74 @@ export const PlatformAdminPanel: React.FC = () => {
           onRetry={() => { refresh().catch(() => undefined); }}
         />
       ) : partners.length === 0 ? (
-        <p className="text-xs text-muted-foreground border border-dashed border-border p-6 text-center">
-          Aucune demande pour le moment.
-        </p>
+        <EmptyState
+          variant="compact"
+          icon={Inbox}
+          title="Aucune demande pour le moment"
+          description="Les demandes des cabinets et des indépendants apparaîtront ici."
+        />
       ) : (
-        <div className="border border-border overflow-x-auto">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="text-[10px] uppercase tracking-wider">Organisation</TableHead>
-                <TableHead className="text-[10px] uppercase tracking-wider">Type</TableHead>
-                <TableHead className="text-[10px] uppercase tracking-wider">Demandeur</TableHead>
-                <TableHead className="text-[10px] uppercase tracking-wider">Date</TableHead>
-                <TableHead className="text-[10px] uppercase tracking-wider">Statut</TableHead>
-                <TableHead className="text-[10px] uppercase tracking-wider text-right">Membres</TableHead>
-                <TableHead className="text-[10px] uppercase tracking-wider text-right">Actions</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Organisation</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Demandeur</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Statut</TableHead>
+                <TableHead className="text-right">Membres</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {partners.map((p) => (
-                <TableRow key={p.organization_id}>
-                  <TableCell className="text-sm font-medium">{p.organization_name || p.organization_id}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{orgTypeLabel(p.org_type)}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{p.requested_by_name || ''}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDate(p.requested_at)}
-                    {p.status === 'active' && p.validated_at ? ` (validé le ${formatDate(p.validated_at)})` : ''}
-                  </TableCell>
-                  <TableCell>
-                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-border text-muted-foreground">
-                      {PARTNER_STATUS_LABELS[p.status] ?? p.status}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-xs text-right tabular-nums">{p.member_count}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex items-center gap-2">
-                      {p.status !== 'active' && (
-                        <button
-                          type="button"
-                          onClick={() => setPending({ kind: 'validate', partner: p })}
-                          disabled={isMutating}
-                          className="h-7 px-3 border border-border text-[11px] font-medium uppercase tracking-wider bg-foreground text-background disabled:opacity-50"
-                        >
-                          Valider
-                        </button>
-                      )}
-                      {p.status !== 'suspended' && (
-                        <button
-                          type="button"
-                          onClick={() => setPending({ kind: 'suspend', partner: p })}
-                          disabled={isMutating}
-                          className="h-7 px-3 border border-border text-[11px] font-medium uppercase tracking-wider hover:bg-muted disabled:opacity-50"
-                        >
-                          Suspendre
-                        </button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {partners.map((p) => {
+                const status = PARTNER_STATUS[p.status] ?? { label: p.status, variant: 'muted' as const };
+                const name = p.organization_name || 'cette organisation';
+                return (
+                  <TableRow key={p.organization_id}>
+                    <TableCell className="text-sm font-medium">{p.organization_name || p.organization_id}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{orgTypeLabel(p.org_type)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{p.requested_by_name || ''}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(p.requested_at)}
+                      {p.status === 'active' && p.validated_at ? ` (validé le ${formatDate(p.validated_at)})` : ''}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={status.variant}>{status.label}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">{p.member_count}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="inline-flex items-center gap-2">
+                        {p.status !== 'active' && (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => setPending({ kind: 'validate', partner: p })}
+                            disabled={isMutating}
+                            aria-label={`Valider ${name}`}
+                            className="min-h-11 md:min-h-0"
+                          >
+                            Valider
+                          </Button>
+                        )}
+                        {p.status !== 'suspended' && (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => setPending({ kind: 'suspend', partner: p })}
+                            disabled={isMutating}
+                            aria-label={`Suspendre ${name}`}
+                            className="min-h-11 md:min-h-0"
+                          >
+                            Suspendre
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -156,7 +164,7 @@ export const PlatformAdminPanel: React.FC = () => {
               className={pending?.kind === 'suspend' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
               onClick={confirm}
             >
-              {pending?.kind === 'validate' ? 'Valider' : 'Suspendre'}
+              {pending?.kind === 'validate' ? 'Valider le partenaire' : 'Suspendre le partenaire'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

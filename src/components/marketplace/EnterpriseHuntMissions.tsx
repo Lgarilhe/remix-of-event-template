@@ -5,67 +5,70 @@
  * les recruteurs acceptés.
  */
 
-import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Target, Users, Clock, Calendar, ArrowRight } from 'lucide-react';
+import React, { useId, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, ArrowRight, Calendar, Clock, Target, Users } from 'lucide-react';
 import { useMyHuntMissions, type MyHuntMission } from '@/hooks/useMarketplace';
-import { huntStatusLabel, formatDate } from './huntLabels';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { huntStatusLabel, huntStatusVariant, formatDate } from './huntLabels';
 import { ErrorBox } from './ErrorBox';
+import { RowsSkeleton } from './MarketplaceSkeleton';
 
 const OPEN_STATUSES = new Set(['published', 'in_progress', 'filled', 'cancelled']);
 
-const MissionRow: React.FC<{ mission: MyHuntMission; onOpen: () => void }> = ({ mission: m, onOpen }) => {
+const MissionRow: React.FC<{ mission: MyHuntMission }> = ({ mission: m }) => {
   const max = m.hunt_max_recruiters ?? 3;
   const deadlinePassed = !!m.hunt_deadline
     && m.hunt_deadline.slice(0, 10) < new Date().toISOString().slice(0, 10)
     && (m.hunt_status === 'published' || m.hunt_status === 'in_progress');
 
   return (
-    <div className="p-4 flex items-center gap-4 flex-wrap">
-      <div className="flex-1 min-w-[200px]">
-        <p className="text-sm font-bold uppercase tracking-wider text-foreground">
-          {m.job_title || m.name}
-        </p>
-        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
+      <div className="min-w-52 flex-1">
+        <p className="text-md font-semibold text-foreground">{m.job_title || m.name}</p>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
           {m.client_name && <span>{m.client_name}</span>}
           {m.hunt_bounty_percent != null ? <span>{m.hunt_bounty_percent} % du salaire annuel</span> : null}
           {m.hunt_deadline && (
             <span className="flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> {formatDate(m.hunt_deadline)}
+              <Calendar className="h-3 w-3" aria-hidden="true" />
+              <span className="sr-only">Date limite : </span>
+              {formatDate(m.hunt_deadline)}
             </span>
           )}
         </p>
         {deadlinePassed && (
-          <p className="text-xs text-warning mt-1">
+          <p className="mt-1 flex items-center gap-1 text-xs text-warning">
+            <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
             Date limite dépassée : la mission n'est plus proposée aux recruteurs.
           </p>
         )}
       </div>
-      <span className="px-2 py-0.5 text-xs font-bold uppercase tracking-wider border border-border text-muted-foreground">
-        {huntStatusLabel(m.hunt_status)}
-      </span>
+      <Badge variant={huntStatusVariant(m.hunt_status)}>{huntStatusLabel(m.hunt_status)}</Badge>
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Clock className="w-3 h-3" />
+        <Clock className="h-3 w-3" aria-hidden="true" />
         {m.pending_count} en attente
       </span>
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Users className="w-3 h-3" />
+        <Users className="h-3 w-3" aria-hidden="true" />
         {m.accepted_count}/{max} recruteurs
       </span>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="h-8 px-3 border border-border text-xs font-medium uppercase tracking-wider bg-foreground text-background inline-flex items-center gap-1"
-      >
-        Gérer <ArrowRight className="w-3 h-3" />
-      </button>
-    </div>
+      <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
+        <Link to={`/missions/${m.id}?tab=config`}>
+          Gérer la mission
+          <ArrowRight aria-hidden="true" />
+        </Link>
+      </Button>
+    </li>
   );
 };
 
 export const EnterpriseHuntMissions: React.FC = () => {
-  const navigate = useNavigate();
   const { missions, isLoading, isError, errorText, refetch } = useMyHuntMissions(true);
+  const proposedId = useId();
+  const draftsId = useId();
 
   const { proposed, drafts } = useMemo(() => ({
     proposed: missions.filter((m) => OPEN_STATUSES.has(m.hunt_status ?? '')),
@@ -74,15 +77,11 @@ export const EnterpriseHuntMissions: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-          Proposées aux recruteurs
-        </h2>
+      <section aria-labelledby={proposedId}>
+        <h2 id={proposedId} className="eyebrow mb-3">Proposées aux recruteurs</h2>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-5 h-5 border border-border border-t-foreground animate-spin" />
-          </div>
+          <RowsSkeleton label="Chargement de vos missions" />
         ) : isError ? (
           <ErrorBox
             title="Impossible de charger vos missions publiées."
@@ -90,34 +89,34 @@ export const EnterpriseHuntMissions: React.FC = () => {
             onRetry={refetch}
           />
         ) : proposed.length === 0 ? (
-          <div className="border border-dashed border-border p-12 text-center">
-            <Target className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-            <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Aucune mission publiée</h3>
-            <p className="text-xs text-muted-foreground">
-              Activez le mode chasse dans la configuration d'une mission, puis publiez-la pour la
-              proposer aux recruteurs partenaires.
-            </p>
-          </div>
+          <EmptyState
+            icon={Target}
+            title="Aucune mission publiée"
+            description="Activez le mode chasse dans la configuration d'une mission, puis publiez-la pour la proposer aux recruteurs partenaires."
+            action={
+              <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
+                <Link to="/missions">Ouvrir mes missions</Link>
+              </Button>
+            }
+          />
         ) : (
-          <div className="border border-border divide-y divide-border">
+          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
             {proposed.map((m) => (
-              <MissionRow key={m.id} mission={m} onOpen={() => navigate(`/missions/${m.id}?tab=config`)} />
+              <MissionRow key={m.id} mission={m} />
             ))}
-          </div>
+          </ul>
         )}
-      </div>
+      </section>
 
       {drafts.length > 0 && (
-        <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-            En préparation
-          </h2>
-          <div className="border border-border divide-y divide-border">
+        <section aria-labelledby={draftsId}>
+          <h2 id={draftsId} className="eyebrow mb-3">En préparation</h2>
+          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
             {drafts.map((m) => (
-              <MissionRow key={m.id} mission={m} onOpen={() => navigate(`/missions/${m.id}?tab=config`)} />
+              <MissionRow key={m.id} mission={m} />
             ))}
-          </div>
-        </div>
+          </ul>
+        </section>
       )}
     </div>
   );

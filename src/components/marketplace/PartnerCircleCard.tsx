@@ -5,19 +5,28 @@
  * Affichée sur la page Marketplace (l'onglet Marketplace des Paramètres est retiré au lot 3).
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Shield, Loader2, X, Clock, Ban, CheckCircle2, ArrowRight, AlertTriangle } from 'lucide-react';
+import { Shield, X, Clock, Ban, CheckCircle2, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { usePartnerState } from '@/hooks/useMarketplace';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { IconTile } from '@/components/ui/IconTile';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { formatDate } from './huntLabels';
+import { ErrorBox } from './ErrorBox';
+
+/**
+ * Contact du cercle quand l'accès est suspendu (F-31). Adresse personnelle en
+ * attendant une adresse d'équipe : à remplacer ici seulement.
+ */
+const PARTNER_CIRCLE_CONTACT_EMAIL = 'l.garilhe@konekt.fr';
 
 interface PartnerProfile {
   recruiter_headline: string | null;
@@ -26,16 +35,16 @@ interface PartnerProfile {
   linkedin_url: string | null;
 }
 
-const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <label className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-    {children}
-  </label>
-);
-
 export const PartnerCircleCard: React.FC = () => {
   const { state, isLoading, isError, errorText, refetch, canRequest, requestPartner, isRequesting } = usePartnerState();
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
+  const titleId = useId();
+  const headlineId = useId();
+  const bioId = useId();
+  const specsId = useId();
+  const specsLabelId = useId();
+  const linkedinId = useId();
 
   // Profil recruteur de l'utilisateur : pré-remplit le formulaire et sert
   // d'affichage en lecture une fois la demande envoyée. La clé porte
@@ -118,26 +127,29 @@ export const PartnerCircleCard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 flex items-center justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      <div className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-6" aria-busy="true">
+        <span className="sr-only" role="status">Chargement de votre statut partenaire</span>
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-9 w-9 rounded-lg" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-64 max-w-full" />
+          </div>
+        </div>
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-4 w-2/3" />
       </div>
     );
   }
 
   if (isError || !state) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 space-y-3">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm text-foreground">Impossible de charger votre statut partenaire.</p>
-            {errorText && <p className="text-xs text-muted-foreground mt-1">{errorText}</p>}
-          </div>
-        </div>
-        <Button size="sm" variant="outline" className="rounded-full" onClick={refetch}>
-          Réessayer
-        </Button>
-      </div>
+      <ErrorBox
+        title="Impossible de charger votre statut partenaire."
+        detail={errorText ?? 'Vérifiez votre connexion, puis réessayez.'}
+        onRetry={refetch}
+      />
     );
   }
 
@@ -147,20 +159,20 @@ export const PartnerCircleCard: React.FC = () => {
   const readOnly = status === 'active' || status === 'suspended' || !canRequest;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 sm:p-6 space-y-5">
+    <section aria-labelledby={titleId} className="space-y-5 rounded-xl border border-border bg-card p-4 sm:p-6">
       <div className="flex items-center gap-3">
-        <IconTile icon={Shield} size="md" />
+        <IconTile icon={Shield} size="md" aria-hidden="true" />
         <div>
-          <h3 className="font-display text-sm font-bold tracking-tight text-foreground">Cercle partenaires</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <h2 id={titleId} className="text-md font-semibold text-foreground">Cercle partenaires</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Missions confiées par des entreprises aux recruteurs validés par Konekt.
           </p>
         </div>
       </div>
 
       {status === 'active' ? (
-        <div className="rounded-lg border border-success/30 bg-success/10 p-4 flex items-start gap-3">
-          <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-lg border border-success/25 bg-success-muted p-4">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
           <div className="space-y-2">
             <p className="text-sm text-foreground">
               Votre organisation fait partie du cercle partenaires
@@ -168,15 +180,15 @@ export const PartnerCircleCard: React.FC = () => {
             </p>
             <Link
               to="/marketplace"
-              className="inline-flex items-center gap-1 text-xs font-medium text-foreground underline underline-offset-4"
+              className="inline-flex items-center gap-1 rounded-md text-sm font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Voir les missions ouvertes <ArrowRight className="w-3 h-3" />
+              Voir les missions ouvertes <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </div>
         </div>
       ) : (
         <>
-          <div className="space-y-2 text-sm text-foreground/90 leading-relaxed">
+          <div className="space-y-2 text-sm leading-relaxed text-foreground-secondary">
             <p>
               Des entreprises publient des missions de recrutement sur Konekt. Les recruteurs du cercle
               voient ces missions et travaillent dessus avec l'entreprise : recherche, scoring, pipeline.
@@ -192,24 +204,27 @@ export const PartnerCircleCard: React.FC = () => {
           </div>
 
           {status === 'pending_validation' && (
-            <div className="rounded-lg border border-warning/30 bg-warning/10 p-4 flex items-start gap-3">
-              <Clock className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 rounded-lg border border-warning/25 bg-warning-muted p-4">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
               <p className="text-sm text-foreground">
                 Demande envoyée{state.requested_at ? ` le ${formatDate(state.requested_at)}` : ''}.
                 {' '}L'équipe Konekt examine chaque demande avant d'ouvrir l'accès. Vous pouvez encore
-                modifier votre fiche ci dessous.
+                modifier votre fiche ci-dessous.
               </p>
             </div>
           )}
 
           {status === 'suspended' && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 flex items-start gap-3">
-              <Ban className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 rounded-lg border border-danger/25 bg-danger-muted p-4">
+              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
               <p className="text-sm text-foreground">
                 Votre accès au cercle est suspendu : vous ne voyez plus les missions ouvertes et ne
                 pouvez plus postuler. Vos missions en cours restent accessibles depuis Missions.
                 {' '}
-                <a href="mailto:l.garilhe@konekt.fr" className="underline underline-offset-4">
+                <a
+                  href={`mailto:${PARTNER_CIRCLE_CONTACT_EMAIL}`}
+                  className="rounded-sm font-medium underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   Écrivez à l'équipe Konekt
                 </a>{' '}
                 pour comprendre cette décision.
@@ -218,26 +233,29 @@ export const PartnerCircleCard: React.FC = () => {
           )}
 
           {status === 'inactive' && !canRequest && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Seul un propriétaire ou un administrateur de votre organisation peut envoyer cette demande.
             </p>
           )}
 
           {status !== 'suspended' && (
-            <form onSubmit={handleSubmit} className="space-y-4 pt-4 border-t border-border">
-              <div>
-                <FieldLabel>Titre</FieldLabel>
+            <form onSubmit={handleSubmit} className="space-y-4 border-t border-border pt-4">
+              <div className="space-y-2">
+                <Label htmlFor={headlineId}>Titre</Label>
                 <Input
+                  id={headlineId}
                   value={headline}
                   onChange={(e) => setHeadline(e.target.value)}
                   placeholder="Recruteur tech senior, 8 ans en cabinet"
                   readOnly={readOnly}
                   maxLength={120}
+                  className="h-11 md:h-9"
                 />
               </div>
-              <div>
-                <FieldLabel>Présentation</FieldLabel>
+              <div className="space-y-2">
+                <Label htmlFor={bioId}>Présentation</Label>
                 <Textarea
+                  id={bioId}
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   placeholder="Vos secteurs, vos méthodes, vos derniers placements."
@@ -246,33 +264,42 @@ export const PartnerCircleCard: React.FC = () => {
                   maxLength={1500}
                 />
               </div>
-              <div>
-                <FieldLabel>Spécialisations</FieldLabel>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {specializations.map((s) => (
-                    <span
-                      key={s}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-muted/50 text-xs text-foreground"
-                    >
-                      {s}
-                      {!readOnly && (
-                        <button
-                          type="button"
-                          onClick={() => removeSpecialization(s)}
-                          className="text-muted-foreground hover:text-foreground"
-                          aria-label={`Retirer ${s}`}
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </span>
-                  ))}
-                  {readOnly && specializations.length === 0 && (
-                    <span className="text-xs text-muted-foreground">Aucune spécialisation renseignée.</span>
-                  )}
-                </div>
+              <div className="space-y-2">
+                {readOnly ? (
+                  <p id={specsLabelId} className="text-sm font-medium leading-none">Spécialisations</p>
+                ) : (
+                  <Label htmlFor={specsId} id={specsLabelId}>Spécialisations</Label>
+                )}
+                {(specializations.length > 0 || readOnly) && (
+                  <ul aria-labelledby={specsLabelId} className="flex flex-wrap gap-1.5">
+                    {specializations.map((s) => (
+                      <li
+                        key={s}
+                        className="inline-flex items-center gap-1 rounded-full border border-border bg-muted py-0.5 pl-2.5 pr-1 text-xs text-foreground"
+                      >
+                        {s}
+                        {!readOnly && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => removeSpecialization(s)}
+                            aria-label={`Retirer ${s}`}
+                            className="relative h-5 w-5 rounded-full text-muted-foreground after:absolute after:-inset-3 after:content-[''] hover:text-foreground [&_svg]:size-3"
+                          >
+                            <X aria-hidden="true" />
+                          </Button>
+                        )}
+                      </li>
+                    ))}
+                    {readOnly && specializations.length === 0 && (
+                      <li className="text-sm text-muted-foreground">Aucune spécialisation renseignée.</li>
+                    )}
+                  </ul>
+                )}
                 {!readOnly && (
                   <Input
+                    id={specsId}
                     value={specInput}
                     onChange={(e) => setSpecInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -284,24 +311,26 @@ export const PartnerCircleCard: React.FC = () => {
                     onBlur={addSpecialization}
                     placeholder="Ajoutez une spécialisation puis appuyez sur Entrée"
                     maxLength={60}
+                    className="h-11 md:h-9"
                   />
                 )}
               </div>
-              <div>
-                <FieldLabel>URL LinkedIn</FieldLabel>
+              <div className="space-y-2">
+                <Label htmlFor={linkedinId}>Adresse du profil LinkedIn</Label>
                 <Input
+                  id={linkedinId}
                   value={linkedinUrl}
                   onChange={(e) => setLinkedinUrl(e.target.value)}
                   placeholder="https://www.linkedin.com/in/votre-profil"
                   readOnly={readOnly}
                   inputMode="url"
+                  className="h-11 md:h-9"
                 />
               </div>
 
               {!readOnly && (
-                <div className="flex items-center justify-between gap-3 flex-wrap pt-2">
-                  <Button type="submit" size="sm" className="rounded-full" disabled={isRequesting}>
-                    {isRequesting && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <Button type="submit" variant="primary" loading={isRequesting} className="min-h-11 md:min-h-0">
                     {status === 'pending_validation' ? 'Mettre à jour ma demande' : 'Demander à rejoindre le cercle'}
                   </Button>
                 </div>
@@ -310,7 +339,7 @@ export const PartnerCircleCard: React.FC = () => {
           )}
         </>
       )}
-    </div>
+    </section>
   );
 };
 

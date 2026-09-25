@@ -15,8 +15,14 @@ interface ErrorBoxProps {
   onRetry?: () => void;
 }
 
-export const ErrorBox: React.FC<ErrorBoxProps> = ({ title, detail, onRetry }) => (
-  <ErrorState variant="compact" title={title} description={detail ?? undefined} onRetry={onRetry} />
-);
+const sameSentence = (a: string, b: string) =>
+  a.trim().replace(/[.\s]+$/, '').toLowerCase() === b.trim().replace(/[.\s]+$/, '').toLowerCase();
+
+export const ErrorBox: React.FC<ErrorBoxProps> = ({ title, detail, onRetry }) => {
+  // Le message de repli des hooks reprend souvent le titre mot pour mot : on dit
+  // alors quoi faire plutôt que de répéter ce qui a échoué.
+  const description = !detail ? undefined : sameSentence(detail, title) ? 'Vérifiez votre connexion, puis réessayez.' : detail;
+  return <ErrorState variant="compact" title={title} description={description} onRetry={onRetry} />;
+};
 
 export default ErrorBox;

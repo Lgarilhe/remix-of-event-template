@@ -5,18 +5,20 @@
  * pour une entreprise ou sans mission partenaire.
  */
 
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Building2, Handshake } from 'lucide-react';
+import React, { useId } from 'react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, Building2, Handshake, RefreshCw } from 'lucide-react';
 import { useOrganization } from '@/hooks/useOrganization';
 import { usePartnerMissions } from '@/hooks/useMarketplace';
-import { huntStatusLabel } from './huntLabels';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { huntStatusLabel, huntStatusVariant } from './huntLabels';
 
 export const PartnerMissionsSection: React.FC = () => {
-  const navigate = useNavigate();
   const { orgType } = useOrganization();
   const isRecruiterOrg = orgType === 'agency' || orgType === 'freelance';
   const { missions, isError, refetch } = usePartnerMissions(isRecruiterOrg);
+  const titleId = useId();
 
   if (!isRecruiterOrg) return null;
 
@@ -24,15 +26,13 @@ export const PartnerMissionsSection: React.FC = () => {
   // le partenaire perdrait l'accès à ses missions sans le savoir.
   if (isError) {
     return (
-      <div className="mb-6 flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+      <div role="alert" className="mb-6 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
         <span>Vos missions partenaires n'ont pas pu être chargées.</span>
-        <button
-          type="button"
-          onClick={refetch}
-          className="h-7 px-2.5 border border-border text-[11px] font-medium uppercase tracking-wider hover:bg-muted"
-        >
+        <Button variant="outline" size="xs" onClick={refetch} className="min-h-11 md:min-h-0">
+          <RefreshCw aria-hidden="true" />
           Réessayer
-        </button>
+        </Button>
       </div>
     );
   }
@@ -40,47 +40,43 @@ export const PartnerMissionsSection: React.FC = () => {
   if (missions.length === 0) return null;
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-3">
-        <Handshake className="w-4 h-4 text-muted-foreground" />
+    <section aria-labelledby={titleId} className="mb-6">
+      <div className="mb-3 flex items-center gap-2">
+        <Handshake className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <div>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
-            Missions partenaires
-          </p>
-          <p className="text-[10px] text-muted-foreground/70">
+          <h2 id={titleId} className="eyebrow">Missions partenaires</h2>
+          <p className="text-xs text-muted-foreground">
             {missions.length} mission{missions.length > 1 ? 's' : ''} confiée{missions.length > 1 ? 's' : ''} par une entreprise
           </p>
         </div>
       </div>
-      <div className="space-y-2">
+      <ul className="space-y-2">
         {missions.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => navigate(`/missions/${m.id}`)}
-            className="w-full text-left bg-card border border-border rounded-xl p-4 transition-all duration-200 hover:border-foreground/30 hover:shadow-md hover:-translate-y-px"
-          >
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <h3 className="font-semibold text-[14px] truncate">{m.job_title || m.name}</h3>
-              <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                {huntStatusLabel(m.hunt_status)}
-              </span>
-            </div>
-            <p className="text-[12px] text-muted-foreground inline-flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1">
-                <Building2 className="w-3 h-3" /> {m.client_name || m.organization_name || 'Entreprise'}
-              </span>
-              {m.hunt_bounty_percent ? (
-                <>
-                  <span className="text-muted-foreground/40">·</span>
-                  <span>{m.hunt_bounty_percent} % du salaire annuel</span>
-                </>
-              ) : null}
-            </p>
-          </button>
+          <li key={m.id}>
+            <Link
+              to={`/missions/${m.id}`}
+              className="block rounded-xl border border-border bg-card p-4 ring-offset-background transition-colors duration-150 hover:border-border-strong hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-md font-semibold text-foreground">{m.job_title || m.name}</h3>
+                <Badge variant={huntStatusVariant(m.hunt_status)}>{huntStatusLabel(m.hunt_status)}</Badge>
+              </div>
+              <p className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <Building2 className="h-3 w-3" aria-hidden="true" /> {m.client_name || m.organization_name || 'Entreprise'}
+                </span>
+                {m.hunt_bounty_percent ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{m.hunt_bounty_percent} % du salaire annuel</span>
+                  </>
+                ) : null}
+              </p>
+            </Link>
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </section>
   );
 };
 
