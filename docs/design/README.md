@@ -46,7 +46,7 @@ La session « Audit complet du dépôt » refond l'expérience mission, la barre
 | 4 | Tableau de bord | fait |
 | 5 | Tâches et agenda | fait |
 | 6 | Messagerie et séquences | fait |
-| 7 | Pipeline global, scorecard, coaching, assistant IA | socle et assistant faits ; pipeline, scorecard et coaching en cours |
+| 7 | Pipeline global, scorecard, coaching, assistant IA | socle, assistant, scorecard et coaching faits ; pipeline global en cours |
 | 8 | Pages publiques et portails | fait |
 | 9 | Onboarding, invitation, qualification, marketplace | fait |
 | 10 | Passe texte | à faire |

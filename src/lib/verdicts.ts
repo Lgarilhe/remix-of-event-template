@@ -27,10 +27,11 @@ export const HIRING_VERDICTS: Record<string, VerdictMeta> = {
   pending: { label: 'En attente', tone: 'muted' },
 };
 
-/** Clés du compte rendu du coaching (GO, NO_GO, MAYBE). */
+/** Clés du compte rendu de l'assistant d'entretien (GO, NO_GO, A_CREUSER, MAYBE). */
 const VERDICT_ALIASES: Record<string, string> = {
   go: 'yes',
   no_go: 'no',
+  a_creuser: 'maybe',
 };
 
 export function hiringVerdictMeta(value: string | null | undefined): VerdictMeta | null {
@@ -56,27 +57,31 @@ export function qualificationVerdictMeta(value: string | null | undefined): Verd
 }
 
 /**
- * Recommandation de l'IA après scoring : clés de l'assistant (`shortlist`,
- * `maybe`, `skip`) et verdicts du moteur de scoring (`STRONG_MATCH` à
- * `NO_MATCH`, voir `getRecommendation` dans score-profile-job).
+ * Recommandation de l'IA après scoring, en trois mots comme le barème du
+ * score (src/lib/scoreScale.ts) : « Recommandé » à partir de 65, « À évaluer »
+ * de 50 à 64, « Peu adapté » sous 50.
  */
 export const AI_RECOMMENDATIONS: Record<string, VerdictMeta> = {
   shortlist: { label: 'Recommandé', tone: 'success' },
   maybe: { label: 'À évaluer', tone: 'warning' },
   skip: { label: 'Peu adapté', tone: 'muted' },
-  strong_match: { label: 'Très bonne adéquation', tone: 'success' },
-  good_match: { label: 'Bonne adéquation', tone: 'success' },
-  possible_match: { label: 'Adéquation possible', tone: 'warning' },
-  weak_match: { label: 'Adéquation faible', tone: 'muted' },
-  no_match: { label: 'Pas d’adéquation', tone: 'muted' },
 };
 
-/** Anciennes clés de l'assistant et du scoring de la qualification. */
+/**
+ * Autres clés rencontrées : celles de l'assistant (go, no_go) et les verdicts
+ * du moteur de scoring (`getRecommendation` dans score-profile-job : GOOD_MATCH
+ * à 65, POSSIBLE_MATCH à 50, les mêmes seuils que le barème).
+ */
 const AI_RECOMMENDATION_ALIASES: Record<string, string> = {
   go: 'shortlist',
   no_go: 'skip',
-  potential: 'possible_match',
-  weak: 'weak_match',
+  strong_match: 'shortlist',
+  good_match: 'shortlist',
+  possible_match: 'maybe',
+  potential: 'maybe',
+  weak_match: 'skip',
+  weak: 'skip',
+  no_match: 'skip',
 };
 
 export function aiRecommendationMeta(value: string | null | undefined): VerdictMeta | null {

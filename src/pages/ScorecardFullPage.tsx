@@ -38,29 +38,6 @@ type SidebarTab = 'candidate' | 'job';
 type MobilePane = 'sidebar' | 'scorecard';
 type LoadState = 'loading' | 'error' | 'not_found' | 'ready';
 
-/**
- * Clés historiques de la recommandation de l'IA (moteur de scoring : go, maybe,
- * skip ; anciennes données : strong_match, potential, weak…) ramenées à celles
- * de src/lib/verdicts.ts. Une valeur inconnue ne s'affiche jamais brute.
- */
-const AI_RECOMMENDATION_ALIASES: Record<string, string> = {
-  go: 'shortlist',
-  strong_match: 'shortlist',
-  good_match: 'shortlist',
-  possible_match: 'maybe',
-  potential: 'maybe',
-  weak_match: 'skip',
-  weak: 'skip',
-  no_match: 'skip',
-  no_go: 'skip',
-};
-
-function aiRecommendation(value: string | null | undefined) {
-  if (!value) return null;
-  const key = value.trim().toLowerCase();
-  return aiRecommendationMeta(AI_RECOMMENDATION_ALIASES[key] ?? key);
-}
-
 const formatAverage = (value: number) =>
   value.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
@@ -319,7 +296,7 @@ export default function ScorecardFullPage() {
     ? (quickEval.ratedCount / quickEval.criteriaCount) * 100
     : 0;
   const verdict = hiringVerdictMeta(quickEval?.recommendation);
-  const aiReco = aiRecommendation(candidate.recommendation);
+  const aiReco = aiRecommendationMeta(candidate.recommendation);
   const years = enrichedProfile?.yearsOfExperience;
   const mustHave = (jobDetails as unknown as { mustHave?: unknown } | null)?.mustHave;
   const mustHaveList = Array.isArray(mustHave) ? (mustHave as string[]) : [];

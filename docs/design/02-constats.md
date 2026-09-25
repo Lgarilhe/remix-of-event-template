@@ -110,16 +110,16 @@ Statut tenu à jour à chaque lot (derniers : lots 8, 9 et l'assistant du lot 7)
 | E-01 | Le même candidat à trois étapes différentes selon l'écran (trois tables d'étapes) | décision produit (voir plus bas) ; refonte mission et lot 7 |
 | E-02 | Fiche ouverte depuis la mission : sélecteur d'étape faux, sans nom accessible | remis à la refonte mission |
 | E-03 | Notes « Perso » lisibles par toute l'équipe de la mission | remis à la refonte mission (fiche) ; décision produit sur la confidentialité |
-| E-04 | Scorecard : commentaires et verdict perdus au changement d'onglet | lot 7 |
-| E-05 | Six suppressions sans confirmation (règle `AlertDialog` de `CLAUDE.md`) | lot 7 pour la scorecard ; remis à la refonte mission pour la fiche (note, commentaire, rappel, tag, contacts) |
+| E-04 | Scorecard : commentaires et verdict perdus au changement d'onglet | corrigé (lot 7 : écriture différée de 1,5 s, forcée au départ et au démontage, relue ; statut d'enregistrement annoncé) |
+| E-05 | Six suppressions sans confirmation (règle `AlertDialog` de `CLAUDE.md`) | corrigé pour la scorecard (lot 7) ; remis à la refonte mission pour la fiche (note, commentaire, rappel, tag, contacts) |
 | E-06 | Fausse alerte permanente « Manque email / téléphone » | remis à la refonte mission (fiche) |
 | E-07 | Bouton « Portail » annoncé pour le client, crée le lien du portail candidat | remis à la refonte mission (fiche) |
 | E-08 | Quatre actions IA de la fiche sans effet | remis à la refonte mission (fiche) |
-| E-09 | Coaching : boutons sans effet | lot 7 |
+| E-09 | Coaching : boutons sans effet | corrigé (lot 7 : actions sans effet retirées ; « Programmer l'entretien suivant » ouvre la vraie fenêtre, sans candidat prérempli) |
 | E-10 | « Deepgram » visible (règle de marque) | corrigé (lot 3) |
 | E-11 | Scores illisibles en clair | partiel (lot 1 : statuts par thème) ; lot 7 hors mission, refonte mission pour la mission |
 | E-12 | `text-accent` invisible (page Agents, outils de l'assistant) | corrigé (lot 1) |
-| E-13 | Coaching : textes à 1,06:1 et 1,24:1 (`*-foreground` sur teinte) | lot 7 |
+| E-13 | Coaching : textes à 1,06:1 et 1,24:1 (`*-foreground` sur teinte) | corrigé (lot 7) |
 | E-14 | Œil animé de l'assistant, entonnoir à particules, boucles infinies | partiel (lot 7 : œil retiré, monogramme fixe ; l'entonnoir de /pipeline part avec la vue pipeline du lot 7) |
 
 ### F. Paramètres, marketplace, pages publiques
