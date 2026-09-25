@@ -92,6 +92,10 @@ Forme par défaut d'un badge de statut : fond teinté à 12-14 % et texte de la 
 
 Couleurs de tiers autorisées : `linkedin`, `whatsapp`, et les logos officiels.
 
+### Le score d'un candidat
+
+Un seul barème, celui du moteur de scoring : fort à partir de 65 (`success`), moyen de 50 à 64 (`warning`), faible sous 50 (`muted` : un score faible n'est pas une erreur). Un seul rendu, `ScoreBadge` (`src/components/ui/score-badge.tsx`, seuils dans `src/lib/scoreScale.ts`) : le nombre seul à l'écran, « sur 100 » et le niveau dans le nom accessible et l'infobulle.
+
 ### Les canaux
 
 LinkedIn et WhatsApp se reconnaissent à leur logo officiel, l'e-mail et l'appel à leur icône en gris (`ChannelIcon`, table `src/lib/channels.ts`). La couleur d'un canal reste dans son logo : une étape de séquence, un statut, un ton ou un bouton ne prennent jamais la couleur d'un canal.
@@ -188,6 +192,7 @@ Chaque écran qui charge des données prévoit quatre états :
 - Français partout : pas de « step », « preview », « enrollment », « Strong Yes ». Les statuts techniques (`active`, `replied`) ne s'affichent jamais bruts.
 - Vocabulaire des séquences : inscrire et inscription (pas « enrôler »), étape, aperçu, modèle, expéditeur, délai, statistiques, e-mail. Les libellés des étapes, des statuts et des raisons d'arrêt viennent de `src/lib/sequenceCatalog.ts`.
 - Un entretien passé appelle un « compte rendu », pas un « débrief ».
+- Décisions sur un candidat : « Oui, clairement », « Oui », « À revoir », « Non », « Non, clairement », « En attente » ; recommandation de l'IA : « Recommandé », « À évaluer », « Peu adapté » (`src/lib/verdicts.ts`). Jamais « Strong Yes », « GO » ni une clé brute.
 - Boutons : un verbe à l'infinitif et son objet (« Créer la mission »), en casse de phrase.
 - Pas de tiret long dans l'interface : virgule, deux points ou parenthèses.
 - Aucun nom de fournisseur visible (règle de `CLAUDE.md`, section Branding).

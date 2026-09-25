@@ -192,12 +192,13 @@ Existants, à employer partout (les deux sessions) :
 | Filtre à choix multiples dans une barre | `FilterPill`, `FilterOption` (`src/components/ui/filter-pill.tsx`, lot 5) |
 | Garde des raccourcis clavier globaux | `shouldIgnoreShortcut` (`src/lib/keyboardShortcuts.ts`, lot 5) |
 | Canal (nom, logo ou icône) | `src/lib/channels.ts`, `ChannelIcon` (`src/components/ui/ChannelIcon.tsx`, lot 6) |
+| Score d'un candidat | `ScoreBadge` (`src/components/ui/score-badge.tsx`), barème `src/lib/scoreScale.ts` (lot 7) |
+| Décision sur un candidat, recommandation de l'IA, type d'entretien | `src/lib/verdicts.ts` (lot 7) |
 | Étape, statut, raison d'arrêt d'une séquence | `src/lib/sequenceCatalog.ts` ; `SequenceActionIcon`, `SequenceActionLabel`, `EnrollmentStatusBadge`, `ExecutionStatusBadge` (`src/components/outreach/SequenceBadges.tsx`, lot 6) |
 
 Prévus dans les lots, avec leur emplacement, pour éviter deux versions du même composant :
 
 | Besoin | Composant | Lot |
 |---|---|---|
-| Score d'un candidat | `ScoreBadge` et barème unique (`src/lib/scoreScale.ts`) | 7 |
 | Libellé d'une étape de pipeline | module d'étapes (`src/lib/pipelineStages.ts`) | 7 |
 | Statut d'enregistrement | `SaveStatus` (`src/components/ui/save-status.tsx`) | 6 ou 7 |

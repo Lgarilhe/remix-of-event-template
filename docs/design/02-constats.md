@@ -163,7 +163,7 @@ Tous les constats G sont listés : ils portent sur le socle et conditionnent les
 ## Ce qui attend une décision du propriétaire du produit
 
 - **Une seule table d'étapes de pipeline** (E-01, E-02, F-53, B-06). Aujourd'hui `ATS_STAGES` (français), les colonnes de mission (`sourced`, `messaged`, identifiants d'étapes de process) et les clés du portail client écrivent dans `job_candidate_status.pipeline_stage`. C'est une décision de modèle de données, qui touche la refonte mission.
-- **Un seul barème de score** : seuils (70/40, 70/50, 80), dénominateur (/100 ou /5) et couleurs.
+- **Un seul barème de score** : décidé le 25 septembre 2026, les seuils du moteur de scoring (fort à partir de 65, moyen de 50 à 64, faible sous 50, en gris). `src/lib/scoreScale.ts` et `ScoreBadge` ; appliqué écran par écran au lot 7 et, pour ses écrans, par la refonte mission.
 - **La confidentialité des notes** (E-03) : notes personnelles réellement privées, ou libellé « Notes de l'équipe ».
 - **L'adresse de prise de rendez-vous** de la page d'accueil (F-33).
 - **La distribution de l'extension Chrome** (F-10) : lien du Chrome Web Store, ou retrait du dialogue.
