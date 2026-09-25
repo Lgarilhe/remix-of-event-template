@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronRight, MessageSquare } from 'lucide-react';
-import { formatDistanceToNow, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { AgentConversation } from '@/types/agentChat';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/layout';
 import { agentConversationStatus, agentResultsSummary } from '@/lib/agentConversations';
+import { timeAgo } from '@/lib/relativeTime';
 
 /**
  * Historique des conversations dans le tiroir de l'assistant. Une lecture en
@@ -84,13 +83,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
         {conversations.map((conv) => {
           const status = agentConversationStatus(conv.status);
           const results = agentResultsSummary(conv.results_summary);
-          const updated = (() => {
-            try {
-              return `il y a ${formatDistanceToNow(parseISO(conv.updated_at), { locale: fr })}`;
-            } catch {
-              return null;
-            }
-          })();
+          const updated = timeAgo(conv.updated_at);
           return (
             <li key={conv.id}>
               <button

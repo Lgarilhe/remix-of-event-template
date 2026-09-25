@@ -10,8 +10,6 @@
 
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { formatDistanceToNow, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { ChevronRight, MessageSquare, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -23,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { agentConversationStatus, agentResultsSummary } from '@/lib/agentConversations';
+import { timeAgo } from '@/lib/relativeTime';
 
 interface ConversationRow {
   id: string;
@@ -141,14 +140,7 @@ function ConversationRowItem({
   const status = agentConversationStatus(conversation.status);
   const title = conversation.title || conversation.job_title || conversation.search_config?.summary || 'Conversation sans titre';
   const results = agentResultsSummary(conversation.results_summary);
-  const updated = (() => {
-    if (!conversation.updated_at) return null;
-    try {
-      return `il y a ${formatDistanceToNow(parseISO(conversation.updated_at), { locale: fr })}`;
-    } catch {
-      return null;
-    }
-  })();
+  const updated = timeAgo(conversation.updated_at);
 
   return (
     <li>

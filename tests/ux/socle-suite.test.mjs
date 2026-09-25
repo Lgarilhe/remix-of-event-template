@@ -26,7 +26,7 @@ test('D-71 : 0 et 1 au singulier, nombre écrit à la française', () => {
   assert.equal(plural(1, 'candidat'), '1 candidat');
   assert.equal(plural(3, 'candidat'), '3 candidats');
   assert.equal(plural(2, 'travail', 'travaux'), '2 travaux');
-  assert.equal(plural(1200, 'crédit'), `1${' '}200 crédits`);
+  assert.equal(plural(1200, 'crédit'), `1${'\u202f'}200 crédits`);
 });
 
 test('D-71 : une seule fonction de pluriel dans les zones du chantier', () => {
@@ -84,4 +84,31 @@ test('E-27 : une définition s’ouvre au doigt (Popover), la grille d’indicat
   assert.match(read('src/components/ats/ATSPipelineAnalytics.tsx'), /<InfoHint label=/);
   assert.match(read('src/components/layout/StatTile.tsx'), /xl: 'xl:grid-cols-6'/);
   assert.match(read('src/components/ats/ATSStats.tsx'), /cols=\{\{ base: 3, xl: 6 \}\}/);
+});
+
+test('E-25, D-07 : une seule façon d’écrire le temps écoulé', async () => {
+  const { timeAgo } = await load('src/lib/relativeTime.ts');
+  const NOW = new Date('2026-09-25T12:00:00Z');
+  const ago = (ms) => new Date(NOW.getTime() - ms);
+  assert.equal(timeAgo(ago(20_000), { now: NOW }), "à l'instant");
+  assert.equal(timeAgo(ago(11 * 60_000), { now: NOW }), 'il y a 11\u00a0min');
+  assert.equal(timeAgo(ago(11 * 60_000), { now: NOW, compact: true }), '11\u00a0min');
+  assert.equal(timeAgo(ago(3 * 3_600_000), { now: NOW, compact: true }), '3\u00a0h');
+  assert.equal(timeAgo(ago(12 * 86_400_000), { now: NOW }), 'il y a 12\u00a0j');
+  assert.equal(timeAgo(new Date('2025-03-02T10:00:00Z'), { now: NOW }), '2 mars 2025');
+  assert.equal(timeAgo('pas une date', { now: NOW }), null);
+  assert.equal(timeAgo(undefined), null);
+
+  // Zones de la refonte mission et des Paramètres (autres sessions) : à reprendre après leur fusion.
+  const elsewhere = /^src\/components\/(ats\/candidate-detail\/|ats\/CandidateCommentsTab|outreach\/CandidateSequencesPanel|outreach\/projects\/|settings\/|missions\/)/;
+  const offenders = [];
+  const walk = (dir) => {
+    for (const name of readdirSync(join(ROOT, dir))) {
+      const rel = `${dir}/${name}`;
+      if (statSync(join(ROOT, rel)).isDirectory()) walk(rel);
+      else if (/\.(ts|tsx)$/.test(name) && !elsewhere.test(rel) && /formatDistanceToNow/.test(read(rel))) offenders.push(rel);
+    }
+  };
+  walk('src');
+  assert.deepEqual(offenders, []);
 });

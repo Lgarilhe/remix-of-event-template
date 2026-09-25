@@ -6,8 +6,7 @@
 
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { formatDistanceToNowStrict, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { parseISO } from 'date-fns';
 import {
   Activity,
   ArrowRight,
@@ -26,6 +25,7 @@ import { cn } from '@/lib/utils';
 import type { ATSCandidate } from '@/hooks/useATSData';
 import { useCandidateAvatars } from '@/hooks/useCandidateAvatars';
 import { CandidateAvatar } from './CandidateAvatar';
+import { timeAgo } from '@/lib/relativeTime';
 
 interface DashboardActivityFeedProps {
   candidates: ATSCandidate[];
@@ -183,13 +183,7 @@ export const DashboardActivityFeed: React.FC<DashboardActivityFeedProps> = ({
           <ul className="space-y-0.5">
             {entries.map((entry, i) => {
               const Icon = entry.icon;
-              const relTime = (() => {
-                try {
-                  return `il y a ${formatDistanceToNowStrict(entry.date, { locale: fr })}`;
-                } catch {
-                  return null;
-                }
-              })();
+              const relTime = timeAgo(entry.date);
               return (
                 <li key={`${entry.candidate.id}-${i}`}>
                   <button

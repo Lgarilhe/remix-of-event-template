@@ -31,8 +31,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
-import { type ATSCandidate, stagnantDays, timeAgoLabel } from '@/hooks/useATSData';
+import { type ATSCandidate, stagnantDays } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { timeAgo } from '@/lib/relativeTime';
 
 /** Liaison au glisser-déposer, fournie par `ATSDraggableCard`. */
 export interface CardDragBindings {
@@ -79,7 +80,7 @@ function cardSignal(candidate: ATSCandidate, now: Date): CardSignal | null {
   const stagnant = stagnantDays(candidate, now);
   if (stagnant !== null) return { kind: 'stagnant', text: `Sans mouvement depuis ${stagnant}\u00a0j` };
 
-  const ago = timeAgoLabel(candidate.lastActivity || candidate.createdAt, now);
+  const ago = timeAgo(candidate.lastActivity || candidate.createdAt, { now });
   const reply =
     REPLY_LABELS[candidate.outreachStatus ?? ''] ?? (candidate.sequenceStatus === 'replied' ? REPLY_LABELS.replied : null);
   if (reply && STAGES_BEFORE_REPLY.has(candidate.stage)) {

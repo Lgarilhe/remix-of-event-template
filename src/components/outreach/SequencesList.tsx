@@ -59,9 +59,10 @@ import { SequenceDiagnostic } from './SequenceDiagnostic';
 // Q5 — SequenceAnalytics contient recharts (~100KB), lazy-load pour split chunk
 const SequenceAnalytics = React.lazy(() => import('./SequenceAnalytics'));
 import { SequenceTemplateSelector, SaveAsTemplateModal } from './SequenceTemplateSelector';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { plural } from '@/lib/plural';
+import { timeAgo } from '@/lib/relativeTime';
 
 interface SequenceWithStats {
   id: string;
@@ -722,7 +723,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           <p className="text-xs text-muted-foreground">
             <span className="lg:sr-only">Créée </span>
             <time dateTime={seq.created_at} title={format(createdAt, "d MMMM yyyy 'à' HH:mm", { locale: fr })}>
-              {formatDistanceToNow(createdAt, { addSuffix: true, locale: fr })}
+              {timeAgo(createdAt)}
             </time>
           </p>
           <div className="ml-auto lg:ml-0 lg:justify-self-end">

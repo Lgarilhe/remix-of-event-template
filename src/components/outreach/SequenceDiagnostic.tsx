@@ -30,12 +30,11 @@ import {
   XCircle,
   RefreshCw,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatSequenceError } from '@/lib/sequenceErrorMessages';
 import { plural } from '@/lib/plural';
+import { timeAgo } from '@/lib/relativeTime';
 
 interface SequenceDiagnosticProps {
   open: boolean;
@@ -327,7 +326,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                 </div>
                 <p className="mt-1 text-sm text-foreground-secondary">
                   {lastCronRunAt
-                    ? `Dernier passage des envois ${formatDistanceToNow(lastCronRunAt, { addSuffix: true, locale: fr })}.`
+                    ? `Dernier passage des envois ${timeAgo(lastCronRunAt)}.`
                     : 'Aucun passage des envois enregistré.'}
                 </p>
                 {!cronHealthy && (
@@ -343,7 +342,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                 )}
                 {data.lastExecutionAt && (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Dernier message envoyé {formatDistanceToNow(data.lastExecutionAt, { addSuffix: true, locale: fr })}.
+                    Dernier message envoyé {timeAgo(data.lastExecutionAt)}.
                   </p>
                 )}
               </div>
@@ -419,7 +418,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                           {formatSequenceError(err.error_message) || 'Échec sans détail'}
                         </p>
                         <p className="mt-0.5 text-muted-foreground">
-                          {formatDistanceToNow(new Date(err.created_at), { addSuffix: true, locale: fr })}
+                          {timeAgo(err.created_at)}
                         </p>
                       </li>
                     ))}

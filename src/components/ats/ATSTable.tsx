@@ -24,9 +24,9 @@ import {
   ATS_STAGES,
   type ATSCandidate,
   stagnantDays,
-  timeAgoLabel,
 } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { timeAgo } from '@/lib/relativeTime';
 
 interface ATSTableProps {
   candidates: ATSCandidate[];
@@ -203,7 +203,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                       title={new Date(activity).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })}
                       className="text-xs text-muted-foreground"
                     >
-                      {timeAgoLabel(activity, now)}
+                      {timeAgo(activity, { now })}
                     </time>
                   ) : null}
                 </TableCell>

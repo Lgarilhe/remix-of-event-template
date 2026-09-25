@@ -63,6 +63,19 @@ const loadATSData = async () => {
 
 const ats = await loadATSData();
 
+/** Module pur partagé : la date relative de la carte et du tableau. */
+const { timeAgo } = await (async () => {
+  const out = await build({
+    entryPoints: [join(ROOT, 'src/lib/relativeTime.ts')],
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'node',
+    logLevel: 'silent',
+  });
+  return import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
+})();
+
 const PAGE = read('src/pages/ATS.tsx');
 const CARD = read('src/components/ats/ATSCandidateCard.tsx');
 const TABLE = read('src/components/ats/ATSTable.tsx');
@@ -145,15 +158,16 @@ test('E-17 : une seule table de stagnation, dans useATSData', () => {
 });
 
 test('E-25 : même format de date sur la carte et dans le tableau', () => {
-  const label = (ms) => ats.timeAgoLabel(ago(ms), NOW);
+  const label = (ms) => timeAgo(ago(ms), { now: NOW });
   assert.equal(label(30_000), "à l'instant");
   assert.equal(label(5 * 60_000), 'il y a 5\u00a0min');
   assert.equal(label(3 * 3_600_000), 'il y a 3\u00a0h');
   assert.equal(label(6 * DAY), 'il y a 6\u00a0j');
   assert.doesNotMatch(label(45 * DAY), /il y a/, 'date courte au-delà de 30 jours');
-  assert.equal(ats.timeAgoLabel(null, NOW), null);
-  assert.match(CARD, /timeAgoLabel\(/);
-  assert.match(TABLE, /timeAgoLabel\(activity, now\)/);
+  assert.equal(timeAgo(null, { now: NOW }), null);
+  // Même formateur que la messagerie, les séquences et l'assistant (src/lib/relativeTime.ts).
+  assert.match(CARD, /timeAgo\(candidate\.lastActivity \|\| candidate\.createdAt, \{ now \}\)/);
+  assert.match(TABLE, /timeAgo\(activity, \{ now \}\)/);
 });
 
 test('E-18 : la provenance s’écrit en mots, jamais « local »', () => {

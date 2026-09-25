@@ -105,30 +105,6 @@ export function stagnantDays(
   return limit !== undefined && days !== null && days > limit ? days : null;
 }
 
-/**
- * Âge d'une action, au même format sur la carte et dans le tableau (revue
- * design E-25) : « à l'instant », « il y a 5 min », « il y a 3 h »,
- * « il y a 6 j », puis la date courte au-delà de 30 jours (« 12 sept. »).
- */
-export function timeAgoLabel(iso: string | null | undefined, now: Date = new Date()): string | null {
-  if (!iso) return null;
-  const date = new Date(iso);
-  const ms = now.getTime() - date.getTime();
-  if (Number.isNaN(ms)) return null;
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "à l'instant";
-  if (minutes < 60) return `il y a ${minutes}\u00a0min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `il y a ${hours}\u00a0h`;
-  const days = Math.floor(hours / 24);
-  if (days <= 30) return `il y a ${days}\u00a0j`;
-  return date.toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'short',
-    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' as const } : {}),
-  });
-}
-
 // Cache configuration
 // 🐛 TUNING Opus A4 : avant, staleTime=30min + refetchOnWindowFocus=false =
 // données ATS périmées si un collègue (ou soi-même autre onglet) bouge un

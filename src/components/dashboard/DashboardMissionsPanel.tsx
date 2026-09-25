@@ -9,8 +9,6 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { formatDistanceToNowStrict, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { ArrowRight, Briefcase, ChevronDown, Plus } from 'lucide-react';
 import { Section, EmptyState, ErrorState } from '@/components/layout';
 import { Button } from '@/components/ui/button';
@@ -19,6 +17,7 @@ import { cn } from '@/lib/utils';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { MissionCompanyLogo } from './MissionCompanyLogo';
 import { plural } from '@/lib/plural';
+import { timeAgo } from '@/lib/relativeTime';
 
 interface DashboardMissionsPanelProps {
   projects: SourcingProject[];
@@ -63,13 +62,7 @@ const MissionRow: React.FC<{
   const detailsId = `mission-details-${project.id}`;
 
   const lastActivity = project.last_search_at || project.updated_at;
-  const lastActivityLabel = (() => {
-    try {
-      return `il y a ${formatDistanceToNowStrict(parseISO(lastActivity), { locale: fr })}`;
-    } catch {
-      return null;
-    }
-  })();
+  const lastActivityLabel = timeAgo(lastActivity);
 
   return (
     <li className="rounded-lg transition-colors hover:bg-accent/60">

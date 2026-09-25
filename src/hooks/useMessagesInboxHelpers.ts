@@ -1,6 +1,6 @@
-import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { Chat, Message, SequenceEnrollmentInfo } from './useMessagesInbox';
+import { timeAgo } from '@/lib/relativeTime';
 
 // Format timestamp for message display
 export const formatMessageTime = (timestamp?: string): string => {
@@ -22,30 +22,8 @@ export const formatMessageTime = (timestamp?: string): string => {
  * Format compact pour la sidebar inbox : "5min", "2h", "3j", "5sem", "2mois", "1an"
  * Gain d'espace énorme vs "il y a environ 2 heures".
  */
-export const formatChatTime = (timestamp?: string): string => {
-  if (!timestamp) return '';
-  try {
-    const date = parseISO(timestamp);
-    const diffMs = Date.now() - date.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
-    const diffWeek = Math.floor(diffDay / 7);
-    const diffMonth = Math.floor(diffDay / 30);
-    const diffYear = Math.floor(diffDay / 365);
-
-    if (diffSec < 60) return 'maintenant';
-    if (diffMin < 60) return `${diffMin}min`;
-    if (diffHour < 24) return `${diffHour}h`;
-    if (diffDay < 7) return `${diffDay}j`;
-    if (diffWeek < 4) return `${diffWeek}sem`;
-    if (diffMonth < 12) return `${diffMonth}mois`;
-    return `${diffYear}an${diffYear > 1 ? 's' : ''}`;
-  } catch {
-    return '';
-  }
-};
+/** Heure d'une conversation dans la liste : « 5 min », « 3 h », « 12 j », puis la date. */
+export const formatChatTime = (timestamp?: string): string => timeAgo(timestamp, { compact: true }) ?? '';
 
 // Get display name for chat
 export const getChatDisplayName = (chat: Chat): string => {

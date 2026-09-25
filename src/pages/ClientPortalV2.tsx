@@ -22,8 +22,6 @@ import {
   Award, Briefcase, ClipboardCheck, Clock, Eye, Lock, Search, Star, TrendingUp, UserPlus, Users,
   type LucideIcon,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { SEOHead } from '@/components/SEOHead';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +45,7 @@ import {
   type ClientStageKey,
 } from '@/components/portal/clientStages';
 import { cn } from '@/lib/utils';
+import { timeAgo } from '@/lib/relativeTime';
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -95,7 +94,7 @@ interface PortalStats {
 
 // ─── Aides ─────────────────────────────────────────────────────────
 
-const relative = (iso: string) => formatDistanceToNow(new Date(iso), { addSuffix: true, locale: fr });
+const relative = (iso: string) => timeAgo(iso) ?? '';
 
 const initialsOf = (name: string | null | undefined) =>
   (name || '')
