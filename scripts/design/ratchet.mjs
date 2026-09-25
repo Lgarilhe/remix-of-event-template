@@ -10,6 +10,7 @@
  *   node scripts/design/ratchet.mjs              tableau des compteurs
  *   node scripts/design/ratchet.mjs --json       compteurs en JSON (CI)
  *   node scripts/design/ratchet.mjs --details    les fichiers les plus chargés, par compteur
+ *   node scripts/design/ratchet.mjs --by-file    la dette de chaque fichier, tous compteurs confondus
  *   node scripts/design/ratchet.mjs --compare base.json
  *        compare au JSON d'une autre révision ; code de sortie 1 si un compteur monte
  *
@@ -238,6 +239,23 @@ function measure() {
 
 const args = process.argv.slice(2);
 const { totals, perFile } = measure();
+
+// --by-file : la dette par fichier, tous compteurs confondus, pour repérer
+// les écrans qu'aucun lot ne couvre encore.
+if (args.includes('--by-file')) {
+  const byFile = {};
+  for (const m of METRICS) {
+    for (const [file, n] of Object.entries(perFile[m.id])) {
+      byFile[file] ??= { total: 0, detail: [] };
+      byFile[file].total += n;
+      byFile[file].detail.push(`${m.id} ${n}`);
+    }
+  }
+  for (const [file, { total, detail }] of Object.entries(byFile).sort((a, b) => b[1].total - a[1].total)) {
+    console.log(`${String(total).padStart(5)}  ${file}  (${detail.join(', ')})`);
+  }
+  process.exit(0);
+}
 
 if (args.includes('--json')) {
   process.stdout.write(JSON.stringify(totals, null, 2) + '\n');
