@@ -284,11 +284,19 @@ Existants, à employer partout (les deux sessions) :
 | Canal (nom, logo ou icône) | `src/lib/channels.ts`, `ChannelIcon` (`src/components/ui/ChannelIcon.tsx`, lot 6) |
 | Score d'un candidat | `ScoreBadge` (`src/components/ui/score-badge.tsx`), barème `src/lib/scoreScale.ts` (lot 7) |
 | Décision sur un candidat, recommandation de l'IA, type d'entretien | `src/lib/verdicts.ts` (lot 7) |
-| Étape, statut, raison d'arrêt d'une séquence | `src/lib/sequenceCatalog.ts` ; `SequenceActionIcon`, `SequenceActionLabel`, `EnrollmentStatusBadge`, `ExecutionStatusBadge` (`src/components/outreach/SequenceBadges.tsx`, lot 6) |
+| Étape, statut, raison d'arrêt d'une séquence ; délai d'une étape ; canaux d'une séquence | `src/lib/sequenceCatalog.ts` (`formatStepDelay`, `sequenceChannels`) ; `SequenceActionIcon`, `SequenceActionLabel`, `EnrollmentStatusBadge`, `ExecutionStatusBadge` (`src/components/outreach/SequenceBadges.tsx`, lot 6) |
+| Nombre accordé (« 3 candidats ») | `plural` (`src/lib/plural.ts`) |
+| Temps écoulé (« il y a 3 h ») | `timeAgo` (`src/lib/relativeTime.ts`), variante `compact` pour les listes serrées |
+| Définition ou précision derrière un « i » | `InfoHint` (`src/components/ui/info-hint.tsx`), jamais une infobulle au survol seule |
+| Fenêtre plein écran (éditeur) | `DialogContent variant="fullscreen"` (`src/components/ui/dialog.tsx`) |
+| Statut d'enregistrement | `SaveStatus` (`src/components/ui/save-status.tsx`, lot 6) |
 
-Prévus dans les lots, avec leur emplacement, pour éviter deux versions du même composant :
+Règles de calque : voile et fenêtre au calque `z-modal` pour `Dialog`, `AlertDialog`, `Sheet` et `Drawer` ; une confirmation ouverte depuis une autre fenêtre se pose au-dessus par l'ordre d'ouverture et voile ce qui est dessous. `aria-modal` est posé par le kit.
+
+Prévus, avec leur emplacement, pour éviter deux versions du même composant :
 
 | Besoin | Composant | Lot |
 |---|---|---|
-| Libellé d'une étape de pipeline | module d'étapes (`src/lib/pipelineStages.ts`) | 7 |
-| Statut d'enregistrement | `SaveStatus` (`src/components/ui/save-status.tsx`) | 6 ou 7 |
+| Libellé, ordre et délai de stagnation d'une étape de pipeline | module d'étapes (`src/lib/pipelineStages.ts`) | après la décision E-01 |
+| Carte, ligne et en-tête de candidat ; avatar neutre | gabarits communs (E-43) | après la fusion de la refonte mission |
+| Glisser-déposer accessible d'un kanban (annonces, clavier, retour du focus) | utilitaire commun, aujourd'hui dans `ATSKanban` et `CandidatePipeline` | avec le kanban de mission |
