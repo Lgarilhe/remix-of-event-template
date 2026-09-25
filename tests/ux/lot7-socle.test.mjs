@@ -59,6 +59,17 @@ test('E-16 : une décision se lit en français, quelle que soit sa clé d’orig
   assert.equal(verdicts.hiringVerdictMeta('inconnu'), null);
   assert.equal(verdicts.aiRecommendationMeta('shortlist').label, 'Recommandé');
   assert.equal(verdicts.aiRecommendationMeta('skip').label, 'Peu adapté');
+  // Verdicts du moteur de scoring et anciennes clés de l'assistant.
+  assert.equal(verdicts.aiRecommendationMeta('STRONG_MATCH').label, 'Très bonne adéquation');
+  assert.equal(verdicts.aiRecommendationMeta('NO_MATCH').label, 'Pas d’adéquation');
+  assert.equal(verdicts.aiRecommendationMeta('go').label, 'Recommandé');
+  assert.equal(verdicts.aiRecommendationMeta('no_go').label, 'Peu adapté');
+  assert.equal(verdicts.aiRecommendationMeta(''), null);
+  const engine = read('supabase/functions/score-profile-job/index.ts');
+  for (const key of engine.match(/return "[A-Z]+_MATCH"/g) ?? []) {
+    const value = key.slice(8, -1);
+    assert.ok(verdicts.aiRecommendationMeta(value), `verdict du moteur sans libellé : ${value}`);
+  }
   for (const table of [verdicts.HIRING_VERDICTS, verdicts.AI_RECOMMENDATIONS]) {
     for (const [key, meta] of Object.entries(table)) {
       assert.doesNotMatch(meta.label, /Yes|No\b|Maybe|Go\b|_/, `${key} : « ${meta.label} »`);

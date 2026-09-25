@@ -487,7 +487,7 @@ const ScoringTestCard = ({ data }: { data: ScoringTestData }) => {
       </div>
       <ul className="divide-y divide-border">
         {data.profiles.map((profile, i) => {
-          const rec = aiRecommendationMeta(profile.recommendation === 'go' ? 'shortlist' : profile.recommendation);
+          const rec = aiRecommendationMeta(profile.recommendation);
           return (
             <li key={i} className="space-y-2 px-3.5 py-3">
               <div className="flex items-center gap-3">

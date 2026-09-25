@@ -55,16 +55,34 @@ export function qualificationVerdictMeta(value: string | null | undefined): Verd
   return QUALIFICATION_VERDICTS[value.toLowerCase()] ?? null;
 }
 
-/** Recommandation de l'IA après scoring (`shortlist`, `maybe`, `skip`). */
+/**
+ * Recommandation de l'IA après scoring : clés de l'assistant (`shortlist`,
+ * `maybe`, `skip`) et verdicts du moteur de scoring (`STRONG_MATCH` à
+ * `NO_MATCH`, voir `getRecommendation` dans score-profile-job).
+ */
 export const AI_RECOMMENDATIONS: Record<string, VerdictMeta> = {
   shortlist: { label: 'Recommandé', tone: 'success' },
   maybe: { label: 'À évaluer', tone: 'warning' },
   skip: { label: 'Peu adapté', tone: 'muted' },
+  strong_match: { label: 'Très bonne adéquation', tone: 'success' },
+  good_match: { label: 'Bonne adéquation', tone: 'success' },
+  possible_match: { label: 'Adéquation possible', tone: 'warning' },
+  weak_match: { label: 'Adéquation faible', tone: 'muted' },
+  no_match: { label: 'Pas d’adéquation', tone: 'muted' },
+};
+
+/** Anciennes clés de l'assistant et du scoring de la qualification. */
+const AI_RECOMMENDATION_ALIASES: Record<string, string> = {
+  go: 'shortlist',
+  no_go: 'skip',
+  potential: 'possible_match',
+  weak: 'weak_match',
 };
 
 export function aiRecommendationMeta(value: string | null | undefined): VerdictMeta | null {
-  if (!value) return null;
-  return AI_RECOMMENDATIONS[value.toLowerCase()] ?? null;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const key = value.trim().toLowerCase();
+  return AI_RECOMMENDATIONS[AI_RECOMMENDATION_ALIASES[key] ?? key] ?? null;
 }
 
 /** Types d'entretien de la scorecard (« Phone Screen », « Culture Fit » : E-16). */

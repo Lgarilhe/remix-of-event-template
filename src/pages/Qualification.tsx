@@ -22,10 +22,12 @@ import { fr } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { cn } from '@/lib/utils';
+import { aiRecommendationMeta } from '@/lib/verdicts';
 import { Section } from '@/components/layout/Section';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { Badge } from '@/components/ui/badge';
+import { ScoreBadge } from '@/components/ui/score-badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -94,32 +96,6 @@ const VERDICT_OPTIONS: Array<{ value: string; label: string; icon: LucideIcon; s
   },
 ];
 
-// Recommandation du scoring IA : jamais la clé brute (E-50).
-const RECOMMENDATION_LABELS: Record<string, string> = {
-  shortlist: 'Recommandé',
-  go: 'Recommandé',
-  skip: 'Non recommandé',
-  no_go: 'Non recommandé',
-  maybe: 'À évaluer',
-  strong_match: 'Très bonne adéquation',
-  good_match: 'Bonne adéquation',
-  possible_match: 'Adéquation possible',
-  potential: 'Adéquation possible',
-  weak_match: 'Adéquation faible',
-  weak: 'Adéquation faible',
-  no_match: 'Pas d’adéquation',
-};
-
-function recommendationLabel(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  return RECOMMENDATION_LABELS[value.trim().toLowerCase()] ?? null;
-}
-
-function scoreTone(score: number): string {
-  if (score >= 70) return 'text-success';
-  if (score >= 50) return 'text-warning';
-  return 'text-danger';
-}
 
 const SaveIndicator: React.FC<{
   state: SaveState;
@@ -394,7 +370,7 @@ export default function Qualification() {
 
   const session = load.session;
   const scoring = session.scoring_summary || {};
-  const recoLabel = recommendationLabel(scoring.recommendation);
+  const recoLabel = aiRecommendationMeta(scoring.recommendation)?.label ?? null;
   const dirty =
     !!saved && (notes !== saved.notes || verdict !== saved.verdict || verdictNotes !== saved.verdictNotes);
   const subtitle = [session.job_title, session.client_name].filter(Boolean).join(' · ');
@@ -494,13 +470,8 @@ export default function Qualification() {
             <Section title="Scoring IA" icon={Gauge} headingLevel={2} padded>
               <div className="space-y-4">
                 {scoring.overall_score != null && (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="tabular-nums">
-                      <span className={cn('text-2xl font-semibold', scoreTone(Number(scoring.overall_score)))}>
-                        {scoring.overall_score}
-                      </span>
-                      <span className="text-sm text-muted-foreground"> / 100</span>
-                    </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ScoreBadge score={Number(scoring.overall_score)} showLevel />
                     {recoLabel && <Badge variant="muted">{recoLabel}</Badge>}
                   </div>
                 )}

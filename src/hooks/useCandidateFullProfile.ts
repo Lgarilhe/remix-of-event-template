@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { aiRecommendationMeta } from '@/lib/verdicts';
 
 export interface CandidateActivity {
   type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added' | 'appointment' | 'shortlist_added' | 'aircall_call';
@@ -484,7 +485,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         type: 'scored',
         date: sr.updatedAt,
         title: `Scoring : ${sr.score}% ${sr.jobTitle ? `• ${sr.jobTitle}` : ''}`,
-        detail: sr.scoringDetails?.recommendation || sr.recommendation || undefined,
+        detail: aiRecommendationMeta(sr.scoringDetails?.recommendation || sr.recommendation)?.label,
       });
     }
   });

@@ -188,6 +188,7 @@ Fait (assistant, page Agents, IA en ligne, sheet de poste) :
 - Carte d'approbation sans ombre décalée ni police mono, textes rédigés, boutons du kit ; puces d'outils sans emoji, repli « Action de l'assistant » au lieu du nom technique (E-38).
 - Aide à la rédaction (`AiTextarea`) : commandes à l'infinitif, sans emoji ni violet, « Aperçu » ; sélecteur de modèle et coût en toutes lettres (« 3 crédits »), sans étincelle ni « tokens » (E-40, E-47, E-51 partiel).
 - Sheet de poste : statut en français, filtres avec les libellés de la recherche, onglets `Tabs`, onglet « Analyse » sans jargon, critères « Indispensable, Important, Appréciable », scores par `ScoreBadge` ; la fiche remplace le sheet au lieu de s'empiler ; un poste de mission (« project:… ») affiche enfin son brief (E-34).
+- Recommandation de l'IA : une seule table (`AI_RECOMMENDATIONS`, `src/lib/verdicts.ts`) couvre les clés de l'assistant et les verdicts du moteur de scoring, de « Très bonne adéquation » à « Pas d'adéquation ». L'assistant, la qualification et l'historique d'un candidat (`useCandidateFullProfile`, lu aussi par la fiche) l'utilisent ; le score de la qualification passe sur `ScoreBadge`, au barème du moteur (un score faible en gris, plus en rouge).
 
 Reste pour l'assistant : la carte d'approbation insérée dans le fil sous le message qui la propose (E-36) ; la trace des connecteurs consultés, masquée à dessein après succès (choix figé par `tests/agent/chat-rendering.test.mjs`) ; le choix du modèle réglé une fois dans les Paramètres plutôt qu'à chaque action (E-51).
 
