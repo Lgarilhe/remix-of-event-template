@@ -289,7 +289,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const ensureConversationId = useCallback(async (): Promise<string> => {
     if (conversationIdRef.current) return conversationIdRef.current;
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !organizationId) throw new Error('Organisation introuvable. Reconnecte-toi.');
+    if (!user || !organizationId) throw new Error('Organisation introuvable. Reconnectez-vous.');
     const job = selectedJob ?? autoJob ?? null;
     const { data, error } = await supabase
       .from('agent_conversations')

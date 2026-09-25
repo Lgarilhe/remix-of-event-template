@@ -184,10 +184,13 @@ Constats : A-06, A-32, A-35, A-46, B-13 et C-05 pour les écrans du chantier, E-
 - Un nom par page, le même partout où la page est citée (titre, palette, raccourcis, liens) ; la liste est transmise à la barre latérale.
 - Typographie française : guillemets « », espace insécable avant les deux points et les points d'interrogation.
 - Cliquet : tirets longs, emoji et noms de fournisseurs à zéro dans les zones du chantier.
+- Outil : `node scripts/design/texts.mjs` liste, fichier par fichier, le tutoiement et le franglais des textes visibles (le 25 septembre : 85 fichiers, 109 tutoiements, 177 anglicismes, dont une moitié dans les zones de l'autre session).
 
 ### Lot 11 · Nettoyage
 
 Après la fusion de la refonte mission : suppression du code mort (G-19), des jetons `--k-*` et `--skalr-*` devenus sans lecteur, des variantes de bouton en double. Le faire plus tôt casserait du code que l'autre session n'a pas encore fusionné.
+
+Code mort déjà repéré : le composant `LinkedInAccountManager` (seule sa fonction `applySubscriptionOverrides` est encore importée), `ICPList` et `ICPFormModal` (jamais montés), `.landing-sky-gradient` et les variables `--landing-*` de `src/index.css` (sans lecteur depuis le lot 8), deux images inutilisées (`skalr-logo-concept-3.webp`, `icon-search-3d.webp`). `ProxyConfigPanel` n'est plus monté que dans les Paramètres.
 
 ## Composants partagés
 
