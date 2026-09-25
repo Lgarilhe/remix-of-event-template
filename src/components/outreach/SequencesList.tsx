@@ -6,8 +6,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { hasPlanFeature } from '@/lib/featureGates';
-import { ENROLLMENT_STATUSES, sequenceActionMeta } from '@/lib/sequenceCatalog';
-import type { Channel } from '@/lib/channels';
+import { ENROLLMENT_STATUSES, sequenceChannels } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -94,17 +93,6 @@ interface SequencesListProps {
 }
 
 const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
-
-/** Canaux employés par une séquence, dans un ordre stable (revue design D-24). */
-const CHANNEL_ORDER: Channel[] = ['linkedin', 'email', 'whatsapp', 'call'];
-function sequenceChannels(steps: { action_type?: string | null }[]): Channel[] {
-  const used = new Set<Channel>();
-  for (const step of steps) {
-    const channel = sequenceActionMeta(step.action_type)?.channel;
-    if (channel) used.add(channel);
-  }
-  return CHANNEL_ORDER.filter(c => used.has(c));
-}
 
 /** Même grille pour l'en-tête et les lignes, à partir de 1 024 px. */
 const ROW_GRID = 'lg:grid-cols-[2.75rem_minmax(0,1fr)_7.5rem_minmax(0,14rem)_9rem_2.25rem]';

@@ -33,10 +33,10 @@ import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmente
 import { SaveStatus, type SaveState } from '@/components/ui/save-status';
 import { getConditionsForActionType, isWhatsAppStep, isCrossChannelCondition } from './sequence/conditionTypes';
 import { VariableInserter } from './sequence/VariableInserter';
-import { formatStepDelay, previewMessageTemplate, VARIABLE_EXAMPLE } from './sequence/messageTypeUtils';
+import { previewMessageTemplate, VARIABLE_EXAMPLE } from './sequence/messageTypeUtils';
 import { useEmailSignatures } from '@/hooks/useEmailSignatures';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
-import { sequenceActionLabel, MESSAGE_TONES } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel, MESSAGE_TONES, formatStepDelay } from '@/lib/sequenceCatalog';
 import { SequenceActionIcon } from './SequenceBadges';
 import {
   Plus,

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { formatSequenceError as formatErrorMessage } from '@/lib/sequenceErrorMessages';
-import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel, skipReasonLabel, formatStepDelay } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -37,7 +37,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Input } from '@/components/ui/input';
 import { EmptyState, ErrorState, StatGrid, StatTile } from '@/components/layout';
 import { EnrollmentStatusBadge, ExecutionStatusBadge, SequenceActionIcon } from './SequenceBadges';
-import { stepReasonLabel } from './activity-log/stepReasons';
 import { 
   Users, 
   ExternalLink, 
@@ -103,10 +102,6 @@ const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${
 
 /** « 26/09 à 10:42 » */
 const formatWhen = (value: string) => format(new Date(value), "dd/MM 'à' HH:mm", { locale: fr });
-
-/** Délai d'une étape après la précédente : « 1 j 2 h », « 30 min ». */
-const formatDelay = (days: number, hours: number, minutes?: number | null) =>
-  [days > 0 && `${days} j`, hours > 0 && `${hours} h`, minutes && minutes > 0 && `${minutes} min`].filter(Boolean).join(' ');
 
 interface SequenceStep {
   id: string;
@@ -810,9 +805,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       const status = exec?.status || 'pending';
                                       const isPending = status === 'pending';
                                       const isDone = status === 'executed' || status === 'sent';
-                                      const delay = formatDelay(step.delay_days, step.delay_hours, step.delay_minutes);
+                                      const delay = formatStepDelay(step.delay_days, step.delay_hours, step.delay_minutes);
                                       const reason = exec && ['skipped', 'cancelled', 'quota_blocked'].includes(exec.status)
-                                        ? stepReasonLabel(exec.skip_reason)
+                                        ? skipReasonLabel(exec.skip_reason)
                                         : null;
 
                                       return (

@@ -2,9 +2,9 @@
  * Chantier design, lot 6d : suivi des séquences (inscriptions, journal,
  * diagnostic, statistiques) et InMail (groupé, message unitaire, éditeur).
  *
- * - stepReasonLabel (activity-log/stepReasons.ts), empaqueté par buildSync avec
- *   le catalogue (alias @/ résolus par tsconfig.app.json) : aucune raison écrite
- *   par le moteur d'envoi ne s'affiche telle qu'enregistrée (D-56) ;
+ * - skipReasonLabel (src/lib/sequenceCatalog.ts), empaqueté par buildSync (alias
+ *   @/ résolus par tsconfig.app.json) : aucune raison écrite par le moteur
+ *   d'envoi ne s'affiche telle qu'enregistrée (D-56) ;
  * - écrans : inspection de source (statuts et étapes du socle, registre calme,
  *   confirmations, vocabulaire, jetons).
  *
@@ -24,7 +24,7 @@ const read = (rel) => readFileSync(new URL(rel, ROOT), 'utf8');
 const code = (rel) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
 
 const { outputFiles } = buildSync({
-  entryPoints: [join(ROOT_PATH, 'src/components/outreach/activity-log/stepReasons.ts')],
+  entryPoints: [join(ROOT_PATH, 'src/lib/sequenceCatalog.ts')],
   bundle: true,
   write: false,
   format: 'esm',
@@ -32,7 +32,7 @@ const { outputFiles } = buildSync({
   logLevel: 'silent',
   tsconfig: join(ROOT_PATH, 'tsconfig.app.json'),
 });
-const { stepReasonLabel } = await import(
+const { skipReasonLabel } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`
 );
 
@@ -63,9 +63,9 @@ test('D-56 : les raisons écrites par le moteur d’envoi sont traduites', () =>
     'raison inconnue': 'Étape non exécutée',
   };
   for (const [raw, label] of Object.entries(cases)) {
-    assert.equal(stepReasonLabel(raw), label, raw);
+    assert.equal(skipReasonLabel(raw), label, raw);
   }
-  assert.equal(stepReasonLabel(null), null);
+  assert.equal(skipReasonLabel(null), null);
 });
 
 test('D-54, D-55 : statuts et étapes viennent du socle, sans table locale ni aplat saturé', () => {
@@ -83,8 +83,8 @@ test('D-56 : plus d’identifiant brut ni de « Workflow »', () => {
   assert.doesNotMatch(panel, /Workflow/);
   assert.match(panel, /Déroulé/);
   assert.doesNotMatch(panel, /label: step\.action_type|exec\.skip_reason\}/, 'raison ou type affiché tel quel');
-  assert.match(panel, /stepReasonLabel\(exec\.skip_reason\)/);
-  assert.match(journal, /stepReasonLabel\(exec\.skip_reason\)/);
+  assert.match(panel, /skipReasonLabel\(exec\.skip_reason\)/);
+  assert.match(journal, /skipReasonLabel\(exec\.skip_reason\)/);
   assert.doesNotMatch(analytics, /action_type\.replace/, 'type d’étape bricolé en texte');
   assert.match(analytics, /sequenceActionLabel\(s\.action_type\)/);
 });

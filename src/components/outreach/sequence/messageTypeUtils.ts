@@ -37,19 +37,6 @@ export function previewMessageTemplate(template: string, senderName?: string | n
 }
 
 /**
- * Délai avant une étape, en entier : « 2 j 4 h 30 min ». Les heures et les
- * minutes comptent autant que les jours (revue design D-40). Chaîne vide
- * quand il n'y a aucun délai.
- */
-export function formatStepDelay(days?: number | null, hours?: number | null, minutes?: number | null): string {
-  return [
-    days ? `${days} j` : '',
-    hours ? `${hours} h` : '',
-    minutes ? `${minutes} min` : '',
-  ].filter(Boolean).join(' ');
-}
-
-/**
  * Determines the AI message type that will be generated for a given step
  * based on its position in the sequence graph. This mirrors the logic in
  * process-sequences/index.ts generatePersonalizedMessage().

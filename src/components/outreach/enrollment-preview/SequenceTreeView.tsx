@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SequenceActionIcon, SequenceActionLabel } from '@/components/outreach/SequenceBadges';
-import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel, formatStepDelay } from '@/lib/sequenceCatalog';
 import { cn } from '@/lib/utils';
 
 const DECISION_TYPES = new Set([
@@ -43,14 +43,6 @@ interface Props {
   getStepConfig?: (stepId: string) => StepConfigOverride | undefined;
   /** Persist un override de timing pour un step (passer null pour reset). */
   setStepConfig?: (stepId: string, config: StepConfigOverride | null) => void;
-}
-
-/** « 2 j 4 h », « 5 h » ; rien quand il n'y a pas de délai. */
-function formatDuration(days: number, hours: number): string {
-  const parts: string[] = [];
-  if (days) parts.push(`${days} j`);
-  if (hours) parts.push(`${hours} h`);
-  return parts.join(' ');
 }
 
 function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
@@ -392,7 +384,7 @@ function SimpleConnector({
 
   const hasDelay = effDays > 0 || effHours > 0;
   const editable = !!stepId && !!onChange;
-  const text = hasDelay ? `+${formatDuration(effDays, effHours)}` : 'Sans délai';
+  const text = hasDelay ? `+${formatStepDelay(effDays, effHours)}` : 'Sans délai';
 
   return (
     <div className="-my-1 flex items-center justify-center gap-2 py-1">
@@ -447,7 +439,7 @@ function InitialDelayChip({
     override !== undefined &&
     (override.delayDays !== undefined || override.delayHours !== undefined);
 
-  const text = effDays || effHours ? `Démarre dans ${formatDuration(effDays, effHours)}` : 'Démarre dès l\'inscription';
+  const text = effDays || effHours ? `Démarre dans ${formatStepDelay(effDays, effHours)}` : 'Démarre dès l\'inscription';
 
   if (!onChange) {
     // Pas d'éditeur → simple texte
@@ -572,7 +564,7 @@ function DelayEditor({
 
         {isOverridden && (
           <p className="text-xs text-muted-foreground">
-            Délai prévu par la séquence : <span className="font-medium tabular-nums text-foreground">{formatDuration(defaultDays, defaultHours) || 'aucun'}</span>
+            Délai prévu par la séquence : <span className="font-medium tabular-nums text-foreground">{formatStepDelay(defaultDays, defaultHours) || 'aucun'}</span>
           </p>
         )}
 

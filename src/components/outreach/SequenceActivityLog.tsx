@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatSequenceError } from '@/lib/sequenceErrorMessages';
-import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel, skipReasonLabel } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -28,7 +28,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EmptyState, ErrorState, StatGrid, StatTile } from '@/components/layout';
 import { ExecutionStatusBadge, SequenceActionIcon } from './SequenceBadges';
-import { stepReasonLabel } from './activity-log/stepReasons';
 import { 
   Activity,
   Search,
@@ -467,7 +466,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                           const message = exec.final_message || exec.step?.message_template;
                           const subject = exec.final_subject || exec.step?.subject_template;
                           const reason = ['skipped', 'cancelled', 'quota_blocked'].includes(exec.status)
-                            ? stepReasonLabel(exec.skip_reason)
+                            ? skipReasonLabel(exec.skip_reason)
                             : null;
                           const isOverdue = exec.status === 'scheduled' && isBefore(new Date(exec.scheduled_at), new Date());
 

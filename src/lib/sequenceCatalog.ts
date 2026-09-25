@@ -71,6 +71,31 @@ export function sequenceActionLabel(type: string | null | undefined): string {
   return sequenceActionMeta(type)?.label ?? UNKNOWN_STEP_LABEL;
 }
 
+/** Ordre stable des canaux : les mêmes icônes aux mêmes places d'une séquence à l'autre. */
+const CHANNEL_ORDER: Channel[] = ['linkedin', 'email', 'whatsapp', 'call'];
+
+/** Canaux employés par les étapes d'une séquence (liste des séquences, messagerie). */
+export function sequenceChannels(steps: readonly unknown[]): Channel[] {
+  const used = new Set<Channel>();
+  for (const step of steps) {
+    const channel = sequenceActionMeta((step as { action_type?: string | null } | null)?.action_type)?.channel;
+    if (channel) used.add(channel);
+  }
+  return CHANNEL_ORDER.filter((channel) => used.has(channel));
+}
+
+/**
+ * Délai avant une étape, en entier : « 2 j 4 h 30 min » (revue design D-40).
+ * Chaîne vide quand il n'y a aucun délai.
+ */
+export function formatStepDelay(days?: number | null, hours?: number | null, minutes?: number | null): string {
+  return [
+    days && days > 0 ? `${days} j` : '',
+    hours && hours > 0 ? `${hours} h` : '',
+    minutes && minutes > 0 ? `${minutes} min` : '',
+  ].filter(Boolean).join(' ');
+}
+
 // ─── Statuts ─────────────────────────────────────────────────────────────
 
 /** Variante de `Badge` (fond teinté, texte de la couleur du statut). */
@@ -145,6 +170,15 @@ export function pauseReasonLabel(reason: string | null | undefined): string | nu
  * phrase technique.
  */
 const SKIP_REASON_RULES: [RegExp, string][] = [
+  [/compte linkedin déconnecté/i, 'Compte LinkedIn déconnecté : reprise à la reconnexion'],
+  [/abonnement requis/i, 'Abonnement requis'],
+  [/stop condition: link clicked/i, 'Le candidat a cliqué sur le lien'],
+  [/stop condition: unsubscribed/i, 'Le candidat s’est désinscrit'],
+  [/stop condition: meeting booked/i, 'Rendez-vous pris'],
+  [/hors plage horaire/i, "Hors de vos horaires d'envoi : envoi différé"],
+  [/quota inmail épuisé/i, 'Crédits InMail épuisés'],
+  [/contrôle de quota|quota check/i, "Limites d'envoi non vérifiées : envoi différé"],
+  [/quota|plafond/i, "Limite d'envois atteinte : envoi différé"],
   [/reply detected|réponse marquée|marqué comme répondu/i, 'Le candidat a répondu'],
   [/calendly booking/i, 'Rendez-vous pris'],
   [/^timeout/i, "Délai d'attente dépassé"],

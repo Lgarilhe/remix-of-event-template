@@ -101,3 +101,23 @@ test('D-62 : trois tons de rédaction, en mots entiers', () => {
     ['Professionnel', 'Décontracté', 'Enthousiaste'],
   );
 });
+
+test('D-24 : les canaux d’une séquence, dans un ordre stable', () => {
+  const steps = [
+    { action_type: 'email' },
+    { action_type: 'wait_reply' },
+    { action_type: 'connection_request' },
+    { action_type: 'email' },
+    { action_type: 'whatsapp_message' },
+  ];
+  assert.deepEqual(catalog.sequenceChannels(steps), ['linkedin', 'email', 'whatsapp']);
+  assert.deepEqual(catalog.sequenceChannels([{ action_type: 'inconnu' }, null]), []);
+});
+
+test('D-40 : le délai d’une étape s’écrit en entier', () => {
+  assert.equal(catalog.formatStepDelay(2, 4, 30), '2 j 4 h 30 min');
+  assert.equal(catalog.formatStepDelay(0, 0, 45), '45 min');
+  assert.equal(catalog.formatStepDelay(1), '1 j');
+  assert.equal(catalog.formatStepDelay(0, 0, 0), '');
+  assert.equal(catalog.formatStepDelay(null, -1, undefined), '');
+});

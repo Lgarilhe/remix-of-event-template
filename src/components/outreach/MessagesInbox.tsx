@@ -39,8 +39,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
-import { sequenceActionMeta } from '@/lib/sequenceCatalog';
-import type { Channel } from '@/lib/channels';
+import { sequenceChannels } from '@/lib/sequenceCatalog';
 import { cn } from '@/lib/utils';
 
 interface MessagesInboxProps {
@@ -52,16 +51,6 @@ interface MessagesInboxProps {
   onChatChange?: (chatId: string | null) => void;
   loading?: boolean;
   fullHeight?: boolean;
-}
-
-/** Canaux des étapes d'une séquence, dans l'ordre où ils apparaissent. */
-function sequenceChannels(steps: unknown[]): Channel[] {
-  const channels: Channel[] = [];
-  for (const step of steps) {
-    const channel = sequenceActionMeta((step as { action_type?: string })?.action_type)?.channel;
-    if (channel && !channels.includes(channel)) channels.push(channel);
-  }
-  return channels;
 }
 
 const stepCountLabel = (count: number) => `${count} étape${count > 1 ? 's' : ''}`;

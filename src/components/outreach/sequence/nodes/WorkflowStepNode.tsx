@@ -4,10 +4,10 @@ import { Trash2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel, formatStepDelay } from '@/lib/sequenceCatalog';
 import { SequenceActionIcon } from '@/components/outreach/SequenceBadges';
 import { SequenceStep } from '../../SequenceBuilder';
-import { formatStepDelay, getStepMessageType } from '../messageTypeUtils';
+import { getStepMessageType } from '../messageTypeUtils';
 
 type StepNodeData = {
   step: SequenceStep;

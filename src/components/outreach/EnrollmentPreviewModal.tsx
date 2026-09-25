@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { cn } from '@/lib/utils';
-import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { sequenceActionLabel, formatStepDelay } from '@/lib/sequenceCatalog';
 import {
   AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, ListChecks, Pencil, RefreshCw, Search,
 } from 'lucide-react';
@@ -78,11 +78,9 @@ function creditsLabel(n: number): string {
 }
 
 /** « +1 j 2 h » : délai avant une étape. */
-function delayLabel(days?: number, hours?: number): string | null {
-  const parts: string[] = [];
-  if (days) parts.push(`${days} j`);
-  if (hours) parts.push(`${hours} h`);
-  return parts.length ? `+${parts.join(' ')}` : null;
+function delayLabel(days?: number, hours?: number, minutes?: number): string | null {
+  const delay = formatStepDelay(days, hours, minutes);
+  return delay ? `+${delay}` : null;
 }
 
 type ListShortcut = 'next' | 'previous' | 'remove' | 'skip';
@@ -1447,7 +1445,7 @@ function SummaryMode({
         </h4>
         <ol className="space-y-0.5 p-2">
           {steps.slice(0, 6).map((step, i) => {
-            const delay = delayLabel(step.delayDays, step.delayHours);
+            const delay = delayLabel(step.delayDays, step.delayHours, step.delayMinutes);
             return (
               <li key={step.stepId} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm">
                 <StepNumber index={i} />
