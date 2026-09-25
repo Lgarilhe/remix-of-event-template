@@ -120,6 +120,41 @@ Constats : D-01 à D-03, D-30 à D-32, D-44 à D-46, D-54 (P1) ; D-05 à D-20, D
 
 Remis : D-21, D-28 (onglet Outreach), D-52 (bouton « Séquence » des résultats), D-61 (fiche), D-63 (invitations de l'onglet mission) à la refonte mission ; D-64 (webhooks) aux Paramètres.
 
+Socle commun, posé avant les écrans : `src/lib/channels.ts` et `ChannelIcon` (nom, logo ou icône d'un canal), `src/lib/sequenceCatalog.ts` et `SequenceBadges` (libellé et icône de chaque étape, statut d'une inscription ou d'une exécution, raison d'arrêt, tons de message). Test `tests/ux/lot6-catalogue.test.mjs`.
+
+Fait (messagerie, D-01 à D-20) :
+
+- Frise de conversation sur le catalogue : plus aucun identifiant technique, appels par `ChannelIcon`, durée « 3 min 20 s », rendez-vous en lien vers sa qualification (D-01, D-16).
+- « Inscrire dans une séquence » dans l'en-tête sur grand écran, dans « Plus d'actions » ailleurs ; la fenêtre « Choisir une séquence » passe sur le `Dialog` du kit, avec le nombre d'étapes et les canaux (D-02).
+- Un seul segment Toutes / À répondre / En attente ; statut, étiquette, boîte LinkedIn et non lues dans le menu « Filtres » ; ligne de conversation sur trois niveaux (D-05 à D-07).
+- Mission devinée affichée « Mission probable » ; plus de repli sur « la seule mission active », qui donnait à l'IA une mission prise au hasard (D-08 partiel : « Associer à une mission » demande une écriture nouvelle).
+- Panne de chargement avec « Réessayer », vide réel, vide filtré avec « Effacer les filtres », compte absent avec « Relier votre compte LinkedIn » (D-09).
+- Préfixe « Brouillon : » dans la liste, « Brouillon enregistré » sous le champ (D-10) ; hauteur de la page mesurée au lieu des 124 px écrits en dur (D-11).
+- Actions de ligne visibles au survol, au focus et au doigt ; menu « Plus d'actions » sur téléphone (D-03, D-12).
+- Composeur : boutons de mise en forme nommés, Envoyer seul bouton principal, suggestions IA qui remplissent le champ au lieu d'envoyer sans relecture (D-13, D-14).
+- Bulles sans dégradé, flou, ombre ni ressort ; vouvoiement ; badges de statut du socle ; archiver sans confirmation ni rouge, « Restaurer » en place (D-15, D-17 à D-20 ; D-20 partiel : le toast « Annuler » vit dans `useChatStatus`).
+- Test `tests/ux/lot6a-messagerie.test.mjs` ; UX07 de `lot1-sequences` reformulé (aucune couche arbitraire, conversation mobile sur `z-sticky`).
+
+Fait (liste et éditeur de séquences, D-22 à D-43) :
+
+- Liste : un squelette, une erreur avec « Réessayer », un vide avec son action ; « Nouvelle séquence » en principal, « Avancer les envois » (ancien « Envoyer tout ») avec une infobulle exacte, menu « Plus d'actions » ; colonnes Inscrits, Statuts, Créée ; icônes des canaux au lieu d'émoji ; même menu sur téléphone et ordinateur (D-22 partiel, D-23 à D-26).
+- Interrupteur nommé ; sans abonnement, désactivé avec un bandeau « Voir les offres » (D-25). Bandeau de sélection et inscription par clic retirés : rien ne les alimentait (D-27).
+- Éditeur : expéditeurs et garde-fous écrits à la création comme à la modification, et relus à l'ouverture ; « Quitter sans enregistrer ? » dès qu'un champ change ; en-têtes d'étape en `Collapsible` ; fenêtre plein écran sur le `Dialog` Radix (D-30 à D-33).
+- « Enregistrer sans activer » et « Enregistrer et activer » distincts ; une nouvelle séquence reste inactive sauf choix contraire ; le bouton reste actif et montre ce qui manque (D-34).
+- Étapes, canevas et nœuds sur le catalogue, sans couleur de statut ni agrandissement ; canevas au thème de l'application ; la touche Suppr n'efface plus le dessin d'un nœud en gardant l'étape (D-35, D-42).
+- Aperçu sur un exemple neutre (Marie Dupont, Cabinet Horizon), une seule syntaxe `{{first_name}}` (D-36) ; encarts en `Banner` (D-37) ; contrôles icône nommés, cibles de 44 px au doigt, assistant en ligne sous 1 024 px (D-38, D-39) ; glossaire français, rayons du kit (D-40, D-41, D-43).
+- Nouveau `src/components/ui/save-status.tsx` (« Enregistré », « Enregistrement… », « Modifications non enregistrées », « Échec de l'enregistrement »). Test `tests/ux/lot6b-sequences.test.mjs`.
+
+Fait (suivi et InMail, D-54 à D-60, D-62) :
+
+- Badges d'exécution teintés, lisibles dans les deux thèmes ; un statut, un libellé, un ton, dans le panneau des inscriptions comme dans les statistiques (D-54, D-55).
+- Étapes par leur libellé, « Déroulé », raisons d'arrêt traduites, pause expliquée (D-56) ; tuiles du kit, « Traiter maintenant » en bouton, arrêt groupé derrière une `AlertDialog` (D-57) ; journal sur le catalogue (D-58).
+- Diagnostic en mots de recruteur, un seul seuil de retard (10 minutes, le moteur passe toutes les 5 minutes) (D-59) ; statistiques avec légende de la couleur réelle des barres, titre « Statistiques : {nom} » (D-60).
+- InMail : annulation des envois en attente confirmée, bouton principal monochrome, ton en `SegmentedControl`, couleur LinkedIn réservée au logo (D-62).
+- Chaque panneau a son squelette, son erreur avec « Réessayer » et son vide rédigé ; les délais annoncés sont ceux du moteur (« dans les 5 minutes »). Test `tests/ux/lot6d-suivi.test.mjs`.
+
+Reste pour le lot 6 : la préparation d'une inscription (D-44 à D-51, partie en cours) ; les 30 émojis du sélecteur de l'éditeur InMail, contenu inséré dans le message, à trancher au lot 10.
+
 ### Lot 7 · Pipeline global, scorecard, coaching, assistant IA, page Agents
 
 Périmètre : `src/pages/ATS.tsx` et les vues de `/pipeline` (tableau, chronologie, analyse, shortlist client), `ScorecardTab` et `ScorecardFullPage`, coaching en direct, `AgentsPage`, tiroir de l'assistant, IA en ligne, sheet de poste.

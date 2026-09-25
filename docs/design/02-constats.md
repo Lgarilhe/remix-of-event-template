@@ -90,18 +90,18 @@ Statut tenu à jour à chaque lot (derniers : lots 8, 9 et l'assistant du lot 7)
 
 | ID | Constat | Statut |
 |---|---|---|
-| D-01 | Frise de conversation : étapes affichées sous leur identifiant technique | lot 6 |
-| D-02 | Inscription en séquence inatteignable depuis la messagerie | lot 6 |
-| D-03 | Messagerie sur téléphone : aucune action de tri, actions au seul survol | lot 6 |
+| D-01 | Frise de conversation : étapes affichées sous leur identifiant technique | corrigé (lot 6) |
+| D-02 | Inscription en séquence inatteignable depuis la messagerie | corrigé (lot 6) |
+| D-03 | Messagerie sur téléphone : aucune action de tri, actions au seul survol | corrigé (lot 6) |
 | D-04 | Badges d'intention illisibles en sombre (variantes `dark:` inertes) | corrigé (lot 1) |
 | D-21 | Onglet Outreach : « Créer une séquence » ne fait rien | remis à la refonte mission |
-| D-30 | Création de séquence : réglages « Expéditeurs » et « Garde-fous » jamais enregistrés | lot 6 |
-| D-31 | Modification de séquence : « Retour » perd les changements sans avertir | lot 6 |
-| D-32 | Éditeur : en-tête d'étape en `div` cliquable, inaccessible au clavier | lot 6 |
+| D-30 | Création de séquence : réglages « Expéditeurs » et « Garde-fous » jamais enregistrés | corrigé (lot 6 ; la modification recharge aussi ces réglages, qu'un premier enregistrement effaçait) |
+| D-31 | Modification de séquence : « Retour » perd les changements sans avertir | corrigé (lot 6) |
+| D-32 | Éditeur : en-tête d'étape en `div` cliquable, inaccessible au clavier | corrigé (lot 6) |
 | D-44 | Préparation : Entrée sur « Enrôler » lance une génération payante | lot 6 |
 | D-45 | Préparation : « Enrôler » en dégradé animé, reflet, halo | partiel (lot 1) ; lot 6 |
 | D-46 | Préparation : fermer jette les aperçus déjà payés en crédits | lot 6 |
-| D-54 | Badges d'exécution illisibles en clair (blanc sur teinte) | lot 6 |
+| D-54 | Badges d'exécution illisibles en clair (blanc sur teinte) | corrigé (lot 6) |
 
 ### E. Pipeline, candidats, IA
 
