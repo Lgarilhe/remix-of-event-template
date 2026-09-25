@@ -91,9 +91,13 @@ Deno.test("SEQ-088 — 429 passager sur smart_message ou InMail : jour ouvré su
 
 Deno.test("SEQ-088 — mois suivant seulement pour un InMail dont l'erreur cite les crédits", () => {
   assertEquals(rateLimitDeferral("inmail", { error: "linkedin_send_failed_429: InMail credits exhausted", sentAsInMail: true }), "next_month");
-  assertEquals(rateLimitDeferral("smart_message", { error: "429 insufficient InMail credits" }), "next_month");
+  assertEquals(rateLimitDeferral("smart_message", { error: "429 insufficient InMail credits", sentAsInMail: true }), "next_month");
   // Parti en message direct : jamais de report mensuel.
   assertEquals(rateLimitDeferral("smart_message", { error: "429 insufficient InMail credits", sentAsInMail: false }), "next_business_day");
+  // Mode inconnu (exception dans le cycle, needsInMail absent) : jour ouvré
+  // suivant, le contrôle du solde du cycle suivant prend le relais.
+  assertEquals(rateLimitDeferral("smart_message", { error: "429 insufficient InMail credits" }), "next_business_day");
+  assertEquals(rateLimitDeferral("inmail", { error: "linkedin_send_failed_429: InMail credits exhausted", sentAsInMail: null }), "next_business_day");
   // Contrôle du solde indisponible : pas un épuisement.
   assertEquals(isInMailCreditsError("inmail_balance_unavailable: Contrôle des crédits InMail momentanément indisponible"), false);
   assertEquals(isInMailCreditsError("inmail_credits_exhausted: Crédits InMail épuisés"), true);

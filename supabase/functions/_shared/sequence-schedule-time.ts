@@ -134,8 +134,11 @@ export function isInMailCreditsError(error: string | null | undefined): boolean 
  * Report d'une étape refusée par un 429 : invitation au lundi suivant (plafond
  * hebdomadaire), 1er du mois suivant seulement pour un envoi en InMail dont
  * l'erreur cite les crédits InMail, sinon jour ouvré suivant (limite du jour).
- * `sentAsInMail` : mode réellement utilisé par l'envoi (false pour un
- * smart_message parti en message direct).
+ * `sentAsInMail` : mode réellement utilisé par l'envoi (StepActionResult.
+ * needsInMail). Seul `true` (InMail payant réellement tenté) autorise le report
+ * mensuel : mode inconnu (exception, null) ou message direct (false) → jour
+ * ouvré suivant, et le contrôle du solde InMail du cycle suivant bloque au jour
+ * le jour si les crédits manquent vraiment.
  */
 export function rateLimitDeferral(
   actionType: string,
@@ -143,7 +146,7 @@ export function rateLimitDeferral(
 ): RateLimitDeferral {
   if (actionType === 'connection_request') return 'next_monday';
   const inMailCapable = actionType === 'inmail' || actionType === 'smart_message';
-  if (inMailCapable && opts.sentAsInMail !== false && isInMailCreditsError(opts.error)) return 'next_month';
+  if (inMailCapable && opts.sentAsInMail === true && isInMailCreditsError(opts.error)) return 'next_month';
   return 'next_business_day';
 }
 

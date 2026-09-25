@@ -130,7 +130,7 @@ test('SEQ-071 — réponse captée par check_replies : clôture commune, répons
 test('SEQ-074 — budget de temps avant chaque interrogation du fournisseur', () => {
   assert.match(waitEvents, /const deadline = Date\.now\(\) \+ CHECK_PASS_BUDGET_MS/);
   const budgetAt = phase2.indexOf('hasTimeLeft(deadline, Date.now(), MIN_REMAINING_FOR_PROVIDER_CHECK_MS)');
-  const providerAt = phase2.indexOf('await getProfileInfo(');
+  const providerAt = phase2.indexOf('await readProfileForSend(');
   assert.notEqual(budgetAt, -1);
   assert.ok(budgetAt < providerAt, 'le budget est testé avant l\'appel');
   assert.match(checkReplies, /hasTimeLeft\(deadline, Date\.now\(\), MIN_REMAINING_FOR_PROVIDER_CHECK_MS\)/);
@@ -151,6 +151,16 @@ test('SEQ-077 — lecture du profil en échec : nouvel essai, pas « non connect
   const notConnected = slice(condition, "case 'if_not_connected'", "case 'if_no_response'");
   assert.match(connected, /if \(!p\) return 'retry';/);
   assert.match(notConnected, /if \(!p\) return 'retry';/);
+  // Attente de connexion : lecture en échec = on continue d'attendre (pas de
+  // relance comptée qui finirait en échec après MAX_RETRIES).
+  const untilConnected = slice(condition, "case 'wait_until_connected'", "case 'wait_for_event'");
+  assert.match(untilConnected, /return p\?\.network_distance === 'FIRST_DEGREE' \? true : 'wait';/);
+  assert.doesNotMatch(untilConnected, /'retry'/);
+  // getProfileInfo : échec = null, jamais mis en cache (contrat avec E3 :
+  // readProfileForSend et check_connection reconnaissent null).
+  const profileInfo = slice(engine, 'async function getProfileInfo', 'async function resolveProfileIdForChat');
+  assert.match(profileInfo, /if \(!r\.ok\) \{\s*console\.warn\([^;]*;\s*return null;/);
+  assert.match(profileInfo, /catch \(err\) \{\s*console\.error\([^;]*;\s*return null;/);
 });
 
 // ---------------------------------------------------------------- SEQ-078
@@ -208,6 +218,44 @@ test('SEQ-088 — 429 : report mensuel réservé aux crédits InMail épuisés',
   assert.doesNotMatch(rateLimit, /actionType === 'inmail' \|\| actionType === 'smart_message'/);
 });
 
+// ---------------------------------------------------------------- SEQ-088 (passe 2)
+test('SEQ-088 — report mensuel seulement pour un envoi réellement parti en InMail (needsInMail === true)', () => {
+  const rules = read('supabase/functions/_shared/sequence-schedule-time.ts');
+  const deferral = slice(rules, 'export function rateLimitDeferral', 'export function rateLimitRetryAt');
+  assert.match(deferral, /opts\.sentAsInMail === true && isInMailCreditsError\(opts\.error\)/);
+  assert.doesNotMatch(deferral, /sentAsInMail !== false/, 'un mode inconnu ne vaut plus InMail');
+});
+
+// ---------------------------------------------------------------- SEQ-102
+test('SEQ-102 — lectures de profil des conditions et du polling journalisées au ledger', () => {
+  // checkStepCondition : toutes les lectures de profil passent par readProfileForSend
+  // (journalisation 'profile_view' hors cache, sans plafond) quand le client est là.
+  assert.match(condition, /const readProfile = \(\): Promise<Record<string, unknown> \| null> => supabaseClient\s*\? readProfileForSend\(supabaseClient,/);
+  assert.equal((condition.match(/await getProfileInfo\(/g) || []).length, 0, 'plus de lecture directe non journalisée dans les cas de connexion');
+  assert.equal((condition.match(/await readProfile\(\)/g) || []).length, 4, 'if_connected, if_not_connected, wait_until_connected, connection_accepted');
+  // Phase 2 de check_wait_events : même lecture journalisée.
+  assert.match(phase2, /await readProfileForSend\(supabase, enrollment, senderAccountFor\(enrollment, step\), enrollment\.profile_id, weCreds\.apiKey, weCreds\.dsn\)/);
+  assert.doesNotMatch(phase2, /await getProfileInfo\(/);
+  // Connexion connue en base : attente franchie sans relecture (plus de boucle
+  // réarmement phase 1 → lecture en échec → attente → réarmement).
+  assert.match(condition, /const knownConnected = enrollment\?\.connection_status === 'connected' \|\| enrollment\?\.network_distance === 'FIRST_DEGREE'/);
+  const untilConnected = slice(condition, "case 'wait_until_connected'", "case 'wait_for_event'");
+  assert.match(untilConnected, /if \(knownConnected\) return true; const p = await readProfile\(\);/);
+  assert.match(condition, /if \(waitEvent === 'connection_accepted'\) \{ if \(knownConnected\) return true; const p = await readProfile\(\);/);
+  // Pas de raccourci sur les conditions de branche (le moteur corrige déjà
+  // « Si non connecté » avec connection_status) : lecture en échec = 'retry'.
+  const connected = slice(condition, "case 'if_connected'", "case 'if_not_connected'");
+  assert.doesNotMatch(connected, /knownConnected/);
+});
+
+// ---------------------------------------------------------------- SEQ-004 (passe 2)
+test('SEQ-004 — check_replies : une relance (re_enroll) borne la fenêtre de détection', () => {
+  assert.match(checkReplies, /replyReferenceDate\(lastSentExec\.executed_at, enrollment\.tracking_data\?\.re_enrolled_at \?\? null, Date\.now\(\)\)/);
+  // Même clé que celle écrite par re_enroll.
+  const cycle = read('supabase/functions/_shared/sequence-cycle-rules.ts');
+  assert.match(cycle, /base\.re_enrolled_at = nowIso;/);
+});
+
 // ---------------------------------------------------------------- SEQ-121
 test('SEQ-121 — candidat qui a bloqué le compte : pause avec sa raison, étapes gardées', () => {
   assert.match(replyCheck, /pause_reason: 'blocked_by_candidate'/);
@@ -255,6 +303,8 @@ test('règles pures (si Node importe le TypeScript)', { skip: !canImportTs && 'N
   // SEQ-088
   assert.equal(t.rateLimitDeferral('smart_message', { error: 'linkedin_send_failed_429: too many requests', sentAsInMail: false }), 'next_business_day');
   assert.equal(t.rateLimitDeferral('inmail', { error: '429 InMail credits exhausted', sentAsInMail: true }), 'next_month');
+  // Mode inconnu (chemin d'exception, needsInMail absent) : jamais de gel d'un mois.
+  assert.equal(t.rateLimitDeferral('inmail', { error: '429 InMail credits exhausted' }), 'next_business_day');
   // SEQ-031
   assert.equal(w.implicitWaitEvent({ action_type: 'wait_reply', wait_for_event: null }), 'reply_received');
   assert.equal(w.implicitWaitEvent({ action_type: 'wait_connection', wait_for_event: null }), 'connection_accepted');

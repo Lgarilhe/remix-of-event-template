@@ -3321,7 +3321,8 @@ async function handleCheckWaitEvents(supabase: any) {
       }
       const weCreds = await resolveUnipileCreds(enrollment.organization_id, supabase);
       if (forConnection) {
-        const profile = await getProfileInfo(senderAccountFor(enrollment, step), enrollment.profile_id, enrollment.profile_url, weCreds.apiKey, weCreds.dsn);
+        // SEQ-102 : lecture journalisée au ledger quand elle part chez LinkedIn.
+        const profile = await readProfileForSend(supabase, enrollment, senderAccountFor(enrollment, step), enrollment.profile_id, weCreds.apiKey, weCreds.dsn);
         eventOccurred = profile?.network_distance === 'FIRST_DEGREE';
         // Persist network_distance + provider_id to DB for future lookups
         if (profile) {
@@ -3539,8 +3540,8 @@ function accountDisconnectedLabel(
 /**
  * Report d'une étape refusée par un 429, à 9 h dans le fuseau de l'expéditeur :
  * - connection_request → lundi suivant (plafond hebdomadaire d'invitations) ;
- * - InMail dont l'erreur cite explicitement les crédits InMail → 1er du mois
- *   suivant ;
+ * - envoi réellement parti en InMail (sentAsInMail === true) dont l'erreur
+ *   cite explicitement les crédits InMail → 1er du mois suivant ;
  * - tout le reste → jour ouvré suivant (limite du jour).
  * Avant, tout 429 sur un InMail ou un smart_message (même parti en message
  * direct) gelait la séquence jusqu'au mois suivant (SEQ-088). `opts` : erreur
@@ -4085,20 +4086,37 @@ async function checkStepCondition(conditionType: string, accountId: string, prof
   const replyState = async (): Promise<ReplyCheckState> => checkHasProspectReplied(
     accountId, profileId, apiKey, dsn, await loadReplyReferenceDate(supabaseClient, enrollmentId, enrollment),
   );
+  // SEQ-102 : lecture du profil journalisée au ledger ('profile_view', sans
+  // plafond) quand elle part vraiment chez LinkedIn (hors cache), via
+  // readProfileForSend. null = lecture en échec (SEQ-077).
+  const readProfile = (): Promise<Record<string, unknown> | null> => supabaseClient
+    ? readProfileForSend(supabaseClient, {
+      profile_url: profileUrl,
+      organization_id: enrollment?.organization_id ?? enrollment?.sequence?.organization_id ?? null,
+    }, accountId, profileId, apiKey, dsn)
+    : getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn);
+  // Connexion déjà connue en base (webhook d'acceptation, vérification de
+  // connexion, polling) : une attente de connexion est franchie sans relire le
+  // profil. Sinon une attente réarmée par la phase 1 de check_wait_events
+  // retournait en attente à chaque lecture en échec, puis était réarmée et
+  // relue au passage suivant, indéfiniment.
+  const knownConnected = enrollment?.connection_status === 'connected' || enrollment?.network_distance === 'FIRST_DEGREE';
   switch (eff) {
     case 'always': return true;
-    // getProfileInfo renvoie null quand la lecture échoue (jamais mis en cache) :
-    // ce n'est pas « non connecté », on réessaie plus tard.
-    case 'if_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn); if (!p) return 'retry'; return p.network_distance === 'FIRST_DEGREE'; }
-    case 'if_not_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn); if (!p) return 'retry'; return p.network_distance !== 'FIRST_DEGREE'; }
+    // null quand la lecture échoue (jamais mis en cache) : ce n'est pas
+    // « non connecté », on réessaie plus tard.
+    case 'if_connected': { const p = await readProfile(); if (!p) return 'retry'; return p.network_distance === 'FIRST_DEGREE'; }
+    case 'if_not_connected': { const p = await readProfile(); if (!p) return 'retry'; return p.network_distance !== 'FIRST_DEGREE'; }
     case 'if_no_response': {
       const state = await replyState();
       if (state === 'unknown') return 'retry';
       return state === 'no_reply';
     }
-    case 'wait_until_connected': { const p = await getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
+    // Lecture en échec (null) : on continue d'attendre (le délai court depuis
+    // le début de l'attente), jamais de relance comptée qui finirait en échec.
+    case 'wait_until_connected': { if (knownConnected) return true; const p = await readProfile(); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
     case 'wait_for_event': {
-      if (waitEvent === 'connection_accepted') { const p = await getProfileInfo(accountId, profileId, profileUrl, apiKey, dsn); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
+      if (waitEvent === 'connection_accepted') { if (knownConnected) return true; const p = await readProfile(); return p?.network_distance === 'FIRST_DEGREE' ? true : 'wait'; }
       // Doute (lecture impossible) : on continue d'attendre.
       if (waitEvent === 'reply_received') return (await replyState()) === 'replied' ? true : 'wait';
       if (waitForEvent === 'email_opened' && supabaseClient && enrollmentId) {
