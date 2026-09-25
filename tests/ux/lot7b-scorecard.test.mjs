@@ -67,7 +67,10 @@ test('E-09 : plus aucune action sans effet dans l’assistant d’entretien', ()
     assert.ok(!all.includes(fake), `« ${fake} » encore présent`);
   }
   assert.match(coaching, /Programmer l'entretien suivant/);
-  assert.match(coaching, /<CreateEventModal open onOpenChange=\{setScheduleOpen\} \/>/);
+  // La vraie fenêtre « Programmer un entretien », candidat et mission préremplis.
+  assert.match(coaching, /<CreateEventModal\s+open\s+onOpenChange=\{setScheduleOpen\}/);
+  assert.match(coaching, /defaultCandidate=\{\{\s*candidateId,/);
+  assert.match(coaching, /defaultJobId=\{jobId \|\| null\}/);
   assert.match(guide, />\s*Compris\s*</);
   assert.match(coaching, /Démarrer l'enregistrement/);
 });

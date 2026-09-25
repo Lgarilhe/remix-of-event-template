@@ -1018,7 +1018,20 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
         </div>
       )}
 
-      {scheduleOpen && <CreateEventModal open onOpenChange={setScheduleOpen} />}
+      {scheduleOpen && (
+        <CreateEventModal
+          open
+          onOpenChange={setScheduleOpen}
+          defaultCandidate={{
+            candidateId,
+            name: candidateName,
+            headline: candidateHeadline ?? null,
+            avatarUrl: null,
+            linkedinUrl: null,
+          }}
+          defaultJobId={jobId || null}
+        />
+      )}
     </section>
   );
 };

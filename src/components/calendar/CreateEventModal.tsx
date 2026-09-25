@@ -15,7 +15,7 @@
  * À la submit : INSERT puis invalide les queries calendar pour refetch.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -56,6 +56,10 @@ interface CreateEventModalProps {
   onOpenChange: (open: boolean) => void;
   /** Date pré-remplie par défaut (slot click sur grid) */
   defaultDate?: Date;
+  /** Candidat prérempli (« Programmer l'entretien suivant » de l'assistant d'entretien). */
+  defaultCandidate?: SelectedCandidate | null;
+  /** Poste du candidat (`job_id`) : la mission correspondante est préremplie. */
+  defaultJobId?: string | null;
 }
 
 type LocationPreset = 'visio' | 'office' | 'phone' | 'custom';
@@ -97,6 +101,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   open,
   onOpenChange,
   defaultDate,
+  defaultCandidate = null,
+  defaultJobId = null,
 }) => {
   const queryClient = useQueryClient();
   const { user } = useAuthReady();
@@ -107,7 +113,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   // Form state
   const [eventName, setEventName] = useState(ROUND_NAMES[0]);
   const [projectId, setProjectId] = useState<string>('');
-  const [candidate, setCandidate] = useState<SelectedCandidate | null>(null);
+  const [candidate, setCandidate] = useState<SelectedCandidate | null>(defaultCandidate);
   const [managerId, setManagerId] = useState<string>('');
   const [date, setDate] = useState(() =>
     format(defaultDate || new Date(), 'yyyy-MM-dd'),
@@ -139,6 +145,23 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     }
   }, [defaultDate, open]);
 
+  // Mission du candidat prérempli, une fois par ouverture, dès que les missions
+  // sont chargées ; la personne peut ensuite la changer ou l'effacer.
+  const prefilledJobRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      prefilledJobRef.current = null;
+      return;
+    }
+    if (!defaultJobId || prefilledJobRef.current === defaultJobId) return;
+    const projectKey = defaultJobId.replace(/^project:/, '');
+    const match = activeProjects.find((p) => p.job_id === defaultJobId || p.id === projectKey);
+    if (match) {
+      setProjectId(match.id);
+      prefilledJobRef.current = defaultJobId;
+    }
+  }, [open, defaultJobId, activeProjects]);
+
   // Auto-derive client_name + job_title from selected project
   const selectedProject = useMemo(
     () => activeProjects.find((p) => p.id === projectId) || null,
@@ -148,7 +171,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const resetForm = () => {
     setEventName(ROUND_NAMES[0]);
     setProjectId('');
-    setCandidate(null);
+    setCandidate(defaultCandidate);
+    prefilledJobRef.current = null;
     setManagerId(user?.id ?? '');
     setDate(format(defaultDate || new Date(), 'yyyy-MM-dd'));
     setTime('10:00');

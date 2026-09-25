@@ -261,7 +261,7 @@ Constats : A-06, A-32, A-35, A-46, B-13 et C-05 pour les écrans du chantier, E-
 
 Après la fusion de la refonte mission : suppression du code mort (G-19), des jetons `--k-*` et `--skalr-*` devenus sans lecteur, des variantes de bouton en double. Le faire plus tôt casserait du code que l'autre session n'a pas encore fusionné.
 
-Code mort déjà repéré : le composant `LinkedInAccountManager` (seule sa fonction `applySubscriptionOverrides` est encore importée), `ICPList` et `ICPFormModal` (jamais montés), `.landing-sky-gradient` et les variables `--landing-*` de `src/index.css` (sans lecteur depuis le lot 8), deux images inutilisées (`skalr-logo-concept-3.webp`, `icon-search-3d.webp`). `ProxyConfigPanel` n'est plus monté que dans les Paramètres.
+Code mort déjà repéré : le composant `LinkedInAccountManager` (seule sa fonction `applySubscriptionOverrides` est encore importée), `ICPList` et `ICPFormModal` (jamais montés), `.landing-sky-gradient` et les variables `--landing-*` de `src/index.css` (sans lecteur depuis le lot 8), une image inutilisée (`skalr-logo-concept-3.webp`) et dix icônes 3D déjà orphelines sur `main` (`src/assets/icon-{bell,billing,building,credits,dashboard,integrations,job,profile,settings,team}-3d.{png,webp}`), à retirer après la fusion des sessions en cours. Les six icônes 3D du pipeline et de l'onboarding sont supprimées (lots 7 et 9). `ProxyConfigPanel` n'est plus monté que dans les Paramètres.
 
 ## Composants partagés
 
