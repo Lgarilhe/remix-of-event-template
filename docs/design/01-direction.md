@@ -92,6 +92,10 @@ Forme par défaut d'un badge de statut : fond teinté à 12-14 % et texte de la 
 
 Couleurs de tiers autorisées : `linkedin`, `whatsapp`, et les logos officiels.
 
+### Les canaux
+
+LinkedIn et WhatsApp se reconnaissent à leur logo officiel, l'e-mail et l'appel à leur icône en gris (`ChannelIcon`, table `src/lib/channels.ts`). La couleur d'un canal reste dans son logo : une étape de séquence, un statut, un ton ou un bouton ne prennent jamais la couleur d'un canal.
+
 ## 3. Typographie
 
 Une seule famille dans l'application : Instrument Sans, graisses 500 (corps), 600 (emphase, titres), 700 (grands chiffres d'un tableau de bord, titre de page principal). Space Mono pour les identifiants, raccourcis clavier et chiffres alignés. Bricolage Grotesque, police de marque, est réservée aux titres des pages publiques (accueil, tarifs). Outfit, Space Grotesk et Instrument Serif sont retirés.
@@ -182,6 +186,8 @@ Chaque écran qui charge des données prévoit quatre états :
 
 - Vouvoiement partout, y compris dans les écrans de l'IA Konekt.
 - Français partout : pas de « step », « preview », « enrollment », « Strong Yes ». Les statuts techniques (`active`, `replied`) ne s'affichent jamais bruts.
+- Vocabulaire des séquences : inscrire et inscription (pas « enrôler »), étape, aperçu, modèle, expéditeur, délai, statistiques, e-mail. Les libellés des étapes, des statuts et des raisons d'arrêt viennent de `src/lib/sequenceCatalog.ts`.
+- Un entretien passé appelle un « compte rendu », pas un « débrief ».
 - Boutons : un verbe à l'infinitif et son objet (« Créer la mission »), en casse de phrase.
 - Pas de tiret long dans l'interface : virgule, deux points ou parenthèses.
 - Aucun nom de fournisseur visible (règle de `CLAUDE.md`, section Branding).

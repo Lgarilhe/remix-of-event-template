@@ -191,6 +191,8 @@ Existants, à employer partout (les deux sessions) :
 | Choix exclusif visible (« Mes tâches / Équipe », vues) | `SegmentedControl` (`src/components/ui/segmented-control.tsx`, lot 5) |
 | Filtre à choix multiples dans une barre | `FilterPill`, `FilterOption` (`src/components/ui/filter-pill.tsx`, lot 5) |
 | Garde des raccourcis clavier globaux | `shouldIgnoreShortcut` (`src/lib/keyboardShortcuts.ts`, lot 5) |
+| Canal (nom, logo ou icône) | `src/lib/channels.ts`, `ChannelIcon` (`src/components/ui/ChannelIcon.tsx`, lot 6) |
+| Étape, statut, raison d'arrêt d'une séquence | `src/lib/sequenceCatalog.ts` ; `SequenceActionIcon`, `SequenceActionLabel`, `EnrollmentStatusBadge`, `ExecutionStatusBadge` (`src/components/outreach/SequenceBadges.tsx`, lot 6) |
 
 Prévus dans les lots, avec leur emplacement, pour éviter deux versions du même composant :
 
@@ -199,4 +201,3 @@ Prévus dans les lots, avec leur emplacement, pour éviter deux versions du mêm
 | Score d'un candidat | `ScoreBadge` et barème unique (`src/lib/scoreScale.ts`) | 7 |
 | Libellé d'une étape de pipeline | module d'étapes (`src/lib/pipelineStages.ts`) | 7 |
 | Statut d'enregistrement | `SaveStatus` (`src/components/ui/save-status.tsx`) | 6 ou 7 |
-| Libellé et couleur d'un canal | `src/lib/channels.ts` | 6 |
