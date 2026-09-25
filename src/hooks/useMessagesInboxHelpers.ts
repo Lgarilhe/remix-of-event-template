@@ -1,8 +1,6 @@
 import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Chat, Message, SequenceEnrollmentInfo } from './useMessagesInbox';
-import React from 'react';
-import { Reply, Hourglass, Briefcase } from 'lucide-react';
 
 // Format timestamp for message display
 export const formatMessageTime = (timestamp?: string): string => {
@@ -146,10 +144,10 @@ export const hasDisplayableContent = (msg: Message): boolean => {
 export const getMessageDisplayText = (msg: Message): string => {
   const t = getMessageText(msg);
   if (t) return t;
-  if (msg.is_deleted) return '— Message supprimé —';
+  if (msg.is_deleted) return 'Message supprimé';
   if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
     const count = msg.attachments.length;
-    return count > 1 ? `📎 ${count} pièces jointes` : '📎 Pièce jointe';
+    return count > 1 ? `${count} pièces jointes` : 'Pièce jointe';
   }
   if (msg.subject && msg.subject.trim()) return msg.subject;
   return '';
@@ -174,76 +172,58 @@ export const getChatJobInfo = (chat: Chat, enrollmentsMap: Map<string, SequenceE
   return enrollmentsMap.get(profileId) || null;
 };
 
-// Get conversation status text and icon
+/**
+ * Repère principal d'une ligne de la liste (revue design D-07), dans un ordre
+ * fixe : « À répondre » (message non lu) ou « En attente » (séquence en cours,
+ * pas de réponse), puis la mission de l'inscription. Données seules : la
+ * ligne choisit icônes et couleurs dans les jetons.
+ */
+export interface ChatStatusInfo {
+  kind: 'reply' | 'waiting' | null;
+  /** Poste de l'inscription en séquence, seule source sûre de la mission. */
+  mission: string | null;
+}
+
 export const getChatStatusInfo = (
-  chat: Chat, 
+  chat: Chat,
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>
-): { text: string; icon: React.ReactNode; color: string } | null => {
+): ChatStatusInfo | null => {
   const jobInfo = getChatJobInfo(chat, enrollmentsMap);
-  
-  if (hasUnread(chat)) {
-    const suffix = jobInfo?.job_title ? ` · ${jobInfo.job_title}` : '';
-    return {
-      text: `À répondre${suffix}`,
-      icon: React.createElement(Reply, { className: "w-3 h-3" }),
-      color: 'text-amber-600'
-    };
-  }
-  
+  const mission = jobInfo?.job_title || null;
+
+  if (hasUnread(chat)) return { kind: 'reply', mission };
+
   if (jobInfo && jobInfo.status === 'active' && !jobInfo.replied_at && jobInfo.current_step_order > 0) {
-    return {
-      text: `En attente · ${jobInfo.job_title || 'Séquence'}`,
-      icon: React.createElement(Hourglass, { className: "w-3 h-3" }),
-      color: 'text-blue-600'
-    };
+    return { kind: 'waiting', mission };
   }
-  
-  if (jobInfo?.job_title) {
-    return {
-      text: jobInfo.job_title,
-      icon: React.createElement(Briefcase, { className: "w-3 h-3" }),
-      color: 'text-violet-600'
-    };
-  }
-  
-  return null;
+
+  return mission ? { kind: null, mission } : null;
 };
 
-// Get message source type
-export const getMessageSourceType = (chat: Chat): { label: string; color: string } | null => {
+/**
+ * Boîte d'origine d'une conversation, en texte neutre (revue design D-07).
+ * La messagerie classique est le cas courant : pas de libellé.
+ */
+export const getMessageSourceType = (chat: Chat): { label: string } | null => {
   const folders = chat.folder || [];
 
   const hasRecruiter = folders.some(f =>
     f.toLowerCase().includes('recruiter') ||
     f.toLowerCase().includes('talent')
   );
-  
+
   if (chat.content_type === 'inmail') {
-    return hasRecruiter
-      ? { label: 'InMail Recruiter', color: 'bg-brand-purple/10 text-brand-purple' }
-      : { label: 'InMail', color: 'bg-brand-purple/10 text-brand-purple' };
+    return { label: hasRecruiter ? 'InMail Recruiter' : 'InMail' };
   }
 
-  if (hasRecruiter) {
-    return { label: 'Recruiter', color: 'bg-warning/10 text-warning' };
-  }
+  if (hasRecruiter) return { label: 'Recruiter' };
 
   const hasSalesNav = folders.some(f =>
     f.toLowerCase().includes('sales') ||
     f.toLowerCase().includes('navigator')
   );
-  if (hasSalesNav) {
-    return { label: 'Sales Nav', color: 'bg-info/10 text-info' };
-  }
+  if (hasSalesNav) return { label: 'Sales Navigator' };
 
-  const hasClassic = folders.some(f =>
-    f.toLowerCase().includes('classic') ||
-    f.toLowerCase().includes('inbox')
-  );
-  if (hasClassic || folders.length > 0) {
-    return { label: 'Classic', color: 'bg-muted/60 text-muted-foreground' };
-  }
-  
   return null;
 };
 

@@ -1,14 +1,26 @@
 import React from 'react';
-import { Button } from '@/components/ui/button';
+import { MessageSquareQuote } from 'lucide-react';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Palette, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export type AITone = 'formal' | 'casual' | 'direct' | 'empathetic';
+
+/**
+ * Tons des réponses proposées par l'IA dans la messagerie (les séquences ont
+ * les leurs, dans `src/lib/sequenceCatalog.ts`). Un mot et une phrase, sans
+ * emoji (revue design D-70).
+ */
+const AI_TONES: Array<{ value: AITone; label: string; description: string }> = [
+  { value: 'formal', label: 'Formel', description: 'Professionnel et structuré' },
+  { value: 'casual', label: 'Décontracté', description: 'Amical et accessible' },
+  { value: 'direct', label: 'Direct', description: 'Concis et efficace' },
+  { value: 'empathetic', label: 'Empathique', description: "Chaleureux et à l'écoute" },
+];
 
 interface ToneSelectorProps {
   selectedTone: AITone;
@@ -16,90 +28,32 @@ interface ToneSelectorProps {
   className?: string;
 }
 
-const toneOptions: Array<{
-  value: AITone;
-  label: string;
-  description: string;
-  emoji: string;
-}> = [
-  {
-    value: 'formal',
-    label: 'Formel',
-    description: 'Professionnel et structuré',
-    emoji: '👔',
-  },
-  {
-    value: 'casual',
-    label: 'Décontracté',
-    description: 'Amical et accessible',
-    emoji: '😊',
-  },
-  {
-    value: 'direct',
-    label: 'Direct',
-    description: 'Concis et efficace',
-    emoji: '🎯',
-  },
-  {
-    value: 'empathetic',
-    label: 'Empathique',
-    description: 'Chaleureux et à l\'écoute',
-    emoji: '💬',
-  },
-];
-
-export const ToneSelector: React.FC<ToneSelectorProps> = ({
-  selectedTone,
-  onToneChange,
-  className,
-}) => {
-  const selectedOption = toneOptions.find(t => t.value === selectedTone);
-
+/**
+ * Choix du ton, en sous-menu du menu « Plus d'actions » de la conversation :
+ * au clavier (flèches) comme au doigt.
+ */
+export const ToneSelector: React.FC<ToneSelectorProps> = ({ selectedTone, onToneChange, className }) => {
+  const selected = AI_TONES.find((t) => t.value === selectedTone);
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "h-7 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground",
-            className
-          )}
-        >
-          <span className="text-sm">{selectedOption?.emoji}</span>
-          <span className="hidden sm:inline">{selectedOption?.label}</span>
-          <Palette className="w-3 h-3" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-56 p-2 rounded-lg border-border" align="start">
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground px-2 pb-1">
-            Ton des réponses IA
-          </p>
-          {toneOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => onToneChange(option.value)}
-              className={cn(
-                "w-full flex items-center gap-3 p-2 text-left transition-colors",
-                selectedTone === option.value
-                  ? "bg-foreground/10 text-foreground border border-border"
-                  : "hover:bg-muted border border-transparent"
-              )}
-            >
-              <span className="text-lg">{option.emoji}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{option.label}</p>
-                <p className="text-xs text-muted-foreground">{option.description}</p>
-              </div>
-              {selectedTone === option.value && (
-                <Check className="w-4 h-4 text-primary shrink-0" />
-              )}
-            </button>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className={className}>
+        <MessageSquareQuote className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="flex-1 whitespace-nowrap">Ton des réponses IA</span>
+        {selected && <span className="ml-3 whitespace-nowrap text-xs text-muted-foreground">{selected.label}</span>}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-60">
+        <DropdownMenuRadioGroup value={selectedTone} onValueChange={(value) => onToneChange(value as AITone)}>
+          {AI_TONES.map((option) => (
+            <DropdownMenuRadioItem key={option.value} value={option.value} className="min-h-11 md:min-h-0">
+              <span className="flex flex-col">
+                <span className="text-sm text-foreground">{option.label}</span>
+                <span className="text-xs text-muted-foreground">{option.description}</span>
+              </span>
+            </DropdownMenuRadioItem>
           ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
 };
 

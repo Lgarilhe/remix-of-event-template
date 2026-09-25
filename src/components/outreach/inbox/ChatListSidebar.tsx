@@ -1,8 +1,26 @@
+/**
+ * ChatListSidebar — colonne des conversations de la messagerie.
+ *
+ * Trois rangées avant la première conversation (revue design D-05, D-06) :
+ * le titre, la recherche avec le bouton « Filtres », puis le tri visible
+ * « Toutes / À répondre / En attente » (SegmentedControl, aria-pressed). Le
+ * statut (sommeil, archive), l'étiquette, la boîte d'origine et les non-lus
+ * sont dans « Filtres », avec le nombre de filtres actifs.
+ *
+ * États distincts (D-09) : chargement (squelette), erreur avec « Réessayer »,
+ * aucune conversation, aucune conversation pour ces filtres (« Effacer les
+ * filtres »).
+ */
+
 import React, { useState, useEffect } from 'react';
+import { ListFilter, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCw, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-
-import { Search, MessageSquare, RefreshCw, Tag, ChevronDown, ArrowUpRight, ArrowDownLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { FilterOption, FilterPill } from '@/components/ui/filter-pill';
+import { EmptyState, ErrorState } from '@/components/layout';
 import { cn } from '@/lib/utils';
 import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatListItem } from './ChatListItem';
@@ -10,27 +28,35 @@ import { isRecruiterChat, isClassicChat, hasUnread } from '@/hooks/useMessagesIn
 import { ChatCategory, CHAT_CATEGORIES } from '@/hooks/useChatCategories';
 import { useChatIntents } from '@/hooks/useChatIntents';
 
+type StatusFilter = 'active' | 'snoozed' | 'archived' | 'all';
+type ResponseFilter = 'all' | 'waiting_candidate' | 'waiting_me';
+type SourceFilter = 'all' | 'classic' | 'recruiter';
+
 interface ChatListSidebarProps {
   chats: Chat[];
   filteredChats: Chat[];
   selectedChat: Chat | null;
   loadingChats: boolean;
+  /** Échec de la dernière lecture de la liste */
+  chatsError?: string | null;
   searchQuery: string;
   showUnreadOnly: boolean;
-  sourceFilter: 'all' | 'classic' | 'recruiter';
+  sourceFilter: SourceFilter;
   categoryFilter: ChatCategory | 'all';
-  responseFilter: 'all' | 'waiting_candidate' | 'waiting_me';
-  /** Inbox refonte Phase 1 — filter par status snooze/archive */
-  statusFilter?: 'active' | 'snoozed' | 'archived' | 'all';
+  responseFilter: ResponseFilter;
+  /** Statut de mise en sommeil ou d'archive */
+  statusFilter?: StatusFilter;
   statusCounts?: { active: number; snoozed: number; archived: number };
-  onStatusFilterChange?: (filter: 'active' | 'snoozed' | 'archived' | 'all') => void;
+  onStatusFilterChange?: (filter: StatusFilter) => void;
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
   categoriesMap: Map<string, ChatCategory>;
+  /** Brouillons enregistrés, par conversation */
+  drafts?: Map<string, string>;
   onSearchChange: (query: string) => void;
   onShowUnreadOnlyChange: (show: boolean) => void;
-  onSourceFilterChange: (filter: 'all' | 'classic' | 'recruiter') => void;
+  onSourceFilterChange: (filter: SourceFilter) => void;
   onCategoryFilterChange: (filter: ChatCategory | 'all') => void;
-  onResponseFilterChange: (filter: 'all' | 'waiting_candidate' | 'waiting_me') => void;
+  onResponseFilterChange: (filter: ResponseFilter) => void;
   onSetCategory: (chatId: string, accountId: string, category: ChatCategory | null) => void;
   onChatSelect: (chat: Chat) => void;
   onRefresh: () => void;
@@ -43,11 +69,48 @@ interface ChatListSidebarProps {
   isDeletingChat?: boolean;
 }
 
+const STATUS_LABELS: Record<StatusFilter, string> = {
+  active: 'Actives',
+  snoozed: 'En sommeil',
+  archived: 'Archivées',
+  all: 'Toutes',
+};
+
+const CATEGORY_ENTRIES = Object.entries(CHAT_CATEGORIES) as [ChatCategory, (typeof CHAT_CATEGORIES)[ChatCategory]][];
+
+const withCount = (label: string, count: number) => `${label} (${count})`;
+
+/** Bouton icône de l'en-tête : nom accessible et infobulle (01-direction.md, § 6). */
+const HeaderIconButton: React.FC<{
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}> = ({ label, onClick, disabled, className, children }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className={cn('h-11 w-11 text-muted-foreground hover:text-foreground md:h-8 md:w-8', className)}
+      >
+        {children}
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>{label}</TooltipContent>
+  </Tooltip>
+);
+
 export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   chats,
   filteredChats,
   selectedChat,
   loadingChats,
+  chatsError = null,
   searchQuery,
   showUnreadOnly,
   sourceFilter,
@@ -58,6 +121,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   onStatusFilterChange,
   enrollmentsMap,
   categoriesMap,
+  drafts,
   onSearchChange,
   onShowUnreadOnlyChange,
   onSourceFilterChange,
@@ -74,383 +138,332 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
   onDeleteChat,
   isDeletingChat,
 }) => {
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
-
-  // Mode rail collapsable — sidebar 64px (juste avatars) ou 240px (full).
-  // Persisté dans localStorage pour respecter la préférence user.
+  // Liste repliée en colonne de 64 px (avatars seuls), préférence gardée
+  // dans le navigateur.
   const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('konekt_inbox_sidebar_collapsed') === '1';
+    try {
+      return localStorage.getItem('konekt_inbox_sidebar_collapsed') === '1';
+    } catch {
+      return false;
+    }
   });
   useEffect(() => {
     try {
       localStorage.setItem('konekt_inbox_sidebar_collapsed', collapsed ? '1' : '0');
-    } catch { /* localStorage full ou private mode */ }
+    } catch { /* stockage plein ou navigation privée */ }
   }, [collapsed]);
 
-  // Charge les intents IA des chats visibles (depuis message_analysis_cache)
-  // Passe les chats complets (pas juste IDs) pour que le hook détecte le
-  // cache stale en comparant chat.last_message.timestamp vs analysis.updated_at
+  // Intentions lues par l'IA pour les conversations visibles (cache des analyses).
   const visibleAccountId = filteredChats[0]?.account_id || chats[0]?.account_id || null;
   const { data: intentsMap } = useChatIntents(filteredChats, visibleAccountId);
 
   const classicCount = chats.filter(c => isClassicChat(c)).length;
   const recruiterCount = chats.filter(c => isRecruiterChat(c)).length;
   const unreadCount = chats.filter(c => hasUnread(c)).length;
-  const waitingCandidateCount = chats.filter(c => c.last_message?.is_sender === true).length;
   const waitingMeCount = chats.filter(c => c.last_message?.is_sender === false).length;
 
-  // Count categories from the full DB map (not just loaded chats) for accurate counters
-  const categoryCounts = {
+  // Étiquettes comptées sur toutes les conversations étiquetées, chargées ou non
+  const categoryCounts: Record<ChatCategory, number> = {
     interested: 0,
     not_interested: 0,
     to_recontact: 0,
     no_response: 0,
   };
   categoriesMap.forEach((cat) => {
-    if (cat in categoryCounts) categoryCounts[cat as ChatCategory]++;
+    if (cat in categoryCounts) categoryCounts[cat]++;
   });
+  const statusTotal = statusCounts.active + statusCounts.snoozed + statusCounts.archived;
 
-  // Count active filters
-  const activeFilterCount = [
-    sourceFilter !== 'all',
+  // Filtres du menu « Filtres » (le tri visible et la recherche sont à part)
+  const filterCount = [
+    statusFilter !== 'active',
     categoryFilter !== 'all',
-    responseFilter !== 'all',
+    sourceFilter !== 'all',
     showUnreadOnly,
   ].filter(Boolean).length;
+  const hasAnyFilter = filterCount > 0 || responseFilter !== 'all' || searchQuery.trim().length > 0;
 
-  return (
-    <div className={cn(
-      // Width sidebar adaptative :
-      //   - mobile : full width
-      //   - md+ collapsed : 64px (juste avatars)
-      //   - md+ expanded  : 300px (design complet, lisible)
-      "h-full bg-background min-h-0 overflow-hidden flex flex-col transition-[width] duration-200 ease-out",
-      collapsed ? "md:w-[64px]" : "md:w-[300px]",
-      "w-full md:flex-shrink-0 md:border-r md:border-border",
-      selectedChat ? "hidden md:flex" : "flex"
-    )}>
-      {/* Header sidebar moderne */}
-      <div className={cn(
-        "border-b border-border bg-background/95 backdrop-blur-sm",
-        collapsed ? "px-2 py-3 space-y-2" : "px-3 pt-3 pb-2 space-y-2",
-      )}>
-        {/* Title + actions (refresh + toggle collapse) */}
-        <div className={cn(
-          "flex items-center",
-          collapsed ? "justify-center flex-col gap-1" : "justify-between",
-        )}>
-          {!collapsed && (
-            <h3 className="font-semibold text-foreground tracking-tight text-base">Messages</h3>
-          )}
-          <div className="flex items-center gap-0.5">
-            {!collapsed && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-md"
-                onClick={onRefresh}
-                disabled={loadingChats}
-                aria-label="Rafraîchir les messages"
-              >
-                <RefreshCw className={cn("w-3.5 h-3.5", loadingChats && "animate-spin")} aria-hidden="true" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 rounded-md hidden md:inline-flex"
-              onClick={() => setCollapsed(!collapsed)}
-              aria-label={collapsed ? "Étendre la sidebar" : "Réduire la sidebar"}
-              title={collapsed ? "Étendre la sidebar" : "Réduire la sidebar"}
-            >
-              {collapsed ? (
-                <PanelLeftOpen className="w-3.5 h-3.5" aria-hidden="true" />
-              ) : (
-                <PanelLeftClose className="w-3.5 h-3.5" aria-hidden="true" />
+  const clearFilters = () => {
+    onSearchChange('');
+    onResponseFilterChange('all');
+    onStatusFilterChange?.('active');
+    onCategoryFilterChange('all');
+    onSourceFilterChange('all');
+    onShowUnreadOnlyChange(false);
+  };
+
+  const renderList = () => {
+    if (loadingChats && chats.length === 0) {
+      return (
+        <div className="space-y-1 p-2" role="status" aria-label="Chargement des conversations">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 p-2.5">
+              <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+              {!collapsed && (
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3.5 w-3/5 rounded-sm" />
+                  <Skeleton className="h-3 w-4/5 rounded-sm" />
+                </div>
               )}
-            </Button>
-          </div>
+            </div>
+          ))}
         </div>
+      );
+    }
 
-        {/* Search avec design moderne (masqué en mode rail) */}
-        {!collapsed && (
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-            <Input
-              placeholder="Rechercher une conversation..."
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-9 h-9 text-[13px] bg-muted/40 border-transparent rounded-lg focus-visible:bg-background focus-visible:border-border transition-colors"
-              aria-label="Rechercher dans les messages"
+    if (chatsError && chats.length === 0) {
+      if (collapsed) return null;
+      return (
+        <div className="p-3">
+          <ErrorState
+            variant="compact"
+            title="Impossible de charger vos conversations"
+            description="La liste n'a pas pu être lue. Vérifiez votre connexion, puis réessayez."
+            onRetry={onRefresh}
+            retrying={loadingChats}
+          />
+        </div>
+      );
+    }
+
+    if (filteredChats.length === 0) {
+      if (collapsed) return null;
+      if (chats.length === 0) {
+        return (
+          <div className="p-3">
+            <EmptyState
+              variant="compact"
+              icon={MessageSquare}
+              title="Aucune conversation pour l'instant"
+              description="Les messages échangés avec vos candidats sur LinkedIn apparaîtront ici."
+              action={
+                <Button variant="outline" size="sm" onClick={onRefresh} disabled={loadingChats}>
+                  <RefreshCw aria-hidden="true" />
+                  Actualiser
+                </Button>
+              }
             />
           </div>
+        );
+      }
+      return (
+        <div className="space-y-2 p-3">
+          <EmptyState
+            variant="compact"
+            icon={Search}
+            title={hasAnyFilter ? 'Aucune conversation ne correspond' : 'Aucune conversation active'}
+            description={
+              hasAnyFilter
+                ? 'Modifiez la recherche ou les filtres pour élargir la liste.'
+                : 'Les conversations en sommeil ou archivées restent accessibles.'
+            }
+            action={
+              hasAnyFilter ? (
+                <Button variant="outline" size="sm" onClick={clearFilters}>
+                  <X aria-hidden="true" />
+                  Effacer les filtres
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => onStatusFilterChange?.('all')}>
+                  Voir toutes les conversations
+                </Button>
+              )
+            }
+          />
+          {searchQuery && hasMoreChats && onLoadAllChats && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={onLoadAllChats}
+              loading={loadingAllChats}
+            >
+              {!loadingAllChats && <Search aria-hidden="true" />}
+              {loadingAllChats ? 'Recherche en cours…' : 'Chercher dans toutes les conversations'}
+            </Button>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <ul className="space-y-0.5 py-1" aria-label="Conversations">
+        {filteredChats.map(chat => (
+          <li key={chat.id}>
+            <ChatListItem
+              chat={chat}
+              isSelected={selectedChat?.id === chat.id}
+              enrollmentsMap={enrollmentsMap}
+              category={categoriesMap.get(chat.id) || null}
+              onSetCategory={onSetCategory}
+              onClick={() => onChatSelect(chat)}
+              onDeleteChat={onDeleteChat}
+              isDeletingChat={isDeletingChat}
+              collapsed={collapsed}
+              intent={intentsMap?.get(chat.id)}
+              draft={drafts?.get(chat.id) ?? null}
+            />
+          </li>
+        ))}
+        {!collapsed && hasMoreChats && (
+          <li className="p-2">
+            {searchQuery && onLoadAllChats ? (
+              <Button variant="ghost" size="sm" className="w-full" onClick={onLoadAllChats} loading={loadingAllChats}>
+                {!loadingAllChats && <Search aria-hidden="true" />}
+                {loadingAllChats ? 'Recherche en cours…' : 'Chercher dans toutes les conversations'}
+              </Button>
+            ) : onLoadMoreChats ? (
+              <Button variant="outline" size="sm" className="w-full" onClick={onLoadMoreChats} loading={loadingMoreChats}>
+                {loadingMoreChats ? 'Chargement…' : 'Charger plus de conversations'}
+              </Button>
+            ) : null}
+          </li>
         )}
-        
-        {/* Filtres — masqués en mode rail collapsed */}
+      </ul>
+    );
+  };
+
+  return (
+    <div
+      className={cn(
+        'flex h-full min-h-0 flex-col overflow-hidden bg-background transition-[width] duration-200 ease-out',
+        'w-full md:shrink-0 md:border-r md:border-border',
+        collapsed ? 'md:w-16' : 'md:w-[300px]',
+        selectedChat ? 'hidden md:flex' : 'flex',
+      )}
+    >
+      <div className={cn('shrink-0 border-b border-border', collapsed ? 'px-2 py-3' : 'space-y-2.5 p-3')}>
+        {/* Titre et actions de la liste */}
+        <div className={cn('flex items-center', collapsed ? 'flex-col gap-1' : 'justify-between gap-2')}>
+          {!collapsed && <h1 className="text-md font-semibold text-foreground">Messagerie</h1>}
+          <div className={cn('flex items-center gap-0.5', collapsed && 'flex-col')}>
+            {!collapsed && (
+              <HeaderIconButton label="Actualiser les conversations" onClick={onRefresh} disabled={loadingChats}>
+                <RefreshCw className={cn(loadingChats && 'animate-spin')} aria-hidden="true" />
+              </HeaderIconButton>
+            )}
+            <HeaderIconButton
+              label={collapsed ? 'Déplier la liste des conversations' : 'Replier la liste des conversations'}
+              onClick={() => setCollapsed(!collapsed)}
+              className="hidden md:inline-flex"
+            >
+              {collapsed ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
+            </HeaderIconButton>
+          </div>
+        </div>
+
         {!collapsed && (
           <>
-        <div className="flex gap-1 overflow-hidden">
-          {([
-            { key: 'all' as const, label: 'Tous', count: chats.length },
-            { key: 'classic' as const, label: 'Classic', count: classicCount },
-            { key: 'recruiter' as const, label: 'Recruiter', count: recruiterCount },
-          ]).map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => onSourceFilterChange(tab.key)}
-              className={cn(
-                "flex-1 min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden",
-                sourceFilter === tab.key
-                  ? "bg-foreground text-background"
-                  : "bg-muted/40 text-foreground hover:bg-muted"
-              )}
-            >
-              <span className="truncate">{tab.label}</span>
-              <span className={cn(
-                "tabular-nums text-[10px]",
-                sourceFilter === tab.key ? "opacity-70" : "opacity-50",
-              )}>{tab.count}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Quick response filter — pills compactes */}
-        <div className="flex gap-1 overflow-hidden">
-          {([
-            { key: 'all' as const, label: 'Tous', count: null, icon: null },
-            { key: 'waiting_candidate' as const, label: 'Att. cand.', count: waitingCandidateCount, icon: <ArrowUpRight className="w-3 h-3" /> },
-            { key: 'waiting_me' as const, label: 'Att. moi', count: waitingMeCount, icon: <ArrowDownLeft className="w-3 h-3" /> },
-          ]).map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => onResponseFilterChange(tab.key)}
-              className={cn(
-                "flex-1 min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden",
-                responseFilter === tab.key
-                  ? "bg-foreground text-background"
-                  : "bg-muted/40 text-foreground hover:bg-muted"
-              )}
-            >
-              {tab.icon}
-              <span className="truncate">{tab.label}</span>
-              {tab.count != null && (
-                <span className={cn(
-                  "tabular-nums text-[10px]",
-                  responseFilter === tab.key ? "opacity-70" : "opacity-50",
-                )}>{tab.count}</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Status filter (Active / Snoozed / Archived) — TOUJOURS VISIBLE
-            pour que l'user retrouve facilement les chats snoozés/archivés */}
-        {onStatusFilterChange && (
-          <div className="flex gap-1 overflow-hidden">
-            {([
-              { key: 'active' as const, label: 'Actives', emoji: '💬' },
-              { key: 'snoozed' as const, label: 'Sommeil', emoji: '⏰' },
-              { key: 'archived' as const, label: 'Archivées', emoji: '📦' },
-              { key: 'all' as const, label: 'Toutes', emoji: '∗' },
-            ]).map((opt) => {
-              const count = opt.key === 'all'
-                ? statusCounts.active + statusCounts.snoozed + statusCounts.archived
-                : statusCounts[opt.key];
-              const isActive = statusFilter === opt.key;
-              return (
-                <button
-                  key={opt.key}
-                  onClick={() => onStatusFilterChange(opt.key)}
-                  title={opt.label}
-                  className={cn(
-                    "flex-1 min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden",
-                    isActive
-                      ? "bg-foreground text-background"
-                      : "bg-muted/40 text-foreground hover:bg-muted",
-                  )}
-                >
-                  <span>{opt.emoji}</span>
-                  <span className={cn(
-                    "tabular-nums text-[10px]",
-                    isActive ? "opacity-70" : "opacity-50",
-                  )}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Collapsible : tags catégories + non lus */}
-        <button
-          onClick={() => setFiltersExpanded(!filtersExpanded)}
-          className="w-full flex items-center justify-center gap-1 h-6 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Tag className="w-3 h-3" />
-          <span>Tags{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
-          <ChevronDown className={cn("w-3 h-3 transition-transform", filtersExpanded && "rotate-180")} />
-        </button>
-
-        {filtersExpanded && (
-          <div className="space-y-1.5 pt-0.5">{/* status filter sorti du collapse, dispo en haut */}
-
-            {/* Category filter pills */}
-            <div className="flex gap-1 overflow-hidden flex-wrap">
-              <button
-                onClick={() => onCategoryFilterChange('all')}
-                className={cn(
-                  "min-w-0 h-7 px-2.5 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center",
-                  categoryFilter === 'all'
-                    ? "bg-foreground text-background"
-                    : "bg-muted/40 text-foreground hover:bg-muted",
+            {/* Recherche et filtres */}
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  placeholder="Rechercher"
+                  aria-label="Rechercher une conversation (nom, poste, message)"
+                  className="h-8 pl-8"
+                />
+              </div>
+              <FilterPill label="Filtres" icon={ListFilter} count={filterCount} align="end" contentClassName="w-64 max-h-[70vh] overflow-y-auto">
+                {onStatusFilterChange && (
+                  <div role="group" aria-labelledby="inbox-filter-status">
+                    <p id="inbox-filter-status" className="eyebrow px-2 pb-1 pt-1.5">Statut</p>
+                    {(['active', 'snoozed', 'archived', 'all'] as StatusFilter[]).map((key) => (
+                      <FilterOption
+                        key={key}
+                        checked={statusFilter === key}
+                        onCheckedChange={(on) => onStatusFilterChange(on ? key : 'active')}
+                      >
+                        {withCount(STATUS_LABELS[key], key === 'all' ? statusTotal : statusCounts[key])}
+                      </FilterOption>
+                    ))}
+                  </div>
                 )}
-              >
-                Tous
-              </button>
-              {(Object.entries(CHAT_CATEGORIES) as [ChatCategory, typeof CHAT_CATEGORIES[ChatCategory]][]).map(([key, info]) => {
-                const isActive = categoryFilter === key;
-                const count = categoryCounts[key] || 0;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => onCategoryFilterChange(isActive ? 'all' : key)}
-                    title={info.label}
-                    className={cn(
-                      "min-w-0 h-7 px-2 text-[11px] font-medium rounded-md transition-colors inline-flex items-center justify-center gap-1 whitespace-nowrap",
-                      isActive
-                        ? "bg-foreground text-background"
-                        : "bg-muted/40 text-foreground hover:bg-muted",
-                    )}
+                <div role="group" aria-labelledby="inbox-filter-tag" className="mt-1 border-t border-border pt-1">
+                  <p id="inbox-filter-tag" className="eyebrow px-2 pb-1 pt-1.5">Étiquette</p>
+                  {CATEGORY_ENTRIES.map(([key, info]) => (
+                    <FilterOption
+                      key={key}
+                      checked={categoryFilter === key}
+                      onCheckedChange={(on) => onCategoryFilterChange(on ? key : 'all')}
+                    >
+                      {withCount(info.label, categoryCounts[key])}
+                    </FilterOption>
+                  ))}
+                </div>
+                <div role="group" aria-labelledby="inbox-filter-source" className="mt-1 border-t border-border pt-1">
+                  <p id="inbox-filter-source" className="eyebrow px-2 pb-1 pt-1.5">Boîte LinkedIn</p>
+                  <FilterOption
+                    checked={sourceFilter === 'classic'}
+                    onCheckedChange={(on) => onSourceFilterChange(on ? 'classic' : 'all')}
                   >
-                    <span>{info.emoji}</span>
-                    <span className={cn(
-                      "tabular-nums text-[10px]",
-                      isActive ? "opacity-70" : "opacity-50",
-                    )}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
+                    {withCount('Classique', classicCount)}
+                  </FilterOption>
+                  <FilterOption
+                    checked={sourceFilter === 'recruiter'}
+                    onCheckedChange={(on) => onSourceFilterChange(on ? 'recruiter' : 'all')}
+                  >
+                    {withCount('Recruiter', recruiterCount)}
+                  </FilterOption>
+                </div>
+                <div className="mt-1 border-t border-border pt-1">
+                  <FilterOption checked={showUnreadOnly} onCheckedChange={onShowUnreadOnlyChange}>
+                    {withCount('Non lues uniquement', unreadCount)}
+                  </FilterOption>
+                </div>
+                {filterCount > 0 && (
+                  <div className="mt-1 border-t border-border pt-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        onStatusFilterChange?.('active');
+                        onCategoryFilterChange('all');
+                        onSourceFilterChange('all');
+                        onShowUnreadOnlyChange(false);
+                      }}
+                    >
+                      <X aria-hidden="true" />
+                      Effacer les filtres
+                    </Button>
+                  </div>
+                )}
+              </FilterPill>
             </div>
 
-            {/* Unread filter — switch moderne */}
-            <button
-              onClick={() => onShowUnreadOnlyChange(!showUnreadOnly)}
-              className={cn(
-                "w-full h-7 px-3 text-[11px] font-medium rounded-md inline-flex items-center justify-center gap-1.5 transition-colors",
-                showUnreadOnly
-                  ? "bg-foreground text-background"
-                  : "bg-muted/40 text-foreground hover:bg-muted",
-              )}
-            >
-              <span>Non lus uniquement</span>
-              {unreadCount > 0 && (
-                <span className={cn(
-                  "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold rounded-full tabular-nums",
-                  showUnreadOnly
-                    ? "bg-background/20 text-background"
-                    : "bg-foreground text-background",
-                )}>
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
+            {/* Tri visible : qui doit répondre */}
+            <SegmentedControl
+              aria-label="Conversations affichées"
+              value={responseFilter}
+              onValueChange={onResponseFilterChange}
+              options={[
+                { value: 'all', label: 'Toutes' },
+                {
+                  value: 'waiting_me',
+                  label: waitingMeCount > 0 ? (
+                    <>
+                      À répondre <span className="tabular-nums text-muted-foreground">{waitingMeCount}</span>
+                    </>
+                  ) : (
+                    'À répondre'
+                  ),
+                  title: 'Le candidat a écrit le dernier message',
+                },
+                { value: 'waiting_candidate', label: 'En attente', title: 'Vous avez écrit le dernier message' },
+              ]}
+            />
           </>
         )}
       </div>
 
-      {/* Chat List */}
-      {/* Liste scrollable — div natif pour éviter le `display: table` du
-          Radix ScrollArea qui faisait dépasser les items en horizontal. */}
-      <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
-        {loadingChats ? (
-          <div className="p-2 space-y-1">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 animate-pulse" style={{ animationDelay: `${i * 80}ms` }}>
-                <div className="h-9 w-9 rounded-full bg-muted flex-shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3.5 bg-muted rounded w-3/5" />
-                  <div className="h-2.5 bg-muted/60 rounded w-4/5" />
-                </div>
-                <div className="h-2.5 bg-muted/40 rounded w-8 flex-shrink-0" />
-              </div>
-            ))}
-          </div>
-        ) : filteredChats.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">
-            <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">
-              {searchQuery ? 'Aucune conversation trouvée' : 'Aucune conversation'}
-            </p>
-            {searchQuery && hasMoreChats && onLoadAllChats && (
-              <button
-                onClick={onLoadAllChats}
-                disabled={loadingAllChats}
-                className="mt-3 w-full h-8 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
-              >
-                {loadingAllChats ? (
-                  <><RefreshCw className="w-3 h-3 animate-spin" />Recherche en cours...</>
-                ) : (
-                  <><Search className="w-3 h-3" />Rechercher partout</>
-                )}
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="py-1 space-y-0.5">
-            {filteredChats.map(chat => (
-              <ChatListItem
-                key={chat.id}
-                chat={chat}
-                isSelected={selectedChat?.id === chat.id}
-                enrollmentsMap={enrollmentsMap}
-                category={categoriesMap.get(chat.id) || null}
-                onSetCategory={onSetCategory}
-                onClick={() => onChatSelect(chat)}
-                onDeleteChat={onDeleteChat}
-                isDeletingChat={isDeletingChat}
-                collapsed={collapsed}
-                intent={intentsMap?.get(chat.id)}
-              />
-            ))}
-            {hasMoreChats && searchQuery && onLoadAllChats && (
-              <div className="p-2">
-                <button
-                  onClick={onLoadAllChats}
-                  disabled={loadingAllChats}
-                  className="w-full h-8 text-xs font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
-                >
-                  {loadingAllChats ? (
-                    <><RefreshCw className="w-3 h-3 animate-spin" />Recherche en cours...</>
-                  ) : (
-                    <><Search className="w-3 h-3" />Rechercher partout</>
-                  )}
-                </button>
-              </div>
-            )}
-            {hasMoreChats && !searchQuery && onLoadMoreChats && (
-              <div className="p-2">
-                <button
-                  onClick={onLoadMoreChats}
-                  disabled={loadingMoreChats}
-                  className="w-full h-8 text-xs font-medium rounded-md bg-muted/40 text-foreground hover:bg-muted transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-                >
-                  {loadingMoreChats ? (
-                    <><RefreshCw className="w-3 h-3 animate-spin" />Chargement...</>
-                  ) : (
-                    <>Charger plus</>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Liste : un div natif défile, sans le display: table de ScrollArea */}
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">{renderList()}</div>
     </div>
   );
 };

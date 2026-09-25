@@ -1,19 +1,26 @@
 /**
- * MessagesInbox — Container avec sidebar de chats + vue conversation.
+ * MessagesInbox — liste des conversations et conversation ouverte.
  *
- * Refonte from scratch — 2026-04-28.
+ * - Ordinateur : deux colonnes, la liste et la conversation.
+ * - Téléphone : la liste, puis la conversation en plein écran une fois ouverte.
+ *   Elle se pose sur le calque nommé z-sticky, sous les dialogues, les menus
+ *   et les toasts (revue design D-72).
+ * - MessageView n'est monté qu'une fois : le point de rupture ne change que sa
+ *   mise en page (D-18). Il n'y a plus deux conversations en parallèle qui
+ *   écrivent le même brouillon et lisent deux fois la même frise.
  *
- * Layout : CSS Grid 2 colonnes (sidebar 360px | conversation 1fr).
- * La hauteur est imposée par le parent (Inbox.tsx fixe via calc(100dvh)).
+ * La hauteur vient du parent (Inbox.tsx, calée sur l'espace visible).
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronRight, GitBranch, Link2 } from 'lucide-react';
 import { LinkedInAccount } from '@/pages/Outreach';
-import { MessageSquare } from 'lucide-react';
 import { useMessagesInbox } from '@/hooks/useMessagesInbox';
 import { useMessageActions } from '@/hooks/useMessageActions';
 import { useEdgeFunctionWarmup } from '@/hooks/useEdgeFunctionWarmup';
 import { useAutoPrefetchAnalyses } from '@/hooks/useAutoPrefetchAnalyses';
+import { useChatDrafts } from '@/hooks/useChatDraft';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
 import { AddToPipelineModal } from './AddToPipelineModal';
@@ -21,6 +28,9 @@ import { SequenceEnrollModal } from './SequenceEnrollModal';
 import type { LinkedInProfile } from './types';
 import { getCurrentCandidateProfile, getChatAvatar } from '@/hooks/useMessagesInboxHelpers';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { EmptyState } from '@/components/layout';
 import {
   Dialog,
   DialogContent,
@@ -28,8 +38,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { GitBranch } from 'lucide-react';
 import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
+import { sequenceActionMeta } from '@/lib/sequenceCatalog';
+import type { Channel } from '@/lib/channels';
+import { cn } from '@/lib/utils';
 
 interface MessagesInboxProps {
   accounts: LinkedInAccount[];
@@ -42,35 +54,40 @@ interface MessagesInboxProps {
   fullHeight?: boolean;
 }
 
+/** Canaux des étapes d'une séquence, dans l'ordre où ils apparaissent. */
+function sequenceChannels(steps: unknown[]): Channel[] {
+  const channels: Channel[] = [];
+  for (const step of steps) {
+    const channel = sequenceActionMeta((step as { action_type?: string })?.action_type)?.channel;
+    if (channel && !channels.includes(channel)) channels.push(channel);
+  }
+  return channels;
+}
+
+const stepCountLabel = (count: number) => `${count} étape${count > 1 ? 's' : ''}`;
+
 export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
   const { selectedAccount, loading } = props;
 
-  // Loading / no account selected
+  // Compte en cours de chargement, ou aucun compte LinkedIn relié
   if (!selectedAccount) {
     return (
-      <div className="h-full grid place-items-center bg-background text-muted-foreground">
-        <div className="text-center max-w-md px-6">
-          {loading ? (
-            <>
-              <div className="w-6 h-6 border-2 border-border border-t-foreground rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                Chargement de votre compte LinkedIn...
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="h-14 w-14 bg-foreground/5 text-foreground/40 grid place-items-center mx-auto mb-4 rounded-md">
-                <MessageSquare className="w-6 h-6" />
-              </div>
-              <p className="text-sm font-medium text-foreground/70">
-                Aucun compte LinkedIn connecté
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Connectez votre LinkedIn dans les paramètres pour voir vos messages.
-              </p>
-            </>
-          )}
-        </div>
+      <div className="grid h-full place-items-center bg-background p-4">
+        {loading ? (
+          <Spinner label="Chargement de votre compte LinkedIn" size="lg" />
+        ) : (
+          <EmptyState
+            icon={Link2}
+            title="Aucun compte LinkedIn relié"
+            description="Reliez votre compte LinkedIn pour lire vos conversations et répondre aux candidats depuis Konekt."
+            action={
+              <Button variant="primary" size="sm" asChild>
+                <Link to="/settings/account/connections">Relier votre compte LinkedIn</Link>
+              </Button>
+            }
+            className="w-full max-w-md"
+          />
+        )}
       </div>
     );
   }
@@ -101,6 +118,9 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
   const { addReaction, deleteMessage, deleteChat, isReacting, isDeleting } = useMessageActions(
     inbox.organizationId ?? null,
   );
+
+  // Brouillons en cours, signalés dans la liste (revue design D-10)
+  const drafts = useChatDrafts();
 
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
 
@@ -146,14 +166,11 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
     return success;
   };
 
-  // Wrapper pour addReaction : déclenche un re-fetch des messages après
-  // succès afin que la réaction apparaisse immédiatement dans le UI
-  // (l'edge function `add_reaction` envoie la réaction à LinkedIn via
-  // Unipile mais ne met pas à jour le state local des messages).
+  // Réaction : les messages sont relus après succès, la fonction d'envoi ne
+  // mettant pas à jour l'état local.
   const handleAddReaction = async (messageId: string, reaction: string): Promise<boolean> => {
     const success = await addReaction(messageId, reaction);
     if (success && inbox.selectedChat?.id) {
-      // Re-fetch pour récupérer la réaction depuis Unipile
       inbox.fetchMessages(inbox.selectedChat.id);
     }
     return success;
@@ -163,72 +180,13 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
     <AttendeePicturesProvider organizationId={inbox.organizationId ?? null}>
       <PreloadAttendeePictures chats={inbox.chats} />
 
-      {/* Mobile fullscreen vue conversation (< md / 768px) */}
-      {inbox.selectedChat && (
-        <div className="fixed inset-0 z-[2100] bg-background md:hidden">
-          <MessageView
-            selectedChat={inbox.selectedChat}
-            messages={inbox.messages}
-            loadingMessages={inbox.loadingMessages}
-            newMessage={inbox.newMessage}
-            sending={inbox.sending}
-            replySuggestions={inbox.replySuggestions}
-            loadingSuggestions={inbox.loadingSuggestions}
-            suggestionsLoaded={inbox.suggestionsLoaded}
-            enrollmentsMap={inbox.enrollmentsMap}
-            availableJobs={inbox.availableJobs}
-            activeMissions={inbox.activeMissions}
-            messagesEndRef={inbox.messagesEndRef}
-            messagesContainerRef={inbox.messagesContainerRef}
-            analysisData={inbox.analysisData}
-            loadingAnalysis={inbox.loadingAnalysis}
-            selectedTone={inbox.selectedTone}
-            onToneChange={inbox.setSelectedTone}
-            onBack={() => inbox.setSelectedChat(null)}
-            onNewMessageChange={inbox.setNewMessage}
-            onSendMessage={inbox.sendMessage}
-            onSuggestionClick={inbox.handleSuggestionClick}
-            onSuggestionSend={inbox.handleSuggestionSend}
-            onFetchSuggestions={inbox.fetchReplySuggestions}
-            onClearSuggestions={() => {
-              inbox.setReplySuggestions([]);
-              inbox.setSuggestionsLoaded(false);
-            }}
-            onAddToPipeline={inbox.handleAddToPipeline}
-            onEnrollInSequence={inbox.handleEnrollInSequence}
-            onScheduleCall={inbox.handleScheduleCall}
-            calendlyLink={inbox.calendlyLink}
-            onAddReaction={handleAddReaction}
-            onRefetchMessages={async () => {
-              if (!inbox.selectedChat) return 0;
-              // 1er essai : fetch normal (cache Unipile, rapide ~500ms)
-              const count = await inbox.fetchMessages(inbox.selectedChat.id);
-              if (count > 0) return count;
-              // Fallback : si 0 messages, force un sync history complet (~10-30s)
-              return await inbox.syncChatHistory(inbox.selectedChat.id);
-            }}
-            onAutoSyncIfEmpty={(chatId) => inbox.syncChatHistory(chatId, { silent: true })}
-            onDeleteMessage={handleDeleteMessage}
-            isReacting={isReacting}
-            isDeleting={isDeleting}
-          />
-        </div>
-      )}
-
-      {/* Layout flex pur. Breakpoint à `lg` (1024px) au lieu de `md` (768px)
-          pour éviter le 2-cols cramped quand le viewport effectif est petit
-          (l'AppSidebar Konekt prend 256px du viewport, donc < 1024px de
-          viewport effectif l'inbox manque de place). */}
-      <div
-        className="h-full bg-background overflow-hidden flex"
-        data-component="messages-inbox-grid"
-      >
-        {/* Sidebar de chats */}
+      <div className="flex h-full overflow-hidden bg-background" data-component="messages-inbox-grid">
         <ChatListSidebar
           chats={inbox.chats}
           filteredChats={inbox.filteredChats}
           selectedChat={inbox.selectedChat}
           loadingChats={inbox.loadingChats}
+          chatsError={inbox.chatsError}
           searchQuery={inbox.searchQuery}
           showUnreadOnly={inbox.showUnreadOnly}
           sourceFilter={inbox.sourceFilter}
@@ -239,6 +197,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           onStatusFilterChange={inbox.chatStatus.setStatusFilter}
           enrollmentsMap={inbox.enrollmentsMap}
           categoriesMap={inbox.chatCategories.categoriesMap}
+          drafts={drafts}
           onSearchChange={inbox.setSearchQuery}
           onShowUnreadOnlyChange={inbox.setShowUnreadOnly}
           onSourceFilterChange={inbox.setSourceFilter}
@@ -256,10 +215,16 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           isDeletingChat={isDeleting}
         />
 
-        {/* Vue conversation desktop (cachée < md, flex-1 sur md+).
-            min-w-0 + overflow-hidden pour empêcher tout débordement
-            horizontal venant des bulles ou du panel IA. */}
-        <div className="hidden md:block md:flex-1 md:min-w-0 h-full max-w-full overflow-hidden">
+        {/* Conversation : plein écran sur téléphone quand elle est ouverte,
+            colonne de droite sur ordinateur. */}
+        <div
+          className={cn(
+            'h-full min-w-0 overflow-hidden bg-background',
+            inbox.selectedChat
+              ? 'fixed inset-0 z-sticky md:static md:z-auto md:flex-1'
+              : 'hidden md:block md:flex-1',
+          )}
+        >
           <MessageView
             selectedChat={inbox.selectedChat}
             messages={inbox.messages}
@@ -282,7 +247,6 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             onNewMessageChange={inbox.setNewMessage}
             onSendMessage={inbox.sendMessage}
             onSuggestionClick={inbox.handleSuggestionClick}
-            onSuggestionSend={inbox.handleSuggestionSend}
             onFetchSuggestions={inbox.fetchReplySuggestions}
             onClearSuggestions={() => {
               inbox.setReplySuggestions([]);
@@ -310,47 +274,70 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
       </div>
 
       {/*
-        Choix de la séquence. Le dialogue partagé remplace la fenêtre maison :
-        celle-ci était posée à `z-50` dans le même composant que la conversation
-        mobile en `z-[2100]`, donc invisible sur téléphone (constat UX07). Il
-        apporte au passage le focus, la touche Échap et le titre annoncé.
+        Choix de la séquence, sur le dialogue partagé (focus, Échap, titre
+        annoncé ; constat UX07). Il s'ouvre depuis l'en-tête de la conversation
+        (revue design D-02) et ne fait que choisir : l'inscription se confirme
+        dans la préparation.
       */}
       <Dialog open={inbox.showSequenceSelect} onOpenChange={inbox.setShowSequenceSelect}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-sm">Choisir une séquence</DialogTitle>
-            <DialogDescription className="text-xs">
+            <DialogTitle>Choisir une séquence</DialogTitle>
+            <DialogDescription>
               {candidateProfile?.name
-                ? `Vous verrez les messages et les avertissements avant d'engager ${candidateProfile.name}.`
-                : "Vous verrez les messages et les avertissements avant d'engager le candidat."}
+                ? `Vous verrez les messages et les avertissements avant d'inscrire ${candidateProfile.name}.`
+                : "Vous verrez les messages et les avertissements avant d'inscrire le candidat."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {inbox.sequences.length === 0 && (
-              <p className="text-xs text-muted-foreground py-4 text-center">
-                Aucune séquence active pour l'instant.
-              </p>
-            )}
-            {inbox.sequences.map((sequence) => (
-              <button
-                key={sequence.id}
-                onClick={() => {
-                  // Choisir n'inscrit pas : on ouvre la préparation.
-                  setPendingSequence(sequence);
-                  inbox.setShowSequenceSelect(false);
-                }}
-                className="w-full p-3 text-left border border-border rounded-md hover:bg-accent/20 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <GitBranch className="w-4 h-4 text-foreground" />
-                  <span className="font-medium text-sm">{sequence.name}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {sequence.steps.length} étape(s)
-                </p>
-              </button>
-            ))}
-          </div>
+          {inbox.sequences.length === 0 ? (
+            <EmptyState
+              variant="compact"
+              icon={GitBranch}
+              title="Aucune séquence active"
+              description="Les séquences se créent et s'activent depuis l'onglet Outreach d'une mission."
+              action={
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/missions" onClick={() => inbox.setShowSequenceSelect(false)}>
+                    Voir les missions
+                  </Link>
+                </Button>
+              }
+            />
+          ) : (
+            <ul className="max-h-72 space-y-2 overflow-y-auto" aria-label="Séquences actives">
+              {inbox.sequences.map((sequence) => {
+                const channels = sequenceChannels(sequence.steps);
+                return (
+                  <li key={sequence.id}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        // Choisir n'inscrit pas : on ouvre la préparation.
+                        setPendingSequence(sequence);
+                        inbox.setShowSequenceSelect(false);
+                      }}
+                      className="h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left font-normal"
+                    >
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground-secondary">
+                        <GitBranch aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-foreground">{sequence.name}</span>
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          {stepCountLabel(sequence.steps.length)}
+                          {channels.map((channel) => (
+                            <ChannelIcon key={channel} channel={channel} size="sm" />
+                          ))}
+                        </span>
+                      </span>
+                      <ChevronRight className="text-muted-foreground" aria-hidden="true" />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </DialogContent>
       </Dialog>
 

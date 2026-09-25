@@ -1,17 +1,23 @@
 /**
- * ChatListItem — Item de la sidebar de conversations.
+ * ChatListItem — une conversation dans la liste de la messagerie.
  *
- * Design moderne inspiré de Slack / iMessage / Linear :
- *  - Avatar circulaire avec badge channel discret
- *  - Layout 3 zones : avatar | nom + preview + tags | time + unread dot
- *  - Sélection : bg-accent rounded-lg (pas de border hard)
- *  - Hover : bg-muted/50
- *  - Unread : dot indicator rond + bold nom (pas de badge rouge agressif)
- *  - Actions hover : Tag + Delete (icônes circulaires en haut à droite)
+ * - Avatar (initiales neutres en repli) et pastille du canal.
+ * - Nom, étiquette (posée à la main, sinon l'intention lue par l'IA) et heure.
+ * - Aperçu et non-lus : « Vous : » devant vos messages, « Brouillon : » quand
+ *   un texte attend d'être envoyé (revue design D-10, D-17).
+ * - Repères dans un ordre fixe (D-07) : sommeil ou archive, « À répondre » ou
+ *   « En attente », puis la mission de l'inscription (à défaut, la boîte
+ *   d'origine, en texte neutre).
+ * - Actions (étiquette, suppression) dans un menu : toujours visible au doigt,
+ *   au survol ou au focus clavier à la souris (D-03, D-12).
  */
 
 import React, { useState, useEffect } from 'react';
+import { AlarmClock, Archive, Briefcase, Hourglass, MoreHorizontal, Reply, Trash2 } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Chat, SequenceEnrollmentInfo } from '@/hooks/useMessagesInbox';
 import { ChatCategory, CHAT_CATEGORIES } from '@/hooks/useChatCategories';
@@ -33,8 +39,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
@@ -46,7 +55,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Tag, X, Trash2, Loader2 } from 'lucide-react';
 import { useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 
@@ -59,20 +67,60 @@ interface ChatListItemProps {
   onClick: () => void;
   onDeleteChat?: (chatId: string) => Promise<boolean>;
   isDeletingChat?: boolean;
-  /** Mode rail collapsed (sidebar 64px) — show only avatar + unread dot */
+  /** Liste repliée (colonne de 64 px) : avatar et pastille de non-lus seulement. */
   collapsed?: boolean;
-  /** Intent IA détecté pour ce chat (depuis message_analysis_cache) */
+  /** Intention lue par l'IA pour ce chat (cache des analyses) */
   intent?: IntentInfo;
+  /** Brouillon enregistré pour cette conversation, s'il y en a un. */
+  draft?: string | null;
 }
 
-/** Récupère le texte d'aperçu du dernier message (avec préfixe "Tu:" si is_sender) */
-function getLastMessagePreview(chat: Chat): string | null {
+// Cible de 44 px au doigt dans les menus (01-direction.md, § 5).
+const MENU_ITEM = 'min-h-11 md:min-h-0';
+
+const CATEGORY_ENTRIES = Object.entries(CHAT_CATEGORIES) as [ChatCategory, (typeof CHAT_CATEGORIES)[ChatCategory]][];
+
+/** Dernier message, sans les retours à la ligne ; « mine » : envoyé par vous. */
+function getLastMessagePreview(chat: Chat): { mine: boolean; text: string } | null {
   const lm = chat.last_message;
   if (!lm) return null;
-  const text = lm.text || lm.text_content || '';
-  if (!text.trim()) return null;
-  const cleaned = text.replace(/\s+/g, ' ').trim();
-  return lm.is_sender ? `Tu : ${cleaned}` : cleaned;
+  const text = (lm.text || lm.text_content || '').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  return { mine: lm.is_sender === true, text };
+}
+
+const hourLabel = (date: Date) =>
+  `${date.getHours()} h${date.getMinutes() ? ` ${date.getMinutes().toString().padStart(2, '0')}` : ''}`;
+
+/** Fin de la mise en sommeil : « dans 45 min », « 18 h », « demain 9 h », « vendredi 9 h », « 5 mai ». */
+function formatSnoozeUntil(date: Date): string {
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  const diffHours = Math.round(diffMs / 3600000);
+  const diffDays = Math.round(diffMs / 86400000);
+
+  if (diffMin < 60) return `dans ${diffMin} min`;
+  if (diffHours < 24) {
+    if (date.getDate() === now.getDate()) return hourLabel(date);
+    return `dans ${diffHours} h`;
+  }
+  if (diffDays === 1) return `demain ${hourLabel(date)}`;
+  if (diffDays < 7) return `${date.toLocaleDateString('fr-FR', { weekday: 'long' })} ${hourLabel(date)}`;
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+/** Date d'archivage : « aujourd'hui », « hier », « il y a 3 jours », « il y a 2 semaines », « 5 mars ». */
+function formatArchivedAt(date: Date): string {
+  const diffDays = Math.floor((Date.now() - date.getTime()) / 86400000);
+  if (diffDays <= 0) return "aujourd'hui";
+  if (diffDays === 1) return 'hier';
+  if (diffDays < 7) return `il y a ${diffDays} jours`;
+  if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `il y a ${weeks} semaine${weeks > 1 ? 's' : ''}`;
+  }
+  return `le ${date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
 }
 
 export const ChatListItem: React.FC<ChatListItemProps> = ({
@@ -86,49 +134,15 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   isDeletingChat,
   collapsed = false,
   intent,
+  draft,
 }) => {
   const intentMeta = intent ? INTENT_META[intent.intent] : null;
 
-  // Récupère info snooze/archive pour afficher des badges contextuels
+  // Mise en sommeil et archive : repères de la ligne
   const { getSnoozedUntil, getArchivedAt } = useChatStatus();
   const snoozedUntil = getSnoozedUntil(chat.id);
   const archivedAt = getArchivedAt(chat.id);
 
-  /** Format relatif : "dans 2h", "demain 9h", "vendredi 9h", "5 mai" */
-  const formatSnoozeUntil = (date: Date): string => {
-    const now = new Date();
-    const diffMs = date.getTime() - now.getTime();
-    const diffMin = Math.round(diffMs / 60000);
-    const diffHours = Math.round(diffMs / 3600000);
-    const diffDays = Math.round(diffMs / 86400000);
-
-    if (diffMin < 60) return `dans ${diffMin}min`;
-    if (diffHours < 24) {
-      const sameDay = date.getDate() === now.getDate();
-      if (sameDay) return `${date.getHours()}h${date.getMinutes() ? date.getMinutes().toString().padStart(2, '0') : ''}`;
-      return `dans ${diffHours}h`;
-    }
-    if (diffDays === 1) {
-      return `demain ${date.getHours()}h${date.getMinutes() ? date.getMinutes().toString().padStart(2, '0') : ''}`;
-    }
-    if (diffDays < 7) {
-      const day = date.toLocaleDateString('fr-FR', { weekday: 'long' });
-      return `${day} ${date.getHours()}h${date.getMinutes() ? date.getMinutes().toString().padStart(2, '0') : ''}`;
-    }
-    // > 7 jours : date courte
-    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-  };
-
-  /** Format date d'archivage : "il y a 2j", "il y a 3 sem", "5 mars" */
-  const formatArchivedAt = (date: Date): string => {
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
-    if (diffDays === 0) return "aujourd'hui";
-    if (diffDays === 1) return 'hier';
-    if (diffDays < 7) return `il y a ${diffDays}j`;
-    if (diffDays < 30) return `il y a ${Math.floor(diffDays / 7)} sem`;
-    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-  };
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { getPicture, fetchPicture } = useAttendeePicturesContext();
   const displayName = getChatDisplayName(chat);
@@ -138,11 +152,12 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
   const unread = hasUnread(chat);
   const unreadCount = getUnreadCount(chat);
   const statusInfo = getChatStatusInfo(chat, enrollmentsMap);
-  const sourceType = getMessageSourceType(chat);
+  const source = getMessageSourceType(chat);
   const categoryInfo = category ? CHAT_CATEGORIES[category] : null;
   const channel = detectChannel(chat.account_type);
-  const lastMsgPreview = getLastMessagePreview(chat);
+  const preview = getLastMessagePreview(chat);
   const time = formatChatTime(chat.timestamp || chat.last_message?.timestamp);
+  const draftText = !isSelected && draft?.trim() ? draft.replace(/\s+/g, ' ').trim() : null;
 
   const attendeeId = chat.attendees?.[0]?.id;
   const cachedPicture = attendeeId ? getPicture(attendeeId) : null;
@@ -154,264 +169,259 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
     }
   }, [attendeeId, staticAvatar, fetchPicture, getPicture]);
 
-  // ─── Mode rail compact : juste avatar + unread dot ─────────────────
+  const unreadLabel = unreadCount > 1 ? `${unreadCount} messages non lus` : '1 message non lu';
+
+  // ─── Liste repliée : avatar et pastille de non-lus ───────────────────
   if (collapsed) {
     return (
-      <div className="relative group px-2">
-        <button
-          onClick={onClick}
-          title={`${displayName}${lastMsgPreview ? ` — ${lastMsgPreview}` : ''}`}
-          className={cn(
-            'w-full p-1.5 flex items-center justify-center rounded-lg transition-all duration-150',
-            isSelected ? 'bg-accent' : 'hover:bg-muted/60',
-          )}
-        >
-          <div className="relative shrink-0">
-            <Avatar className={cn(
-              'w-9 h-9 rounded-full',
-              isSelected ? 'ring-2 ring-accent-foreground/20' : 'ring-1 ring-border/40',
-            )}>
-              <AvatarImage src={avatar} className="rounded-full" />
-              <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground font-semibold rounded-full text-xs">
-                {getInitials(displayName)}
-              </AvatarFallback>
-            </Avatar>
-            {/* Unread dot indicator */}
-            {unread && (
-              <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-3xs font-bold bg-foreground text-background rounded-full ring-2 ring-background tabular-nums">
-                {unreadCount > 9 ? '9+' : unreadCount}
+      <div className="px-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClick}
+              aria-current={isSelected ? 'true' : undefined}
+              aria-label={unread ? `${displayName}, ${unreadLabel}` : displayName}
+              className={cn('h-auto w-full p-1.5', isSelected && 'bg-accent')}
+            >
+              <span className="relative shrink-0">
+                <Avatar className={cn('h-9 w-9', isSelected && 'ring-2 ring-brand')}>
+                  <AvatarImage src={avatar} alt="" />
+                  <AvatarFallback className="text-xs font-semibold text-foreground-secondary">
+                    {getInitials(displayName)}
+                  </AvatarFallback>
+                </Avatar>
+                {unread && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold tabular-nums text-brand-foreground ring-2 ring-background"
+                  >
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </span>
-            )}
-          </div>
-        </button>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{displayName}</TooltipContent>
+        </Tooltip>
       </div>
     );
   }
 
-  // ─── Mode normal : avatar + nom + preview + badges ─────────────────
+  // Repère d'état, en tête de la troisième ligne
+  let state: React.ReactNode = null;
+  if (snoozedUntil) {
+    state = (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 text-muted-foreground"
+        title={`En sommeil jusqu'au ${snoozedUntil.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+      >
+        <AlarmClock className="h-3 w-3" aria-hidden="true" />
+        Réveil {formatSnoozeUntil(snoozedUntil)}
+      </span>
+    );
+  } else if (archivedAt) {
+    state = (
+      <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+        <Archive className="h-3 w-3" aria-hidden="true" />
+        Archivée {formatArchivedAt(archivedAt)}
+      </span>
+    );
+  } else if (statusInfo?.kind === 'reply') {
+    state = (
+      <span className="inline-flex shrink-0 items-center gap-1 font-medium text-brand">
+        <Reply className="h-3 w-3" aria-hidden="true" />À répondre
+      </span>
+    );
+  } else if (statusInfo?.kind === 'waiting') {
+    state = (
+      <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+        <Hourglass className="h-3 w-3" aria-hidden="true" />
+        En attente
+      </span>
+    );
+  }
+
+  // L'étiquette posée à la main l'emporte sur l'intention lue par l'IA. Faute
+  // de place, elle se tronque avant le nom (shrink-[3]).
+  const tag = categoryInfo ? (
+    <Badge variant={categoryInfo.tone} className="min-w-0 shrink-[3] px-1.5 py-0 text-2xs">
+      <span className="truncate">{categoryInfo.label}</span>
+    </Badge>
+  ) : intentMeta ? (
+    <Badge variant={intentMeta.tone} className="min-w-0 shrink-[3] px-1.5 py-0 text-2xs" title={intent?.summary || undefined}>
+      <span className="truncate">{intentMeta.label}</span>
+    </Badge>
+  ) : null;
+
+  // Troisième ligne : l'état, puis la mission ; à défaut de mission, la boîte d'origine.
+  const hasMeta = !!state || !!statusInfo?.mission || !!source;
+
+  const previewLine = draftText ? (
+    <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">Brouillon : </span>
+      {draftText}
+    </span>
+  ) : preview ? (
+    <span className={cn('min-w-0 flex-1 truncate text-sm', unread ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+      {preview.mine && <span className="font-normal text-muted-foreground">Vous : </span>}
+      {preview.text}
+    </span>
+  ) : headline ? (
+    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{headline}</span>
+  ) : subject ? (
+    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">Objet : {subject}</span>
+  ) : (
+    <span className="flex-1" />
+  );
+
   return (
-    <div className="relative group px-1.5 max-w-full overflow-hidden">
+    <div className="group relative px-1.5">
       <button
+        type="button"
         onClick={onClick}
+        aria-current={isSelected ? 'true' : undefined}
         className={cn(
-          'w-full max-w-full min-w-0 px-2.5 py-2 flex items-start gap-2.5 text-left rounded-lg transition-all duration-150 overflow-hidden',
-          isSelected
-            ? 'bg-accent text-accent-foreground'
-            : 'hover:bg-muted/60',
+          'relative flex w-full min-w-0 items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          // Au doigt, le menu d'actions reste affiché : sa place est réservée.
+          '[@media(hover:none)]:pr-12',
+          isSelected ? 'bg-accent' : 'hover:bg-accent',
         )}
       >
-        {/* Avatar circulaire avec badge channel */}
-        <div className="relative shrink-0">
-          <Avatar className={cn(
-            'w-10 h-10 rounded-full',
-            isSelected ? 'ring-2 ring-accent-foreground/10' : 'ring-1 ring-border/40',
-          )}>
-            <AvatarImage src={avatar} className="rounded-full" />
-            <AvatarFallback className="bg-gradient-to-br from-foreground/15 to-foreground/5 text-foreground font-semibold rounded-full text-[13px]">
+        {isSelected && <span aria-hidden="true" className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-brand" />}
+
+        {/* Avatar et pastille du canal */}
+        <span className="relative shrink-0">
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={avatar} alt="" />
+            <AvatarFallback className="text-xs font-semibold text-foreground-secondary">
               {getInitials(displayName)}
             </AvatarFallback>
           </Avatar>
-          {/* Badge channel en bas-right */}
-          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-background grid place-items-center ring-1 ring-border">
+          <span
+            aria-hidden="true"
+            className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-background ring-1 ring-border"
+          >
             <ChannelIcon channel={channel} size="xs" />
           </span>
-        </div>
+        </span>
 
-        {/* Texte central */}
-        <div className="flex-1 min-w-0 overflow-hidden">
-          {/* Ligne 1 : nom + time */}
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <span
-              className={cn(
-                'text-sm truncate min-w-0 tracking-tight',
-                unread ? 'font-semibold text-foreground' : 'font-medium text-foreground/90',
-              )}
-            >
+        <span className="min-w-0 flex-1">
+          {/* Nom, étiquette et heure */}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className={cn('min-w-0 truncate text-sm text-foreground', unread ? 'font-semibold' : 'font-medium')}>
               {displayName}
             </span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {time && (
-                <span
-                  className={cn(
-                    'text-2xs tabular-nums whitespace-nowrap',
-                    unread ? 'text-foreground font-medium' : 'text-muted-foreground/70',
-                  )}
-                >
-                  {time}
-                </span>
-              )}
-            </div>
-          </div>
+            {tag}
+            {time && (
+              <span
+                className={cn(
+                  'ml-auto shrink-0 whitespace-nowrap pl-1 text-2xs tabular-nums',
+                  unread ? 'font-medium text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                {time}
+              </span>
+            )}
+          </span>
 
-          {/* Ligne 2 : preview du dernier message OU headline en fallback */}
-          {lastMsgPreview ? (
-            <p
-              className={cn(
-                'text-[13px] truncate mt-0.5 leading-snug',
-                unread ? 'text-foreground/80 font-medium' : 'text-muted-foreground',
-              )}
-            >
-              {lastMsgPreview}
-            </p>
-          ) : headline ? (
-            <p className="text-[12px] text-muted-foreground truncate mt-0.5 leading-snug">
-              {headline}
-            </p>
-          ) : subject ? (
-            <p className="text-[12px] text-muted-foreground italic truncate mt-0.5">
-              📧 {subject}
-            </p>
-          ) : null}
-
-          {/* Ligne 3 : badges (snooze, archive, intent IA, source type, catégorie, unread count)
-              flex-wrap pour éviter le débordement, gap réduit. */}
-          <div className="flex items-center gap-1 mt-1 flex-wrap min-w-0">
-            {/* Badge Snooze — priorité haute, super visible */}
-            {snoozedUntil && (
-              <span
-                className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-3xs font-medium rounded-md bg-warning/10 text-warning"
-                title={`En sommeil jusqu'au ${snoozedUntil.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
-              >
-                <span>⏰</span>
-                <span>Réveil {formatSnoozeUntil(snoozedUntil)}</span>
-              </span>
-            )}
-            {/* Badge Archive */}
-            {archivedAt && !snoozedUntil && (
-              <span
-                className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-3xs font-medium rounded-md bg-gray-500/10 text-gray-600 dark:text-gray-400"
-                title={`Archivée le ${archivedAt.toLocaleDateString('fr-FR')}`}
-              >
-                <span>📦</span>
-                <span>Archivée {formatArchivedAt(archivedAt)}</span>
-              </span>
-            )}
-            {/* Intent IA — placé en premier pour visibilité maximale */}
-            {intentMeta && !snoozedUntil && !archivedAt && (
-              <span
-                className={cn(
-                  'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-3xs font-medium rounded-md',
-                  intentMeta.color,
-                )}
-                title={intent?.summary || intentMeta.label}
-              >
-                <span>{intentMeta.emoji}</span>
-                <span>{intentMeta.label}</span>
-              </span>
-            )}
-            {sourceType && (
-              <span
-                className={cn(
-                  'shrink-0 inline-flex items-center px-1.5 py-0.5 text-3xs font-medium rounded-md',
-                  sourceType.color,
-                )}
-              >
-                {sourceType.label}
-              </span>
-            )}
-            {categoryInfo && (
-              <span
-                className={cn(
-                  'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-3xs font-medium rounded',
-                  categoryInfo.color,
-                )}
-              >
-                <span>{categoryInfo.emoji}</span>
-                <span className="truncate max-w-[80px]">{categoryInfo.label}</span>
-              </span>
-            )}
-            {statusInfo && !sourceType && !categoryInfo && (
-              <p
-                className={cn(
-                  'text-2xs truncate flex items-center gap-1 min-w-0 leading-tight',
-                  statusInfo.color,
-                )}
-              >
-                {statusInfo.icon}
-                <span className="truncate">{statusInfo.text}</span>
-              </p>
-            )}
-            {/* Unread badge — toujours à droite, avec ml-auto */}
+          {/* Aperçu (brouillon en cours, dernier message, sinon le titre du profil) et non-lus */}
+          <span className="mt-0.5 flex min-w-0 items-center gap-2">
+            {previewLine}
             {unread && (
-              <span className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-3xs font-bold bg-foreground text-background rounded-full tabular-nums">
-                {unreadCount > 99 ? '99+' : unreadCount}
+              <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold tabular-nums text-brand-foreground">
+                <span aria-hidden="true">{unreadCount > 99 ? '99+' : unreadCount}</span>
+                <span className="sr-only">{unreadLabel}</span>
               </span>
             )}
-          </div>
-        </div>
+          </span>
+
+          {/* Repères : état, puis mission (ou boîte d'origine) */}
+          {hasMeta && (
+            <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs">
+              {state}
+              {statusInfo?.mission ? (
+                <span className="inline-flex min-w-0 items-center gap-1 text-foreground-secondary">
+                  <Briefcase className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="truncate">{statusInfo.mission}</span>
+                </span>
+              ) : source ? (
+                <span className="min-w-0 truncate text-muted-foreground">{source.label}</span>
+              ) : null}
+            </span>
+          )}
+        </span>
       </button>
 
-      {/* Hover actions (en haut à droite) */}
-      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10">
-        {onDeleteChat && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowDeleteConfirm(true);
-            }}
-            className="h-7 w-7 grid place-items-center bg-background/95 backdrop-blur border border-border hover:border-destructive hover:text-destructive transition-colors rounded-md shadow-sm"
-            aria-label="Supprimer"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="h-7 w-7 grid place-items-center bg-background/95 backdrop-blur border border-border hover:bg-muted transition-colors rounded-md shadow-sm"
-              aria-label="Catégoriser"
-            >
-              <Tag className="w-3 h-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[160px]">
-            {(Object.entries(CHAT_CATEGORIES) as [ChatCategory, typeof CHAT_CATEGORIES[ChatCategory]][]).map(([key, info]) => (
-              <DropdownMenuItem
-                key={key}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSetCategory(chat.id, chat.account_id, key === category ? null : key);
-                }}
-                className={cn('text-xs cursor-pointer', key === category && 'bg-muted')}
+      {/* Actions de la ligne : visibles au doigt, au survol et au focus clavier */}
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Actions pour la conversation avec ${displayName}`}
+                className={cn(
+                  'absolute right-3 top-1/2 h-11 w-11 -translate-y-1/2 text-muted-foreground hover:text-foreground',
+                  '[@media(hover:hover)]:h-8 [@media(hover:hover)]:w-8 [@media(hover:hover)]:bg-accent',
+                  '[@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100',
+                )}
               >
-                <span className="mr-2">{info.emoji}</span>
+                <MoreHorizontal aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Actions</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>Étiquette</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={category ?? 'none'}
+            onValueChange={(value) =>
+              onSetCategory(chat.id, chat.account_id, value === 'none' ? null : (value as ChatCategory))
+            }
+          >
+            {CATEGORY_ENTRIES.map(([key, info]) => (
+              <DropdownMenuRadioItem key={key} value={key} className={MENU_ITEM}>
                 {info.label}
-                {key === category && <span className="ml-auto text-muted-foreground">✓</span>}
-              </DropdownMenuItem>
+              </DropdownMenuRadioItem>
             ))}
-            {category && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSetCategory(chat.id, chat.account_id, null);
-                  }}
-                  className="text-xs cursor-pointer text-muted-foreground"
-                >
-                  <X className="w-3 h-3 mr-2" />
-                  Retirer le tag
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            <DropdownMenuRadioItem value="none" className={MENU_ITEM}>
+              Sans étiquette
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          {onDeleteChat && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className={cn(MENU_ITEM, 'text-destructive focus:text-destructive')}
+                onSelect={() => setShowDeleteConfirm(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                Supprimer la conversation
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      {/* Delete confirmation dialog */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette conversation ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est irréversible. La conversation sera définitivement supprimée.
+              La conversation avec {displayName} sera supprimée de votre messagerie LinkedIn. Cette action est
+              irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               disabled={isDeletingChat}
-              className="bg-destructive hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (onDeleteChat) {
                   await onDeleteChat(chat.id);
@@ -419,8 +429,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({
                 }
               }}
             >
-              {isDeletingChat ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Supprimer
+              Supprimer la conversation
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

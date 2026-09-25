@@ -1,17 +1,16 @@
 /**
- * SmartReplies — Boutons de suggestions rapides au-dessus du composer.
+ * SmartReplies — suggestions de réponse, au-dessus du composeur.
  *
- * Inspiré de Gmail Smart Reply / Superhuman / Linear :
- *  - Auto-affichage quand des suggestions IA sont disponibles
- *  - Click sur une suggestion = insert dans le composer (pas envoi auto)
- *  - 3 suggestions max (les plus pertinentes)
- *  - Bouton "Voir plus" → ouvre l'AI panel complet
- *
- * Source : `replySuggestions` du `useMessagesInbox` (déjà en place).
+ * - Affichées quand l'IA a préparé des suggestions pour la conversation.
+ * - Un clic insère le texte dans le composeur, où on le relit et le modifie :
+ *   rien ne part sans passer par « Envoyer » (revue design D-14).
+ * - Trois suggestions au plus ; « Toutes les suggestions » ouvre le panneau IA.
  */
 
 import React from 'react';
-import { Sparkles, ChevronRight } from 'lucide-react';
+import { ChevronRight, Lightbulb } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 export interface SmartRepliesProps {
@@ -22,6 +21,8 @@ export interface SmartRepliesProps {
   className?: string;
 }
 
+const shorten = (text: string) => (text.length > 50 ? `${text.slice(0, 47)}…` : text);
+
 export const SmartReplies: React.FC<SmartRepliesProps> = ({
   suggestions,
   onPick,
@@ -29,22 +30,15 @@ export const SmartReplies: React.FC<SmartRepliesProps> = ({
   loading = false,
   className,
 }) => {
-  // Affiche max 3 suggestions
   const visible = suggestions.slice(0, 3);
 
   if (loading) {
     return (
-      <div className={cn('flex items-center gap-2 px-4 py-2', className)} data-component="smart-replies">
-        <Sparkles className="w-3 h-3 text-muted-foreground animate-pulse shrink-0" />
-        <div className="flex gap-1.5 flex-1">
-          {[60, 80, 50].map((w, i) => (
-            <div
-              key={i}
-              className="h-7 bg-muted/50 animate-pulse rounded-full"
-              style={{ width: `${w}px`, animationDelay: `${i * 80}ms` }}
-            />
-          ))}
-        </div>
+      <div className={cn('flex items-center gap-2 px-4 py-2', className)} data-component="smart-replies" role="status">
+        <span className="sr-only">Chargement des suggestions</span>
+        {[64, 80, 56].map((w) => (
+          <Skeleton key={w} className="h-7 rounded-lg" style={{ width: `${w * 2}px` }} />
+        ))}
       </div>
     );
   }
@@ -53,47 +47,35 @@ export const SmartReplies: React.FC<SmartRepliesProps> = ({
 
   return (
     <div
-      className={cn(
-        'flex items-center gap-1.5 px-4 py-2 border-t border-border bg-muted/20',
-        'overflow-x-auto scrollbar-thin',
-        className,
-      )}
+      className={cn('flex items-center gap-1.5 overflow-x-auto border-t border-border bg-muted px-3 py-2 md:px-4', className)}
       data-component="smart-replies"
     >
-      <Sparkles className="w-3 h-3 text-muted-foreground shrink-0" aria-hidden="true" />
-      <span className="text-[10px] text-muted-foreground/70 font-medium shrink-0 mr-1">
+      <span className="inline-flex shrink-0 items-center gap-1 text-2xs font-medium text-muted-foreground">
+        <Lightbulb className="h-3 w-3" aria-hidden="true" />
         Suggestions
       </span>
-      <div className="flex items-center gap-1.5">
+      <ul className="flex items-center gap-1.5" aria-label="Suggestions de réponse">
         {visible.map((s, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => onPick(s.text)}
-            className={cn(
-              'shrink-0 h-7 px-3 inline-flex items-center text-[12px] font-medium',
-              'rounded-full border border-border bg-background',
-              'hover:bg-foreground hover:text-background hover:border-foreground',
-              'transition-colors active:scale-95',
-            )}
-            title={s.text}
-          >
-            <span className="truncate max-w-[180px]">
-              {s.text.length > 50 ? s.text.slice(0, 47) + '…' : s.text}
-            </span>
-          </button>
+          <li key={i} className="shrink-0">
+            <Button
+              variant="outline"
+              size="xs"
+              className="max-w-52 bg-background font-normal"
+              onClick={() => onPick(s.text)}
+              title={s.text}
+              aria-label={`Insérer la suggestion : ${s.text}`}
+            >
+              <span className="truncate">{shorten(s.text)}</span>
+            </Button>
+          </li>
         ))}
-        {onSeeMore && suggestions.length > 3 && (
-          <button
-            type="button"
-            onClick={onSeeMore}
-            className="shrink-0 h-7 px-2 inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground rounded-full transition-colors"
-          >
-            <span>Plus</span>
-            <ChevronRight className="w-3 h-3" />
-          </button>
-        )}
-      </div>
+      </ul>
+      {onSeeMore && suggestions.length > 3 && (
+        <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={onSeeMore}>
+          Toutes les suggestions
+          <ChevronRight aria-hidden="true" />
+        </Button>
+      )}
     </div>
   );
 };

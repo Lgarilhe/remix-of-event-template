@@ -1,46 +1,52 @@
 /**
- * MessageComposer — Zone de saisie moderne avec mise en page + IA.
+ * MessageComposer — rédaction d'un message, avec mise en forme et outils IA.
  *
- * Design inspiré de Linear / Slack / Notion :
- * - Card élevée avec ring focus animé
- * - Toolbar de formatage discrète au-dessus du textarea (Bold, Italic,
- *   List, Link, Emoji)
- * - Bouton IA prominent + RDV + send avec hint clavier
- * - Raccourcis : Ctrl+B (bold), Ctrl+I (italic), Ctrl+K (link),
- *   ⌘+Entrée / Ctrl+Entrée (send)
+ * - Barre d'outils : mise en forme (gras, italique, lien, listes), puis
+ *   « Reformuler », « Traduire », « Proposer une suite », emoji. Chaque bouton
+ *   a un nom accessible ; sous 640 px, la mise en forme passe dans un menu et
+ *   les outils IA gardent leur icône (revue design D-13).
+ * - Un seul bouton principal : « Envoyer ». « Suggestions » reste discret, son
+ *   nombre en accent (D-13, D-19).
+ * - Raccourcis : ⌘/Ctrl + B, I, K, et ⌘/Ctrl + Entrée pour envoyer ; « / »
+ *   ouvre les modèles.
  *
- * Le formatage utilise des caractères Unicode Bold/Italic compatibles
- * LinkedIn (cf textFormat.ts).
+ * Le gras et l'italique utilisent les caractères Unicode compris par LinkedIn
+ * (textFormat.ts).
  */
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import {
-  Loader2, Send, Sparkles, CalendarPlus, Smile,
-  Bold, Italic, List, ListOrdered, Link as LinkIcon,
-  FileText, Wand2, Languages, Check,
+  Bold, CalendarPlus, Check, Italic, Languages, Lightbulb, Link as LinkIcon,
+  List, ListOrdered, Send, Smile, Type, Wand2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { promptDialog } from '@/lib/promptDialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from '@/components/ui/tooltip';
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toggleBold, toggleItalic, toBulletList, toNumberedList, insertLink } from './textFormat';
 import { TemplatesPicker } from './TemplatesPicker';
 import { useMessageTemplates, MessageTemplate } from '@/hooks/useMessageTemplates';
 import {
-  buildPlaceholderContext,
   interpolatePlaceholders,
   type PlaceholderContext,
 } from '@/lib/templatePlaceholders';
 import { useTextActions, type RewriteVariant, type CtaChatMessage } from '@/hooks/useTextActions';
 import { CtaReplyButton } from './CtaReplyButton';
 
+// Emoji à insérer dans le message (contenu du message, pas icônes d'interface)
 const QUICK_EMOJIS = ['👋', '🤝', '💼', '🚀', '⭐', '🙏', '😊', '👍', '🔥', '💡', '✨', '🎯', '📌', '✅', '💬'];
+
+// Outils de la barre : 44 px au doigt, 28 px à la souris (01-direction.md, § 5)
+const TOOL_ICON = 'h-11 w-11 text-muted-foreground hover:text-foreground sm:h-7 sm:w-7';
+const TOOL_TEXT = 'h-11 w-11 px-0 text-muted-foreground hover:text-foreground sm:h-7 sm:w-auto sm:px-2';
 
 export interface MessageComposerProps {
   value: string;
@@ -49,11 +55,16 @@ export interface MessageComposerProps {
   sending: boolean;
   disabled?: boolean;
   onOpenAI?: () => void;
+  /** Panneau IA ouvert (état du bouton « Suggestions ») */
+  aiPanelOpen?: boolean;
   hasAISuggestions?: boolean;
   aiSuggestionsCount?: number;
   onScheduleCall?: () => void;
   hasCalendlyLink?: boolean;
+  /** Nom du canal (« LinkedIn »), en casse normale */
   channel?: string;
+  /** Un brouillon de cette conversation est enregistré (revue design D-10). */
+  draftSaved?: boolean;
   /** Context pour les placeholders templates (prénom, entreprise, etc.).
       Peut être pré-construit via buildPlaceholderContext() depuis le parent. */
   placeholderContext?: PlaceholderContext;
@@ -74,6 +85,23 @@ export interface MessageComposerProps {
   ctaTone?: string;
 }
 
+/** Bouton icône de la barre : nom accessible, infobulle avec le raccourci. */
+const ToolIconButton: React.FC<{ label: string; hint?: string; onClick: () => void; children: React.ReactNode }> = ({
+  label,
+  hint,
+  onClick,
+  children,
+}) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button type="button" variant="ghost" size="icon-xs" onClick={onClick} aria-label={label} className={TOOL_ICON}>
+        {children}
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent side="top">{hint ? `${label} (${hint})` : label}</TooltipContent>
+  </Tooltip>
+);
+
 export const MessageComposer: React.FC<MessageComposerProps> = ({
   value,
   onChange,
@@ -81,11 +109,13 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   sending,
   disabled = false,
   onOpenAI,
+  aiPanelOpen = false,
   hasAISuggestions,
   aiSuggestionsCount,
   onScheduleCall,
   hasCalendlyLink,
   channel,
+  draftSaved = false,
   placeholderContext,
   ctaChatHistory,
   ctaCandidateName,
@@ -96,20 +126,21 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   ctaTone,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [focused, setFocused] = useState(false);
   const isSendable = value.trim().length > 0 && !sending && !disabled;
+  const hasText = value.trim().length > 0;
+  const templatesListId = useId();
+  const [activeTemplateId, setActiveTemplateId] = useState<string | undefined>(undefined);
 
-  // Slash commands : si l'user tape "/" en début de ligne, on ouvre le picker
-  // de templates. Le query est ce qui suit le "/" jusqu'au prochain espace.
+  // Commande « / » : le texte qui suit, jusqu'au prochain espace, filtre les modèles.
   const { markUsed } = useMessageTemplates();
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
 
-  // Actions IA contextuelles (Reformuler / Traduire)
+  // Actions IA : reformuler, traduire
   const { rewrite, translate, rewriteLoading, translateLoading } = useTextActions();
   const [rewriteVariants, setRewriteVariants] = useState<RewriteVariant[] | null>(null);
-  const [rewritePopoverOpen, setRewritePopoverOpen] = useState(false);
+  const [rewriteDialogOpen, setRewriteDialogOpen] = useState(false);
 
-  // Translate dialog
+  // Traduction : aperçu avant de remplacer
   const [translateDialogOpen, setTranslateDialogOpen] = useState(false);
   const [translateOriginal, setTranslateOriginal] = useState<string>('');
   const [translateResult, setTranslateResult] = useState<string>('');
@@ -129,7 +160,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     const variants = await rewrite(sourceText);
     if (variants && variants.length > 0) {
       setRewriteVariants(variants);
-      setRewritePopoverOpen(true);
+      setRewriteDialogOpen(true);
     }
   };
 
@@ -151,18 +182,18 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     } else {
       onChange(variant.text);
     }
-    setRewritePopoverOpen(false);
+    setRewriteDialogOpen(false);
     setRewriteVariants(null);
   };
 
-  /** Traduit le contenu — affiche modal preview avant/après */
-  const handleTranslate = async (targetLang?: 'fr' | 'en') => {
+  /** Traduit le contenu, puis montre l'original et la traduction */
+  const handleTranslate = async (targetLang: 'fr' | 'en') => {
     if (!value.trim()) return;
     const translated = await translate(value, targetLang);
     if (translated) {
       setTranslateOriginal(value);
       setTranslateResult(translated);
-      setTranslateTargetLang(targetLang || 'en');
+      setTranslateTargetLang(targetLang);
       setTranslateDialogOpen(true);
     }
   };
@@ -172,15 +203,11 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     setTranslateDialogOpen(false);
   };
 
-  /** Détecte un slash command actif dans la valeur courante.
-      Retourne la query (sans /) ou null si pas de slash actif. */
+  /** Commande « / » en cours juste avant le curseur : le filtre (sans « / »), sinon null. */
   const detectSlashCommand = (val: string, cursor: number): string | null => {
-    // On regarde le segment juste avant le curseur pour voir si on est
-    // dans un slash command non-terminé.
     const before = val.slice(0, cursor);
-    // Match "/xxx" en fin (sans espace)
     const match = before.match(/(^|\s)\/(\S*)$/);
-    if (match) return match[2]; // segment après le "/"
+    if (match) return match[2];
     return null;
   };
 
@@ -194,19 +221,16 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     }
   };
 
-  /** Insère un template à la place du slash command, avec interpolation
-      des placeholders ({{prenom}}, {{client}}, {{aujourd_hui}}, etc.) */
+  /** Insère un modèle à la place de la commande « / », variables remplacées ({{prenom}}, {{client}}…) */
   const insertTemplate = (template: MessageTemplate) => {
     const ta = textareaRef.current;
     if (!ta) return;
     const cursor = ta.selectionStart ?? value.length;
     const before = value.slice(0, cursor);
     const after = value.slice(cursor);
-    // Interpole les placeholders avec le context (si fourni)
     const interpolatedContent = placeholderContext
       ? interpolatePlaceholders(template.content, placeholderContext)
       : template.content;
-    // Remplace le "/xxx" par le content du template (interpolé)
     const replaced = before.replace(/(^|\s)\/(\S*)$/, '$1' + interpolatedContent);
     const newValue = replaced + after;
     onChange(newValue);
@@ -224,7 +248,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const cmd = isMac ? '⌘' : 'Ctrl';
 
-  // Auto-resize du textarea selon contenu
+  // Hauteur du champ suivant le texte, jusqu'à 160 px
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -233,7 +257,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     ta.style.height = `${Math.max(newHeight, 24)}px`;
   }, [value]);
 
-  // ─── Helpers de formatage qui transforment la sélection ─────────────
+  // ─── Mise en forme de la sélection ───────────────────────────────────
   const applyToSelection = (transform: (selected: string) => string) => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -311,124 +335,115 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     });
   };
 
+  const templatesOpen = slashQuery !== null;
+  const scheduleHint = hasCalendlyLink
+    ? 'Insérer votre lien de prise de rendez-vous'
+    : 'Aucun lien de rendez-vous : ajoutez votre lien Calendly à la mission';
+
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="border-t border-border bg-background px-4 py-3" data-component="message-composer">
-        {/* Composer card avec ring focus */}
-        <div
-          className={cn(
-            'rounded-xl border bg-card transition-all duration-150',
-            focused
-              ? 'border-foreground/20 ring-2 ring-foreground/10 shadow-sm'
-              : 'border-border hover:border-foreground/15',
-          )}
-        >
-          {/* Toolbar formatage (haut de la card) */}
-          <div className="flex items-center gap-0.5 px-2 pt-2 pb-1 border-b border-border/50">
-            <FormatButton
-              icon={<Bold className="w-3.5 h-3.5" />}
-              tooltip={`Gras (${cmd}+B)`}
-              onClick={handleBold}
-            />
-            <FormatButton
-              icon={<Italic className="w-3.5 h-3.5" />}
-              tooltip={`Italique (${cmd}+I)`}
-              onClick={handleItalic}
-            />
-            <FormatButton
-              icon={<LinkIcon className="w-3.5 h-3.5" />}
-              tooltip={`Lien (${cmd}+K)`}
-              onClick={handleLink}
-            />
-            <div className="w-px h-4 bg-border mx-1" aria-hidden="true" />
-            <FormatButton
-              icon={<List className="w-3.5 h-3.5" />}
-              tooltip="Liste à puces"
-              onClick={handleBulletList}
-            />
-            <FormatButton
-              icon={<ListOrdered className="w-3.5 h-3.5" />}
-              tooltip="Liste numérotée"
-              onClick={handleNumberedList}
-            />
-            <div className="w-px h-4 bg-border mx-1" aria-hidden="true" />
+      <div className="border-t border-border bg-background px-3 py-3 md:px-4" data-component="message-composer">
+        <div className="rounded-xl border border-input bg-card transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
+          {/* Barre d'outils */}
+          <div className="flex items-center gap-0.5 border-b border-border px-1.5 py-1">
+            {/* Mise en forme : boutons à partir de 640 px, menu en dessous */}
+            <div className="hidden items-center gap-0.5 sm:flex">
+              <ToolIconButton label="Gras" hint={`${cmd}+B`} onClick={handleBold}>
+                <Bold aria-hidden="true" />
+              </ToolIconButton>
+              <ToolIconButton label="Italique" hint={`${cmd}+I`} onClick={handleItalic}>
+                <Italic aria-hidden="true" />
+              </ToolIconButton>
+              <ToolIconButton label="Insérer un lien" hint={`${cmd}+K`} onClick={() => void handleLink()}>
+                <LinkIcon aria-hidden="true" />
+              </ToolIconButton>
+              <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
+              <ToolIconButton label="Liste à puces" onClick={handleBulletList}>
+                <List aria-hidden="true" />
+              </ToolIconButton>
+              <ToolIconButton label="Liste numérotée" onClick={handleNumberedList}>
+                <ListOrdered aria-hidden="true" />
+              </ToolIconButton>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="ghost" size="icon-xs" aria-label="Mise en forme" className={cn(TOOL_ICON, 'sm:hidden')}>
+                  <Type aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" className="w-52">
+                <DropdownMenuItem className="min-h-11" onSelect={handleBold}>
+                  <Bold className="mr-2 h-4 w-4" aria-hidden="true" />Gras
+                </DropdownMenuItem>
+                <DropdownMenuItem className="min-h-11" onSelect={handleItalic}>
+                  <Italic className="mr-2 h-4 w-4" aria-hidden="true" />Italique
+                </DropdownMenuItem>
+                <DropdownMenuItem className="min-h-11" onSelect={() => void handleLink()}>
+                  <LinkIcon className="mr-2 h-4 w-4" aria-hidden="true" />Insérer un lien
+                </DropdownMenuItem>
+                <DropdownMenuItem className="min-h-11" onSelect={handleBulletList}>
+                  <List className="mr-2 h-4 w-4" aria-hidden="true" />Liste à puces
+                </DropdownMenuItem>
+                <DropdownMenuItem className="min-h-11" onSelect={handleNumberedList}>
+                  <ListOrdered className="mr-2 h-4 w-4" aria-hidden="true" />Liste numérotée
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-            {/* Reformuler — bouton simple, ouvre un Dialog modal après succès */}
+            <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
+
+            {/* Reformuler : trois variantes, dans un dialogue */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   type="button"
-                  onClick={handleRewrite}
-                  disabled={rewriteLoading || !value.trim()}
-                  className={cn(
-                    'h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium transition-colors',
-                    rewriteLoading
-                      ? 'text-muted-foreground cursor-wait'
-                      : value.trim()
-                      ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      : 'text-muted-foreground/40 cursor-not-allowed',
-                  )}
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => void handleRewrite()}
+                  disabled={!hasText}
+                  loading={rewriteLoading}
+                  aria-label="Reformuler"
+                  className={TOOL_TEXT}
                 >
-                  {rewriteLoading ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-3 h-3" />
-                  )}
-                  <span>Reformuler</span>
-                </button>
+                  {!rewriteLoading && <Wand2 aria-hidden="true" />}
+                  <span className="hidden sm:inline">Reformuler</span>
+                </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">Reformule le texte (sélectionné ou tout) en 3 variantes</TooltipContent>
+              <TooltipContent side="top">Propose trois reformulations du texte sélectionné, ou de tout le message</TooltipContent>
             </Tooltip>
 
-            {/* Traduire FR ↔ EN — popover avec choix de langue */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  disabled={translateLoading || !value.trim()}
-                  className={cn(
-                    'h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium transition-colors',
-                    translateLoading
-                      ? 'text-muted-foreground cursor-wait'
-                      : value.trim()
-                      ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      : 'text-muted-foreground/40 cursor-not-allowed',
-                  )}
-                  title="Traduire le message"
-                >
-                  {translateLoading ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Languages className="w-3 h-3" />
-                  )}
-                  <span>Traduire</span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-44 p-1" side="top" align="start">
-                <p className="text-[10px] text-muted-foreground px-2 py-1.5">
-                  Traduire vers
-                </p>
-                <button
-                  type="button"
-                  onClick={() => handleTranslate('en')}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent transition-colors"
-                >
-                  <span className="text-base">🇬🇧</span>
-                  <span>Anglais</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTranslate('fr')}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent transition-colors"
-                >
-                  <span className="text-base">🇫🇷</span>
-                  <span>Français</span>
-                </button>
-              </PopoverContent>
-            </Popover>
+            {/* Traduire : anglais ou français, avec aperçu */}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      disabled={!hasText}
+                      loading={translateLoading}
+                      aria-label="Traduire"
+                      className={TOOL_TEXT}
+                    >
+                      {!translateLoading && <Languages aria-hidden="true" />}
+                      <span className="hidden sm:inline">Traduire</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top">Traduire le message</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent side="top" align="start" className="w-48">
+                <DropdownMenuItem className="min-h-11 md:min-h-0" onSelect={() => void handleTranslate('en')}>
+                  Traduire en anglais
+                </DropdownMenuItem>
+                <DropdownMenuItem className="min-h-11 md:min-h-0" onSelect={() => void handleTranslate('fr')}>
+                  Traduire en français
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-            {/* Réponse + CTA — Popover de choix de CTA puis Dialog avec
-                preview du message généré par l'IA. */}
+            {/* Proposer une suite : réponse rédigée par l'IA, relue avant insertion */}
             <CtaReplyButton
               chatHistory={ctaChatHistory || []}
               candidateName={ctaCandidateName}
@@ -439,12 +454,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               tone={ctaTone}
               disabled={disabled}
               onInsert={(msg) => {
-                // Insertion intelligente : si le composer est vide, on
-                // remplace ; sinon on append à la fin avec un séparateur.
+                // Champ vide : le texte remplace ; sinon il s'ajoute à la fin.
                 const next = value.trim() ? `${value.trimEnd()}\n\n${msg}` : msg;
                 onChange(next);
-                // Focus + scroll à la fin du textarea pour que l'user voie
-                // le message inséré et puisse l'éditer.
                 requestAnimationFrame(() => {
                   const ta = textareaRef.current;
                   if (!ta) return;
@@ -455,248 +467,216 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               }}
             />
 
-            <div className="w-px h-4 bg-border mx-1" aria-hidden="true" />
+            <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
 
             <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                  aria-label="Insérer un emoji"
-                >
-                  <Smile className="w-3.5 h-3.5" />
-                </button>
-              </PopoverTrigger>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Insérer un emoji" className={TOOL_ICON}>
+                      <Smile aria-hidden="true" />
+                    </Button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top">Insérer un emoji</TooltipContent>
+              </Tooltip>
               <PopoverContent className="w-auto p-2" side="top" align="start">
                 <div className="grid grid-cols-5 gap-1">
                   {QUICK_EMOJIS.map((emoji) => (
-                    <button
+                    <Button
                       key={emoji}
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       onClick={() => insertEmoji(emoji)}
-                      className="h-9 w-9 inline-flex items-center justify-center text-lg rounded-md hover:bg-accent transition-colors"
+                      className="text-lg"
                     >
                       {emoji}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </PopoverContent>
             </Popover>
 
-            <div className="flex-1" />
-
-            <span className="text-[10px] text-muted-foreground/50 font-medium px-1 hidden lg:inline">
-              {value.length > 0 ? `${value.length} car.` : ''}
+            <span className="ml-auto hidden px-1 text-2xs tabular-nums text-muted-foreground lg:inline">
+              {value.length > 0 ? `${value.length} caractère${value.length > 1 ? 's' : ''}` : ''}
             </span>
           </div>
 
-          {/* Textarea */}
+          {/* Champ */}
           <div className="relative">
-            <textarea
+            <Textarea
               ref={textareaRef}
               value={value}
               onChange={(e) => handleTextChange(e.target.value)}
               onKeyDown={handleKeyDown}
-              onFocus={() => setFocused(true)}
               onBlur={() => {
-                setFocused(false);
-                // Délai pour permettre le click sur picker avant de fermer
+                // Délai : un clic dans la liste des modèles passe avant la fermeture
                 setTimeout(() => setSlashQuery(null), 200);
               }}
-              placeholder='Écrivez votre message... (tapez "/" pour insérer un template)'
+              aria-label="Message"
+              aria-autocomplete="list"
+              aria-controls={templatesOpen ? templatesListId : undefined}
+              aria-activedescendant={templatesOpen ? activeTemplateId : undefined}
+              placeholder="Écrivez votre message (« / » pour insérer un modèle)"
               disabled={disabled}
               rows={1}
-              className={cn(
-                'w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50',
-                'resize-none border-0 outline-none focus:ring-0 focus:outline-none',
-                'leading-relaxed px-4 py-2.5',
-              )}
+              className="min-h-0 resize-none rounded-lg border-0 bg-transparent px-3 py-2.5 leading-relaxed hover:border-0 focus-visible:border-0 focus-visible:ring-0"
               style={{ minHeight: '24px', maxHeight: '160px' }}
             />
-            {/* Slash command templates picker */}
-            {slashQuery !== null && (
+            {templatesOpen && (
               <TemplatesPicker
                 query={slashQuery}
+                listId={templatesListId}
+                onActiveOptionChange={setActiveTemplateId}
                 onSelect={insertTemplate}
                 onClose={() => setSlashQuery(null)}
                 onCreateNew={() => {
                   setSlashQuery(null);
-                  // Ouvre Paramètres › Rédaction (modèles) dans un nouvel onglet
+                  // Paramètres › Rédaction (modèles), dans un nouvel onglet
                   window.open('/settings/account/writing#modeles', '_blank');
                 }}
               />
             )}
           </div>
 
-          {/* Action row (bas de la card) */}
-          <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1 border-t border-border/50">
-            {/* Actions gauche */}
-            <div className="flex items-center gap-0.5">
+          {/* Actions */}
+          <div className="flex items-center justify-between gap-2 border-t border-border px-1.5 py-1.5">
+            <div className="flex items-center gap-1">
               {onOpenAI && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={onOpenAI}
-                      className={cn(
-                        'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium transition-all',
-                        hasAISuggestions
-                          ? 'bg-foreground text-background hover:opacity-90 active:scale-95 shadow-sm'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                      )}
+                      aria-expanded={aiPanelOpen}
+                      className={cn('h-11 px-3 md:h-8', aiPanelOpen && 'bg-accent')}
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>IA</span>
+                      <Lightbulb aria-hidden="true" />
+                      Suggestions
                       {hasAISuggestions && aiSuggestionsCount ? (
-                        <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold bg-background text-foreground rounded-full">
+                        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand/15 px-1 text-3xs font-semibold tabular-nums text-brand">
                           {aiSuggestionsCount}
                         </span>
                       ) : null}
-                    </button>
+                    </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="top">Suggestions IA contextuelles</TooltipContent>
+                  <TooltipContent side="top">Réponses proposées par l'IA pour cette conversation</TooltipContent>
                 </Tooltip>
               )}
               {onScheduleCall && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <Button
                       type="button"
-                      onClick={onScheduleCall}
-                      disabled={!hasCalendlyLink}
-                      className={cn(
-                        'h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
-                        hasCalendlyLink
-                          ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          : 'text-muted-foreground/40 cursor-not-allowed',
-                      )}
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Insérer un lien de rendez-vous"
+                      aria-disabled={!hasCalendlyLink || undefined}
+                      onClick={hasCalendlyLink ? onScheduleCall : undefined}
+                      className="h-11 w-11 px-0 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 md:h-8 md:w-auto md:px-3"
                     >
-                      <CalendarPlus className="w-3.5 h-3.5" />
-                      <span>RDV</span>
-                    </button>
+                      <CalendarPlus aria-hidden="true" />
+                      <span className="hidden md:inline">Rendez-vous</span>
+                    </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {hasCalendlyLink ? 'Insérer un lien de rendez-vous' : 'Configurez un Calendly dans le projet'}
-                  </TooltipContent>
+                  <TooltipContent side="top">{scheduleHint}</TooltipContent>
                 </Tooltip>
               )}
             </div>
 
-            {/* Actions droite */}
-            <div className="flex items-center gap-2.5">
-              <kbd className="hidden md:inline-flex items-center gap-1 text-[10px] text-muted-foreground/50 font-medium">
-                {channel ? <span>{channel} ·</span> : null}
-                <span className="px-1 py-0.5 rounded border border-border/60">{cmd}+↵</span>
-              </kbd>
-              <button
+            <div className="flex items-center gap-3">
+              {draftSaved && (
+                <span className="hidden text-2xs text-muted-foreground sm:inline" role="status">
+                  Brouillon enregistré
+                </span>
+              )}
+              <span className="hidden items-center gap-1 text-2xs text-muted-foreground lg:inline-flex">
+                {channel && <span>{channel} ·</span>}
+                <kbd className="rounded-sm border border-border px-1 font-mono text-3xs">{cmd}</kbd>
+                <kbd className="rounded-sm border border-border px-1 font-mono text-3xs">Entrée</kbd>
+              </span>
+              <Button
                 type="button"
+                variant="primary"
+                size="sm"
                 onClick={onSend}
                 disabled={!isSendable}
+                loading={sending}
                 aria-label="Envoyer le message"
-                className={cn(
-                  'h-8 px-3 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium transition-all',
-                  isSendable
-                    ? 'bg-foreground text-background hover:opacity-90 active:scale-95 shadow-sm'
-                    : 'bg-muted text-muted-foreground/40 cursor-not-allowed',
-                )}
+                className="h-11 md:h-8"
               >
-                {sending ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Envoi...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Envoyer</span>
-                    <Send className="w-3 h-3" />
-                  </>
-                )}
-              </button>
+                {sending ? 'Envoi…' : 'Envoyer'}
+                {!sending && <Send aria-hidden="true" />}
+              </Button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Dialog Traduire — preview avant/après + bouton Appliquer */}
+      {/* Traduction : l'original et la traduction, avant de remplacer */}
       <Dialog open={translateDialogOpen} onOpenChange={setTranslateDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Languages className="w-4 h-4" />
-              Traduction en {translateTargetLang === 'en' ? '🇬🇧 Anglais' : '🇫🇷 Français'}
-            </DialogTitle>
-            <DialogDescription>
-              Vérifiez la traduction et cliquez sur Appliquer pour remplacer votre texte.
-            </DialogDescription>
+            <DialogTitle>Traduction en {translateTargetLang === 'en' ? 'anglais' : 'français'}</DialogTitle>
+            <DialogDescription>Relisez la traduction : elle remplacera votre texte, que vous pourrez encore modifier.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 mt-2">
+          <div className="space-y-3">
             <div>
-              <p className="text-[10px] text-muted-foreground font-semibold mb-1">
-                Original
-              </p>
-              <div className="p-3 rounded-lg border border-border bg-muted/20 text-[13px] leading-relaxed whitespace-pre-wrap">
+              <p className="eyebrow mb-1">Original</p>
+              <div className="whitespace-pre-wrap rounded-lg border border-border bg-muted p-3 text-sm leading-relaxed text-foreground-secondary">
                 {translateOriginal}
               </div>
             </div>
             <div>
-              <p className="text-[10px] text-foreground font-semibold mb-1">
-                Traduction
-              </p>
-              <div className="p-3 rounded-lg border-2 border-foreground/20 bg-foreground/5 text-[13px] leading-relaxed whitespace-pre-wrap">
+              <p className="eyebrow mb-1">Traduction</p>
+              <div className="whitespace-pre-wrap rounded-lg border border-border-strong bg-card p-3 text-sm leading-relaxed text-foreground">
                 {translateResult}
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-end gap-2 mt-4">
-            <Button variant="ghost" onClick={() => setTranslateDialogOpen(false)}>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setTranslateDialogOpen(false)}>
               Annuler
             </Button>
-            <Button onClick={applyTranslation} className="gap-1.5">
-              <Check className="w-3.5 h-3.5" />
-              Appliquer
+            <Button variant="primary" onClick={applyTranslation}>
+              <Check aria-hidden="true" />
+              Remplacer par la traduction
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Reformuler — affiche les variantes IA, click = remplace */}
-      <Dialog open={rewritePopoverOpen} onOpenChange={setRewritePopoverOpen}>
+      {/* Reformulation : une variante remplace le texte */}
+      <Dialog open={rewriteDialogOpen} onOpenChange={setRewriteDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Wand2 className="w-4 h-4" />
-              Choisissez une reformulation
-            </DialogTitle>
+            <DialogTitle>Choisir une reformulation</DialogTitle>
             <DialogDescription>
-              Click sur une variante pour remplacer votre texte. Vous pourrez encore l'éditer après.
+              La variante choisie remplace votre texte ; vous pourrez encore la modifier avant l'envoi.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 mt-2 max-h-[60vh] overflow-y-auto">
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
             {rewriteVariants?.map((v, i) => (
-              <button
+              <Button
                 key={i}
                 type="button"
+                variant="outline"
                 onClick={() => applyRewriteVariant(v)}
-                className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-accent/30 transition-all group"
+                className="group h-auto w-full flex-col items-stretch gap-2 whitespace-normal p-4 text-left font-normal"
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[10px] font-semibold text-foreground bg-foreground/10 px-2 py-0.5 rounded">
-                    {v.label}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {v.text.length} caractères
-                  </span>
-                  <Check className="w-3.5 h-3.5 text-muted-foreground/40 group-hover:text-foreground transition-colors ml-auto" />
-                </div>
-                <p className="text-[13px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                  {v.text}
-                </p>
-              </button>
+                <span className="flex items-center gap-2">
+                  <span className="rounded-sm bg-muted px-2 py-0.5 text-2xs font-semibold text-foreground">{v.label}</span>
+                  <span className="text-2xs text-muted-foreground">{v.text.length} caractères</span>
+                  <Check className="ml-auto text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+                </span>
+                <span className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{v.text}</span>
+              </Button>
             ))}
             {rewriteVariants && rewriteVariants.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-4">
-                Aucune variante générée
-              </p>
+              <p className="py-4 text-center text-xs text-muted-foreground">Aucune variante proposée. Réessayez dans un instant.</p>
             )}
           </div>
         </DialogContent>
@@ -704,26 +684,3 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     </TooltipProvider>
   );
 };
-
-// ─── Sub-component : bouton de formatage ─────────────────────────────
-
-interface FormatButtonProps {
-  icon: React.ReactNode;
-  tooltip: string;
-  onClick: () => void;
-}
-
-const FormatButton: React.FC<FormatButtonProps> = ({ icon, tooltip, onClick }) => (
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <button
-        type="button"
-        onClick={onClick}
-        className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-      >
-        {icon}
-      </button>
-    </TooltipTrigger>
-    <TooltipContent side="top">{tooltip}</TooltipContent>
-  </Tooltip>
-);

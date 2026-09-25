@@ -1,5 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+/**
+ * AddToPipelineModal — ajouter le candidat d'une conversation au pipeline d'un
+ * poste publié (shortlist).
+ *
+ * Revue design D-19 : bouton principal monochrome, poste choisi en accent
+ * (sélection), toasts sans emoji qui disent ce qui a été fait ; une panne de
+ * chargement des postes s'affiche avec « Réessayer », jamais comme une liste
+ * vide.
+ */
+
+import React, { useState, useEffect, useId } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -22,14 +31,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  Briefcase, 
-  Building2, 
-  Loader2,
+import { EmptyState, ErrorState } from '@/components/layout';
+import {
+  Briefcase,
+  Building2,
   Search,
   MapPin,
   Check,
-  AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -61,7 +69,7 @@ interface AddToPipelineModalProps {
   onSuccess?: () => void;
 }
 
-const ENTITIES = ['Konekt', 'Konekt', 'Autre'];
+const ENTITIES = ['Konekt', 'Autre'];
 
 export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   open,
@@ -72,10 +80,14 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
 }) => {
   const [jobs, setJobs] = useState<JobData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedJob, setSelectedJob] = useState<JobData | null>(null);
-  
+  const jobsLabelId = useId();
+  const searchId = useId();
+  const entityId = useId();
+
   // Form fields
   const [entity, setEntity] = useState('Konekt');
 
@@ -98,13 +110,14 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
 
   const fetchJobs = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const response = await invokeEdgeFunction('fetch-notion-jobs', {
         status: 'Publié',
       });
-      
+
       if (response.error) throw response.error;
-      
+
       if ((response.data as any)?.jobs) {
         setJobs(((response.data as any).jobs).map((job: any) => ({
           id: job.id,
@@ -120,7 +133,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
       }
     } catch (error) {
       console.error('Error fetching jobs:', error);
-      toast.error('Erreur lors du chargement des postes');
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -140,7 +153,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
 
   const handleSubmit = async () => {
     if (!selectedJob) {
-      toast.error('Veuillez sélectionner un poste');
+      toast.error('Choisissez un poste', { description: 'Le candidat est ajouté au pipeline du poste choisi.' });
       return;
     }
 
@@ -160,26 +173,26 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
       });
 
       if (response.error) throw response.error;
-      
+
       if (!response.data?.success) {
         throw new Error(response.data?.error || 'Erreur inconnue');
       }
 
+      const viewPipeline = {
+        label: 'Voir le pipeline',
+        onClick: () => window.open('/pipeline', '_blank'),
+      };
       if (response.data?.alreadyExists) {
-        toast.success('✅ Candidat déjà dans le pipeline', {
-          description: `${candidate.name} est déjà shortlisté pour "${selectedJob.title}"`,
-          action: {
-            label: 'Voir pipeline',
-            onClick: () => window.open('/pipeline', '_blank'),
-          },
+        toast.success('Candidat déjà dans le pipeline', {
+          description: `${candidate.name} figure déjà dans la shortlist du poste « ${selectedJob.title} ».`,
+          action: viewPipeline,
         });
       } else {
-        toast.success('🎯 Candidat ajouté au pipeline !', {
-          description: `${candidate.name} ajouté pour "${selectedJob.title}" chez ${selectedJob.client?.name || 'N/A'}`,
-          action: {
-            label: 'Voir pipeline',
-            onClick: () => window.open('/pipeline', '_blank'),
-          },
+        toast.success('Candidat ajouté au pipeline', {
+          description: selectedJob.client?.name
+            ? `${candidate.name} rejoint la shortlist du poste « ${selectedJob.title} » chez ${selectedJob.client.name}.`
+            : `${candidate.name} rejoint la shortlist du poste « ${selectedJob.title} ».`,
+          action: viewPipeline,
         });
       }
 
@@ -187,8 +200,8 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
       onSuccess?.();
     } catch (error) {
       console.error('Error adding to pipeline:', error);
-      toast.error('Erreur lors de l\'ajout au pipeline', {
-        description: error instanceof Error ? error.message : 'Erreur inconnue',
+      toast.error("Le candidat n'a pas été ajouté au pipeline", {
+        description: 'Réessayez dans un instant.',
       });
     } finally {
       setSubmitting(false);
@@ -205,105 +218,125 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="flex max-h-[90vh] max-w-lg flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Briefcase className="w-5 h-5 text-blue-600" />
-            Shortlister
-          </DialogTitle>
+          <DialogTitle>Ajouter au pipeline</DialogTitle>
           <DialogDescription>
-            Associez <strong>{candidate.name}</strong> à un poste pour compléter la shortlist.
+            Choisissez le poste pour lequel {candidate.name} rejoint la shortlist.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-4 py-4">
-          {/* Job Selection */}
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden py-2">
+          {/* Poste */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Briefcase className="w-4 h-4" />
-              Poste *
-            </Label>
-            
-            {/* Search */}
+            <p id={jobsLabelId} className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Briefcase className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              Poste
+            </p>
+
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Label htmlFor={searchId} className="sr-only">Rechercher un poste</Label>
               <Input
-                placeholder="Rechercher un poste..."
+                id={searchId}
+                placeholder="Intitulé, client, ville ou compétence"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
               />
             </div>
 
-            {/* Jobs List */}
-            <ScrollArea className="h-48 border rounded-lg">
+            <ScrollArea className="h-48 rounded-lg border border-border">
               {loading ? (
-                <div className="p-4 space-y-2">
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
+                <div className="space-y-2 p-3" role="status" aria-label="Chargement des postes">
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                </div>
+              ) : loadFailed ? (
+                <div className="p-3">
+                  <ErrorState
+                    variant="compact"
+                    title="Impossible de charger les postes"
+                    description="Vérifiez votre connexion, puis réessayez."
+                    onRetry={fetchJobs}
+                  />
                 </div>
               ) : filteredJobs.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">
-                  <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Aucun poste trouvé</p>
+                <div className="p-3">
+                  <EmptyState
+                    variant="compact"
+                    icon={Briefcase}
+                    title={searchQuery.trim() ? 'Aucun poste ne correspond' : 'Aucun poste publié'}
+                    description={
+                      searchQuery.trim()
+                        ? 'Modifiez la recherche pour élargir la liste.'
+                        : 'Les postes publiés apparaissent ici dès leur mise en ligne.'
+                    }
+                  />
                 </div>
               ) : (
-                <div className="p-2 space-y-1">
-                  {filteredJobs.map((job) => (
-                    <button
-                      key={job.id}
-                      onClick={() => handleJobSelect(job)}
-                      className={cn(
-                        "w-full p-3 text-left rounded-lg border transition-all",
-                        selectedJob?.id === job.id
-                          ? "border-blue-500 bg-info/10 ring-1 ring-blue-500"
-                          : "border-border hover:border-border hover:bg-accent"
-                      )}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{job.title}</p>
-                          {job.client?.name && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                              <Building2 className="w-3 h-3" />
-                              {job.client.name}
-                            </p>
+                <ul className="space-y-1 p-2" aria-labelledby={jobsLabelId}>
+                  {filteredJobs.map((job) => {
+                    const selected = selectedJob?.id === job.id;
+                    return (
+                      <li key={job.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleJobSelect(job)}
+                          aria-pressed={selected}
+                          className={cn(
+                            'w-full rounded-lg border p-3 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            selected
+                              ? 'border-brand bg-brand/10'
+                              : 'border-border hover:border-border-strong hover:bg-accent',
                           )}
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {job.location && (
-                              <Badge variant="secondary" className="text-xs h-4">
-                                <MapPin className="w-2.5 h-2.5 mr-0.5" />
-                                {job.location}
-                              </Badge>
-                            )}
-                            {job.contractType && (
-                              <Badge variant="outline" className="text-xs h-4">
-                                {job.contractType}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        {selectedJob?.id === job.id && (
-                          <Check className="w-5 h-5 text-blue-600 shrink-0" />
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                        >
+                          <span className="flex items-start justify-between gap-2">
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-foreground">{job.title}</span>
+                              {job.client?.name && (
+                                <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Building2 className="h-3 w-3" aria-hidden="true" />
+                                  {job.client.name}
+                                </span>
+                              )}
+                              {(job.location || job.contractType) && (
+                                <span className="mt-1 flex flex-wrap items-center gap-2">
+                                  {job.location && (
+                                    <Badge variant="muted" className="px-1.5 py-0 text-2xs">
+                                      <MapPin className="h-3 w-3" aria-hidden="true" />
+                                      {job.location}
+                                    </Badge>
+                                  )}
+                                  {job.contractType && (
+                                    <Badge variant="outline" className="px-1.5 py-0 text-2xs">
+                                      {job.contractType}
+                                    </Badge>
+                                  )}
+                                </span>
+                              )}
+                            </span>
+                            {selected && <Check className="h-5 w-5 shrink-0 text-brand" aria-hidden="true" />}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </ScrollArea>
           </div>
 
-          {/* Entity Selection - Simple single field */}
+          {/* Entité */}
           <div className="space-y-1.5">
-            <Label className="text-sm flex items-center gap-1">
-              <Building2 className="w-4 h-4" />
+            <Label htmlFor={entityId} className="flex items-center gap-1 text-sm">
+              <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               Entité
             </Label>
             <Select value={entity} onValueChange={setEntity}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Sélectionner" />
+              <SelectTrigger id={entityId} className="h-9">
+                <SelectValue placeholder="Choisir une entité" />
               </SelectTrigger>
               <SelectContent>
                 {ENTITIES.map((e) => (
@@ -318,22 +351,9 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={!selectedJob || submitting}
-            className="bg-info hover:bg-info/90"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Ajout en cours...
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4 mr-2" />
-                Shortlister
-              </>
-            )}
+          <Button variant="primary" onClick={handleSubmit} disabled={!selectedJob} loading={submitting}>
+            {!submitting && <Check aria-hidden="true" />}
+            {submitting ? 'Ajout en cours…' : 'Ajouter au pipeline'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -50,9 +50,13 @@ test('UX07 — le choix de séquence passe par le dialogue partagé', () => {
 
 test('UX07 — la conversation mobile garde sa couche, sans nouvelle valeur arbitraire', () => {
   // On ne compte que les couches réellement appliquées, pas celles citées en
-  // commentaire.
-  const couches = [...inbox.matchAll(/className="[^"]*?z-\[(\d+)\]/g)].map((m) => Number(m[1]));
-  assert.deepEqual(couches, [2100], 'une seule couche explicite doit subsister');
+  // commentaire. Chantier design, lot 6a (D-72) : la couche z-[2100] devient
+  // le calque nommé z-sticky, toujours sous les dialogues (z-modal) ; le choix
+  // de séquence reste donc visible au-dessus de la conversation mobile.
+  const code = inbox.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const couches = [...code.matchAll(/\bz-\[(\d+)\]/g)].map((m) => Number(m[1]));
+  assert.deepEqual(couches, [], 'aucune couche arbitraire ne doit subsister');
+  assert.match(code, /'fixed inset-0 z-sticky /, 'la conversation mobile garde sa couche, nommée');
 });
 
 // ---------------------------------------------------------------- UX06

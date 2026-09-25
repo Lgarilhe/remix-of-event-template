@@ -1,119 +1,93 @@
+/**
+ * ActivityEventCard — événement de la frise d'une conversation : étape de
+ * séquence exécutée, rendez-vous pris, appel téléphonique.
+ *
+ * Les étapes et leurs statuts viennent du catalogue des séquences : jamais un
+ * identifiant technique (« connection_request »), jamais un message d'erreur
+ * brut (revue design D-01). Icônes neutres ; l'appel prend l'icône du canal
+ * (ChannelIcon), sans couleur propre (D-16, D-65).
+ */
+
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { CalendarCheck } from 'lucide-react';
 import { ActivityEvent } from '@/hooks/useProfileActivity';
-import { cn } from '@/lib/utils';
-import {
-  Eye,
-  UserPlus,
-  MessageSquare,
-  Mail,
-  Clock,
-  GitBranch,
-  CheckCircle2,
-  XCircle,
-  SkipForward,
-  Hourglass,
-  CalendarCheck,
-  PhoneIncoming,
-  PhoneOutgoing,
-  Phone,
-} from 'lucide-react';
 import { formatMessageTime } from '@/hooks/useMessagesInboxHelpers';
-import aircallLogo from '@/assets/aircall-logo.webp';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { ExecutionStatusBadge, SequenceActionIcon } from '@/components/outreach/SequenceBadges';
+import { sequenceActionLabel, skipReasonLabel } from '@/lib/sequenceCatalog';
 
-const ACTION_CONFIG: Record<string, { icon: React.ElementType; label: string; color: string }> = {
-  profile_visit: { icon: Eye, label: 'Visite de profil', color: 'text-blue-500' },
-  send_connection: { icon: UserPlus, label: 'Invitation envoyée', color: 'text-green-500' },
-  send_message: { icon: MessageSquare, label: 'Message séquence', color: 'text-primary' },
-  send_inmail: { icon: Mail, label: 'InMail séquence', color: 'text-purple-500' },
-  send_smart_message: { icon: MessageSquare, label: 'Smart message', color: 'text-primary' },
-  wait_connection: { icon: Hourglass, label: 'Attente connexion', color: 'text-amber-500' },
-  check_connection: { icon: GitBranch, label: 'Vérification connexion', color: 'text-muted-foreground' },
-  calendly_booking: { icon: CalendarCheck, label: '📅 RDV planifié', color: 'text-emerald-500' },
-  aircall_call: { icon: Phone, label: 'Appel Aircall', color: 'text-green-600' },
-};
+/** Durée d'appel : « 45 s », « 3 min », « 3 min 20 s ». */
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m} min ${s} s` : `${m} min`;
+}
 
-const STATUS_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
-  sent: { icon: CheckCircle2, color: 'text-green-500' },
-  failed: { icon: XCircle, color: 'text-destructive' },
-  skipped: { icon: SkipForward, color: 'text-amber-500' },
-  waiting_event: { icon: Clock, color: 'text-amber-500' },
-};
+const Separator = () => (
+  <span aria-hidden="true" className="text-muted-foreground">
+    ·
+  </span>
+);
 
 export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event }) => {
-  const navigate = useNavigate();
-  const config = ACTION_CONFIG[event.actionType] || { icon: GitBranch, label: event.actionType, color: 'text-muted-foreground' };
-  const statusConfig = STATUS_ICONS[event.status];
-  const Icon = config.icon;
-  const StatusIcon = statusConfig?.icon;
-
   const isBooking = event.type === 'booking';
-  const isAircall = event.type === 'aircall';
+  const isCall = event.type === 'aircall';
+  const time = formatMessageTime(event.timestamp);
 
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return s > 0 ? `${m}m${s}s` : `${m}m`;
-  };
+  let icon: React.ReactNode;
+  let label: React.ReactNode;
+  const details: React.ReactNode[] = [];
+
+  if (isCall) {
+    // Décorative : le libellé dit déjà « Appel »
+    icon = (
+      <span aria-hidden="true" className="inline-flex shrink-0">
+        <ChannelIcon channel="call" size="xs" />
+      </span>
+    );
+    label = event.callDirection === 'inbound' ? 'Appel entrant' : 'Appel sortant';
+    if (event.callDuration != null && event.callDuration > 0) details.push(formatDuration(event.callDuration));
+    if (event.callUserName) details.push(event.callUserName);
+  } else if (isBooking) {
+    icon = <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />;
+    label = event.qualificationSessionId ? (
+      <Link
+        to={`/qualification/${event.qualificationSessionId}`}
+        className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Rendez-vous planifié
+      </Link>
+    ) : (
+      'Rendez-vous planifié'
+    );
+    if (event.eventName) details.push(event.eventName);
+  } else {
+    icon = <SequenceActionIcon type={event.actionType} className="text-muted-foreground" />;
+    label = sequenceActionLabel(event.actionType);
+    const reason = event.status === 'skipped' ? skipReasonLabel(event.skipReason) : null;
+    details.push(<ExecutionStatusBadge key="status" status={event.status} className="px-1.5 py-0 text-2xs" />);
+    if (reason) details.push(reason);
+  }
 
   return (
-    <div className="flex justify-center my-2">
-      <div
-        className={cn(
-          "inline-flex items-center gap-2 px-3 py-1.5 border border-dashed rounded-sm max-w-[85%]",
-          isBooking
-            ? "bg-success/10 border-success/30 cursor-pointer hover:bg-success/20 transition-colors"
-            : isAircall
-              ? "bg-whatsapp/10 border-whatsapp/30"
-              : "bg-muted/50 border-border"
+    <div className="my-2 flex justify-center">
+      <div className="inline-flex max-w-[85%] flex-wrap items-center justify-center gap-x-1.5 gap-y-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-foreground-secondary">
+        {icon}
+        <span className="font-medium text-foreground">{label}</span>
+        {details.map((detail, i) => (
+          <React.Fragment key={i}>
+            <Separator />
+            {typeof detail === 'string' ? <span className="text-muted-foreground">{detail}</span> : detail}
+          </React.Fragment>
+        ))}
+        {time && (
+          <>
+            <Separator />
+            <span className="whitespace-nowrap tabular-nums text-muted-foreground">{time}</span>
+          </>
         )}
-        onClick={isBooking && event.qualificationSessionId ? () => navigate(`/qualification/${event.qualificationSessionId}`) : undefined}
-      >
-        {isAircall ? (
-          <img src={aircallLogo} alt="Aircall" className="w-3.5 h-3.5 shrink-0" />
-        ) : (
-          <Icon className={cn("w-3.5 h-3.5 shrink-0", config.color)} />
-        )}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-xs font-medium text-foreground truncate">
-            {isAircall 
-              ? `${event.callDirection === 'inbound' ? '📞 Appel entrant' : '📞 Appel sortant'}`
-              : config.label
-            }
-          </span>
-          {isAircall && event.callDuration != null && event.callDuration > 0 && (
-            <span className="text-xs text-muted-foreground">
-              ({formatDuration(event.callDuration)})
-            </span>
-          )}
-          {isAircall && event.callUserName && (
-            <span className="text-xs text-muted-foreground truncate">
-              — {event.callUserName}
-            </span>
-          )}
-          {isBooking && event.eventName && (
-            <span className="text-xs text-muted-foreground truncate">
-              — {event.eventName}
-            </span>
-          )}
-          {event.status === 'skipped' && event.skipReason && (
-            <span className="text-xs text-muted-foreground truncate">
-              ({event.skipReason})
-            </span>
-          )}
-          {event.status === 'failed' && event.errorMessage && (
-            <span className="text-xs text-destructive truncate">
-              ({event.errorMessage.slice(0, 40)})
-            </span>
-          )}
-          {StatusIcon && !isBooking && !isAircall && (
-            <StatusIcon className={cn("w-3 h-3 shrink-0", statusConfig.color)} />
-          )}
-        </div>
-        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-          {formatMessageTime(event.timestamp)}
-        </span>
       </div>
     </div>
   );
