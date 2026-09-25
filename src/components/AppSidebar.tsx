@@ -14,7 +14,7 @@
  * fermeture de la feuille.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -46,6 +46,7 @@ import { AssistantPanel } from './sidebar/assistant/AssistantPanel';
 import { TutorialVideoDialog } from './help/TutorialVideoDialog';
 import { PIPELINE_TUTORIAL } from './help/tutorials';
 import { KonektLogo } from './KonektLogo';
+import { setAppTheme, useAppTheme } from '@/lib/theme';
 
 export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
@@ -70,20 +71,10 @@ export function AppSidebar() {
   const orgName = organization?.name || 'Konekt';
   const orgInitial = orgName.charAt(0).toUpperCase();
 
-  const [isDark, setIsDark] = React.useState(
-    () => !document.documentElement.classList.contains('light'),
-  );
-  const toggleTheme = () => {
-    const next = !isDark;
-    setIsDark(next);
-    if (next) document.documentElement.classList.remove('light');
-    else document.documentElement.classList.add('light');
-    try {
-      localStorage.setItem('konekt-theme', next ? 'dark' : 'light');
-    } catch {
-      // localStorage indisponible : le choix vaut pour la session en cours
-    }
-  };
+  // Thème partagé avec la palette Ctrl J (src/lib/theme.ts) : une bascule
+  // faite ailleurs met à jour le libellé du menu et la variante du logo.
+  const isDark = useAppTheme() === 'dark';
+  const toggleTheme = () => setAppTheme(isDark ? 'light' : 'dark');
 
   const closeMobile = () => setOpenMobile(false);
   // « Aller à… » ouvre la palette Ctrl J (NavigationPalette), pas l'assistant.

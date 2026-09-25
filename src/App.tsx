@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, lazy, Suspense } from "react";
 import * as Sentry from "@sentry/react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -134,13 +135,8 @@ const AppContent = () => {
   };
 
   const suspenseFallback = (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="w-9 h-9 rounded-full border border-border border-t-foreground animate-spin" />
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Chargement en cours
-        </p>
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-background px-6">
+      <Spinner size="lg" />
     </div>
   );
 
@@ -194,7 +190,7 @@ const AppContent = () => {
       </Suspense>
       {/* AgentDrawer wrapped in error boundary — un crash du chat IA ne doit
           pas faire planter toute l'app (audit I8). */}
-      <SectionErrorBoundary fallbackTitle="Erreur dans l'assistant">
+      <SectionErrorBoundary fallbackTitle="L'assistant a rencontré une erreur" floating>
         <AgentDrawer />
       </SectionErrorBoundary>
       {/* NavigationPalette — Cmd+J / Ctrl+J pour navigation rapide + actions */}

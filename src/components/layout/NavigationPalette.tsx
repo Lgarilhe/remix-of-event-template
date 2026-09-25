@@ -17,6 +17,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { getAppTheme, setAppTheme, useAppTheme } from '@/lib/theme';
 import { useNavigate } from 'react-router-dom';
 import {
   CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut,
@@ -76,15 +77,9 @@ export function NavigationPalette() {
 
   const go = useCallback((path: string) => run(() => navigate(path)), [navigate, run]);
 
+  const theme = useAppTheme();
   const toggleTheme = useCallback(() => {
-    run(() => {
-      const root = document.documentElement;
-      if (root.classList.contains('light')) {
-        root.classList.remove('light');
-      } else {
-        root.classList.add('light');
-      }
-    });
+    run(() => setAppTheme(getAppTheme() === 'light' ? 'dark' : 'light'));
   }, [run]);
 
   const signOut = useCallback(() => {
@@ -96,7 +91,7 @@ export function NavigationPalette() {
 
   return (
     <>
-      <CommandDialog open={open} onOpenChange={setOpen}>
+      <CommandDialog open={open} onOpenChange={setOpen} title="Aller à">
         <CommandInput placeholder="Chercher une page, une action…" />
         <CommandList>
           <CommandEmpty>Aucun résultat</CommandEmpty>
@@ -179,9 +174,12 @@ export function NavigationPalette() {
               Paramètres
             </CommandItem>
             <CommandItem onSelect={toggleTheme}>
-              <Sun className="mr-2 h-4 w-4 dark:hidden" aria-hidden="true" />
-              <Moon className="mr-2 h-4 w-4 hidden dark:block" aria-hidden="true" />
-              Basculer le thème clair/sombre
+              {theme === 'light' ? (
+                <Moon className="mr-2 h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Sun className="mr-2 h-4 w-4" aria-hidden="true" />
+              )}
+              {theme === 'light' ? 'Passer au thème sombre' : 'Passer au thème clair'}
             </CommandItem>
             <CommandItem onSelect={signOut} className="text-destructive data-[selected=true]:text-destructive">
               <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />

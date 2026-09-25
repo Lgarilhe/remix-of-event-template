@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { withPreviewAccessToken } from '@/lib/previewToken';
 import { EXTENSION_REVEAL_STORAGE_KEY } from '@/lib/settingsRoutes';
+import { Spinner } from '@/components/ui/spinner';
 
 export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isReady, session } = useAuthReady();
@@ -9,8 +10,8 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (!isReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-6 h-6 border border-border border-t-foreground rounded-full animate-spin" />
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner label="Vérification de la session" />
       </div>
     );
   }

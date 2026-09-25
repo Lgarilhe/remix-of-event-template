@@ -1,10 +1,15 @@
 import React, { Component, ReactNode } from 'react';
 import * as Sentry from '@sentry/react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { ErrorState } from '@/components/layout/ErrorState';
 
 interface Props {
   children: ReactNode;
   fallbackTitle?: string;
+  /**
+   * Encart fixé en bas à droite plutôt que dans le flux : pour un composant
+   * monté hors des pages (l'assistant), dont l'erreur finirait sous la page.
+   */
+  floating?: boolean;
 }
 
 interface State {
@@ -36,24 +41,20 @@ export class SectionErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      return (
-        <div className="border border-destructive/30 bg-destructive/5 p-6 text-center my-4">
-          <AlertTriangle className="w-5 h-5 text-destructive mx-auto mb-2" />
-          <p className="text-xs font-bold uppercase tracking-wider text-foreground mb-1">
-            {this.props.fallbackTitle || 'Erreur dans cette section'}
-          </p>
-          <p className="text-xs text-muted-foreground font-mono mb-3">
-            {this.state.error?.message?.slice(0, 200)}
-          </p>
-          <button
-            onClick={this.handleRetry}
-            className="relative overflow-hidden inline-flex items-center gap-1.5 h-8 px-4 text-xs font-medium uppercase tracking-wider border border-border bg-background text-foreground group"
-          >
-            <RefreshCw className="w-3 h-3 relative z-10" />
-            <span className="relative z-10">Réessayer</span>
-          </button>
-        </div>
+      const state = (
+        <ErrorState
+          variant={this.props.floating ? 'compact' : 'default'}
+          title={this.props.fallbackTitle || 'Cette section n\'a pas pu s\'afficher'}
+          description="Le reste de la page fonctionne. Réessayez pour recharger cette partie."
+          detail={this.state.error?.message}
+          onRetry={this.handleRetry}
+          className={this.props.floating ? 'shadow-xl' : 'my-4'}
+        />
       );
+      if (this.props.floating) {
+        return <div className="fixed bottom-4 right-4 z-toast w-[min(24rem,calc(100vw-2rem))]">{state}</div>;
+      }
+      return state;
     }
 
     return this.props.children;

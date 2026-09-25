@@ -2,8 +2,9 @@
  * StatTile — tuile de KPI unifiée (design system).
  *
  * Pour les bandeaux de KPI en haut des pages (Dashboard, Tasks, Calendar…).
- * Style brutal : bordure nette, label uppercase tracking-wider, chiffres en
- * font-mono tabular-nums. Optionnellement accentuable (fond primary/destructive/success).
+ * Carte arrondie, libellé discret, chiffre en graisse 600 et chiffres alignés.
+ * La couleur d'un statut ne s'applique qu'au chiffre, et seulement si `accent`
+ * (docs/design/01-direction.md : un zéro ne se met pas en avant).
  *
  * Usage :
  *   <StatTile label="En retard" value={3} icon={AlertCircle} variant="destructive" />
@@ -28,12 +29,12 @@ export interface StatTileProps {
 }
 
 const VARIANT_STYLES: Record<StatTileVariant, { icon: string; value: string; bg: string }> = {
-  default:     { icon: 'text-muted-foreground', value: 'text-foreground',   bg: 'bg-background' },
-  primary:     { icon: 'text-foreground',       value: 'text-foreground',   bg: 'bg-accent/10' },
-  success:     { icon: 'text-success',          value: 'text-success',      bg: 'bg-success/5' },
-  warning:     { icon: 'text-warning',          value: 'text-warning',      bg: 'bg-warning/5' },
-  destructive: { icon: 'text-destructive',      value: 'text-destructive',  bg: 'bg-destructive/5' },
-  info:        { icon: 'text-info',             value: 'text-info',         bg: 'bg-info/5' },
+  default:     { icon: 'text-muted-foreground', value: 'text-foreground', bg: 'bg-card' },
+  primary:     { icon: 'text-brand',            value: 'text-foreground', bg: 'bg-card' },
+  success:     { icon: 'text-success',          value: 'text-success',    bg: 'bg-card' },
+  warning:     { icon: 'text-warning',          value: 'text-warning',    bg: 'bg-card' },
+  destructive: { icon: 'text-danger',           value: 'text-danger',     bg: 'bg-card' },
+  info:        { icon: 'text-info',             value: 'text-info',       bg: 'bg-card' },
 };
 
 export const StatTile: React.FC<StatTileProps> = React.memo(({
@@ -50,19 +51,19 @@ export const StatTile: React.FC<StatTileProps> = React.memo(({
   return (
     <div
       className={cn(
-        'border border-border p-3 sm:p-4 flex flex-col gap-1 transition-colors',
-        accent ? styles.bg : 'bg-background',
+        'flex flex-col gap-1.5 rounded-xl border border-border p-4 transition-colors',
+        styles.bg,
         className,
       )}
     >
       <div className="flex items-center gap-1.5">
-        {Icon && <Icon className={cn('w-3 h-3 shrink-0', styles.icon)} aria-hidden={true} />}
-        <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium truncate">
+        {Icon && <Icon className={cn('h-3.5 w-3.5 shrink-0', accent ? styles.icon : 'text-muted-foreground')} aria-hidden={true} />}
+        <span className="truncate text-xs font-medium text-muted-foreground">
           {label}
         </span>
       </div>
       <div className="flex items-baseline justify-between gap-2">
-        <span className={cn('text-xl sm:text-2xl font-bold font-mono tracking-tight tabular-nums', accent && styles.value)}>
+        <span className={cn('text-2xl font-semibold tracking-tight tabular-nums', accent && styles.value)}>
           {value}
         </span>
         {trailing && (
@@ -81,8 +82,7 @@ StatTile.displayName = 'StatTile';
  * StatGrid — grille responsive pour les StatTile avec gestion des bordures.
  * Usage : <StatGrid cols={{ base: 2, sm: 3, lg: 6 }}>{tiles}</StatGrid>
  *
- * Note : on utilise gap-0 + neg margins pour éviter les doubles bordures
- * entre tiles (pattern brutal).
+ * Tuiles séparées par un espace de 12 px.
  */
 export interface StatGridProps {
   children: React.ReactNode;
@@ -113,13 +113,11 @@ export const StatGrid: React.FC<StatGridProps> = ({ children, cols, className })
   return (
     <div
       className={cn(
-        'grid -mx-px',
+        'grid gap-3',
         base,
         sm,
         md,
         lg,
-        '[&>*]:-ml-px [&>*]:-mt-px',
-        'relative',
         className,
       )}
     >

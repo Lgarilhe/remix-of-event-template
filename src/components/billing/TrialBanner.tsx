@@ -5,6 +5,8 @@
  */
 
 import { Link } from 'react-router-dom';
+import { Clock } from 'lucide-react';
+import { Banner, bannerActionClass } from '@/components/ui/banner';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { useOrganization } from '@/hooks/useOrganization';
 
@@ -30,18 +32,20 @@ export const TrialBanner = () => {
   if (!text) return null;
 
   return (
-    <div
-      role="status"
-      className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-warning/10 px-4 py-2 text-xs text-foreground"
+    <Banner
+      tone="warning"
+      icon={Clock}
+      action={
+        isAdmin ? (
+          <Link to="/pricing" className={bannerActionClass}>
+            Choisir un plan
+          </Link>
+        ) : (
+          <span className="shrink-0 text-muted-foreground">Demandez à un administrateur de choisir un plan.</span>
+        )
+      }
     >
-      <span>{text}</span>
-      {isAdmin ? (
-        <Link to="/pricing" className="font-medium underline underline-offset-2 hover:text-foreground/80">
-          Choisir un plan
-        </Link>
-      ) : (
-        <span className="text-muted-foreground">Demandez à un administrateur de choisir un plan.</span>
-      )}
-    </div>
+      {text}
+    </Banner>
   );
 };

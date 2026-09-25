@@ -33,16 +33,16 @@ export const Section: React.FC<SectionProps> = ({
   as: Component = 'section',
 }) => {
   return (
-    <Component className={cn('border border-border bg-background', className)}>
-      <header className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
-        <div className="flex items-center gap-2 min-w-0">
-          {Icon && <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden={true} />}
-          <h3 className="text-xs uppercase tracking-wider font-bold text-foreground truncate">
+    <Component className={cn('rounded-xl border border-border bg-card', className)}>
+      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden={true} />}
+          <h3 className="truncate text-sm font-semibold text-foreground">
             {title}
           </h3>
           {subtitle && (
-            <span className="text-xs text-muted-foreground tracking-wide hidden sm:inline truncate">
-              — {subtitle}
+            <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+              · {subtitle}
             </span>
           )}
         </div>

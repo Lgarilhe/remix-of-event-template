@@ -1,7 +1,8 @@
 import { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, ArrowRight } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { EmptyState as BaseEmptyState } from '@/components/layout/EmptyState';
 
 interface EmptyStateProps {
   icon: ReactNode;
@@ -14,6 +15,10 @@ interface EmptyStateProps {
   compact?: boolean;
 }
 
+/**
+ * État vide avec une action de navigation. Même rendu que
+ * `@/components/layout/EmptyState`, dont il reprend la mise en forme.
+ */
 export const EmptyState = ({
   icon,
   title,
@@ -32,32 +37,20 @@ export const EmptyState = ({
   };
 
   return (
-    <div className={cn(
-      "rounded-xl border border-border bg-card text-center",
-      compact ? "p-6 sm:p-8" : "p-8 sm:p-12",
-      className,
-    )}>
-      <div className={cn(
-        "bg-accent text-foreground rounded-xl flex items-center justify-center mx-auto mb-4",
-        compact ? "h-10 w-10" : "h-14 w-14",
-      )}>
-        {icon}
-      </div>
-      <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">
-        {title}
-      </h2>
-      <p className="text-muted-foreground text-xs sm:text-sm mb-6 max-w-md mx-auto leading-relaxed">
-        {description}
-      </p>
-      {actionLabel && (
-        <button
-          onClick={handleClick}
-          className="inline-flex items-center gap-2 h-9 px-5 rounded-full bg-transparent text-foreground border border-border text-xs font-medium hover:bg-accent transition-colors"
-        >
-          <Settings className="w-4 h-4" />
-          {actionLabel}
-        </button>
-      )}
-    </div>
+    <BaseEmptyState
+      icon={icon}
+      title={title}
+      description={description}
+      variant={compact ? 'compact' : 'default'}
+      className={className}
+      action={
+        actionLabel ? (
+          <Button size="sm" onClick={handleClick}>
+            {actionLabel}
+            <ArrowRight aria-hidden="true" />
+          </Button>
+        ) : undefined
+      }
+    />
   );
 };

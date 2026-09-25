@@ -120,6 +120,42 @@ jobs:
           fi
           exit 0
 
+  design:
+    name: Design (ratchet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dette design PR vs base (docs/design/)
+        # Aucun paquet requis : le script ne lit que src/. Le même script mesure
+        # la PR puis la base, copié hors du dépôt avant le checkout de la base
+        # (sur la première PR, la base ne l'a pas encore).
+        shell: bash --noprofile --norc {0}
+        run: |
+          cp scripts/design/ratchet.mjs "$RUNNER_TEMP/ratchet.mjs"
+          node "$RUNNER_TEMP/ratchet.mjs"
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE_SHA" ]; then
+            echo "::notice::Pas de base (workflow_dispatch) : rapport informatif uniquement."
+            exit 0
+          fi
+
+          git -c advice.detachedHead=false checkout "$BASE_SHA"
+          node "$RUNNER_TEMP/ratchet.mjs" --json > "$RUNNER_TEMP/base.json"
+          git -c advice.detachedHead=false checkout -
+          node "$RUNNER_TEMP/ratchet.mjs" --compare "$RUNNER_TEMP/base.json"
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::La PR augmente au moins un compteur de dette design. Règles : docs/design/01-direction.md."
+          fi
+          exit $STATUS
+
   lint:
     name: Lint (ratchet)
     runs-on: ubuntu-latest

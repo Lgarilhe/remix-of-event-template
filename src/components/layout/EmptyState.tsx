@@ -1,15 +1,15 @@
 /**
- * EmptyState — état vide unifié (design system).
+ * EmptyState : état vide commun (docs/design/01-direction.md, § 8).
  *
- * Remplace les blocs custom `text-center py-12 border border-dashed` qu'on
- * trouvait à 10+ endroits avec des paddings/styles incohérents.
+ * Une phrase qui dit pourquoi c'est vide, et l'action qui remplit l'écran.
+ * `src/components/ui/EmptyState.tsx` s'appuie sur ce composant.
  *
- * Usage:
+ * Usage :
  *   <EmptyState
  *     icon={CalendarIcon}
- *     title="Pas d'événement cette semaine"
- *     description="Les entretiens et messages programmés apparaîtront ici."
- *     action={<Button>Créer une mission</Button>}
+ *     title="Aucun entretien cette semaine"
+ *     description="Les entretiens programmés depuis une mission apparaîtront ici."
+ *     action={<Button variant="primary">Programmer un entretien</Button>}
  *   />
  */
 
@@ -17,18 +17,39 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 export interface EmptyStateProps {
-  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  /** Composant d'icône (lucide) ou élément déjà rendu */
+  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }> | React.ReactNode;
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   /** Action principale (bouton, lien) */
   action?: React.ReactNode;
-  /** Variant de densité */
+  /** Densité : compact dans une carte ou une colonne */
   variant?: 'default' | 'compact';
   className?: string;
 }
 
+function renderIcon(icon: EmptyStateProps['icon'], compact: boolean) {
+  if (!icon) return null;
+  const size = compact ? 'h-4 w-4' : 'h-5 w-5';
+  let content: React.ReactNode = icon as React.ReactNode;
+  if (typeof icon === 'function' || (typeof icon === 'object' && icon !== null && '$$typeof' in icon && !React.isValidElement(icon))) {
+    const Icon = icon as React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+    content = <Icon className={size} aria-hidden={true} />;
+  }
+  return (
+    <span
+      className={cn(
+        'mb-3 grid place-items-center rounded-lg bg-muted text-foreground-secondary',
+        compact ? 'h-8 w-8' : 'h-10 w-10',
+      )}
+    >
+      {content}
+    </span>
+  );
+}
+
 export const EmptyState: React.FC<EmptyStateProps> = React.memo(({
-  icon: Icon,
+  icon,
   title,
   description,
   action,
@@ -40,41 +61,18 @@ export const EmptyState: React.FC<EmptyStateProps> = React.memo(({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center text-center border border-dashed border-border bg-background/50',
-        compact ? 'py-6 px-4' : 'py-12 px-6',
-        'animate-in fade-in-0 duration-300',
+        'flex flex-col items-center justify-center rounded-xl border border-dashed border-border text-center',
+        compact ? 'px-4 py-6' : 'px-6 py-12',
         className,
       )}
       role="status"
     >
-      {Icon && (
-        <Icon
-          className={cn(
-            'text-muted-foreground/40 mb-3',
-            compact ? 'w-6 h-6' : 'w-10 h-10',
-          )}
-          aria-hidden={true}
-        />
-      )}
-      <h3 className={cn(
-        'font-bold uppercase tracking-wider text-foreground',
-        compact ? 'text-xs' : 'text-sm',
-      )}>
-        {title}
-      </h3>
+      {renderIcon(icon, compact)}
+      <h3 className={cn('font-semibold text-foreground', compact ? 'text-sm' : 'text-md')}>{title}</h3>
       {description && (
-        <p className={cn(
-          'text-muted-foreground max-w-md mt-1.5',
-          compact ? 'text-xs' : 'text-xs sm:text-sm',
-        )}>
-          {description}
-        </p>
+        <p className={cn('mt-1 max-w-md text-muted-foreground', compact ? 'text-xs' : 'text-sm')}>{description}</p>
       )}
-      {action && (
-        <div className="mt-4">
-          {action}
-        </div>
-      )}
+      {action && <div className="mt-4 flex flex-wrap items-center justify-center gap-2">{action}</div>}
     </div>
   );
 });

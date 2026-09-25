@@ -12,3 +12,6 @@ export type { StatTileProps, StatTileVariant, StatGridProps } from './StatTile';
 
 export { Section } from './Section';
 export type { SectionProps } from './Section';
+
+export { ErrorState } from './ErrorState';
+export type { ErrorStateProps } from './ErrorState';

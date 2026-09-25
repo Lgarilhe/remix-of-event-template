@@ -1,47 +1,67 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-/* cache-bust: v2 */
+/* cache-bust: v3 */
 
-/* Konekt Design System — Qonto-inspired dark-first theme.
-   All colors MUST be HSL.
-   Default = dark. .light class = light mode.
+/* Konekt Design System : registre calme, neutres chauds (teinte 40°), un seul
+   accent indigo rationné. Référence : docs/design/01-direction.md.
+   Toutes les couleurs en triplets HSL (consommés par hsl(var(--x) / alpha)).
+   Thème par défaut : sombre (:root). Thème clair : classe .light sur <html>.
 */
 
 @layer base {
   :root {
-    /* ── Dark theme (default) ── */
+    color-scheme: dark;
+
+    /* ── Surfaces ── */
     --background: 40 3% 11%;
-    --foreground: 0 0% 98%;
-
     --card: 40 3% 14%;
-    --card-foreground: 0 0% 98%;
-
     --popover: 40 3% 16%;
-    --popover-foreground: 0 0% 98%;
+    --secondary: 40 3% 18%;
+    --muted: 40 3% 18%;
+    /* Gris de survol hérité de shadcn (hover:bg-accent). La couleur de marque est --brand. */
+    --accent: 40 3% 20%;
 
+    /* ── Texte ── */
+    --foreground: 0 0% 98%;
+    --foreground-secondary: 40 4% 74%;
+    --muted-foreground: 40 3% 62%;
+    --card-foreground: 0 0% 98%;
+    --popover-foreground: 0 0% 98%;
+    --secondary-foreground: 0 0% 90%;
+    --accent-foreground: 0 0% 98%;
+
+    /* ── Action principale : monochrome ── */
     --primary: 0 0% 98%;
     --primary-foreground: 40 3% 11%;
 
-    --secondary: 40 3% 18%;
-    --secondary-foreground: 0 0% 90%;
+    /* ── Accent de marque (focus, sélection, signaux, progression) ── */
+    --brand: 248 54% 72%;
+    --brand-foreground: 250 28% 12%;
+    --brand-hover: 248 58% 78%;
+    --brand-press: 248 48% 66%;
+    /* Aplat qui porte du texte blanc (6,9:1). */
+    --brand-solid: 248 42% 50%;
+    --brand-solid-foreground: 0 0% 100%;
 
-    --muted: 40 3% 18%;
-    --muted-foreground: 40 2% 56%;
-
-    --accent: 40 3% 20%;
-    --accent-foreground: 0 0% 98%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
-
+    /* ── Filets et focus ──
+       En sombre, les filets sont un blanc transparent. Teinte et opacité sont
+       aussi séparées (-hsl, -alpha) : Tailwind multiplie l'opacité, ce qui
+       garde border-border/40 valide (hsl(0 0% 100% / 10% / 0.4) ne l'est pas). */
     --border: 0 0% 100% / 10%;
+    --border-hsl: 0 0% 100%;
+    --border-alpha: 0.10;
+    --border-strong: 0 0% 100% / 18%;
+    --border-strong-hsl: 0 0% 100%;
+    --border-strong-alpha: 0.18;
     --input: 0 0% 100% / 12%;
-    --ring: 0 0% 100% / 25%;
+    --input-hsl: 0 0% 100%;
+    --input-alpha: 0.12;
+    --ring: 248 54% 72%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Sidebar */
+    /* ── Barre latérale ── */
     --sidebar-background: 40 3% 8%;
     --sidebar-foreground: 0 0% 85%;
     --sidebar-primary: 0 0% 98%;
@@ -49,149 +69,162 @@
     --sidebar-accent: 40 3% 15%;
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 0 0% 100% / 8%;
-    --sidebar-ring: 0 0% 100% / 25%;
+    --sidebar-border-hsl: 0 0% 100%;
+    --sidebar-border-alpha: 0.08;
+    --sidebar-ring: 248 54% 72%;
 
-    /* Konekt brand colors */
+    /* ── Statuts : couleur d'encre (texte, icône, filet), texte sur aplat, teinte de fond ── */
+    --status-success: 145 55% 50%;
+    --status-success-foreground: 145 60% 10%;
+    --status-success-muted: 145 35% 17%;
+    --status-warning: 38 92% 58%;
+    --status-warning-foreground: 38 80% 10%;
+    --status-warning-muted: 38 45% 17%;
+    --status-info: 215 90% 68%;
+    --status-info-foreground: 215 60% 12%;
+    --status-info-muted: 215 45% 19%;
+    /* Erreur d'état. Distincte de --destructive, l'aplat des actions irréversibles. */
+    --danger: 0 84% 71%;
+    --danger-muted: 0 45% 19%;
+    --destructive: 0 70% 48%;
+    --destructive-foreground: 0 0% 100%;
+    /* Alias courts, lus par des composants en style inline (hsl(var(--success))). */
+    --success: var(--status-success);
+    --warning: var(--status-warning);
+    --info: var(--status-info);
+
+    /* ── Marques tierces ── */
+    --brand-linkedin: 201 100% 35%;
+    --brand-linkedin-hover: 201 100% 29%;
+    --brand-whatsapp: 142 70% 49%;
+
+    /* ── Ancienne palette Skalr (brand-purple…) : à ne plus employer ── */
     --skalr-purple: 271 81% 56%;
     --skalr-pink: 330 81% 60%;
     --skalr-blue: 217 91% 60%;
     --skalr-cyan: 187 85% 53%;
     --skalr-green: 142 71% 45%;
 
-    /* Third-party brand colors */
-    --brand-linkedin: 201 100% 35%;
-    --brand-linkedin-hover: 201 100% 29%;
-    --brand-whatsapp: 142 70% 49%;
-
-    /* Semantic status colors */
-    --status-success: 142 71% 45%;
-    --status-success-foreground: 0 0% 100%;
-    --status-success-muted: 142 40% 18%;
-    --status-warning: 45 93% 47%;
-    --status-warning-foreground: 0 0% 10%;
-    --status-warning-muted: 45 50% 18%;
-    --status-info: 217 91% 60%;
-    --status-info-foreground: 0 0% 100%;
-    --status-info-muted: 217 50% 18%;
-
-    /* Landing/onboarding light surfaces (used in SkalrLanding hero/CTA + onboarding scenes) */
+    /* ── Pages publiques (fond du haut de l'accueil) ── */
     --landing-sky-start: 200 80% 95%;
     --landing-sky-end: 220 70% 92%;
     --landing-accent-yellow: 50 100% 60%;
 
-    /* Charts */
+    /* ── Graphiques ── */
     --chart-1: 271 60% 55%;
     --chart-2: 187 60% 50%;
     --chart-3: 142 50% 45%;
     --chart-4: 330 60% 55%;
     --chart-5: 45 80% 55%;
 
-    /* Fonts — gérés par tailwind.config.ts (Instrument Sans / Outfit / Instrument Serif).
-       Les variables CSS ci-dessus pour fontFamily ont été retirées car redondantes. */
-
-    /* ── Search redesign tokens (--k-*) — Linear/Qonto register, dark ──
-       Valeurs complètes (hsl()/rgba()) pour usage direct via var() dans les
-       classes Tailwind arbitraires (bg-[var(--k-surface)]). Un seul accent
-       indigo désaturé, rationné : focus, sélection, priorité, action. */
-    --k-bg: hsl(40 4% 8.5%);
-    --k-surface: hsl(40 3.5% 11%);
-    --k-surface-2: hsl(40 3% 14%);
-    --k-surface-3: hsl(40 3% 16.5%);
-    --k-hairline: rgba(255,255,255,0.06);
-    --k-hairline-hover: rgba(255,255,255,0.10);
-    --k-hairline-focus: rgba(255,255,255,0.14);
-    --k-text: hsl(40 6% 97%);
-    --k-text-2: hsl(40 4% 74%);
-    --k-text-muted: hsl(40 4% 55%);
-    --k-text-placeholder: hsl(40 3% 40%);
-    --k-accent: hsl(250 42% 70%);
-    --k-accent-hover: hsl(250 45% 76%);
-    --k-accent-press: hsl(250 40% 64%);
-    --k-accent-ring: rgba(154,144,221,0.34);
-    --k-accent-tint: rgba(154,144,221,0.14);
-    --k-on-accent: hsl(250 28% 12%);
-    --k-success: hsl(145 55% 48%);
-    --k-warn: hsl(38 92% 55%);
-
-    /* Shadows (subtle for dark theme) */
+    /* ── Élévation : en sombre, la luminosité des surfaces sépare, l'ombre sert aux éléments flottants ── */
     --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.15);
     --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.15);
     --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.2), 0 1px 2px -1px hsl(0 0% 0% / 0.15);
     --shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.2), 0 1px 2px -1px hsl(0 0% 0% / 0.15);
     --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.2), 0 2px 4px -2px hsl(0 0% 0% / 0.15);
-    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.2), 0 4px 6px -4px hsl(0 0% 0% / 0.15);
-    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.2), 0 8px 10px -6px hsl(0 0% 0% / 0.15);
-    --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.4);
+    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.28), 0 4px 6px -4px hsl(0 0% 0% / 0.2);
+    --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.32), 0 8px 10px -6px hsl(0 0% 0% / 0.24);
+    --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.45);
 
     --tracking-normal: 0em;
     --spacing: 0.25rem;
+
+    /* ── Alias des jetons de la recherche (--k-*, PR #218) ──
+       Ils pointent vers les jetons ci-dessus : un seul jeu de couleurs.
+       Ne plus en écrire, la refonte du sourcing les remplacera. */
+    --k-bg: hsl(var(--background));
+    --k-surface: hsl(var(--card));
+    --k-surface-2: hsl(var(--popover));
+    --k-surface-3: hsl(var(--muted));
+    --k-hairline: hsl(var(--border));
+    --k-hairline-hover: hsl(var(--input));
+    --k-hairline-focus: hsl(var(--border-strong));
+    --k-text: hsl(var(--foreground));
+    --k-text-2: hsl(var(--foreground-secondary));
+    --k-text-muted: hsl(var(--muted-foreground));
+    --k-text-placeholder: hsl(var(--muted-foreground) / 0.8);
+    --k-accent: hsl(var(--brand));
+    --k-accent-hover: hsl(var(--brand-hover));
+    --k-accent-press: hsl(var(--brand-press));
+    --k-accent-ring: hsl(var(--brand) / 0.34);
+    --k-accent-tint: hsl(var(--brand) / 0.14);
+    --k-on-accent: hsl(var(--brand-foreground));
+    --k-success: hsl(var(--status-success));
+    --k-warn: hsl(var(--status-warning));
+    --k-bad: hsl(var(--danger));
   }
 
-  /* ── Light theme ── */
+  /* ── Thème clair : dessiné à part, pas inversé ── */
   .light {
-    --background: 0 0% 98%;
-    --foreground: 40 3% 11%;
+    color-scheme: light;
 
+    --background: 40 14% 98%;
     --card: 0 0% 100%;
-    --card-foreground: 40 3% 11%;
-
     --popover: 0 0% 100%;
-    --popover-foreground: 40 3% 11%;
+    --secondary: 40 8% 95%;
+    --muted: 40 8% 95%;
+    --accent: 40 8% 93%;
 
-    --primary: 40 3% 11%;
+    --foreground: 40 6% 12%;
+    --foreground-secondary: 40 5% 34%;
+    --muted-foreground: 40 4% 42%;
+    --card-foreground: 40 6% 12%;
+    --popover-foreground: 40 6% 12%;
+    --secondary-foreground: 40 5% 20%;
+    --accent-foreground: 40 6% 12%;
+
+    --primary: 40 6% 12%;
     --primary-foreground: 0 0% 98%;
 
-    --secondary: 40 3% 95%;
-    --secondary-foreground: 40 3% 20%;
+    --brand: 248 45% 58%;
+    --brand-foreground: 0 0% 100%;
+    --brand-hover: 248 45% 52%;
+    --brand-press: 248 45% 46%;
+    --brand-solid: 248 42% 50%;
+    --brand-solid-foreground: 0 0% 100%;
 
-    --muted: 40 3% 95%;
-    --muted-foreground: 40 3% 46%;
+    --border: 40 8% 90%;
+    --border-hsl: 40 8% 90%;
+    --border-alpha: 1;
+    --border-strong: 40 8% 80%;
+    --border-strong-hsl: 40 8% 80%;
+    --border-strong-alpha: 1;
+    --input: 40 8% 88%;
+    --input-hsl: 40 8% 88%;
+    --input-alpha: 1;
+    --ring: 248 45% 58%;
 
-    --accent: 40 3% 93%;
-    --accent-foreground: 40 3% 11%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 40 3% 90%;
-    --input: 40 3% 90%;
-    --ring: 40 3% 60%;
-
-    --sidebar-background: 40 3% 96%;
-    --sidebar-foreground: 40 3% 30%;
-    --sidebar-primary: 40 3% 11%;
+    --sidebar-background: 40 8% 96%;
+    --sidebar-foreground: 40 5% 30%;
+    --sidebar-primary: 40 6% 12%;
     --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 40 3% 92%;
-    --sidebar-accent-foreground: 40 3% 11%;
-    --sidebar-border: 40 3% 90%;
-    --sidebar-ring: 40 3% 60%;
+    --sidebar-accent: 40 8% 92%;
+    --sidebar-accent-foreground: 40 6% 12%;
+    --sidebar-border: 40 8% 90%;
+    --sidebar-border-hsl: 40 8% 90%;
+    --sidebar-border-alpha: 1;
+    --sidebar-ring: 248 45% 58%;
+
+    --status-success: 145 63% 30%;
+    --status-success-foreground: 0 0% 100%;
+    --status-success-muted: 145 45% 94%;
+    --status-warning: 32 95% 34%;
+    --status-warning-foreground: 0 0% 100%;
+    --status-warning-muted: 40 90% 93%;
+    --status-info: 215 75% 42%;
+    --status-info-foreground: 0 0% 100%;
+    --status-info-muted: 215 80% 95%;
+    --danger: 0 72% 45%;
+    --danger-muted: 0 80% 96%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
 
     --chart-1: 271 60% 55%;
     --chart-2: 187 60% 50%;
     --chart-3: 142 50% 45%;
     --chart-4: 330 60% 55%;
     --chart-5: 45 80% 55%;
-
-    /* ── Search redesign tokens (--k-*) — Qonto register, light ── */
-    --k-bg: hsl(40 14% 98%);
-    --k-surface: hsl(40 20% 100%);
-    --k-surface-2: hsl(40 16% 99%);
-    --k-surface-3: hsl(40 20% 100%);
-    --k-hairline: hsl(40 8% 90%);
-    --k-hairline-hover: hsl(40 8% 84%);
-    --k-hairline-focus: hsl(40 8% 76%);
-    --k-text: hsl(40 6% 12%);
-    --k-text-2: hsl(40 5% 38%);
-    --k-text-muted: hsl(40 4% 52%);
-    --k-text-placeholder: hsl(40 4% 62%);
-    --k-accent: hsl(250 46% 58%);
-    --k-accent-hover: hsl(250 48% 52%);
-    --k-accent-press: hsl(250 46% 46%);
-    --k-accent-ring: rgba(111,99,196,0.30);
-    --k-accent-tint: rgba(111,99,196,0.10);
-    --k-on-accent: hsl(0 0% 100%);
-    --k-success: hsl(145 50% 38%);
-    --k-warn: hsl(35 85% 45%);
 
     --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.04);
     --shadow-xs: 0 1px 3px 0 hsl(0 0% 0% / 0.06);
@@ -202,15 +235,8 @@
     --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.08), 0 8px 10px -6px hsl(0 0% 0% / 0.06);
     --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.15);
 
-    --status-success: 142 71% 45%;
-    --status-success-foreground: 0 0% 100%;
-    --status-success-muted: 142 71% 95%;
-    --status-warning: 45 93% 47%;
-    --status-warning-foreground: 0 0% 10%;
-    --status-warning-muted: 45 93% 95%;
-    --status-info: 217 91% 60%;
-    --status-info-foreground: 0 0% 100%;
-    --status-info-muted: 217 91% 95%;
+    /* Teinte d'accent plus légère sur fond clair. */
+    --k-accent-tint: hsl(var(--brand) / 0.10);
   }
 }
 
@@ -219,7 +245,7 @@
     @apply border-border;
   }
 
-  /* Global focus-visible for all interactive elements */
+  /* Focus clavier visible partout : anneau de marque, 2 px, décalé de 2 px (≥ 4,7:1). */
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
@@ -227,7 +253,7 @@
 
   /* Skip-to-content link */
   .skip-to-content {
-    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-lg focus:text-sm focus:font-medium;
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-toast focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-lg focus:text-sm focus:font-medium;
   }
 
   html,
@@ -238,14 +264,27 @@
     overflow-x: auto;
   }
 
+  /* Titres : même famille que le texte, graisse 600. La taille est posée par classe. */
   h1, h2, h3 {
-    font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif;
-    font-weight: 700;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: hsl(var(--brand) / 0.3);
   }
 
   #root {
     width: 100%;
     min-width: 0;
+  }
+}
+
+@layer components {
+  /* Intitulé de section : le seul usage des capitales (01-direction.md, § 3). */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase text-muted-foreground;
+    letter-spacing: 0.08em;
   }
 }
 
@@ -280,21 +319,24 @@
     background: hsl(var(--muted-foreground) / 0.4);
   }
 
+  /* ── Anciennes classes décoratives Skalr ──
+     Conservées pour les écrans pas encore repris, mais rendues à plat :
+     plus de dégradé, de reflet ni de halo (01-direction.md, § 1). */
   .skalr-gradient-text {
-    @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, hsl(271 81% 56%), hsl(330 81% 60%), hsl(217 91% 60%));
+    color: hsl(var(--brand));
   }
 
   .skalr-gradient-bg {
-    background: linear-gradient(135deg, hsl(271 81% 56%), hsl(330 81% 60%));
+    background: hsl(var(--brand-solid));
   }
 
   .skalr-gradient-border {
-    background: linear-gradient(135deg, hsl(271 81% 56%), hsl(330 81% 60%), hsl(217 91% 60%));
+    background: hsl(var(--brand));
   }
 
+  /* Alias déprécié : rend la police d'interface (plus de serif éditorial). */
   .font-editorial {
-    font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
   }
 
   /* Landing hero/CTA — gradient ciel doux light-first.
@@ -325,36 +367,35 @@
     perspective: 800px;
   }
 
-  /* ── Design system — micro-interactions ── */
+  /* ── Micro-interactions partagées (01-direction.md, § 7) ── */
 
   /**
-   * Card hover lift — utilisable sur toute card interactive
-   * (kanban, event, task row, etc.). Subtil mais perceptible.
+   * Carte cliquable : le fond et le filet s'éclairent au survol, la carte
+   * monte d'un pixel, redescend à l'appui. 150 ms.
    */
   .interactive-card {
-    @apply transition-all duration-150 ease-out;
+    @apply transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out;
   }
   .interactive-card:hover {
-    @apply -translate-y-px bg-muted/40 border-foreground/30;
-    box-shadow: 0 2px 6px -1px hsl(0 0% 0% / 0.08), 0 1px 3px -1px hsl(0 0% 0% / 0.06);
+    @apply -translate-y-px bg-accent/40 border-border-strong;
+    box-shadow: var(--shadow-sm);
   }
   .interactive-card:active {
     @apply translate-y-0;
   }
 
   /**
-   * Row hover (pour les lists denses comme Tasks / Inbox / Pipeline table)
+   * Ligne de liste dense (tâches, messagerie, tableaux).
    */
   .interactive-row {
-    @apply transition-colors duration-100;
+    @apply transition-colors duration-150;
   }
   .interactive-row:hover {
-    @apply bg-muted/40;
+    @apply bg-accent/40;
   }
 
   /**
-   * Focus ring brutal (visible sur fond sombre ET clair) — utile quand
-   * l'outline par défaut est overridden par un composant shadcn
+   * Anneau de focus pour un élément dont le composant retire l'outline.
    */
   .focus-ring-brutal {
     @apply outline-none;
@@ -364,25 +405,13 @@
     outline-offset: 2px;
   }
 
-  /* ── V2 keyframes (mission redesign : Pill, copilote, etc.) ── */
+  /* ── Keyframes de la V2 mission (pastilles, copilote…) ── */
   @keyframes konektPulseDot {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.5; transform: scale(1.4); }
   }
-  @keyframes konektBgPan {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-  }
-  @keyframes konektGlow {
-    0%, 100% { box-shadow: 0 0 0 0 hsl(271 81% 56% / 0.4); }
-    50% { box-shadow: 0 0 0 8px hsl(271 81% 56% / 0); }
-  }
-  @keyframes konektShine {
-    0% { transform: translateX(-100%) skewX(-15deg); }
-    100% { transform: translateX(200%) skewX(-15deg); }
-  }
   @keyframes konektFadeUp {
-    0% { opacity: 0; transform: translateY(8px); }
+    0% { opacity: 0; transform: translateY(6px); }
     100% { opacity: 1; transform: translateY(0); }
   }
   @keyframes konektShimmerText {
@@ -390,41 +419,26 @@
     100% { background-position: -200% center; }
   }
 
-  /* Konekt v2 utility classes */
+  /* Anciennes classes animées : rendues à plat, sans balayage ni halo en boucle. */
   .konekt-skalr-bg {
-    background: linear-gradient(135deg, hsl(271 81% 56%), hsl(330 81% 60%), hsl(217 91% 60%));
-    background-size: 200% 200%;
-    animation: konektBgPan 8s ease-in-out infinite;
+    background: hsl(var(--brand-solid));
   }
   .konekt-skalr-bg-soft {
-    background: linear-gradient(135deg, hsl(271 81% 56% / 0.15), hsl(330 81% 60% / 0.15), hsl(217 91% 60% / 0.15));
-    background-size: 200% 200%;
-    animation: konektBgPan 8s ease-in-out infinite;
+    background: hsl(var(--brand) / 0.12);
   }
   .konekt-skalr-text {
-    background: linear-gradient(135deg, hsl(271 81% 65%), hsl(330 81% 70%), hsl(217 91% 70%));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+    color: hsl(var(--brand));
   }
   .konekt-glow {
-    animation: konektGlow 2s ease-in-out infinite;
+    box-shadow: none;
   }
   .konekt-shine {
     position: relative;
-    overflow: hidden;
-  }
-  .konekt-shine::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.18), transparent);
-    transform: translateX(-100%) skewX(-15deg);
-    animation: konektShine 2.5s ease-in-out infinite;
-    pointer-events: none;
   }
   .konekt-fade-up {
-    animation: konektFadeUp 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: konektFadeUp 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-  /* Claude/Notion-style shimmering "thinking" text */
+  /* Texte « réflexion en cours » de l'assistant : indicateur de chargement, seule boucle admise. */
   .konekt-shimmer-text {
     background: linear-gradient(110deg, hsl(var(--muted-foreground)) 35%, hsl(var(--foreground)) 50%, hsl(var(--muted-foreground)) 65%);
     background-size: 200% auto;
@@ -433,27 +447,34 @@
     animation: konektShimmerText 2.4s linear infinite;
   }
 
-  /* Animation stagger pour les listes : délai progressif */
+  /* Apparition échelonnée des listes : délai progressif */
   .stagger-in > * {
-    @apply animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ease-out;
+    @apply animate-in fade-in-0 slide-in-from-bottom-1 duration-200 ease-out;
     animation-fill-mode: backwards;
   }
   .stagger-in > *:nth-child(1)  { animation-delay: 0ms; }
-  .stagger-in > *:nth-child(2)  { animation-delay: 40ms; }
-  .stagger-in > *:nth-child(3)  { animation-delay: 80ms; }
-  .stagger-in > *:nth-child(4)  { animation-delay: 120ms; }
-  .stagger-in > *:nth-child(5)  { animation-delay: 160ms; }
-  .stagger-in > *:nth-child(6)  { animation-delay: 200ms; }
-  .stagger-in > *:nth-child(7)  { animation-delay: 240ms; }
-  .stagger-in > *:nth-child(n+8) { animation-delay: 280ms; }
+  .stagger-in > *:nth-child(2)  { animation-delay: 30ms; }
+  .stagger-in > *:nth-child(3)  { animation-delay: 60ms; }
+  .stagger-in > *:nth-child(4)  { animation-delay: 90ms; }
+  .stagger-in > *:nth-child(5)  { animation-delay: 120ms; }
+  .stagger-in > *:nth-child(6)  { animation-delay: 150ms; }
+  .stagger-in > *:nth-child(7)  { animation-delay: 180ms; }
+  .stagger-in > *:nth-child(n+8) { animation-delay: 210ms; }
+}
 
-  /* Respect prefers-reduced-motion */
-  @media (prefers-reduced-motion: reduce) {
-    .interactive-card,
-    .interactive-row,
-    .stagger-in > * {
-      transition: none !important;
-      animation: none !important;
-    }
+/* Mouvement réduit : toutes les animations et transitions coupées, partout.
+   Les indicateurs de chargement restent lisibles à l'arrêt (anneau, squelette). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .konekt-shimmer-text {
+    background: none;
+    color: hsl(var(--muted-foreground));
   }
 }
