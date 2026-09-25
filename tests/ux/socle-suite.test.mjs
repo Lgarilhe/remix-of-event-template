@@ -76,3 +76,12 @@ test('D-59, D-71 : messages d’envoi et de compatibilité au vouvoiement, sans 
     assert.doesNotMatch(strings, /reconnecte-le|réessaie|Préfère|\bprovider\b|—/, file);
   }
 });
+
+test('E-27 : une définition s’ouvre au doigt (Popover), la grille d’indicateurs a son palier xl', () => {
+  const hint = read('src/components/ui/info-hint.tsx');
+  assert.match(hint, /<PopoverTrigger asChild>/);
+  assert.doesNotMatch(hint, /Tooltip/);
+  assert.match(read('src/components/ats/ATSPipelineAnalytics.tsx'), /<InfoHint label=/);
+  assert.match(read('src/components/layout/StatTile.tsx'), /xl: 'xl:grid-cols-6'/);
+  assert.match(read('src/components/ats/ATSStats.tsx'), /cols=\{\{ base: 3, xl: 6 \}\}/);
+});

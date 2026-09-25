@@ -9,12 +9,11 @@
  * en infobulle, jugements avec leur barème.
  */
 import React, { useMemo } from 'react';
-import { ArrowRight, Info } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Section, StatGrid, StatTile } from '@/components/layout';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { InfoHint } from '@/components/ui/info-hint';
 import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, daysSinceLastAction } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
@@ -45,22 +44,9 @@ interface Bottleneck {
   severity: 'warning' | 'critical';
 }
 
-/** Bouton « i » d'une mesure : sa définition en infobulle. */
+/** Bouton « i » d'une mesure : sa définition, ouvrable au doigt comme au clavier. */
 const Definition: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Définition\u00a0: ${label}`}
-        className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
-      >
-        <Info aria-hidden="true" />
-      </Button>
-    </TooltipTrigger>
-    <TooltipContent className="max-w-64">{children}</TooltipContent>
-  </Tooltip>
+  <InfoHint label={`Définition\u00a0: ${label}`}>{children}</InfoHint>
 );
 
 /** Barre horizontale monochrome : piste `muted`, remplissage `muted-foreground` (plus de 3:1 dans les deux thèmes). */
@@ -168,7 +154,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
 
   return (
     <div className="space-y-4">
-      <StatGrid cols={{ base: 1, sm: 2 }} className="xl:grid-cols-4">
+      <StatGrid cols={{ base: 1, sm: 2, xl: 4 }}>
         <StatTile
           label="Candidats actifs"
           value={kpis.totalActive}

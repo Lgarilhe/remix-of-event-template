@@ -87,20 +87,20 @@ StatTile.displayName = 'StatTile';
 export interface StatGridProps {
   children: React.ReactNode;
   /** Colonnes par breakpoint */
-  cols?: { base?: number; sm?: number; md?: number; lg?: number };
+  cols?: { base?: number; sm?: number; md?: number; lg?: number; xl?: number };
   className?: string;
 }
 
 // Classes écrites en entier : Tailwind ne génère que les classes qu'il lit
 // telles quelles dans le code (un `sm:${…}` construit à l'exécution n'existe pas).
-const COLS: Record<number, { base: string; sm: string; md: string; lg: string }> = {
-  1: { base: 'grid-cols-1', sm: 'sm:grid-cols-1', md: 'md:grid-cols-1', lg: 'lg:grid-cols-1' },
-  2: { base: 'grid-cols-2', sm: 'sm:grid-cols-2', md: 'md:grid-cols-2', lg: 'lg:grid-cols-2' },
-  3: { base: 'grid-cols-3', sm: 'sm:grid-cols-3', md: 'md:grid-cols-3', lg: 'lg:grid-cols-3' },
-  4: { base: 'grid-cols-4', sm: 'sm:grid-cols-4', md: 'md:grid-cols-4', lg: 'lg:grid-cols-4' },
-  5: { base: 'grid-cols-5', sm: 'sm:grid-cols-5', md: 'md:grid-cols-5', lg: 'lg:grid-cols-5' },
-  6: { base: 'grid-cols-6', sm: 'sm:grid-cols-6', md: 'md:grid-cols-6', lg: 'lg:grid-cols-6' },
-  7: { base: 'grid-cols-7', sm: 'sm:grid-cols-7', md: 'md:grid-cols-7', lg: 'lg:grid-cols-7' },
+const COLS: Record<number, { base: string; sm: string; md: string; lg: string; xl: string }> = {
+  1: { base: 'grid-cols-1', sm: 'sm:grid-cols-1', md: 'md:grid-cols-1', lg: 'lg:grid-cols-1', xl: 'xl:grid-cols-1' },
+  2: { base: 'grid-cols-2', sm: 'sm:grid-cols-2', md: 'md:grid-cols-2', lg: 'lg:grid-cols-2', xl: 'xl:grid-cols-2' },
+  3: { base: 'grid-cols-3', sm: 'sm:grid-cols-3', md: 'md:grid-cols-3', lg: 'lg:grid-cols-3', xl: 'xl:grid-cols-3' },
+  4: { base: 'grid-cols-4', sm: 'sm:grid-cols-4', md: 'md:grid-cols-4', lg: 'lg:grid-cols-4', xl: 'xl:grid-cols-4' },
+  5: { base: 'grid-cols-5', sm: 'sm:grid-cols-5', md: 'md:grid-cols-5', lg: 'lg:grid-cols-5', xl: 'xl:grid-cols-5' },
+  6: { base: 'grid-cols-6', sm: 'sm:grid-cols-6', md: 'md:grid-cols-6', lg: 'lg:grid-cols-6', xl: 'xl:grid-cols-6' },
+  7: { base: 'grid-cols-7', sm: 'sm:grid-cols-7', md: 'md:grid-cols-7', lg: 'lg:grid-cols-7', xl: 'xl:grid-cols-7' },
 };
 
 export const StatGrid: React.FC<StatGridProps> = ({ children, cols, className }) => {
@@ -112,6 +112,7 @@ export const StatGrid: React.FC<StatGridProps> = ({ children, cols, className })
         cols?.sm && COLS[cols.sm]?.sm,
         cols?.md && COLS[cols.md]?.md,
         cols?.lg && COLS[cols.lg]?.lg,
+        cols?.xl && COLS[cols.xl]?.xl,
         className,
       )}
     >

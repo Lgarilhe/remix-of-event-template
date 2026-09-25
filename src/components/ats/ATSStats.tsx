@@ -47,7 +47,7 @@ export const ATSStats: React.FC<ATSStatsProps> = ({ candidates }) => {
   }, [candidates]);
 
   return (
-    <StatGrid cols={{ base: 3 }} className="mb-4 xl:grid-cols-6">
+    <StatGrid cols={{ base: 3, xl: 6 }} className="mb-4">
       <StatTile label="Candidats" value={stats.total} />
       <StatTile label="Contactés" value={stats.contacted} />
       <StatTile label="Taux de réponse" value={percent(stats.responseRate)} className="hidden xl:flex" />

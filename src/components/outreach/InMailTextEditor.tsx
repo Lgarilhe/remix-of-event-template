@@ -16,12 +16,12 @@ import {
   Smile, 
   List,
   ListOrdered,
-  Info,
   Bold,
   Italic,
   Link,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { InfoHint } from '@/components/ui/info-hint';
 import { promptDialog } from '@/lib/promptDialog';
 import {
   escapeHTML,
@@ -364,24 +364,9 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
 
           {/* Info */}
           <div className="ml-auto hidden items-center sm:flex">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground max-md:h-11 max-md:w-11"
-                  aria-label="À propos de la mise en forme"
-                >
-                  <Info aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-72">
-                <p className="text-xs">
-                  La mise en forme (gras, italique, liens, listes) est conservée dans le message envoyé.
-                </p>
-              </TooltipContent>
-            </Tooltip>
+            <InfoHint label="À propos de la mise en forme" side="bottom">
+              La mise en forme (gras, italique, liens, listes) est conservée dans le message envoyé.
+            </InfoHint>
           </div>
         </TooltipProvider>
       </div>
