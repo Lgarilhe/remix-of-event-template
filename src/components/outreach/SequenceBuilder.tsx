@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
   saveEditorDraft,
   loadEditorDraft,
@@ -17,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Banner } from '@/components/ui/banner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Dialog, DialogPortal, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1460,239 +1459,238 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) requestClose(); }}>
-      <DialogPortal>
-        {/* Fenêtre plein écran du kit (rôle, focus piégé, Échap) : Échap et
-            « Retour » passent par la même garde (revue design D-31, D-33). Elle
-            se pose au niveau du voile, sous les fenêtres qu'elle ouvre. */}
-        <DialogPrimitive.Content
-          ref={contentRef}
-          tabIndex={-1}
-          aria-modal="true"
-          aria-describedby={undefined}
-          // Le focus va à la fenêtre (annoncée par son titre), pas au premier
-          // bouton : son infobulle masquerait l'écran à chaque ouverture.
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            contentRef.current?.focus();
-          }}
-          onEscapeKeyDown={(event) => {
-            event.preventDefault();
-            requestClose();
-          }}
-          onInteractOutside={(event) => event.preventDefault()}
-          className="fixed inset-0 z-overlay flex flex-col bg-background focus-visible:outline-none"
-        >
-          {/* Barre du haut */}
-          <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-2 sm:px-5">
-            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={requestClose}
-                    aria-label="Retour"
-                    className="shrink-0 gap-1.5 px-2 text-muted-foreground hover:text-foreground max-md:h-11 max-sm:w-11 max-sm:px-0"
-                  >
-                    <ArrowLeft aria-hidden="true" />
-                    <span className="max-sm:hidden">Retour</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Retour à la liste des séquences</TooltipContent>
-              </Tooltip>
-              <div className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
-              <div className="flex min-w-0 items-baseline gap-2">
-                <DialogTitle className="truncate text-sm font-semibold max-sm:sr-only">
-                  {isNewSequence ? 'Nouvelle séquence' : 'Modifier la séquence'}
-                </DialogTitle>
-                {sequence.name && (
-                  <span className="hidden max-w-[240px] truncate text-sm text-muted-foreground md:inline">{sequence.name}</span>
-                )}
-              </div>
+      {/* Fenêtre plein écran du kit (rôle, focus piégé, Échap) : Échap et
+          « Retour » passent par la même garde (revue design D-31, D-33). Les
+          fenêtres qu'elle ouvre se posent au-dessus. */}
+      <DialogContent
+        variant="fullscreen"
+        ref={contentRef}
+        tabIndex={-1}
+        aria-describedby={undefined}
+        // Le focus va à la fenêtre (annoncée par son titre), pas au premier
+        // bouton : son infobulle masquerait l'écran à chaque ouverture.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          contentRef.current?.focus();
+        }}
+        onEscapeKeyDown={(event) => {
+          // Déjà pris par une liste de suggestions ouverte (garde du kit).
+          if (event.defaultPrevented) return;
+          event.preventDefault();
+          requestClose();
+        }}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        {/* Barre du haut */}
+        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-2 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={requestClose}
+                  aria-label="Retour"
+                  className="shrink-0 gap-1.5 px-2 text-muted-foreground hover:text-foreground max-md:h-11 max-sm:w-11 max-sm:px-0"
+                >
+                  <ArrowLeft aria-hidden="true" />
+                  <span className="max-sm:hidden">Retour</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Retour à la liste des séquences</TooltipContent>
+            </Tooltip>
+            <div className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
+            <div className="flex min-w-0 items-baseline gap-2">
+              <DialogTitle className="truncate text-sm font-semibold max-sm:sr-only">
+                {isNewSequence ? 'Nouvelle séquence' : 'Modifier la séquence'}
+              </DialogTitle>
+              {sequence.name && (
+                <span className="hidden max-w-[240px] truncate text-sm text-muted-foreground md:inline">{sequence.name}</span>
+              )}
             </div>
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              {saveState && <SaveStatus state={saveState} className="hidden lg:inline-flex" />}
-              <SegmentedControl
-                aria-label="Mode d'édition"
-                value={mode}
-                onValueChange={(value) => setMode(value)}
-                options={MODE_OPTIONS}
-                className="max-md:h-11"
-              />
-              <Button
-                type="button"
-                variant={mode === 'expert' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => handleSave(false)}
-                loading={isSaving}
-                className="shrink-0 max-md:h-11"
-              >
-                {!isSaving && <Save aria-hidden="true" />}
-                {isSaving ? 'Enregistrement…' : (
-                  <span>
-                    Enregistrer
-                    {isNewSequence && <span className="max-sm:sr-only"> sans activer</span>}
-                  </span>
-                )}
-              </Button>
-            </div>
-          </header>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            {saveState && <SaveStatus state={saveState} className="hidden lg:inline-flex" />}
+            <SegmentedControl
+              aria-label="Mode d'édition"
+              value={mode}
+              onValueChange={(value) => setMode(value)}
+              options={MODE_OPTIONS}
+              className="max-md:h-11"
+            />
+            <Button
+              type="button"
+              variant={mode === 'expert' ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => handleSave(false)}
+              loading={isSaving}
+              className="shrink-0 max-md:h-11"
+            >
+              {!isSaving && <Save aria-hidden="true" />}
+              {isSaving ? 'Enregistrement…' : (
+                <span>
+                  Enregistrer
+                  {isNewSequence && <span className="max-sm:sr-only"> sans activer</span>}
+                </span>
+              )}
+            </Button>
+          </div>
+        </header>
 
-          {/* Corps */}
-          <div className="flex min-h-0 flex-1">
-            {/* Colonne de gauche (1 024 px et plus) */}
-            <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-muted/20 p-4 lg:flex">
-              {mode === 'wizard' ? (
-                <SequenceWizardStepper
+        {/* Corps */}
+        <div className="flex min-h-0 flex-1">
+          {/* Colonne de gauche (1 024 px et plus) */}
+          <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-muted/20 p-4 lg:flex">
+            {mode === 'wizard' ? (
+              <SequenceWizardStepper
+                currentStep={wizardStep}
+                onStepChange={setWizardStep}
+                completedSteps={completedSteps}
+                validationErrors={wizardValidationErrors}
+              />
+            ) : (
+              <>
+                <h3 className="eyebrow mb-3">Liste de contrôle</h3>
+                <SequenceValidationChecklist sequence={sequence} />
+              </>
+            )}
+          </aside>
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            {/* Sous 1 024 px : étapes de l'assistant en ligne et liste de contrôle toujours atteignable (revue design D-39) */}
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1 sm:px-5 lg:hidden">
+              {mode === 'wizard' && (
+                <SequenceWizardStepperCompact
                   currentStep={wizardStep}
                   onStepChange={setWizardStep}
                   completedSteps={completedSteps}
                   validationErrors={wizardValidationErrors}
+                  className="min-w-0"
                 />
-              ) : (
-                <>
-                  <h3 className="eyebrow mb-3">Liste de contrôle</h3>
-                  <SequenceValidationChecklist sequence={sequence} />
-                </>
               )}
-            </aside>
-
-            <div className="flex min-w-0 flex-1 flex-col">
-              {/* Sous 1 024 px : étapes de l'assistant en ligne et liste de contrôle toujours atteignable (revue design D-39) */}
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-2 py-1 sm:px-5 lg:hidden">
-                {mode === 'wizard' && (
-                  <SequenceWizardStepperCompact
-                    currentStep={wizardStep}
-                    onStepChange={setWizardStep}
-                    completedSteps={completedSteps}
-                    validationErrors={wizardValidationErrors}
-                    className="min-w-0"
-                  />
-                )}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className={cn('shrink-0 gap-1.5 px-2 max-md:h-11 max-md:min-w-11', mode === 'expert' && '-ml-1')}
-                    >
-                      <ListChecks aria-hidden="true" />
-                      {/* En mode guidé sur téléphone, seule l'icône d'état reste visible : la ligne est prise par les étapes. */}
-                      <span className={mode === 'wizard' ? 'sr-only' : 'text-foreground'}>Liste de contrôle : </span>
-                      <SequenceValidationSummary sequence={sequence} labelClassName={mode === 'wizard' ? 'max-sm:sr-only' : undefined} />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)]">
-                    <h3 className="eyebrow mb-3">Liste de contrôle</h3>
-                    <SequenceValidationChecklist sequence={sequence} />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-3xl p-4 sm:p-8">
-                  {mode === 'wizard' ? (
-                    <div key={wizardStep} className="duration-150 animate-in fade-in-0">
-                      {renderWizardContent()}
-                    </div>
-                  ) : (
-                    /* Mode expert : tout sur une seule page */
-                    <div className="space-y-10">
-                      {validationErrorsBlock}
-                      {nameFields('expert', "L'objectif de cette séquence")}
-                      {stopConditions}
-                      {multiSender}
-
-                      {sequence.steps.length === 0 && !initialSequence && (
-                        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-dashed border-border bg-muted/20 p-5">
-                          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
-                            <Workflow className="h-5 w-5" aria-hidden="true" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-foreground">Séquence recommandée</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">Visite du profil, vérification de la connexion, puis messages et relances.</p>
-                          </div>
-                          <Button type="button" size="sm" variant="outline" onClick={loadRecommendedSequence} className="max-md:h-11">
-                            Charger la séquence
-                          </Button>
-                        </div>
-                      )}
-
-                      {renderStepsTabs(true)}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Navigation de l'assistant */}
-              {mode === 'wizard' && (
-                <footer className="flex h-16 shrink-0 items-center justify-between gap-3 border-t border-border px-4 sm:px-8">
+              <Popover>
+                <PopoverTrigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={goPrevWizardStep}
-                    disabled={wizardStep === 'info'}
-                    className="text-muted-foreground max-md:h-11"
+                    className={cn('shrink-0 gap-1.5 px-2 max-md:h-11 max-md:min-w-11', mode === 'expert' && '-ml-1')}
                   >
-                    <ArrowLeft aria-hidden="true" />
-                    Précédent
+                    <ListChecks aria-hidden="true" />
+                    {/* En mode guidé sur téléphone, seule l'icône d'état reste visible : la ligne est prise par les étapes. */}
+                    <span className={mode === 'wizard' ? 'sr-only' : 'text-foreground'}>Liste de contrôle : </span>
+                    <SequenceValidationSummary sequence={sequence} labelClassName={mode === 'wizard' ? 'max-sm:sr-only' : undefined} />
                   </Button>
-                  <p className="text-xs text-muted-foreground max-sm:hidden">
-                    Étape {currentWizardIndex + 1} sur {WIZARD_ORDER.length} · {WIZARD_STEPS[currentWizardIndex]?.label}
-                  </p>
-                  {wizardStep === 'review' ? (
-                    <Button
-                      type="button"
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleSave(isNewSequence && canActivate)}
-                      loading={isSaving}
-                      className="max-md:h-11"
-                    >
-                      {!isSaving && <CheckCircle aria-hidden="true" />}
-                      {isSaving ? 'Enregistrement…' : finalLabel}
-                    </Button>
-                  ) : (
-                    <Button type="button" variant="primary" size="sm" onClick={goNextWizardStep} className="max-md:h-11">
-                      Suivant
-                      <ArrowRight aria-hidden="true" />
-                    </Button>
-                  )}
-                </footer>
-              )}
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)]">
+                  <h3 className="eyebrow mb-3">Liste de contrôle</h3>
+                  <SequenceValidationChecklist sequence={sequence} />
+                </PopoverContent>
+              </Popover>
             </div>
-          </div>
 
-          {/* Quitter sans enregistrer ? (revue design D-31) */}
-          <AlertDialog open={confirmLeave !== null} onOpenChange={(open) => { if (!open) setConfirmLeave(null); }}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Quitter sans enregistrer ?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {confirmLeave === 'draft-lost'
-                    ? 'Ce navigateur ne peut pas conserver votre brouillon : votre saisie sera perdue.'
-                    : `Vos modifications${sequence.name.trim() ? ` de « ${sequence.name.trim()} »` : ''} seront perdues.`}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Continuer la modification</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={() => {
-                    setConfirmLeave(null);
-                    onClose();
-                  }}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto max-w-3xl p-4 sm:p-8">
+                {mode === 'wizard' ? (
+                  <div key={wizardStep} className="duration-150 animate-in fade-in-0">
+                    {renderWizardContent()}
+                  </div>
+                ) : (
+                  /* Mode expert : tout sur une seule page */
+                  <div className="space-y-10">
+                    {validationErrorsBlock}
+                    {nameFields('expert', "L'objectif de cette séquence")}
+                    {stopConditions}
+                    {multiSender}
+
+                    {sequence.steps.length === 0 && !initialSequence && (
+                      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-dashed border-border bg-muted/20 p-5">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+                          <Workflow className="h-5 w-5" aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground">Séquence recommandée</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">Visite du profil, vérification de la connexion, puis messages et relances.</p>
+                        </div>
+                        <Button type="button" size="sm" variant="outline" onClick={loadRecommendedSequence} className="max-md:h-11">
+                          Charger la séquence
+                        </Button>
+                      </div>
+                    )}
+
+                    {renderStepsTabs(true)}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Navigation de l'assistant */}
+            {mode === 'wizard' && (
+              <footer className="flex h-16 shrink-0 items-center justify-between gap-3 border-t border-border px-4 sm:px-8">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={goPrevWizardStep}
+                  disabled={wizardStep === 'info'}
+                  className="text-muted-foreground max-md:h-11"
                 >
-                  Quitter sans enregistrer
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </DialogPrimitive.Content>
-      </DialogPortal>
+                  <ArrowLeft aria-hidden="true" />
+                  Précédent
+                </Button>
+                <p className="text-xs text-muted-foreground max-sm:hidden">
+                  Étape {currentWizardIndex + 1} sur {WIZARD_ORDER.length} · {WIZARD_STEPS[currentWizardIndex]?.label}
+                </p>
+                {wizardStep === 'review' ? (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleSave(isNewSequence && canActivate)}
+                    loading={isSaving}
+                    className="max-md:h-11"
+                  >
+                    {!isSaving && <CheckCircle aria-hidden="true" />}
+                    {isSaving ? 'Enregistrement…' : finalLabel}
+                  </Button>
+                ) : (
+                  <Button type="button" variant="primary" size="sm" onClick={goNextWizardStep} className="max-md:h-11">
+                    Suivant
+                    <ArrowRight aria-hidden="true" />
+                  </Button>
+                )}
+              </footer>
+            )}
+          </div>
+        </div>
+
+        {/* Quitter sans enregistrer ? (revue design D-31) */}
+        <AlertDialog open={confirmLeave !== null} onOpenChange={(open) => { if (!open) setConfirmLeave(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Quitter sans enregistrer ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmLeave === 'draft-lost'
+                  ? 'Ce navigateur ne peut pas conserver votre brouillon : votre saisie sera perdue.'
+                  : `Vos modifications${sequence.name.trim() ? ` de « ${sequence.name.trim()} »` : ''} seront perdues.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Continuer la modification</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  setConfirmLeave(null);
+                  onClose();
+                }}
+              >
+                Quitter sans enregistrer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </DialogContent>
     </Dialog>
   );
 });

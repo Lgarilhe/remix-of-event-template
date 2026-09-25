@@ -411,7 +411,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
-      <DialogContent aria-modal="true" className="flex max-h-[90dvh] w-[calc(100vw-2rem)] max-w-lg flex-col gap-4 overflow-hidden">
+      <DialogContent className="flex max-h-[90dvh] w-[calc(100vw-2rem)] max-w-lg flex-col gap-4 overflow-hidden">
         <DialogHeader className="pr-8">
           <DialogTitle>Inscrire dans la séquence</DialogTitle>
           <DialogDescription>

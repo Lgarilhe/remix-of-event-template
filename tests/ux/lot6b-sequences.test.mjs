@@ -55,15 +55,17 @@ test('D-30 — une séquence rouverte garde ses réglages (plus de remise à zé
 test('D-31 — « Retour » et Échap passent par la même garde', () => {
   assert.match(builder, /Quitter sans enregistrer \?/);
   assert.match(builder, /onClick=\{requestClose\}/, '« Retour » doit demander avant de fermer');
-  assert.match(builder, /onEscapeKeyDown=\{\(event\) => \{\s*event\.preventDefault\(\);\s*requestClose\(\);/);
+  // Échap passe par la garde, sauf quand une liste de suggestions ouverte l'a déjà prise.
+  assert.match(builder, /onEscapeKeyDown=\{\(event\) => \{[^}]*if \(event\.defaultPrevented\) return;\s*event\.preventDefault\(\);\s*requestClose\(\);/);
   assert.match(builder, /aria-label="Retour"/, 'la flèche seule sur téléphone doit avoir un nom');
 });
 
 test('D-33 — l’éditeur est un Dialog plein écran, sans portail maison ni z-[4000]', () => {
   assert.doesNotMatch(builder, /createPortal/);
   assert.doesNotMatch(builder, /z-\[4000\]/);
-  assert.match(builder, /<DialogPrimitive\.Content/);
-  assert.match(builder, /aria-modal="true"/);
+  // Variante plein écran du kit : rôle, focus piégé, aria-modal posé par le kit.
+  assert.match(builder, /<DialogContent\s+variant="fullscreen"/);
+  assert.match(read('src/components/ui/dialog.tsx'), /aria-modal="true"/);
   assert.match(builder, /<DialogTitle/);
 });
 

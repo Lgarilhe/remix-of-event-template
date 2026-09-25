@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
 import { supabase } from '@/integrations/supabase/client';
-import { Popover, PopoverContent } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ScoreBadge } from '@/components/ui/score-badge';

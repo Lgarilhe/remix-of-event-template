@@ -724,7 +724,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     <>
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) requestClose(); }}>
         <DialogContent
-          aria-modal="true"
           className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 max-sm:h-[100dvh] max-sm:w-screen max-sm:max-w-none"
           // Grand espace de travail : un clic sur la marge ne ferme pas.
           onInteractOutside={(e) => e.preventDefault()}
@@ -736,8 +735,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             (row ?? (e.target as HTMLElement | null))?.focus();
           }}
         >
-          {/* La préparation s'assombrit sous la confirmation de fermeture. */}
-          {confirmCloseOpen && <div className="absolute inset-0 z-10 bg-black/40 dark:bg-black/60" aria-hidden="true" />}
           {/* En-tête */}
           <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border py-3 pl-4 pr-14 sm:pl-6">
             <div className="min-w-0 flex-1">
