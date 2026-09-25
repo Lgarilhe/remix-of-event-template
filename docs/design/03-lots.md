@@ -153,7 +153,18 @@ Fait (suivi et InMail, D-54 à D-60, D-62) :
 - InMail : annulation des envois en attente confirmée, bouton principal monochrome, ton en `SegmentedControl`, couleur LinkedIn réservée au logo (D-62).
 - Chaque panneau a son squelette, son erreur avec « Réessayer » et son vide rédigé ; les délais annoncés sont ceux du moteur (« dans les 5 minutes »). Test `tests/ux/lot6d-suivi.test.mjs`.
 
-Reste pour le lot 6 : la préparation d'une inscription (D-44 à D-51, partie en cours) ; les 30 émojis du sélecteur de l'éditeur InMail, contenu inséré dans le message, à trancher au lot 10.
+Fait (inscription et préparation, D-44 à D-53) :
+
+- Plus d'écouteur clavier sur toute la page : les raccourcis partent de la ligne d'un candidat qui a le focus (flèches pour parcourir, P pour passer, X ou Suppr pour retirer), avec une aide sous la liste. Entrée et Espace font ce que dit le bouton ; aucune génération payante ne part du clavier. Un bouton « Générer les N aperçus » par candidat annonce son coût (D-44).
+- « Inscrire N candidats » en bouton principal monochrome, « Générer tous les aperçus » en secondaire ; plus de dégradé, reflet, halo ni ressort (D-45).
+- Fermer avec du travail en cours demande confirmation et dit ce qui est gardé. Les aperçus et les retouches restent en mémoire pendant la session (jamais dans le navigateur), par séquence, mission, compte d'envoi et candidat ; un aperçu n'est repris que si son étape n'a pas changé. La génération groupée n'écrase plus les retouches et s'arrête à la fermeture (D-46).
+- Vocabulaire : inscrire, aperçu, étape, « Présélectionner sans message », crédits en toutes lettres ; moyens de contact manquants écrits (« sans e-mail ») ; canaux par `ChannelIcon`, étapes par le catalogue (D-47 à D-49).
+- En-tête du candidat à plat, `ScoreBadge`, badge fixe « Ouvert aux opportunités » ; la recommandation brute (« STRONG_MATCH ») n'est plus affichée ; plus de framer-motion (D-50, D-69).
+- Casse de phrase, rayons du système ; une panne d'inscription propose « Réessayer » ; le toast d'échec de planification dit que le moteur reprend seul ces inscriptions ; la fenêtre simple ne déborde plus à droite (D-51).
+- `Checkbox` et `SegmentedControl` du kit (D-53) ; la préparation est un `Dialog` avec titre, piège de focus et Échap qui passe par la confirmation, sans `z-[4000]` (D-33, D-72).
+- Test `tests/ux/lot6c-preparation.test.mjs`.
+
+Reste pour le lot 6 : les 30 émojis du sélecteur de l'éditeur InMail, contenu inséré dans le message, à trancher au lot 10.
 
 ### Lot 7 · Pipeline global, scorecard, coaching, assistant IA, page Agents
 

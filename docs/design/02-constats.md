@@ -98,9 +98,9 @@ Statut tenu à jour à chaque lot (derniers : lots 8, 9 et l'assistant du lot 7)
 | D-30 | Création de séquence : réglages « Expéditeurs » et « Garde-fous » jamais enregistrés | corrigé (lot 6 ; la modification recharge aussi ces réglages, qu'un premier enregistrement effaçait) |
 | D-31 | Modification de séquence : « Retour » perd les changements sans avertir | corrigé (lot 6) |
 | D-32 | Éditeur : en-tête d'étape en `div` cliquable, inaccessible au clavier | corrigé (lot 6) |
-| D-44 | Préparation : Entrée sur « Enrôler » lance une génération payante | lot 6 |
-| D-45 | Préparation : « Enrôler » en dégradé animé, reflet, halo | partiel (lot 1) ; lot 6 |
-| D-46 | Préparation : fermer jette les aperçus déjà payés en crédits | lot 6 |
+| D-44 | Préparation : Entrée sur « Enrôler » lance une génération payante | corrigé (lot 6 : aucune génération ne part du clavier ; un bouton par candidat annonce son coût) |
+| D-45 | Préparation : « Enrôler » en dégradé animé, reflet, halo | corrigé (lot 6) |
+| D-46 | Préparation : fermer jette les aperçus déjà payés en crédits | corrigé (lot 6 : aperçus et retouches gardés pendant la session, confirmation avant de fermer) |
 | D-54 | Badges d'exécution illisibles en clair (blanc sur teinte) | corrigé (lot 6) |
 
 ### E. Pipeline, candidats, IA
