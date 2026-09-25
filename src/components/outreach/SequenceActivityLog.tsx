@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
-  actionTypeLabel,
   executionDoneVerb,
   executionStatusLabel,
   formatSequenceError,
@@ -12,6 +11,7 @@ import {
   missionEnrollmentJobIds,
   shouldShowExecutionError,
 } from '@/lib/sequenceErrorMessages';
+import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -414,7 +414,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         const query = searchQuery.toLowerCase();
         const profileName = exec.enrollment?.profile_name?.toLowerCase() || '';
         const sequenceName = exec.enrollment?.sequence?.name?.toLowerCase() || '';
-        const actionType = actionTypeLabel(exec.step?.action_type).toLowerCase();
+        const actionType = (exec.step?.action_type ? stepTypeLabel(exec.step.action_type) : '').toLowerCase();
 
         if (!profileName.includes(query) && !sequenceName.includes(query) && !actionType.includes(query)) {
           return false;
@@ -611,7 +611,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                   {items.map((exec) => {
                     const actionType = exec.step?.action_type || '';
                     const actionStyle = actionTypeStyle[actionType] || defaultActionStyle;
-                    const actionLabel = actionTypeLabel(actionType);
+                    const actionLabel = actionType ? stepTypeLabel(actionType) : 'Action';
                     const execStatus = statusStyle[exec.status] || unknownStatusStyle;
                     const isExpanded = expandedItems.has(exec.id);
                     const preview = exec.preview;

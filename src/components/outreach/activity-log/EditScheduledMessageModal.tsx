@@ -15,6 +15,7 @@ import { Save, Loader2, Calendar, Clock as ClockIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
 
 interface EditScheduledMessageModalProps {
   isOpen: boolean;
@@ -112,7 +113,9 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       onClose();
     } catch (err) {
       console.error('Error updating message:', err);
-      toast.error("La modification n'a pas été enregistrée. Réessayez.");
+      // Refus de la base (étape déjà partie, plus programmée…) : sa raison en
+      // français plutôt qu'un « réessayez » qui échouerait encore.
+      toast.error(sequenceWriteRefusal(err) ?? "La modification n'a pas été enregistrée. Réessayez.");
     } finally {
       setSaving(false);
     }

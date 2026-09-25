@@ -17,7 +17,45 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   not_found: "Destinataire introuvable",
   internal_error: "Erreur interne",
   suppression_check_failed: "Vérification de désinscription impossible, envoi reporté",
+  // Codes du moteur (SEQ-005). Seuls, sans la phrase française qui les suit
+  // d'ordinaire (« code: phrase »).
+  send_uncertain: 'Envoi incertain : vérifiez la conversation avant de relancer',
+  profile_read_unavailable: 'Lecture du profil LinkedIn momentanément indisponible, nouvel essai plus tard',
+  inmail_balance_unavailable: 'Contrôle des crédits InMail momentanément indisponible, nouvel essai plus tard',
+  inmail_credits_exhausted: "Crédits InMail épuisés : l'envoi reprendra quand des crédits seront disponibles",
+  inmail_subject_missing: "Objet manquant pour un InMail : ajoutez un objet à l'étape",
 };
+
+/** « code: phrase française » écrit par le moteur : on n'affiche que la phrase. */
+const ENGINE_CODE_WITH_PHRASE = /^(send_uncertain|profile_read_unavailable|inmail_balance_unavailable|inmail_credits_exhausted|inmail_subject_missing)\b\s*:?\s*([\s\S]*)$/;
+
+// ─── Refus de la base (HINT des déclencheurs, SEQ-214 / SEQ-056) ───────────
+
+const FOREIGN_ELEMENT_REFUSAL = 'Action refusée : cet élément appartient à une autre séquence ou organisation.';
+
+export const SEQUENCE_WRITE_REFUSALS: Record<string, string> = {
+  EXECUTION_ALREADY_DONE: "Cette étape est déjà envoyée ou en cours d'envoi : elle ne peut plus être modifiée.",
+  EXECUTION_NOT_SCHEDULED: 'Seul un message encore programmé peut être modifié.',
+  EXECUTION_IMMUTABLE: FOREIGN_ELEMENT_REFUSAL,
+  SEQUENCE_ORG_MISMATCH: FOREIGN_ELEMENT_REFUSAL,
+  PROJECT_ORG_MISMATCH: FOREIGN_ELEMENT_REFUSAL,
+  STEP_SEQUENCE_MISMATCH: FOREIGN_ELEMENT_REFUSAL,
+};
+
+/**
+ * Phrase française d'un refus posé par la base sur une écriture du navigateur
+ * (erreur Supabase portant `hint`, ou le code seul). null si ce n'est pas un
+ * de ces refus : l'appelant garde alors son propre message.
+ */
+export function sequenceWriteRefusal(error: unknown): string | null {
+  if (!error) return null;
+  if (typeof error === 'string') return SEQUENCE_WRITE_REFUSALS[error] ?? null;
+  const { hint, message } = error as { hint?: unknown; message?: unknown };
+  if (typeof hint === 'string' && SEQUENCE_WRITE_REFUSALS[hint]) return SEQUENCE_WRITE_REFUSALS[hint];
+  const text = typeof message === 'string' ? message : '';
+  const code = Object.keys(SEQUENCE_WRITE_REFUSALS).find((key) => text.includes(key));
+  return code ? SEQUENCE_WRITE_REFUSALS[code] : null;
+}
 
 // Strip des noms de vendors (règle branding : jamais user-facing).
 function stripVendors(text: string): string {
@@ -54,6 +92,13 @@ export function formatSequenceError(error: string | null | undefined): string {
 
   // Code d'erreur générique connu → label FR
   if (ERROR_CODE_LABELS[error]) return ERROR_CODE_LABELS[error];
+  if (SEQUENCE_WRITE_REFUSALS[error]) return SEQUENCE_WRITE_REFUSALS[error];
+
+  // « inmail_credits_exhausted: Crédits InMail épuisés : … » → la phrase seule.
+  const engineCodeMatch = error.match(ENGINE_CODE_WITH_PHRASE);
+  if (engineCodeMatch) {
+    return stripVendors(engineCodeMatch[2].trim()) || ERROR_CODE_LABELS[engineCodeMatch[1]];
+  }
 
   // Tentative intermédiaire : « Retry 1/3: <erreur> ». On retire le préfixe et
   // on traduit l'erreur qui suit (avant, le JSON du fournisseur partait brut).
@@ -180,6 +225,19 @@ const SKIP_REASON_RULES: SkipReasonRule[] = [
         ? "Candidat mis en pause au moment de l'envoi"
         : "Séquence arrêtée pour ce candidat au moment de l'envoi"
   )],
+  // Relecture après un envoi accepté (SEQ-003) : l'exécution est « envoyée ».
+  [/^Inscription devenue (\w+) pendant l'envoi/, (m) => (
+    m[1] === 'replied'
+      ? "Message envoyé ; le candidat a répondu pendant l'envoi"
+      : m[1] === 'paused'
+        ? "Message envoyé ; candidat mis en pause pendant l'envoi"
+        : "Message envoyé ; la séquence s'est terminée pour ce candidat pendant l'envoi"
+  )],
+  // « Inscription close avant l'envoi (…) » (E1) et « Inscription close (…) :
+  // attente annulée » (check_timeouts, E2).
+  [/^Inscription close/, 'Séquence terminée pour ce candidat'],
+  [/^Adresse en liste de suppression/, 'Adresse bloquée pour les envois e-mail'],
+  [/^Aucune adresse e-mail connue/, "Pas d'adresse e-mail, étape passée"],
   [/^Sequence missing/i, 'Séquence introuvable'],
   [/^no_previous_message/, 'Pas de message précédent à relancer'],
   [/^Timeout (\d+)d/, (m) => `Délai d'attente dépassé (${m[1]} jour${m[1] === '1' ? '' : 's'})`],
@@ -213,9 +271,24 @@ const SKIP_REASON_RULES: SkipReasonRule[] = [
 /** Motifs déjà rédigés en français pour l'utilisateur : affichés tels quels. */
 const FRENCH_SKIP_REASON_PREFIXES = [
   'Compte LinkedIn',
+  "Compte d'envoi non rattaché",
   'Abonnement requis',
   'Étape déjà envoyée',
+  'Étape incohérente',
+  "Étape d'une autre séquence",
+  'Inscription supprimée',
   "Type d'action non supporté",
+  'Adresse bloquée pour les envois e-mail',
+  'Déjà en relation',
+  'Invitation déjà en attente',
+  'Invitation déjà envoyée récemment',
+  'Profil LinkedIn introuvable',
+  'Crédits InMail',
+  'Contrôle des crédits InMail',
+  'Tous les expéditeurs',
+  'Le candidat a répondu',
+  'Rendez-vous pris',
+  'Effacement des données demandé',
 ];
 
 export function formatSkipReason(reason: string | null | undefined): string {
@@ -279,6 +352,10 @@ export function executionDoneVerb(status: string | null | undefined): string | n
 
 // ─── Types d'action ────────────────────────────────────────────────────────
 
+// Mêmes noms que STEP_TYPE_LABELS de l'éditeur (sequence/sequenceGraph.ts),
+// recopiés parce que ce module reste sans import ; tests/ux/seq-audit-f3
+// vérifie qu'ils concordent (SEQ-245). Les écrans du suivi appellent
+// stepTypeLabel directement ; cette table sert aux autres appelants.
 export const ACTION_TYPE_LABELS: Record<string, string> = {
   message: 'Message LinkedIn',
   smart_message: 'Message IA',
@@ -287,12 +364,12 @@ export const ACTION_TYPE_LABELS: Record<string, string> = {
   whatsapp_message: 'WhatsApp',
   connection_request: 'Invitation LinkedIn',
   profile_visit: 'Visite de profil',
-  check_connection: 'Vérification de la connexion',
-  wait_connection: "Attente d'acceptation",
-  wait_reply: 'Attente de réponse',
-  wait_profile_visit: 'Attente de visite',
+  check_connection: 'Vérifier la connexion',
+  wait_connection: 'Attendre la connexion',
+  wait_reply: 'Attendre une réponse',
+  wait_profile_visit: 'Attendre une visite',
   wait_for_event: 'Attente',
-  condition_branch: 'Condition',
+  condition_branch: 'Branchement',
 };
 
 export function actionTypeLabel(actionType: string | null | undefined): string {

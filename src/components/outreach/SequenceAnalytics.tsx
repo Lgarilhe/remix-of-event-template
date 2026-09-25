@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ABTestResults } from './sequence/ABTestResults';
 import {
-  actionTypeLabel,
   aggregateVariantResults,
   computeResponseRate,
   countContactedEnrollments,
@@ -11,6 +10,7 @@ import {
   missionEnrollmentJobIds,
   type VariantResult,
 } from '@/lib/sequenceErrorMessages';
+import { stepTypeLabel } from './sequence/sequenceGraph';
 import {
   Sheet,
   SheetContent,
@@ -691,7 +691,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                             className="flex items-center gap-3 text-xs p-2 rounded-md bg-background border border-border"
                           >
                             <span className="w-16 font-medium text-foreground">Étape {s.step_order + 1}</span>
-                            <span className="w-32 text-muted-foreground">{actionTypeLabel(s.action_type)}</span>
+                            <span className="w-32 text-muted-foreground">{stepTypeLabel(s.action_type)}</span>
                             <span className="flex-1 text-muted-foreground">
                               <span className="font-mono font-semibold text-foreground">{s.sent}</span> envoyé
                               {s.sent > 1 ? 's' : ''}

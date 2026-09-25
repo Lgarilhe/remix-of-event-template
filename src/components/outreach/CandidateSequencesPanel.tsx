@@ -16,7 +16,6 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCandidateEnrollments, CandidateEnrollment } from '@/hooks/useCandidateEnrollments';
 import {
-  actionTypeLabel,
   executionDoneVerb,
   executionStatusLabel,
   formatSequenceError,
@@ -26,6 +25,7 @@ import {
   shouldShowExecutionError,
 } from '@/lib/sequenceErrorMessages';
 import { enrollmentStatusLabel, pausedLabel, pauseReasonHint } from '@/lib/sequenceLabels';
+import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -331,7 +331,7 @@ function EnrollmentCard({
               <Clock className="w-3 h-3" aria-hidden="true" />
               Prochaine action :{' '}
               <span className="font-medium">
-                {actionTypeLabel(enrollment.next_step_action_type)}
+                {enrollment.next_step_action_type ? stepTypeLabel(enrollment.next_step_action_type) : 'Action'}
               </span>
               {' '}· {formatDistanceToNow(new Date(enrollment.next_scheduled_at), { addSuffix: true, locale: fr })}
             </p>
@@ -477,7 +477,7 @@ function ExecutionRow({
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="inline-flex items-center gap-1 text-foreground/80 font-medium">
             {actionIcon}
-            {actionTypeLabel(actionType)}
+            {stepTypeLabel(actionType)}
           </span>
           <span className={cn('inline-flex items-center gap-1 font-semibold', statusStyle.color)}>
             {statusStyle.icon}

@@ -191,7 +191,7 @@ test('SEQ-176 — la fiche ne dit plus « Envoyé » sur un échec ou un saut', 
 
 test('SEQ-238 — libellés d’action et étapes internes partagés', () => {
   assert.equal(lib.actionTypeLabel('email'), 'E-mail');
-  assert.equal(lib.actionTypeLabel('condition_branch'), 'Condition');
+  assert.equal(lib.actionTypeLabel('condition_branch'), 'Branchement');
   assert.equal(lib.isHiddenActionType('wait_profile_visit'), true);
   assert.equal(lib.isHiddenActionType('condition_branch'), true);
   assert.equal(lib.isHiddenActionType('inmail'), false);
@@ -316,5 +316,111 @@ test('SEQ-241 — les trois hooks de statistiques sans appelant sont supprimés'
 test('SEQ-245 — vocabulaire : pas de tutoiement ni d’anglicisme dans le suivi', () => {
   for (const [name, src] of [['fiche', candidatePanel], ['journal', activityLog], ['statistiques', analytics]]) {
     assert.doesNotMatch(src, /\bTu pourras\b|\bsi tu\b|Skippé|Smart Message|Analytics —|Prospects'|Funnel de conversion/, name);
+  }
+});
+
+// ---------------------------------------------------------------- Demandes croisées (passe 2)
+
+test('SEQ-202 — adresses bloquées et compte d’envoi hors organisation : motifs lisibles', () => {
+  assert.equal(lib.formatSkipReason('Adresse bloquée pour les envois e-mail'), 'Adresse bloquée pour les envois e-mail');
+  assert.equal(lib.formatSkipReason('Adresse en liste de suppression (bounce)'), 'Adresse bloquée pour les envois e-mail',
+    'la raison technique de l’ancien motif n’est plus exposée');
+  assert.equal(lib.formatSkipReason("Compte d'envoi non rattaché à l'organisation"), "Compte d'envoi non rattaché à l'organisation");
+  // error_message déjà rédigés en français par l'envoi e-mail : affichés tels quels sur un échec.
+  const noMailbox = "Aucune boîte e-mail n'est reliée pour l'expéditeur : reliez-la dans Paramètres, Connexions.";
+  const uncertainMail = "Envoi incertain : vérifiez le dossier Envoyés de la boîte d'envoi avant de relancer.";
+  assert.equal(lib.formatSequenceError(noMailbox), noMailbox);
+  assert.equal(lib.formatSequenceError(uncertainMail), uncertainMail);
+  assert.equal(lib.shouldShowExecutionError('failed'), true);
+});
+
+test('SEQ-214 — refus de la base traduits en français', () => {
+  assert.equal(
+    lib.sequenceWriteRefusal({ code: '42501', hint: 'EXECUTION_ALREADY_DONE', message: 'x' }),
+    "Cette étape est déjà envoyée ou en cours d'envoi : elle ne peut plus être modifiée.",
+  );
+  assert.equal(lib.sequenceWriteRefusal({ hint: 'EXECUTION_NOT_SCHEDULED' }), 'Seul un message encore programmé peut être modifié.');
+  for (const hint of ['EXECUTION_IMMUTABLE', 'SEQUENCE_ORG_MISMATCH', 'PROJECT_ORG_MISMATCH', 'STEP_SEQUENCE_MISMATCH']) {
+    assert.equal(lib.sequenceWriteRefusal({ hint }), 'Action refusée : cet élément appartient à une autre séquence ou organisation.', hint);
+    assert.equal(lib.formatSequenceError(hint), 'Action refusée : cet élément appartient à une autre séquence ou organisation.', hint);
+  }
+  assert.equal(lib.sequenceWriteRefusal({ hint: null, message: 'violates row-level security' }), null, 'autre erreur : message de l’appelant');
+  assert.equal(lib.sequenceWriteRefusal(null), null);
+  assert.equal(lib.formatSkipReason("Étape d'une autre séquence : annulée"), "Étape d'une autre séquence : annulée");
+  assert.match(editModal, /toast\.error\(sequenceWriteRefusal\(err\) \?\? "La modification n'a pas été enregistrée\. Réessayez\."\)/);
+});
+
+test('SEQ-003 / SEQ-027 — nouveaux motifs du moteur, plus de repli « Étape non envoyée »', () => {
+  assert.equal(lib.formatSkipReason("Inscription devenue replied pendant l'envoi"), "Message envoyé ; le candidat a répondu pendant l'envoi");
+  assert.equal(lib.formatSkipReason("Inscription devenue paused pendant l'envoi"), "Message envoyé ; candidat mis en pause pendant l'envoi");
+  assert.equal(lib.formatSkipReason("Inscription devenue completed pendant l'envoi"), "Message envoyé ; la séquence s'est terminée pour ce candidat pendant l'envoi");
+  assert.equal(lib.formatSkipReason("Inscription close avant l'envoi (replied)"), 'Séquence terminée pour ce candidat');
+  assert.equal(lib.formatSkipReason('Inscription close (completed) : attente annulée'), 'Séquence terminée pour ce candidat');
+  assert.equal(lib.formatSkipReason('Étape déjà envoyée'), 'Étape déjà envoyée');
+  assert.equal(lib.formatSkipReason("Étape incohérente avec l'inscription : annulée sans envoi"), "Étape incohérente avec l'inscription : annulée sans envoi");
+  assert.equal(lib.formatSkipReason('Aucune adresse e-mail connue pour ce candidat : étape e-mail sautée'), "Pas d'adresse e-mail, étape passée");
+  for (const reason of [
+    "Inscription supprimée avant l'envoi",
+    'Tous les expéditeurs ont atteint leur limite du jour',
+    "Le candidat a répondu sur un autre compte de l'organisation",
+    'Rendez-vous pris : séquence arrêtée',
+    'Effacement des données demandé : séquence arrêtée',
+  ]) {
+    assert.equal(lib.formatSkipReason(reason), reason);
+  }
+  // error_message déjà en français : passent tels quels.
+  for (const msg of [
+    'Envoi incertain : vérifiez la conversation avant de relancer (code 503)',
+    'Génération IA indisponible : nouvel essai 1/3 dans 30 min',
+    "Message vide : rien n'a été envoyé. Complétez le texte de l'étape puis relancez-la.",
+  ]) {
+    assert.equal(lib.formatSequenceError(msg), msg);
+  }
+});
+
+test('SEQ-005 — codes du moteur « code: phrase » : seule la phrase est affichée', () => {
+  assert.equal(lib.formatSequenceError('send_uncertain'), 'Envoi incertain : vérifiez la conversation avant de relancer');
+  assert.equal(
+    lib.formatSequenceError('inmail_credits_exhausted: Crédits InMail épuisés : l’envoi reprendra quand des crédits seront disponibles.'),
+    'Crédits InMail épuisés : l’envoi reprendra quand des crédits seront disponibles.',
+  );
+  assert.equal(
+    lib.formatSequenceError('Retry 1/3: profile_read_unavailable: Lecture du profil LinkedIn momentanément indisponible, nouvel essai plus tard.'),
+    'Nouvel essai 1 sur 3 : Lecture du profil LinkedIn momentanément indisponible, nouvel essai plus tard.',
+  );
+  for (const code of ['profile_read_unavailable', 'inmail_balance_unavailable', 'inmail_credits_exhausted', 'inmail_subject_missing']) {
+    assert.doesNotMatch(lib.formatSequenceError(`${code}: Phrase.`), new RegExp(code), code);
+    assert.doesNotMatch(lib.formatSequenceError(code), new RegExp(code), `${code} seul`);
+  }
+  for (const reason of ['Déjà en relation : invitation inutile', 'Invitation déjà en attente', 'Invitation déjà envoyée récemment',
+    "Profil LinkedIn introuvable : vérifiez l'adresse du profil dans la fiche du candidat.", 'Crédits InMail épuisés',
+    'Contrôle des crédits InMail momentanément indisponible, nouvel essai prochainement']) {
+    assert.equal(lib.formatSkipReason(reason), reason);
+  }
+  assert.equal(lib.formatSkipReason('Contrôle de quota indisponible, nouvel essai prochainement'), 'Reporté : vérification des limites indisponible');
+});
+
+test('SEQ-004 — fiche candidat : mark_replied côté serveur, message selon le résultat', () => {
+  const mark = block(candidateHook, 'const markReplied = useCallback', 'return {\n    enrollments');
+  assert.match(mark, /action: 'mark_replied'/);
+  assert.match(mark, /enrollment_id: enrollmentId/);
+  assert.match(mark, /data\?\.changed === false/);
+  assert.doesNotMatch(mark, /from\('sequence_(enrollments|step_executions)'\)/);
+});
+
+test('SEQ-245 — noms des types d’étape : ceux de l’éditeur', async (t) => {
+  let graph;
+  try {
+    graph = await import('../../src/components/outreach/sequence/sequenceGraph.ts');
+  } catch (err) {
+    if (err && err.code === 'ERR_UNKNOWN_FILE_EXTENSION') return t.skip('Node sans lecture native du TypeScript');
+    throw err;
+  }
+  for (const [key, label] of Object.entries(graph.STEP_TYPE_LABELS)) {
+    assert.equal(lib.actionTypeLabel(key), label, key);
+  }
+  for (const [name, src] of [['journal', activityLog], ['fiche', candidatePanel], ['statistiques', analytics]]) {
+    assert.match(src, /import \{ stepTypeLabel \} from '(@\/components\/outreach|\.)\/sequence\/sequenceGraph';/, name);
+    assert.doesNotMatch(src, /actionTypeLabel\(/, name);
   }
 });
