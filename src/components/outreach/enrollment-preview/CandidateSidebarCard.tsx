@@ -177,9 +177,7 @@ function ChannelAvailability({ available, channel }: { available: boolean; chann
     return (
       <span className="inline-flex" title={AVAILABLE[channel]}>
         <span className="sr-only">{AVAILABLE[channel]}</span>
-        <span aria-hidden="true" className="inline-flex">
-          <ChannelIcon channel={channel} size="xs" />
-        </span>
+        <ChannelIcon channel={channel} size="xs" decorative />
       </span>
     );
   }

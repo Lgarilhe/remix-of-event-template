@@ -1483,9 +1483,7 @@ function SummaryMode({
 function SummaryRow({ channel, label, count }: { channel: 'linkedin' | 'email'; label: string; count: number }) {
   return (
     <li className="flex items-center gap-3 px-4 py-2.5">
-      <span aria-hidden="true" className="inline-flex">
-        <ChannelIcon channel={channel} size="sm" />
-      </span>
+      <ChannelIcon channel={channel} size="sm" decorative />
       <span className="flex-1 text-sm text-foreground">{label}</span>
       <span className="text-sm font-semibold tabular-nums text-foreground">{count}</span>
     </li>

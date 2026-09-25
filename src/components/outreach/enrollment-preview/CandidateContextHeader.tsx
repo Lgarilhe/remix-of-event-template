@@ -76,7 +76,7 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
             )}
             {hasEmail && (
               <span className="inline-flex items-center gap-1">
-                <span aria-hidden="true" className="inline-flex"><ChannelIcon channel="email" size="xs" /></span>
+                <ChannelIcon channel="email" size="xs" decorative />
                 Adresse e-mail connue
               </span>
             )}

@@ -19,6 +19,8 @@ interface ChannelIconProps {
   size?: 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
   showLabel?: boolean;
+  /** Le nom du canal est déjà écrit à côté : l'icône ne se lit pas. */
+  decorative?: boolean;
 }
 
 const SIZES = {
@@ -38,22 +40,29 @@ const ICONS: Partial<Record<Channel, React.ElementType>> = {
   call: Phone,
 };
 
-export const ChannelIcon: React.FC<ChannelIconProps> = ({ channel, size = 'sm', className, showLabel = false }) => {
+export const ChannelIcon: React.FC<ChannelIconProps> = ({
+  channel,
+  size = 'sm',
+  className,
+  showLabel = false,
+  decorative = false,
+}) => {
   const label = CHANNELS[channel].label;
   const sizeClass = SIZES[size];
   const logo = LOGOS[channel];
   const Icon = ICONS[channel];
+  const hidden = showLabel || decorative;
 
   return (
     <span className={cn('inline-flex items-center gap-1', className)}>
       {logo ? (
-        <img src={logo} alt={showLabel ? '' : label} className={cn(sizeClass, 'rounded-sm')} />
+        <img src={logo} alt={hidden ? '' : label} aria-hidden={hidden || undefined} className={cn(sizeClass, 'rounded-sm')} />
       ) : Icon ? (
         <Icon
           className={cn(sizeClass, 'text-muted-foreground')}
-          aria-hidden={showLabel ? true : undefined}
-          aria-label={showLabel ? undefined : label}
-          role={showLabel ? undefined : 'img'}
+          aria-hidden={hidden ? true : undefined}
+          aria-label={hidden ? undefined : label}
+          role={hidden ? undefined : 'img'}
         />
       ) : null}
       {showLabel && <span className="text-xs font-medium text-foreground-secondary">{label}</span>}

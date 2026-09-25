@@ -42,11 +42,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
 
   if (isCall) {
     // Décorative : le libellé dit déjà « Appel »
-    icon = (
-      <span aria-hidden="true" className="inline-flex shrink-0">
-        <ChannelIcon channel="call" size="xs" />
-      </span>
-    );
+    icon = <ChannelIcon channel="call" size="xs" decorative className="shrink-0" />;
     label = event.callDirection === 'inbound' ? 'Appel entrant' : 'Appel sortant';
     if (event.callDuration != null && event.callDuration > 0) details.push(formatDuration(event.callDuration));
     if (event.callUserName) details.push(event.callUserName);

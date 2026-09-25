@@ -91,7 +91,10 @@ test('D-66 : quatre canaux, un nom chacun, et le canal d’un compte', () => {
 
 test('D-66 : la pastille de canal ne lit pas le nom deux fois', () => {
   const icon = read('src/components/ui/ChannelIcon.tsx');
-  assert.match(icon, /alt=\{showLabel \? '' : label\}/);
+  // Libellé écrit à côté (showLabel) ou déjà présent dans la ligne (decorative) :
+  // le logo et l'icône ne se lisent pas.
+  assert.match(icon, /const hidden = showLabel \|\| decorative;/);
+  assert.match(icon, /alt=\{hidden \? '' : label\}/);
   assert.doesNotMatch(icon, /text-linkedin|text-whatsapp/, 'le libellé reste en texte neutre');
 });
 
