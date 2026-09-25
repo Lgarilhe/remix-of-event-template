@@ -71,6 +71,7 @@ import {
   WIZARD_STEPS,
 } from './sequence/SequenceWizardStepper';
 import { SequenceValidationChecklist, SequenceValidationSummary } from './sequence/SequenceValidationChecklist';
+import { plural } from '@/lib/plural';
 
 export interface SequenceStep {
   id: string;
@@ -300,8 +301,6 @@ const scoreThresholdError = (value?: string) => {
 };
 
 const stepOptionLabel = (s: SequenceStep) => `Étape ${s.order + 1} : ${sequenceActionLabel(s.actionType)}`;
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 const getVariantGroups = (steps: SequenceStep[]): Map<number, SequenceStep[]> => {
   const groups = new Map<number, SequenceStep[]>();

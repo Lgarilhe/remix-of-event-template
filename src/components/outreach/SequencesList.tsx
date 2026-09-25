@@ -61,6 +61,7 @@ const SequenceAnalytics = React.lazy(() => import('./SequenceAnalytics'));
 import { SequenceTemplateSelector, SaveAsTemplateModal } from './SequenceTemplateSelector';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { plural } from '@/lib/plural';
 
 interface SequenceWithStats {
   id: string;
@@ -91,8 +92,6 @@ interface SequencesListProps {
   isVisible?: boolean;
   projectId?: string | null;
 }
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 /** Même grille pour l'en-tête et les lignes, à partir de 1 024 px. */
 const ROW_GRID = 'lg:grid-cols-[2.75rem_minmax(0,1fr)_7.5rem_minmax(0,14rem)_9rem_2.25rem]';

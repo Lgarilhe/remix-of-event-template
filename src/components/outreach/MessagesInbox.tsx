@@ -41,6 +41,7 @@ import {
 import { AttendeePicturesProvider, useAttendeePicturesContext } from '@/contexts/AttendeePicturesContext';
 import { sequenceChannels } from '@/lib/sequenceCatalog';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 
 interface MessagesInboxProps {
   accounts: LinkedInAccount[];
@@ -52,8 +53,6 @@ interface MessagesInboxProps {
   loading?: boolean;
   fullHeight?: boolean;
 }
-
-const stepCountLabel = (count: number) => `${count} étape${count > 1 ? 's' : ''}`;
 
 export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
   const { selectedAccount, loading } = props;
@@ -314,7 +313,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-foreground">{sequence.name}</span>
                         <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                          {stepCountLabel(sequence.steps.length)}
+                          {plural(sequence.steps.length, 'étape')}
                           {channels.map((channel) => (
                             <ChannelIcon key={channel} channel={channel} size="sm" />
                           ))}

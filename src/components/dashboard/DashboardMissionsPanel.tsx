@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { MissionCompanyLogo } from './MissionCompanyLogo';
+import { plural } from '@/lib/plural';
 
 interface DashboardMissionsPanelProps {
   projects: SourcingProject[];
@@ -26,8 +27,6 @@ interface DashboardMissionsPanelProps {
   error?: string | null;
   onRetry?: () => void;
 }
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 const percent = (part: number, total: number) => (total > 0 ? Math.min(Math.round((part / total) * 100), 100) : 0);
 

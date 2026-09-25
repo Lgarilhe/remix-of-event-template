@@ -52,6 +52,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { plural } from '@/lib/plural';
 
 interface StepExecution {
   id: string;
@@ -90,8 +91,6 @@ const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wai
 
 type FilterStatus = 'all' | 'scheduled' | 'sent' | 'failed' | 'skipped';
 type FilterPeriod = 'all' | 'today' | 'week' | 'upcoming';
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 /** « 26/09 à 10:42 » */
 const formatWhen = (value: string) => format(new Date(value), "dd/MM 'à' HH:mm", { locale: fr });

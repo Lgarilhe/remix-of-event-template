@@ -48,6 +48,7 @@ import {
   RECENT_CONTACT_WINDOW_DAYS,
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
+import { plural } from '@/lib/plural';
 
 // ── Types ──
 
@@ -66,11 +67,6 @@ interface EnrollmentPreviewModalProps {
 }
 
 // ── Helpers ──
-
-/** « 1 candidat », « 3 candidats ». */
-function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
-  return `${n} ${n > 1 ? pluralForm : singular}`;
-}
 
 /** Coût annoncé avant l'action, en toutes lettres. */
 function creditsLabel(n: number): string {

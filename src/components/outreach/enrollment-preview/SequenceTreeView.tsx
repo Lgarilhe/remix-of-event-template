@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label';
 import { SequenceActionIcon, SequenceActionLabel } from '@/components/outreach/SequenceBadges';
 import { sequenceActionLabel, formatStepDelay } from '@/lib/sequenceCatalog';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 
 const DECISION_TYPES = new Set([
   'wait_connection',
@@ -43,10 +44,6 @@ interface Props {
   getStepConfig?: (stepId: string) => StepConfigOverride | undefined;
   /** Persist un override de timing pour un step (passer null pour reset). */
   setStepConfig?: (stepId: string, config: StepConfigOverride | null) => void;
-}
-
-function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
-  return `${n} ${n > 1 ? pluralForm : singular}`;
 }
 
 export function SequenceTreeView({ steps, renderStep, getStepConfig, setStepConfig }: Props) {

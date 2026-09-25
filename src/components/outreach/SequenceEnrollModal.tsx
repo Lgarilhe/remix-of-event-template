@@ -26,6 +26,7 @@ import {
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
 import { useOrganization } from '@/hooks/useOrganization';
+import { plural } from '@/lib/plural';
 
 interface SequenceEnrollModalProps {
   isOpen: boolean;
@@ -50,11 +51,6 @@ interface SequenceEnrollModalProps {
 }
 
 const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
-
-/** « 1 candidat », « 3 candidats ». */
-function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
-  return `${n} ${n > 1 ? pluralForm : singular}`;
-}
 
 /**
  * Motif d'incompatibilité, écrit ici au vouvoiement et sans tiret long : les

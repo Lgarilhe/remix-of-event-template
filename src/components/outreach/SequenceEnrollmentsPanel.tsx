@@ -53,6 +53,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 
 interface StepExecution {
   id: string;
@@ -97,8 +98,6 @@ interface SequenceEnrollmentsPanelProps {
 
 // Actions to hide from UI (internal/noise)
 const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event']);
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 /** « 26/09 à 10:42 » */
 const formatWhen = (value: string) => format(new Date(value), "dd/MM 'à' HH:mm", { locale: fr });

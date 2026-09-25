@@ -35,6 +35,7 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatSequenceError } from '@/lib/sequenceErrorMessages';
+import { plural } from '@/lib/plural';
 
 interface SequenceDiagnosticProps {
   open: boolean;
@@ -72,8 +73,6 @@ const WEEKLY_INVITE_LIMIT = 100;
 // 10 minutes, deux passages ont manqué : l'aide cite le même seuil.
 const RUN_INTERVAL_MIN = 5;
 const SILENCE_THRESHOLD_MIN = 10;
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 const initialState: DiagnosticData = {
   loading: true,

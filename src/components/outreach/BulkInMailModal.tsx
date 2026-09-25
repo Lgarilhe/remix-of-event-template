@@ -50,6 +50,7 @@ import { Job } from '@/types/jobs';
 import { useInMailBalance } from '@/hooks/useInMailBalance';
 import { LinkedInProfile } from './types';
 import { getYear } from './dateUtils';
+import { plural } from '@/lib/plural';
 
 interface Recipient {
   id: string;
@@ -116,8 +117,6 @@ const QueueStatusBadge: React.FC<{ status: string }> = ({ status }) => (
     {QUEUE_STATUS_LABELS[status] || 'Statut inconnu'}
   </Badge>
 );
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   isOpen,

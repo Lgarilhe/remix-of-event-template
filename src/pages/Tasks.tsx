@@ -48,6 +48,7 @@ import {
   type TasksFilters,
   type TasksView,
 } from '@/components/tasks/TasksFiltersBar';
+import { plural } from '@/lib/plural';
 
 const BUCKETS: { key: ReminderBucket; label: string; icon: React.ElementType }[] = [
   { key: 'overdue', label: 'En retard', icon: AlertCircle },
@@ -58,8 +59,6 @@ const BUCKETS: { key: ReminderBucket; label: string; icon: React.ElementType }[]
 ];
 
 type Suggestion = ReturnType<typeof useAutoTaskSuggestions>['suggestions'][number];
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 export default function TasksPage() {
   const queryClient = useQueryClient();

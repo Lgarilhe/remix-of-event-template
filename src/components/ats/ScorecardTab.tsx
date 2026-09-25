@@ -53,6 +53,7 @@ import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
   LiveCoachingPanel, type CallReport, type CriterionUpdate, type ReportRecommendation,
 } from './LiveCoachingPanel';
+import { plural } from '@/lib/plural';
 
 /** Résumé de la grille ouverte : l'en-tête du plein écran le suit sans interroger la base. */
 export interface ScorecardSummary {
@@ -157,8 +158,6 @@ const newLocalKey = () => `local-${Date.now()}-${++localKeySeq}`;
 
 const formatAverage = (value: number) =>
   value.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-
-const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
 
 function savedLabel(iso: string): string {
   const date = new Date(iso);

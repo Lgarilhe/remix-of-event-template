@@ -55,6 +55,7 @@ import { CalendarListView } from '@/components/calendar/CalendarListView';
 import { CreateEventModal } from '@/components/calendar/CreateEventModal';
 import { useCalendarConflicts } from '@/components/calendar/useCalendarConflicts';
 import { EVENT_TYPES, roundLabel } from '@/components/calendar/eventMeta';
+import { plural } from '@/lib/plural';
 
 type CalendarView = 'week' | 'day' | 'list';
 const VIEW_KEY = 'calendar-view-mode';
@@ -69,8 +70,6 @@ function readStoredView(): CalendarView {
   }
   return typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches ? 'list' : 'week';
 }
-
-const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 /** « 45 min », « 1 h », « 1 h 30 ». */
 function durationLabel(minutes: number): string {

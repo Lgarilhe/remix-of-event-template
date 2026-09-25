@@ -14,6 +14,7 @@ import { fr } from 'date-fns/locale';
 import { Plus, Search, MessageSquare } from 'lucide-react';
 import { PageHeader } from '@/components/layout';
 import { Button } from '@/components/ui/button';
+import { plural } from '@/lib/plural';
 
 interface DashboardGreetingProps {
   userName: string | null;
@@ -39,8 +40,6 @@ const firstNameOf = (userName: string | null): string | null => {
   if (/^[A-Z]\.?$/.test(tokens[0])) return userName;
   return tokens[0];
 };
-
-const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
   userName,
