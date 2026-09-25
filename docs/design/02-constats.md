@@ -36,7 +36,7 @@ Les 429 constats se ramènent à dix causes. Les traiter à la source règle des
 
 ## Les constats P1
 
-Statut au commit du lot 2 (`b90f07a1`). « Lot n » renvoie à `03-lots.md`.
+Statut tenu à jour à chaque lot (dernier : lot 5). « Lot n » renvoie à `03-lots.md`.
 
 ### A. Coquille, tableau de bord, tâches, agenda
 
@@ -44,8 +44,8 @@ Statut au commit du lot 2 (`b90f07a1`). « Lot n » renvoie à `03-lots.md`.
 |---|---|---|
 | A-04 | Bandeaux d'essai et de crédits rendus sous la barre latérale fixe : « Essai : N jours restants » masqué | corrigé (lot 2) |
 | A-23 | Tableau de bord : 48 animations, dont 7 en boucle, sans respect du mouvement réduit | corrigé (lot 4 : plus aucune animation propre au tableau de bord) |
-| A-34 | Tâches : une panne affiche « Zéro tâche en cours » et une coche verte | lot 5 |
-| A-40 | Agenda : une panne affiche un agenda vide | lot 5 |
+| A-34 | Tâches : une panne affiche « Zéro tâche en cours » et une coche verte | corrigé (lot 5 : erreur et « Réessayer », vérifié sur panne simulée) |
+| A-40 | Agenda : une panne affiche un agenda vide | corrigé (lot 5 : erreur et « Réessayer », vérifié sur panne simulée) |
 
 ### B. Missions et onboarding
 

@@ -1,20 +1,24 @@
 /**
- * CandidateAutocomplete — input avec dropdown suggérant les candidats
- * existants matching la frappe + fallback "Créer comme nouveau candidat".
+ * CandidateAutocomplete — champ de recherche d'un candidat existant, avec
+ * l'option de créer un nouveau candidat au passage.
  *
- * - Tape ≥2 caractères → fetch debounced via useCandidateSearch
- * - Suggestion : avatar + nom + headline + URL LinkedIn (cliquable)
- * - "Créer X comme nouveau candidat" en bas du dropdown
+ * Combobox accessible (motif ARIA « combobox + listbox ») :
+ * - deux caractères au moins lancent la recherche (useCandidateSearch) ;
+ * - flèches haut et bas pour parcourir, Entrée pour choisir l'option active,
+ *   Échap pour fermer la liste sans fermer le dialogue qui la contient ;
+ * - rien n'est choisi d'office : Entrée sans option active ne fait rien.
  *
  * Sélection :
- * - Existant → fournit candidateId + name + headline + avatar au parent
- * - Nouveau → fournit name (saisi) + null candidateId, le parent gère la
- *   création côté DB au moment du submit
+ * - existant : candidateId, nom, intitulé, photo ;
+ * - nouveau : nom saisi et candidateId null, le parent crée le candidat à
+ *   l'enregistrement.
  */
 
-import React, { useRef, useState, useEffect } from 'react';
-import { Search, UserPlus, Loader2, ExternalLink, Check } from 'lucide-react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { Search, UserPlus, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 import { useCandidateSearch, type CandidateSearchResult } from '@/hooks/useCandidateSearch';
 import { cn } from '@/lib/utils';
@@ -33,58 +37,68 @@ interface CandidateAutocompleteProps {
   onChange: (candidate: SelectedCandidate | null) => void;
   /** Pour le state intermédiaire de saisie quand pas encore sélectionné */
   defaultName?: string;
+  /** Identifiant du champ, pour un <Label htmlFor>. */
+  id?: string;
+  /** Phrase d'aide reliée au champ (aria-describedby). */
+  describedBy?: string;
+  /** Ce que devient un nouveau candidat, sous l'option « Créer » (dépend de l'écran). */
+  createHint?: string;
 }
+
+type Option =
+  | { kind: 'existing'; result: CandidateSearchResult }
+  | { kind: 'new'; name: string };
 
 export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
   value,
   onChange,
   defaultName = '',
+  id,
+  describedBy,
+  createHint = 'Nouveau candidat, enregistré avec cette tâche',
 }) => {
   const [query, setQuery] = useState(value?.name ?? defaultName);
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listId = useId();
+  const optionId = (i: number) => `${listId}-option-${i}`;
 
   const { results, loading } = useCandidateSearch(open ? query : '');
 
-  // Close dropdown on outside click
+  const trimmed = query.trim();
+  const showCreateOption =
+    trimmed.length >= 2 && !results.some((r) => r.name.toLowerCase() === trimmed.toLowerCase());
+  const options: Option[] = [
+    ...results.map((result) => ({ kind: 'existing' as const, result })),
+    ...(showCreateOption ? [{ kind: 'new' as const, name: trimmed }] : []),
+  ];
+  const listOpen = open && options.length > 0;
+
+  // Une nouvelle liste repart sans option active : rien n'est choisi d'office.
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [query, results.length]);
+
+  // Fermeture au clic en dehors
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const showCreateOption =
-    query.trim().length >= 2 &&
-    !results.some((r) => r.name.toLowerCase() === query.trim().toLowerCase());
-
-  const selectExisting = (r: CandidateSearchResult) => {
-    onChange({
-      candidateId: r.candidateId,
-      name: r.name,
-      headline: r.headline,
-      avatarUrl: r.avatarUrl,
-      linkedinUrl: r.linkedinUrl,
-    });
-    setQuery(r.name);
-    setOpen(false);
-  };
-
-  const selectNew = () => {
-    const name = query.trim();
-    if (!name) return;
-    onChange({
-      candidateId: null,
-      name,
-      headline: null,
-      avatarUrl: null,
-      linkedinUrl: null,
-    });
+  const choose = (option: Option) => {
+    if (option.kind === 'existing') {
+      const r = option.result;
+      onChange({ candidateId: r.candidateId, name: r.name, headline: r.headline, avatarUrl: r.avatarUrl, linkedinUrl: r.linkedinUrl });
+      setQuery(r.name);
+    } else {
+      onChange({ candidateId: null, name: option.name, headline: null, avatarUrl: null, linkedinUrl: null });
+    }
     setOpen(false);
   };
 
@@ -92,36 +106,43 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
     onChange(null);
     setQuery('');
     setOpen(true);
-    inputRef.current?.focus();
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  // Si déjà sélectionné, on affiche un "chip" avec le candidat choisi
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!open) setOpen(true);
+      if (options.length > 0) setActiveIndex((i) => (i + 1) % options.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (options.length > 0) setActiveIndex((i) => (i <= 0 ? options.length - 1 : i - 1));
+    } else if (e.key === 'Enter' && listOpen) {
+      // Liste ouverte : Entrée choisit l'option active, sans envoyer le formulaire.
+      e.preventDefault();
+      if (activeIndex >= 0 && options[activeIndex]) choose(options[activeIndex]);
+    } else if (e.key === 'Escape' && listOpen) {
+      setOpen(false);
+    } else if (e.key === 'Tab') {
+      setOpen(false);
+    }
+  };
+
+  // Candidat choisi : carte récapitulative avec « Changer »
   if (value && !open) {
     return (
-      <div className="rounded-lg border border-border bg-card p-2.5 flex items-center gap-3">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-2.5">
         <CandidateAvatar name={value.name} avatarUrl={value.avatarUrl} size={32} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-display font-semibold text-foreground text-sm truncate tracking-tight">
-              {value.name}
-            </span>
-            {value.candidateId === null && (
-              <span className="inline-flex items-center text-3xs uppercase tracking-wider font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded-full ring-1 ring-emerald-500/30">
-                Nouveau
-              </span>
-            )}
+            <span className="truncate text-sm font-medium text-foreground">{value.name}</span>
+            {value.candidateId === null && <Badge variant="muted">Nouveau candidat</Badge>}
           </div>
-          {value.headline && (
-            <div className="text-2xs text-muted-foreground truncate">{value.headline}</div>
-          )}
+          {value.headline && <div className="truncate text-xs text-muted-foreground">{value.headline}</div>}
         </div>
-        <button
-          type="button"
-          onClick={clearSelection}
-          className="text-xs text-muted-foreground hover:text-foreground underline shrink-0"
-        >
+        <Button type="button" variant="ghost" size="xs" onClick={clearSelection} aria-label={`Changer de candidat (${value.name})`}>
           Changer
-        </button>
+        </Button>
       </div>
     );
   }
@@ -129,110 +150,91 @@ export const CandidateAutocomplete: React.FC<CandidateAutocompleteProps> = ({
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input
           ref={inputRef}
+          id={id}
+          role="combobox"
+          aria-expanded={listOpen}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={listOpen && activeIndex >= 0 ? optionId(activeIndex) : undefined}
+          aria-describedby={describedBy}
+          data-suggestions-open={listOpen ? 'true' : undefined}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
-            // Reset value si on retape (évite incohérence)
+            // Une nouvelle saisie annule le choix précédent (évite l'incohérence)
             if (value) onChange(null);
           }}
           onFocus={() => setOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && results.length > 0) {
-              e.preventDefault();
-              selectExisting(results[0]);
-            } else if (e.key === 'Enter' && showCreateOption) {
-              e.preventDefault();
-              selectNew();
-            } else if (e.key === 'Escape') {
-              setOpen(false);
-            }
-          }}
-          placeholder="Tape un nom — chercher ou créer…"
-          className="h-9 pl-8 rounded-lg"
+          onKeyDown={onKeyDown}
+          placeholder="Nom du candidat"
+          className="pl-8 pr-8"
           autoComplete="off"
         />
         {loading && (
-          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground animate-spin" />
+          <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" aria-hidden="true" />
         )}
       </div>
 
-      {open && (results.length > 0 || showCreateOption) && (
-        <div className="absolute z-50 left-0 right-0 mt-1 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
-          {/* Existing candidates */}
-          {results.length > 0 && (
-            <div className="py-1">
-              <div className="px-3 pt-1.5 pb-1 text-3xs uppercase tracking-wider font-semibold text-muted-foreground">
-                Candidats existants
-              </div>
-              {results.map((r) => (
-                <button
-                  key={r.candidateId}
-                  type="button"
-                  onClick={() => selectExisting(r)}
-                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-muted/40 transition-colors"
-                >
-                  <CandidateAvatar
-                    name={r.name}
-                    avatarUrl={r.avatarUrl}
-                    size={32}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-display font-semibold text-foreground truncate tracking-tight">
-                      {r.name}
-                    </div>
-                    {r.headline && (
-                      <div className="text-2xs text-muted-foreground truncate">
-                        {r.headline}
-                      </div>
-                    )}
-                  </div>
-                  {r.linkedinUrl && (
-                    <a
-                      href={r.linkedinUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="shrink-0 text-muted-foreground hover:text-foreground"
-                      title="Ouvrir LinkedIn"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Create new */}
-          {showCreateOption && (
-            <div className={cn('py-1', results.length > 0 && 'border-t border-border')}>
-              <button
-                type="button"
-                onClick={selectNew}
-                className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-emerald-500/10 transition-colors group"
+      <ul
+        id={listId}
+        role="listbox"
+        aria-label="Candidats"
+        hidden={!listOpen}
+        className="absolute left-0 right-0 z-popover mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-lg"
+      >
+        {options.map((option, i) => {
+          const active = i === activeIndex;
+          if (option.kind === 'existing') {
+            const r = option.result;
+            return (
+              <li
+                key={r.candidateId}
+                id={optionId(i)}
+                role="option"
+                aria-selected={active}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => choose(option)}
+                onMouseMove={() => setActiveIndex(i)}
+                className={cn('flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5', active && 'bg-accent')}
               >
-                <div className="h-8 w-8 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/25 transition-colors">
-                  <UserPlus className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-foreground">
-                    Créer "<span className="font-bold">{query.trim()}</span>" comme nouveau
-                    candidat
-                  </div>
-                  <div className="text-2xs text-muted-foreground">
-                    Ajouté au pipeline en "Pressenti" sur la mission sélectionnée
-                  </div>
-                </div>
-                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+                <CandidateAvatar name={r.name} avatarUrl={r.avatarUrl} size={28} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-foreground">{r.name}</span>
+                  {r.headline && <span className="block truncate text-xs text-muted-foreground">{r.headline}</span>}
+                </span>
+              </li>
+            );
+          }
+          return (
+            <li
+              key="new"
+              id={optionId(i)}
+              role="option"
+              aria-selected={active}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => choose(option)}
+              onMouseMove={() => setActiveIndex(i)}
+              className={cn(
+                'flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5',
+                results.length > 0 && 'mt-1 border-t border-border pt-2',
+                active && 'bg-accent',
+              )}
+            >
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-foreground-secondary">
+                <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-foreground">Créer « {option.name} »</span>
+                <span className="block truncate text-xs text-muted-foreground">{createHint}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 };

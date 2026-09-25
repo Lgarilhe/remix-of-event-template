@@ -132,17 +132,17 @@ const inferRound = (eventName: string | null | undefined): CalendarEventRound =>
 
   // Final round (avant les autres pour éviter conflit)
   if (/(final|last round|dernier(?:[\s-]tour)?|final round)/i.test(lower)) {
-    return { kind: 'final', label: 'Final' };
+    return { kind: 'final', label: 'Entretien final' };
   }
 
   // Round 3
   if (/(troisième|trois[ièm]+e|3[èe]?me|3e[\s)]|round[\s-]?3|3rd)/i.test(lower)) {
-    return { kind: 'numbered', n: 3, label: '3e tour' };
+    return { kind: 'numbered', n: 3, label: '3e entretien' };
   }
 
   // Round 2
   if (/(deuxième|deux[ièm]+e|2[èe]?me|2e[\s)]|second|round[\s-]?2|2nd)/i.test(lower)) {
-    return { kind: 'numbered', n: 2, label: '2e tour' };
+    return { kind: 'numbered', n: 2, label: '2e entretien' };
   }
 
   // Round 1 / qualif initiale
@@ -151,7 +151,7 @@ const inferRound = (eventName: string | null | undefined): CalendarEventRound =>
       lower,
     )
   ) {
-    return { kind: 'numbered', n: 1, label: '1er tour' };
+    return { kind: 'numbered', n: 1, label: '1er entretien' };
   }
 
   return null;
@@ -162,8 +162,12 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
   const rangeEnd = endOfDay(addDays(from, days - 1)).toISOString();
   const events: CalendarEvent[] = [];
 
+  // Une lecture en échec fait échouer la requête : l'agenda affiche une erreur
+  // avec « Réessayer » au lieu d'une semaine vide (revue design A-40). Les
+  // lectures d'appoint (noms, photos) restent tolérantes.
+
   // 1. Qualifications (entretiens) — pull tous les champs riches utiles à l'UI
-  const { data: qualifs } = await supabase
+  const { data: qualifs, error: qualifsError } = await supabase
     .from('qualification_sessions')
     .select(
       [
@@ -189,6 +193,7 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
     .gte('event_start_at', rangeStart)
     .lte('event_start_at', rangeEnd)
     .order('event_start_at', { ascending: true });
+  if (qualifsError) throw qualifsError;
 
   // Resolve unique manager userIds + project ids → batch lookup (1 query each).
   // Manager = manager_id si présent (assigné explicitement), sinon
@@ -303,13 +308,14 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
   }
 
   // 2. InMails programmés
-  const { data: inmails } = await supabase
+  const { data: inmails, error: inmailsError } = await supabase
     .from('inmail_queue')
     .select('id, recipient_name, recipient_headline, subject, scheduled_at, status')
     .gte('scheduled_at', rangeStart)
     .lte('scheduled_at', rangeEnd)
     .in('status', ['pending', 'scheduled', 'sent'])
     .order('scheduled_at', { ascending: true });
+  if (inmailsError) throw inmailsError;
 
   if (inmails) {
     for (const im of inmails as any[]) {
@@ -330,7 +336,7 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
   }
 
   // 3. Étapes de séquence visibles
-  const { data: stepExecs } = await supabase
+  const { data: stepExecs, error: stepExecsError } = await supabase
     .from('sequence_step_executions')
     .select('id, scheduled_at, status, step_id, enrollment_id')
     .gte('scheduled_at', rangeStart)
@@ -338,6 +344,7 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
     .in('status', ['pending', 'scheduled'])
     .order('scheduled_at', { ascending: true })
     .limit(100);
+  if (stepExecsError) throw stepExecsError;
 
   if (stepExecs && stepExecs.length > 0) {
     // Resolve sequence + enrollment names in batch

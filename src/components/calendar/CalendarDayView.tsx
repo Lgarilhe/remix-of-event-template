@@ -1,14 +1,16 @@
 /**
- * CalendarDayView — vue jour avec timeline horaire 8h–20h.
+ * CalendarDayView — vue jour sur une grille horaire.
  *
- * Une seule colonne, hauteur scaled par durée. La line "il est 14h32"
- * est un trait rouge horizontal positionné en absolute. Click sur slot
- * vide → openCreateEvent(date, hour).
- *
- * Pattern Cal.com / Google Calendar.
+ * - Plage de 7 h à 21 h, élargie pour montrer un événement plus tôt ou plus
+ *   tard (revue design A-42) ;
+ * - hauteur proportionnelle à la durée ; sous 70 px, la carte passe en forme
+ *   compacte (heure et nom) ;
+ * - événements simultanés côte à côte, en colonnes ;
+ * - trait de l'heure courante en accent ; clic sur une heure libre pour
+ *   programmer un entretien.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { format, isSameDay, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -17,164 +19,154 @@ import type { CalendarEvent } from '@/hooks/useCalendarEvents';
 interface CalendarDayViewProps {
   day: Date;
   events: CalendarEvent[];
-  onEventClick: (event: CalendarEvent) => void;
   onSlotClick?: (date: Date) => void;
-  conflictIds?: Set<string>;
-  bufferIds?: Set<string>;
   renderEvent: (event: CalendarEvent, opts: { compact: boolean }) => React.ReactNode;
 }
 
 const HOUR_HEIGHT = 56; // px par heure
-const START_HOUR = 7;
-const END_HOUR = 21; // 21h exclusif → 7h-21h = 14 heures visibles
+const DEFAULT_START = 7;
+const DEFAULT_END = 21;
+const DEFAULT_DURATION_MIN = 30;
 
-export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
-  day,
-  events,
-  onEventClick,
-  onSlotClick,
-  renderEvent,
-}) => {
+interface Placed {
+  event: CalendarEvent;
+  startMin: number;
+  endMin: number;
+  column: number;
+  columns: number;
+}
+
+/** Répartit les événements qui se chevauchent en colonnes. */
+function placeEvents(events: CalendarEvent[], day: Date): Placed[] {
+  const items = events
+    .map((event) => {
+      try {
+        const start = parseISO(event.startAt);
+        if (!isSameDay(start, day)) return null;
+        const startMin = start.getHours() * 60 + start.getMinutes();
+        let endMin = startMin + DEFAULT_DURATION_MIN;
+        if (event.endAt) {
+          const end = parseISO(event.endAt);
+          endMin = isSameDay(end, day) ? end.getHours() * 60 + end.getMinutes() : 24 * 60;
+        }
+        return { event, startMin, endMin: Math.max(endMin, startMin + 15), column: 0, columns: 1 };
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is Placed => x !== null)
+    .sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+
+  // Grappes d'événements qui se chevauchent ; dans chaque grappe, la première
+  // colonne libre, et autant de colonnes que nécessaire.
+  let cluster: Placed[] = [];
+  let clusterEnd = -1;
+  const flush = () => {
+    const columns = cluster.reduce((max, p) => Math.max(max, p.column + 1), 1);
+    for (const p of cluster) p.columns = columns;
+    cluster = [];
+  };
+  for (const item of items) {
+    if (item.startMin >= clusterEnd && cluster.length) flush();
+    const taken = new Set(cluster.filter((p) => p.endMin > item.startMin).map((p) => p.column));
+    let column = 0;
+    while (taken.has(column)) column++;
+    item.column = column;
+    cluster.push(item);
+    clusterEnd = Math.max(clusterEnd, item.endMin);
+  }
+  if (cluster.length) flush();
+  return items;
+}
+
+export const CalendarDayView: React.FC<CalendarDayViewProps> = ({ day, events, onSlotClick, renderEvent }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isToday = isSameDay(day, new Date());
 
-  // Auto-scroll to current hour at mount (si today) ou 9h sinon
+  const placed = useMemo(() => placeEvents(events, day), [events, day]);
+
+  const startHour = Math.min(DEFAULT_START, ...placed.map((p) => Math.floor(p.startMin / 60)));
+  const endHour = Math.max(DEFAULT_END, ...placed.map((p) => Math.ceil(p.endMin / 60)));
+  const hours: number[] = [];
+  for (let h = startHour; h < endHour; h++) hours.push(h);
+
+  // Au chargement : l'heure courante (aujourd'hui) ou 9 h
   useEffect(() => {
     if (!containerRef.current) return;
     const targetHour = isToday ? new Date().getHours() : 9;
-    const scrollY = (targetHour - START_HOUR) * HOUR_HEIGHT - 40;
-    containerRef.current.scrollTop = Math.max(0, scrollY);
-  }, [isToday]);
+    containerRef.current.scrollTop = Math.max(0, (targetHour - startHour) * HOUR_HEIGHT - 40);
+  }, [isToday, startHour]);
 
-  // Heure courante en pixels depuis START_HOUR
   const nowOffsetPx = (() => {
     if (!isToday) return null;
     const now = new Date();
-    const totalMinutes = now.getHours() * 60 + now.getMinutes();
-    const startMinutes = START_HOUR * 60;
-    return ((totalMinutes - startMinutes) / 60) * HOUR_HEIGHT;
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    if (minutes < startHour * 60 || minutes > endHour * 60) return null;
+    return ((minutes - startHour * 60) / 60) * HOUR_HEIGHT;
   })();
 
-  // Range d'heures à afficher
-  const hours: number[] = [];
-  for (let h = START_HOUR; h < END_HOUR; h++) hours.push(h);
-
-  // Position d'un event en y (top) + height
-  const eventPosition = (e: CalendarEvent): { top: number; height: number } | null => {
-    try {
-      const start = parseISO(e.startAt);
-      if (!isSameDay(start, day)) return null;
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
-      const baseMinutes = START_HOUR * 60;
-      const top = ((startMinutes - baseMinutes) / 60) * HOUR_HEIGHT;
-
-      let endMinutes = startMinutes + 30; // default 30 min
-      if (e.endAt) {
-        try {
-          const end = parseISO(e.endAt);
-          endMinutes = end.getHours() * 60 + end.getMinutes();
-        } catch {
-          // skip
-        }
-      }
-      const height = Math.max(((endMinutes - startMinutes) / 60) * HOUR_HEIGHT, 32);
-      return { top, height };
-    } catch {
-      return null;
-    }
-  };
-
-  const dayEvents = events.filter((e) => {
-    try {
-      return isSameDay(parseISO(e.startAt), day);
-    } catch {
-      return false;
-    }
-  });
-
   return (
-    <div className="rounded-xl bg-card border border-border overflow-hidden flex flex-col">
-      {/* Day header */}
-      <div
-        className={cn(
-          'px-5 py-3 border-b border-border flex items-center justify-between',
-          isToday && 'bg-emerald-500/15',
-        )}
-      >
+    <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
+      <div className={cn('flex items-center justify-between border-b border-border px-4 py-3', isToday && 'bg-accent/60')}>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <p className={cn('text-xs capitalize', isToday ? 'font-medium text-brand' : 'text-muted-foreground')}>
             {format(day, 'EEEE', { locale: fr })}
+            {isToday && <span className="sr-only"> (aujourd'hui)</span>}
           </p>
-          <p className="font-display text-xl font-bold leading-tight tabular-nums tracking-tight text-foreground">
-            {format(day, 'd MMMM yyyy', { locale: fr })}
-          </p>
+          <p className="text-base font-semibold tabular-nums text-foreground">{format(day, 'd MMMM yyyy', { locale: fr })}</p>
         </div>
-        <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-bold tabular-nums bg-foreground/10 text-foreground">
-          {dayEvents.length}
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {placed.length} événement{placed.length > 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Timeline */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto max-h-[640px]">
-        <div
-          className="relative"
-          style={{ height: `${(END_HOUR - START_HOUR) * HOUR_HEIGHT}px` }}
-        >
-          {/* Hour lines */}
-          {hours.map((h) => (
+      <div ref={containerRef} className="max-h-[640px] flex-1 overflow-y-auto">
+        <div className="relative" style={{ height: `${hours.length * HOUR_HEIGHT}px` }}>
+          {hours.map((h, i) => (
             <button
               key={h}
               type="button"
               onClick={() => {
-                if (onSlotClick) {
-                  const slotDate = new Date(day);
-                  slotDate.setHours(h, 0, 0, 0);
-                  onSlotClick(slotDate);
-                }
+                if (!onSlotClick) return;
+                const slotDate = new Date(day);
+                slotDate.setHours(h, 0, 0, 0);
+                onSlotClick(slotDate);
               }}
-              className="absolute left-0 right-0 h-[56px] flex items-start gap-3 px-3 hover:bg-muted/20 transition-colors group"
-              style={{ top: `${(h - START_HOUR) * HOUR_HEIGHT}px` }}
-              aria-label={`Programmer un événement à ${h}h`}
+              className="absolute left-0 right-0 flex items-start gap-3 px-3 transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              style={{ top: `${i * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
+              aria-label={`Programmer un entretien à ${h} h`}
             >
-              <span className="text-[10px] text-muted-foreground tabular-nums font-medium w-10 shrink-0 mt-0.5">
-                {String(h).padStart(2, '0')}:00
-              </span>
-              <div className="flex-1 h-px bg-border/40 mt-1.5" />
+              <span className="mt-0.5 w-10 shrink-0 text-2xs tabular-nums text-muted-foreground">{String(h).padStart(2, '0')}:00</span>
+              <span className="mt-1.5 h-px flex-1 bg-border" aria-hidden="true" />
             </button>
           ))}
 
-          {/* Current time indicator */}
-          {nowOffsetPx != null && nowOffsetPx >= 0 && (
-            <div
-              className="absolute left-12 right-2 z-10 pointer-events-none"
-              style={{ top: `${nowOffsetPx}px` }}
-            >
+          {nowOffsetPx != null && (
+            <div className="pointer-events-none absolute left-12 right-2 z-10" style={{ top: `${nowOffsetPx}px` }} aria-hidden="true">
               <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-destructive shadow-[0_0_0_4px_rgba(239,68,68,0.15)]" />
-                <div className="flex-1 h-px bg-destructive" />
-                <span className="text-[10px] font-bold text-destructive tabular-nums">
-                  {format(new Date(), 'HH:mm')}
-                </span>
+                <span className="h-2 w-2 rounded-full bg-brand" />
+                <span className="h-px flex-1 bg-brand" />
+                <span className="text-2xs font-medium tabular-nums text-brand">{format(new Date(), 'HH:mm')}</span>
               </div>
             </div>
           )}
 
-          {/* Events */}
-          {dayEvents.map((e) => {
-            const pos = eventPosition(e);
-            if (!pos) return null;
+          {placed.map((p) => {
+            const top = ((p.startMin - startHour * 60) / 60) * HOUR_HEIGHT;
+            const height = Math.max(((p.endMin - p.startMin) / 60) * HOUR_HEIGHT, 28);
+            const widthPct = 100 / p.columns;
             return (
               <div
-                key={e.id}
-                className="absolute left-[60px] right-3 z-20"
-                style={{ top: `${pos.top}px`, height: `${pos.height}px` }}
+                key={p.event.id}
+                className="absolute z-20 pr-1"
+                style={{
+                  top: `${top}px`,
+                  height: `${height}px`,
+                  left: `calc(60px + (100% - 72px) * ${(p.column * widthPct) / 100})`,
+                  width: `calc((100% - 72px) * ${widthPct / 100})`,
+                }}
               >
-                {/* `renderEvent` retourne déjà un <button> cliquable — pas besoin
-                    d'un wrapper `<div onClick>` qui créerait du HTML invalide
-                    (button nested dans div onClick = double trigger possible). */}
-                <div className="h-full overflow-hidden">
-                  {renderEvent(e, { compact: pos.height < 70 })}
-                </div>
+                <div className="h-full overflow-hidden">{renderEvent(p.event, { compact: height < 70 })}</div>
               </div>
             );
           })}

@@ -1,39 +1,31 @@
 /**
- * CalendarFiltersBar — barre de filtres pills pour la page Calendar.
+ * CalendarFiltersBar — barre de filtres de l'agenda.
  *
- * Filtres disponibles :
- * - Type d'événement (entretien / inmail / séquence)
- * - Mes RDV (toggle : créés par l'utilisateur courant)
- * - Manager (multi-select parmi les managers vus dans la semaine)
- * - Mission (multi-select parmi les missions vues dans la semaine)
- * - Format (visio / présentiel / téléphone)
- * - Round (1er / 2e / final — uniquement pour les qualifs)
- *
- * Pattern Linear : pills clickables qui ouvrent un popover avec checkboxes.
- * Active filter count badge sur la pill, "Effacer" CTA quand filtres actifs.
+ * - Périmètre (Mon agenda / Équipe) : mêmes mots et même contrôle que
+ *   « Mes tâches / Équipe » sur la page Tâches (revue design A-45).
+ * - Type, format, étape, animateur, mission : FilterPill (options cochables).
+ * - Vues enregistrées : une combinaison de filtres nommée, rechargeable,
+ *   supprimable après confirmation.
  */
 
 import React, { useMemo, useState } from 'react';
+import { Bookmark, BookmarkPlus, Briefcase, CheckCircle2, Filter, Trash2, User as UserIcon, Video, X } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
-  Briefcase,
-  User as UserIcon,
-  Building2,
-  Video,
-  X,
-  CheckCircle2,
-  Filter,
-  Bookmark,
-  BookmarkPlus,
-  Trash2,
-  ChevronDown,
-} from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
-import { cn } from '@/lib/utils';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { FilterOption, FilterPill } from '@/components/ui/filter-pill';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import type {
   CalendarEvent,
   CalendarEventFormat,
@@ -79,7 +71,7 @@ interface CalendarFiltersBarProps {
   /** Tous les events de la semaine — sert à dériver les options uniques (managers/missions) */
   allEvents: CalendarEvent[];
   currentUserId: string | null;
-  /** Presets sauvegardés par l'user (filter combos nommés) */
+  /** Vues enregistrées par l'utilisateur (combinaisons de filtres nommées) */
   presets?: CalendarFilterPreset[];
   onSavePreset?: (name: string) => void;
   onLoadPreset?: (presetId: string) => void;
@@ -92,49 +84,22 @@ const TYPE_OPTIONS: { value: CalendarEventType; label: string }[] = [
   { value: 'sequence_step', label: 'Séquences' },
 ];
 
-const FORMAT_OPTIONS: { value: CalendarEventFormat; label: string; icon: React.ReactNode }[] = [
-  { value: 'video', label: 'Visio', icon: <Video className="w-3.5 h-3.5" /> },
-  { value: 'in_person', label: 'Présentiel', icon: <Building2 className="w-3.5 h-3.5" /> },
-  { value: 'phone', label: 'Téléphone', icon: <Briefcase className="w-3.5 h-3.5" /> },
+const FORMAT_OPTIONS: { value: CalendarEventFormat; label: string }[] = [
+  { value: 'video', label: 'Visio' },
+  { value: 'in_person', label: 'Présentiel' },
+  { value: 'phone', label: 'Téléphone' },
 ];
 
+// Mêmes libellés que la fenêtre « Programmer un entretien » et que les cartes.
 const ROUND_OPTIONS = [
   { value: '1', label: '1er entretien' },
   { value: '2', label: '2e entretien' },
   { value: '3', label: '3e entretien' },
-  { value: 'final', label: 'Final' },
+  { value: 'final', label: 'Entretien final' },
 ];
 
-const FilterPill: React.FC<{
-  label: string;
-  count: number;
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-}> = ({ label, count, icon, children }) => (
-  <Popover>
-    <PopoverTrigger asChild>
-      <button
-        className={cn(
-          'inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors shrink-0 whitespace-nowrap',
-          count > 0
-            ? 'bg-foreground text-background border-foreground'
-            : 'border-border bg-background hover:bg-accent text-foreground',
-        )}
-      >
-        {icon}
-        {label}
-        {count > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-background text-foreground text-[10px] font-bold tabular-nums">
-            {count}
-          </span>
-        )}
-      </button>
-    </PopoverTrigger>
-    <PopoverContent className="w-56 p-3 rounded-xl border-border" align="start">
-      {children}
-    </PopoverContent>
-  </Popover>
-);
+const toggle = <T,>(list: T[], value: T, on: boolean): T[] =>
+  on ? [...list, value] : list.filter((v) => v !== value);
 
 export const CalendarFiltersBar: React.FC<CalendarFiltersBarProps> = ({
   filters,
@@ -147,325 +112,232 @@ export const CalendarFiltersBar: React.FC<CalendarFiltersBarProps> = ({
   onDeletePreset,
 }) => {
   const [presetName, setPresetName] = useState('');
-  // Dérive les managers uniques depuis les events de la semaine
+  const [presetToDelete, setPresetToDelete] = useState<CalendarFilterPreset | null>(null);
+
+  // Animateurs vus dans la période
   const managers = useMemo(() => {
     const map = new Map<string, { userId: string; displayName: string }>();
     for (const e of allEvents) {
       const m = e.meta?.manager;
       if (m?.userId && !map.has(m.userId)) {
-        map.set(m.userId, {
-          userId: m.userId,
-          displayName: m.displayName || m.userId.slice(0, 8),
-        });
+        map.set(m.userId, { userId: m.userId, displayName: m.displayName || 'Membre sans nom' });
       }
     }
-    return Array.from(map.values()).sort((a, b) =>
-      (a.displayName || '').localeCompare(b.displayName || ''),
-    );
+    return Array.from(map.values()).sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
   }, [allEvents]);
 
-  // Dérive les missions uniques
+  // Missions vues dans la période
   const projects = useMemo(() => {
     const map = new Map<string, { id: string; name: string; client: string | null }>();
     for (const e of allEvents) {
       const p = e.meta?.projectId;
       if (p && !map.has(p)) {
-        map.set(p, {
-          id: p,
-          name: e.meta?.projectName || e.meta?.jobTitle || 'Mission',
-          client: e.meta?.clientName ?? null,
-        });
+        map.set(p, { id: p, name: e.meta?.projectName || e.meta?.jobTitle || 'Mission', client: e.meta?.clientName ?? null });
       }
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [allEvents]);
 
-  const activeCount =
-    filters.types.length +
-    (filters.myEventsOnly ? 1 : 0) +
-    filters.managerUserIds.length +
-    filters.projectIds.length +
-    filters.formats.length +
-    filters.rounds.length;
+  // Le périmètre (Mon agenda / Équipe) ne compte pas : « Effacer » ne le touche pas.
+  const filterCount =
+    filters.types.length + filters.managerUserIds.length + filters.projectIds.length + filters.formats.length + filters.rounds.length;
+  const canSavePreset = filterCount > 0 || filters.myEventsOnly;
 
-  const clearAll = () => onFiltersChange(DEFAULT_FILTERS);
-
-  // Helpers toggle
-  const toggleArrayValue = <T,>(arr: T[], value: T): T[] =>
-    arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
+  const savePreset = () => {
+    if (!onSavePreset || !presetName.trim() || !canSavePreset) return;
+    onSavePreset(presetName.trim());
+    setPresetName('');
+  };
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-wrap">
-      {/* Mes RDV toggle */}
+    <div className="flex flex-wrap items-center gap-2">
       {currentUserId && (
-        <button
-          onClick={() => onFiltersChange({ ...filters, myEventsOnly: !filters.myEventsOnly })}
-          className={cn(
-            'inline-flex items-center gap-1.5 h-8 px-3 rounded-full border text-[11.5px] font-medium transition-colors shrink-0',
-            filters.myEventsOnly
-              ? 'bg-foreground text-background border-foreground'
-              : 'border-border bg-background hover:bg-accent text-foreground',
-          )}
-        >
-          <UserIcon className="w-3.5 h-3.5" />
-          Mes RDV
-        </button>
+        <SegmentedControl
+          aria-label="Périmètre de l'agenda"
+          value={filters.myEventsOnly ? 'mine' : 'team'}
+          onValueChange={(v) => onFiltersChange({ ...filters, myEventsOnly: v === 'mine' })}
+          options={[
+            { value: 'mine', label: 'Mon agenda', title: 'Les événements que vous animez' },
+            { value: 'team', label: 'Équipe', title: "Les événements de toute l'équipe" },
+          ]}
+        />
       )}
 
-      {/* Type */}
-      <FilterPill
-        label="Type"
-        count={filters.types.length}
-        icon={<Filter className="w-3.5 h-3.5" />}
-      >
-        <div className="space-y-2">
-          {TYPE_OPTIONS.map((opt) => (
-            <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm">
-              <Checkbox
-                checked={filters.types.includes(opt.value)}
-                onCheckedChange={(checked) =>
-                  onFiltersChange({
-                    ...filters,
-                    types: checked
-                      ? [...filters.types, opt.value]
-                      : filters.types.filter((t) => t !== opt.value),
-                  })
-                }
-              />
-              {opt.label}
-            </label>
-          ))}
-        </div>
+      <FilterPill label="Type" icon={Filter} count={filters.types.length}>
+        {TYPE_OPTIONS.map((opt) => (
+          <FilterOption
+            key={opt.value}
+            checked={filters.types.includes(opt.value)}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, types: toggle(filters.types, opt.value, on) })}
+          >
+            {opt.label}
+          </FilterOption>
+        ))}
       </FilterPill>
 
-      {/* Format */}
-      <FilterPill
-        label="Format"
-        count={filters.formats.length}
-        icon={<Video className="w-3.5 h-3.5" />}
-      >
-        <div className="space-y-2">
-          {FORMAT_OPTIONS.map((opt) => (
-            <label
-              key={opt.value}
-              className="flex items-center gap-2 cursor-pointer text-sm"
-            >
-              <Checkbox
-                checked={filters.formats.includes(opt.value)}
-                onCheckedChange={(checked) =>
-                  onFiltersChange({
-                    ...filters,
-                    formats: checked
-                      ? [...filters.formats, opt.value]
-                      : filters.formats.filter((f) => f !== opt.value),
-                  })
-                }
-              />
-              <span className="text-muted-foreground">{opt.icon}</span>
-              {opt.label}
-            </label>
-          ))}
-        </div>
+      <FilterPill label="Format" icon={Video} count={filters.formats.length}>
+        {FORMAT_OPTIONS.map((opt) => (
+          <FilterOption
+            key={opt.value}
+            checked={filters.formats.includes(opt.value)}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, formats: toggle(filters.formats, opt.value, on) })}
+          >
+            {opt.label}
+          </FilterOption>
+        ))}
       </FilterPill>
 
-      {/* Round / Étape — pertinent surtout pour les entretiens */}
-      <FilterPill
-        label="Étape"
-        count={filters.rounds.length}
-        icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-      >
-        <div className="space-y-2">
-          {ROUND_OPTIONS.map((opt) => (
-            <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm">
-              <Checkbox
-                checked={filters.rounds.includes(opt.value)}
-                onCheckedChange={(checked) =>
-                  onFiltersChange({
-                    ...filters,
-                    rounds: checked
-                      ? [...filters.rounds, opt.value]
-                      : filters.rounds.filter((r) => r !== opt.value),
-                  })
-                }
-              />
-              {opt.label}
-            </label>
-          ))}
-        </div>
+      <FilterPill label="Étape" icon={CheckCircle2} count={filters.rounds.length}>
+        {ROUND_OPTIONS.map((opt) => (
+          <FilterOption
+            key={opt.value}
+            checked={filters.rounds.includes(opt.value)}
+            onCheckedChange={(on) => onFiltersChange({ ...filters, rounds: toggle(filters.rounds, opt.value, on) })}
+          >
+            {opt.label}
+          </FilterOption>
+        ))}
       </FilterPill>
 
-      {/* Manager (uniquement si > 1 manager dans la semaine) */}
       {managers.length > 1 && (
-        <FilterPill
-          label="Manager"
-          count={filters.managerUserIds.length}
-          icon={<UserIcon className="w-3.5 h-3.5" />}
-        >
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {managers.map((m) => (
-              <label
-                key={m.userId}
-                className="flex items-center gap-2 cursor-pointer text-sm"
-              >
-                <Checkbox
-                  checked={filters.managerUserIds.includes(m.userId)}
-                  onCheckedChange={(checked) =>
-                    onFiltersChange({
-                      ...filters,
-                      managerUserIds: checked
-                        ? [...filters.managerUserIds, m.userId]
-                        : filters.managerUserIds.filter((u) => u !== m.userId),
-                    })
-                  }
-                />
-                <span className="truncate">{m.displayName}</span>
-              </label>
-            ))}
-          </div>
+        <FilterPill label="Animé par" icon={UserIcon} count={filters.managerUserIds.length} contentClassName="max-h-72 overflow-y-auto">
+          {managers.map((m) => (
+            <FilterOption
+              key={m.userId}
+              checked={filters.managerUserIds.includes(m.userId)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, managerUserIds: toggle(filters.managerUserIds, m.userId, on) })}
+            >
+              {m.displayName}
+            </FilterOption>
+          ))}
         </FilterPill>
       )}
 
-      {/* Mission */}
       {projects.length > 0 && (
-        <FilterPill
-          label="Mission"
-          count={filters.projectIds.length}
-          icon={<Briefcase className="w-3.5 h-3.5" />}
-        >
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {projects.map((p) => (
-              <label key={p.id} className="flex items-center gap-2 cursor-pointer text-sm">
-                <Checkbox
-                  checked={filters.projectIds.includes(p.id)}
-                  onCheckedChange={(checked) =>
-                    onFiltersChange({
-                      ...filters,
-                      projectIds: checked
-                        ? [...filters.projectIds, p.id]
-                        : filters.projectIds.filter((i) => i !== p.id),
-                    })
-                  }
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate">{p.name}</div>
-                  {p.client && (
-                    <div className="text-[10px] text-muted-foreground truncate">{p.client}</div>
-                  )}
-                </div>
-              </label>
-            ))}
-          </div>
+        <FilterPill label="Mission" icon={Briefcase} count={filters.projectIds.length} contentClassName="max-h-72 overflow-y-auto">
+          {projects.map((p) => (
+            <FilterOption
+              key={p.id}
+              checked={filters.projectIds.includes(p.id)}
+              onCheckedChange={(on) => onFiltersChange({ ...filters, projectIds: toggle(filters.projectIds, p.id, on) })}
+              description={p.client}
+            >
+              {p.name}
+            </FilterOption>
+          ))}
         </FilterPill>
       )}
 
-      {/* Presets dropdown — uniquement si onSavePreset fourni */}
       {onSavePreset && (
         <Popover>
           <PopoverTrigger asChild>
-            <button
-              className={cn(
-                'inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-border bg-background hover:bg-accent text-[11.5px] font-medium text-foreground transition-colors shrink-0',
-                presets.length > 0 && 'gap-2',
-              )}
-              title="Filtres sauvegardés"
-            >
-              <Bookmark className="w-3.5 h-3.5" />
-              <span>Vues</span>
-              {presets.length > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-foreground/10 text-foreground text-[10px] font-bold tabular-nums">
-                  {presets.length}
-                </span>
-              )}
-              <ChevronDown className="w-3 h-3" />
-            </button>
+            <Button type="button" variant="outline" size="sm">
+              <Bookmark aria-hidden="true" />
+              Vues{presets.length > 0 ? ` (${presets.length})` : ''}
+            </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-72 p-3 rounded-xl border-border" align="end">
-            <div className="space-y-3">
-              {/* Save current as preset */}
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  Sauvegarder cette vue
-                </label>
-                <div className="flex items-center gap-1.5 mt-1.5">
-                  <input
-                    type="text"
-                    placeholder="Ex: Mes entretiens semaine"
-                    value={presetName}
-                    onChange={(e) => setPresetName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && presetName.trim() && activeCount > 0) {
-                        onSavePreset(presetName.trim());
-                        setPresetName('');
-                      }
-                    }}
-                    className="flex-1 h-8 px-2.5 rounded-lg bg-background border border-border text-xs focus:outline-none focus:ring-1 focus:ring-foreground/30"
-                  />
-                  <button
-                    onClick={() => {
-                      if (presetName.trim() && activeCount > 0) {
-                        onSavePreset(presetName.trim());
-                        setPresetName('');
-                      }
-                    }}
-                    disabled={!presetName.trim() || activeCount === 0}
-                    className="h-8 w-8 flex items-center justify-center rounded-lg bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
-                    title={activeCount === 0 ? 'Active des filtres pour sauver' : 'Sauvegarder'}
-                  >
-                    <BookmarkPlus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                {activeCount === 0 && (
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Active au moins 1 filtre pour pouvoir le sauvegarder.
-                  </p>
-                )}
+          <PopoverContent className="w-72 space-y-3 p-3" align="end">
+            <div className="space-y-1.5">
+              <Label htmlFor="calendar-preset-name">Enregistrer ces filtres</Label>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  id="calendar-preset-name"
+                  placeholder="Mes entretiens de la semaine"
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      savePreset();
+                    }
+                  }}
+                  className="h-8"
+                  aria-describedby={!canSavePreset ? 'calendar-preset-hint' : undefined}
+                />
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="icon-sm"
+                  onClick={savePreset}
+                  disabled={!presetName.trim() || !canSavePreset}
+                  aria-label="Enregistrer la vue"
+                >
+                  <BookmarkPlus aria-hidden="true" />
+                </Button>
               </div>
-
-              {/* Saved presets list */}
-              {presets.length > 0 && (
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    Vues sauvegardées
-                  </label>
-                  <div className="mt-1.5 space-y-1">
-                    {presets.map((p) => (
-                      <div
-                        key={p.id}
-                        className="group flex items-center gap-1 rounded-lg hover:bg-muted/40 transition-colors"
-                      >
-                        <button
-                          onClick={() => onLoadPreset?.(p.id)}
-                          className="flex-1 text-left px-2.5 py-1.5 text-xs font-medium text-foreground truncate"
-                        >
-                          {p.name}
-                        </button>
-                        <button
-                          onClick={() => onDeletePreset?.(p.id)}
-                          className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {!canSavePreset && (
+                <p id="calendar-preset-hint" className="text-xs text-muted-foreground">
+                  Choisissez au moins un filtre pour l'enregistrer.
+                </p>
               )}
             </div>
+
+            {presets.length > 0 && (
+              <div>
+                <p className="eyebrow mb-1.5">Vues enregistrées</p>
+                <ul className="space-y-0.5">
+                  {presets.map((p) => (
+                    <li key={p.id} className="flex items-center gap-1 rounded-md hover:bg-accent">
+                      <button
+                        type="button"
+                        onClick={() => onLoadPreset?.(p.id)}
+                        className="min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {p.name}
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="text-muted-foreground hover:text-danger"
+                        onClick={() => setPresetToDelete(p)}
+                        aria-label={`Supprimer la vue « ${p.name} »`}
+                      >
+                        <Trash2 aria-hidden="true" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </PopoverContent>
         </Popover>
       )}
 
-      {/* Clear all */}
-      {activeCount > 0 && (
-        <button
-          onClick={clearAll}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-destructive/40 bg-destructive/5 hover:bg-destructive/10 text-destructive text-[11.5px] font-medium transition-colors shrink-0"
+      {filterCount > 0 && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onFiltersChange({ ...DEFAULT_FILTERS, myEventsOnly: filters.myEventsOnly })}
         >
-          <X className="w-3.5 h-3.5" />
-          Effacer ({activeCount})
-        </button>
+          <X aria-hidden="true" />
+          Effacer les filtres
+        </Button>
       )}
+
+      <AlertDialog open={!!presetToDelete} onOpenChange={(o) => !o && setPresetToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer la vue ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La vue « {presetToDelete?.name} » sera supprimée. Les événements ne sont pas touchés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (presetToDelete) onDeletePreset?.(presetToDelete.id);
+                setPresetToDelete(null);
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

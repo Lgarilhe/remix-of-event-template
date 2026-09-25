@@ -29,6 +29,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { differenceInDays, differenceInHours, parseISO } from 'date-fns';
 
+/**
+ * Nom de l'entretien pour une phrase : « Entretien final », « Qualification ».
+ * Évite « Entretien Entretien final » quand le nom commence déjà par le mot.
+ */
+const eventLabel = (eventName: string | null | undefined): string => {
+  const name = eventName?.trim();
+  if (!name) return "L'entretien";
+  return /^entretien\b/i.test(name) ? name : `L'entretien « ${name} »`;
+};
+
 export interface AutoTaskSuggestion {
   /** Clé unique pour dédup côté UI (pas d'id DB tant que pas créée) */
   key: string;
@@ -151,12 +161,12 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
       suggestions.push({
         key: `debrief-${ev.id}`,
         category: 'debrief',
-        title: `Débrief de l'entretien ${ev.candidate_name}`,
+        title: `Compte rendu de l'entretien avec ${ev.candidate_name}`,
         description: [
-          `Entretien ${ev.event_name || 'qualif'} terminé il y a ${hoursSince}h.`,
+          `${eventLabel(ev.event_name)} terminé il y a ${hoursSince} h.`,
           ev.client_name ? `Client : ${ev.client_name}.` : null,
           ev.job_title ? `Poste : ${ev.job_title}.` : null,
-          'Note tes observations + envoie le retour client.',
+          'Notez vos observations, puis envoyez le retour au client.',
         ]
           .filter(Boolean)
           .join(' '),
@@ -169,7 +179,7 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
         },
         projectId: ev.project_id,
         sourceEventId: ev.id,
-        reason: `Entretien terminé il y a ${hoursSince}h sans débrief enregistré`,
+        reason: `Entretien terminé il y a ${hoursSince} h, sans compte rendu enregistré`,
       });
     }
 
@@ -184,12 +194,12 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
       suggestions.push({
         key: `prep-${ev.id}`,
         category: 'interview_prep',
-        title: `Préparer l'entretien ${ev.candidate_name}`,
+        title: `Préparer l'entretien avec ${ev.candidate_name}`,
         description: [
-          `RDV ${ev.event_name || 'qualif'} dans ${hoursUntil}h.`,
+          `${eventLabel(ev.event_name)} dans ${hoursUntil} h.`,
           ev.client_name ? `Client : ${ev.client_name}.` : null,
           ev.job_title ? `Poste : ${ev.job_title}.` : null,
-          'Relire CV + scoring + questions à creuser.',
+          'Relisez le CV et le score, puis préparez vos questions.',
         ]
           .filter(Boolean)
           .join(' '),
@@ -202,7 +212,7 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
         },
         projectId: ev.project_id,
         sourceEventId: ev.id,
-        reason: `RDV dans ${hoursUntil}h sans tâche de prep enregistrée`,
+        reason: `Entretien dans ${hoursUntil} h, sans tâche de préparation`,
       });
     }
   }
@@ -256,8 +266,8 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
         category: 'follow_up',
         title: `Relancer ${c.candidate_name}`,
         description: [
-          `Stagnant en "${stage}" depuis ${days}j (guide ${GUIDE_TIMES[stage] || '?'}j).`,
-          'Renvoie un message ou propose une nouvelle action.',
+          `À l'étape « ${stage} » depuis ${days} jours (délai prévu : ${GUIDE_TIMES[stage] ?? '?'} jours).`,
+          'Envoyez un message ou proposez une prochaine étape.',
         ]
           .filter(Boolean)
           .join(' '),
@@ -270,7 +280,7 @@ const fetchSuggestions = async (orgId: string): Promise<AutoTaskSuggestion[]> =>
         },
         projectId: null, // job_id !== project_id, on garde null
         sourceEventId: null,
-        reason: `Stagnant depuis ${days}j en "${stage}"`,
+        reason: `Sans mouvement depuis ${days} jours à l'étape « ${stage} »`,
       });
     }
   }

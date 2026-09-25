@@ -1,50 +1,31 @@
 /**
- * EventDetailSheet — slide-in panel droit avec tous les détails d'un event
- * du calendrier + actions (voir candidat, voir mission, copier lien, etc.).
+ * EventDetailSheet — fiche d'un événement de l'agenda, ouverte au clic.
  *
- * Affiché au click sur une EventCard. Le contenu varie selon le type :
- * - qualification : candidat preview + mission + manager + lieu + Calendly badge
- * - inmail : destinataire + sujet + message preview
- * - sequence_step : enrollment + sequence + preview du message
- *
- * Pattern Cal.com / Notion Calendar : panneau riche mais pas overwhelming,
- * actions en haut et en bas pour mobile-friendly.
+ * Candidat, mission, animateur, lieu et notes, puis une seule action
+ * principale : le compte rendu d'un entretien passé (même page que la barre
+ * latérale), sinon rejoindre la réunion quand elle a un lien, sinon préparer
+ * l'entretien. Le reste (tâches de préparation et de compte rendu) est dans le
+ * menu « Plus » (revue design A-47).
  */
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { format, parseISO, differenceInMinutes } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
-import {
-  ExternalLink,
-  Copy,
-  Briefcase,
-  MapPin,
-  Clock,
-  User as UserIcon,
-  Building2,
-  StickyNote,
-  Mail,
-  Zap,
-  CheckCircle2,
-  Sparkles,
-  Video,
-  Phone,
-  ArrowRight,
-  CheckSquare,
-} from 'lucide-react';
+import { CalendarCheck2, CheckSquare, ClipboardList, Copy, FileText, MapPin, MoreHorizontal, Phone, Video } from 'lucide-react';
 import { toast } from 'sonner';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
-import { cn } from '@/lib/utils';
+import { EVENT_TYPES, roundLabel } from '@/components/calendar/eventMeta';
 import type { CalendarEvent } from '@/hooks/useCalendarEvents';
 
 interface EventDetailSheetProps {
@@ -53,95 +34,46 @@ interface EventDetailSheetProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const TYPE_TONES: Record<
-  CalendarEvent['type'],
-  { label: string; bg: string; iconBg: string; iconColor: string; ring: string }
-> = {
-  qualification: {
-    label: 'Entretien',
-    bg: 'bg-violet-500/10',
-    iconBg: 'bg-violet-500/15',
-    iconColor: 'text-violet-600 dark:text-violet-400',
-    ring: 'ring-violet-500/30',
-  },
-  inmail: {
-    label: 'InMail',
-    bg: 'bg-info/10',
-    iconBg: 'bg-info/15',
-    iconColor: 'text-info',
-    ring: 'ring-info/30',
-  },
-  sequence_step: {
-    label: 'Séquence',
-    bg: 'bg-cyan-500/10',
-    iconBg: 'bg-cyan-500/15',
-    iconColor: 'text-cyan-600 dark:text-cyan-400',
-    ring: 'ring-cyan-500/30',
-  },
-  reminder: {
-    label: 'Rappel',
-    bg: 'bg-warning/10',
-    iconBg: 'bg-warning/15',
-    iconColor: 'text-warning',
-    ring: 'ring-warning/30',
-  },
-};
-
-/** Détecte le type de meeting depuis l'URL de location pour afficher l'icône appropriée. */
+/** Lieu : libellé lisible, icône et lien éventuel. */
 const getLocationMeta = (
   location: string | null | undefined,
-): { icon: React.ReactNode; label: string; href: string | null } => {
-  if (!location) return { icon: <MapPin className="w-4 h-4" />, label: 'Lieu non précisé', href: null };
+): { icon: React.ElementType; label: string; href: string | null } => {
+  if (!location) return { icon: MapPin, label: 'Lieu non précisé', href: null };
   const lower = location.toLowerCase();
-  if (lower.trim() === 'visio') {
-    // Preset « Visio » sans lien (CreateEventModal)
-    return { icon: <Video className="w-4 h-4" />, label: 'Visio', href: null };
-  }
-  if (lower.includes('meet.google')) {
-    return { icon: <Video className="w-4 h-4" />, label: 'Google Meet', href: location };
-  }
-  if (lower.includes('zoom.us')) {
-    return { icon: <Video className="w-4 h-4" />, label: 'Zoom', href: location };
-  }
-  if (lower.includes('teams.microsoft') || lower.includes('teams.live')) {
-    return { icon: <Video className="w-4 h-4" />, label: 'Microsoft Teams', href: location };
-  }
-  if (lower.startsWith('http')) {
-    return { icon: <ExternalLink className="w-4 h-4" />, label: 'Lien visio', href: location };
-  }
-  if (lower.includes('téléphone') || lower.includes('phone') || lower.includes('appel')) {
-    return { icon: <Phone className="w-4 h-4" />, label: location, href: null };
-  }
-  return { icon: <MapPin className="w-4 h-4" />, label: location, href: null };
+  if (lower.trim() === 'visio') return { icon: Video, label: 'Visio, lien à venir', href: null };
+  if (lower.includes('meet.google')) return { icon: Video, label: 'Google Meet', href: location };
+  if (lower.includes('zoom.us')) return { icon: Video, label: 'Zoom', href: location };
+  if (lower.includes('teams.microsoft') || lower.includes('teams.live')) return { icon: Video, label: 'Microsoft Teams', href: location };
+  if (lower.startsWith('http')) return { icon: Video, label: 'Lien de visio', href: location };
+  if (lower.includes('téléphone') || lower.includes('phone') || lower.includes('appel')) return { icon: Phone, label: location, href: null };
+  return { icon: MapPin, label: location, href: null };
 };
 
-const getInitials = (name: string | null | undefined): string => {
-  if (!name) return '?';
-  const tokens = name.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return '?';
-  if (tokens.length === 1) return tokens[0].slice(0, 2).toUpperCase();
-  return (tokens[0][0] + tokens[tokens.length - 1][0]).toUpperCase();
-};
+const Block: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <section>
+    <h3 className="eyebrow mb-2">{title}</h3>
+    {children}
+  </section>
+);
 
-export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
-  event,
-  open,
-  onOpenChange,
-}) => {
+export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open, onOpenChange }) => {
   const navigate = useNavigate();
   const [taskModalOpen, setTaskModalOpen] = useState<'prep' | 'debrief' | null>(null);
 
   if (!event) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="w-full sm:max-w-md p-0" />
+        <SheetContent className="w-full p-0 sm:max-w-md" />
       </Sheet>
     );
   }
 
-  const tone = TYPE_TONES[event.type];
+  const type = EVENT_TYPES[event.type];
+  const TypeIcon = type.icon;
   const meta = event.meta || {};
-  const locationMeta = getLocationMeta(meta.location);
+  const location = getLocationMeta(meta.location);
+  const LocationIcon = location.icon;
+  const round = roundLabel(meta.round);
 
   const startDate = (() => {
     try {
@@ -150,358 +82,230 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
       return null;
     }
   })();
-  const endDate = event.endAt
-    ? (() => {
-        try {
-          return parseISO(event.endAt);
-        } catch {
-          return null;
-        }
-      })()
-    : null;
+  const endDate = (() => {
+    if (!event.endAt) return null;
+    try {
+      return parseISO(event.endAt);
+    } catch {
+      return null;
+    }
+  })();
   const durationMin = startDate && endDate ? differenceInMinutes(endDate, startDate) : null;
 
-  const dateLabel = startDate
-    ? format(startDate, 'EEEE d MMMM', { locale: fr }).replace(/^./, (c) => c.toUpperCase())
-    : '—';
+  const dateLabel = startDate ? format(startDate, 'EEEE d MMMM', { locale: fr }).replace(/^./, (c) => c.toUpperCase()) : 'Date inconnue';
   const timeRangeLabel = startDate
     ? endDate
-      ? `${format(startDate, 'HH:mm')} – ${format(endDate, 'HH:mm')}`
-      : format(startDate, 'HH:mm')
-    : '—';
+      ? `de ${format(startDate, 'HH:mm')} à ${format(endDate, 'HH:mm')}`
+      : `à ${format(startDate, 'HH:mm')}`
+    : '';
 
-  const isCalendly = !!meta.calendlyEventId;
+  const isInterview = event.type === 'qualification';
+  const refDate = endDate ?? startDate;
+  const isPast = refDate ? refDate.getTime() < Date.now() : false;
+  // Identifiant de la session d'entretien (événements « qualif-<id> »)
+  const sessionId = isInterview && event.id.startsWith('qualif-') ? event.id.slice('qualif-'.length) : null;
+  const canPrepare = isInterview && !isPast && !!meta.candidateId;
+  const openReport = () => {
+    navigate(`/qualification/${sessionId}`);
+    onOpenChange(false);
+  };
+  const prepareInterview = () => {
+    navigate(`/pipeline?candidate=${meta.candidateId}&tab=evaluation&prepareInterview=1`);
+    onOpenChange(false);
+  };
 
+  // Rien à copier pour le préréglage « Visio » sans lien.
+  const canCopyLocation = !!meta.location && meta.location.trim().toLowerCase() !== 'visio';
   const handleCopyLocation = async () => {
     if (!meta.location) return;
     try {
       await navigator.clipboard.writeText(meta.location);
-      toast.success('Lien copié');
+      toast.success(location.href ? 'Lien copié' : 'Adresse copiée');
     } catch {
-      toast.error('Impossible de copier');
+      toast.error("La copie n'a pas abouti. Sélectionnez le texte à la main.");
     }
   };
 
+  // Une action principale : le compte rendu d'un entretien passé, sinon
+  // rejoindre la visio si elle a un lien, sinon préparer l'entretien.
+  const primary: 'report' | 'join' | 'prepare' | null =
+    isPast && sessionId ? 'report' : !isPast && location.href ? 'join' : canPrepare ? 'prepare' : null;
+  const hasMenu = isInterview;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md p-0 overflow-y-auto flex flex-col">
-        {/* Header */}
-        <SheetHeader
-          className={cn('px-6 pt-6 pb-5 space-y-3 border-b border-border', tone.bg)}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div
-                className={cn(
-                  'h-9 w-9 rounded-lg flex items-center justify-center shrink-0',
-                  tone.iconBg,
-                  tone.iconColor,
-                )}
-              >
-                {event.type === 'qualification' ? (
-                  <Briefcase className="w-4 h-4" />
-                ) : event.type === 'inmail' ? (
-                  <Mail className="w-4 h-4" />
-                ) : event.type === 'sequence_step' ? (
-                  <Zap className="w-4 h-4" />
-                ) : (
-                  <Clock className="w-4 h-4" />
-                )}
-              </div>
-              <div className="flex flex-col">
-                <span
-                  className={cn(
-                    'text-[10px] uppercase tracking-wider font-bold',
-                    tone.iconColor,
-                  )}
-                >
-                  {tone.label}
-                </span>
-                {isCalendly && (
-                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-medium mt-0.5">
-                    <Sparkles className="w-2.5 h-2.5" />
-                    Via Calendly
-                  </span>
-                )}
-              </div>
-              {/* Round badge */}
-              {meta.round && (
-                <span
-                  className={cn(
-                    'inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 h-5 rounded-full shrink-0',
-                    meta.round.kind === 'final'
-                      ? 'bg-warning/15 text-warning ring-1 ring-warning/30'
-                      : meta.round.n === 1
-                      ? 'bg-foreground/[0.08] text-foreground/80'
-                      : meta.round.n === 2
-                      ? 'bg-info/10 text-info'
-                      : 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
-                  )}
-                >
-                  {meta.round.label}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <SheetTitle asChild>
-            <h2 className="font-display font-bold text-foreground text-xl tracking-tight leading-tight text-left">
-              {event.title}
-            </h2>
-          </SheetTitle>
-
-          <SheetDescription asChild>
-            <div className="text-sm text-muted-foreground space-y-1 text-left">
-              <div className="flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 shrink-0" />
-                <span>
-                  <span className="font-medium text-foreground">{dateLabel}</span>
-                  {' · '}
-                  <span className="font-medium text-foreground tabular-nums">{timeRangeLabel}</span>
-                  {durationMin && (
-                    <span className="text-muted-foreground"> · {durationMin} min</span>
-                  )}
-                </span>
-              </div>
-            </div>
+      <SheetContent className="flex w-full flex-col overflow-y-auto p-0 sm:max-w-md">
+        <SheetHeader className="space-y-2 border-b border-border px-6 pb-4 pt-6 text-left">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <TypeIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              {type.label}
+            </span>
+            {round && <span>· {round}</span>}
+            {meta.calendlyEventId && (
+              <span className="inline-flex items-center gap-1">
+                · <CalendarCheck2 className="h-3.5 w-3.5" aria-hidden="true" /> Pris via Calendly
+              </span>
+            )}
+          </p>
+          <SheetTitle className="pr-8 text-lg">{event.title}</SheetTitle>
+          <SheetDescription>
+            {dateLabel} {timeRangeLabel}
+            {durationMin ? ` (${durationMin} min)` : ''}
           </SheetDescription>
         </SheetHeader>
 
-        {/* Body */}
-        <div className="flex-1 px-6 py-5 space-y-5">
-          {/* Candidate */}
+        <div className="flex-1 space-y-5 px-6 py-5">
           {meta.candidateName && (
-            <Section title="Candidat" icon={<UserIcon className="w-3.5 h-3.5" />}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (meta.candidateId) {
-                    navigate(`/pipeline?candidate=${meta.candidateId}`);
-                    onOpenChange(false);
-                  }
-                }}
-                disabled={!meta.candidateId}
-                className="w-full text-left rounded-xl border border-border bg-card p-3 flex items-center gap-3 hover:bg-muted/30 transition-colors group disabled:cursor-default"
-              >
-                <CandidateAvatar
-                  name={meta.candidateName}
-                  avatarUrl={meta.candidateAvatarUrl ?? null}
-                  size={40}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="font-display font-semibold text-foreground text-sm truncate tracking-tight">
-                    {meta.candidateName}
-                  </div>
-                  {meta.candidateHeadline && (
-                    <div className="text-xs text-muted-foreground truncate mt-0.5">
-                      {meta.candidateHeadline}
-                    </div>
-                  )}
+            <Block title="Candidat">
+              {meta.candidateId ? (
+                <Link
+                  to={`/pipeline?candidate=${meta.candidateId}`}
+                  onClick={() => onOpenChange(false)}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <CandidateAvatar name={meta.candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} size={36} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-foreground">{meta.candidateName}</span>
+                    {meta.candidateHeadline && <span className="block truncate text-xs text-muted-foreground">{meta.candidateHeadline}</span>}
+                  </span>
+                </Link>
+              ) : (
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                  <CandidateAvatar name={meta.candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} size={36} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-foreground">{meta.candidateName}</span>
+                    {meta.candidateHeadline && <span className="block truncate text-xs text-muted-foreground">{meta.candidateHeadline}</span>}
+                  </span>
                 </div>
-                {meta.candidateId && (
-                  <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                )}
-              </button>
-            </Section>
+              )}
+            </Block>
           )}
 
-          {/* Mission — avec logo société client (Clearbit) */}
           {(meta.projectName || meta.jobTitle || meta.clientName) && (
-            <Section title="Mission" icon={<Briefcase className="w-3.5 h-3.5" />}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (meta.projectId) {
-                    navigate(`/missions/${meta.projectId}`);
-                    onOpenChange(false);
-                  }
-                }}
-                disabled={!meta.projectId}
-                className="w-full text-left rounded-xl border border-border bg-card p-3 hover:bg-muted/30 transition-colors group disabled:cursor-default"
-              >
-                <div className="flex items-start gap-3">
-                  <MissionCompanyLogo
-                    company={meta.clientName || meta.projectName || '?'}
-                    size={40}
-                  />
-                  <div className="min-w-0 flex-1">
-                    {meta.projectName && (
-                      <div className="font-display font-semibold text-foreground text-sm tracking-tight truncate">
-                        {meta.projectName}
-                      </div>
-                    )}
-                    {meta.jobTitle && !meta.projectName && (
-                      <div className="font-display font-semibold text-foreground text-sm tracking-tight truncate">
-                        {meta.jobTitle}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
-                      {meta.clientName && (
-                        <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
-                          <Building2 className="w-3 h-3" />
-                          {meta.clientName}
-                        </span>
+            <Block title="Mission">
+              {(() => {
+                const content = (
+                  <>
+                    <MissionCompanyLogo company={meta.clientName || meta.projectName || null} size={36} />
+                    <span className="min-w-0 flex-1">
+                      {/* Le nom de mission reprend souvent poste et client : on montre le poste, puis le client. */}
+                      <span className="block truncate text-sm font-medium text-foreground">
+                        {meta.jobTitle || meta.projectName || meta.clientName}
+                      </span>
+                      {meta.clientName && (meta.jobTitle || meta.projectName) && (
+                        <span className="block truncate text-xs text-muted-foreground">{meta.clientName}</span>
                       )}
-                      {meta.jobTitle && meta.projectName && (
-                        <>
-                          <span className="text-muted-foreground/40">·</span>
-                          <span>{meta.jobTitle}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {meta.projectId && (
-                    <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-2" />
-                  )}
-                </div>
-              </button>
-            </Section>
-          )}
-
-          {/* Manager */}
-          {meta.manager && (
-            <Section title="Animé par" icon={<UserIcon className="w-3.5 h-3.5" />}>
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-                {meta.manager.avatarUrl ? (
-                  <img
-                    src={meta.manager.avatarUrl}
-                    alt=""
-                    className="h-9 w-9 rounded-full object-cover ring-1 ring-border shrink-0"
-                  />
-                ) : (
-                  <div className="h-9 w-9 rounded-full bg-emerald-500/15 text-foreground flex items-center justify-center font-display font-bold text-sm shrink-0">
-                    {getInitials(meta.manager.displayName)}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-foreground truncate">
-                    {meta.manager.displayName || 'Manager'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Manager</div>
-                </div>
-              </div>
-            </Section>
-          )}
-
-          {/* Lieu */}
-          {meta.location && (
-            <Section title="Lieu" icon={locationMeta.icon}>
-              <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
-                <div className="h-9 w-9 rounded-lg bg-emerald-500/15 text-foreground flex items-center justify-center shrink-0">
-                  {locationMeta.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-foreground truncate">
-                    {locationMeta.label}
-                  </div>
-                  {locationMeta.href && (
-                    <div className="text-xs text-muted-foreground truncate">
-                      {meta.location}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {locationMeta.href && (
-                    <a
-                      href={locationMeta.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-                      title="Ouvrir le lien"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
-                  <button
-                    onClick={handleCopyLocation}
-                    className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-                    title="Copier"
-                    type="button"
+                    </span>
+                  </>
+                );
+                return meta.projectId ? (
+                  <Link
+                    to={`/missions/${meta.projectId}`}
+                    onClick={() => onOpenChange(false)}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </Section>
+                    {content}
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">{content}</div>
+                );
+              })()}
+            </Block>
           )}
 
-          {/* Notes */}
-          {meta.notes && (
-            <Section title="Notes" icon={<StickyNote className="w-3.5 h-3.5" />}>
-              <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                {meta.notes}
+          {meta.manager && (
+            <Block title="Animé par">
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                <CandidateAvatar name={meta.manager.displayName || 'Membre'} avatarUrl={meta.manager.avatarUrl ?? null} size={32} />
+                <span className="truncate text-sm font-medium text-foreground">{meta.manager.displayName || 'Membre sans nom'}</span>
               </div>
-            </Section>
+            </Block>
+          )}
+
+          {meta.location && (
+            <Block title="Lieu">
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-foreground-secondary">
+                  <LocationIcon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-foreground">{location.label}</span>
+                  {location.href && <span className="block truncate text-xs text-muted-foreground">{meta.location}</span>}
+                </span>
+                {canCopyLocation && (
+                  <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={handleCopyLocation}>
+                    <Copy aria-hidden="true" />
+                    Copier
+                  </Button>
+                )}
+              </div>
+            </Block>
+          )}
+
+          {meta.notes && (
+            <Block title="Notes">
+              <p className="whitespace-pre-wrap rounded-xl border border-border bg-muted/40 p-3 text-sm leading-relaxed text-foreground">
+                {meta.notes}
+              </p>
+            </Block>
           )}
         </div>
 
-        {/* Footer actions */}
-        <div className="border-t border-border px-6 py-4 bg-card sticky bottom-0 space-y-2">
-          {/* Quick task creation depuis le contexte event (qualif uniquement) */}
-          {event.type === 'qualification' && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setTaskModalOpen('prep')}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full border border-border bg-background hover:bg-accent text-xs font-medium text-foreground transition-colors"
-              >
-                <CheckSquare className="w-3.5 h-3.5" />
-                Tâche prép.
-              </button>
-              <button
-                type="button"
-                onClick={() => setTaskModalOpen('debrief')}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full border border-border bg-background hover:bg-accent text-xs font-medium text-foreground transition-colors"
-              >
-                <CheckSquare className="w-3.5 h-3.5" />
-                Tâche débrief
-              </button>
-            </div>
-          )}
-
-          {/* CTA Préparer l'entretien — uniquement pour les qualifs avec candidat */}
-          {event.type === 'qualification' && meta.candidateId && (
-            <button
-              type="button"
-              onClick={() => {
-                navigate(
-                  `/pipeline?candidate=${meta.candidateId}&tab=evaluation&prepareInterview=1`,
-                );
-                onOpenChange(false);
-              }}
-              className="w-full inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full border border-success/30 bg-success/10 hover:bg-success/15 text-foreground text-sm font-medium transition-colors"
-            >
-              <Sparkles className="w-4 h-4" />
-              Préparer l'entretien (scorecard IA)
-            </button>
-          )}
-
-          <div className="flex items-center gap-2">
-            {locationMeta.href ? (
-              <a
-                href={locationMeta.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity"
-              >
-                <Video className="w-4 h-4" />
-                Rejoindre la réunion
-              </a>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onOpenChange(false)}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full border border-border bg-background hover:bg-accent text-sm font-medium text-foreground transition-colors"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                OK
-              </button>
+        {(primary || hasMenu) && (
+          <div className="sticky bottom-0 flex items-center gap-2 border-t border-border bg-popover px-6 py-4">
+            {primary === 'report' && (
+              <Button type="button" variant="primary" className="flex-1" onClick={openReport}>
+                <FileText aria-hidden="true" />
+                Ouvrir le compte rendu
+              </Button>
+            )}
+            {primary === 'join' && location.href && (
+              <Button asChild variant="primary" className="flex-1">
+                <a href={location.href} target="_blank" rel="noopener noreferrer">
+                  <Video aria-hidden="true" />
+                  Rejoindre la réunion
+                </a>
+              </Button>
+            )}
+            {primary === 'prepare' && (
+              <Button type="button" variant="primary" className="flex-1" onClick={prepareInterview}>
+                <ClipboardList aria-hidden="true" />
+                Préparer l'entretien
+              </Button>
+            )}
+            {hasMenu && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" className={primary ? undefined : 'flex-1'}>
+                    <MoreHorizontal aria-hidden="true" />
+                    Plus
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  {canPrepare && primary !== 'prepare' && (
+                    <DropdownMenuItem onSelect={prepareInterview}>
+                      <ClipboardList className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Préparer l'entretien
+                    </DropdownMenuItem>
+                  )}
+                  {!isPast && (
+                    <DropdownMenuItem onSelect={() => setTaskModalOpen('prep')}>
+                      <CheckSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Créer une tâche de préparation
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onSelect={() => setTaskModalOpen('debrief')}>
+                    <CheckSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Créer une tâche de compte rendu
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
-        </div>
+        )}
       </SheetContent>
 
-      {/* Modal création tâche (prep ou débrief) — pré-rempli depuis l'event */}
       {taskModalOpen && (
         <CreateTaskModal
           open={!!taskModalOpen}
@@ -520,59 +324,39 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({
           prefillCategory={taskModalOpen === 'prep' ? 'interview_prep' : 'debrief'}
           prefillTitle={
             taskModalOpen === 'prep'
-              ? `Préparer l'entretien ${meta.candidateName ?? ''}`.trim()
-              : `Débrief de l'entretien ${meta.candidateName ?? ''}`.trim()
+              ? `Préparer l'entretien avec ${meta.candidateName ?? 'le candidat'}`
+              : `Compte rendu de l'entretien avec ${meta.candidateName ?? 'le candidat'}`
           }
           prefillDescription={
             taskModalOpen === 'prep'
               ? [
-                  `Avant le RDV ${meta.candidateName ?? ''} le ${dateLabel} à ${timeRangeLabel}.`,
+                  `Entretien le ${dateLabel.toLowerCase()} ${timeRangeLabel}.`,
                   meta.clientName ? `Client : ${meta.clientName}.` : null,
                   meta.jobTitle ? `Poste : ${meta.jobTitle}.` : null,
-                  'Relire CV + scoring + questions à creuser.',
+                  'Relisez le CV et le score, puis préparez vos questions.',
                 ]
                   .filter(Boolean)
                   .join(' ')
               : [
-                  `Après le RDV ${meta.candidateName ?? ''} le ${dateLabel}.`,
+                  `Entretien du ${dateLabel.toLowerCase()}.`,
                   meta.clientName ? `Client : ${meta.clientName}.` : null,
-                  'Notes + envoi retour client.',
+                  'Notez vos observations, puis envoyez le retour au client.',
                 ]
                   .filter(Boolean)
                   .join(' ')
           }
           prefillDueAt={
             taskModalOpen === 'prep'
-              ? // 1h avant l'event
-                startDate
-                ? new Date(startDate.getTime() - 60 * 60 * 1000)
+              ? startDate
+                ? new Date(startDate.getTime() - 60 * 60 * 1000) // 1 h avant
                 : undefined
-              : // 2h après l'event
-                endDate
-                ? new Date(endDate.getTime() + 2 * 60 * 60 * 1000)
+              : endDate
+                ? new Date(endDate.getTime() + 2 * 60 * 60 * 1000) // 2 h après
                 : undefined
           }
-          sourceEventId={
-            event.id.startsWith('qualif-') ? event.id.replace(/^qualif-/, '') : undefined
-          }
+          sourceEventId={event.id.startsWith('qualif-') ? event.id.replace(/^qualif-/, '') : undefined}
         />
       )}
     </Sheet>
   );
 };
-
-const Section: React.FC<{
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}> = ({ title, icon, children }) => (
-  <div>
-    <div className="flex items-center gap-1.5 mb-2 px-1">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-        {title}
-      </span>
-    </div>
-    {children}
-  </div>
-);

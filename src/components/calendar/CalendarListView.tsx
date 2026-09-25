@@ -1,8 +1,10 @@
 /**
- * CalendarListView — vue agenda chronologique scrollable.
+ * CalendarListView — la période en liste chronologique, jour par jour.
  *
- * Pattern Notion / Cal.com agenda view : groupé par jour, ligne par event,
- * mobile-friendly. Pas de grille horaire, juste une liste lisible.
+ * Seuls les jours qui ont des événements s'affichent : une semaine à un seul
+ * entretien tient en une ligne (revue design A-43). L'en-tête de jour reste
+ * visible en haut pendant le défilement. Lisible sur téléphone, c'est
+ * l'affichage par défaut sous 768 px.
  */
 
 import React from 'react';
@@ -14,83 +16,52 @@ import type { CalendarEvent } from '@/hooks/useCalendarEvents';
 interface CalendarListViewProps {
   days: Date[];
   events: CalendarEvent[];
-  onEventClick: (event: CalendarEvent) => void;
   renderEvent: (event: CalendarEvent, opts: { compact: boolean }) => React.ReactNode;
 }
 
-export const CalendarListView: React.FC<CalendarListViewProps> = ({
-  days,
-  events,
-  onEventClick,
-  renderEvent,
-}) => {
+export const CalendarListView: React.FC<CalendarListViewProps> = ({ days, events, renderEvent }) => {
+  const groups = days
+    .map((day) => ({
+      day,
+      events: events
+        .filter((e) => {
+          try {
+            return isSameDay(parseISO(e.startAt), day);
+          } catch {
+            return false;
+          }
+        })
+        .sort((a, b) => a.startAt.localeCompare(b.startAt)),
+    }))
+    .filter((g) => g.events.length > 0);
+
   return (
-    <div className="rounded-xl bg-card border border-border overflow-hidden divide-y divide-border">
-      {days.map((day) => {
-        const dayEvents = events
-          .filter((e) => {
-            try {
-              return isSameDay(parseISO(e.startAt), day);
-            } catch {
-              return false;
-            }
-          })
-          .sort((a, b) => a.startAt.localeCompare(b.startAt));
-
+    <div className="rounded-xl border border-border bg-card">
+      {groups.map(({ day, events: dayEvents }, i) => {
         const today = isToday(day);
-
         return (
-          <div key={format(day, 'yyyy-MM-dd')}>
-            {/* Day header sticky */}
-            <div
+          <section key={format(day, 'yyyy-MM-dd')} aria-label={format(day, 'EEEE d MMMM', { locale: fr })}>
+            <header
               className={cn(
-                'sticky top-0 z-10 px-5 py-2.5 backdrop-blur-sm flex items-center justify-between border-b border-border',
-                today ? 'bg-emerald-500/15' : 'bg-muted/40',
+                'sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-2.5',
+                i > 0 && 'border-t',
+                i === 0 && 'rounded-t-xl',
               )}
             >
-              <div className="flex items-baseline gap-2">
-                <span
-                  className={cn(
-                    'font-display font-bold text-foreground text-sm tracking-tight',
-                  )}
-                >
-                  {format(day, 'EEEE d MMMM', { locale: fr }).replace(/^./, (c) => c.toUpperCase())}
-                </span>
-                {today && (
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-foreground">
-                    Aujourd'hui
-                  </span>
-                )}
-              </div>
-              <span
-                className={cn(
-                  'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-bold tabular-nums',
-                  today ? 'bg-foreground text-background' : 'bg-foreground/10 text-foreground',
-                )}
-              >
-                {dayEvents.length}
+              <p className="text-sm font-semibold text-foreground">
+                {format(day, 'EEEE d MMMM', { locale: fr }).replace(/^./, (c) => c.toUpperCase())}
+                {today && <span className="ml-2 text-xs font-medium text-brand">Aujourd'hui</span>}
+              </p>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {dayEvents.length} événement{dayEvents.length > 1 ? 's' : ''}
               </span>
-            </div>
-
-            {/* Events */}
-            <div className="p-2 space-y-2">
-              {dayEvents.length === 0 ? (
-                <div className="text-center py-4 text-xs text-muted-foreground/60 italic">
-                  Pas d'événement
-                </div>
-              ) : (
-                dayEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    onClick={() => onEventClick(event)}
-                    className="cursor-pointer"
-                  >
-                    {renderEvent(event, { compact: false })}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+            </header>
+            <ul className="space-y-2 p-2">
+              {dayEvents.map((event) => (
+                <li key={event.id}>{renderEvent(event, { compact: false })}</li>
+              ))}
+            </ul>
+          </section>
         );
       })}
     </div>

@@ -82,20 +82,29 @@ Périmètre : `src/pages/Dashboard.tsx`, `src/components/dashboard/**`.
 
 Composants partagés modifiés : `CandidateAvatar` (initiales neutres, image décorative), `MissionCompanyLogo` (plus aucun appel à un service tiers : logo enregistré ou initiales, A-27), `LivePulse` (point fixe), `Sparkline` (monochrome), `Section` (niveau de titre, `aria-labelledby`), `StatGrid` (classes écrites en entier), `PageHeader` (actions qui passent à la ligne sur téléphone), `useAllReminders` (une lecture en échec remonte au lieu de renvoyer une liste vide). `CandidateAvatar` sert aussi au menu de l'avatar de la barre latérale : les initiales y deviennent neutres.
 
-Reste : dans Tâches, le logo reçoit l'intitulé du poste au lieu du client (A-27, lot 5). Le logo des clients pourrait être résolu côté serveur et enregistré sur la mission ; c'est une évolution du modèle de données, hors du chantier.
+Reste : le logo des clients pourrait être résolu côté serveur et enregistré sur la mission ; c'est une évolution du modèle de données, hors du chantier. (Dans Tâches, le logo recevait l'intitulé du poste : les lignes de tâche n'ont plus de logo depuis le lot 5.)
 
-### Lot 5 · Tâches et agenda
+### Lot 5 · Tâches et agenda (fait)
 
-Périmètre : `src/pages/Tasks.tsx`, `src/pages/Calendar.tsx` et leurs composants.
+Périmètre : `src/pages/Tasks.tsx`, `src/pages/Calendar.tsx`, `src/components/tasks/**`, `src/components/calendar/**`.
 
-Constats : A-34 et A-40 (P1), A-35 à A-49, A-56, A-57.
+- Une panne s'affiche comme une panne : `ErrorState` et « Réessayer » dans les deux pages, vérifié sur panne simulée. Le filtre « Actives » n'affiche pas « (0) » tant que la liste n'est pas lue (A-34, A-40).
+- Même en-tête (`PageHeader`) et mêmes contrôles dans les deux pages : `SegmentedControl` (« Mes tâches / Équipe », « Mon agenda / Équipe », « Semaine / Jour / Liste », avec `aria-pressed`) et `FilterPill`, deux primitives ajoutées au kit (A-38, A-45, A-56).
+- Tâches : plus de bandeau émeraude, de cartes de compteurs ni d'emoji. Les groupes (en retard, aujourd'hui, cette semaine, plus tard, terminées) portent leur nombre ; seule l'échéance dépassée se colore. Chaque ligne se coche avec la `Checkbox` du kit, mène au candidat et à la mission, se supprime après confirmation. Une suggestion tient en un titre et un motif, avec « Créer la tâche » et « Ignorer » (A-35 à A-37).
+- Plus de logo dans les lignes de tâche : l'intitulé du poste n'est plus pris pour un nom de client (A-27, part Tâches).
+- « Nouvelle tâche » et « Programmer un entretien » : chaque champ a son libellé, vouvoiement, messages d'erreur rédigés. La recherche de candidat suit le modèle d'une liste de suggestions accessible (flèches, Entrée, Échap ferme la liste sans fermer la fenêtre). Le format se choisit dans un segmenté, avec l'icône du téléphone pour « Téléphone » (A-39, A-46).
+- Une table pour les catégories de tâche (`src/lib/taskCategories.ts`), une pour les types d'événement et les libellés d'entretien (`src/components/calendar/eventMeta.ts`) : « 1er entretien », « 2e entretien », « Entretien final » dans la grille, la fiche, le filtre et le formulaire (A-44, A-46).
+- Semaine du lundi au dimanche. Vue jour : carte compacte, événements simultanés côte à côte, plage élargie pour un entretien très tôt ou très tard, trait de l'heure en accent. Vue liste : seuls les jours qui ont des événements, en-têtes collants. Sur téléphone, la liste est l'affichage par défaut, les jours vides restent compacts et les boutons de vue gardent leur libellé (A-41 à A-43, A-49).
+- Types d'événement neutres, reconnus à leur icône et à leur nom ; la seule couleur de la grille signale un conflit d'horaire. Un événement passé perd son fond et atténue son nom, sans opacité sur le texte (A-44).
+- Fiche d'événement : une action principale (« Ouvrir le compte rendu » pour un entretien passé, la page où mène aussi la barre latérale ; sinon « Rejoindre la réunion » ; sinon « Préparer l'entretien »), le reste dans « Plus ». « Copier » s'écrit en toutes lettres et disparaît quand il n'y a rien à copier (A-47).
+- Raccourcis J, K, T, N, 1, 2, 3 : même garde que les raccourcis G (`src/lib/keyboardShortcuts.ts`), inactifs sur un bouton, dans une liste ou quand une fenêtre est ouverte ; aide lisible ; l'affichage choisi se relit sans erreur quand le stockage du navigateur est bloqué (A-48).
+- Plus d'animation d'entrée propre aux deux pages : reste la transition de route de la coquille (A-57).
 
-- Une panne s'affiche comme une panne (`ErrorState` et « Réessayer »), jamais « Zéro tâche en cours » ni un agenda vide.
-- Même en-tête (`PageHeader`) et mêmes filtres pour les deux pages ; segmentés avec `aria-pressed`.
-- Suggestions et compteurs sans émeraude ; les chiffres ne se colorent que pour un retard.
-- « Nouvelle tâche » et « Programmer un entretien » : chaque champ a son libellé, vouvoiement.
-- Semaine du lundi au dimanche ; vue jour lisible ; liste sans rangées vides ; une couleur stable par type d'événement, prise dans les jetons.
-- Raccourcis clavier inactifs quand le focus est sur un bouton ou une liste.
+Vocabulaire : « compte rendu » remplace « débrief » dans les tâches et l'agenda, comme dans la barre latérale. L'action IA « Débrief rapide » relève du lot 7.
+
+Composants partagés modifiés : `ui/dialog.tsx` (Échap ferme d'abord une liste de suggestions ouverte, repérée par `data-suggestions-open` dans `src/lib/overlayInteractions.ts`), `GoShortcuts` (garde commune), `useCalendarEvents` (une lecture en échec remonte ; libellés d'entretien), `useAutoTaskSuggestions` (vouvoiement, « compte rendu »).
+
+Reste : les champs date et heure sont ceux du navigateur, leur format suit la langue du système.
 
 ### Lot 6 · Messagerie et séquences
 
@@ -166,7 +175,7 @@ Après la fusion de la refonte mission : suppression du code mort (G-19), des je
 
 ## Composants partagés
 
-Existants après les lots 1 et 2, à employer partout (les deux sessions) :
+Existants, à employer partout (les deux sessions) :
 
 | Besoin | Composant |
 |---|---|
@@ -179,6 +188,9 @@ Existants après les lots 1 et 2, à employer partout (les deux sessions) :
 | Bandeau | `Banner` (`src/components/ui/banner.tsx`) |
 | Tuile d'icône | `IconTile` (`src/components/ui/IconTile.tsx`) |
 | Thème courant | `useAppTheme`, `setAppTheme` (`src/lib/theme.ts`) |
+| Choix exclusif visible (« Mes tâches / Équipe », vues) | `SegmentedControl` (`src/components/ui/segmented-control.tsx`, lot 5) |
+| Filtre à choix multiples dans une barre | `FilterPill`, `FilterOption` (`src/components/ui/filter-pill.tsx`, lot 5) |
+| Garde des raccourcis clavier globaux | `shouldIgnoreShortcut` (`src/lib/keyboardShortcuts.ts`, lot 5) |
 
 Prévus dans les lots, avec leur emplacement, pour éviter deux versions du même composant :
 
