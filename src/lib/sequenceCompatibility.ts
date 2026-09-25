@@ -57,6 +57,10 @@ export interface ProfileCompatResult {
   profile: ProfileCompat;
   distance: string | null;
   issue: CompatIssue;
+  /**
+   * Motif écrit pour suivre le nom du candidat, au vouvoiement : « Chloé
+   * Lefèvre : déjà en relation : l'invitation LinkedIn échouera… ».
+   */
   message: string | null;
 }
 
@@ -112,7 +116,7 @@ export function checkProfileCompat(
         profile,
         distance,
         issue: 'connection_already_connected',
-        message: 'Déjà 1er niveau — l\'invitation LinkedIn échouera. Préfère une séquence sans demande de connexion.',
+        message: "déjà en relation : l'invitation LinkedIn échouera. Choisissez une séquence sans invitation.",
       };
     }
     // Si connection_request est plus tard dans la séquence, l'enrollment
@@ -121,7 +125,7 @@ export function checkProfileCompat(
       profile,
       distance,
       issue: 'connection_already_connected',
-      message: 'Déjà 1er niveau — la demande de connexion plus tard dans la séquence échouera.',
+      message: "déjà en relation : l'invitation prévue plus loin dans la séquence échouera.",
     };
   }
 
@@ -131,7 +135,7 @@ export function checkProfileCompat(
       profile,
       distance,
       issue: 'inmail_wasted',
-      message: 'Déjà 1er niveau — un message direct serait gratuit, l\'InMail consomme un crédit.',
+      message: "déjà en relation : un message direct serait gratuit, l'InMail consomme un crédit.",
     };
   }
 
@@ -141,7 +145,7 @@ export function checkProfileCompat(
       profile,
       distance,
       issue: 'too_far',
-      message: 'Hors du réseau LinkedIn — contact impossible sans InMail Recruiter.',
+      message: 'hors de votre réseau LinkedIn : contact impossible sans InMail Recruiter.',
     };
   }
 

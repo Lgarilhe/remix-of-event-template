@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import { LinkedInProfile } from './types';
 import { EnrollmentPreviewModal } from './EnrollmentPreviewModal';
 import { CandidateAvatar } from '@/components/candidates/shared/CandidateAvatar';
-import { checkProfilesCompat, type CompatIssue } from '@/lib/sequenceCompatibility';
+import { checkProfilesCompat } from '@/lib/sequenceCompatibility';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -51,26 +51,6 @@ interface SequenceEnrollModalProps {
 }
 
 const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
-
-/**
- * Motif d'incompatibilité, écrit ici au vouvoiement et sans tiret long : les
- * phrases de `src/lib/sequenceCompatibility.ts` tutoient encore (revue design
- * D-51, D-71). À retirer quand la bibliothèque aura ses propres libellés.
- */
-function compatMessage(issue: CompatIssue, blocking: boolean): string {
-  switch (issue) {
-    case 'connection_already_connected':
-      return blocking
-        ? "déjà en relation : l'invitation LinkedIn échouera. Choisissez une séquence sans invitation."
-        : "déjà en relation : l'invitation prévue plus loin dans la séquence échouera.";
-    case 'inmail_wasted':
-      return "déjà en relation : un message direct serait gratuit, l'InMail consomme un crédit.";
-    case 'too_far':
-      return 'hors de votre réseau LinkedIn : contact impossible sans InMail Recruiter.';
-    default:
-      return 'à vérifier avant inscription.';
-  }
-}
 
 export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   isOpen,
@@ -399,7 +379,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
   const incompatible = [...compat.blockers, ...compat.warnings];
   const excludedIds = new Set(profiles.filter(p => !profilesToEnroll.some(e => e.id === p.id)).map(p => p.id));
-  const isBlocker = (id: string) => compat.blockers.some(r => r.profile.id === id);
   const enrollLabel = profilesToEnroll.length > 0
     ? `Inscrire ${plural(profilesToEnroll.length, 'candidat')}`
     : 'Aucun candidat à inscrire';
@@ -444,7 +423,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                 {incompatible.slice(0, 5).map(r => (
                   <li key={r.profile.id} className="break-words">
                     <span className="font-medium text-foreground">{r.profile.name}</span>
-                    {' : '}{compatMessage(r.issue, isBlocker(r.profile.id))}
+                    {' : '}{r.message ?? 'à vérifier avant inscription.'}
                   </li>
                 ))}
                 {incompatible.length > 5 && (

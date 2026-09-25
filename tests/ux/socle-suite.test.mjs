@@ -19,6 +19,7 @@ const load = async (rel) => {
 };
 
 const { plural } = await load('src/lib/plural.ts');
+const sequenceErrors = await load('src/lib/sequenceErrorMessages.ts');
 
 test('D-71 : 0 et 1 au singulier, nombre écrit à la française', () => {
   assert.equal(plural(0, 'candidat'), '0 candidat');
@@ -54,4 +55,24 @@ test('Fenêtres : voile au calque des fenêtres, aria-modal posé par le kit', (
   const dialog = read('src/components/ui/dialog.tsx');
   assert.match(dialog, /variant\?: "default" \| "fullscreen"/);
   assert.match(read('src/components/ui/popover.tsx'), /export \{[^}]*PopoverAnchor/);
+});
+
+test('D-20 : archiver une conversation se rattrape par « Annuler »', () => {
+  const hook = read('src/hooks/useChatStatus.ts');
+  assert.match(hook, /toast\.success\('Conversation archivée', \{\s*action: \{ label: 'Annuler', onClick: \(\) => restoreMutation\.mutate\(\{ chatId, accountId \}\) \}/);
+  assert.doesNotMatch(hook, /description: err\.message/, 'erreur brute du serveur à l’écran');
+});
+
+test('D-59, D-71 : messages d’envoi et de compatibilité au vouvoiement, sans jargon', () => {
+  const { formatSequenceError } = sequenceErrors;
+  const cases = {
+    rate_limit: "Limite d'envois atteinte : réessayez plus tard",
+    'linkedin_send_failed_401: {"detail":"x"}': 'Compte LinkedIn déconnecté : reconnectez-le',
+    'Quota InMail épuisé (recruiter: 0)': "Crédits InMail épuisés : rechargez-les ou changez de mode d'envoi",
+  };
+  for (const [raw, label] of Object.entries(cases)) assert.equal(formatSequenceError(raw), label, raw);
+  for (const file of ['src/lib/sequenceErrorMessages.ts', 'src/lib/sequenceCompatibility.ts']) {
+    const strings = (read(file).match(/(["'])(?:(?!\1)[^\\]|\\.)*\1/g) ?? []).join('\n');
+    assert.doesNotMatch(strings, /reconnecte-le|réessaie|Préfère|\bprovider\b|—/, file);
+  }
 });
