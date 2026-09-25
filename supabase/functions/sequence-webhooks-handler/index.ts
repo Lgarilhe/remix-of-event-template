@@ -18,6 +18,7 @@
  * webhooks.ts pour ne plus les recevoir.
  */
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
+import { inReplyToCandidates } from "../_shared/sequence-email-policy.mjs";
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
@@ -114,19 +115,31 @@ async function handleReply(
     .single();
 
   if (!enrollment) return;
-  if (enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'stopped') {
+  // Une réponse clôt une inscription en cours OU en pause : sans cela, la
+  // reprise (abonnement, compte reconnecté, reprise manuelle) relançait un
+  // candidat qui avait déjà répondu. Les autres statuts sont déjà clos.
+  if (enrollment.status !== 'active' && enrollment.status !== 'paused') {
     console.log(`[webhooks] Enrollment ${enrollmentId} already in terminal state: ${enrollment.status}`);
     return;
   }
 
-  // Mark enrollment as replied
-  await supabase
+  // Mark enrollment as replied (garde de statut : idempotent face à un
+  // traitement concurrent de la même réponse)
+  const { data: closedRows, error: closeError } = await supabase
     .from('sequence_enrollments')
     .update({
       status: 'replied',
       replied_at: timestamp,
+      pause_reason: null,
     })
-    .eq('id', enrollmentId);
+    .eq('id', enrollmentId)
+    .in('status', ['active', 'paused'])
+    .select('id');
+  if (closeError) throw closeError;
+  if (!closedRows?.length) {
+    console.log(`[webhooks] Enrollment ${enrollmentId} closed concurrently — nothing to do`);
+    return;
+  }
 
   // Update the latest execution's tracking_data
   const { data: latestExec } = await supabase
@@ -275,19 +288,21 @@ async function handleMailReceived(
   supabase: any,
   payload: Record<string, unknown>,
 ) {
-  const inReplyTo = payload.in_reply_to as string;
+  // in_reply_to est un objet { message_id, id } (ou une chaîne selon la
+  // version du fournisseur) : on essaie chaque identifiant.
+  const inReplyTo = inReplyToCandidates(payload.in_reply_to);
   const trackingIdFromBody = payload.tracking_id as string;
 
   // Try to match via email_message_id (In-Reply-To header)
   let executionId: string | null = null;
 
-  if (inReplyTo) {
-    const { data: tracking } = await supabase
+  if (inReplyTo.length > 0) {
+    const { data: trackingRows } = await supabase
       .from('sequence_email_tracking')
       .select('execution_id')
-      .eq('email_message_id', inReplyTo)
-      .single();
-    if (tracking) executionId = tracking.execution_id;
+      .in('email_message_id', inReplyTo)
+      .limit(1);
+    if (trackingRows?.length) executionId = trackingRows[0].execution_id;
   }
 
   // Fallback: try tracking_id if found in body
@@ -296,7 +311,7 @@ async function handleMailReceived(
       .from('sequence_email_tracking')
       .select('execution_id')
       .eq('tracking_id', trackingIdFromBody)
-      .single();
+      .maybeSingle();
     if (tracking) executionId = tracking.execution_id;
   }
 
@@ -311,11 +326,13 @@ async function handleMailReceived(
     const accountId = payload.account_id as string;
 
     if (fromEmail) {
+      // Inscriptions en cours ou en pause : une réponse reçue pendant une
+      // pause doit aussi clore l'inscription.
       let query = supabase
         .from('sequence_enrollments')
         .select('id')
         .eq('email_used', fromEmail)
-        .eq('status', 'active');
+        .in('status', ['active', 'paused']);
       if (accountId) {
         query = query.eq('account_id', accountId);
       } else {

@@ -1,5 +1,8 @@
 -- ============================================================================
 -- VÉRIFICATION DES TESTS — Exécuter APRÈS process-sequences
+-- ⚠️ RÉSERVÉ À UNE BASE LOCALE (supabase start), après les scripts de données
+-- de test. Lecture seule, sauf le nettoyage commenté, borné à l'organisation
+-- de test (<ORG_ID> à remplacer).
 -- ============================================================================
 
 -- 1. VUE D'ENSEMBLE : tous les résultats
@@ -116,9 +119,9 @@ WHERE description LIKE '%Sequence%' OR description LIKE '%equence%'
 ORDER BY created_at DESC LIMIT 10;
 
 -- 5. CLEANUP (optionnel — décommenter pour supprimer les données de test)
--- DELETE FROM sequence_step_executions WHERE enrollment_id IN (SELECT id FROM sequence_enrollments WHERE profile_name LIKE 'TEST_%');
--- DELETE FROM sequence_enrollments WHERE profile_name LIKE 'TEST_%';
--- DELETE FROM sequence_steps WHERE sequence_id IN (SELECT id FROM outreach_sequences WHERE name LIKE '[TEST%');
--- DELETE FROM outreach_sequences WHERE name LIKE '[TEST%';
--- DELETE FROM job_candidate_status WHERE candidate_id = 'fake-cond-scored';
+-- DELETE FROM sequence_step_executions WHERE enrollment_id IN (SELECT id FROM sequence_enrollments WHERE profile_name LIKE 'TEST_%' AND organization_id = '<ORG_ID>');
+-- DELETE FROM sequence_enrollments WHERE profile_name LIKE 'TEST_%' AND organization_id = '<ORG_ID>';
+-- DELETE FROM sequence_steps WHERE sequence_id IN (SELECT id FROM outreach_sequences WHERE name LIKE '[TEST%' AND organization_id = '<ORG_ID>');
+-- DELETE FROM outreach_sequences WHERE name LIKE '[TEST%' AND organization_id = '<ORG_ID>';
+-- DELETE FROM job_candidate_status WHERE candidate_id = 'fake-cond-scored' AND organization_id = '<ORG_ID>';
 -- DELETE FROM suppressed_emails WHERE email = 'unsub@example.com';

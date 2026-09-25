@@ -176,20 +176,27 @@ export async function loadAndBuildAiContext(
 
 /**
  * Helper court : résout (orgId, userId) depuis un enrollment de séquence
- * (process-sequences, sequence-send-email) puis charge le contexte. Utilisé
- * pour les générations automatisées où le sender est step.sender_id ||
- * enrollment.created_by.
+ * (process-sequences, sequence-send-email) puis charge le contexte. L'expéditeur
+ * est le titulaire du compte d'envoi (member_linkedin_accounts), repli sur
+ * l'auteur de l'inscription. step.sender_id et assigned_sender_id portent des
+ * identifiants de COMPTE : les lire comme un user_id vidait le contexte
+ * expéditeur (audit séquences, SEQ-013 / SEQ-100).
  */
 export async function loadAiContextForEnrollment(
   supabase: SupabaseLikeClient,
   enrollment: Record<string, unknown>,
-  step?: { sender_id?: string | null } | null
+  step?: { sender_id?: string | null } | null,
+  /** Expéditeur déjà résolu par l'appelant (ex. titulaire de la boîte e-mail) : prioritaire. */
+  senderUserId?: string | null,
 ): Promise<string> {
-  const userId =
-    (step?.sender_id as string) ||
-    (enrollment.assigned_sender_id as string) ||
-    (enrollment.created_by as string) ||
-    null;
   const orgId = (enrollment.organization_id as string) || null;
+  if (senderUserId) return loadAndBuildAiContext(supabase, { orgId, userId: senderUserId });
+  const { resolveSendingAccountOwner } = await import("./sequence-sender.ts");
+  const owner = await resolveSendingAccountOwner(supabase, enrollment, step);
+  // Compatibilité : un appelant qui passe un user_id dans step.sender_id
+  // (identifiant au format uuid, jamais un identifiant de compte LinkedIn).
+  const stepSender = typeof step?.sender_id === "string" ? step.sender_id : "";
+  const stepUserId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepSender) ? stepSender : null;
+  const userId = owner || stepUserId || (enrollment.created_by as string) || null;
   return loadAndBuildAiContext(supabase, { orgId, userId });
 }

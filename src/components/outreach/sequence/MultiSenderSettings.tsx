@@ -17,8 +17,13 @@ import linkedinLogo from '@/assets/linkedin-logo.svg';
 
 export interface SenderAccount {
   account_id: string;
-  email: string;
+  /** Ancien champ, plus écrit : la rotation n'envoie que depuis des comptes LinkedIn. */
+  email?: string;
   daily_limit: number;
+  /** Nom affiché (« LinkedIn · Théo Martin »), ignoré par le moteur. */
+  label?: string;
+  /** Canal du compte : la rotation ne sert qu'aux étapes LinkedIn. */
+  channel?: 'linkedin';
 }
 
 interface MultiSenderSettingsProps {
@@ -28,6 +33,12 @@ interface MultiSenderSettingsProps {
   onSenderAccountsChange: (accounts: SenderAccount[]) => void;
   rotationMode: string;
   onRotationModeChange: (mode: string) => void;
+}
+
+/** Nom d'un expéditeur : nom du membre, sinon nom du compte LinkedIn. */
+function senderLabelFor(member: { displayName: string; linkedInAccountName: string | null }): string {
+  if (member.displayName && member.displayName !== 'Membre') return member.displayName;
+  return member.linkedInAccountName || member.displayName || 'Membre';
 }
 
 export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
@@ -42,7 +53,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   const [showPickerModal, setShowPickerModal] = useState(false);
 
   // Fetch team members with their linked accounts
-  const { data: teamMembers = [], isLoading } = useQuery({
+  const { data: teamMembers = [], isLoading, isError } = useQuery({
     queryKey: ['multi-sender-team', organizationId],
     queryFn: async () => {
       if (!organizationId) return [];
@@ -94,7 +105,8 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
         };
       });
     },
-    enabled: !!organizationId && showPickerModal,
+    // Chargé aussi pour nommer les expéditeurs enregistrés sans libellé.
+    enabled: !!organizationId && (showPickerModal || (enabled && senderAccounts.some(s => !s.label))),
     staleTime: 30_000,
   });
 
@@ -110,21 +122,40 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   }, [senderAccounts, teamMembers]);
 
   const handleSelectMember = (member: typeof teamMembers[number]) => {
-    // Un expéditeur doit être un compte d'envoi. Le repli sur userId plaçait un
-    // identifiant d'utilisateur là où le moteur attend un identifiant de compte
-    // (assigned_sender_id) : tous les envois de ce sender échouaient (BUG-023).
-    // La liste désactive déjà ces membres ; ce garde-fou empêche la valeur
-    // d'entrer en base par un autre chemin.
-    const accountId = member.linkedInAccountId || member.emailAccountId;
+    // Un expéditeur doit être un compte LinkedIn : la rotation ne sert qu'aux
+    // étapes LinkedIn, et un compte e-mail y faisait échouer invitations et
+    // messages. Le repli sur userId plaçait un identifiant d'utilisateur là où
+    // le moteur attend un identifiant de compte (BUG-023). La liste désactive
+    // déjà ces membres ; ce garde-fou empêche la valeur d'entrer par un autre chemin.
+    const accountId = member.linkedInAccountId;
     if (!accountId) {
-      toast.error('Ce membre n\'a aucun compte LinkedIn ou email connecté');
+      toast.error('Ce membre n\'a pas de compte LinkedIn connecté');
       return;
     }
     onSenderAccountsChange([
       ...senderAccounts,
-      { account_id: accountId, email: member.email, daily_limit: 50 },
+      { account_id: accountId, daily_limit: 50, label: senderLabelFor(member), channel: 'linkedin' },
     ]);
     setShowPickerModal(false);
+  };
+
+  /**
+   * Ligne d'un expéditeur : libellé enregistré, sinon retrouvé dans l'équipe
+   * (expéditeurs ajoutés avant l'enregistrement du libellé).
+   */
+  const describeSender = (sender: SenderAccount): { title: string; kind: 'linkedin' | 'email' | 'unknown' | 'pending' } => {
+    if (sender.label) return { title: `LinkedIn · ${sender.label}`, kind: 'linkedin' };
+    const viaLinkedIn = teamMembers.find(m => m.linkedInAccountId === sender.account_id);
+    if (viaLinkedIn) return { title: `LinkedIn · ${senderLabelFor(viaLinkedIn)}`, kind: 'linkedin' };
+    const viaEmail = teamMembers.find(m => m.emailAccountId === sender.account_id);
+    if (viaEmail) return { title: `E-mail · ${viaEmail.email || viaEmail.displayName}`, kind: 'email' };
+    if (isLoading || isError) return { title: sender.email ? sender.email : 'Expéditeur enregistré', kind: 'pending' };
+    return { title: sender.email ? `E-mail · ${sender.email}` : 'Compte introuvable dans l\'équipe', kind: sender.email ? 'email' : 'unknown' };
+  };
+
+  const SENDER_WARNINGS: Record<string, string> = {
+    email: 'Compte e-mail : la rotation n\'envoie que depuis des comptes LinkedIn et ne l\'utilise pas. Retirez-le.',
+    unknown: 'Ce compte n\'est plus relié à un membre de l\'équipe : la rotation ne l\'utilise pas. Retirez-le.',
   };
 
   const handleRemove = (acctId: string) => {
@@ -138,10 +169,10 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Multi-sender
+        <Label htmlFor="multi-sender-switch" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Plusieurs expéditeurs
         </Label>
-        <Switch checked={enabled} onCheckedChange={onEnabledChange} />
+        <Switch id="multi-sender-switch" checked={enabled} onCheckedChange={onEnabledChange} />
       </div>
 
       {enabled && (
@@ -149,41 +180,62 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
           {/* Sender list */}
           {senderAccounts.length > 0 ? (
             <div className="space-y-2">
-              {senderAccounts.map(sender => (
-                <div key={sender.account_id} className="flex items-center gap-3 p-3 border border-border bg-muted/10 group">
-                  <div className="w-8 h-8 bg-muted flex items-center justify-center shrink-0">
-                    <Mail className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{sender.email}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={200}
-                        value={sender.daily_limit}
-                        onChange={(e) => handleDailyLimitChange(sender.account_id, parseInt(e.target.value) || 50)}
-                        className="h-7 w-16 text-xs px-2"
-                      />
-                      <span className="text-xs text-muted-foreground">actions/jour</span>
+              {senderAccounts.map(sender => {
+                const { title, kind } = describeSender(sender);
+                const isLinkedIn = kind === 'linkedin';
+                const limitId = `sender-limit-${sender.account_id}`;
+                return (
+                  <div key={sender.account_id} className="flex items-center gap-3 p-3 border border-border bg-muted/10">
+                    <div className="w-8 h-8 bg-muted flex items-center justify-center shrink-0">
+                      {isLinkedIn
+                        ? <img src={linkedinLogo} alt="" aria-hidden="true" className="w-4 h-4" />
+                        : kind === 'email'
+                          ? <Mail className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                          : <Users className="w-4 h-4 text-muted-foreground" aria-hidden="true" />}
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{title}</p>
+                      {SENDER_WARNINGS[kind] && (
+                        <p className="text-xs text-warning mt-0.5">{SENDER_WARNINGS[kind]}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                        <Label htmlFor={limitId} className="text-xs font-normal text-muted-foreground">
+                          Plus de nouveaux candidats au-delà de
+                        </Label>
+                        <Input
+                          id={limitId}
+                          type="number"
+                          min={1}
+                          max={200}
+                          value={sender.daily_limit}
+                          onChange={(e) => handleDailyLimitChange(sender.account_id, parseInt(e.target.value) || 50)}
+                          className="h-7 w-16 text-xs px-2"
+                        />
+                        <span className="text-xs text-muted-foreground">actions LinkedIn par jour</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemove(sender.account_id)}
+                      aria-label={`Retirer ${title}`}
+                      title="Retirer cet expéditeur"
+                      className="text-muted-foreground hover:text-destructive h-8 w-8 p-0 shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemove(sender.account_id)}
-                    className="text-muted-foreground hover:text-destructive h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
+              <p className="text-xs text-muted-foreground">
+                Chaque nouveau candidat est attribué à un expéditeur, qui envoie ensuite toute sa séquence. Un expéditeur qui a atteint ce nombre d'actions dans la journée ne reçoit plus de nouveaux candidats jusqu'au lendemain. Les plafonds d'envoi LinkedIn restent ceux du compte (Paramètres, Équipe).
+              </p>
             </div>
           ) : (
             <div className="py-6 text-center border border-dashed border-border">
-              <Users className="w-5 h-5 mx-auto text-muted-foreground/40 mb-2" />
+              <Users className="w-5 h-5 mx-auto text-muted-foreground/40 mb-2" aria-hidden="true" />
               <p className="text-xs text-muted-foreground">
-                Aucun sender configuré
+                Aucun expéditeur
               </p>
             </div>
           )}
@@ -194,21 +246,21 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
             onClick={() => setShowPickerModal(true)}
             className="w-full border-dashed border-border h-9"
           >
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            Ajouter un sender
+            <Plus className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+            Ajouter un expéditeur
           </Button>
 
           {/* Rotation mode */}
           <div>
-            <Label className="text-xs text-muted-foreground">Mode de rotation</Label>
+            <Label htmlFor="rotation-mode" className="text-xs text-muted-foreground">Répartition des nouveaux candidats</Label>
             <Select value={rotationMode} onValueChange={onRotationModeChange}>
-              <SelectTrigger className="mt-1.5 text-xs h-9">
+              <SelectTrigger id="rotation-mode" className="mt-1.5 text-xs h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="round_robin">Round-robin (équitable)</SelectItem>
-                <SelectItem value="random">Aléatoire</SelectItem>
-                <SelectItem value="least_used">Moins utilisé</SelectItem>
+                <SelectItem value="round_robin">À tour de rôle</SelectItem>
+                <SelectItem value="random">Au hasard</SelectItem>
+                <SelectItem value="least_used">Le moins sollicité</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -221,7 +273,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                   <div className="w-8 h-8 bg-muted flex items-center justify-center">
                     <Users className="w-4 h-4 text-foreground" />
                   </div>
-                  Sélectionner un membre
+                  Choisir un expéditeur
                 </DialogTitle>
               </DialogHeader>
               <div className="max-h-80 overflow-y-auto">
@@ -237,8 +289,8 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                 ) : (
                   teamMembers.map(member => {
                     const alreadyAdded = existingSenderUserIds.has(member.userId);
-                    const hasAnyAccount = member.hasLinkedIn || member.hasEmail;
-                    const disabled = alreadyAdded || !hasAnyAccount;
+                    // Seul un compte LinkedIn peut entrer dans la rotation.
+                    const disabled = alreadyAdded || !member.hasLinkedIn;
 
                     return (
                       <button
@@ -262,26 +314,19 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{member.displayName}</p>
-                          {member.email && (
-                            <p className="text-xs text-muted-foreground truncate mt-0.5">{member.email}</p>
+                          {member.linkedInAccountName && (
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">LinkedIn · {member.linkedInAccountName}</p>
                           )}
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                          {member.hasLinkedIn && (
+                          {member.hasLinkedIn ? (
                             <span className="inline-flex items-center gap-1 h-6 px-1.5 border border-linkedin/20 bg-linkedin/5 text-[10px] font-medium text-linkedin">
                               <img src={linkedinLogo} alt="LinkedIn" className="w-3 h-3" />
                               ✓
                             </span>
-                          )}
-                          {member.hasEmail && (
-                            <span className="inline-flex items-center gap-1 h-6 px-1.5 border border-border bg-muted/30 text-[10px] font-medium text-muted-foreground">
-                              <Mail className="w-3 h-3" />
-                              ✓
-                            </span>
-                          )}
-                          {!hasAnyAccount && (
+                          ) : (
                             <span className="inline-flex items-center gap-1 h-6 px-1.5 border border-border text-[10px] text-muted-foreground">
-                              <AlertCircle className="w-3 h-3" /> Aucun compte
+                              <AlertCircle className="w-3 h-3" aria-hidden="true" /> Pas de compte LinkedIn
                             </span>
                           )}
                           {alreadyAdded && (
@@ -295,10 +340,10 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                   })
                 )}
               </div>
-              {!isLoading && teamMembers.some(m => !m.hasLinkedIn && !m.hasEmail) && (
+              {!isLoading && teamMembers.some(m => !m.hasLinkedIn) && (
                 <div className="px-5 py-3 border-t border-border bg-muted/20">
                   <p className="text-xs text-muted-foreground">
-                    Les membres grisés doivent connecter leur compte LinkedIn ou Email dans les paramètres.
+                    Les membres grisés doivent connecter leur compte LinkedIn dans les paramètres.
                   </p>
                 </div>
               )}

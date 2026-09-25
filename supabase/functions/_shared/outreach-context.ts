@@ -32,17 +32,22 @@ export interface OutreachConfig {
  * @param config Mission-level outreach config (from sourcing_projects.job_details.outreach_config)
  * @param clientName Real name of the client/company (will be replaced by alias if anonymize_client=true)
  * @param senderName Real name of the recruiter sending the message
+ * @param organizationName Nom de l'organisation de l'expéditeur (organizations.name).
+ *   Konekt est l'éditeur du logiciel, jamais l'employeur de l'expéditeur : en
+ *   mode cabinet, l'expéditeur se présente au nom de son organisation.
  */
 export function buildOutreachContext(
   config: OutreachConfig | undefined | null,
   clientName: string | undefined | null,
   senderName: string | undefined | null,
+  organizationName?: string | null,
 ): string {
   if (!config) return "";
 
   const parts: string[] = [];
   const realClient = (clientName || "l'entreprise").trim();
   const sender = (senderName || "le recruteur").trim();
+  const agency = (organizationName || "").trim();
 
   parts.push("=== CONTEXTE OUTREACH MISSION (CRITIQUE — APPLIQUE STRICTEMENT) ===");
   parts.push(
@@ -53,9 +58,9 @@ Si le template utilise des formulations qui ne correspondent PAS au mode défini
   // 1. Mode recrutement : interne (RPO/embedded) vs client (cabinet externe)
   if (config.recruitment_mode === "internal") {
     parts.push(
-      `🏢 MODE INTERNE — TU ES EMPLOYÉ(E) DE ${realClient.toUpperCase()}, PAS DE KONEKT.
+      `🏢 MODE INTERNE — TU ES EMPLOYÉ(E) DE ${realClient.toUpperCase()}, PAS D'UN CABINET DE RECRUTEMENT.
 
-⚠️ POINT CRITIQUE : Tu travailles CHEZ ${realClient}. Tu n'es PAS un cabinet externe, tu n'es PAS chez Konekt, tu n'es PAS chez un autre cabinet.
+⚠️ POINT CRITIQUE : Tu travailles CHEZ ${realClient}. Tu n'es PAS un cabinet externe, tu n'es PAS chez un cabinet de recrutement.
 
  ✅ FORMULATIONS À UTILISER :
  - "on", "nous", "notre équipe", "chez nous", "chez ${realClient}"
@@ -64,7 +69,7 @@ Si le template utilise des formulations qui ne correspondent PAS au mode défini
  - "On monte / on développe / on construit le projet"
 
  ❌ FORMULATIONS STRICTEMENT INTERDITES (signal cabinet = MENSONGE en mode interne) :
- - "je suis recruteur chez Konekt" → INTERDIT, tu es chez ${realClient}
+ - "je suis recruteur dans un cabinet" → INTERDIT, tu es chez ${realClient}
  - "j'accompagne une scale-up / un client / une entreprise" → INTERDIT
  - "je recrute pour [X]" → INTERDIT, tu recrutes POUR TOI / chez toi
  - "mon client", "leur équipe", "leur stack", "ils cherchent" → INTERDIT
@@ -80,7 +85,7 @@ Si le template utilise des formulations qui ne correspondent PAS au mode défini
     );
   } else if (config.recruitment_mode === "client") {
     parts.push(
-      `🤝 MODE CABINET EXTERNE — Tu es recruteur(se) chez Konekt, tu accompagnes ${realClient}.
+      `🤝 MODE CABINET EXTERNE — ${agency ? `Tu es recruteur(se) chez ${agency}` : "Tu es recruteur(se) en cabinet"}, tu accompagnes ${realClient}.
 
  ✅ FORMULATIONS À UTILISER :
  - "Je recrute pour ${realClient}" / "J'accompagne ${realClient}"

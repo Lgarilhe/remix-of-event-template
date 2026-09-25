@@ -7,6 +7,16 @@ import { Pill } from '@/components/missions/v2/Pill';
 interface Props {
   profiles: LinkedInProfile[];
   states: CandidateStatesMap;
+  /**
+   * Candidats qui seront réellement inscrits (hors retirés, passés, déjà
+   * contactés et incompatibles). Sans lui, seuls les retirés et passés sont
+   * déduits.
+   */
+  activeProfiles?: LinkedInProfile[];
+  /** Exclus car déjà contactés par l'organisation (détail du compteur). */
+  duplicateExcludedCount?: number;
+  /** Exclus car incompatibles avec la séquence (détail du compteur). */
+  incompatibleExcludedCount?: number;
   generatedCount: number;
   totalToGenerate: number;
   estimatedCredits: number;
@@ -22,23 +32,24 @@ interface Props {
  * Skalr sur la pill IA).
  */
 export function DynamicSummaryBanner({
-  profiles, states, generatedCount, totalToGenerate, estimatedCredits, hasAiSteps,
+  profiles, states, activeProfiles, duplicateExcludedCount, incompatibleExcludedCount,
+  generatedCount, totalToGenerate, estimatedCredits, hasAiSteps,
 }: Props) {
-  const removed = Array.from(states.values()).filter(s => s.removed).length;
-  const skipped = Array.from(states.values()).filter(s => s.skipped).length;
-  const active = profiles.length - removed - skipped;
+  const removed = profiles.filter(p => states.get(p.id)?.removed).length;
+  const skipped = profiles.filter(p => !states.get(p.id)?.removed && states.get(p.id)?.skipped).length;
+  const pool = activeProfiles
+    ?? profiles.filter(p => !states.get(p.id)?.removed && !states.get(p.id)?.skipped);
+  const active = pool.length;
+  // Déjà contactés ou incompatibles avec la séquence : exclus de l'inscription.
+  const excluded = Math.max(0, profiles.length - removed - skipped - active);
+  const duplicates = duplicateExcludedCount ?? 0;
+  const incompatible = incompatibleExcludedCount ?? 0;
+  // Exclus sans raison détaillée par l'appelant (compatibilité ascendante).
+  const otherExcluded = Math.max(0, excluded - duplicates - incompatible);
 
-  const withEmail = profiles.filter(p =>
-    !states.get(p.id)?.removed
-    && !states.get(p.id)?.skipped
-    && p.contact_info?.emails?.length
-  ).length;
+  const withEmail = pool.filter(p => p.contact_info?.emails?.length).length;
   const withoutEmail = active - withEmail;
-  const withoutPhone = profiles.filter(p =>
-    !states.get(p.id)?.removed
-    && !states.get(p.id)?.skipped
-    && !p.contact_info?.phones?.length
-  ).length;
+  const withoutPhone = pool.filter(p => !p.contact_info?.phones?.length).length;
 
   const isComplete = totalToGenerate > 0 && generatedCount >= totalToGenerate;
 
@@ -47,12 +58,16 @@ export function DynamicSummaryBanner({
       {/* Compteur candidats actifs */}
       <Pill icon={Users} variant="muted">
         <strong className="tabular-nums text-foreground">{active}</strong>
-        <span className="opacity-60">/ {profiles.length} candidat{profiles.length > 1 ? 's' : ''}</span>
-        {(removed > 0 || skipped > 0) && (
+        <span className="opacity-60">sur {profiles.length} {active > 1 ? 'seront inscrits' : 'sera inscrit'}</span>
+        {(removed > 0 || skipped > 0 || excluded > 0) && (
           <span className="text-[10px] opacity-60">
-            ({removed > 0 && `${removed} retiré${removed > 1 ? 's' : ''}`}
-            {removed > 0 && skipped > 0 && ' · '}
-            {skipped > 0 && `${skipped} passé${skipped > 1 ? 's' : ''}`})
+            ({[
+              duplicates > 0 && `${duplicates} déjà contacté${duplicates > 1 ? 's' : ''}`,
+              incompatible > 0 && `${incompatible} incompatible${incompatible > 1 ? 's' : ''}`,
+              otherExcluded > 0 && `${otherExcluded} exclu${otherExcluded > 1 ? 's' : ''}`,
+              removed > 0 && `${removed} retiré${removed > 1 ? 's' : ''}`,
+              skipped > 0 && `${skipped} passé${skipped > 1 ? 's' : ''}`,
+            ].filter(Boolean).join(', ')})
           </span>
         )}
       </Pill>
@@ -64,8 +79,8 @@ export function DynamicSummaryBanner({
           variant={withoutEmail === 0 ? 'success' : 'warning'}
         >
           {withoutEmail === 0
-            ? 'tous avec email'
-            : <><strong className="tabular-nums">{withoutEmail}</strong> sans email</>}
+            ? 'tous avec e-mail'
+            : <><strong className="tabular-nums">{withoutEmail}</strong> sans e-mail</>}
         </Pill>
       )}
 
@@ -86,7 +101,7 @@ export function DynamicSummaryBanner({
         >
           <span className="tabular-nums font-semibold">{generatedCount}/{totalToGenerate}</span>
           <span className="opacity-70 text-[10px]">
-            previews · ~{estimatedCredits} cr
+            aperçus · ~{estimatedCredits} cr
           </span>
         </Pill>
       )}

@@ -85,14 +85,23 @@ export interface UseCalendarEventsOptions {
   from?: Date;
   /** Nombre de jours (default : 7) */
   days?: number;
+  /**
+   * InMails et étapes de séquence (default : true). Le tableau de bord ne lit
+   * que les entretiens (ses envois viennent de useTodayScheduledMessages) : une
+   * panne de ces sources ne doit pas lui retirer ses entretiens.
+   */
+  outreach?: boolean;
 }
 
-const HIDDEN_SEQUENCE_ACTIONS = new Set([
+/** Étapes internes du moteur (attentes, conditions) : rien ne part, pas d'événement. */
+const HIDDEN_SEQUENCE_ACTIONS = [
   'wait_connection',
   'check_connection',
   'wait_reply',
   'wait_for_event',
-]);
+  'wait_profile_visit',
+  'condition_branch',
+];
 
 /**
  * Détecte le format d'un meeting depuis sa location.
@@ -157,13 +166,15 @@ const inferRound = (eventName: string | null | undefined): CalendarEventRound =>
   return null;
 };
 
-async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEvent[]> {
+async function fetchCalendarEvents(from: Date, days: number, outreach = true): Promise<CalendarEvent[]> {
   const rangeStart = startOfDay(from).toISOString();
   const rangeEnd = endOfDay(addDays(from, days - 1)).toISOString();
   const events: CalendarEvent[] = [];
 
-  // 1. Qualifications (entretiens) — pull tous les champs riches utiles à l'UI
-  const { data: qualifs } = await supabase
+  // 1. Qualifications (entretiens) — pull tous les champs riches utiles à l'UI.
+  // Une source principale en échec fait échouer la lecture : l'agenda affiche
+  // une erreur plutôt qu'une semaine faussement vide ou incomplète.
+  const { data: qualifs, error: qualifsError } = await supabase
     .from('qualification_sessions')
     .select(
       [
@@ -189,6 +200,7 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
     .gte('event_start_at', rangeStart)
     .lte('event_start_at', rangeEnd)
     .order('event_start_at', { ascending: true });
+  if (qualifsError) throw qualifsError;
 
   // Resolve unique manager userIds + project ids → batch lookup (1 query each).
   // Manager = manager_id si présent (assigné explicitement), sinon
@@ -302,14 +314,20 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
     }
   }
 
+  if (!outreach) {
+    events.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    return events;
+  }
+
   // 2. InMails programmés
-  const { data: inmails } = await supabase
+  const { data: inmails, error: inmailsError } = await supabase
     .from('inmail_queue')
     .select('id, recipient_name, recipient_headline, subject, scheduled_at, status')
     .gte('scheduled_at', rangeStart)
     .lte('scheduled_at', rangeEnd)
     .in('status', ['pending', 'scheduled', 'sent'])
     .order('scheduled_at', { ascending: true });
+  if (inmailsError) throw inmailsError;
 
   if (inmails) {
     for (const im of inmails as any[]) {
@@ -329,80 +347,44 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
     }
   }
 
-  // 3. Étapes de séquence visibles
-  const { data: stepExecs } = await supabase
+  // 3. Étapes de séquence visibles. Seules les inscriptions actives envoient :
+  // une étape programmée d'une inscription en pause (ou d'une séquence
+  // désactivée) garde sa date mais ne partira pas tant que l'inscription n'est
+  // pas reprise. Inscription et étape sont jointes pour filtrer dans la
+  // requête, AVANT la limite : les attentes internes ne prennent plus la
+  // place des envois visibles.
+  const { data: stepExecs, error: stepExecsError } = await supabase
     .from('sequence_step_executions')
-    .select('id, scheduled_at, status, step_id, enrollment_id')
+    .select(
+      'id, scheduled_at, status, sequence_steps!inner(action_type), sequence_enrollments!inner(status, profile_name, profile_id, sequence_id, outreach_sequences(name))',
+    )
     .gte('scheduled_at', rangeStart)
     .lte('scheduled_at', rangeEnd)
-    .in('status', ['pending', 'scheduled'])
+    .eq('status', 'scheduled')
+    .eq('sequence_enrollments.status', 'active')
+    .not('sequence_steps.action_type', 'in', `(${HIDDEN_SEQUENCE_ACTIONS.join(',')})`)
     .order('scheduled_at', { ascending: true })
     .limit(100);
+  if (stepExecsError) throw stepExecsError;
 
-  if (stepExecs && stepExecs.length > 0) {
-    // Resolve sequence + enrollment names in batch
-    const stepIds = [...new Set((stepExecs as any[]).map((s) => s.step_id).filter(Boolean))];
-    const enrollmentIds = [
-      ...new Set((stepExecs as any[]).map((s) => s.enrollment_id).filter(Boolean)),
-    ];
-
-    const stepMap = new Map<string, string>(); // step_id → action_type
-    const seqMap = new Map<
-      string,
-      {
-        sequenceName: string;
-        candidateName: string | null;
-        candidateId: string | null;
-        sequenceId: string | null;
-      }
-    >();
-
-    if (stepIds.length > 0) {
-      const { data: steps } = await supabase
-        .from('sequence_steps' as any)
-        .select('id, action_type')
-        .in('id', stepIds);
-      if (steps) {
-        for (const s of steps as any[]) stepMap.set(s.id, s.action_type);
-      }
-    }
-    if (enrollmentIds.length > 0) {
-      const { data: enrollments } = await supabase
-        .from('sequence_enrollments')
-        .select('id, profile_name, profile_id, sequence_id, outreach_sequences(id, name)')
-        .in('id', enrollmentIds);
-      if (enrollments) {
-        for (const e of enrollments as any[]) {
-          seqMap.set(e.id, {
-            sequenceName: (e as any).outreach_sequences?.name || 'Séquence',
-            candidateName: e.profile_name || null,
-            candidateId: e.profile_id || null,
-            sequenceId: e.sequence_id || null,
-          });
-        }
-      }
-    }
-
-    for (const s of stepExecs as any[]) {
-      const actionType = stepMap.get(s.step_id);
-      if (actionType && HIDDEN_SEQUENCE_ACTIONS.has(actionType)) continue;
-      const seqInfo = seqMap.get(s.enrollment_id);
-      events.push({
-        id: `step-${s.id}`,
-        type: 'sequence_step',
-        startAt: s.scheduled_at,
-        endAt: null,
-        title: seqInfo?.sequenceName ? `Séquence · ${seqInfo.sequenceName}` : 'Étape de séquence',
-        subtitle: seqInfo?.candidateName ?? null,
-        status: s.status,
-        meta: {
-          candidateId: seqInfo?.candidateId ?? undefined,
-          candidateName: seqInfo?.candidateName ?? null,
-          sequenceId: seqInfo?.sequenceId ?? undefined,
-          sequenceName: seqInfo?.sequenceName ?? null,
-        },
-      });
-    }
+  for (const s of stepExecs ?? []) {
+    const enrollment = s.sequence_enrollments;
+    const sequenceName = enrollment?.outreach_sequences?.name || 'Séquence';
+    events.push({
+      id: `step-${s.id}`,
+      type: 'sequence_step',
+      startAt: s.scheduled_at,
+      endAt: null,
+      title: `Séquence · ${sequenceName}`,
+      subtitle: enrollment?.profile_name ?? null,
+      status: s.status,
+      meta: {
+        candidateId: enrollment?.profile_id ?? undefined,
+        candidateName: enrollment?.profile_name ?? null,
+        sequenceId: enrollment?.sequence_id ?? undefined,
+        sequenceName,
+      },
+    });
   }
 
   // Sort global par startAt asc
@@ -411,12 +393,12 @@ async function fetchCalendarEvents(from: Date, days: number): Promise<CalendarEv
 }
 
 export function useCalendarEvents(options: UseCalendarEventsOptions = {}) {
-  const { from = new Date(), days = 7 } = options;
+  const { from = new Date(), days = 7, outreach = true } = options;
   const fromKey = format(from, 'yyyy-MM-dd');
 
   return useQuery({
-    queryKey: ['calendar-events', fromKey, days],
-    queryFn: () => fetchCalendarEvents(from, days),
+    queryKey: ['calendar-events', fromKey, days, outreach],
+    queryFn: () => fetchCalendarEvents(from, days, outreach),
     staleTime: 60 * 1000, // 1min
     refetchOnWindowFocus: false,
   });

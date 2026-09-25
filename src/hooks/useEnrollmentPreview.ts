@@ -29,7 +29,87 @@ export interface SequenceStepPreview {
   timeoutBranchStepId?: string | null;
   parentStepId?: string | null;
   branch?: string | null;
+  /** Cible « oui » d'une vérification (if_true_goto_step). */
+  ifTrueGotoStep?: string | null;
+  /** Cible « non » d'une vérification (if_false_goto_step). */
+  ifFalseGotoStep?: string | null;
+  /** Étape suivante explicite (next_step_id), chaînage suivi par le moteur. */
+  nextStepId?: string | null;
 }
+
+/** Vrai si la séquence a des embranchements : un seul chemin sera suivi par candidat. */
+export function hasBranching(steps: readonly SequenceStepPreview[]): boolean {
+  return steps.some(s => !!(s.ifTrueGotoStep || s.ifFalseGotoStep || s.timeoutBranchStepId || s.parentStepId || s.branch));
+}
+
+/**
+ * Étapes des AUTRES branches que celle de `stepId`, pour que l'IA ne rédige
+ * pas une étape comme si les messages de l'autre chemin étaient partis. Suit
+ * le routage du moteur : vérification oui / non (if_true_goto_step,
+ * if_false_goto_step, puis chaînage next_step_id depuis chaque cible) et
+ * arbre parent_step_id / branch (enfants d'un même parent, par branche).
+ */
+export function otherBranchStepIds(steps: readonly SequenceStepPreview[], stepId: string): Set<string> {
+  const byId = new Map(steps.map(s => [s.stepId, s]));
+  const chainFrom = (startId: string | null | undefined): Set<string> => {
+    const out = new Set<string>();
+    let current = startId ? byId.get(startId) : undefined;
+    while (current && !out.has(current.stepId) && out.size < steps.length) {
+      out.add(current.stepId);
+      current = current.nextStepId ? byId.get(current.nextStepId) : undefined;
+    }
+    return out;
+  };
+  const descendantsOf = (rootId: string): Set<string> => {
+    const out = new Set<string>([rootId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const s of steps) {
+        if (s.parentStepId && out.has(s.parentStepId) && !out.has(s.stepId)) {
+          out.add(s.stepId);
+          grew = true;
+        }
+      }
+    }
+    return out;
+  };
+
+  // Chaque décision donne plusieurs branches (ensembles d'étapes exclusifs).
+  const decisions: Set<string>[][] = [];
+  for (const s of steps) {
+    if (s.ifTrueGotoStep && s.ifFalseGotoStep) {
+      decisions.push([chainFrom(s.ifTrueGotoStep), chainFrom(s.ifFalseGotoStep)]);
+    }
+  }
+  const childrenByParent = new Map<string, Map<string, Set<string>>>();
+  for (const s of steps) {
+    if (!s.parentStepId || !s.branch) continue;
+    const byBranch = childrenByParent.get(s.parentStepId) ?? new Map<string, Set<string>>();
+    const set = byBranch.get(s.branch) ?? new Set<string>();
+    descendantsOf(s.stepId).forEach(id => set.add(id));
+    byBranch.set(s.branch, set);
+    childrenByParent.set(s.parentStepId, byBranch);
+  }
+  childrenByParent.forEach(byBranch => {
+    if (byBranch.size > 1) decisions.push(Array.from(byBranch.values()));
+  });
+
+  const excluded = new Set<string>();
+  for (const branches of decisions) {
+    const own = branches.find(b => b.has(stepId));
+    if (!own) continue;
+    for (const other of branches) {
+      if (other === own) continue;
+      other.forEach(id => { if (!own.has(id)) excluded.add(id); });
+    }
+  }
+  return excluded;
+}
+
+/** Texte affiché quand la génération IA d'un aperçu a échoué. */
+export const PREVIEW_GENERATION_FAILED_MESSAGE =
+  "La génération a échoué. Réessayez pour voir le message avant l'inscription, ou modifiez-le. Sinon, l'IA Konekt le rédigera au moment de l'envoi.";
 
 export interface GeneratedMessage {
   subject: string;
@@ -44,14 +124,15 @@ export interface GeneratedMessage {
 export type PreviewMap = Map<string, Map<string, GeneratedMessage>>; // candidateId -> stepId -> message
 
 /**
- * Override des règles de timing d'un step pour CETTE inscription
- * uniquement (sans toucher au template global de la séquence).
+ * Override des règles de timing d'une étape pour TOUS les candidats de
+ * l'inscription en cours (une seule valeur par fenêtre, pas par candidat),
+ * sans toucher à la séquence elle-même.
  *
- * Ex : la séquence prévoit un délai de 5 jours avant le 2e message,
- * mais pour ce candidat précis on veut relancer plus vite (3 jours).
+ * Ex : la séquence prévoit un délai de 5 jours avant le 2e message, mais pour
+ * cette inscription on veut relancer plus vite (3 jours).
  * → stepConfigOverrides[stepId] = { delayDays: 3 }
  *
- * Stocké sur sequence_enrollments.tracking_data.step_config_overrides.
+ * Écrit sur chaque sequence_enrollments.tracking_data.step_config_overrides.
  * Lu par le cron process-sequences au moment de scheduler le step :
  *   override.delayDays ?? step.delay_days
  */
@@ -67,6 +148,12 @@ export interface StepConfigOverride {
 interface UseEnrollmentPreviewOptions {
   steps: SequenceStepPreview[];
   profiles: LinkedInProfile[];
+  /**
+   * Candidats visés par la génération groupée, son compteur et l'estimation de
+   * crédits (par défaut : tous). L'aperçu exclut ainsi les candidats retirés,
+   * passés, déjà contactés ou incompatibles avec la séquence.
+   */
+  targetProfiles?: LinkedInProfile[];
   job?: { id: string; title: string; client?: any; skills?: string[]; description?: string; location?: string; accompagnement?: string[] } | null;
   accountId: string;
 }
@@ -78,30 +165,176 @@ function hasMessage(step: SequenceStepPreview): boolean {
   return MESSAGE_ACTION_TYPES.includes(step.actionType) && !!step.messageTemplate?.trim();
 }
 
-function resolveVariables(template: string, profile: LinkedInProfile): string {
+/**
+ * Variables résolues dans l'aperçu. Le texte résolu est enregistré tel quel dans
+ * tracking_data.message_overrides et envoyé par le moteur : ce qui est montré
+ * est ce qui part. {{city}} vient de la localisation du profil (le moteur ne la
+ * connaît pas) et {{sender_name}} du prénom de l'expéditeur. {{calendly_link}}
+ * reste dans le texte : le moteur y met le lien d'agenda de la mission à l'envoi.
+ */
+export function resolveVariables(template: string, profile: LinkedInProfile, senderName?: string): string {
   if (!template) return '';
-  return template
+  const city = (profile.location || '').split(',')[0]?.trim() || '';
+  const resolved = template
     .replace(/\{\{first_name\}\}/gi, profile.first_name || profile.name?.split(' ')[0] || '')
     .replace(/\{\{last_name\}\}/gi, profile.last_name || profile.name?.split(' ').slice(1).join(' ') || '')
     .replace(/\{\{full_name\}\}/gi, profile.name || '')
     .replace(/\{\{company\}\}/gi, profile.work_experience?.[0]?.company || '')
     .replace(/\{\{headline\}\}/gi, profile.headline || '')
     .replace(/\{\{location\}\}/gi, profile.location || '')
+    .replace(/\{\{city\}\}/gi, city)
     .replace(/\{\{job_title\}\}/gi, profile.work_experience?.[0]?.role || profile.work_experience?.[0]?.position || '');
+  // Sans prénom connu, la variable reste : le moteur la remplit à l'envoi.
+  return senderName ? resolved.replace(/\{\{sender_name\}\}/gi, senderName) : resolved;
 }
 
-export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnrollmentPreviewOptions) {
+/** Réglages d'approche d'une mission (sourcing_projects.job_details.outreach_config). */
+export interface MissionOutreachConfig {
+  recruitment_mode?: 'internal' | 'client';
+  sender_role?: string;
+  anonymize_client?: boolean;
+  anonymized_alias?: string;
+}
+
+/** Identifiant de mission sans le préfixe « project: » des postes synthétiques du sourcing. */
+export function normalizeMissionJobId(rawJobId: string | null | undefined): string | null {
+  if (!rawJobId) return null;
+  return rawJobId.startsWith('project:') ? rawJobId.slice('project:'.length) : rawJobId;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Lit outreach_config et le nom du client de la mission liée au poste. Partagé
+ * par l'aperçu d'inscription et l'InMail groupé : sans ces réglages, la
+ * génération retombe sur le mode cabinet et n'anonymise pas le client.
+ * status : 'idle' (aucun poste), 'loading', 'ready' (trouvé ou poste hors
+ * mission), 'error' (lecture en échec, réglages inconnus).
+ */
+export function useMissionOutreachConfig(rawJobId: string | null | undefined) {
+  const [state, setState] = useState<{
+    outreachConfig: MissionOutreachConfig | null;
+    missionClientName: string | null;
+    status: 'idle' | 'loading' | 'ready' | 'error';
+  }>({ outreachConfig: null, missionClientName: null, status: rawJobId ? 'loading' : 'idle' });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    // 🔧 FIX CRITIQUE : depuis le flow Sourcing, useLinkedInSearch génère
+    // des jobs synthétiques avec id: "project:{uuid}". Sans décaper ce
+    // préfixe, la requête ne trouve RIEN → outreach_config null → repli
+    // CABINET (mode INTERNE jamais appliqué, client jamais anonymisé).
+    const jobId = normalizeMissionJobId(rawJobId);
+    if (!jobId) {
+      setState({ outreachConfig: null, missionClientName: null, status: 'idle' });
+      return;
+    }
+    setState(prev => ({ ...prev, status: 'loading' }));
+    (async () => {
+      try {
+        // Un identifiant non uuid (poste externe) ferait échouer id.eq : on ne
+        // compare alors que job_id.
+        const base = supabase.from('sourcing_projects').select('id, job_id, job_details, client_name');
+        const { data, error } = await (UUID_RE.test(jobId)
+          ? base.or(`id.eq.${jobId},job_id.eq.${jobId}`)
+          : base.eq('job_id', jobId)
+        ).limit(1).maybeSingle();
+        if (cancelled) return;
+        if (error) throw error;
+        const jd = (data?.job_details ?? null) as Record<string, unknown> | null;
+        setState({
+          outreachConfig: (jd?.outreach_config ?? null) as MissionOutreachConfig | null,
+          missionClientName: data?.client_name
+            ?? ((jd?.client as Record<string, unknown> | undefined)?.name as string | undefined)
+            ?? null,
+          status: 'ready',
+        });
+      } catch (err) {
+        console.warn('[useMissionOutreachConfig] outreach_config fetch failed:', err);
+        if (!cancelled) setState({ outreachConfig: null, missionClientName: null, status: 'error' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rawJobId, attempt]);
+
+  const retry = useCallback(() => setAttempt(a => a + 1), []);
+  return { ...state, retry };
+}
+
+/**
+ * Prénom de l'expéditeur pour signer les messages générés : « Laurent », pas
+ * « L. Garilhe » ni le nom de famille. Sources dans l'ordre :
+ *  1. user_metadata.first_name (signup direct)
+ *  2. profiles.display_name (1er token = prénom)
+ *  3. user_metadata.full_name (1er token)
+ *  4. partie locale de l'e-mail « prenom.nom » (jamais le nom de famille)
+ * undefined si rien d'utilisable : la génération prend alors son défaut explicite.
+ */
+export function useSenderFirstName(): string | undefined {
+  const { user } = useAuthReady();
+  const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id;
+    if (!userId) {
+      setProfileDisplayName(null);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!cancelled && data?.display_name) {
+          setProfileDisplayName(data.display_name);
+        }
+      } catch (err) {
+        console.warn('[useSenderFirstName] profile display_name fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  const meta = (user?.user_metadata ?? {}) as { first_name?: string; full_name?: string };
+  if (meta.first_name?.trim()) return meta.first_name.trim();
+  if (profileDisplayName?.trim()) {
+    const firstToken = profileDisplayName.trim().split(/\s+/)[0];
+    if (firstToken && firstToken.length >= 2) return firstToken;
+  }
+  if (meta.full_name?.trim()) {
+    const firstToken = meta.full_name.trim().split(/\s+/)[0];
+    if (firstToken && firstToken.length >= 2) return firstToken;
+  }
+  if (user?.email) {
+    const tokens = user.email.split('@')[0].split(/[._-]/);
+    // Format "prenom.nom" → tokens[0] = prénom (>= 2 caractères). Format
+    // "p.nom" : on ne renvoie PAS le nom (signal IA), plutôt undefined.
+    if (tokens[0] && tokens[0].length >= 2) {
+      return tokens[0].charAt(0).toUpperCase() + tokens[0].slice(1);
+    }
+  }
+  return undefined;
+}
+
+export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, accountId }: UseEnrollmentPreviewOptions) {
   const [previews, setPreviews] = useState<PreviewMap>(new Map());
-  const [generatedCount, setGeneratedCount] = useState(0);
+  // Dernier état des aperçus, lu par les générations en cours : une closure
+  // figée (raccourci clavier, workers de la génération groupée) ne voyait pas
+  // les messages modifiés entre-temps et les régénérait par-dessus.
+  const previewsRef = useRef<PreviewMap>(previews);
+  useEffect(() => { previewsRef.current = previews; }, [previews]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const abortRef = useRef(false);
-  const { user } = useAuthReady();
+  const targets = targetProfiles ?? profiles;
 
-  // Overrides des règles de timing par step pour CETTE inscription.
-  // Map<stepId, { delayDays?, delayHours?, timeoutDays? }>.
-  // Vide par défaut → utilise les valeurs du template séquence.
-  // Mis à jour quand l'user clique "Modifier le délai" sur un step.
-  // Inclus dans tracking_data.step_config_overrides à l'enrôlement,
+  // Overrides des règles de timing par étape pour l'inscription en cours :
+  // une seule valeur, appliquée à TOUS les candidats inscrits depuis cette
+  // fenêtre. Map<stepId, { delayDays?, delayHours?, timeoutDays? }>.
+  // Vide par défaut → utilise les valeurs de la séquence.
+  // Inclus dans tracking_data.step_config_overrides de chaque inscription,
   // lu par process-sequences au scheduling.
   const [stepConfigOverrides, setStepConfigOverrides] = useState<Map<string, StepConfigOverride>>(new Map());
 
@@ -135,129 +368,13 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     return result;
   }, [stepConfigOverrides]);
 
-  // Fetch outreach_config de la mission depuis sourcing_projects.job_details.
-  // Sans ça, l'edge function tombe sur le fallback "MODE SUCCÈS = cabinet
-  // externe" même si l'user a config la mission en mode interne dans le brief.
-  const [outreachConfig, setOutreachConfig] = useState<{
-    recruitment_mode?: 'internal' | 'client';
-    sender_role?: string;
-    anonymize_client?: boolean;
-    anonymized_alias?: string;
-  } | null>(null);
-  const [missionClientName, setMissionClientName] = useState<string | null>(null);
+  // outreach_config de la mission (sourcing_projects.job_details). Sans ça,
+  // l'edge function tombe sur le fallback "MODE SUCCÈS = cabinet externe" même
+  // si la mission est en mode interne, et n'anonymise pas le client.
+  const { outreachConfig, missionClientName } = useMissionOutreachConfig(job?.id);
 
-  useEffect(() => {
-    let cancelled = false;
-    const rawJobId = job?.id;
-    if (!rawJobId) {
-      setOutreachConfig(null);
-      setMissionClientName(null);
-      return;
-    }
-    // 🔧 FIX CRITIQUE : depuis le flow Sourcing, useLinkedInSearch génère
-    // des jobs synthétiques avec id: "project:{uuid}" (préfixe pour
-    // distinguer des Notion job IDs). Si on ne décape pas ce préfixe,
-    // notre query .or(`id.eq.project:abc-123,job_id.eq.project:abc-123`)
-    // ne match RIEN → outreach_config arrive null → fallback CABINET.
-    // C'est ce qui faisait que mode INTERNE n'était JAMAIS appliqué
-    // depuis le modal d'enrollment.
-    const jobId = rawJobId.startsWith('project:')
-      ? rawJobId.slice('project:'.length)
-      : rawJobId;
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from('sourcing_projects')
-          .select('id, job_id, job_details, client_name')
-          .or(`id.eq.${jobId},job_id.eq.${jobId}`)
-          .limit(1)
-          .maybeSingle();
-        if (cancelled) return;
-        const jd = (data?.job_details ?? null) as Record<string, unknown> | null;
-        const cfg = (jd?.outreach_config ?? null) as typeof outreachConfig;
-        setOutreachConfig(cfg);
-        setMissionClientName(
-          data?.client_name
-            ?? ((jd?.client as Record<string, unknown> | undefined)?.name as string | undefined)
-            ?? null,
-        );
-        console.log('[useEnrollmentPreview] Fetched mission config:', {
-          rawJobId,
-          resolvedJobId: jobId,
-          found: !!data,
-          recruitment_mode: cfg?.recruitment_mode || '(undefined)',
-          client_name: data?.client_name || '(undefined)',
-        });
-      } catch (err) {
-        console.warn('[useEnrollmentPreview] outreach_config fetch failed:', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [job?.id]);
-
-  // Nom de l'expéditeur — on garde UNIQUEMENT le prénom pour signer
-  // "Laurent" et pas "L. Garilhe" / "Laurent Garilhe" / "Garilhe".
-  // Sources dans l'ordre :
-  //  1. user_metadata.first_name (signup direct)
-  //  2. profiles.display_name fetché en DB (1er token = prénom)
-  //  3. user_metadata.full_name (1er token)
-  //  4. email local part (avec heuristique pour éviter d'extraire le nom)
-  const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const userId = user?.id;
-    if (!userId) {
-      setProfileDisplayName(null);
-      return;
-    }
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('display_name')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (!cancelled && data?.display_name) {
-          setProfileDisplayName(data.display_name);
-        }
-      } catch (err) {
-        console.warn('[useEnrollmentPreview] profile display_name fetch failed:', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user?.id]);
-
-  const senderName: string | undefined = (() => {
-    const fullNameMeta = (user?.user_metadata as any)?.full_name as string | undefined;
-    const firstNameMeta = (user?.user_metadata as any)?.first_name as string | undefined;
-    // Priorité 1 : user_metadata.first_name (le plus fiable)
-    if (firstNameMeta?.trim()) return firstNameMeta.trim();
-    // Priorité 2 : profiles.display_name (1er token = prénom)
-    if (profileDisplayName?.trim()) {
-      const firstToken = profileDisplayName.trim().split(/\s+/)[0];
-      if (firstToken && firstToken.length >= 2) return firstToken;
-    }
-    // Priorité 3 : user_metadata.full_name (1er token)
-    if (fullNameMeta?.trim()) {
-      const firstToken = fullNameMeta.trim().split(/\s+/)[0];
-      if (firstToken && firstToken.length >= 2) return firstToken;
-    }
-    // Fallback ultime : email — on ESSAIE de deviner le prénom
-    // mais on ne renvoie PAS le nom de famille en signature (signal IA).
-    // Si on n'a vraiment rien d'utilisable, on renvoie undefined → l'edge
-    // function tombera sur son défaut "[Prénom]" (au moins explicite).
-    if (user?.email) {
-      const local = user.email.split('@')[0];
-      const tokens = local.split(/[._-]/);
-      // Si format "prenom.nom" → tokens[0] = prénom (>=2 chars)
-      if (tokens[0] && tokens[0].length >= 2) {
-        return tokens[0].charAt(0).toUpperCase() + tokens[0].slice(1);
-      }
-      // Format "p.nom" → on ne renvoie PAS le nom (Garilhe), trop risqué
-      // Mieux vaut undefined et que l'edge function fasse un fallback générique
-    }
-    return undefined;
-  })();
+  // Prénom de l'expéditeur (signature des messages et {{sender_name}}).
+  const senderName = useSenderFirstName();
 
   // 🔍 DEBUG : log ce qui arrive aux call sites pour qu'on puisse voir
   // si outreach_config est bien fetché et passé.
@@ -275,7 +392,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   }, [job?.id, outreachConfig, missionClientName, senderName]);
 
   const messageSteps = steps.filter(hasMessage);
-  const totalToGenerate = profiles.length;
+  const totalToGenerate = targets.length;
 
   const getPreview = useCallback((candidateId: string, stepId: string): GeneratedMessage | undefined => {
     return previews.get(candidateId)?.get(stepId);
@@ -290,6 +407,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
       };
       candidateMap.set(stepId, { ...existing, ...msg });
       next.set(candidateId, candidateMap);
+      previewsRef.current = next;
       return next;
     });
   }, []);
@@ -314,7 +432,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     // Pré-charge les previews déjà existants (cas où l'user a déjà
     // généré certains steps avant ; on ne les regenere pas mais on
     // veut les inclure dans prevSentSteps des steps suivants).
-    const existingCandidateMap = previews.get(profile.id);
+    const existingCandidateMap = previewsRef.current.get(profile.id);
     if (existingCandidateMap) {
       existingCandidateMap.forEach((msg, stepId) => {
         if (msg.isGenerated || msg.isEdited) localPreviews.set(stepId, msg);
@@ -324,8 +442,17 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     for (const step of messageSteps) {
       if (abortRef.current) return;
 
-      const existing = localPreviews.get(step.stepId);
-      if (existing?.isGenerated && !existing.isEdited) continue; // Already generated
+      // Jamais de régénération d'un message déjà généré ou modifié à la main
+      // (« Générer tous les aperçus », touche Entrée) : seul le bouton
+      // « Régénérer » de l'étape (regenerateStep) le remplace. Lecture fraîche
+      // à chaque étape : un message modifié ou lancé ailleurs pendant la boucle
+      // est respecté. Un message en erreur reste régénérable.
+      const current = previewsRef.current.get(profile.id)?.get(step.stepId);
+      const existing = localPreviews.get(step.stepId) ?? current;
+      if (existing && (existing.isEdited || existing.isGenerated || existing.isGenerating)) {
+        if (current && (current.isEdited || current.isGenerated)) localPreviews.set(step.stepId, current);
+        continue;
+      }
 
       setPreview(profile.id, step.stepId, { isGenerating: true, error: undefined });
 
@@ -353,10 +480,14 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
       const upperBound = isInmailFallback
         ? waitConnectionBefore!.stepOrder
         : step.stepOrder;
+      // Séquence à embranchements : les étapes de l'autre chemin ne sont
+      // jamais parties pour ce candidat.
+      const otherBranch = otherBranchStepIds(steps, step.stepId);
       const prevSentSteps = steps
         .filter(s =>
           s.stepOrder < upperBound &&
-          reachActionTypes.includes(s.actionType)
+          reachActionTypes.includes(s.actionType) &&
+          !otherBranch.has(s.stepId)
         )
         .sort((a, b) => a.stepOrder - b.stepOrder)
         .map(s => {
@@ -488,11 +619,12 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           console.error('Preview generation error:', err);
           // Fallback to template with variables resolved
           const fallbackMsg: GeneratedMessage = {
-            subject: resolveVariables(step.subjectTemplate, profile),
-            message: resolveVariables(step.messageTemplate, profile),
+            subject: resolveVariables(step.subjectTemplate, profile, senderName),
+            message: resolveVariables(step.messageTemplate, profile, senderName),
             isGenerated: false,
             isGenerating: false,
-            error: 'Impossible de générer — le message template sera utilisé tel quel',
+            isEdited: false,
+            error: PREVIEW_GENERATION_FAILED_MESSAGE,
           };
           localPreviews.set(step.stepId, fallbackMsg);
           setPreview(profile.id, step.stepId, fallbackMsg);
@@ -500,8 +632,8 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
       } else {
         // No AI: resolve variables (template only)
         const noAiMsg: GeneratedMessage = {
-          subject: resolveVariables(step.subjectTemplate, profile),
-          message: resolveVariables(step.messageTemplate, profile),
+          subject: resolveVariables(step.subjectTemplate, profile, senderName),
+          message: resolveVariables(step.messageTemplate, profile, senderName),
           isGenerated: true,
           isGenerating: false,
           isEdited: false,
@@ -514,13 +646,12 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
         setPreview(profile.id, step.stepId, noAiMsg);
       }
     }
-  }, [messageSteps, steps, job, accountId, previews, setPreview, outreachConfig, missionClientName, senderName]);
+  }, [messageSteps, steps, job, accountId, setPreview, outreachConfig, missionClientName, senderName]);
 
   const generateForCandidateById = useCallback(async (candidateId: string) => {
     const profile = profiles.find(p => p.id === candidateId);
     if (!profile) return;
     await generateForCandidate(profile);
-    setGeneratedCount(prev => prev + 1);
   }, [profiles, generateForCandidate]);
 
   const regenerateStep = useCallback(async (candidateId: string, stepId: string) => {
@@ -595,15 +726,17 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
           ? waitConnectionBefore!.stepOrder
           : step.stepOrder;
 
+        const otherBranch = otherBranchStepIds(steps, step.stepId);
         const prevSentSteps = steps
           .filter(s =>
             s.stepOrder < upperBound &&
             ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message']
-              .includes(s.actionType)
+              .includes(s.actionType) &&
+            !otherBranch.has(s.stepId)
           )
           .sort((a, b) => a.stepOrder - b.stepOrder)
           .map(s => {
-            const prev = previews.get(candidateId)?.get(s.stepId);
+            const prev = previewsRef.current.get(candidateId)?.get(s.stepId);
             return {
               actionType: s.actionType,
               finalMessage: prev?.message
@@ -655,17 +788,17 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
         });
       } catch {
         setPreview(candidateId, stepId, {
-          subject: resolveVariables(step.subjectTemplate, profile),
-          message: resolveVariables(step.messageTemplate, profile),
+          subject: resolveVariables(step.subjectTemplate, profile, senderName),
+          message: resolveVariables(step.messageTemplate, profile, senderName),
           isGenerated: false,
           isGenerating: false,
-          error: 'Impossible de générer — le message template sera utilisé tel quel',
+          error: PREVIEW_GENERATION_FAILED_MESSAGE,
         });
       }
     } else {
       setPreview(candidateId, stepId, {
-        subject: resolveVariables(step.subjectTemplate, profile),
-        message: resolveVariables(step.messageTemplate, profile),
+        subject: resolveVariables(step.subjectTemplate, profile, senderName),
+        message: resolveVariables(step.messageTemplate, profile, senderName),
         isGenerated: true,
         isGenerating: false,
         isEdited: false,
@@ -674,9 +807,12 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   }, [profiles, messageSteps, steps, job, accountId, previews, setPreview, outreachConfig, missionClientName, senderName]);
 
   const editMessage = useCallback((candidateId: string, stepId: string, field: 'subject' | 'message', value: string) => {
+    // Un message modifié à la main part tel quel (getMessageOverrides) : l'avis
+    // d'échec de génération ne s'applique plus.
     setPreview(candidateId, stepId, {
       [field]: value,
       isEdited: true,
+      error: undefined,
     });
   }, [setPreview]);
 
@@ -684,18 +820,14 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   const generateAll = useCallback(async (maxConcurrent = 3) => {
     setIsBulkGenerating(true);
     abortRef.current = false;
-    setGeneratedCount(0);
 
-    const queue = [...profiles];
-    let completed = 0;
+    const queue = [...targets];
 
     const worker = async () => {
       while (queue.length > 0 && !abortRef.current) {
         const profile = queue.shift();
         if (!profile) break;
         await generateForCandidate(profile);
-        completed++;
-        setGeneratedCount(completed);
       }
     };
 
@@ -703,7 +835,7 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     await Promise.all(workers);
 
     setIsBulkGenerating(false);
-  }, [profiles, generateForCandidate]);
+  }, [targets, generateForCandidate]);
 
   const cancelBulkGeneration = useCallback(() => {
     abortRef.current = true;
@@ -732,7 +864,9 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
     isEdited?: boolean;
   }> => {
     const overrides: Record<string, { subject?: string; message?: string; isEdited?: boolean }> = {};
-    const candidateMap = previews.get(candidateId);
+    // Dernier état (pas la closure du clic) : une modification faite pendant
+    // une inscription groupée vaut pour les candidats pas encore inscrits.
+    const candidateMap = previewsRef.current.get(candidateId);
     if (!candidateMap) return overrides;
 
     candidateMap.forEach((msg, stepId) => {
@@ -747,15 +881,15 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
       }
     });
     return overrides;
-  }, [previews]);
+  }, []);
 
   // Candidate analysis for bulk mode
   const candidateAnalysis = {
-    total: profiles.length,
-    withEmail: profiles.filter(p => p.contact_info?.emails?.length).length,
-    withPhone: profiles.filter(p => p.contact_info?.phones?.length).length,
-    withoutEmail: profiles.filter(p => !p.contact_info?.emails?.length).length,
-    withoutPhone: profiles.filter(p => !p.contact_info?.phones?.length).length,
+    total: targets.length,
+    withEmail: targets.filter(p => p.contact_info?.emails?.length).length,
+    withPhone: targets.filter(p => p.contact_info?.phones?.length).length,
+    withoutEmail: targets.filter(p => !p.contact_info?.emails?.length).length,
+    withoutPhone: targets.filter(p => !p.contact_info?.phones?.length).length,
   };
 
   // Une génération par candidat ET par étape personnalisée : compter les
@@ -765,7 +899,17 @@ export function useEnrollmentPreview({ steps, profiles, job, accountId }: UseEnr
   // pas son estimation, et annonçait moins de la moitié de ce qui sera exigé.
   const aiStepCount = messageSteps.filter(s => s.useAiPersonalization).length;
   const hasAiSteps = aiStepCount > 0;
-  const estimatedCredits = profiles.length * aiStepCount * estimateActionCredits('outreach_message');
+  const estimatedCredits = targets.length * aiStepCount * estimateActionCredits('outreach_message');
+
+  // Aperçus prêts : candidats visés dont tous les messages sont générés ou
+  // modifiés. Dérivé des aperçus (et non compté à chaque clic) : relancer la
+  // génération du même candidat ne fait plus dépasser le total.
+  const generatedCount = messageSteps.length === 0
+    ? 0
+    : targets.filter(p => messageSteps.every(s => {
+        const msg = previews.get(p.id)?.get(s.stepId);
+        return !!msg && (msg.isGenerated || msg.isEdited);
+      })).length;
 
   return {
     previews,

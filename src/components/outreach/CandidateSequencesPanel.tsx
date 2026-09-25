@@ -2,26 +2,37 @@
  * CandidateSequencesPanel — vue des séquences pour UN candidat (cross-séquences).
  *
  * Affiche pour chaque inscription :
- *   - Statut (active/paused/replied/completed)
- *   - Étape courante (ex: 3/7) + prochaine action prévue
+ *   - Statut (en cours, en pause avec sa raison, a répondu, terminée…)
+ *   - Nombre d'actions envoyées + prochaine action prévue
  *   - Mission/job rattaché
- *   - Timeline cliquable des executions (sent/scheduled/skipped)
- *   - Actions inline : Arrêter / Reprendre / Marquer répondu
+ *   - Historique dépliable des étapes
+ *   - Actions inline : Mettre en pause / Reprendre / Marquer comme répondu
  *
- * Source : useCandidateEnrollments hook (qui réplique la logique du
- * SequenceEnrollmentsPanel — single source of truth pour stop/resume).
+ * Source : useCandidateEnrollments (pause locale sans toucher aux étapes,
+ * reprise et « a répondu » par les actions serveur de process-sequences).
  */
 
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useCandidateEnrollments, CandidateEnrollment } from '@/hooks/useCandidateEnrollments';
-import { formatSequenceError } from '@/lib/sequenceErrorMessages';
+import {
+  actionTypeLabel,
+  executionDoneVerb,
+  executionStatusLabel,
+  formatSequenceError,
+  formatSkipReason,
+  isHiddenActionType,
+  isSentExecutionStatus,
+  shouldShowExecutionError,
+} from '@/lib/sequenceErrorMessages';
+import { enrollmentStatusLabel, pausedLabel, pauseReasonHint } from '@/lib/sequenceLabels';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   GitBranch, Clock, CheckCircle2, XCircle, Send, Mail, Eye,
   StopCircle, Play, MessageCircle, Loader2, AlertCircle, ChevronDown,
   ChevronRight, Briefcase, MoreHorizontal, CheckCheck, SkipForward,
-  Pause,
+  Pause, MousePointerClick, MailOpen, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,65 +55,59 @@ interface Props {
   compact?: boolean;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  active: { label: 'En cours', color: 'bg-success/10 text-success border-success/30', icon: <Play className="w-3 h-3" /> },
-  paused: { label: 'En pause', color: 'bg-muted text-muted-foreground border-border', icon: <Pause className="w-3 h-3" /> },
-  replied: { label: 'Répondu', color: 'bg-info/10 text-info border-info/30', icon: <MessageCircle className="w-3 h-3" /> },
-  completed: { label: 'Terminé', color: 'bg-foreground/8 text-foreground border-border', icon: <CheckCircle2 className="w-3 h-3" /> },
-  stopped: { label: 'Stoppé', color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <StopCircle className="w-3 h-3" /> },
+const STATUS_STYLE: Record<string, { color: string; icon: React.ReactNode }> = {
+  active: { color: 'bg-success/10 text-success border-success/30', icon: <Play className="w-3 h-3" aria-hidden="true" /> },
+  paused: { color: 'bg-muted text-muted-foreground border-border', icon: <Pause className="w-3 h-3" aria-hidden="true" /> },
+  replied: { color: 'bg-info/10 text-info border-info/30', icon: <MessageCircle className="w-3 h-3" aria-hidden="true" /> },
+  completed: { color: 'bg-foreground/8 text-foreground border-border', icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> },
+  stopped: { color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <StopCircle className="w-3 h-3" aria-hidden="true" /> },
+  bounced: { color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
+  cancelled: { color: 'bg-muted text-muted-foreground border-border', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
 };
+const NEUTRAL_STATUS_STYLE = { color: 'bg-muted text-muted-foreground border-border', icon: <AlertCircle className="w-3 h-3" aria-hidden="true" /> };
 
-// Libellé d'une inscription en pause selon sequence_enrollments.pause_reason.
-const PAUSE_REASON_LABELS: Record<string, string> = {
-  account_disconnected: 'En pause (compte déconnecté)',
-  quota_reached: 'En pause (limite atteinte)',
-  subscription_required: 'En pause (abonnement requis)',
-};
-const pausedLabel = (reason: string | null | undefined): string =>
-  PAUSE_REASON_LABELS[reason || ''] || 'En pause';
-
-const ACTION_TYPE_LABELS: Record<string, string> = {
-  message: 'Message LinkedIn',
-  inmail: 'InMail',
-  smart_message: 'Smart Message',
-  email: 'Email',
-  connection_request: 'Invitation LinkedIn',
-  whatsapp_message: 'WhatsApp',
-  profile_visit: 'Visite profil',
-  wait_connection: 'Attente acceptation',
-  wait_reply: 'Attente réponse',
-};
+/** Raisons de pause qu'un « Reprendre » individuel peut lever. */
+const RESUMABLE_PAUSE_REASONS = new Set<string>(['manual', 'send_failed']);
 
 const ACTION_TYPE_ICONS: Record<string, React.ReactNode> = {
-  message: <Send className="w-3 h-3" />,
-  inmail: <Mail className="w-3 h-3" />,
-  smart_message: <Send className="w-3 h-3" />,
-  email: <Mail className="w-3 h-3" />,
-  connection_request: <Send className="w-3 h-3" />,
-  whatsapp_message: <Send className="w-3 h-3" />,
-  profile_visit: <Eye className="w-3 h-3" />,
-  wait_connection: <Clock className="w-3 h-3" />,
-  wait_reply: <Clock className="w-3 h-3" />,
+  message: <Send className="w-3 h-3" aria-hidden="true" />,
+  inmail: <Mail className="w-3 h-3" aria-hidden="true" />,
+  smart_message: <Send className="w-3 h-3" aria-hidden="true" />,
+  email: <Mail className="w-3 h-3" aria-hidden="true" />,
+  connection_request: <Send className="w-3 h-3" aria-hidden="true" />,
+  whatsapp_message: <Send className="w-3 h-3" aria-hidden="true" />,
+  profile_visit: <Eye className="w-3 h-3" aria-hidden="true" />,
+  wait_connection: <Clock className="w-3 h-3" aria-hidden="true" />,
+  wait_reply: <Clock className="w-3 h-3" aria-hidden="true" />,
+  wait_profile_visit: <Clock className="w-3 h-3" aria-hidden="true" />,
+  wait_for_event: <Clock className="w-3 h-3" aria-hidden="true" />,
+  condition_branch: <GitBranch className="w-3 h-3" aria-hidden="true" />,
 };
 
-const EXEC_STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  sent: { label: 'Envoyé', color: 'text-success', icon: <CheckCheck className="w-3 h-3" /> },
-  scheduled: { label: 'Programmé', color: 'text-info', icon: <Clock className="w-3 h-3" /> },
-  sending: { label: "En cours d'envoi", color: 'text-info', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-  failed: { label: 'Échoué', color: 'text-destructive', icon: <XCircle className="w-3 h-3" /> },
-  skipped: { label: 'Skippé', color: 'text-muted-foreground', icon: <SkipForward className="w-3 h-3" /> },
-  cancelled: { label: 'Annulé', color: 'text-muted-foreground', icon: <XCircle className="w-3 h-3" /> },
-  waiting_event: { label: 'En attente', color: 'text-warning', icon: <Clock className="w-3 h-3" /> },
-  quota_blocked: { label: 'Quota atteint', color: 'text-warning', icon: <Pause className="w-3 h-3" /> },
+const EXEC_STATUS_STYLE: Record<string, { color: string; icon: React.ReactNode }> = {
+  sent: { color: 'text-success', icon: <CheckCheck className="w-3 h-3" aria-hidden="true" /> },
+  opened: { color: 'text-success', icon: <MailOpen className="w-3 h-3" aria-hidden="true" /> },
+  clicked: { color: 'text-success', icon: <MousePointerClick className="w-3 h-3" aria-hidden="true" /> },
+  replied: { color: 'text-info', icon: <MessageCircle className="w-3 h-3" aria-hidden="true" /> },
+  scheduled: { color: 'text-info', icon: <Clock className="w-3 h-3" aria-hidden="true" /> },
+  sending: { color: 'text-info', icon: <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> },
+  failed: { color: 'text-destructive', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
+  bounced: { color: 'text-destructive', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
+  skipped: { color: 'text-muted-foreground', icon: <SkipForward className="w-3 h-3" aria-hidden="true" /> },
+  cancelled: { color: 'text-muted-foreground', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
+  waiting_event: { color: 'text-warning', icon: <Clock className="w-3 h-3" aria-hidden="true" /> },
+  quota_blocked: { color: 'text-warning', icon: <Pause className="w-3 h-3" aria-hidden="true" /> },
 };
+const NEUTRAL_EXEC_STYLE = { color: 'text-muted-foreground', icon: <AlertCircle className="w-3 h-3" aria-hidden="true" /> };
 
 export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle, compact }) => {
-  const { enrollments, loading, error, stop, resume, markReplied, refetch } = useCandidateEnrollments({
+  const { enrollments, loading, error, pendingId, stop, resume, markReplied, refetch } = useCandidateEnrollments({
     profileId,
   });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [confirmStop, setConfirmStop] = useState<string | null>(null);
-  const [confirmReply, setConfirmReply] = useState<string | null>(null);
+  const [confirmStop, setConfirmStop] = useState<CandidateEnrollment | null>(null);
+  const [confirmResume, setConfirmResume] = useState<CandidateEnrollment | null>(null);
+  const [confirmReply, setConfirmReply] = useState<CandidateEnrollment | null>(null);
 
   const toggleExpanded = (id: string) => {
     setExpanded(prev => {
@@ -113,10 +118,14 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
     });
   };
 
-  if (loading) {
+  const expand = (id: string) => {
+    setExpanded(prev => new Set(prev).add(id));
+  };
+
+  if (loading && enrollments.length === 0) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center py-8" role="status" aria-label="Chargement des séquences">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
       </div>
     );
   }
@@ -124,8 +133,12 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
   if (error) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-destructive/5 border border-destructive/30 text-destructive text-sm">
-        <AlertCircle className="w-4 h-4" />
-        {error}
+        <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+        <span className="flex-1">{error}</span>
+        <Button variant="outline" size="sm" className="h-7 px-2 text-2xs" onClick={() => refetch()}>
+          <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" />
+          Réessayer
+        </Button>
       </div>
     );
   }
@@ -134,19 +147,21 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
     return (
       <EmptyState
         icon={<GitBranch className="w-7 h-7" />}
-        title="Aucune séquence en cours"
-        description="Ce candidat n'est inscrit dans aucune séquence outreach."
+        title="Aucune séquence"
+        description="Ce candidat n'est inscrit dans aucune séquence."
         compact
       />
     );
   }
+
+  const sequenceName = (e: CandidateEnrollment | null) => e?.sequence_name || 'cette séquence';
 
   return (
     <div className="space-y-3">
       {!hideTitle && (
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold flex items-center gap-2">
-            <GitBranch className="w-4 h-4" />
+            <GitBranch className="w-4 h-4" aria-hidden="true" />
             Séquences ({enrollments.length})
           </h3>
         </div>
@@ -157,10 +172,12 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
           key={enrollment.id}
           enrollment={enrollment}
           isExpanded={expanded.has(enrollment.id)}
+          isBusy={pendingId === enrollment.id}
           onToggleExpand={() => toggleExpanded(enrollment.id)}
-          onStop={() => setConfirmStop(enrollment.id)}
-          onResume={() => resume(enrollment.id)}
-          onMarkReplied={() => setConfirmReply(enrollment.id)}
+          onShowError={() => expand(enrollment.id)}
+          onStop={() => setConfirmStop(enrollment)}
+          onResume={() => setConfirmResume(enrollment)}
+          onMarkReplied={() => setConfirmReply(enrollment)}
           compact={compact}
         />
       ))}
@@ -169,20 +186,46 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
       <AlertDialog open={!!confirmStop} onOpenChange={open => !open && setConfirmStop(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Arrêter cette séquence ?</AlertDialogTitle>
+            <AlertDialogTitle>Mettre en pause « {sequenceName(confirmStop)} » ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Toutes les actions programmées (messages, relances, InMails) seront annulées. Tu pourras reprendre la séquence plus tard depuis le step courant.
+              Aucun message de cette séquence ne partira vers ce candidat tant que vous ne la reprenez pas.
+              Les étapes prévues gardent leur date.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={async () => {
-                if (confirmStop) await stop(confirmStop);
+                const target = confirmStop;
                 setConfirmStop(null);
+                if (target) await stop(target.id);
               }}
             >
-              Arrêter
+              Mettre en pause
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!confirmResume} onOpenChange={open => !open && setConfirmResume(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reprendre « {sequenceName(confirmResume)} » ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Les envois reprennent pour ce candidat. Chaque étape garde sa date prévue ; celles déjà passées
+              partiront dans les prochaines minutes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                const target = confirmResume;
+                setConfirmResume(null);
+                if (target) await resume(target.id);
+              }}
+            >
+              Reprendre
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -191,20 +234,22 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
       <AlertDialog open={!!confirmReply} onOpenChange={open => !open && setConfirmReply(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Marquer comme répondu ?</AlertDialogTitle>
+            <AlertDialogTitle>Marquer comme ayant répondu ?</AlertDialogTitle>
             <AlertDialogDescription>
-              La séquence sera arrêtée et marquée comme "Répondu". Utile si tu prends la conversation à la main ou si la réponse est venue hors LinkedIn.
+              La séquence « {sequenceName(confirmReply)} » s'arrête définitivement pour ce candidat, qui passe
+              en « A répondu ». Utile si vous reprenez la conversation vous-même ou si la réponse est venue hors LinkedIn.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={async () => {
-                if (confirmReply) await markReplied(confirmReply);
+                const target = confirmReply;
                 setConfirmReply(null);
+                if (target) await markReplied(target.id);
               }}
             >
-              Confirmer
+              Marquer comme ayant répondu
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -216,31 +261,36 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
 // ─── EnrollmentCard ──────────────────────────────────────────────────
 
 function EnrollmentCard({
-  enrollment, isExpanded, onToggleExpand, onStop, onResume, onMarkReplied, compact,
+  enrollment, isExpanded, isBusy, onToggleExpand, onShowError, onStop, onResume, onMarkReplied, compact,
 }: {
   enrollment: CandidateEnrollment;
   isExpanded: boolean;
+  isBusy: boolean;
   onToggleExpand: () => void;
+  onShowError: () => void;
   onStop: () => void;
   onResume: () => void;
   onMarkReplied: () => void;
   compact?: boolean;
 }) {
-  const statusCfg = STATUS_CONFIG[enrollment.status] || STATUS_CONFIG.completed;
+  const statusStyle = STATUS_STYLE[enrollment.status] || NEUTRAL_STATUS_STYLE;
   const isActive = enrollment.status === 'active';
   const isPaused = enrollment.status === 'paused';
-  const statusLabel = isPaused ? pausedLabel(enrollment.pause_reason) : statusCfg.label;
+  const statusLabel = isPaused ? pausedLabel(enrollment.pause_reason) : enrollmentStatusLabel(enrollment.status);
+  const pauseHint = isPaused ? pauseReasonHint(enrollment.pause_reason) : null;
+  const pauseReason = enrollment.pause_reason;
+  // Une pause sans raison est une pause posée avant l'introduction des raisons :
+  // on la traite comme une pause manuelle.
+  const canResume = isPaused && (!pauseReason || RESUMABLE_PAUSE_REASONS.has(pauseReason));
 
-  const sentCount = enrollment.executions.filter(e => e.status === 'sent').length;
-  const totalSteps = enrollment.total_steps || enrollment.executions.length;
-  const progress = totalSteps > 0 ? Math.round((sentCount / totalSteps) * 100) : 0;
+  const sentCount = enrollment.sent_count;
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 flex items-start gap-3">
         <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
-          <GitBranch className="w-4 h-4 text-foreground" strokeWidth={2} />
+          <GitBranch className="w-4 h-4 text-foreground" strokeWidth={2} aria-hidden="true" />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -248,9 +298,9 @@ function EnrollmentCard({
             <h4 className="font-semibold text-[13.5px] tracking-tight truncate">
               {enrollment.sequence_name || 'Séquence'}
             </h4>
-            <Badge variant="outline" className={cn('text-3xs px-1.5 h-5', statusCfg.color)}>
+            <Badge variant="outline" className={cn('text-3xs px-1.5 h-5', statusStyle.color)}>
               <span className="inline-flex items-center gap-1">
-                {statusCfg.icon}
+                {statusStyle.icon}
                 {statusLabel}
               </span>
             </Badge>
@@ -258,41 +308,37 @@ function EnrollmentCard({
 
           {enrollment.job_title && (
             <p className="text-2xs text-muted-foreground truncate mt-0.5 inline-flex items-center gap-1">
-              <Briefcase className="w-3 h-3 shrink-0" />
+              <Briefcase className="w-3 h-3 shrink-0" aria-hidden="true" />
               {enrollment.job_title}
             </p>
           )}
 
-          {/* Progress bar */}
-          <div className="flex items-center gap-2 mt-2">
-            <div className="flex-1 h-1.5 bg-muted/50 rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  'h-full transition-all duration-500',
-                  isActive ? 'bg-success' : isPaused ? 'bg-muted-foreground/40' : 'bg-foreground/40'
-                )}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <span className="text-2xs tabular-nums text-muted-foreground font-medium shrink-0">
-              {sentCount}/{totalSteps}
-            </span>
-          </div>
+          {/* Actions envoyées : un « X / Y » ne peut pas être juste avec les
+              attentes, les variantes et les branches non suivies. */}
+          <p className="text-2xs tabular-nums text-muted-foreground font-medium mt-1.5">
+            {sentCount === 0
+              ? 'Aucune action envoyée'
+              : `${sentCount} action${sentCount > 1 ? 's' : ''} envoyée${sentCount > 1 ? 's' : ''}`}
+          </p>
+
+          {pauseHint && (
+            <p className="text-2xs text-muted-foreground mt-1">{pauseHint}</p>
+          )}
 
           {/* Next action */}
           {isActive && enrollment.next_scheduled_at && (
             <p className="text-2xs text-info mt-1.5 inline-flex items-center gap-1">
-              <Clock className="w-3 h-3" />
+              <Clock className="w-3 h-3" aria-hidden="true" />
               Prochaine action :{' '}
               <span className="font-medium">
-                {ACTION_TYPE_LABELS[enrollment.next_step_action_type || ''] || enrollment.next_step_action_type}
+                {actionTypeLabel(enrollment.next_step_action_type)}
               </span>
-              {' '}— {formatDistanceToNow(new Date(enrollment.next_scheduled_at), { addSuffix: true, locale: fr })}
+              {' '}· {formatDistanceToNow(new Date(enrollment.next_scheduled_at), { addSuffix: true, locale: fr })}
             </p>
           )}
           {enrollment.replied_at && (
             <p className="text-2xs text-muted-foreground mt-1.5">
-              Répondu {formatDistanceToNow(new Date(enrollment.replied_at), { addSuffix: true, locale: fr })}
+              A répondu {formatDistanceToNow(new Date(enrollment.replied_at), { addSuffix: true, locale: fr })}
             </p>
           )}
         </div>
@@ -305,37 +351,61 @@ function EnrollmentCard({
               size="sm"
               className="h-7 px-2 text-2xs"
               onClick={onStop}
+              disabled={isBusy}
             >
-              <StopCircle className="w-3 h-3 mr-1" />
-              Arrêter
+              {isBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" /> : <Pause className="w-3 h-3 mr-1" aria-hidden="true" />}
+              Mettre en pause
             </Button>
           )}
-          {isPaused && (
+          {isPaused && pauseReason === 'account_disconnected' && (
+            <Button asChild variant="outline" size="sm" className="h-7 px-2 text-2xs">
+              <Link to="/settings/account/connections">Reconnecter le compte</Link>
+            </Button>
+          )}
+          {isPaused && pauseReason === 'subscription_required' && (
+            <Button asChild variant="outline" size="sm" className="h-7 px-2 text-2xs">
+              <Link to="/pricing">Voir les offres</Link>
+            </Button>
+          )}
+          {isPaused && pauseReason === 'send_failed' && (
+            <Button variant="outline" size="sm" className="h-7 px-2 text-2xs" onClick={onShowError}>
+              <AlertCircle className="w-3 h-3 mr-1" aria-hidden="true" />
+              Voir l'erreur
+            </Button>
+          )}
+          {canResume && pauseReason !== 'send_failed' && (
             <Button
               variant="outline"
               size="sm"
               className="h-7 px-2 text-2xs"
               onClick={onResume}
+              disabled={isBusy}
             >
-              <Play className="w-3 h-3 mr-1" />
+              {isBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" /> : <Play className="w-3 h-3 mr-1" aria-hidden="true" />}
               Reprendre
             </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="w-3.5 h-3.5" />
+              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Actions de l'inscription" disabled={isBusy}>
+                <MoreHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={onToggleExpand}>
-                {isExpanded ? <ChevronRight className="w-3.5 h-3.5 mr-2" /> : <ChevronDown className="w-3.5 h-3.5 mr-2" />}
-                {isExpanded ? 'Réduire' : 'Voir la timeline'}
+                {isExpanded ? <ChevronRight className="w-3.5 h-3.5 mr-2" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5 mr-2" aria-hidden="true" />}
+                {isExpanded ? "Masquer l'historique" : "Voir l'historique"}
               </DropdownMenuItem>
-              {isActive && (
+              {canResume && pauseReason === 'send_failed' && (
+                <DropdownMenuItem onClick={onResume}>
+                  <Play className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                  Reprendre la séquence
+                </DropdownMenuItem>
+              )}
+              {(isActive || isPaused) && (
                 <DropdownMenuItem onClick={onMarkReplied}>
-                  <MessageCircle className="w-3.5 h-3.5 mr-2" />
-                  Marquer comme répondu
+                  <MessageCircle className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                  Marquer comme ayant répondu
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -343,11 +413,11 @@ function EnrollmentCard({
         </div>
       </div>
 
-      {/* Timeline expandable */}
+      {/* Historique dépliable */}
       {isExpanded && enrollment.executions.length > 0 && (
         <div className="border-t border-border bg-muted/10 px-4 py-3 space-y-2">
           <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-2">
-            Timeline ({enrollment.executions.length} actions)
+            Historique ({enrollment.executions.length} étape{enrollment.executions.length > 1 ? 's' : ''})
           </p>
           {enrollment.executions.map((exec, idx) => (
             <ExecutionRow key={exec.id} execution={exec} index={idx} compact={compact} />
@@ -358,18 +428,19 @@ function EnrollmentCard({
       {/* Footer rapide pour expand/collapse si pas via menu */}
       {!isExpanded && enrollment.executions.length > 0 && (
         <button
+          type="button"
           onClick={onToggleExpand}
           className="w-full px-4 py-1.5 border-t border-border bg-muted/5 text-2xs text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors flex items-center justify-center gap-1"
         >
-          <ChevronDown className="w-3 h-3" />
-          Voir la timeline ({enrollment.executions.length} étapes)
+          <ChevronDown className="w-3 h-3" aria-hidden="true" />
+          Voir l'historique ({enrollment.executions.length} étape{enrollment.executions.length > 1 ? 's' : ''})
         </button>
       )}
     </div>
   );
 }
 
-// ─── ExecutionRow — une ligne de la timeline ─────────────────────────
+// ─── ExecutionRow — une ligne de l'historique ─────────────────────────
 
 function ExecutionRow({
   execution, index, compact,
@@ -378,13 +449,17 @@ function ExecutionRow({
   index: number;
   compact?: boolean;
 }) {
-  const statusCfg = EXEC_STATUS_CONFIG[execution.status] || EXEC_STATUS_CONFIG.cancelled;
+  const statusStyle = EXEC_STATUS_STYLE[execution.status] || NEUTRAL_EXEC_STYLE;
   const actionType = execution.step?.action_type || 'message';
-  const actionIcon = ACTION_TYPE_ICONS[actionType] || <Send className="w-3 h-3" />;
-  const actionLabel = ACTION_TYPE_LABELS[actionType] || actionType;
+  const actionIcon = ACTION_TYPE_ICONS[actionType] || <Send className="w-3 h-3" aria-hidden="true" />;
+  const isWaitStep = isHiddenActionType(actionType);
+  const isSent = isSentExecutionStatus(execution.status);
 
-  const dateLabel = execution.executed_at
-    ? `Envoyé ${formatDistanceToNow(new Date(execution.executed_at), { addSuffix: true, locale: fr })}`
+  // Le moteur renseigne executed_at aussi sur les échecs, les sauts et
+  // certaines annulations : le verbe suit le statut, jamais « Envoyé » d'office.
+  const doneVerb = executionDoneVerb(execution.status);
+  const dateLabel = execution.executed_at && doneVerb
+    ? `${isWaitStep && isSent ? 'Franchie' : doneVerb} ${formatDistanceToNow(new Date(execution.executed_at), { addSuffix: true, locale: fr })}`
     : execution.scheduled_at && execution.status === 'scheduled'
     ? `Prévu ${formatDistanceToNow(new Date(execution.scheduled_at), { addSuffix: true, locale: fr })}`
     : execution.scheduled_at
@@ -402,20 +477,22 @@ function ExecutionRow({
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="inline-flex items-center gap-1 text-foreground/80 font-medium">
             {actionIcon}
-            {actionLabel}
+            {actionTypeLabel(actionType)}
           </span>
-          <span className={cn('inline-flex items-center gap-1 font-semibold', statusCfg.color)}>
-            {statusCfg.icon}
-            {statusCfg.label}
+          <span className={cn('inline-flex items-center gap-1 font-semibold', statusStyle.color)}>
+            {statusStyle.icon}
+            {isWaitStep && isSent ? 'Franchie' : executionStatusLabel(execution.status)}
           </span>
         </div>
         <p className="text-2xs text-muted-foreground mt-0.5">{dateLabel}</p>
-        {!compact && execution.final_subject && (
+        {!compact && !isWaitStep && execution.final_subject && isSent && (
           <p className="text-2xs text-foreground/70 mt-1 italic truncate">
             <span className="font-semibold not-italic">Objet :</span> {execution.final_subject}
           </p>
         )}
-        {!compact && execution.final_message && execution.status === 'sent' && (
+        {/* Texte envoyé : jamais pour une attente, dont final_message porte un
+            libellé interne du moteur. */}
+        {!compact && !isWaitStep && execution.final_message && isSent && (
           <p
             className="text-2xs text-foreground/70 mt-0.5 line-clamp-2"
             title={execution.final_message}
@@ -425,14 +502,15 @@ function ExecutionRow({
               : execution.final_message}
           </p>
         )}
-        {execution.error_message && (
-          <p className="text-2xs text-destructive mt-0.5">
-            ⚠ {formatSequenceError(execution.error_message)}
+        {execution.error_message && shouldShowExecutionError(execution.status) && (
+          <p className="text-2xs text-destructive mt-0.5 inline-flex items-start gap-1">
+            <AlertCircle className="w-3 h-3 shrink-0 mt-px" aria-hidden="true" />
+            {formatSequenceError(execution.error_message)}
           </p>
         )}
-        {execution.skip_reason && execution.status !== 'sent' && (
+        {execution.skip_reason && !isSent && (
           <p className="text-2xs text-muted-foreground mt-0.5 italic">
-            Raison : {execution.skip_reason}
+            Raison : {formatSkipReason(execution.skip_reason)}
           </p>
         )}
       </div>

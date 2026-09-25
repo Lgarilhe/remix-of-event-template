@@ -1,5 +1,6 @@
 ﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { requireAuth } from "../_shared/require-auth.ts";
+import { stopLinkedInAccountSending, type LinkedInSendingStopResult } from "../_shared/linkedin-sending-stop.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1002,12 +1003,28 @@ Deno.serve(async (req) => {
         const rawStatus = sources.find((s) => s?.status === 'OK')?.status || sources[0]?.status || 'UNKNOWN';
         const accountStatus = ['RECONNECTED', 'SYNC_SUCCESS', 'CREATION_SUCCESS'].includes(rawStatus) ? 'OK' : rawStatus;
 
-        const { data: current } = await adminClient
+        const { data: current, error: currentError } = await adminClient
           .from('member_linkedin_accounts')
           .select('linkedin_account_id')
           .eq('organization_id', organizationId)
           .eq('user_id', targetUserId)
           .maybeSingle();
+        if (currentError) throw new HttpError(500, 'Lecture de la liaison actuelle impossible. Réessayez.');
+
+        // Changement de compte (SEQ-041) : l'ancien compte ne doit plus rien
+        // envoyer une fois la liaison repointée. Ses inscriptions passent en
+        // pause manuelle (reprise après avoir relié le compte, ou nouvelle
+        // inscription depuis le nouveau compte), ses InMails programmés sont
+        // annulés. Échec = changement refusé, comme la dissociation.
+        const previousAccountId = typeof current?.linkedin_account_id === 'string' ? current.linkedin_account_id : '';
+        if (previousAccountId && previousAccountId !== accountId) {
+          try {
+            await stopLinkedInAccountSending(adminClient, { organizationId, accountId: previousAccountId });
+          } catch (stopError) {
+            console.error('[claim_linkedin_account] previous account sending stop failed:', stopError);
+            throw new HttpError(500, "Les envois de l'ancien compte LinkedIn n'ont pas pu être arrêtés : le changement de compte est annulé. Réessayez.");
+          }
+        }
         const nowIso = new Date().toISOString();
 
         const { data: linked, error: linkError } = await adminClient
@@ -1073,133 +1090,19 @@ Deno.serve(async (req) => {
         // Le titulaire sur sa ligne, owner/admin sur toutes celles de l'org.
         await assertCanManageAccount(adminClient, organizationId, user.id, { mapped: 'org', userId: row.user_id });
 
-        // 1. Envois qui partent de ce compte. Chaque étape est idempotente :
-        //    relancer après un échec partiel termine le travail.
-        const nowIso = new Date().toISOString();
+        // 1. Envois qui partent de ce compte (pause, InMails, rotation) :
+        //    helper partagé, idempotent. La liaison n'est jamais supprimée tant
+        //    que l'arrêt n'a pas réussi.
         const keptLinked = "Les envois de ce compte n'ont pas pu être arrêtés : le compte reste relié";
-        //  a. Inscriptions actives : pause manuelle (même schéma que l'arrêt manuel,
-        //     SequenceEnrollmentsPanel ; reprise manuelle depuis la liste des inscrits).
-        const { data: paused, error: pauseError } = await adminClient
-          .from('sequence_enrollments')
-          .update({ status: 'paused', pause_reason: 'manual', updated_at: nowIso })
-          .eq('organization_id', organizationId)
-          .eq('account_id', row.linkedin_account_id)
-          .eq('status', 'active')
-          .select('id');
-        if (pauseError) {
-          console.error('[unlink_linkedin_account] pause failed:', pauseError);
+        let stopped: LinkedInSendingStopResult;
+        try {
+          stopped = await stopLinkedInAccountSending(adminClient, {
+            organizationId,
+            accountId: row.linkedin_account_id,
+          });
+        } catch (stopError) {
+          console.error('[unlink_linkedin_account] sending stop failed:', stopError);
           throw new HttpError(500, keptLinked);
-        }
-        //  b. Inscriptions en pause automatique : passées en pause manuelle, sinon
-        //     unipile-webhook (resumeEnrollmentsAfterReconnect) et stripe-webhook
-        //     (resumeSubscriptionPausedEnrollments) les réactivent sans regarder la liaison.
-        const { data: relabeled, error: relabelError } = await adminClient
-          .from('sequence_enrollments')
-          .update({ pause_reason: 'manual', updated_at: nowIso })
-          .eq('organization_id', organizationId)
-          .eq('account_id', row.linkedin_account_id)
-          .eq('status', 'paused')
-          .in('pause_reason', ['account_disconnected', 'subscription_required', 'quota_reached'])
-          .select('id');
-        if (relabelError) {
-          console.error('[unlink_linkedin_account] relabel failed:', relabelError);
-          throw new HttpError(500, keptLinked);
-        }
-        const pausedIds = ((paused ?? []) as Array<{ id: string }>).map((r) => r.id);
-        const relabeledIds = ((relabeled ?? []) as Array<{ id: string }>).map((r) => r.id);
-        //  c. Étapes pendantes annulées, sur TOUTES les inscriptions en pause de
-        //     l'organisation pour ce compte, pas seulement celles modifiées par cet
-        //     appel : après un échec partiel, la relance trouve a et b déjà faits
-        //     et doit quand même annuler les étapes restées planifiées (sinon
-        //     process-sequences les saute « Enrollment inactive », statut terminal).
-        //     waiting_event compris : sinon check-wait-events la repasse en
-        //     scheduled puis la saute. Lecture par pages de 1000 (plafond de
-        //     l'API), annulation par paquets de 100 : le filtre in() part dans l'URL.
-        const pausedAllIds: string[] = [];
-        // Arrêt sur une page vide, et avance du nombre de lignes reçues : le
-        // plafond de lignes de l'API peut être réglé sous 1000.
-        for (let from = 0; ; ) {
-          const { data: page, error: pausedReadError } = await adminClient
-            .from('sequence_enrollments')
-            .select('id')
-            .eq('organization_id', organizationId)
-            .eq('account_id', row.linkedin_account_id)
-            .eq('status', 'paused')
-            .order('id', { ascending: true })
-            .range(from, from + 999);
-          if (pausedReadError) {
-            console.error('[unlink_linkedin_account] paused enrollments read failed:', pausedReadError);
-            throw new HttpError(500, keptLinked);
-          }
-          const pageIds = ((page ?? []) as Array<{ id: string }>).map((r) => r.id);
-          if (pageIds.length === 0) break;
-          pausedAllIds.push(...pageIds);
-          from += pageIds.length;
-        }
-        for (let i = 0; i < pausedAllIds.length; i += 100) {
-          const { error: execError } = await adminClient
-            .from('sequence_step_executions')
-            .update({ status: 'cancelled', skip_reason: 'Compte LinkedIn dissocié', updated_at: nowIso })
-            .in('enrollment_id', pausedAllIds.slice(i, i + 100))
-            .in('status', ['scheduled', 'quota_blocked', 'waiting_event']);
-          if (execError) {
-            // La liaison n'est jamais supprimée tant que l'annulation n'a pas réussi.
-            console.error('[unlink_linkedin_account] executions not cancelled:', execError);
-            throw new HttpError(500, keptLinked);
-          }
-        }
-        //  d. InMails programmés depuis ce compte : annulés. Les lignes mises en
-        //     file sans organisation (action queue de process-inmail-queue avant
-        //     qu'elle n'écrive organization_id) sont prises aussi, quel que soit
-        //     leur auteur : un compte n'est relié qu'à une organisation (refus
-        //     42501 au claim), et une ligne d'un ancien membre partirait sinon
-        //     du compte dissocié.
-        const inmailScope = `organization_id.eq.${organizationId},organization_id.is.null`;
-        const { data: cancelledInmails, error: inmailError } = await adminClient
-          .from('inmail_queue')
-          .update({ status: 'cancelled', error_message: 'Compte LinkedIn dissocié', updated_at: nowIso })
-          .or(inmailScope)
-          .eq('account_id', row.linkedin_account_id)
-          .in('status', ['pending', 'scheduled'])
-          .select('id');
-        if (inmailError) {
-          console.error('[unlink_linkedin_account] inmail cancel failed:', inmailError);
-          throw new HttpError(500, keptLinked);
-        }
-        //  e. Rotation multi-expéditeurs : le compte est retiré des pools
-        //     (outreach_sequences.sender_accounts) des séquences de l'organisation.
-        //     Sinon pickSenderForRotation (process-sequences) continue de le
-        //     choisir et les relances d'autres inscriptions partent de ce compte.
-        //     Jamais de filtre sur sequence_enrollments.assigned_sender_id : colonne
-        //     uuid, un identifiant de compte y lève 22P02 et ferait échouer toute
-        //     dissociation. contains() reçoit du JSON en texte : un tableau JS y
-        //     produirait la syntaxe des tableaux Postgres, pas du jsonb.
-        const { data: rotations, error: rotationReadError } = await adminClient
-          .from('outreach_sequences')
-          .select('id, sender_accounts')
-          .eq('organization_id', organizationId)
-          .contains('sender_accounts', JSON.stringify([{ account_id: row.linkedin_account_id }]));
-        if (rotationReadError) {
-          console.error('[unlink_linkedin_account] rotation read failed:', rotationReadError);
-          throw new HttpError(500, keptLinked);
-        }
-        for (const seq of (rotations ?? []) as Array<{ id: string; sender_accounts: unknown }>) {
-          if (!Array.isArray(seq.sender_accounts)) continue;
-          const remaining = (seq.sender_accounts as Array<{ account_id?: unknown } | null>)
-            .filter((s) => s?.account_id !== row.linkedin_account_id);
-          if (remaining.length === seq.sender_accounts.length) continue;
-          const patch: Record<string, unknown> = { sender_accounts: remaining, updated_at: nowIso };
-          // Pool vide : la rotation est coupée, l'envoi retombe sur le compte de l'inscription.
-          if (remaining.length === 0) patch.multi_sender_enabled = false;
-          const { error: rotationError } = await adminClient
-            .from('outreach_sequences')
-            .update(patch)
-            .eq('id', seq.id)
-            .eq('organization_id', organizationId);
-          if (rotationError) {
-            console.error('[unlink_linkedin_account] rotation update failed:', rotationError);
-            throw new HttpError(500, keptLinked);
-          }
         }
 
         // 2. La liaison, résultat vérifié.
@@ -1217,9 +1120,84 @@ Deno.serve(async (req) => {
           JSON.stringify({
             success: true,
             removed: removed?.length ?? 0,
-            paused_enrollments: pausedIds.length,
-            relabeled_enrollments: relabeledIds.length,
-            cancelled_inmails: cancelledInmails?.length ?? 0,
+            paused_enrollments: stopped.pausedEnrollments,
+            relabeled_enrollments: stopped.relabeledEnrollments,
+            cancelled_inmails: stopped.cancelledInmails,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'stop_member_linkedin': {
+        // Retrait d'un membre de l'équipe (SEQ-042) : appelé par l'écran Équipe
+        // AVANT la suppression du membre. Ses comptes LinkedIn reliés dans
+        // l'organisation cessent d'envoyer (même arrêt que « Dissocier »), puis
+        // la liaison est retirée. Échec = le membre n'est pas retiré.
+        const memberUserId = typeof params.member_user_id === 'string' ? params.member_user_id.trim() : '';
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberUserId)) {
+          throw new HttpError(400, 'Membre invalide');
+        }
+
+        const callerRole = await getCallerOrgRole(adminClient, organizationId, user.id);
+        if (callerRole !== 'owner' && callerRole !== 'admin') {
+          throw new HttpError(403, "Seul un propriétaire ou un administrateur de l'organisation peut retirer un membre");
+        }
+        const memberRole = await getCallerOrgRole(adminClient, organizationId, memberUserId);
+        if (memberRole === 'owner' && callerRole !== 'owner') {
+          throw new HttpError(403, 'Seul un propriétaire peut arrêter les envois d’un autre propriétaire');
+        }
+
+        const { data: memberLinks, error: memberLinksError } = await adminClient
+          .from('member_linkedin_accounts')
+          .select('id, linkedin_account_id')
+          .eq('organization_id', organizationId)
+          .eq('user_id', memberUserId);
+        if (memberLinksError) throw new HttpError(500, 'Lecture des comptes LinkedIn du membre impossible. Réessayez.');
+        const links = (memberLinks ?? []) as Array<{ id: string; linkedin_account_id: string | null }>;
+        // Un membre déjà retiré dont la liaison est restée est accepté (nettoyage) ;
+        // sinon l'utilisateur doit appartenir à l'organisation.
+        if (!memberRole && links.length === 0) {
+          throw new HttpError(404, "Ce membre ne fait pas partie de l'organisation");
+        }
+
+        const keptMember = "Les envois de ce membre n'ont pas pu être arrêtés : il n'a pas été retiré. Réessayez.";
+        let pausedTotal = 0;
+        let relabeledTotal = 0;
+        let cancelledInmailsTotal = 0;
+        for (const link of links) {
+          if (link.linkedin_account_id) {
+            try {
+              const stopped = await stopLinkedInAccountSending(adminClient, {
+                organizationId,
+                accountId: link.linkedin_account_id,
+              });
+              pausedTotal += stopped.pausedEnrollments;
+              relabeledTotal += stopped.relabeledEnrollments;
+              cancelledInmailsTotal += stopped.cancelledInmails;
+            } catch (stopError) {
+              console.error('[stop_member_linkedin] sending stop failed:', stopError);
+              throw new HttpError(500, keptMember);
+            }
+          }
+          const { error: removeError } = await adminClient
+            .from('member_linkedin_accounts')
+            .delete()
+            .eq('id', link.id)
+            .eq('organization_id', organizationId)
+            .select('id');
+          if (removeError) {
+            console.error('[stop_member_linkedin] link delete failed:', removeError);
+            throw new HttpError(500, keptMember);
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            paused_enrollments: pausedTotal,
+            relabeled_enrollments: relabeledTotal,
+            cancelled_inmails: cancelledInmailsTotal,
+            removed_links: links.length,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

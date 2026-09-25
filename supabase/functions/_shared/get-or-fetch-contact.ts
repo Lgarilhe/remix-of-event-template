@@ -35,8 +35,8 @@
  *   }
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
-type SupabaseClient = ReturnType<typeof createClient>;
+// Type seul (aucun import à l'exécution) : le client non typé des appelants s'y assigne.
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -152,19 +152,28 @@ export async function getOrFetchContact(
   }
 
   // ── 3. candidate_enrichments cache (org-wide, TTL 30j) ──
+  // Plusieurs enrichissements terminés peuvent exister pour une même URL :
+  // le plus récent gagne (maybeSingle échouait et sautait le cache). Une
+  // adresse déclarée non délivrable n'est jamais renvoyée (le moteur l'écrirait
+  // sur l'inscription et l'étape e-mail partirait vers une adresse morte).
   try {
-    const { data: cached } = await supabase
+    const { data: cachedRows } = await supabase
       .from('candidate_enrichments')
-      .select('contact_email, contact_phone, email_provider_source, phone_provider_source, status, expires_at')
+      .select('contact_email, contact_email_status, contact_phone, email_provider_source, phone_provider_source, status, expires_at')
       .eq('organization_id', input.organizationId)
       .eq('linkedin_url', normalizedUrl)
       .eq('status', 'terminated')
       .gt('expires_at', new Date().toISOString())
-      .maybeSingle();
+      .order('completed_at', { ascending: false, nullsFirst: false })
+      .limit(1);
+    const cached = cachedRows?.[0];
+    const cachedEmail = cached && cached.contact_email_status !== 'undeliverable'
+      ? normalizeEmail(cached.contact_email)
+      : null;
 
-    if (cached && (cached.contact_email || cached.contact_phone)) {
+    if (cached && (cachedEmail || cached.contact_phone)) {
       return {
-        email: normalizeEmail(cached.contact_email),
+        email: cachedEmail,
         phone: cached.contact_phone || null,
         source: 'cache',
         providerSource: cached.email_provider_source || cached.phone_provider_source || null,
@@ -266,7 +275,51 @@ export async function isGdprBlocked(
   }
 }
 
-/** Insert demande d'effacement RGPD + DELETE en cascade */
+/** Slug public d'une URL de profil LinkedIn (/in/{slug}), en minuscules. */
+export function linkedInProfileSlug(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const match = String(url).match(/linkedin\.com\/in\/([^/?#\s]+)/i);
+  const slug = match?.[1]?.trim().toLowerCase() ?? '';
+  return slug.length >= 3 ? slug : null;
+}
+
+/** Échappe les jokers SQL d'un motif ilike (correspondance exacte, insensible à la casse). */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/([%_\\])/g, '\\$1');
+}
+
+const PENDING_EXECUTION_STATUSES = ['scheduled', 'waiting_event', 'quota_blocked'];
+export const GDPR_ERASURE_SKIP_REASON = 'Effacement des données demandé : séquence arrêtée';
+
+export interface GdprErasureResult {
+  success: boolean;
+  error?: string;
+  /** Inscriptions actives ou en pause passées en 'stopped'. */
+  stoppedEnrollments: number;
+  /** Inscriptions (tous statuts) dont les données du candidat ont été effacées. */
+  anonymizedEnrollments: number;
+  cancelledInmails: number;
+  /** Adresse ajoutée à la liste de suppression des envois e-mail. */
+  emailSuppressed: boolean;
+}
+
+/**
+ * Effacement RGPD d'un candidat (email et/ou URL LinkedIn).
+ *
+ * `organizationId` fixe le périmètre (SEQ-055) :
+ *   - une organisation : effacement demandé par un propriétaire ou un
+ *     administrateur de cette organisation, limité à ses données. Pas de ligne
+ *     gdpr_erasures (blocage global) depuis ce chemin ;
+ *   - null : effacement global, réservé aux administrateurs plateforme (ligne
+ *     gdpr_erasures, toutes organisations).
+ *
+ * Dans ce périmètre (SEQ-054) : les inscriptions actives ou en pause du
+ * candidat passent en 'stopped' et leurs exécutions en attente sont annulées,
+ * ses InMails programmés sont annulés, l'adresse rejoint suppressed_emails
+ * (reason 'unsubscribe'), puis nom, titre, adresse, téléphone et textes
+ * envoyés sont effacés des lignes de séquence. Le succès n'est renvoyé
+ * qu'une fois toutes ces écritures faites ; chaque étape est rejouable.
+ */
 export async function recordGdprErasure(
   supabase: SupabaseClient,
   input: {
@@ -275,40 +328,171 @@ export async function recordGdprErasure(
     reason?: string;
     source?: string;
     notes?: string;
+    organizationId: string | null;
   },
-): Promise<{ success: boolean; error?: string }> {
+): Promise<GdprErasureResult> {
+  const result: GdprErasureResult = {
+    success: false,
+    stoppedEnrollments: 0,
+    anonymizedEnrollments: 0,
+    cancelledInmails: 0,
+    emailSuppressed: false,
+  };
+  const fail = (step: string, error: unknown): GdprErasureResult => {
+    console.error(`[recordGdprErasure] ${step} failed:`, error);
+    return { ...result, success: false, error: `${step}: ${(error as { message?: string } | null)?.message ?? String(error)}` };
+  };
+
   const emailNorm = normalizeEmail(input.email);
   const urlNorm = normalizeLinkedInUrl(input.linkedinUrl);
+  const orgId = input.organizationId;
 
   if (!emailNorm && !urlNorm) {
-    return { success: false, error: 'email ou linkedin_url requis' };
+    return { ...result, error: 'email ou linkedin_url requis' };
   }
 
-  const emailHash = emailNorm ? await sha256Hex(emailNorm) : null;
-  const urlHash = urlNorm ? await sha256Hex(urlNorm) : null;
-
-  // Insert dans gdpr_erasures
-  const { error: insertError } = await supabase
-    .from('gdpr_erasures')
-    .insert({
-      email_hash: emailHash,
-      linkedin_url_hash: urlHash,
-      reason: input.reason || 'user_request',
-      source: input.source || null,
-      notes: input.notes || null,
-    });
-
-  if (insertError) {
-    return { success: false, error: insertError.message };
+  // 1. Blocage global des enrichissements : administrateurs plateforme seulement.
+  if (orgId === null) {
+    const emailHash = emailNorm ? await sha256Hex(emailNorm) : null;
+    const urlHash = urlNorm ? await sha256Hex(urlNorm) : null;
+    const { error: insertError } = await supabase
+      .from('gdpr_erasures')
+      .insert({
+        email_hash: emailHash,
+        linkedin_url_hash: urlHash,
+        reason: input.reason || 'user_request',
+        source: input.source || null,
+        notes: input.notes || null,
+      });
+    if (insertError) return fail('gdpr_erasures', insertError);
   }
 
-  // DELETE en cascade : candidate_enrichments matchant
+  // 2. Inscriptions du candidat dans le périmètre : adresse exacte (jokers
+  //    échappés) ou URL de profil exacte (slug, avec ou sans « / » final).
+  type EnrollmentRow = {
+    id: string;
+    status: string;
+    email_used: string | null;
+    profile_id: string | null;
+    provider_id: string | null;
+    resolved_profile_id: string | null;
+  };
+  const enrollments = new Map<string, EnrollmentRow>();
+  const byEmailIds = new Set<string>();
+  const lookups: Array<{ column: string; pattern: string; byEmail: boolean }> = [];
+  if (emailNorm) lookups.push({ column: 'email_used', pattern: escapeLikePattern(emailNorm), byEmail: true });
+  const slug = linkedInProfileSlug(urlNorm);
+  if (slug) {
+    const escapedSlug = escapeLikePattern(slug);
+    lookups.push({ column: 'profile_url', pattern: `%linkedin.com/in/${escapedSlug}`, byEmail: false });
+    lookups.push({ column: 'profile_url', pattern: `%linkedin.com/in/${escapedSlug}/`, byEmail: false });
+  } else if (urlNorm) {
+    lookups.push({ column: 'profile_url', pattern: escapeLikePattern(urlNorm), byEmail: false });
+  }
+  for (const lookup of lookups) {
+    let query = supabase
+      .from('sequence_enrollments')
+      .select('id, status, email_used, profile_id, provider_id, resolved_profile_id')
+      .ilike(lookup.column, lookup.pattern)
+      .limit(500);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data, error } = await query;
+    if (error) return fail('lecture des inscriptions', error);
+    for (const row of (data ?? []) as EnrollmentRow[]) {
+      enrollments.set(row.id, row);
+      if (lookup.byEmail) byEmailIds.add(row.id);
+    }
+  }
+  const allIds = [...enrollments.keys()];
+  const liveIds = [...enrollments.values()].filter((e) => e.status === 'active' || e.status === 'paused').map((e) => e.id);
+  const nowIso = new Date().toISOString();
+
+  // 3. Arrêt définitif des inscriptions en cours.
+  for (let i = 0; i < liveIds.length; i += 100) {
+    const { data: stopped, error } = await supabase
+      .from('sequence_enrollments')
+      .update({ status: 'stopped', pause_reason: null, completed_at: nowIso, updated_at: nowIso })
+      .in('id', liveIds.slice(i, i + 100))
+      .in('status', ['active', 'paused'])
+      .select('id');
+    if (error) return fail('arrêt des inscriptions', error);
+    result.stoppedEnrollments += (stopped ?? []).length;
+  }
+
+  // 4. Exécutions : celles en attente sont annulées, et les textes envoyés
+  //    ou préparés sont effacés sur toutes.
+  for (let i = 0; i < allIds.length; i += 100) {
+    const batch = allIds.slice(i, i + 100);
+    const { error: cancelError } = await supabase
+      .from('sequence_step_executions')
+      .update({ status: 'cancelled', skip_reason: GDPR_ERASURE_SKIP_REASON, updated_at: nowIso })
+      .in('enrollment_id', batch)
+      .in('status', PENDING_EXECUTION_STATUSES);
+    if (cancelError) return fail('annulation des étapes', cancelError);
+    const { error: scrubError } = await supabase
+      .from('sequence_step_executions')
+      .update({ final_message: null, final_subject: null, personalized_subject: null, ai_snippet: null, updated_at: nowIso })
+      .in('enrollment_id', batch);
+    if (scrubError) return fail('effacement des messages', scrubError);
+  }
+
+  // 5. InMails programmés au candidat (identifiants LinkedIn connus par ses inscriptions).
+  const recipientIds = [...new Set(
+    [...enrollments.values()]
+      .flatMap((e) => [e.profile_id, e.provider_id, e.resolved_profile_id])
+      .filter((v): v is string => typeof v === 'string' && v.length > 0),
+  )];
+  for (let i = 0; i < recipientIds.length; i += 100) {
+    let inmailQuery = supabase
+      .from('inmail_queue')
+      .update({ status: 'cancelled', error_message: 'Effacement des données demandé', updated_at: nowIso })
+      .in('recipient_profile_id', recipientIds.slice(i, i + 100))
+      .in('status', ['pending', 'scheduled']);
+    if (orgId) inmailQuery = inmailQuery.eq('organization_id', orgId);
+    const { data: cancelled, error } = await inmailQuery.select('id');
+    if (error) return fail('annulation des InMails', error);
+    result.cancelledInmails += (cancelled ?? []).length;
+  }
+
+  // 6. Plus aucun e-mail vers cette adresse. suppressed_emails est commune à
+  //    toutes les organisations : dans le périmètre d'une organisation, on ne
+  //    l'écrit que si elle a réellement écrit à cette adresse (une de ses
+  //    inscriptions la porte), pour qu'un administrateur ne puisse pas bloquer
+  //    une adresse quelconque chez les autres. Une adresse déjà supprimée
+  //    (rebond, désabonnement) garde sa raison d'origine.
+  if (emailNorm && (orgId === null || byEmailIds.size > 0)) {
+    const { error } = await supabase
+      .from('suppressed_emails')
+      .upsert({ email: emailNorm, reason: 'unsubscribe' }, { onConflict: 'email', ignoreDuplicates: true });
+    if (error) return fail('liste de suppression', error);
+    result.emailSuppressed = true;
+  }
+
+  // 7. Données du candidat retirées des lignes de séquence (l'URL de profil
+  //    reste, sans elle un nouvel effacement ne retrouverait plus rien).
+  for (let i = 0; i < allIds.length; i += 100) {
+    const { data: scrubbed, error } = await supabase
+      .from('sequence_enrollments')
+      .update({ profile_name: null, profile_headline: null, email_used: null, phone_used: null, updated_at: nowIso })
+      .in('id', allIds.slice(i, i + 100))
+      .select('id');
+    if (error) return fail('anonymisation des inscriptions', error);
+    result.anonymizedEnrollments += (scrubbed ?? []).length;
+  }
+
+  // 8. Enrichissements (données de contact achetées), dans le périmètre.
   if (urlNorm) {
-    await supabase.from('candidate_enrichments').delete().eq('linkedin_url', urlNorm);
+    let del = supabase.from('candidate_enrichments').delete().eq('linkedin_url', urlNorm);
+    if (orgId) del = del.eq('organization_id', orgId);
+    const { error } = await del;
+    if (error) return fail('suppression des enrichissements (URL)', error);
   }
   if (emailNorm) {
-    await supabase.from('candidate_enrichments').delete().eq('contact_email', emailNorm);
+    let del = supabase.from('candidate_enrichments').delete().eq('contact_email', emailNorm);
+    if (orgId) del = del.eq('organization_id', orgId);
+    const { error } = await del;
+    if (error) return fail('suppression des enrichissements (e-mail)', error);
   }
 
-  return { success: true };
+  return { ...result, success: true };
 }

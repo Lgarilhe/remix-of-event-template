@@ -39,7 +39,7 @@ const PROTECTION_MECHANISMS = [
   "5 à 15 secondes entre deux actions d'une même séquence.",
   "Pause automatique de 16 heures dès 90 % d'usage ou au premier signal de limite envoyé par LinkedIn.",
   'Montée en charge sur trois semaines pour un compte nouvellement connecté : 25 %, 50 % puis 75 % des plafonds avant le plein régime.',
-  'Anti-doublon dans votre organisation : un profil déjà contacté par un collègue au cours des 90 derniers jours est signalé au moment de l’inscription à une séquence.',
+  'Anti-doublon dans votre organisation : un candidat déjà contacté au cours des 90 derniers jours, en séquence ou par InMail groupé, est signalé et écarté par défaut au moment de l’inscription à une séquence ou de la planification d’un InMail groupé.',
 ];
 
 export const LinkedInSafetySettings = () => {

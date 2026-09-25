@@ -146,7 +146,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
         <SequenceEnrollButton
           selectedProfiles={[profile]}
           accountId={accountId}
-          selectedJob={selectedJob ? { id: selectedJob.id, title: selectedJob.title } : undefined}
+          selectedJob={selectedJob ?? undefined}
           onSuccess={() => {
             onSequenceEnroll?.();
             onProfileTreated?.();

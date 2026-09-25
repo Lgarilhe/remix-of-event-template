@@ -7,6 +7,7 @@ import {
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../../SequenceBuilder';
 import { getStepMessageType } from '../messageTypeUtils';
+import { STEP_TYPE_LABELS, formatStepDelay } from '../sequenceGraph';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
 
 const STEP_ICONS: Record<string, React.ElementType | null> = {
@@ -31,13 +32,6 @@ const STEP_STYLES: Record<string, { bg: string; iconBg: string; border: string; 
   check_connection:   { bg: 'bg-info/10',            iconBg: 'bg-info text-info-foreground',            border: 'border-info/30',            accent: 'shadow-info/20' },
 };
 
-const STEP_LABELS: Record<string, string> = {
-  inmail: 'InMail', connection_request: 'Invitation', profile_visit: 'Visite profil',
-  message: 'Message', smart_message: 'Smart Msg', whatsapp_message: 'WhatsApp',
-  email: 'Email', wait_connection: 'Attendre', wait_reply: 'Att. réponse',
-  wait_profile_visit: 'Att. visite', condition_branch: 'Branchement', check_connection: 'Vérifier connexion',
-};
-
 type StepNodeData = {
   step: SequenceStep;
   index: number;
@@ -55,12 +49,8 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
   const styles = STEP_STYLES[step.actionType] || { bg: 'bg-muted/40', iconBg: 'bg-muted text-muted-foreground', border: 'border-border', accent: '' };
   const msgType = getStepMessageType(step, allSteps);
 
-  const hasDelay = step.delayDays > 0 || step.delayHours > 0 || (step.delayMinutes && step.delayMinutes > 0);
-  const delayLabel = [
-    step.delayDays > 0 ? `${step.delayDays}j` : '',
-    step.delayHours > 0 ? `${step.delayHours}h` : '',
-    step.delayMinutes && step.delayMinutes > 0 ? `${step.delayMinutes}m` : '',
-  ].filter(Boolean).join(' ');
+  const delayLabel = formatStepDelay(step);
+  const hasDelay = delayLabel !== '';
 
   return (
     <>
@@ -101,7 +91,7 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
               "font-semibold truncate leading-tight",
               compact ? "text-xs" : "text-xs"
             )}>
-              {STEP_LABELS[step.actionType] || step.actionType}
+              {STEP_TYPE_LABELS[step.actionType] || step.actionType}
             </div>
             {!compact && msgType && (
               <div className={cn("text-3xs font-semibold px-1.5 py-0.5 rounded-full w-fit mt-1", msgType.color)}>
@@ -110,20 +100,27 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
             )}
             {hasDelay && (
               <div className={cn("flex items-center gap-1 text-muted-foreground/60 mt-0.5", compact ? "text-3xs" : "text-3xs")}>
-                <Clock className="w-2.5 h-2.5" />
-                {delayLabel}
+                <Clock className="w-2.5 h-2.5" aria-hidden="true" />
+                Après {delayLabel}
               </div>
             )}
           </div>
         </div>
 
-        {/* Remove button */}
+        {/* Remove button : visible au survol, au clavier, sur l'étape sélectionnée et sur écran tactile. */}
         {canRemove && (
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 shadow-md hover:scale-110"
+            aria-label={`Supprimer l'étape ${index + 1}`}
+            title="Supprimer l'étape"
+            className={cn(
+              "nodrag absolute -top-2.5 -right-2.5 w-6 h-6 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-all duration-150 shadow-md hover:scale-110",
+              "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+            )}
           >
-            <Trash2 className="w-2.5 h-2.5" />
+            <Trash2 className="w-3 h-3" aria-hidden="true" />
           </button>
         )}
       </div>

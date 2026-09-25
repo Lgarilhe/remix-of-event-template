@@ -19,6 +19,7 @@
  */
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
+import { resolveSendingAccountOwner } from "./sequence-sender.ts";
 
 export type PlaceholderContext = Record<string, string | undefined>;
 
@@ -68,6 +69,39 @@ function applyFilters(value: string, filters: Array<{ name: string; arg?: string
   return result;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ─── Prénom fiable ───────────────────────────────────────────────────
+
+/**
+ * Le premier mot du nom affiché est-il un vrai prénom ? Écarte émojis,
+ * chiffres, titres (« Dr. », « Mme »), accroches (« Hiring », « Dispo »),
+ * noms en capitales. Lettres de toutes les langues acceptées (« Łukasz »,
+ * « Ştefan », « N’Golo »), et les préfixes ne valent qu'en mot entier
+ * (« Driss », « Devon », « Drew » passent). Partagé avec la rédaction IA
+ * (process-sequences). Sans prénom fiable : salutation neutre.
+ */
+export function isLikelyRealFirstName(name: string): boolean {
+  if (!name || name.trim().length < 2) return false;
+  const t = name.trim();
+  if (/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}]/u.test(t)) return false;
+  if (/\d/.test(t)) return false;
+  if (/[^\p{L}\p{M}\s'’\-]/u.test(t)) return false;
+  if (t.length > 2 && t === t.toUpperCase() && /\p{Lu}/u.test(t)) return false;
+  if (/^(mr|mme|dr|prof|dispo|open|looking|hiring|freelance|consultant|dev|engineer|cto|ceo|lead|senior|junior|stagiaire|intern|coach|expert|disponible)(?![\p{L}\p{M}])/iu.test(t)) return false;
+  if (/(?<![\p{L}\p{M}])(dispo|opentowork|open.to.work|recrut|cherche|search|available)(?![\p{L}\p{M}])/iu.test(t)) return false;
+  if (/\.\s*$/.test(t)) return false;
+  if (/^(.)\1+$/iu.test(t)) return false;
+  if (t.length > 30) return false;
+  // Compound names: validate each part
+  if (t.includes(" ")) {
+    const parts = t.split(/\s+/);
+    if (parts.length > 3) return false;
+    if (parts.some((p) => p.length < 2)) return false;
+  }
+  return true;
+}
+
 // ─── Interpolation principale ────────────────────────────────────────
 
 /**
@@ -99,13 +133,20 @@ export function interpolatePlaceholders(text: string, ctx: PlaceholderContext): 
 
 export interface BuildSequenceContextInput {
   enrollment: Record<string, unknown>;
-  /** Sender user_id : priorité step.sender_id > enrollment.assigned_sender_id > enrollment.created_by */
+  /**
+   * Expéditeur (user_id). Égal à l'auteur de l'inscription (ou absent), il ne
+   * sert que de repli : le titulaire du compte LinkedIn qui envoie
+   * (member_linkedin_accounts, rotation comprise) passe devant. Différent de
+   * l'auteur, il a été résolu par l'appelant et prime.
+   */
   senderUserId?: string | null;
-  /** Si déjà chargé en amont (économise une query) */
-  senderProfile?: { first_name?: string | null; last_name?: string | null; display_name?: string | null; job_title?: string | null } | null;
+  /** Compte d'envoi s'il diffère de assigned_sender_id / account_id de l'inscription. */
+  senderAccountId?: string | null;
+  /** Si déjà chargé en amont (économise une query). profiles n'a que display_name et job_title. */
+  senderProfile?: { display_name?: string | null; job_title?: string | null } | null;
   /** Si déjà chargé en amont */
   organizationName?: string | null;
-  /** Override calendly link (sinon résolu via project.job_details.calendly_link) */
+  /** Override du lien de rendez-vous (sinon colonne sourcing_projects.calendly_link, puis job_details) */
   calendlyLink?: string | null;
 }
 
@@ -121,14 +162,16 @@ export async function buildSequenceContext(
   supabase: SupabaseClient,
   input: BuildSequenceContextInput
 ): Promise<PlaceholderContext> {
-  const { enrollment, senderUserId } = input;
+  const { enrollment } = input;
   const ctx: PlaceholderContext = {};
 
   // ─── Contact (depuis enrollment) ──
+  // Prénom seulement s'il est fiable : « 🚀 Julie », « Dr. Paul » ou un nom
+  // vide donnent une salutation neutre (« Bonjour, ») au lieu de « Bonjour 🚀, ».
   const profileName = String(enrollment.profile_name || "").trim();
   if (profileName) {
     const parts = profileName.split(/\s+/).filter(Boolean);
-    ctx.prenom = parts[0] || "";
+    if (isLikelyRealFirstName(parts[0] || "")) ctx.prenom = parts[0];
     ctx.nom = parts.slice(1).join(" ");
     ctx.nom_complet = profileName;
   }
@@ -145,10 +188,11 @@ export async function buildSequenceContext(
     }
   }
 
-  // job_title / company_name de l'enrollment écrasent le parsing si présents
-  // (ils sont stockés explicitement → plus fiables que parsing headline)
+  // sequence_enrollments.job_title porte le titre de la MISSION (poste à
+  // pourvoir), jamais le poste actuel du candidat : il ne sert qu'en repli de
+  // poste_recherche, plus bas. {{job_title}} / {{poste_actuel}} restent tirés
+  // du titre LinkedIn du candidat.
   const enrollJobTitle = String(enrollment.job_title || "").trim();
-  if (enrollJobTitle) ctx.poste_actuel = enrollJobTitle;
   const enrollCompany = String(enrollment.company_name || "").trim();
   if (enrollCompany) ctx.entreprise_actuelle = enrollCompany;
 
@@ -165,23 +209,32 @@ export async function buildSequenceContext(
   const jobId = enrollment.job_id;
   if (jobId && typeof jobId === "string") {
     try {
-      const { data: project } = await supabase
+      let projectQuery = supabase
         .from("sourcing_projects")
-        .select("name, job_details")
-        .eq("id", jobId)
-        .maybeSingle();
+        .select("name, job_details, calendly_link, client_name")
+        .eq("id", jobId);
+      if (typeof enrollment.organization_id === "string" && enrollment.organization_id) {
+        projectQuery = projectQuery.eq("organization_id", enrollment.organization_id);
+      }
+      const { data: project, error: projectError } = await projectQuery.maybeSingle();
+      if (projectError) console.warn("[template-interpolation] sourcing_projects read failed:", projectError.message);
       if (project) {
-        const jd = (project.job_details || {}) as Record<string, unknown>;
-        ctx.poste_recherche = String(jd.title || project.name || "");
-        if (jd.client_name) ctx.client = String(jd.client_name);
+        const row = project as { name?: string | null; job_details?: unknown; calendly_link?: string | null; client_name?: string | null };
+        const jd = (row.job_details || {}) as Record<string, unknown>;
+        ctx.poste_recherche = String(jd.title || row.name || "");
+        const jdClient = (jd.client as Record<string, unknown> | undefined)?.name;
+        const clientName = row.client_name || jdClient || jd.client_name;
+        if (clientName) ctx.client = String(clientName);
         if (jd.location) ctx.lieu_poste = String(jd.location);
         if (jd.contract_type) ctx.type_contrat = String(jd.contract_type);
         const skills = jd.skills_must_have;
         if (Array.isArray(skills) && skills.length > 0) {
           ctx.skills_requis = skills.slice(0, 3).join(", ");
         }
-        if (!calendlyLink && jd.calendly_link) {
-          calendlyLink = String(jd.calendly_link);
+        // Le lien de rendez-vous est enregistré dans la colonne de la mission
+        // (MissionConfigV2) ; job_details.calendly_link n'est qu'un repli.
+        if (!calendlyLink && (row.calendly_link || jd.calendly_link)) {
+          calendlyLink = String(row.calendly_link || jd.calendly_link);
         }
       }
     } catch (e) {
@@ -189,29 +242,45 @@ export async function buildSequenceContext(
     }
   }
   if (calendlyLink) ctx.lien_calendly = calendlyLink;
+  // Mission introuvable : le titre stocké sur l'inscription reste le poste recherché.
+  if (!ctx.poste_recherche && enrollJobTitle) ctx.poste_recherche = enrollJobTitle;
 
   // ─── Sender (recruteur — depuis profiles) ──
+  // Titulaire du compte d'envoi (celui qui signe réellement), repli sur
+  // l'expéditeur fourni puis sur l'auteur de l'inscription. Un expéditeur
+  // fourni qui n'est pas l'auteur a été résolu exprès par l'appelant (ex.
+  // titulaire de la boîte e-mail) : il prime.
+  const createdBy = typeof enrollment.created_by === "string" ? enrollment.created_by : null;
+  const givenSender = input.senderUserId && UUID_RE.test(input.senderUserId) ? input.senderUserId : null;
+  const explicitSender = givenSender && givenSender !== createdBy ? givenSender : null;
+  const accountOwner = explicitSender ? null : await resolveSendingAccountOwner(
+    supabase,
+    enrollment,
+    input.senderAccountId ? { sender_id: input.senderAccountId } : null,
+  );
+  const senderUserId = explicitSender || accountOwner || givenSender || createdBy || null;
   let senderProfile = input.senderProfile;
   if (!senderProfile && senderUserId) {
     try {
-      const { data } = await supabase
+      // profiles n'a ni first_name ni last_name : les demander faisait échouer
+      // toute la lecture et vidait {{sender_name}}, {{mon_prenom}}, {{ma_signature}}.
+      const { data, error } = await supabase
         .from("profiles")
-        .select("first_name, last_name, display_name, job_title")
+        .select("display_name, job_title")
         .eq("user_id", senderUserId)
         .maybeSingle();
-      senderProfile = data;
+      if (error) console.warn("[template-interpolation] sender profile read failed:", error.message);
+      senderProfile = (data as { display_name?: string | null; job_title?: string | null } | null) ?? null;
     } catch (e) {
       console.warn("[template-interpolation] sender profile fetch failed:", e);
     }
   }
   if (senderProfile) {
-    const fullName =
-      senderProfile.display_name ||
-      [senderProfile.first_name, senderProfile.last_name].filter(Boolean).join(" ");
+    const fullName = String(senderProfile.display_name || "").trim();
     if (fullName) {
       const parts = fullName.split(/\s+/);
-      ctx.mon_prenom = senderProfile.first_name || parts[0];
-      ctx.mon_nom = senderProfile.last_name || parts.slice(1).join(" ") || undefined;
+      ctx.mon_prenom = parts[0];
+      ctx.mon_nom = parts.slice(1).join(" ") || undefined;
       ctx.ma_signature = fullName;
     }
     if (senderProfile.job_title) ctx.mon_poste = senderProfile.job_title;
@@ -300,6 +369,14 @@ export function interpolateAndStrip(
 ): { result: string; leftover: string[] } {
   const interpolated = interpolatePlaceholders(text, ctx);
   const leftover = interpolated.match(/\{\{[^}]+\}\}/g) || [];
-  const stripped = leftover.length > 0 ? interpolated.replace(/\{\{[^}]+\}\}/g, "") : interpolated;
+  if (leftover.length === 0) return { result: interpolated, leftover };
+  // Variable retirée : on retire aussi l'espace qui la précède devant une
+  // virgule ou un point (« Bonjour {{prenom}}, » → « Bonjour, »), et le
+  // double espace qu'elle laisse entre deux mots. Pas devant « ? ! ; : » :
+  // le français y met une espace.
+  const stripped = interpolated
+    .replace(/[ \t]*\{\{[^}]+\}\}(?=[,.])/g, "")
+    .replace(/ \{\{[^}]+\}\}(?= )/g, "")
+    .replace(/\{\{[^}]+\}\}/g, "");
   return { result: stripped, leftover };
 }

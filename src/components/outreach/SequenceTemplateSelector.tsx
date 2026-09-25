@@ -29,17 +29,39 @@ import {
   MessageSquare,
   Eye,
   ArrowLeft,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Sequence, SequenceStep } from './SequenceBuilder';
+import {
+  renumberByOrderGroup,
+  rowToSequenceStep,
+  asStopConditions,
+  asSenderAccounts,
+  stepTypeLabel,
+  type SequenceStepRow,
+} from './sequence/sequenceGraph';
+
+/** Séquence existante proposée à la copie (ligne outreach_sequences et ses étapes). */
+interface ExistingSequence {
+  id: string;
+  name: string;
+  description?: string | null;
+  steps: SequenceStepRow[];
+  stop_conditions?: unknown;
+  sender_accounts?: unknown;
+  rotation_mode?: string | null;
+  multi_sender_enabled?: boolean | null;
+}
 
 interface SequenceTemplateSelectorProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectBlank: () => void;
   onSelectTemplate: (sequence: Sequence) => void;
-  existingSequences: { id: string; name: string; steps: any[] }[];
+  existingSequences: ExistingSequence[];
 }
 
 interface Template {
@@ -79,6 +101,9 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
   const [step, setStep] = useState<'choice' | 'templates' | 'duplicate'>('choice');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
+  // Échec de chargement distinct d'une liste vide : sinon une coupure réseau
+  // faisait croire que les modèles avaient disparu.
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -88,6 +113,7 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
 
   const fetchTemplates = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const { data, error } = await (supabase
         .from('sequence_templates') as any)
@@ -98,6 +124,8 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
       setTemplates(data || []);
     } catch (err) {
       console.error('Error fetching templates:', err);
+      setTemplates([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -122,7 +150,9 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
 
     const steps: SequenceStep[] = (template.steps_config || []).map((s: any, idx: number) => ({
       id: (s.id && idMap.get(String(s.id))) || crypto.randomUUID(),
-      order: idx,
+      // Ordre enregistré dans le modèle : les variantes A/B d'une étape le
+      // partagent. L'index ne sert que pour les anciens modèles sans step_order.
+      order: typeof s.step_order === 'number' ? s.step_order : idx,
       actionType: s.action_type || s.actionType || 'message',
       conditionType: s.condition_type || s.conditionType || 'always',
       conditionValue: s.condition_value || s.conditionValue,
@@ -137,10 +167,11 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
       aiTone: s.ai_tone || s.aiTone || 'professional',
       timeoutDays: s.timeout_days ?? s.timeoutDays ?? 3,
       waitForEvent: s.wait_for_event || s.waitForEvent,
-      timeoutAction: s.timeout_action || s.timeoutAction || 'skip',
+      // Seule l'étape de repli est enregistrée : c'est elle qui dit ce que fera le moteur.
+      timeoutAction: remap(s.timeout_branch_step_id || s.timeoutBranchStepId) ? 'alternative_step' : 'skip',
       ifTrueGotoStep: remap(s.if_true_goto_step || s.ifTrueGotoStep),
       ifFalseGotoStep: remap(s.if_false_goto_step || s.ifFalseGotoStep),
-      nextStepId: remap(s.next_step_id || s.nextStepId),
+      nextStepId: s.ends_sequence ? '__end__' : remap(s.next_step_id || s.nextStepId),
       timeoutBranchStepId: remap(s.timeout_branch_step_id || s.timeoutBranchStepId),
       variantGroup: s.variant_group || s.variantGroup,
       variantWeight: s.variant_weight ?? s.variantWeight,
@@ -153,37 +184,30 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
     const sequence: Sequence = {
       name: template.name,
       description: template.description || undefined,
-      steps,
+      steps: renumberByOrderGroup(steps),
       isActive: true,
     };
 
     onSelectTemplate(sequence);
   };
 
-  const handleDuplicate = (seq: { id: string; name: string; steps: any[] }) => {
-    const steps: SequenceStep[] = (seq.steps || []).map((s: any, idx: number) => ({
-      id: crypto.randomUUID(),
-      order: idx,
-      actionType: s.action_type || 'message',
-      conditionType: s.condition_type || 'always',
-      delayDays: s.delay_days ?? (idx === 0 ? 0 : 2),
-      delayHours: s.delay_hours ?? 0,
-      delayMinutes: s.delay_minutes ?? 0,
-      preferredHourStart: s.preferred_hour_start ?? 9,
-      preferredHourEnd: s.preferred_hour_end ?? 18,
-      subjectTemplate: s.subject_template || '',
-      messageTemplate: s.message_template || '',
-      useAiPersonalization: s.use_ai_personalization ?? false,
-      aiTone: s.ai_tone || 'professional',
-      timeoutDays: s.timeout_days ?? 3,
-      waitForEvent: s.wait_for_event,
-      timeoutAction: 'skip',
-    }));
+  // Copie complète : branches, variantes, conditions, fin de séquence, options
+  // e-mail et réglages d'envoi. Les ids d'étapes d'origine sont gardés comme ids
+  // provisoires : la séquence copiée n'ayant pas d'id, save_sequence_steps
+  // insère de nouvelles étapes et remappe elle-même tous les renvois. Avant, la
+  // copie perdait tout routage et chaque candidat recevait toutes les branches.
+  const handleDuplicate = (seq: ExistingSequence) => {
+    const steps: SequenceStep[] = renumberByOrderGroup((seq.steps || []).map(rowToSequenceStep));
 
     const sequence: Sequence = {
       name: `Copie de ${seq.name}`,
+      description: seq.description || undefined,
       steps,
       isActive: true,
+      stopConditions: asStopConditions(seq.stop_conditions),
+      senderAccounts: asSenderAccounts(seq.sender_accounts),
+      rotationMode: seq.rotation_mode || 'round_robin',
+      multiSenderEnabled: !!seq.multi_sender_enabled,
     };
 
     onSelectTemplate(sequence);
@@ -195,12 +219,12 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
         <DialogHeader>
           <DialogTitle className="uppercase tracking-wide text-sm flex items-center gap-2">
             {step !== 'choice' && (
-              <button onClick={() => setStep('choice')} className="p-1 hover:bg-muted">
-                <ArrowLeft className="w-4 h-4" />
+              <button type="button" onClick={() => setStep('choice')} className="p-1 hover:bg-muted" aria-label="Retour au choix">
+                <ArrowLeft className="w-4 h-4" aria-hidden="true" />
               </button>
             )}
             {step === 'choice' && 'Nouvelle séquence'}
-            {step === 'templates' && 'Choisir un template'}
+            {step === 'templates' && 'Choisir un modèle'}
             {step === 'duplicate' && 'Dupliquer une séquence'}
           </DialogTitle>
         </DialogHeader>
@@ -228,7 +252,7 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                   📋
                 </div>
                 <div>
-                  <p className="font-bold text-sm text-foreground">Depuis un template</p>
+                  <p className="font-bold text-sm text-foreground">Depuis un modèle</p>
                   <p className="text-xs text-muted-foreground mt-0.5">Utiliser un modèle prédéfini et l'adapter à votre besoin</p>
                 </div>
               </button>
@@ -250,14 +274,24 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
           {step === 'templates' && (
             <div className="space-y-3">
               {loading ? (
-                <div className="flex items-center justify-center py-12">
+                <div className="flex items-center justify-center py-12" role="status" aria-label="Chargement des modèles">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-border" />
+                </div>
+              ) : loadError ? (
+                <div className="text-center py-12" role="alert">
+                  <AlertTriangle className="w-8 h-8 text-warning mx-auto mb-3" aria-hidden="true" />
+                  <p className="text-sm text-foreground">Impossible de charger les modèles.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Vérifiez votre connexion, puis réessayez.</p>
+                  <Button variant="outline" size="sm" className="mt-4" onClick={() => { void fetchTemplates(); }}>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                    Réessayer
+                  </Button>
                 </div>
               ) : templates.length === 0 ? (
                 <div className="text-center py-12">
-                  <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Aucun template disponible</p>
-                  <p className="text-xs text-muted-foreground mt-1">Sauvegardez une séquence comme template pour la retrouver ici</p>
+                  <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
+                  <p className="text-sm text-muted-foreground">Aucun modèle disponible</p>
+                  <p className="text-xs text-muted-foreground mt-1">Enregistrez une séquence comme modèle pour la retrouver ici.</p>
                 </div>
               ) : (
                 templates.map(template => {
@@ -287,7 +321,7 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                           )}
                           <div className="flex items-center gap-1 mt-2">
                             {stepsPreview.map((s: any, i: number) => (
-                              <div key={i} className="w-5 h-5 bg-muted flex items-center justify-center" title={s.action_type || s.actionType}>
+                              <div key={i} className="w-5 h-5 bg-muted flex items-center justify-center" title={stepTypeLabel(s.action_type || s.actionType)}>
                                 {ACTION_ICONS[s.action_type || s.actionType] || <MessageSquare className="w-3 h-3" />}
                               </div>
                             ))}
@@ -319,8 +353,8 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
                   >
                     <p className="font-bold text-sm text-foreground">{seq.name}</p>
                     <div className="flex items-center gap-1 mt-2">
-                      {seq.steps.slice(0, 6).map((s: any, i: number) => (
-                        <div key={i} className="w-5 h-5 bg-muted flex items-center justify-center">
+                      {seq.steps.slice(0, 6).map((s, i) => (
+                        <div key={i} className="w-5 h-5 bg-muted flex items-center justify-center" title={stepTypeLabel(s.action_type)}>
                           {ACTION_ICONS[s.action_type] || <MessageSquare className="w-3 h-3" />}
                         </div>
                       ))}
@@ -379,11 +413,15 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
 
       // Serialize steps to steps_config — inclut id + refs de branchement +
       // variantes + options email. Avant, un template créé depuis une séquence
-      // branchée perdait toute sa structure (branches, A/B, condition_value,
-      // timeout_action) — audit 2026-07, Builder H4. Les ids sont remappés
-      // vers de nouveaux uuids à l'instanciation (handleSelectTemplate).
+      // branchée perdait toute sa structure (branches, A/B, condition_value)
+      // — audit 2026-07, Builder H4. Les ids sont remappés vers de nouveaux
+      // uuids à l'instanciation (handleSelectTemplate). step_order garde les
+      // variantes A/B sur le même ordre ; ends_sequence garde « Fin de séquence ».
+      // timeout_action n'est plus écrit : aucune colonne ne le porte, seule
+      // l'étape de repli (timeout_branch_step_id) compte.
       const stepsConfig = steps.map((s: any) => ({
         id: s.id,
+        step_order: s.step_order,
         action_type: s.action_type,
         condition_type: s.condition_type,
         condition_value: s.condition_value ?? null,
@@ -397,8 +435,8 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
         use_ai_personalization: s.use_ai_personalization,
         ai_tone: s.ai_tone,
         timeout_days: s.timeout_days,
-        timeout_action: s.timeout_action ?? null,
         wait_for_event: s.wait_for_event,
+        ends_sequence: s.ends_sequence ?? false,
         next_step_id: s.next_step_id ?? null,
         if_true_goto_step: s.if_true_goto_step ?? null,
         if_false_goto_step: s.if_false_goto_step ?? null,
@@ -411,7 +449,7 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
         signature_id: s.signature_id ?? null,
       }));
 
-      const { error } = await (supabase
+      const { data: inserted, error } = await (supabase
         .from('sequence_templates') as any)
         .insert({
           organization_id: organizationId,
@@ -421,14 +459,16 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
           category,
           is_system: false,
           created_by: user.id,
-        });
+        })
+        .select('id');
 
       if (error) throw error;
-      toast.success('Template sauvegardé !');
+      if (!inserted || inserted.length === 0) throw new Error('Modèle non enregistré');
+      toast.success('Modèle enregistré');
       onClose();
     } catch (err) {
       console.error('Error saving template:', err);
-      toast.error('Erreur lors de la sauvegarde');
+      toast.error('Le modèle n’a pas pu être enregistré', { description: 'Réessayez dans un instant.' });
     } finally {
       setSaving(false);
     }
@@ -438,16 +478,16 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-background border-border rounded-lg max-w-md">
         <DialogHeader>
-          <DialogTitle className="uppercase tracking-wide text-sm">Sauvegarder comme template</DialogTitle>
+          <DialogTitle className="uppercase tracking-wide text-sm">Enregistrer comme modèle</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div>
-            <Label>Nom du template *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5 border-border rounded-lg" />
+            <Label htmlFor="template-name">Nom du modèle *</Label>
+            <Input id="template-name" value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5 border-border rounded-lg" />
           </div>
           <div>
-            <Label>Description</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1.5 border-border rounded-lg" placeholder="Décrivez l'usage de ce template..." />
+            <Label htmlFor="template-description">Description</Label>
+            <Textarea id="template-description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1.5 border-border rounded-lg" placeholder="Décrivez l'usage de ce modèle..." />
           </div>
           <div>
             <Label>Catégorie</Label>
@@ -466,7 +506,7 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose} className="border-border rounded-lg">Annuler</Button>
           <Button onClick={handleSave} disabled={saving || !name.trim()} className="bg-foreground text-background rounded-lg">
-            {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+            {saving ? 'Enregistrement...' : 'Enregistrer'}
           </Button>
         </div>
       </DialogContent>

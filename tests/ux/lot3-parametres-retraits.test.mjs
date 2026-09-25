@@ -97,7 +97,9 @@ test('L3-5 — Abonnement et crédits : plus de sélecteur de modèle', () => {
 // ---------------------------------------------------------------- 6. Équipe
 test('L3-6 — Équipe : ni missions assignées, ni badges, ni cartes de chiffres', () => {
   const team = read('src/components/settings/TeamManagement.tsx');
-  for (const gone of [' séq', 'cand/30j', 'Missions assignées', 'Séquences actives', 'Candidats (30j)', 'useJobAssignments', 'useMemberStats', 'useSourcingProjects']) {
+  // Ancien badge « {stats.active_sequences} séq » ; la confirmation de retrait
+  // parle désormais des séquences arrêtées du membre (SEQ-042).
+  for (const gone of ['} séq', 'cand/30j', 'Missions assignées', 'Séquences actives', 'Candidats (30j)', 'useJobAssignments', 'useMemberStats', 'useSourcingProjects']) {
     assert.ok(!team.includes(gone), `« ${gone} » encore présent`);
   }
   assert.ok(team.includes('(LinkedIn, quota)'), 'texte des détails réservés aux administrateurs');

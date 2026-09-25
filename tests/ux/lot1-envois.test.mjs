@@ -6,10 +6,14 @@
  * dans le style de tests/ux/linkedin-status.test.mjs :
  *  - C6/C21 : « Dissocier » annule aussi les InMails mis en file sans
  *    organisation (retrouvés par leur auteur, membre de l'organisation) ;
- *  - C7/C22 : le compte dissocié sort des pools de rotation multi-expéditeurs,
- *    sans filtre sur assigned_sender_id (colonne uuid) ;
- *  - C9 : l'étape c relit toutes les inscriptions en pause du compte, et tout
- *    échec garde la liaison ;
+ *  - C7/C22 : le compte dissocié sort des pools de rotation multi-expéditeurs ;
+ *    le filtre sur assigned_sender_id tolère 22P02 tant que la colonne est uuid ;
+ *  - C9 : tout échec de l'arrêt garde la liaison ; les exécutions en attente
+ *    ne sont plus touchées (contrat des lots, audit séquences 2026-09-25) ;
+ *
+ * L'arrêt des envois vit dans _shared/linkedin-sending-stop.ts (SEQ-041/042),
+ * partagé par la dissociation, le changement de compte et le retrait d'un
+ * membre.
  *  - C10 : plafond et plages sont ceux du titulaire du compte d'envoi ;
  *  - C11/C24 : la file InMail lit les plages dans la ligne de l'organisation ;
  *  - C12 : la mise en file écrit organization_id.
@@ -24,6 +28,7 @@ import { PostgrestClient } from '@supabase/postgrest-js';
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
 
 const accountsFn = read('supabase/functions/unipile-accounts/index.ts');
+const sendingStop = read('supabase/functions/_shared/linkedin-sending-stop.ts');
 const inmailQueue = read('supabase/functions/process-inmail-queue/index.ts');
 const sequences = read('supabase/functions/process-sequences/index.ts');
 
@@ -48,20 +53,21 @@ const deleteAt = unlink.indexOf('.delete()');
 
 // ---------------------------------------------------------------- C6 / C21
 test('C6/C21 — Dissocier annule aussi les InMails mis en file sans organisation', () => {
-  const cancel = sliceBetween(unlink, ".from('inmail_queue')", ".select('id')");
+  const cancel = sliceBetween(sendingStop, ".from('inmail_queue')", ".select('id')");
   assert.doesNotMatch(
     cancel,
     /\.eq\('organization_id', organizationId\)/,
     'le filtre strict excluait toutes les lignes sans organisation',
   );
   assert.match(cancel, /\.or\(inmailScope\)/);
-  assert.match(cancel, /\.eq\('account_id', row\.linkedin_account_id\)/);
+  assert.match(cancel, /\.eq\('account_id', accountId\)/);
   assert.match(cancel, /\.in\('status', \['pending', 'scheduled'\]\)/);
   assert.match(
-    unlink,
+    sendingStop,
     /const inmailScope = `organization_id\.eq\.\$\{organizationId\},organization_id\.is\.null`;/,
     'lignes sans organisation du compte : annulées quel que soit leur auteur',
   );
+  assert.match(unlink, /stopLinkedInAccountSending\(adminClient, \{\s*organizationId,\s*accountId: row\.linkedin_account_id,/);
 });
 
 test('C6/C21 — le filtre part tel quel dans l\'URL de l\'API', () => {
@@ -114,10 +120,13 @@ test('C11/C24 — plages de la file InMail lues dans la ligne de l\'organisation
 
 // ---------------------------------------------------------------- C10
 test('C10 — séquences : quotas du titulaire du compte d\'envoi, chargés après la rotation', () => {
+  // Audit séquences SEQ-076 : le gate quota est désormais juste avant le
+  // verrou 'sending' (après santé du compte, condition et vérification de
+  // réponse) ; la fenêtre inspectée va donc jusqu'au verrou.
   const loop = sliceBetween(
     sequences,
     'const enrollmentOrgId = enrollment.organization_id',
-    '// Check LinkedIn account health before executing',
+    'const { data: lockResult',
   );
   const effectiveAt = loop.indexOf('const effectiveAccountId =');
   const quotasAt = loop.indexOf('await getUserQuotas(');
@@ -151,47 +160,47 @@ test('C10 — file InMail : plafond et plages du titulaire du compte', () => {
 });
 
 // ---------------------------------------------------------------- C9
-test('C9 — étape c : toutes les inscriptions en pause du compte, échec = liaison gardée', () => {
+test('C9 — tout échec de l\'arrêt garde la liaison ; exécutions en attente intactes', () => {
   assert.doesNotMatch(unlink, /touchedIds/, 'une relance après échec partiel ne retrouvait aucune inscription');
   assert.doesNotMatch(unlink, /console\.warn\(/, 'un échec d\'arrêt ne doit jamais être seulement journalisé');
+  assert.doesNotMatch(sendingStop, /console\.warn\(/, 'un échec d\'arrêt ne doit jamais être seulement journalisé');
 
-  const pausedRead = sliceBetween(unlink, 'const pausedAllIds', 'for (let i = 0;');
-  assert.match(pausedRead, /\.from\('sequence_enrollments'\)/);
-  assert.match(pausedRead, /\.eq\('organization_id', organizationId\)/);
-  assert.match(pausedRead, /\.eq\('account_id', row\.linkedin_account_id\)/);
-  assert.match(pausedRead, /\.eq\('status', 'paused'\)/);
-  assert.match(pausedRead, /\.range\(from, from \+ 999\)/);
-  assert.match(pausedRead, /if \(pausedReadError\)[\s\S]*?throw new HttpError\(500, keptLinked\)/);
-  // Plafond de lignes de l'API possiblement sous 1000 : arrêt sur page vide.
-  assert.match(pausedRead, /if \(pageIds\.length === 0\) break;/);
-  assert.match(pausedRead, /from \+= pageIds\.length;/);
-  assert.doesNotMatch(pausedRead, /pageIds\.length < 1000/);
-
-  const cancel = sliceBetween(unlink, ".from('sequence_step_executions')", ".from('inmail_queue')");
-  assert.match(cancel, /\.in\('enrollment_id', pausedAllIds\.slice\(i, i \+ 100\)\)/);
-  assert.match(cancel, /if \(execError\)[\s\S]*?throw new HttpError\(500, keptLinked\)/);
+  // Chaque écriture de l'arrêt lève en cas d'erreur.
+  const throws = sendingStop.match(/throw new LinkedInSendingStopError\(/g) ?? [];
+  assert.ok(throws.length >= 5, `lectures/écritures sans levée d'erreur (${throws.length})`);
+  // Pauses : inscriptions de l'organisation, par compte d'inscription ou de rotation.
+  assert.match(sendingStop, /\.update\(\{ status: 'paused', pause_reason: 'manual', updated_at: nowIso \}\)\s*\.eq\('organization_id', organizationId\)\s*\.eq\(column, accountId\)\s*\.eq\('status', 'active'\)/);
+  // Contrat des lots : une pause ne touche pas aux exécutions en attente
+  // (le moteur les ignore, la reprise serveur les garde à leur date).
+  assert.doesNotMatch(sendingStop, /sequence_step_executions/);
 
   assert.notEqual(deleteAt, -1);
+  const stopCall = sliceBetween(unlink, 'try {', '// 2. La liaison');
+  assert.match(stopCall, /stopLinkedInAccountSending\(/);
+  assert.match(stopCall, /catch \(stopError\) \{[\s\S]*?throw new HttpError\(500, keptLinked\)/);
   const lastKeptLinked = unlink.lastIndexOf('throw new HttpError(500, keptLinked)');
   assert.ok(lastKeptLinked < deleteAt, 'la liaison n\'est supprimée qu\'une fois les envois arrêtés');
 });
 
 // ---------------------------------------------------------------- C7 / C22
 test('C7/C22 — Dissocier retire le compte des pools de rotation de l\'organisation', () => {
-  const rotation = sliceBetween(unlink, ".from('outreach_sequences')", '// 2. La liaison');
+  const rotation = sliceBetween(sendingStop, ".from('outreach_sequences')", 'return {\n    pausedEnrollments');
   assert.match(rotation, /\.eq\('organization_id', organizationId\)/);
   assert.match(
     rotation,
-    /\.contains\('sender_accounts', JSON\.stringify\(\[\{ account_id: row\.linkedin_account_id \}\]\)\)/,
+    /\.contains\('sender_accounts', JSON\.stringify\(\[\{ account_id: accountId \}\]\)\)/,
   );
-  assert.match(rotation, /s\?\.account_id !== row\.linkedin_account_id/);
+  assert.match(rotation, /s\?\.account_id !== accountId/);
   assert.match(rotation, /if \(remaining\.length === 0\) patch\.multi_sender_enabled = false;/);
   assert.match(rotation, /\.eq\('id', seq\.id\)\s*\.eq\('organization_id', organizationId\)/);
-  assert.match(rotation, /if \(rotationReadError\)[\s\S]*?throw new HttpError\(500, keptLinked\)/);
-  assert.match(rotation, /if \(rotationError\)[\s\S]*?throw new HttpError\(500, keptLinked\)/);
-  assert.ok(unlink.indexOf(".from('outreach_sequences')") < deleteAt);
-  // assigned_sender_id est une colonne uuid : un identifiant de compte y lève
-  // 22P02 et ferait échouer toutes les dissociations.
+  assert.match(rotation, /if \(rotationReadError\)[\s\S]*?throw new LinkedInSendingStopError/);
+  assert.match(rotation, /if \(rotationError\)[\s\S]*?throw new LinkedInSendingStopError/);
+  // assigned_sender_id (compte de rotation) : filtré, mais une colonne encore
+  // uuid lève 22P02 sur un identifiant de compte ; seule cette erreur, sur
+  // cette seule colonne, est tolérée (aucune ligne ne peut alors porter le compte).
+  assert.match(sendingStop, /const UUID_COLUMN_ERROR = '22P02';/);
+  const tolerated = sendingStop.match(/if \(column === 'assigned_sender_id' && isUuidColumnError\(error\)\) continue;/g) ?? [];
+  assert.equal(tolerated.length, 2);
   assert.doesNotMatch(unlink, /\.(eq|or|in|filter)\([^)]*assigned_sender_id/);
 });
 

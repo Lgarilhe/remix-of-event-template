@@ -42,6 +42,13 @@ interface SendInvitationResult {
   invitation_token?: string | null;
 }
 
+/** Réponse de unipile-accounts, action stop_member_linkedin (retrait d'un membre). */
+interface StopMemberSendingResult {
+  paused_enrollments?: number;
+  relabeled_enrollments?: number;
+  cancelled_inmails?: number;
+}
+
 /** Code d'erreur levé par createOrganization quand l'utilisateur a déjà un espace (F3). */
 export const ORG_ALREADY_EXISTS = 'ORG_ALREADY_EXISTS';
 
@@ -483,20 +490,50 @@ export const useOrganizationMembers = (orgId: string | null) => {
     },
   });
 
+  // Retrait d'un membre (SEQ-042) : ses envois sont d'abord arrêtés par le
+  // serveur (unipile-accounts, stop_member_linkedin : relances en pause,
+  // InMails programmés annulés, compte retiré des rotations, liaison
+  // LinkedIn supprimée). Sans cet arrêt, ses candidats continuaient de
+  // recevoir des messages depuis son profil LinkedIn après son départ.
+  // Arrêt en échec : le membre n'est pas retiré.
   const removeMember = useMutation({
-    mutationFn: async (memberId: string) => {
+    mutationFn: async ({ memberId, userId }: { memberId: string; userId: string }) => {
+      if (!orgId) throw new Error('Organisation introuvable, rechargez la page');
+
+      const { data: stopped, error: stopError } = await invokeEdgeFunction<StopMemberSendingResult>('unipile-accounts', {
+        action: 'stop_member_linkedin',
+        organization_id: orgId,
+        member_user_id: userId,
+      });
+      if (stopError || !stopped?.success) {
+        throw new Error(
+          stopped?.error || stopError?.message
+            || "Les envois de ce membre n'ont pas pu être arrêtés : il n'a pas été retiré. Réessayez.",
+        );
+      }
+
       const { data, error } = await supabase
         .from('organization_members')
         .delete()
         .eq('id', memberId)
+        .eq('organization_id', orgId)
         .select('id');
 
-      if (error) throw error;
-      if (!data?.length) throw new Error('Suppression refusée — droits insuffisants');
+      // Les envois sont déjà arrêtés : l'échec du retrait ne doit pas le faire oublier.
+      if (error) throw new Error(`Ses envois sont arrêtés, mais le membre n'a pas été retiré : ${error.message}`);
+      if (!data?.length) throw new Error("Ses envois sont arrêtés, mais le membre n'a pas été retiré : droits insuffisants.");
+      return stopped;
     },
-    onSuccess: () => {
+    onSuccess: (stopped) => {
       queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
-      toast.success('Membre retiré');
+      queryClient.invalidateQueries({ queryKey: ['member-linkedin-accounts'] });
+      const n = stopped.paused_enrollments ?? 0;
+      const m = stopped.cancelled_inmails ?? 0;
+      const parts = [
+        n > 0 ? `${n} relance${n > 1 ? 's' : ''} mise${n > 1 ? 's' : ''} en pause` : null,
+        m > 0 ? `${m} InMail${m > 1 ? 's' : ''} programmé${m > 1 ? 's' : ''} annulé${m > 1 ? 's' : ''}` : null,
+      ].filter(Boolean);
+      toast.success('Membre retiré', parts.length ? { description: `${parts.join(', ')}.` } : undefined);
     },
     onError: (err: Error) => {
       toast.error(err.message || 'Impossible de retirer ce membre');

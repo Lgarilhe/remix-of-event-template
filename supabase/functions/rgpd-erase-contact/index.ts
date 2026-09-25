@@ -1,24 +1,27 @@
 /**
- * rgpd-erase-contact — Endpoint public pour le droit à l'effacement (RGPD art. 17)
+ * rgpd-erase-contact — Droit à l'effacement (RGPD art. 17)
  *
- * Usage typique :
- *   - Lien dans les emails outreach : https://konekt-app-navy.vercel.app/api/rgpd-erase?email=...&token=...
- *   - Frontend admin Konekt qui appelle ce endpoint avec un email/linkedin_url
- *   - Webhook depuis suppression list (Resend, etc.)
+ * Qui peut effacer (SEQ-055) :
+ *   - un propriétaire ou un administrateur d'organisation : effacement limité
+ *     aux données de SON organisation (organisation demandée, sinon son
+ *     organisation active) ;
+ *   - un administrateur plateforme (KONEKT_PLATFORM_ADMIN_USER_IDS) ou un
+ *     appel interne en clé de service : effacement global (ligne
+ *     gdpr_erasures qui bloque les enrichissements futurs, toutes
+ *     organisations).
+ *   Tout autre utilisateur est refusé (403).
  *
- * Workflow :
+ * Workflow (voir recordGdprErasure) :
  *   1. Reçoit email OU linkedin_url
- *   2. INSERT dans gdpr_erasures (hash SHA-256 only)
- *   3. DELETE en cascade dans candidate_enrichments matching
- *   4. Retourne 200 OK avec un message de confirmation
+ *   2. Effacement global seulement : INSERT dans gdpr_erasures (hash SHA-256)
+ *   3. Séquences du candidat arrêtées, étapes et InMails programmés annulés,
+ *      adresse ajoutée à la liste de suppression, données retirées des
+ *      lignes de séquence (SEQ-054)
+ *   4. DELETE des enrichissements du périmètre
+ *   5. Succès renvoyé seulement une fois ces écritures faites
  *
- * IMPORTANT : aucune authentification requise (endpoint public).
- * La sécurité repose sur :
- *   - Le token signé dans le lien (validé côté lien d'unsubscribe — TODO V2)
- *   - Le rate limit (max 30 req/h par IP)
- *   - Le hash SHA-256 (on ne révèle jamais si un email existe en BDD)
- *
- * Verify_jwt = false dans config.toml.
+ * Authentification obligatoire pour toutes les méthodes, plus un rate limit
+ * (30 req/h par IP). Verify_jwt = false dans config.toml.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
@@ -31,6 +34,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+/** Vrai si l'utilisateur figure dans KONEKT_PLATFORM_ADMIN_USER_IDS. */
+function isPlatformAdmin(userId: string | null): boolean {
+  if (!userId) return false;
+  const raw = Deno.env.get("KONEKT_PLATFORM_ADMIN_USER_IDS") ?? "";
+  return raw.split(",").map((s) => s.trim()).filter(Boolean).includes(userId);
+}
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -90,8 +100,9 @@ Deno.serve(async (req) => {
     // propriété ; aucun lien email réel ne pointe ici (le vrai désabonnement
     // passe par handle-email-unsubscribe, à token) → le fermer ne casse rien.
     // Un self-service à token signé pourra rouvrir un GET public plus tard (TODO).
+    let auth: Awaited<ReturnType<typeof requireAuth>>;
     try {
-      await requireAuth(req, corsHeaders);
+      auth = await requireAuth(req, corsHeaders);
     } catch (authResp) {
       return authResp as Response;
     }
@@ -102,12 +113,14 @@ Deno.serve(async (req) => {
     let reason: string | null = null;
     let source: string = "api";
     let format: "json" | "html" = "json";
+    let requestedOrgId: string | null = null;
 
     if (req.method === "GET") {
       // GET : params dans query string (utile pour lien dans emails)
       email = url.searchParams.get("email");
       linkedinUrl = url.searchParams.get("linkedin_url");
       reason = url.searchParams.get("reason");
+      requestedOrgId = url.searchParams.get("organization_id");
       source = "unsubscribe_link";
       format = "html"; // GET = page HTML user-friendly
     } else if (req.method === "POST") {
@@ -117,6 +130,7 @@ Deno.serve(async (req) => {
       reason = body.reason || null;
       source = body.source || "api";
       format = body.format === "html" ? "html" : "json";
+      requestedOrgId = typeof body.organization_id === "string" ? body.organization_id : null;
     } else {
       return json({ error: "Method not allowed" }, 405);
     }
@@ -172,24 +186,72 @@ Deno.serve(async (req) => {
       return json({ success: false, error: msg }, 503);
     }
 
-    // Enregistrement de la demande + DELETE en cascade
+    // Périmètre de l'effacement (SEQ-055).
+    const reject = (title: string, msg: string, status: number): Response =>
+      format === "html"
+        ? htmlResponse(renderPage({ title, message: msg, success: false }), status)
+        : json({ success: false, error: msg }, status);
+    const globalErasure = auth.method === "service_role" || isPlatformAdmin(auth.userId);
+    let scopeOrgId: string | null = null;
+    if (!globalErasure) {
+      const userId = auth.userId as string;
+      let orgId = requestedOrgId;
+      if (!orgId) {
+        const { data: profile, error: profileError } = await serviceClient
+          .from("profiles")
+          .select("active_organization_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (profileError) return reject("Erreur", "Votre organisation n'a pas pu être vérifiée. Réessayez.", 500);
+        orgId = profile?.active_organization_id ?? null;
+      }
+      if (!orgId) return reject("Demande invalide", "Aucune organisation active sur votre compte.", 400);
+      const { data: membership, error: membershipError } = await serviceClient
+        .from("organization_members")
+        .select("role")
+        .eq("organization_id", orgId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (membershipError) return reject("Erreur", "Vos droits n'ont pas pu être vérifiés. Réessayez.", 500);
+      if (membership?.role !== "owner" && membership?.role !== "admin") {
+        return reject(
+          "Accès refusé",
+          "Seul un propriétaire ou un administrateur de l'organisation peut effacer les données d'un candidat.",
+          403,
+        );
+      }
+      scopeOrgId = orgId;
+    }
+
+    // Arrêt des séquences, annulations, liste de suppression, anonymisation
+    // et suppression des enrichissements, dans le périmètre.
     const result = await recordGdprErasure(serviceClient, {
       email: normalizedEmail,
       linkedinUrl: normalizedUrl,
       reason: reason || "user_request",
       source,
+      organizationId: scopeOrgId,
     });
 
     if (!result.success) {
       console.error("[rgpd-erase-contact] Failed:", result.error);
-      const msg = "Une erreur est survenue lors du traitement de votre demande. Réessayez ou contactez support@konekt.fr.";
+      const msg = "L'effacement n'a pas pu être terminé. Relancez la demande : les étapes déjà faites ne seront pas dupliquées. Si le problème persiste, contactez support@konekt.fr.";
       if (format === "html") return htmlResponse(renderPage({ title: "Erreur", message: msg, success: false }), 500);
       return json({ success: false, error: msg }, 500);
     }
 
-    console.log(`[rgpd-erase-contact] OK — email=${!!normalizedEmail}, url=${!!normalizedUrl}, source=${source}, ip=${clientIp}`);
+    console.log(`[rgpd-erase-contact] OK — scope=${scopeOrgId ? "organization" : "global"}, email=${!!normalizedEmail}, url=${!!normalizedUrl}, source=${source}, stopped=${result.stoppedEnrollments}, ip=${clientIp}`);
 
-    const successMsg = "Votre demande d'effacement a bien été enregistrée. Vos données de contact ont été retirées de notre base et ne seront plus utilisées dans nos enrichissements futurs.";
+    // Bilan exact de ce qui a été fait.
+    const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
+    const done = [
+      plural(result.stoppedEnrollments, "séquence en cours arrêtée", "séquences en cours arrêtées"),
+      plural(result.cancelledInmails, "InMail programmé annulé", "InMails programmés annulés"),
+      "données de contact supprimées",
+    ].join(", ");
+    const successMsg = scopeOrgId
+      ? `Effacement enregistré pour votre organisation : ${done}.`
+      : `Demande d'effacement enregistrée : ${done}. Ces données ne seront plus utilisées dans les enrichissements futurs.`;
 
     if (format === "html") {
       return htmlResponse(renderPage({
@@ -202,6 +264,11 @@ Deno.serve(async (req) => {
     return json({
       success: true,
       message: successMsg,
+      scope: scopeOrgId ? "organization" : "global",
+      stopped_enrollments: result.stoppedEnrollments,
+      anonymized_enrollments: result.anonymizedEnrollments,
+      cancelled_inmails: result.cancelledInmails,
+      email_suppressed: result.emailSuppressed,
     });
   } catch (err) {
     console.error("[rgpd-erase-contact] Error:", err);

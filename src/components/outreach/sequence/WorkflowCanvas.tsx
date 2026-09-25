@@ -9,6 +9,7 @@ import {
   type Edge,
   type NodeTypes,
   type EdgeTypes,
+  type OnSelectionChangeParams,
   MarkerType,
   ConnectionLineType,
 } from '@xyflow/react';
@@ -18,6 +19,7 @@ import { WorkflowStepNode } from './nodes/WorkflowStepNode';
 import { WorkflowAddNode } from './nodes/WorkflowAddNode';
 import { WorkflowBranchLabelNode } from './nodes/WorkflowBranchLabelNode';
 import { AnimatedEdge } from './edges/AnimatedEdge';
+import { branchStepIds, engineNextStepId } from './sequenceGraph';
 
 const nodeTypes: NodeTypes = {
   stepNode: WorkflowStepNode,
@@ -59,25 +61,6 @@ const getBranchChain = (startId: string | undefined, all: SequenceStep[]): Seque
   return chain;
 };
 
-const getAllBranchStepIds = (all: SequenceStep[]): Set<string> => {
-  const ids = new Set<string>();
-  const walk = (id: string | undefined, v: Set<string>) => {
-    if (!id || id === '__end__' || v.has(id)) return;
-    v.add(id); ids.add(id);
-    const s = all.find(x => x.id === id);
-    if (s?.nextStepId) walk(s.nextStepId, v);
-    if (s?.ifTrueGotoStep) walk(s.ifTrueGotoStep, v);
-    if (s?.ifFalseGotoStep) walk(s.ifFalseGotoStep, v);
-  };
-  for (const s of all) {
-    if (s.actionType === 'check_connection') {
-      const v = new Set<string>();
-      if (s.ifTrueGotoStep) walk(s.ifTrueGotoStep, v);
-      if (s.ifFalseGotoStep) walk(s.ifFalseGotoStep, v);
-    }
-  }
-  return ids;
-};
 
 // ── Colour palette ──
 const EDGE_DEFAULT = 'hsl(var(--border))';
@@ -134,6 +117,9 @@ const sanitizeGraph = ({ nodes, edges }: WorkflowGraph): WorkflowGraph => {
   };
 };
 
+// Boutons « + » : seul le bouton interne est atteignable au clavier.
+const ADD_NODE_FLAGS = { selectable: false, focusable: false, draggable: false } as const;
+
 // ── Layout builder ──
 function buildLayout(
   steps: SequenceStep[],
@@ -143,10 +129,10 @@ function buildLayout(
 ): WorkflowGraph {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-  const branchIds = getAllBranchStepIds(steps);
+  const branchIds = branchStepIds(steps);
 
   if (steps.length === 0) {
-    nodes.push({ id: 'add-root', type: 'addNode', position: { x: 0, y: 0 }, data: { onClick: () => onAddStep() } });
+    nodes.push({ id: 'add-root', type: 'addNode', position: { x: 0, y: 0 }, data: { onClick: () => onAddStep() }, ...ADD_NODE_FLAGS });
     return { nodes, edges };
   }
 
@@ -162,21 +148,26 @@ function buildLayout(
       id: step.id,
       type: 'stepNode',
       position: { x: mainX, y },
+      // Sélection tenue par l'éditeur : clavier et souris passent par onSelectionChange.
+      selected: selectedStepId === step.id,
       data: {
         step, index: stepIndex, allSteps: steps,
         isSelected: selectedStepId === step.id,
-        canRemove: steps.length > 1,
+        // La dernière étape se supprime aussi : on repart alors d'une séquence vide.
+        canRemove: true,
         onRemove: () => onRemoveStep(step.id),
       },
     });
 
-    // Edge from previous main step
-    if (idx > 0) {
-      const prev = mainSteps[idx - 1];
-      if (prev.actionType !== 'check_connection') {
+    // Arête vers l'étape que le moteur jouera vraiment après celle-ci
+    // (« Étape suivante », sinon ordre suivant si rien ne la vise). Une chaîne
+    // rompue n'est plus dessinée comme reliée.
+    if (step.actionType !== 'check_connection') {
+      const nextId = engineNextStepId(step, steps);
+      if (nextId) {
         edges.push({
-          id: `e-${prev.id}-${step.id}`,
-          source: prev.id, target: step.id,
+          id: `e-${step.id}-${nextId}`,
+          source: step.id, target: nextId,
           type: 'animated',
           style: { stroke: EDGE_DEFAULT },
           markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: EDGE_DEFAULT },
@@ -215,6 +206,7 @@ function buildLayout(
         nodes.push({
           id: bs.id, type: 'stepNode',
           position: { x: trueX, y: tY },
+          selected: selectedStepId === bs.id,
           data: {
             step: bs, index: bsi, allSteps: steps,
             isSelected: selectedStepId === bs.id, canRemove: true,
@@ -241,6 +233,7 @@ function buildLayout(
           }),
           variant: 'true',
         },
+        ...ADD_NODE_FLAGS,
       });
       const trueLastId = trueBranch.length > 0 ? trueBranch[trueBranch.length - 1].id : trueLabelId;
       edges.push({
@@ -271,6 +264,7 @@ function buildLayout(
         nodes.push({
           id: bs.id, type: 'stepNode',
           position: { x: falseX, y: fY },
+          selected: selectedStepId === bs.id,
           data: {
             step: bs, index: bsi, allSteps: steps,
             isSelected: selectedStepId === bs.id, canRemove: true,
@@ -296,6 +290,7 @@ function buildLayout(
           }),
           variant: 'false',
         },
+        ...ADD_NODE_FLAGS,
       });
       const falseLastId = falseBranch.length > 0 ? falseBranch[falseBranch.length - 1].id : falseLabelId;
       edges.push({
@@ -317,6 +312,7 @@ function buildLayout(
       id: addId, type: 'addNode',
       position: { x: -ADD_SIZE / 2, y },
       data: { onClick: () => onAddStep() },
+      ...ADD_NODE_FLAGS,
     });
     edges.push({
       id: `e-${lastMain.id}-${addId}`, source: lastMain.id, target: addId,
@@ -353,6 +349,18 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     }
   }, [onStepClick]);
 
+  // Entrée ou Espace sur une étape focalisée la sélectionne sans passer par
+  // onNodeClick : la sélection ouvre donc aussi ses réglages. Le clic reste
+  // utile pour rouvrir l'étape déjà sélectionnée après le choix d'une étape.
+  // Seul un changement réel compte : la sélection posée par l'éditeur (au
+  // montage, après un ajout) ne rouvre rien.
+  const handleSelectionChange = useCallback(({ nodes: selected }: OnSelectionChangeParams) => {
+    const stepNode = selected.find(n => n.type === 'stepNode' && n.data?.step);
+    if (!stepNode) return;
+    const stepId = (stepNode.data.step as SequenceStep).id;
+    if (stepId !== selectedStepId) onStepClick(stepId);
+  }, [onStepClick, selectedStepId]);
+
   return (
     <div className="w-full h-full">
       <ReactFlow
@@ -361,6 +369,10 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onSelectionChange={handleSelectionChange}
+        // Mise en page calculée : un nœud déplacé revenait à sa place.
+        nodesDraggable={false}
+        nodesConnectable={false}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionLineType={ConnectionLineType.SmoothStep}

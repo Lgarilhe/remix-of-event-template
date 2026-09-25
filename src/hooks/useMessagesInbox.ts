@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useReducer } from 'react';
+import { useCallback, useRef, useEffect, useReducer, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -39,7 +39,20 @@ export interface ChatAttendee {
   public_identifier?: string;
   specifics?: {
     occupation?: string;
+    /** Distance LinkedIn du participant quand le fournisseur la donne (FIRST_DEGREE, DISTANCE_1…). */
+    network_distance?: string;
   };
+  /** Distance LinkedIn parfois posée à la racine du participant. */
+  network_distance?: string;
+}
+
+/** Séquence proposée depuis la messagerie, avec ses étapes complètes triées par ordre. */
+export interface InboxSequenceOption {
+  id: string;
+  name: string;
+  steps: any[];
+  stepCount: number;
+  project_id: string | null;
 }
 
 export interface Chat {
@@ -382,7 +395,7 @@ interface ContextState {
   enrollmentsMap: Map<string, SequenceEnrollmentInfo>;
   availableJobs: JobData[];
   activeMissions: ActiveMissionLite[];
-  sequences: Array<{ id: string; name: string; steps: any[] }>;
+  sequences: InboxSequenceOption[];
   replySuggestions: Array<{ text: string; type: string }>;
   loadingSuggestions: boolean;
   suggestionsLoaded: boolean;
@@ -394,7 +407,7 @@ type ContextAction =
   | { type: 'SET_ENROLLMENTS_MAP'; map: Map<string, SequenceEnrollmentInfo> }
   | { type: 'SET_AVAILABLE_JOBS'; jobs: JobData[] }
   | { type: 'SET_ACTIVE_MISSIONS'; missions: ActiveMissionLite[] }
-  | { type: 'SET_SEQUENCES'; sequences: Array<{ id: string; name: string; steps: any[] }> }
+  | { type: 'SET_SEQUENCES'; sequences: InboxSequenceOption[] }
   | { type: 'SET_REPLY_SUGGESTIONS'; suggestions: Array<{ text: string; type: string }> }
   | { type: 'SET_LOADING_SUGGESTIONS'; loading: boolean }
   | { type: 'SET_SUGGESTIONS_LOADED'; loaded: boolean }
@@ -556,7 +569,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
   const setEnrollmentsMap = useCallback((m: Map<string, SequenceEnrollmentInfo>) => ctxDispatch({ type: 'SET_ENROLLMENTS_MAP', map: m }), []);
   const setAvailableJobs = useCallback((j: JobData[]) => ctxDispatch({ type: 'SET_AVAILABLE_JOBS', jobs: j }), []);
   const setActiveMissions = useCallback((m: ActiveMissionLite[]) => ctxDispatch({ type: 'SET_ACTIVE_MISSIONS', missions: m }), []);
-  const setSequences = useCallback((s: Array<{ id: string; name: string; steps: any[] }>) => ctxDispatch({ type: 'SET_SEQUENCES', sequences: s }), []);
+  const setSequences = useCallback((s: InboxSequenceOption[]) => ctxDispatch({ type: 'SET_SEQUENCES', sequences: s }), []);
+  // État de la liste des séquences du dialogue de choix (chargée à chaque ouverture).
+  const [sequencesStatus, setSequencesStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const setReplySuggestions = useCallback((s: Array<{ text: string; type: string }>) => ctxDispatch({ type: 'SET_REPLY_SUGGESTIONS', suggestions: s }), []);
   const setLoadingSuggestions = useCallback((v: boolean) => ctxDispatch({ type: 'SET_LOADING_SUGGESTIONS', loading: v }), []);
   const setSuggestionsLoaded = useCallback((v: boolean) => ctxDispatch({ type: 'SET_SUGGESTIONS_LOADED', loaded: v }), []);
@@ -695,36 +710,38 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
   }, []);
 
-  // Fetch active sequences
+  // Séquences actives de l'organisation (la RLS borne à l'organisation), comme
+  // le menu Séquence du sourcing : une séquence partagée par un collègue est
+  // proposée. Étapes complètes (textes des messages, heures d'envoi), triées
+  // par ordre : la préparation avec aperçu montre les messages avant
+  // l'inscription. Rechargée à chaque ouverture du dialogue de choix.
   const fetchSequences = useCallback(async () => {
     if (!user) return;
 
+    setSequencesStatus('loading');
     try {
       const { data, error } = await supabase
         .from('outreach_sequences')
-        .select(`
-          id,
-          name,
-          sequence_steps (
-            id,
-            step_order,
-            action_type,
-            delay_days,
-            delay_hours
-          )
-        `)
+        .select('id, name, project_id, sequence_steps (*)')
         .eq('is_active', true)
-        .eq('created_by', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('step_order', { referencedTable: 'sequence_steps', ascending: true });
       
       if (error) throw error;
-      setSequences(data?.map(s => ({
-        id: s.id,
-        name: s.name,
-        steps: s.sequence_steps || [],
-      })) || []);
+      setSequences((data || []).map(s => {
+        const steps = [...(s.sequence_steps || [])].sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0));
+        return {
+          id: s.id,
+          name: s.name,
+          project_id: s.project_id,
+          stepCount: steps.length,
+          steps,
+        };
+      }));
+      setSequencesStatus('ready');
     } catch (error) {
       console.error('Error fetching sequences:', error);
+      setSequencesStatus('error');
     }
   }, [user]);
 
@@ -1376,59 +1393,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     setNewMessage(text);
   }, []);
 
-  // Enroll in sequence
-  const enrollInSequence = useCallback(async (sequence: { id: string; name: string; steps: any[] }) => {
-    if (!selectedChat || !selectedAccount || !user) return;
-    
-    const profileId = getAttendeeProfileId(selectedChat);
-    if (!profileId) {
-      toast.error('Impossible d\'identifier le profil');
-      return;
-    }
-    
-    try {
-      // Atomic upsert : la contrainte DB UNIQUE(sequence_id, profile_id)
-      // dédoublonne au niveau base. ignoreDuplicates renvoie tableau vide si
-      // l'enrollment existait déjà (peu importe son status) → on affiche
-      // simplement le toast "déjà inscrit" sans pré-check stale.
-      const { data: inserted, error } = await supabase
-        .from('sequence_enrollments')
-        .upsert({
-          sequence_id: sequence.id,
-          account_id: selectedAccount,
-          profile_id: profileId,
-          profile_name: getChatDisplayName(selectedChat),
-          profile_headline: getChatHeadline(selectedChat),
-          profile_url: selectedChat.attendees?.[0]?.profile_url,
-          created_by: user.id,
-          organization_id: organizationId,
-          user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          status: 'active',
-          current_step_order: 0,
-        }, {
-          onConflict: 'sequence_id,profile_id',
-          ignoreDuplicates: true,
-        })
-        .select('id');
-
-      if (error) throw error;
-      if (!inserted || inserted.length === 0) {
-        toast.info('Déjà inscrit dans cette séquence');
-        setShowSequenceSelect(false);
-        return;
-      }
-      
-      toast.success(`✨ Inscrit dans "${sequence.name}"`, {
-        description: `${getChatDisplayName(selectedChat)} va recevoir les étapes de la séquence.`,
-      });
-      setShowSequenceSelect(false);
-      fetchEnrollments();
-    } catch (error) {
-      console.error('Error enrolling in sequence:', error);
-      toast.error('Erreur lors de l\'inscription');
-    }
-  }, [fetchEnrollments, organizationId, selectedAccount, selectedChat, user]);
-
   // Handle adding to pipeline
   const handleAddToPipeline = useCallback((jobId?: string) => {
     if (!selectedChat) return;
@@ -1436,16 +1400,14 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     setShowPipelineModal(true);
   }, [selectedChat]);
 
-  // Handle enrolling in sequence
+  // Handle enrolling in sequence : le dialogue de choix s'ouvre et recharge la
+  // liste (une séquence créée ou activée depuis l'ouverture de la messagerie
+  // apparaît ; l'état vide et l'erreur sont affichés dans le dialogue).
   const handleEnrollInSequence = useCallback(() => {
-    if (!selectedChat || sequences.length === 0) {
-      toast.error('Aucune séquence active', {
-        description: 'Créez une séquence dans l\'onglet Séquences d\'abord.',
-      });
-      return;
-    }
+    if (!selectedChat) return;
     setShowSequenceSelect(true);
-  }, [selectedChat, sequences.length]);
+    void fetchSequences();
+  }, [selectedChat, fetchSequences]);
 
   // Resolve Calendly link when a chat is selected
   useEffect(() => {
@@ -1964,14 +1926,11 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     handleSuggestionClick,
     handleSuggestionSend,
     fetchReplySuggestions,
-    /**
-     * Inscription directe, sans préparation ni confirmation.
-     * Conservée pour les appels internes du hook. Les points d'entrée
-     * utilisateur passent par `SequenceEnrollModal`, qui montre le candidat,
-     * les messages et les avertissements avant d'engager quoi que ce soit
-     * (audit UX du 09/09/2026, constat UX05).
-     */
-    enrollInSequence,
+    // Toute inscription passe par SequenceEnrollModal (candidat, messages et
+    // avertissements montrés avant d'engager quoi que ce soit, constat UX05).
+    /** Recharge la liste des séquences du dialogue de choix. */
+    fetchSequences,
+    sequencesStatus,
     /** Rafraîchit les inscriptions après une confirmation depuis la modale. */
     fetchEnrollments,
     handleAddToPipeline,

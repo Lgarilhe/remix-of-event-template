@@ -58,6 +58,7 @@ import { PageLayout } from '@/components/layout';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 import { EventDetailSheet } from '@/components/calendar/EventDetailSheet';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 import {
   CalendarFiltersBar,
   applyCalendarFilters,
@@ -147,7 +148,7 @@ export default function CalendarPage() {
 
   // Day view : ne fetch que 1 jour, sinon 7
   const fetchDays = view === 'day' ? 1 : 7;
-  const { data: rawEvents = [], isLoading, isFetching, refetch } = useCalendarEvents({
+  const { data: rawEvents = [], isLoading, isError, isFetching, refetch } = useCalendarEvents({
     from: weekStart,
     days: fetchDays,
   });
@@ -422,6 +423,19 @@ export default function CalendarPage() {
         />
       </motion.div>
 
+      {/* Lecture en échec : jamais une semaine vide trompeuse */}
+      {isError && (
+        <div className="mb-4" role="alert">
+          <ErrorBox
+            title="Impossible de charger l'agenda."
+            detail={rawEvents.length > 0
+              ? 'Les événements affichés datent du dernier chargement réussi et peuvent être incomplets.'
+              : 'Les entretiens, InMails programmés et étapes de séquence ne peuvent pas être affichés pour le moment.'}
+            onRetry={() => { void refetch(); }}
+          />
+        </div>
+      )}
+
       {/* Conflict / overload warnings */}
       {(conflictIds.size > 0 || overloadDays.size > 0) && (
         <motion.div
@@ -643,7 +657,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Empty state global */}
-      {!isLoading && totalCount === 0 && rawEvents.length === 0 && (
+      {!isLoading && !isError && totalCount === 0 && rawEvents.length === 0 && (
         <motion.div
           className="mt-6 rounded-xl bg-card border border-border p-10 text-center"
           initial={{ opacity: 0, scale: 0.97 }}
@@ -664,7 +678,7 @@ export default function CalendarPage() {
       )}
 
       {/* Empty state filtré (rawEvents > 0 mais après filtrage = 0) */}
-      {!isLoading && totalCount === 0 && rawEvents.length > 0 && (
+      {!isLoading && !isError && totalCount === 0 && rawEvents.length > 0 && (
         <motion.div
           className="mt-6 rounded-xl bg-card border border-border p-10 text-center"
           initial={{ opacity: 0, scale: 0.97 }}

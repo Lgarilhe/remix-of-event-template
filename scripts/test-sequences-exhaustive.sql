@@ -7,15 +7,22 @@
 -- - Aucun WhatsApp envoyé (idem)
 -- - Les crédits IA SERONT consommés si ANTHROPIC_API_KEY est configuré
 --
--- Exécuter dans Supabase SQL Editor, puis appeler process-sequences
--- avec {"action": "process", "force": true}
+-- ⚠️ RÉSERVÉ À UNE BASE LOCALE (supabase start). Jamais en production ni en
+-- recette partagée : le script crée des séquences et des inscriptions ACTIVES
+-- dans l'organisation choisie, que le moteur traite ensuite (crédits IA de
+-- cette organisation consommés).
+-- Renseigner v_org_id (organisation de test de la base locale) en tête du bloc
+-- DO : sans elle, le script s'arrête sans rien écrire. Le nettoyage ne touche
+-- que cette organisation.
+--
+-- Puis appeler process-sequences (base locale) avec {"action": "process", "force": true}
 --
 -- Vérifier les résultats avec les requêtes à la fin du script.
 -- ============================================================================
 
 DO $$
 DECLARE
-  v_org_id uuid;
+  v_org_id uuid := NULL;  -- ⚠️ À RENSEIGNER : organisation de test de la base locale
   v_user_id uuid;
   -- Sequences
   v_seq_linear uuid;
@@ -38,10 +45,14 @@ DECLARE
   -- Enrollments
   v_enroll uuid;
 BEGIN
-  -- Get org and user
-  SELECT id INTO v_org_id FROM organizations LIMIT 1;
+  -- Organisation explicite (jamais « la première venue »)
+  IF v_org_id IS NULL THEN
+    RAISE EXCEPTION 'Renseignez v_org_id (organisation de test d''une base locale) en tête du script';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = v_org_id) THEN
+    RAISE EXCEPTION 'Organisation % introuvable dans cette base', v_org_id;
+  END IF;
   SELECT user_id INTO v_user_id FROM organization_members WHERE organization_id = v_org_id LIMIT 1;
-  IF v_org_id IS NULL THEN RAISE EXCEPTION 'No organization found'; END IF;
 
   RAISE NOTICE '=== TEST EXHAUSTIF SÉQUENCES ===';
   RAISE NOTICE 'Org: %, User: %', v_org_id, v_user_id;
@@ -50,13 +61,13 @@ BEGIN
   -- CLEANUP: Remove any previous test data
   -- ================================================================
   DELETE FROM sequence_step_executions WHERE enrollment_id IN (
-    SELECT id FROM sequence_enrollments WHERE profile_name LIKE 'TEST_%'
+    SELECT id FROM sequence_enrollments WHERE profile_name LIKE 'TEST_%' AND organization_id = v_org_id
   );
-  DELETE FROM sequence_enrollments WHERE profile_name LIKE 'TEST_%';
+  DELETE FROM sequence_enrollments WHERE profile_name LIKE 'TEST_%' AND organization_id = v_org_id;
   DELETE FROM sequence_steps WHERE sequence_id IN (
-    SELECT id FROM outreach_sequences WHERE name LIKE '[TEST%'
+    SELECT id FROM outreach_sequences WHERE name LIKE '[TEST%' AND organization_id = v_org_id
   );
-  DELETE FROM outreach_sequences WHERE name LIKE '[TEST%';
+  DELETE FROM outreach_sequences WHERE name LIKE '[TEST%' AND organization_id = v_org_id;
 
   -- ================================================================
   -- TEST 1: SÉQUENCE LINÉAIRE (non-régression)

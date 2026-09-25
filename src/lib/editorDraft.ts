@@ -56,6 +56,26 @@ export function clearEditorDraft(key: string): void {
   saveEditorDraft(key, null);
 }
 
+/**
+ * Efface tous les brouillons d'éditeur (séquence, mission) de ce navigateur.
+ * Appelée à la déconnexion et au changement d'utilisateur (App.tsx) : un
+ * brouillon contient des messages et des expéditeurs de l'organisation, il ne
+ * doit pas réapparaître pour la personne qui se connecte ensuite sur le même
+ * poste.
+ */
+export function clearAllEditorDrafts(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Stockage inaccessible : rien à effacer.
+  }
+}
+
 /** Date d'enregistrement du brouillon, pour l'annoncer à l'utilisateur. */
 export function editorDraftSavedAt(key: string): Date | null {
   try {

@@ -17,12 +17,29 @@ import {
   CheckCircle,
   AlertCircle,
   AlertTriangle,
+  CalendarClock,
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { LinkedInProfile } from './types';
 import { EnrollmentPreviewModal } from './EnrollmentPreviewModal';
-import { checkProfilesCompat } from '@/lib/sequenceCompatibility';
+import { checkProfilesCompat, pickFirstStep, type CompatIssue } from '@/lib/sequenceCompatibility';
+import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
+import { useSendingAccount } from './enrollment-preview/useSendingAccount';
+import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
+import {
+  alreadyInSequenceLabel,
+  alreadyPassedLabel,
+  classifyExistingEnrollment,
+  DUPLICATE_CHECK_FAILED_MESSAGE,
+  firstActionSummary,
+  markCandidatesMessaged,
+  NO_LINKEDIN_ACCOUNT_DESCRIPTION,
+  NO_LINKEDIN_ACCOUNT_TITLE,
+  SEQUENCES_PLAN_REQUIRED_MESSAGE,
+  sequenceInactiveReason,
+} from './enrollment-preview/enrollmentHelpers';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -30,6 +47,9 @@ import {
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import { hasPlanFeature } from '@/lib/featureGates';
+import { UpgradePrompt } from '@/components/ui/UpgradePrompt';
 
 interface SequenceEnrollModalProps {
   isOpen: boolean;
@@ -50,10 +70,26 @@ interface SequenceEnrollModalProps {
     location?: string;
     accompagnement?: string[];
   } | null;
+  /** Avertissement propre au point d'entrée (ex. relation LinkedIn non vérifiée depuis la messagerie). */
+  notice?: string | null;
   onSuccess: () => void;
 }
 
 const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
+
+interface EnrollResults {
+  success: number;
+  /** Déjà dans la séquence (en cours ou en pause). */
+  skipped: number;
+  /** Déjà passés par la séquence (terminée, réponse, arrêtée) : à reprendre depuis le suivi. */
+  alreadyPassed: number;
+  errors: string[];
+}
+
+/** Raison d'exclusion affichée sur un candidat grisé de la liste. */
+function compatExclusionLabel(issue: CompatIssue): string {
+  return issue === 'too_far' ? 'Hors réseau, exclu' : 'Déjà en relation, exclu';
+}
 
 export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   isOpen,
@@ -62,16 +98,29 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   profiles,
   accountId,
   job,
+  notice,
   onSuccess,
 }) => {
   const [isEnrolling, setIsEnrolling] = useState(false);
-  const [results, setResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
+  const [results, setResults] = useState<EnrollResults | null>(null);
   const [excludeIncompatible, setExcludeIncompatible] = useState(true);
-  // Anti-doublon organisation (90 jours) : null = pas encore vérifié.
+  // Anti-doublon organisation : null = pas encore vérifié (ou vérification en
+  // échec, voir duplicateCheckFailed). L'inscription reste bloquée tant que la
+  // vérification n'a pas abouti.
   const [recentEnrollments, setRecentEnrollments] = useState<Map<string, RecentEnrollment> | null>(null);
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicateCheckFailed, setDuplicateCheckFailed] = useState(false);
+  const [duplicateCheckAttempt, setDuplicateCheckAttempt] = useState(0);
   const [enrollDuplicatesAnyway, setEnrollDuplicatesAnyway] = useState(false);
   const { organizationId, isAdmin } = useOrganization();
+  // Compte d'envoi affiché avant l'inscription ; déconnecté ou relié à un
+  // collègue, il bloque l'inscription (liaison stricte).
+  const sendingAccount = useSendingAccount(accountId);
+  // Abonnement : sans plan autorisant l'envoi, rien ne partirait (le moteur
+  // mettrait les inscriptions en pause). Tant que l'état n'est pas lu, on ne
+  // bloque pas : le serveur reste la référence.
+  const { state: subscriptionState, effectivePlanId } = useSubscriptionState();
+  const canSendSequences = !subscriptionState || hasPlanFeature(effectivePlanId, 'sequences_send');
 
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -107,23 +156,21 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     if (!isOpen || hasMessageSteps || !organizationId) return;
     let cancelled = false;
     setRecentEnrollments(null);
+    setDuplicateCheckFailed(false);
     setEnrollDuplicatesAnyway(false);
     setIsCheckingDuplicates(true);
     findRecentEnrollments(supabase, organizationId, profiles)
       .then(map => { if (!cancelled) setRecentEnrollments(map); })
       .catch(err => {
+        // Jamais de Map vide ici : ce serait inscrire sans anti-doublon. L'état
+        // reste null, un bandeau bloquant propose de réessayer.
         console.warn('[SequenceEnrollModal] recent enrollments check failed:', err);
-        if (!cancelled) {
-          toast.warning('Vérification des contacts récents impossible', {
-            description: 'Les candidats déjà contactés ne seront pas signalés.',
-          });
-          setRecentEnrollments(new Map());
-        }
+        if (!cancelled) setDuplicateCheckFailed(true);
       })
       .finally(() => { if (!cancelled) setIsCheckingDuplicates(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, hasMessageSteps, organizationId, profilesKey]);
+  }, [isOpen, hasMessageSteps, organizationId, profilesKey, duplicateCheckAttempt]);
 
   const duplicateProfiles = useMemo(
     () => (recentEnrollments ? compatibleProfiles.filter(p => recentEnrollments.has(p.id)) : []),
@@ -136,6 +183,41 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       : compatibleProfiles.filter(p => !recentEnrollments.has(p.id)),
     [compatibleProfiles, recentEnrollments, allowDuplicates],
   );
+  // Raison d'exclusion de chaque candidat absent de profilesToEnroll : la liste
+  // les montre grisés au lieu de les confondre avec les inscrits.
+  const exclusionReasons = useMemo(() => {
+    const reasons = new Map<string, string>();
+    const enrolled = new Set(profilesToEnroll.map(p => p.id));
+    const compatById = new Map([...compat.blockers, ...compat.warnings].map(r => [r.profile.id, r]));
+    for (const profile of profiles) {
+      if (enrolled.has(profile.id)) continue;
+      const compatResult = compatById.get(profile.id);
+      const recent = recentEnrollments?.get(profile.id);
+      if (excludeIncompatible && compatResult) reasons.set(profile.id, compatExclusionLabel(compatResult.issue));
+      else if (recent) reasons.set(profile.id, `${formatRecentContactLabel(recent)}, exclu`);
+    }
+    return reasons;
+  }, [profiles, profilesToEnroll, compat.blockers, compat.warnings, recentEnrollments, excludeIncompatible]);
+  const firstAction = useMemo(() => firstActionSummary(sequence.steps), [sequence.steps]);
+
+  // Plan gratuit : la fenêtre explique pourquoi et renvoie vers les offres,
+  // quel que soit le point d'entrée (sourcing, messagerie, liste des séquences).
+  if (!canSendSequences) {
+    return (
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Abonnement requis</DialogTitle>
+            <DialogDescription>Inscription dans « {sequence.name} »</DialogDescription>
+          </DialogHeader>
+          <UpgradePrompt title="Séquences" description={SEQUENCES_PLAN_REQUIRED_MESSAGE} />
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   if (hasMessageSteps) {
     return (
@@ -146,6 +228,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         profiles={profiles}
         accountId={accountId}
         job={job}
+        notice={notice}
         onSuccess={onSuccess}
       />
     );
@@ -154,39 +237,53 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   const handleEnroll = async () => {
     if (!organizationId) {
       toast.error('Organisation non détectée', {
-        description: 'Recharge la page ou reconnecte-toi.',
+        description: 'Rechargez la page ou reconnectez-vous.',
       });
+      return;
+    }
+    if (!accountId) {
+      toast.error(NO_LINKEDIN_ACCOUNT_TITLE, { description: NO_LINKEDIN_ACCOUNT_DESCRIPTION });
+      return;
+    }
+    if (sendingAccount.blockReason) {
+      toast.error(sendingAccount.blockReason);
       return;
     }
 
     setIsEnrolling(true);
     setResults(null);
 
-    const enrollmentResults = {
+    const enrollmentResults: EnrollResults = {
       success: 0,
       skipped: 0,
-      errors: [] as string[],
+      alreadyPassed: 0,
+      errors: [],
     };
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || '00000000-0000-0000-0000-000000000000';
+      if (!user) {
+        toast.error('Session expirée : reconnectez-vous, puis réessayez.');
+        return;
+      }
+      const userId = user.id;
 
-      // Tri par step_order pour garantir le bon firstStep, même si la séquence
-      // n'a pas de step à step_order=0 (ex: créée manuellement à partir de 1).
-      const sortedSteps = [...sequence.steps].sort(
-        (a, b) => (a.step_order ?? 0) - (b.step_order ?? 0),
-      );
-      const firstStep = sortedSteps[0];
+      // Séquence désactivée entre l'ouverture du menu et le clic : refus.
+      const inactiveReason = await sequenceInactiveReason(supabase, sequence.id);
+      if (inactiveReason) {
+        toast.error(inactiveReason);
+        return;
+      }
 
-      // Source des profils à enrôler : on respecte le toggle "exclure les
+      // Source des profils à inscrire : on respecte le toggle "exclure les
       // incompatibles" pour éviter les échecs silencieux (1st degree +
       // connection_request, etc.), puis l'anti-doublon organisation
-      // (90 jours) sauf dérogation cochée par un propriétaire ou admin.
+      // sauf dérogation cochée par un propriétaire ou admin.
       let recent = recentEnrollments;
       if (!recent) {
         recent = await findRecentEnrollments(supabase, organizationId, profiles);
         setRecentEnrollments(recent);
+        setDuplicateCheckFailed(false);
       }
       const enrollSet = allowDuplicates
         ? compatibleProfiles
@@ -195,30 +292,43 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       if (enrollSet.length === 0) {
         toast.error(
           compatibleProfiles.length === 0
-            ? 'Aucun profil compatible avec cette séquence'
-            : 'Tous les candidats ont déjà été contactés récemment par votre organisation',
+            ? 'Aucun candidat compatible avec cette séquence'
+            : 'Tous les candidats ont déjà été contactés par votre organisation',
         );
-        setIsEnrolling(false);
         return;
       }
 
-      // 1. Pré-check pour info UX uniquement : combien sont déjà inscrits ?
-      // ⚠️ Le filtre par `status` est volontairement large car la contrainte
-      // DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle (cancelled,
-      // paused… comptent aussi). Le résultat exact viendra de l'upsert ci-dessous.
+      // 1. Pré-contrôle : qui a déjà une inscription dans cette séquence ? La
+      // contrainte DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle :
+      // on distingue ceux qui y sont encore (en cours, en pause) de ceux qui y
+      // sont déjà passés (terminée, réponse, arrêtée), à reprendre depuis le
+      // suivi. Le résultat exact viendra de l'upsert ci-dessous.
       const profileIds = enrollSet.map(p => p.id);
-      const { data: existingEnrollments } = await supabase
+      const { data: existingEnrollments, error: existingError } = await supabase
         .from('sequence_enrollments')
-        .select('profile_id')
+        .select('profile_id, status')
         .eq('sequence_id', sequence.id)
         .in('profile_id', profileIds);
+      if (existingError) throw existingError;
 
-      const existingIds = new Set((existingEnrollments || []).map(e => e.profile_id));
-      if (existingIds.size === enrollSet.length) {
-        // Tous déjà inscrits → exit avant tout INSERT
-        enrollmentResults.skipped = enrollSet.length;
+      const existingStatus = new Map((existingEnrollments || []).map(e => [e.profile_id, e.status]));
+      const countExisting = (ids: Iterable<string>) => {
+        let inSequence = 0;
+        let passed = 0;
+        for (const id of ids) {
+          if (!existingStatus.has(id)) continue;
+          if (classifyExistingEnrollment(existingStatus.get(id)) === 'in_sequence') inSequence++;
+          else passed++;
+        }
+        return { inSequence, passed };
+      };
+      if (existingStatus.size === enrollSet.length) {
+        // Tous déjà inscrits → sortie avant tout INSERT
+        const { inSequence, passed } = countExisting(profileIds);
+        enrollmentResults.skipped = inSequence;
+        enrollmentResults.alreadyPassed = passed;
         setResults(enrollmentResults);
-        toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
+        toast.info(passed > 0 ? alreadyPassedLabel(passed) : alreadyInSequenceLabel(inSequence));
         return;
       }
 
@@ -227,6 +337,11 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       // onglet/user a inscrit le même candidat entre temps, la ligne est
       // silencieusement dropée (ignoreDuplicates) et seules les VRAIES nouvelles
       // inscriptions reviennent dans `insertedEnrollments`.
+      // Normalise job.id : "project:{uuid}" → uuid pour que le cron
+      // process-sequences puisse retrouver le sourcing_project associé.
+      const normalizedJobId = job?.id?.startsWith('project:')
+        ? job.id.slice('project:'.length)
+        : job?.id;
       const enrollmentRows = enrollSet.map(profile => {
         const networkDist = profile.network_distance;
         const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
@@ -236,12 +351,6 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           : networkDist === 3 || networkDist === '3' || networkDist === 'DISTANCE_3'
           ? 'THIRD_DEGREE'
           : typeof networkDist === 'string' ? networkDist : null;
-
-        // Normalise job.id : "project:{uuid}" → uuid pour que le cron
-        // process-sequences puisse retrouver le sourcing_project associé.
-        const normalizedJobId = job?.id?.startsWith('project:')
-          ? job.id.slice('project:'.length)
-          : job?.id;
 
         return {
           sequence_id: sequence.id,
@@ -258,6 +367,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           status: 'active',
           network_distance: normalizedDistance,
           organization_id: organizationId,
+          ...enrollmentRowFields(profile),
         };
       });
 
@@ -273,93 +383,99 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       // Pas de throw si tableau vide — tous les candidats étaient déjà inscrits
       // entre le pré-check et l'upsert (race fenêtrée + DB a tout dropé).
       const insertedRows = insertedEnrollments || [];
+      const insertedProfileIds = new Set(insertedRows.map(e => e.profile_id));
+      const notInserted = profileIds.filter(id => !insertedProfileIds.has(id));
+      const { passed: passedCount } = countExisting(notInserted);
       enrollmentResults.success = insertedRows.length;
-      enrollmentResults.skipped = enrollSet.length - insertedRows.length;
-      if (insertedRows.length < enrollSet.length - existingIds.size) {
-        console.warn(`[SequenceEnrollModal] Race detected: ${enrollSet.length - existingIds.size - insertedRows.length} enrollment(s) deduped at DB level (concurrent enroll from another session)`);
+      enrollmentResults.alreadyPassed = passedCount;
+      enrollmentResults.skipped = notInserted.length - passedCount;
+      if (insertedRows.length < enrollSet.length - existingStatus.size) {
+        console.warn(`[SequenceEnrollModal] Race detected: ${enrollSet.length - existingStatus.size - insertedRows.length} enrollment(s) deduped at DB level (concurrent enroll from another session)`);
       }
       if (insertedRows.length === 0) {
         setResults(enrollmentResults);
-        toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
+        toast.info(passedCount > 0 ? alreadyPassedLabel(passedCount) : alreadyInSequenceLabel(enrollmentResults.skipped));
         return;
       }
 
-      // 3. Batch insert step executions for all new enrollments
-      if (firstStep && insertedRows.length > 0) {
-        const now = new Date();
-        const execRows = insertedRows.map(enrollment => {
-          const scheduledAt = calculateScheduledTime(
-            now,
-            firstStep.delay_days || 0,
-            firstStep.delay_hours || 0,
-            firstStep.delay_minutes || 0,
-            firstStep.preferred_hour_start ?? 9,
-            firstStep.preferred_hour_end ?? 18,
-            userTimezone
-          );
-          return {
-            enrollment_id: enrollment.id,
-            step_id: firstStep.id,
-            step_order: firstStep.step_order,
-            scheduled_at: scheduledAt.toISOString(),
-            status: 'scheduled',
-            organization_id: organizationId,
-          };
+      // 3. Batch insert step executions for all new enrollments. Première
+      // étape tirée pour CHAQUE inscription (pickFirstStep) : un test A/B en
+      // première position répartit les variantes comme le moteur, au lieu de
+      // n'envoyer que la première ligne.
+      const now = new Date();
+      const execRows = insertedRows.flatMap(enrollment => {
+        const { step: firstStep, variantAssigned } = pickFirstStep(sequence.steps);
+        if (!firstStep) return [];
+        const scheduledAt = calculateScheduledTime(
+          now,
+          firstStep.delay_days || 0,
+          firstStep.delay_hours || 0,
+          firstStep.delay_minutes || 0,
+          firstStep.preferred_hour_start ?? 9,
+          firstStep.preferred_hour_end ?? 18,
+          userTimezone
+        );
+        return [{
+          enrollment_id: enrollment.id,
+          step_id: firstStep.id,
+          step_order: firstStep.step_order ?? 0,
+          scheduled_at: scheduledAt.toISOString(),
+          status: 'scheduled',
+          variant_assigned: variantAssigned,
+          organization_id: organizationId,
+        }];
+      });
+
+      const { error: execError } = execRows.length === insertedRows.length
+        ? await supabase.from('sequence_step_executions').insert(execRows)
+        : { error: new Error('Aucune étape à planifier') };
+      if (execError) {
+        // Une inscription active sans étape planifiée n'est reprise par le
+        // moteur qu'au mieux une heure plus tard : on retire les inscriptions
+        // créées plutôt que d'annoncer un faux succès (même règle que l'aperçu
+        // d'inscription).
+        console.error('[SequenceEnrollModal] Failed to schedule first executions:', execError);
+        const insertedIds = insertedRows.map(e => e.id);
+        const { data: removed, error: rollbackError } = await supabase
+          .from('sequence_enrollments')
+          .delete()
+          .in('id', insertedIds)
+          .select('id');
+        const rolledBack = !rollbackError && (removed?.length ?? 0) === insertedIds.length;
+        enrollmentResults.success = 0;
+        enrollmentResults.errors.push(rolledBack
+          ? "L'inscription a échoué : aucune étape n'a pu être planifiée. Aucun message ne partira. Réessayez."
+          : "Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure.");
+        setResults(enrollmentResults);
+        toast.error(rolledBack ? 'Inscription impossible' : 'Inscription incomplète', { description: enrollmentResults.errors[0] });
+        return;
+      }
+
+      // 4. Statut pipeline « contacté », sans rétrograder un candidat déjà
+      // contacté, shortlisté ou qui a répondu (non bloquant).
+      if (job?.id) {
+        await markCandidatesMessaged(supabase, {
+          rawJobId: job.id,
+          userId,
+          organizationId,
+          profiles: enrollSet.filter(p => insertedProfileIds.has(p.id)),
         });
-
-        const { error: execError } = await supabase.from('sequence_step_executions').insert(execRows);
-        if (execError) {
-          console.error('[SequenceEnrollModal] Failed to schedule first executions:', execError);
-          toast.error('Inscriptions créées mais étapes non planifiées', {
-            description: 'Lance "Traiter les séquences" depuis Outreach pour relancer.',
-          });
-          // Ne pas throw — l'enrollment est déjà créé, le cron pourra rattraper
-        }
-      }
-
-      // 4. Batch upsert job_candidate_status if a job is linked
-      if (job?.id && insertedRows.length > 0) {
-        const normalizedJobIdForStatus = job.id.startsWith('project:')
-          ? job.id.slice('project:'.length)
-          : job.id;
-        const enrolledProfileIds = new Set(insertedRows.map(e => e.profile_id));
-        const statusRows = enrollSet
-          .filter(p => enrolledProfileIds.has(p.id))
-          .map(profile => ({
-            job_id: normalizedJobIdForStatus,
-            candidate_id: profile.id,
-            candidate_name: profile.name || null,
-            candidate_headline: profile.headline || null,
-            linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
-            status: 'messaged',
-            created_by: userId,
-            organization_id: organizationId,
-          }));
-
-        if (statusRows.length > 0) {
-          const { error: statusError } = await supabase
-            .from('job_candidate_status')
-            .upsert(statusRows, { onConflict: 'job_id,candidate_id,created_by' });
-          if (statusError) {
-            console.warn('[SequenceEnrollModal] job_candidate_status upsert failed:', statusError);
-            // Non-bloquant : l'enrollment est OK, le tracking pipeline se rattrapera
-          }
-        }
       }
 
       setResults(enrollmentResults);
 
-      if (enrollmentResults.success > 0) {
-        toast.success(`${enrollmentResults.success} candidat(s) inscrits dans la séquence`);
-      }
-      if (enrollmentResults.skipped > 0) {
-        toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
-      }
-    } catch (err: any) {
+      const n = enrollmentResults.success;
+      toast.success(`${n} candidat${n > 1 ? 's' : ''} inscrit${n > 1 ? 's' : ''} dans la séquence`, {
+        description: firstAction ?? undefined,
+      });
+      if (enrollmentResults.alreadyPassed > 0) toast.info(alreadyPassedLabel(enrollmentResults.alreadyPassed));
+      else if (enrollmentResults.skipped > 0) toast.info(alreadyInSequenceLabel(enrollmentResults.skipped));
+    } catch (err) {
+      // Détail technique en console seulement : jamais de message brut de la base.
       console.error('Enrollment error:', err);
-      enrollmentResults.errors.push(err?.message || err?.details || err?.hint || JSON.stringify(err));
+      enrollmentResults.errors.push("L'inscription n'a pas pu aboutir. Réessayez ou contactez le support.");
       setResults(enrollmentResults);
-      toast.error('Erreur lors de l\'inscription');
+      toast.error('Inscription impossible', { description: 'Réessayez ou contactez le support.' });
     } finally {
       setIsEnrolling(false);
     }
@@ -373,8 +489,19 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     }
   };
 
+  const enrollCount = profilesToEnroll.length;
+  // L'inscription attend la fin de la vérification des contacts récents.
+  const duplicatesUnchecked = !recentEnrollments;
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        // Pendant l'inscription, la fenêtre reste ouverte (Échap, clic
+        // extérieur, croix) : la fermer n'arrêterait pas les inscriptions.
+        if (!open && !isEnrolling) handleClose();
+      }}
+    >
       <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-border rounded-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -382,7 +509,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
              <span className="uppercase tracking-wide text-sm">Inscrire dans la séquence</span>
           </DialogTitle>
           <DialogDescription>
-            Ajouter les candidats sélectionnés à "{sequence.name}"
+            Ajouter les candidats sélectionnés à « {sequence.name} »
           </DialogDescription>
         </DialogHeader>
 
@@ -392,7 +519,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-foreground" />
               <span className="font-medium">
-                {profilesToEnroll.length} / {profiles.length} candidat(s) à inscrire
+                {enrollCount} sur {profiles.length} candidat{profiles.length > 1 ? 's' : ''} {enrollCount > 1 ? 'seront inscrits' : 'sera inscrit'}
               </span>
             </div>
 
@@ -403,9 +530,22 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             )}
 
             <div className="text-sm text-muted-foreground">
-              Séquence de {sequence.steps.length} étape(s)
+              Séquence de {sequence.steps.length} étape{sequence.steps.length > 1 ? 's' : ''}
             </div>
+            {firstAction && (
+              <div className="flex items-start gap-2 text-sm text-foreground">
+                <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                <span>{firstAction}</span>
+              </div>
+            )}
           </div>
+
+          {notice && (
+            <div className="p-3 border border-warning/40 bg-warning/5 rounded-md flex items-start gap-2" role="note">
+              <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="text-xs text-foreground">{notice}</p>
+            </div>
+          )}
 
           {/* Warning compat — détecte 1st degree + connection_request,
               hors réseau, etc. Évite les échecs silencieux à l'envoi. */}
@@ -416,19 +556,19 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                 <div className="flex-1 min-w-0 space-y-2">
                   <p className="text-xs font-semibold text-warning">
                     {compat.blockers.length > 0
-                      ? `${compat.blockers.length} profil(s) incompatibles avec cette séquence`
-                      : `${compat.warnings.length} profil(s) avec un avertissement`}
+                      ? `${compat.blockers.length} candidat${compat.blockers.length > 1 ? 's' : ''} incompatible${compat.blockers.length > 1 ? 's' : ''} avec cette séquence`
+                      : `${compat.warnings.length} candidat${compat.warnings.length > 1 ? 's' : ''} avec un avertissement`}
                   </p>
                   <ul className="text-[11px] text-muted-foreground space-y-1 max-h-24 overflow-y-auto">
                     {[...compat.blockers, ...compat.warnings].slice(0, 5).map(r => (
                       <li key={r.profile.id} className="truncate">
                         <span className="font-medium text-foreground">{r.profile.name}</span>
-                        {' — '}{r.message}
+                        {' : '}{r.message}
                       </li>
                     ))}
                     {compat.blockers.length + compat.warnings.length > 5 && (
                       <li className="italic">
-                        … et {compat.blockers.length + compat.warnings.length - 5} autre(s)
+                        et {compat.blockers.length + compat.warnings.length - 5} autre{compat.blockers.length + compat.warnings.length - 5 > 1 ? 's' : ''}
                       </li>
                     )}
                   </ul>
@@ -440,7 +580,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                       className="h-3 w-3 rounded border-border"
                     />
                     <span className="text-foreground">
-                      Exclure les profils incompatibles ({compat.blockers.length + compat.warnings.length})
+                      Exclure les candidats incompatibles ({compat.blockers.length + compat.warnings.length})
                     </span>
                   </label>
                 </div>
@@ -448,14 +588,29 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             </div>
           )}
 
-          {/* Anti-doublon organisation : contactés dans les 90 derniers jours
-              par un membre, toute séquence et tout compte. Exclus par défaut ;
+          {/* Anti-doublon organisation : contacts récents d'un membre, toute
+              séquence, tout compte et InMails groupés. Exclus par défaut ;
               dérogation réservée aux propriétaires et administrateurs. */}
           {isCheckingDuplicates && (
-            <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <p className="flex items-center gap-2 text-[11px] text-muted-foreground" role="status">
               <Loader2 className="w-3 h-3 animate-spin" />
               Vérification des contacts récents de l'organisation
             </p>
+          )}
+          {duplicateCheckFailed && !isCheckingDuplicates && (
+            <div className="p-3 border border-destructive/40 bg-destructive/5 rounded-md flex items-start gap-2" role="alert">
+              <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="flex-1 text-xs text-destructive">{DUPLICATE_CHECK_FAILED_MESSAGE}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs shrink-0"
+                onClick={() => setDuplicateCheckAttempt(a => a + 1)}
+              >
+                Réessayer
+              </Button>
+            </div>
           )}
           {duplicateProfiles.length > 0 && recentEnrollments && (
             <div className="p-3 border border-warning/40 bg-warning/5 rounded-md space-y-2">
@@ -463,7 +618,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                 <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0 space-y-2">
                   <p className="text-xs font-semibold text-warning">
-                    {duplicateProfiles.length} candidat(s) déjà contacté(s) par votre organisation ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours
+                    {duplicateProfiles.length} candidat{duplicateProfiles.length > 1 ? 's' : ''} déjà contacté{duplicateProfiles.length > 1 ? 's' : ''} par votre organisation (séquence en cours, ou contact ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours)
                   </p>
                   <ul className="text-[11px] text-muted-foreground space-y-1 max-h-24 overflow-y-auto">
                     {duplicateProfiles.slice(0, 5).map(p => {
@@ -477,7 +632,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                     })}
                     {duplicateProfiles.length > 5 && (
                       <li className="italic">
-                        et {duplicateProfiles.length - 5} autre(s)
+                        et {duplicateProfiles.length - 5} autre{duplicateProfiles.length - 5 > 1 ? 's' : ''}
                       </li>
                     )}
                   </ul>
@@ -503,37 +658,50 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
             </div>
           )}
 
-          {/* Profiles preview */}
+          {/* Candidats : ceux qui ne seront pas inscrits sont grisés, avec la raison. */}
           <ScrollArea className="h-[200px] sm:h-[240px] border border-border bg-muted/30 p-1">
             <div className="space-y-1.5">
-              {profiles.map((profile) => (
-                <div
-                  key={profile.id}
-                   className="flex items-center gap-3 p-2.5 bg-background border border-border"
-                 >
-                  {profile.profile_picture_url ? (
-                    <img
-                      src={profile.profile_picture_url}
-                      alt={profile.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                      <span className="text-sm font-medium">
-                        {profile.name?.charAt(0) || '?'}
-                      </span>
+              {profiles.map((profile) => {
+                const exclusion = exclusionReasons.get(profile.id);
+                return (
+                  <div
+                    key={profile.id}
+                    className={cn(
+                      'flex items-center gap-3 p-2.5 bg-background border border-border',
+                      exclusion && 'opacity-60',
+                    )}
+                  >
+                    {profile.profile_picture_url ? (
+                      <img
+                        src={profile.profile_picture_url}
+                        alt={profile.name}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                        <span className="text-sm font-medium">
+                          {profile.name?.charAt(0) || '?'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{profile.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {exclusion ?? profile.headline}
+                      </p>
                     </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{profile.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {profile.headline}
-                    </p>
+                    {exclusion && (
+                      <Badge variant="outline" className="shrink-0 text-[10px] text-muted-foreground">
+                        Exclu
+                      </Badge>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </ScrollArea>
+
+          {!results && <SendingAccountNotice state={sendingAccount} />}
 
           {/* Results */}
           {results && (
@@ -541,13 +709,24 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               {results.success > 0 && (
                 <div className="flex items-center gap-2 text-foreground">
                   <CheckCircle className="w-4 h-4" />
-                  <span>{results.success} inscrit(s) avec succès</span>
+                  <span>
+                    {results.success} candidat{results.success > 1 ? 's' : ''} inscrit{results.success > 1 ? 's' : ''}
+                  </span>
                 </div>
+              )}
+              {results.success > 0 && firstAction && (
+                <p className="text-xs text-muted-foreground pl-6">{firstAction}</p>
               )}
               {results.skipped > 0 && (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <AlertCircle className="w-4 h-4" />
-                  <span>{results.skipped} déjà inscrit(s)</span>
+                  <span>{alreadyInSequenceLabel(results.skipped)}</span>
+                </div>
+              )}
+              {results.alreadyPassed > 0 && (
+                <div className="flex items-start gap-2 text-muted-foreground">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{alreadyPassedLabel(results.alreadyPassed)}</span>
                 </div>
               )}
               {results.errors.length > 0 && (
@@ -561,26 +740,31 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           )}
         </div>
 
+        {isEnrolling && (
+          <p className="text-[11px] text-muted-foreground text-right" role="status">
+            Inscription en cours, ne fermez pas cette fenêtre.
+          </p>
+        )}
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={handleClose} className="border-border rounded-lg">
+          <Button variant="outline" onClick={handleClose} disabled={isEnrolling} className="border-border rounded-lg">
             {results ? 'Fermer' : 'Annuler'}
           </Button>
           {!results && (
             <div className="flex items-center gap-2">
               <Button
                  onClick={handleEnroll}
-                 disabled={isEnrolling || profilesToEnroll.length === 0}
+                 disabled={isEnrolling || enrollCount === 0 || duplicatesUnchecked || !!sendingAccount.blockReason}
                  className="bg-foreground text-background rounded-lg"
               >
                 {isEnrolling ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Inscription...
+                    Inscription…
                   </>
                 ) : (
                   <>
                     <GitBranch className="w-4 h-4 mr-2" />
-                    Inscrire {profilesToEnroll.length} candidat(s)
+                    Inscrire {enrollCount} candidat{enrollCount > 1 ? 's' : ''}
                   </>
                 )}
               </Button>

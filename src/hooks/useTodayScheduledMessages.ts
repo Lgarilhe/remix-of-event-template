@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { startOfDay, endOfDay, format } from 'date-fns';
+import { useOrganization } from '@/hooks/useOrganization';
+import { startOfDay, endOfDay } from 'date-fns';
+import {
+  executionStatusLabel,
+  HIDDEN_ACTION_TYPES,
+  isSentExecutionStatus,
+} from '@/lib/sequenceErrorMessages';
 
 export interface ScheduledMessage {
   id: string;
@@ -10,111 +16,95 @@ export interface ScheduledMessage {
   subject: string | null;
   messageContent: string | null;
   scheduledAt: string;
+  /**
+   * Statut de l'envoi. Pour une séquence, une étape ouverte, cliquée ou
+   * répondue est rapportée comme 'sent' : elle est partie.
+   */
   status: string;
+  /** Libellé français du statut réel (ex. « Reporté (limite LinkedIn du jour atteinte) »). */
+  statusLabel?: string;
   sequenceName?: string;
   stepOrder?: number;
   actionType?: string;
 }
 
-async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
+/**
+ * Étapes de séquence du jour : à venir (programmées, en cours d'envoi,
+ * reportées par la limite LinkedIn) et déjà parties (envoyées, ouvertes,
+ * cliquées, répondues).
+ */
+const TODAY_EXECUTION_STATUSES = ['scheduled', 'sending', 'quota_blocked', 'sent', 'opened', 'clicked', 'replied'];
+
+async function fetchTodayScheduledMessages(organizationId: string): Promise<ScheduledMessage[]> {
   const now = new Date();
   const dayStart = startOfDay(now).toISOString();
   const dayEnd = endOfDay(now).toISOString();
   const messages: ScheduledMessage[] = [];
 
   // 1. InMails scheduled for today
-  const { data: inmails } = await supabase
+  const { data: inmails, error: inmailError } = await supabase
     .from('inmail_queue')
     .select('id, recipient_name, recipient_headline, subject, message, scheduled_at, status')
     .gte('scheduled_at', dayStart)
     .lte('scheduled_at', dayEnd)
     .in('status', ['pending', 'scheduled', 'sent'])
     .order('scheduled_at', { ascending: true });
+  // Une source en échec n'efface pas l'autre ; les deux en échec = erreur.
+  if (inmailError) console.error('[useTodayScheduledMessages] InMails indisponibles:', inmailError);
 
-  if (inmails) {
-    inmails.forEach((im: any) => {
-      messages.push({
-        id: `inmail-${im.id}`,
-        type: 'inmail',
-        recipientName: im.recipient_name,
-        recipientHeadline: im.recipient_headline,
-        subject: im.subject,
-        messageContent: im.message || null,
-        scheduledAt: im.scheduled_at,
-        status: im.status,
-      });
+  for (const im of inmails || []) {
+    messages.push({
+      id: `inmail-${im.id}`,
+      type: 'inmail',
+      recipientName: im.recipient_name,
+      recipientHeadline: im.recipient_headline,
+      subject: im.subject,
+      messageContent: im.message || null,
+      scheduledAt: im.scheduled_at,
+      status: im.status,
     });
   }
 
-  // 2. Sequence step executions scheduled for today (only visible actions)
-  const HIDDEN_ACTIONS = ['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event'];
-  const { data: executions } = await supabase
-    .from('sequence_step_executions' as any)
-    .select('id, scheduled_at, status, step_order, enrollment_id, final_subject, final_message, step_id')
+  // 2. Étapes de séquence du jour, actions visibles seulement. Les étapes
+  // internes sont écartées dans la requête, AVANT la limite, et l'inscription
+  // est jointe pour son organisation et son statut.
+  const { data: executions, error: execError } = await supabase
+    .from('sequence_step_executions')
+    .select(
+      'id, scheduled_at, status, step_order, final_subject, final_message, sequence_steps!inner(action_type), sequence_enrollments!inner(status, organization_id, profile_name, profile_headline, outreach_sequences(name))',
+    )
+    .eq('sequence_enrollments.organization_id', organizationId)
+    .not('sequence_steps.action_type', 'in', `(${HIDDEN_ACTION_TYPES.join(',')})`)
     .gte('scheduled_at', dayStart)
     .lte('scheduled_at', dayEnd)
-    .in('status', ['scheduled', 'executed', 'sent'])
+    .in('status', TODAY_EXECUTION_STATUSES)
     .order('scheduled_at', { ascending: true })
     .limit(100);
+  if (execError) {
+    console.error('[useTodayScheduledMessages] étapes de séquence indisponibles:', execError);
+    if (inmailError) throw execError;
+  }
 
-  if (executions && (executions as any[]).length > 0) {
-    // Get step action_types to filter out hidden actions
-    const stepIds = [...new Set((executions as any[]).map((e: any) => e.step_id).filter(Boolean))];
-    let stepActionMap = new Map<string, string>();
-    if (stepIds.length > 0) {
-      const { data: steps } = await supabase
-        .from('sequence_steps' as any)
-        .select('id, action_type')
-        .in('id', stepIds);
-      if (steps) {
-        (steps as any[]).forEach((s: any) => stepActionMap.set(s.id, s.action_type));
-      }
-    }
+  for (const exec of executions || []) {
+    const enrollment = exec.sequence_enrollments;
+    const sent = isSentExecutionStatus(exec.status);
+    // Une étape à venir d'une inscription en pause ou close ne partira pas :
+    // le moteur ne traite que les inscriptions actives.
+    if (!sent && enrollment?.status !== 'active') continue;
 
-    // Filter out hidden actions
-    const visibleExecutions = (executions as any[]).filter((exec: any) => {
-      const actionType = stepActionMap.get(exec.step_id) || '';
-      return !HIDDEN_ACTIONS.includes(actionType);
-    });
-
-    // Get enrollment details for names
-    const enrollmentIds = [...new Set(visibleExecutions.map((e: any) => e.enrollment_id))];
-    
-    let enrollmentMap = new Map<string, { name: string; headline: string; sequenceName: string }>();
-    
-    if (enrollmentIds.length > 0) {
-      const { data: enrollments } = await supabase
-        .from('sequence_enrollments')
-        .select('id, profile_name, profile_headline, outreach_sequences (name)')
-        .in('id', enrollmentIds);
-      
-      if (enrollments) {
-        enrollments.forEach((e: any) => {
-          enrollmentMap.set(e.id, {
-            name: e.profile_name || 'Profil LinkedIn',
-            headline: e.profile_headline || null,
-            sequenceName: e.outreach_sequences?.name || 'Séquence',
-          });
-        });
-      }
-    }
-
-    visibleExecutions.forEach((exec: any) => {
-      const enrollment = enrollmentMap.get(exec.enrollment_id);
-      const actionType = stepActionMap.get(exec.step_id) || '';
-      messages.push({
-        id: `seq-${exec.id}`,
-        type: 'sequence',
-        recipientName: enrollment?.name || 'Profil LinkedIn',
-        recipientHeadline: enrollment?.headline || null,
-        subject: exec.final_subject || null,
-        messageContent: exec.final_message || null,
-        scheduledAt: exec.scheduled_at,
-        status: exec.status,
-        sequenceName: enrollment?.sequenceName,
-        stepOrder: exec.step_order,
-        actionType,
-      });
+    messages.push({
+      id: `seq-${exec.id}`,
+      type: 'sequence',
+      recipientName: enrollment?.profile_name || 'Profil LinkedIn',
+      recipientHeadline: enrollment?.profile_headline || null,
+      subject: exec.final_subject || null,
+      messageContent: exec.final_message || null,
+      scheduledAt: exec.scheduled_at,
+      status: sent ? 'sent' : exec.status,
+      statusLabel: executionStatusLabel(exec.status),
+      sequenceName: enrollment?.outreach_sequences?.name || 'Séquence',
+      stepOrder: exec.step_order,
+      actionType: exec.sequence_steps?.action_type || '',
     });
   }
 
@@ -125,9 +115,13 @@ async function fetchTodayScheduledMessages(): Promise<ScheduledMessage[]> {
 }
 
 export function useTodayScheduledMessages() {
+  const { organizationId } = useOrganization();
   return useQuery({
-    queryKey: ['today-scheduled-messages'],
-    queryFn: fetchTodayScheduledMessages,
+    // L'organisation fait partie de la clé : changer d'espace ne ressert pas
+    // les envois du précédent.
+    queryKey: ['today-scheduled-messages', organizationId],
+    queryFn: () => fetchTodayScheduledMessages(organizationId as string),
+    enabled: !!organizationId,
     staleTime: 2 * 60 * 1000, // 2 min
     gcTime: 5 * 60 * 1000,
   });

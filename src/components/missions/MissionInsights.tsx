@@ -5,8 +5,15 @@ import { useProjectStats } from '@/hooks/useProjectStats';
 import { ProjectFunnel } from '@/components/outreach/projects/ProjectFunnel';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import {
+  computeResponseRate,
+  countContactedEnrollments,
+  missionEnrollmentJobIds,
+  RESPONSE_RATE_MIN_CONTACTED,
+} from '@/lib/sequenceErrorMessages';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 interface MissionInsightsProps {
   project: SourcingProject;
@@ -56,54 +63,70 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
   const { data: stats } = useProjectStats(project.id);
 
   const [enrollmentStats, setEnrollmentStats] = useState({
-    total: 0, active: 0, completed: 0, replied: 0, avgResponseDays: null as number | null,
+    total: 0, active: 0, completed: 0, replied: 0, contacted: 0, avgResponseDays: null as number | null,
   });
+  const [enrollmentStatsError, setEnrollmentStatsError] = useState(false);
 
   useEffect(() => {
     if (!project.id) return;
+    let cancelled = false;
     const fetchEnrollmentStats = async () => {
-      const { data: sequences } = await (supabase
-        .from('outreach_sequences')
-        .select('id') as any)
-        .eq('project_id', project.id);
-
-      if (!sequences?.length) return;
-
-      const seqIds = sequences.map((s: any) => s.id);
-      const { data: enrollments } = await supabase
+      // Inscriptions de la mission par job_id : elles couvrent aussi les
+      // séquences partagées entre missions (modèles), que le filtre par
+      // séquence de la mission ignorait. Le statut des étapes dit qui a
+      // vraiment été contacté.
+      const { data: enrollments, error } = await supabase
         .from('sequence_enrollments')
-        .select('status, created_at, replied_at')
-        .in('sequence_id', seqIds);
+        .select('status, created_at, replied_at, sequence_step_executions(status)')
+        .in('job_id', missionEnrollmentJobIds(project.id, project.job_id));
 
-      if (!enrollments) return;
+      if (cancelled) return;
+      if (error) {
+        console.error('[MissionInsights] enrollment stats failed:', error);
+        setEnrollmentStatsError(true);
+        toast.error('Impossible de charger les chiffres des séquences de cette mission');
+        return;
+      }
+      setEnrollmentStatsError(false);
+      const rows = enrollments || [];
 
-      const repliedWithTime = enrollments.filter(
-        (e: any) => e.status === 'replied' && e.replied_at && e.created_at
-      );
+      const repliedWithTime = rows.filter(e => e.status === 'replied' && e.replied_at && e.created_at);
       let avgDays: number | null = null;
       if (repliedWithTime.length > 0) {
-        const totalMs = repliedWithTime.reduce((sum: number, e: any) => {
-          return sum + (new Date(e.replied_at).getTime() - new Date(e.created_at).getTime());
+        const totalMs = repliedWithTime.reduce((sum, e) => {
+          return sum + (new Date(e.replied_at as string).getTime() - new Date(e.created_at).getTime());
         }, 0);
         avgDays = Math.round((totalMs / repliedWithTime.length) / (1000 * 60 * 60 * 24) * 10) / 10;
       }
 
+      const { replied, contacted } = countContactedEnrollments(rows.map(e => ({
+        status: e.status,
+        execution_statuses: (e.sequence_step_executions || []).map(x => x.status),
+      })));
+
       setEnrollmentStats({
-        total: enrollments.length,
-        active: enrollments.filter((e: any) => e.status === 'active').length,
-        completed: enrollments.filter((e: any) => e.status === 'completed').length,
-        replied: enrollments.filter((e: any) => e.status === 'replied').length,
+        total: rows.length,
+        active: rows.filter(e => e.status === 'active').length,
+        completed: rows.filter(e => e.status === 'completed').length,
+        replied,
+        contacted,
         avgResponseDays: avgDays,
       });
     };
     fetchEnrollmentStats();
-  }, [project.id]);
+    return () => { cancelled = true; };
+  }, [project.id, project.job_id]);
 
   const hasData = stats && stats.total > 0;
 
-  const responseRate = enrollmentStats.total > 0
-    ? Math.round((enrollmentStats.replied / enrollmentStats.total) * 100)
-    : 0;
+  // Taux de réponse = répondus / contactés (helper partagé avec les statistiques
+  // des séquences). Les inscrits jamais contactés ne font plus baisser le taux.
+  const response = computeResponseRate({
+    replied: enrollmentStats.replied,
+    contacted: enrollmentStats.contacted,
+  });
+  const responseRate = response.rate ?? 0;
+  const enoughContacted = !enrollmentStatsError && response.contacted >= RESPONSE_RATE_MIN_CONTACTED;
 
   const conversionRate = stats && stats.total > 0
     ? Math.round((stats.shortlisted / stats.total) * 100 * 10) / 10
@@ -163,7 +186,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
       });
     }
 
-    if (enrollmentStats.total >= 5 && responseRate >= 25) {
+    if (enoughContacted && responseRate >= 25) {
       list.push({
         icon: '🔥',
         title: `Excellent taux de réponse (${responseRate}%)`,
@@ -173,7 +196,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
       });
     }
 
-    if (enrollmentStats.total >= 5 && responseRate < 8) {
+    if (enoughContacted && responseRate < 8) {
       list.push({
         icon: '⚠️',
         title: `Taux de réponse bas (${responseRate}%)`,
@@ -206,7 +229,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
       const order = { high: 0, medium: 1, low: 2 };
       return order[a.priority] - order[b.priority];
     });
-  }, [stats, enrollmentStats, project, responseRate]);
+  }, [stats, project, responseRate, enoughContacted]);
 
   const recentActivity = useMemo(() => {
     return [...candidates]
@@ -252,14 +275,18 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <MetricCard
               label="Taux de réponse"
-              value={`${responseRate}%`}
-              sublabel={`${enrollmentStats.replied}/${enrollmentStats.total} inscrits`}
-              color={responseRate >= 20 ? 'text-success' : responseRate >= 10 ? 'text-warning' : 'text-destructive'}
+              value={enrollmentStatsError || response.rate === null ? '—' : `${response.rate}%`}
+              sublabel={enrollmentStatsError
+                ? 'Chiffre indisponible'
+                : `${response.replied}/${response.contacted} contactés`}
+              color={enrollmentStatsError || !enoughContacted
+                ? 'text-foreground'
+                : responseRate >= 20 ? 'text-success' : responseRate >= 10 ? 'text-warning' : 'text-destructive'}
             />
             <MetricCard
               label="Temps moyen de réponse"
-              value={enrollmentStats.avgResponseDays !== null ? `${enrollmentStats.avgResponseDays}j` : '—'}
-              sublabel="délai moyen"
+              value={!enrollmentStatsError && enrollmentStats.avgResponseDays !== null ? `${enrollmentStats.avgResponseDays}j` : '—'}
+              sublabel={enrollmentStatsError ? 'Chiffre indisponible' : 'délai moyen'}
               color="text-foreground"
             />
             <MetricCard

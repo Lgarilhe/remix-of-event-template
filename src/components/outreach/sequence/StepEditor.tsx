@@ -16,9 +16,23 @@ import {
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../SequenceBuilder';
 import { getStepMessageType } from './messageTypeUtils';
-import { getConditionsForActionType, ALL_CONDITION_TYPES, isEmailStep, isWhatsAppStep, isCrossChannelCondition } from './conditionTypes';
-import { VariableInserter } from './VariableInserter';
+import { getConditionsForActionType, ALL_CONDITION_TYPES, isEmailStep, isWhatsAppStep, isCrossChannelCondition, engagementConditionHint, retiredConditionNotice } from './conditionTypes';
+import { VariableInserter, UnknownVariablesNotice } from './VariableInserter';
 import { useEmailSignatures } from '@/hooks/useEmailSignatures';
+import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
+import {
+  effectiveTimeoutAction,
+  timeoutActionUpdate,
+  unsupportedStepNotice,
+  SMART_MESSAGE_INMAIL_HELP,
+  stepHasMessageField,
+  stepNeedsSubject,
+  stepAllowsAi,
+  timeoutTargetOptions,
+  hasBackwardTimeoutTarget,
+  delaySentence,
+  SEND_WINDOW_HELP,
+} from './sequenceGraph';
 
 interface StepEditorProps {
   step: SequenceStep;
@@ -28,10 +42,12 @@ interface StepEditorProps {
   allStepTypes: Array<{ value: string; label: string; icon: React.ElementType; color: string }>;
 }
 
+// « Terminer » n'est pas proposé : rien ne l'enregistrait et le moteur passait
+// à l'étape suivante. Pour arrêter au délai dépassé, choisir une étape de
+// repli marquée « Fin de séquence ».
 const TIMEOUT_ACTIONS = [
   { value: 'skip', label: 'Passer à la suivante' },
-  { value: 'alternative_step', label: 'Étape alternative' },
-  { value: 'end_sequence', label: 'Terminer' },
+  { value: 'alternative_step', label: 'Aller à une étape de repli' },
 ];
 
 const HOURS = Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${i}h` }));
@@ -47,8 +63,9 @@ const TRIGGERS = ['check_connection', 'wait_connection', 'wait_reply', 'wait_pro
 
 const isAction = (actionType: string) => ACTIONS.includes(actionType);
 const isTriggerStep = (actionType: string) => TRIGGERS.includes(actionType);
-const needsMessage = (type: string) => ['inmail', 'email', 'connection_request', 'message', 'smart_message', 'whatsapp_message'].includes(type);
-const needsSubject = (type: string) => ['inmail', 'email'].includes(type);
+const needsMessage = stepHasMessageField;
+// Message IA : l'objet sert quand le message part en InMail.
+const needsSubject = stepNeedsSubject;
 
 export const StepEditor: React.FC<StepEditorProps> = ({
   step,
@@ -62,8 +79,19 @@ export const StepEditor: React.FC<StepEditorProps> = ({
   const stepIsTrigger = isTriggerStep(step.actionType);
   const msgType = getStepMessageType(step, allSteps);
   const { signatures } = useEmailSignatures();
+  const { variables: customVariables } = useUserTemplateVariables();
+  const customKeys = customVariables.map(v => v.key);
+  const notice = unsupportedStepNotice(step.actionType);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
+  // Invitation : pas de personnalisation IA, la note saisie est celle qui part.
+  const aiAllowed = stepAllowsAi(step.actionType);
+  const usesAi = aiAllowed && step.useAiPersonalization;
+  const isInvite = step.actionType === 'connection_request';
+  const fieldId = (name: string) => `step-${step.id}-${name}`;
+  const timeoutOptions = timeoutTargetOptions(step, allSteps);
+  const backwardTimeout = hasBackwardTimeoutTarget(step, allSteps);
+  const currentTimeoutTarget = backwardTimeout ? allSteps.find(s => s.id === step.timeoutBranchStepId) : undefined;
 
   return (
     <div className="flex flex-col gap-5">
@@ -81,7 +109,7 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               "text-3xs font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
               stepIsTrigger ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
             )}>
-              {stepIsTrigger ? 'trigger' : 'action'}
+              {!stepIsTrigger ? 'action' : step.actionType === 'check_connection' || step.actionType === 'condition_branch' ? 'condition' : 'attente'}
             </span>
             <span className="text-xs font-semibold">{stepConfig?.label}</span>
           </div>
@@ -94,23 +122,33 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         </div>
       </div>
 
+      {notice && (
+        <div className="text-3xs text-warning bg-warning/10 border border-warning/30 rounded-md px-3 py-2">
+          ⚠ {notice}
+        </div>
+      )}
+      {step.actionType === 'smart_message' && (
+        <p className="text-3xs text-muted-foreground">{SMART_MESSAGE_INMAIL_HELP}</p>
+      )}
+
       {/* Delay */}
       {stepIndex > 0 && (
         <Section label="Délai">
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <Label className="text-3xs text-muted-foreground">Jours</Label>
-              <Input type="number" min={0} value={step.delayDays} onChange={(e) => onUpdate({ delayDays: parseInt(e.target.value) || 0 })} className="mt-0.5 h-7 text-xs" />
+              <Label htmlFor={fieldId('delay-days')} className="text-3xs text-muted-foreground">Jours</Label>
+              <Input id={fieldId('delay-days')} type="number" min={0} value={step.delayDays} onChange={(e) => onUpdate({ delayDays: Math.max(0, parseInt(e.target.value) || 0) })} className="mt-0.5 h-7 text-xs" />
             </div>
             <div>
-              <Label className="text-3xs text-muted-foreground">Heures</Label>
-              <Input type="number" min={0} max={23} value={step.delayHours} onChange={(e) => onUpdate({ delayHours: parseInt(e.target.value) || 0 })} className="mt-0.5 h-7 text-xs" />
+              <Label htmlFor={fieldId('delay-hours')} className="text-3xs text-muted-foreground">Heures</Label>
+              <Input id={fieldId('delay-hours')} type="number" min={0} max={23} value={step.delayHours} onChange={(e) => onUpdate({ delayHours: Math.min(23, Math.max(0, parseInt(e.target.value) || 0)) })} className="mt-0.5 h-7 text-xs" />
             </div>
             <div>
-              <Label className="text-3xs text-muted-foreground">Min</Label>
-              <Input type="number" min={0} max={59} value={step.delayMinutes || 0} onChange={(e) => onUpdate({ delayMinutes: parseInt(e.target.value) || 0 })} className="mt-0.5 h-7 text-xs" />
+              <Label htmlFor={fieldId('delay-minutes')} className="text-3xs text-muted-foreground">Minutes</Label>
+              <Input id={fieldId('delay-minutes')} type="number" min={0} max={59} value={step.delayMinutes || 0} onChange={(e) => onUpdate({ delayMinutes: Math.min(59, Math.max(0, parseInt(e.target.value) || 0)) })} className="mt-0.5 h-7 text-xs" />
             </div>
           </div>
+          <p className="text-3xs text-muted-foreground">{delaySentence(step)}</p>
         </Section>
       )}
 
@@ -123,41 +161,57 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         <CollapsibleContent className="pt-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-3xs text-muted-foreground">Pas avant</Label>
+              <Label htmlFor={fieldId('hour-start')} className="text-3xs text-muted-foreground">Pas avant</Label>
               <Select value={String(step.preferredHourStart ?? 9)} onValueChange={(value) => onUpdate({ preferredHourStart: parseInt(value) })}>
-                <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger id={fieldId('hour-start')} className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{HOURS.map(h => <SelectItem key={h.value} value={String(h.value)}>{h.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-3xs text-muted-foreground">Pas après</Label>
+              <Label htmlFor={fieldId('hour-end')} className="text-3xs text-muted-foreground">Pas après</Label>
               <Select value={String(step.preferredHourEnd ?? 18)} onValueChange={(value) => onUpdate({ preferredHourEnd: parseInt(value) })}>
-                <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger id={fieldId('hour-end')} className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{HOURS.map(h => <SelectItem key={h.value} value={String(h.value)}>{h.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </div>
+          <p className="text-3xs text-muted-foreground mt-1.5">{SEND_WINDOW_HELP}</p>
         </CollapsibleContent>
       </Collapsible>
 
       {/* Condition */}
       {isAction(step.actionType) && (
         <Section label="Condition d'exécution">
-          <Select value={step.conditionType} onValueChange={(value) => onUpdate({ conditionType: value as SequenceStep['conditionType'] })}>
-            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <Select
+            value={step.conditionType}
+            onValueChange={(value) => onUpdate(
+              // Seuil posé dans la même mise à jour : le champ affichait 70
+              // sans rien enregistrer, et l'enregistrement le réclamait.
+              value === 'if_score_above' && !step.conditionValue?.trim()
+                ? { conditionType: 'if_score_above', conditionValue: '70' }
+                : { conditionType: value as SequenceStep['conditionType'] },
+            )}
+          >
+            <SelectTrigger className="h-8 text-xs" aria-label="Condition d'exécution"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {getConditionsForActionType(step.actionType).map(cond => (
+              {getConditionsForActionType(step.actionType, step.conditionType).map(cond => (
                 <SelectItem key={cond.value} value={cond.value}>{cond.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           {isCrossChannelCondition(step.actionType, step.conditionType) && (
-            <p className="text-3xs text-warning mt-1">⚠️ Condition email uniquement</p>
+            <p className="text-3xs text-warning mt-1">⚠️ Condition réservée aux étapes e-mail</p>
+          )}
+          {engagementConditionHint(step.conditionType) && (
+            <p className="text-3xs text-muted-foreground mt-1">{engagementConditionHint(step.conditionType)}</p>
+          )}
+          {retiredConditionNotice(step.conditionType) && (
+            <p className="text-3xs text-warning mt-1">⚠️ Cette condition n'est plus proposée : {retiredConditionNotice(step.conditionType)}</p>
           )}
           {step.conditionType === 'if_score_above' && (
             <div className="mt-2">
-              <Label className="text-3xs text-muted-foreground">Seuil (0-100)</Label>
-              <Input type="number" min={0} max={100} value={step.conditionValue || '70'} onChange={(e) => onUpdate({ conditionValue: e.target.value })} className={cn("mt-0.5 w-24 h-7 text-xs", !step.conditionValue?.trim() && "border-destructive")} />
+              <Label htmlFor={fieldId('score')} className="text-3xs text-muted-foreground">Seuil (0-100)</Label>
+              <Input id={fieldId('score')} type="number" min={0} max={100} value={step.conditionValue ?? ''} placeholder="70" onChange={(e) => onUpdate({ conditionValue: e.target.value })} className={cn("mt-0.5 w-24 h-7 text-xs", !step.conditionValue?.trim() && "border-destructive")} />
             </div>
           )}
         </Section>
@@ -185,35 +239,41 @@ export const StepEditor: React.FC<StepEditorProps> = ({
       {stepIsTrigger && step.actionType !== 'condition_branch' && step.actionType !== 'check_connection' && (
         <div className="space-y-3 p-3 bg-warning/10 border border-warning/30 rounded-lg">
           <div className="flex items-center gap-1.5 text-warning">
-            <Zap className="w-3 h-3" />
-            <span className="text-2xs font-semibold">Trigger</span>
+            <Zap className="w-3 h-3" aria-hidden="true" />
+            <span className="text-2xs font-semibold">Réglages de l'attente</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className="text-3xs text-muted-foreground">Timeout (j)</Label>
-              <Input type="number" min={1} value={step.timeoutDays || 3} onChange={(e) => onUpdate({ timeoutDays: parseInt(e.target.value) || 3 })} className="mt-0.5 h-7 text-xs" />
+              <Label htmlFor={fieldId('timeout')} className="text-3xs text-muted-foreground">Attendre au plus (jours)</Label>
+              {/* Valeur réelle affichée : vide si rien n'est enregistré. */}
+              <Input id={fieldId('timeout')} type="number" min={1} value={step.timeoutDays ?? ''} placeholder="3" onChange={(e) => { const n = parseInt(e.target.value); onUpdate({ timeoutDays: n > 0 ? n : undefined }); }} className={cn("mt-0.5 h-7 text-xs", !step.timeoutDays && "border-destructive")} />
             </div>
             <div>
-              <Label className="text-3xs text-muted-foreground">Si timeout</Label>
-              <Select value={step.timeoutAction || 'skip'} onValueChange={(value) => onUpdate({ timeoutAction: value as SequenceStep['timeoutAction'] })}>
-                <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
+              <Label htmlFor={fieldId('timeout-action')} className="text-3xs text-muted-foreground">Si rien ne se passe</Label>
+              {/* Lu sur l'étape de repli enregistrée ; quitter « Étape de repli » l'efface. */}
+              <Select value={effectiveTimeoutAction(step)} onValueChange={(value) => onUpdate(timeoutActionUpdate(value))}>
+                <SelectTrigger id={fieldId('timeout-action')} className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{TIMEOUT_ACTIONS.map(a => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </div>
-          {step.timeoutAction === 'alternative_step' && (
+          {effectiveTimeoutAction(step) === 'alternative_step' && (
             <div>
-              <Label className="text-3xs text-muted-foreground">Step alternatif</Label>
+              <Label htmlFor={fieldId('timeout-target')} className="text-3xs text-muted-foreground">Étape de repli</Label>
               <Select value={step.timeoutBranchStepId || '__none__'} onValueChange={(value) => onUpdate({ timeoutBranchStepId: value === '__none__' ? undefined : value })}>
-                <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                <SelectTrigger id={fieldId('timeout-target')} className={cn("mt-0.5 h-7 text-xs", (!step.timeoutBranchStepId || backwardTimeout) && "border-destructive")}><SelectValue placeholder="Choisir..." /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Choisir...</SelectItem>
-                  {allSteps.filter(s => s.id !== step.id).map(s => {
+                  {/* Seulement les étapes suivantes : une étape antérieure renverrait un message déjà parti. */}
+                  {[...(currentTimeoutTarget ? [currentTimeoutTarget] : []), ...timeoutOptions].map(s => {
                     const config = allStepTypes.find(a => a.value === s.actionType);
                     return <SelectItem key={s.id} value={s.id}>{s.order + 1}. {config?.label || s.actionType}</SelectItem>;
                   })}
                 </SelectContent>
               </Select>
+              {backwardTimeout && (
+                <p className="text-3xs text-destructive mt-0.5">Cette étape vient avant l'attente : un message déjà envoyé repartirait. Choisissez une étape suivante.</p>
+              )}
             </div>
           )}
         </div>
@@ -223,8 +283,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
       {step.actionType === 'check_connection' && (
         <div className="space-y-3 p-3 bg-info/10 border border-info/30 rounded-lg">
           <div className="flex items-center gap-1.5 text-info">
-            <GitBranch className="w-3 h-3" />
-            <span className="text-2xs font-semibold">Branchement</span>
+            <GitBranch className="w-3 h-3" aria-hidden="true" />
+            <span className="text-2xs font-semibold">Selon la connexion</span>
           </div>
           <div>
             <Label className="text-3xs text-muted-foreground flex items-center gap-1">
@@ -256,61 +316,37 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               </SelectContent>
             </Select>
           </div>
+          {!!step.ifTrueGotoStep !== !!step.ifFalseGotoStep && (
+            <p className="text-3xs text-destructive">
+              La branche {step.ifTrueGotoStep ? 'Non connecté' : 'Connecté'} est vide : ces candidats partiraient dans l'autre branche. Ajoutez-y une étape, ou choisissez « Étape suivante » pour les deux cas.
+            </p>
+          )}
         </div>
       )}
 
-      {/* Condition branch */}
-      {step.actionType === 'condition_branch' && (
-        <div className="space-y-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
-          <div className="flex items-center gap-1.5 text-destructive">
-            <GitBranch className="w-3 h-3" />
-            <span className="text-2xs font-semibold">Branchement</span>
-          </div>
-          <div>
-            <Label className="text-3xs text-muted-foreground">Condition</Label>
-            <Select value={step.conditionType} onValueChange={(value) => onUpdate({ conditionType: value as SequenceStep['conditionType'] })}>
-              <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>{ALL_CONDITION_TYPES.filter(c => c.value !== 'always').map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          {step.conditionType === 'if_score_above' && (
-            <div>
-              <Label className="text-3xs text-muted-foreground">Seuil (0-100)</Label>
-              <Input type="number" min={0} max={100} value={step.conditionValue || '70'} onChange={(e) => onUpdate({ conditionValue: e.target.value })} className="mt-0.5 w-24 h-7 text-xs" />
-            </div>
-          )}
-          <div>
-            <Label className="text-3xs text-muted-foreground">Si faux</Label>
-            <Select value={step.timeoutAction || 'skip'} onValueChange={(value) => onUpdate({ timeoutAction: value as SequenceStep['timeoutAction'] })}>
-              <SelectTrigger className="mt-0.5 h-7 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>{TIMEOUT_ACTIONS.map(a => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-        </div>
-      )}
+      {/* Branchement (étapes existantes) : plus de « Si faux », il n'était jamais
+          enregistré et le moteur continuait dans les deux cas. L'avertissement
+          est affiché en tête du panneau. */}
 
       {/* Message fields */}
       {needsMessage(step.actionType) && (
         <div className="space-y-4">
-          {isWhatsAppStep(step.actionType) && (
-            <div className="text-3xs text-success bg-success/10 border border-success/30 rounded-md px-3 py-2">
-              📱 WhatsApp — candidats sans numéro skippés.
+          {/* AI toggle : pas pour l'invitation, dont le moteur ne génère pas la note. */}
+          {aiAllowed && (
+            <div className="flex items-center justify-between px-3 py-2 bg-muted/30 rounded-md">
+              <Label htmlFor={fieldId('ai')} className="flex items-center gap-2 cursor-pointer">
+                <Sparkles className="w-3.5 h-3.5 text-purple-500" aria-hidden="true" />
+                <span className="text-2xs font-medium">Personnalisation IA</span>
+              </Label>
+              <Switch
+                id={fieldId('ai')}
+                checked={step.useAiPersonalization}
+                onCheckedChange={(checked) => onUpdate({ useAiPersonalization: checked })}
+              />
             </div>
           )}
 
-          {/* AI toggle */}
-          <div className="flex items-center justify-between px-3 py-2 bg-muted/30 rounded-md">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-purple-500" />
-              <span className="text-2xs font-medium">Personnalisation IA</span>
-            </div>
-            <Switch
-              checked={step.useAiPersonalization}
-              onCheckedChange={(checked) => onUpdate({ useAiPersonalization: checked })}
-            />
-          </div>
-
-          {step.useAiPersonalization ? (
+          {usesAi ? (
             <div>
               <Label className="text-3xs text-muted-foreground">Ton</Label>
               <Select value={step.aiTone || 'professional'} onValueChange={(value) => onUpdate({ aiTone: value as SequenceStep['aiTone'] })}>
@@ -324,18 +360,18 @@ export const StepEditor: React.FC<StepEditorProps> = ({
               {needsSubject(step.actionType) && (
                 <div>
                   <div className="flex items-center justify-between">
-                    <Label className="text-3xs text-muted-foreground">Objet</Label>
-                    <VariableInserter targetRef={subjectRef} currentValue={step.subjectTemplate || ''} onInsert={(val) => onUpdate({ subjectTemplate: val })} showEmailVariables={step.actionType === 'email'} />
+                    <Label htmlFor={fieldId('subject')} className="text-3xs text-muted-foreground">Objet</Label>
+                    <VariableInserter targetRef={subjectRef} currentValue={step.subjectTemplate || ''} onInsert={(val) => onUpdate({ subjectTemplate: val })} />
                   </div>
-                  <Input ref={subjectRef} value={step.subjectTemplate || ''} onChange={(e) => onUpdate({ subjectTemplate: e.target.value })} placeholder={step.actionType === 'email' ? "Objet de l'email" : "Objet de l'InMail"} className={cn("mt-0.5 h-7 text-xs", needsSubject(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")} />
+                  <Input id={fieldId('subject')} ref={subjectRef} value={step.subjectTemplate || ''} onChange={(e) => onUpdate({ subjectTemplate: e.target.value })} placeholder={step.actionType === 'email' ? "Objet de l'e-mail" : step.actionType === 'smart_message' ? "Objet si le message part en InMail" : "Objet de l'InMail"} className={cn("mt-0.5 h-7 text-xs", needsSubject(step.actionType) && !step.subjectTemplate?.trim() && "border-destructive")} />
                   {needsSubject(step.actionType) && !step.subjectTemplate?.trim() && <p className="text-3xs text-destructive mt-0.5">Objet requis</p>}
                 </div>
               )}
               <div>
                 <div className="flex items-center justify-between">
-                  <Label className="text-3xs text-muted-foreground">Message</Label>
+                  <Label htmlFor={fieldId('message')} className="text-3xs text-muted-foreground">{isInvite ? "Note d'invitation" : 'Message'}</Label>
                   <div className="flex items-center gap-1.5">
-                    <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => onUpdate({ messageTemplate: val })} showEmailVariables={step.actionType === 'email'} />
+                    <VariableInserter targetRef={messageRef} currentValue={step.messageTemplate || ''} onInsert={(val) => onUpdate({ messageTemplate: val })} />
                     {step.actionType === 'connection_request' && (
                       <span className={cn("text-3xs", (step.messageTemplate?.length || 0) > 300 ? "text-destructive font-medium" : "text-muted-foreground/50")}>
                         {step.messageTemplate?.length || 0}/300
@@ -344,14 +380,19 @@ export const StepEditor: React.FC<StepEditorProps> = ({
                   </div>
                 </div>
                 <Textarea
+                  id={fieldId('message')}
                   ref={messageRef}
                   value={step.messageTemplate || ''}
                   onChange={(e) => onUpdate({ messageTemplate: e.target.value })}
-                  placeholder={step.actionType === 'connection_request' ? "Note d'invitation (max 300)" : "Bonjour {{first_name}}, ..."}
+                  placeholder={isInvite ? "Note d'invitation (300 caractères au plus)" : "Bonjour {{first_name}}, ..."}
                   rows={step.actionType === 'connection_request' ? 2 : 3}
                   maxLength={step.actionType === 'connection_request' ? 300 : undefined}
                   className={cn("mt-0.5 text-xs", step.actionType === 'connection_request' && (step.messageTemplate?.length || 0) > 300 && "border-destructive")}
                 />
+                {isInvite && (
+                  <p className="text-3xs text-muted-foreground mt-1">Note facultative. Sans note, l'invitation part seule.</p>
+                )}
+                <UnknownVariablesNotice text={`${needsSubject(step.actionType) ? step.subjectTemplate || '' : ''} ${step.messageTemplate || ''}`} customKeys={customKeys} />
               </div>
 
               {/* Email extras — only for real email, not InMail */}

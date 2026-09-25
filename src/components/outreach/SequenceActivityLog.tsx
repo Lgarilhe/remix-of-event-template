@@ -1,6 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { formatSequenceError } from '@/lib/sequenceErrorMessages';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import {
+  actionTypeLabel,
+  executionDoneVerb,
+  executionStatusLabel,
+  formatSequenceError,
+  formatSkipReason,
+  HIDDEN_ACTION_TYPES,
+  isSentExecutionStatus,
+  missionEnrollmentJobIds,
+  shouldShowExecutionError,
+} from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -23,7 +34,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { 
+import {
   Activity,
   Clock,
   CheckCircle2,
@@ -39,14 +50,16 @@ import {
   UserPlus,
   Eye,
   MessageSquare,
-  Users,
-  Timer,
   RefreshCw,
   Calendar,
   Pencil,
   Ban,
+  Pause,
+  Loader2,
+  MailOpen,
+  MousePointerClick,
 } from 'lucide-react';
-import { format, formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay, subDays } from 'date-fns';
+import { format, isAfter, isBefore, startOfDay, endOfDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -61,6 +74,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+
+/** Nombre de lignes lues : au-delà, les compteurs portent sur les plus récentes. */
+const JOURNAL_LIMIT = 500;
+
+/** Provenance du texte affiché pour une étape. */
+type PreviewSource = 'final' | 'edited' | 'override' | 'template' | 'ai' | 'template_unverified';
+
+interface MessagePreview {
+  message: string | null;
+  subject: string | null;
+  source: PreviewSource;
+}
 
 interface StepExecution {
   id: string;
@@ -87,122 +112,225 @@ interface StepExecution {
     message_template: string | null;
     subject_template: string | null;
   };
+  preview: MessagePreview;
 }
 
 interface SequenceActivityLogProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Mission d'où le Journal est ouvert : ses inscriptions sont affichées par défaut. */
+  projectId?: string | null;
 }
 
-// Actions to hide from activity log (internal/noise)
-const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event']);
+type MessageOverride = { subject?: string; message?: string };
 
-const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
-  profile_visit: { label: 'Visite profil', icon: <Eye className="w-4 h-4" />, color: 'text-foreground', bgColor: 'bg-muted' },
-  connection_request: { label: 'Invitation', icon: <UserPlus className="w-4 h-4" />, color: 'text-emerald-900', bgColor: 'bg-emerald-400' },
-  message: { label: 'Message', icon: <Send className="w-4 h-4" />, color: 'text-blue-900', bgColor: 'bg-blue-400' },
-  inmail: { label: 'InMail', icon: <Mail className="w-4 h-4" />, color: 'text-purple-900', bgColor: 'bg-purple-400' },
-  smart_message: { label: 'Smart Message', icon: <MessageSquare className="w-4 h-4" />, color: 'text-indigo-900', bgColor: 'bg-indigo-400' },
-};
+/** Types d'étape dont le texte est rédigé par l'IA au moment de l'envoi. */
+const AI_ACTION_TYPES = new Set(['smart_message']);
 
-const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  scheduled: { label: 'Planifié', icon: <Clock className="w-3.5 h-3.5" />, className: 'bg-info text-info-foreground border-info' },
-  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3.5 h-3.5" />, className: 'bg-success text-success-foreground border-success' },
-  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-border' },
-  failed: { label: 'Échoué', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-destructive text-destructive-foreground border-destructive' },
-  cancelled: { label: 'Annulé', icon: <XCircle className="w-3.5 h-3.5" />, className: 'bg-muted text-muted-foreground border-border' },
-  replied: { label: 'Répondu', icon: <MessageSquare className="w-3.5 h-3.5" />, className: 'bg-purple-500 text-white border-purple-600' },
+const actionTypeStyle: Record<string, { icon: React.ReactNode; color: string; bgColor: string }> = {
+  profile_visit: { icon: <Eye className="w-4 h-4" aria-hidden="true" />, color: 'text-foreground', bgColor: 'bg-muted' },
+  connection_request: { icon: <UserPlus className="w-4 h-4" aria-hidden="true" />, color: 'text-emerald-900', bgColor: 'bg-emerald-400' },
+  message: { icon: <Send className="w-4 h-4" aria-hidden="true" />, color: 'text-blue-900', bgColor: 'bg-blue-400' },
+  inmail: { icon: <Mail className="w-4 h-4" aria-hidden="true" />, color: 'text-purple-900', bgColor: 'bg-purple-400' },
+  smart_message: { icon: <MessageSquare className="w-4 h-4" aria-hidden="true" />, color: 'text-indigo-900', bgColor: 'bg-indigo-400' },
+  email: { icon: <Mail className="w-4 h-4" aria-hidden="true" />, color: 'text-sky-900', bgColor: 'bg-sky-400' },
+  whatsapp_message: { icon: <MessageSquare className="w-4 h-4" aria-hidden="true" />, color: 'text-green-900', bgColor: 'bg-green-400' },
 };
+const defaultActionStyle = { icon: <Activity className="w-4 h-4" aria-hidden="true" />, color: 'text-muted-foreground', bgColor: 'bg-muted' };
+
+const statusStyle: Record<string, { icon: React.ReactNode; className: string }> = {
+  scheduled: { icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-info text-info-foreground border-info' },
+  sending: { icon: <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />, className: 'bg-info text-info-foreground border-info' },
+  waiting_event: { icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
+  quota_blocked: { icon: <Pause className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-warning/15 text-warning-foreground border-warning' },
+  sent: { icon: <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-success text-success-foreground border-success' },
+  opened: { icon: <MailOpen className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-success text-success-foreground border-success' },
+  clicked: { icon: <MousePointerClick className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-success text-success-foreground border-success' },
+  replied: { icon: <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-purple-500 text-white border-purple-600' },
+  skipped: { icon: <SkipForward className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
+  failed: { icon: <XCircle className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-destructive text-destructive-foreground border-destructive' },
+  bounced: { icon: <XCircle className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-destructive text-destructive-foreground border-destructive' },
+  cancelled: { icon: <XCircle className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
+};
+const unknownStatusStyle = { icon: <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' };
 
 type FilterStatus = 'all' | 'scheduled' | 'sent' | 'failed' | 'skipped';
 type FilterPeriod = 'all' | 'today' | 'week' | 'upcoming';
+type Scope = 'mission' | 'all';
+
+const STATUS_FILTER_MATCH: Record<Exclude<FilterStatus, 'all'>, (status: string) => boolean> = {
+  scheduled: (s) => ['scheduled', 'quota_blocked', 'waiting_event', 'sending'].includes(s),
+  sent: (s) => isSentExecutionStatus(s),
+  failed: (s) => s === 'failed' || s === 'bounced',
+  skipped: (s) => s === 'skipped' || s === 'cancelled',
+};
+
+/** Étapes encore modifiables ou retirables depuis le Journal (jamais pendant l'envoi). */
+const SKIPPABLE_STATUSES = new Set(['scheduled', 'quota_blocked']);
+
+const PREVIEW_TITLES: Record<PreviewSource, string> = {
+  final: 'Message',
+  edited: 'Message modifié',
+  override: "Message validé à l'inscription",
+  template: "Modèle, personnalisé au moment de l'envoi",
+  ai: "Message rédigé par l'IA au moment de l'envoi",
+  template_unverified: "Modèle de l'étape (aperçu personnalisé indisponible)",
+};
+
+/**
+ * Ce qui partira vraiment : le texte figé sur l'exécution (envoyé ou modifié à
+ * la main), sinon l'aperçu validé à l'inscription, sinon le modèle, présenté
+ * comme tel.
+ */
+function computePreview(
+  exec: { status: string; final_message: string | null; final_subject: string | null; step_id: string },
+  step: StepExecution['step'],
+  overrides: Map<string, Record<string, MessageOverride>> | null,
+  enrollmentId: string,
+): MessagePreview {
+  const override = overrides?.get(enrollmentId)?.[exec.step_id] ?? null;
+  const overrideMessage = override?.message?.trim() || null;
+  const overrideSubject = override?.subject?.trim() || null;
+  const subject = exec.final_subject?.trim() || overrideSubject || step?.subject_template || null;
+
+  if (exec.final_message?.trim()) {
+    return { message: exec.final_message, subject, source: exec.status === 'scheduled' ? 'edited' : 'final' };
+  }
+  if (overrideMessage) return { message: overrideMessage, subject, source: 'override' };
+  if (step?.message_template?.trim()) {
+    return { message: step.message_template, subject, source: overrides ? 'template' : 'template_unverified' };
+  }
+  if (step && AI_ACTION_TYPES.has(step.action_type)) return { message: null, subject, source: 'ai' };
+  return { message: null, subject, source: 'template' };
+}
 
 export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   isOpen,
   onClose,
+  projectId,
 }) => {
   const [executions, setExecutions] = useState<StepExecution[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [periodFilter, setPeriodFilter] = useState<FilterPeriod>('all');
+  const [scope, setScope] = useState<Scope>('mission');
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [editingExecution, setEditingExecution] = useState<StepExecution | null>(null);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [cancelConfirm, setCancelConfirm] = useState<{ id: string; candidateName: string } | null>(null);
+  const [skippingId, setSkippingId] = useState<string | null>(null);
+  const [skipConfirm, setSkipConfirm] = useState<{ id: string; candidateName: string } | null>(null);
 
-  const fetchExecutions = async () => {
+  const missionScoped = !!projectId && scope === 'mission';
+
+  const fetchExecutions = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(false);
 
-      // Fetch step executions
-      const { data: execData, error: execError } = await supabase
-        .from('sequence_step_executions')
-        .select('*')
-        .order('scheduled_at', { ascending: false })
-        .limit(500);
-
-      if (execError) throw execError;
-
-      if (!execData || execData.length === 0) {
-        setExecutions([]);
-        return;
+      // Dans une mission : seulement ses inscriptions (job_id de la mission),
+      // y compris celles faites avec un modèle partagé entre missions.
+      let jobIds: string[] | null = null;
+      if (projectId && scope === 'mission') {
+        const { data: project, error: projectError } = await supabase
+          .from('sourcing_projects')
+          .select('job_id')
+          .eq('id', projectId)
+          .maybeSingle();
+        if (projectError) throw projectError;
+        jobIds = missionEnrollmentJobIds(projectId, project?.job_id);
       }
 
-      // Get unique IDs for batch fetching
-      const enrollmentIds = [...new Set(execData.map(e => e.enrollment_id))];
-      const stepIds = [...new Set(execData.map(e => e.step_id))];
+      // Les étapes internes (attentes, conditions) sont écartées AVANT la
+      // limite : les 500 lignes lues sont toutes des actions visibles.
+      let query = supabase
+        .from('sequence_step_executions')
+        .select(
+          'id, enrollment_id, step_id, step_order, status, scheduled_at, executed_at, final_subject, final_message, error_message, skip_reason, sequence_steps!inner(action_type, message_template, subject_template), sequence_enrollments!inner(profile_name, profile_headline, profile_url, job_id, outreach_sequences(name))',
+        )
+        .not('sequence_steps.action_type', 'in', `(${HIDDEN_ACTION_TYPES.join(',')})`)
+        .order('scheduled_at', { ascending: false })
+        .limit(JOURNAL_LIMIT);
+      if (jobIds) query = query.in('sequence_enrollments.job_id', jobIds);
 
-      // Fetch enrollments with sequences
-      const { data: enrollmentsData } = await supabase
-        .from('sequence_enrollments')
-        .select('id, profile_name, profile_headline, profile_url, sequence_id')
-        .in('id', enrollmentIds);
+      const { data: execData, error: execError } = await query;
+      if (execError) throw execError;
 
-      // Get sequence IDs from enrollments
-      const sequenceIds = [...new Set((enrollmentsData || []).map(e => e.sequence_id))];
-      
-      // Fetch sequences
-      const { data: sequencesData } = await supabase
-        .from('outreach_sequences')
-        .select('id, name')
-        .in('id', sequenceIds);
+      const rows = execData || [];
 
-      // Fetch steps
-      const { data: stepsData } = await supabase
-        .from('sequence_steps')
-        .select('id, action_type, message_template, subject_template')
-        .in('id', stepIds);
+      // Aperçus validés à l'inscription, pour les étapes encore à venir dont
+      // le texte n'est pas figé. Lecture par paquets pour garder l'URL courte.
+      const needOverrides = [...new Set(
+        rows.filter(r => !r.final_message?.trim() && !isSentExecutionStatus(r.status)).map(r => r.enrollment_id),
+      )];
+      let overrides: Map<string, Record<string, MessageOverride>> | null = new Map();
+      for (let i = 0; i < needOverrides.length && overrides; i += 100) {
+        const chunk = needOverrides.slice(i, i + 100);
+        const { data: trackingRows, error: trackingError } = await supabase
+          .from('sequence_enrollments')
+          // Seul le chemin JSON utile est lu (tracking_data peut être lourd).
+          .select<string, { id: string; message_overrides: unknown }>('id, message_overrides:tracking_data->message_overrides')
+          .in('id', chunk);
+        if (trackingError) {
+          console.warn('[SequenceActivityLog] aperçus indisponibles:', trackingError);
+          overrides = null;
+          break;
+        }
+        for (const t of trackingRows || []) {
+          const value = t.message_overrides;
+          if (value && typeof value === 'object' && !Array.isArray(value)) {
+            overrides.set(t.id, value as Record<string, MessageOverride>);
+          }
+        }
+      }
 
-      // Build lookup maps
-      const sequencesMap = new Map((sequencesData || []).map(s => [s.id, s]));
-      const enrollmentsMap = new Map((enrollmentsData || []).map(e => [e.id, {
-        ...e,
-        sequence: sequencesMap.get(e.sequence_id)
-      }]));
-      const stepsMap = new Map((stepsData || []).map(s => [s.id, s]));
-
-      // Merge data
-      const enrichedExecutions = execData.map(exec => ({
-        ...exec,
-        enrollment: enrollmentsMap.get(exec.enrollment_id),
-        step: stepsMap.get(exec.step_id),
-      }));
+      const enrichedExecutions: StepExecution[] = rows.map(exec => {
+        const stepRel = exec.sequence_steps;
+        const enrollmentRel = exec.sequence_enrollments;
+        const step = stepRel
+          ? { action_type: stepRel.action_type, message_template: stepRel.message_template, subject_template: stepRel.subject_template }
+          : undefined;
+        const sequenceRel = enrollmentRel?.outreach_sequences;
+        return {
+          id: exec.id,
+          enrollment_id: exec.enrollment_id,
+          step_id: exec.step_id,
+          step_order: exec.step_order,
+          status: exec.status,
+          scheduled_at: exec.scheduled_at,
+          executed_at: exec.executed_at,
+          final_subject: exec.final_subject,
+          final_message: exec.final_message,
+          error_message: exec.error_message,
+          skip_reason: exec.skip_reason,
+          enrollment: enrollmentRel
+            ? {
+                profile_name: enrollmentRel.profile_name,
+                profile_headline: enrollmentRel.profile_headline,
+                profile_url: enrollmentRel.profile_url,
+                sequence: sequenceRel ? { name: sequenceRel.name } : undefined,
+              }
+            : undefined,
+          step,
+          preview: computePreview(exec, step, overrides, exec.enrollment_id),
+        };
+      });
 
       setExecutions(enrichedExecutions);
     } catch (err) {
       console.error('Error fetching executions:', err);
-      toast.error('Erreur lors du chargement');
+      setLoadError(true);
+      toast.error("Impossible de charger le Journal d'activité");
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, scope]);
 
   useEffect(() => {
     if (isOpen) {
       fetchExecutions();
     }
-  }, [isOpen]);
+  }, [isOpen, fetchExecutions]);
 
   const toggleExpanded = (id: string) => {
     setExpandedItems(prev => {
@@ -216,34 +344,39 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     });
   };
 
-  const handleCancelExecution = async (executionId: string) => {
-    setCancellingId(executionId);
+  // « Ne pas envoyer cette étape » : action serveur skip_execution, la même que
+  // « Sauter » dans le suivi des inscrits. Elle marque l'étape sautée, avance la
+  // séquence et planifie la suivante. Avant, le navigateur passait l'exécution
+  // en 'cancelled' : l'inscription restait active sans étape et le moteur
+  // replanifiait la même étape une heure plus tard.
+  const handleSkipExecution = async (executionId: string, candidateName: string) => {
+    setSkippingId(executionId);
     try {
-      // Garde anti-race : n'annuler QUE si l'exécution est encore en attente.
-      // Sans le filtre statut, annuler une exécution déjà passée en 'sending'
-      // la marquait 'cancelled' alors que l'envoi partait quand même (puis le
-      // cron la repassait 'sent') — l'user croyait avoir stoppé un message
-      // qui est parti (audit 2026-07, Frontend H1).
-      const { data: cancelled, error } = await supabase
-        .from('sequence_step_executions')
-        .update({ status: 'cancelled', skip_reason: 'Annulé manuellement' })
-        .eq('id', executionId)
-        .in('status', ['scheduled', 'waiting_event', 'quota_blocked'])
-        .select('id');
+      const { data, error } = await invokeEdgeFunction<{ next_step_order?: number }>('process-sequences', {
+        action: 'skip_execution',
+        execution_id: executionId,
+      });
 
-      if (error) throw error;
-
-      if (!cancelled || cancelled.length === 0) {
-        toast.error("Cette action est déjà en cours d'envoi ou traitée — annulation impossible.");
-      } else {
-        toast.success('Action annulée');
+      if (error?.status === 409) {
+        toast.error("Cette étape est déjà en cours d'envoi ou déjà traitée.");
+        return;
       }
-      fetchExecutions();
+      if (error || !data?.success) {
+        toast.error("L'étape n'a pas pu être retirée. Réessayez.", {
+          description: error?.message || data?.error,
+        });
+        return;
+      }
+
+      toast.success(`${candidateName} ne recevra pas cette étape`, {
+        description: "La séquence passe à l'étape suivante.",
+      });
     } catch (err) {
-      console.error('Error cancelling execution:', err);
-      toast.error("Erreur lors de l'annulation");
+      console.error('Error skipping execution:', err);
+      toast.error("L'étape n'a pas pu être retirée. Réessayez.");
     } finally {
-      setCancellingId(null);
+      setSkippingId(null);
+      fetchExecutions();
     }
   };
 
@@ -255,12 +388,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     const weekAgo = subDays(now, 7);
 
     return executions.filter(exec => {
-      // Hide internal actions (wait_connection, check_connection, etc.)
-      const actionType = exec.step?.action_type || '';
-      if (HIDDEN_ACTION_TYPES.has(actionType)) return false;
-
       // Status filter
-      if (statusFilter !== 'all' && exec.status !== statusFilter) {
+      if (statusFilter !== 'all' && !STATUS_FILTER_MATCH[statusFilter](exec.status)) {
         return false;
       }
 
@@ -285,8 +414,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         const query = searchQuery.toLowerCase();
         const profileName = exec.enrollment?.profile_name?.toLowerCase() || '';
         const sequenceName = exec.enrollment?.sequence?.name?.toLowerCase() || '';
-        const actionType = actionTypeConfig[exec.step?.action_type || '']?.label.toLowerCase() || '';
-        
+        const actionType = actionTypeLabel(exec.step?.action_type).toLowerCase();
+
         if (!profileName.includes(query) && !sequenceName.includes(query) && !actionType.includes(query)) {
           return false;
         }
@@ -299,7 +428,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   // Group by date
   const groupedExecutions = useMemo(() => {
     const groups: Record<string, StepExecution[]> = {};
-    
+
     filteredExecutions.forEach(exec => {
       const date = format(new Date(exec.scheduled_at), 'yyyy-MM-dd');
       if (!groups[date]) {
@@ -312,37 +441,39 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
   }, [filteredExecutions]);
 
-  // Stats
+  // Stats — actions visibles seulement (les étapes internes sont exclues par la requête)
   const stats = useMemo(() => {
     const now = new Date();
     return {
-      scheduled: executions.filter(e => e.status === 'scheduled' && isAfter(new Date(e.scheduled_at), now)).length,
+      scheduled: executions.filter(e => (e.status === 'scheduled' || e.status === 'quota_blocked') && isAfter(new Date(e.scheduled_at), now)).length,
       pending: executions.filter(e => e.status === 'scheduled' && isBefore(new Date(e.scheduled_at), now)).length,
-      sent: executions.filter(e => e.status === 'sent').length,
+      sent: executions.filter(e => isSentExecutionStatus(e.status)).length,
       failed: executions.filter(e => e.status === 'failed').length,
     };
   }, [executions]);
+
+  const isTruncated = executions.length >= JOURNAL_LIMIT;
 
   const formatDateHeader = (dateStr: string) => {
     const date = new Date(dateStr);
     const today = startOfDay(new Date());
     const dateStart = startOfDay(date);
-    
+
     if (dateStart.getTime() === today.getTime()) {
       return "Aujourd'hui";
     }
-    
+
     const yesterday = subDays(today, 1);
     if (dateStart.getTime() === yesterday.getTime()) {
       return "Hier";
     }
-    
+
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     if (dateStart.getTime() === tomorrow.getTime()) {
       return "Demain";
     }
-    
+
     return format(date, 'EEEE d MMMM', { locale: fr });
   };
 
@@ -351,58 +482,77 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-background p-0 rounded-lg border-l border-border">
         <SheetHeader className="p-6 pb-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5" />
+            <Activity className="w-5 h-5" aria-hidden="true" />
             Journal d'activité
           </SheetTitle>
         </SheetHeader>
 
         <div className="p-4 space-y-4">
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-0">
-            <div className="p-2.5 sm:p-3 border border-border text-center">
-              <div className="text-lg sm:text-xl font-bold text-info-foreground">{stats.scheduled}</div>
-              <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">À venir</div>
+          <div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-0">
+              <div className="p-2.5 sm:p-3 border border-border text-center">
+                <div className="text-lg sm:text-xl font-bold text-info-foreground">{loadError ? '—' : stats.scheduled}</div>
+                <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">À venir</div>
+              </div>
+              <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center bg-amber-400/10">
+                <div className="text-lg sm:text-xl font-bold text-destructive">{loadError ? '—' : stats.pending}</div>
+                <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">En retard</div>
+              </div>
+              <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center">
+                <div className="text-lg sm:text-xl font-bold text-success-foreground">{loadError ? '—' : stats.sent}</div>
+                <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Envoyés</div>
+              </div>
+              <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center">
+                <div className="text-lg sm:text-xl font-bold text-destructive">{loadError ? '—' : stats.failed}</div>
+                <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Échoués</div>
+              </div>
             </div>
-            <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center bg-amber-400/10">
-              <div className="text-lg sm:text-xl font-bold text-destructive">{stats.pending}</div>
-              <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">En retard</div>
-            </div>
-            <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center">
-              <div className="text-lg sm:text-xl font-bold text-success-foreground">{stats.sent}</div>
-              <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Envoyés</div>
-            </div>
-            <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center">
-              <div className="text-lg sm:text-xl font-bold text-destructive">{stats.failed}</div>
-              <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Échoués</div>
-            </div>
+            {isTruncated && !loadError && (
+              <p className="mt-1.5 text-2xs text-muted-foreground">
+                Sur les {JOURNAL_LIMIT} dernières actions.
+              </p>
+            )}
           </div>
 
           {/* Filters */}
-          <div className="space-y-2 sm:space-y-0 sm:flex sm:gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <div className="space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-2">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
               <Input
-                placeholder="Rechercher..."
+                placeholder="Candidat, séquence ou action…"
+                aria-label="Rechercher dans le Journal"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 bg-background border-border rounded-lg"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {projectId && (
+                <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
+                  <SelectTrigger className="flex-1 sm:w-[160px] border-border rounded-lg" aria-label="Périmètre">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mission">Cette mission</SelectItem>
+                    <SelectItem value="all">Toutes les missions</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
-                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-lg">
+                <SelectTrigger className="flex-1 sm:w-[140px] border-border rounded-lg" aria-label="Statut">
                   <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="scheduled">Planifiés</SelectItem>
+                  <SelectItem value="scheduled">Programmés</SelectItem>
                   <SelectItem value="sent">Envoyés</SelectItem>
                   <SelectItem value="failed">Échoués</SelectItem>
-                  <SelectItem value="skipped">Ignorés</SelectItem>
+                  <SelectItem value="skipped">Ignorés ou annulés</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
-                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-lg">
+                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-lg" aria-label="Période">
                   <SelectValue placeholder="Période" />
                 </SelectTrigger>
                 <SelectContent>
@@ -423,38 +573,56 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         <ScrollArea className="h-[calc(100vh-320px)]">
           <div className="px-4 pb-6 space-y-4">
             {loading ? (
-              <div className="text-center py-12 text-muted-foreground">Chargement...</div>
+              <div className="text-center py-12 text-muted-foreground">Chargement…</div>
+            ) : loadError ? (
+              <div className="text-center py-12 space-y-3">
+                <p className="text-sm text-destructive">
+                  Impossible de charger le Journal. Vérifiez votre connexion puis réessayez.
+                </p>
+                <Button variant="outline" size="sm" onClick={fetchExecutions}>
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                  Réessayer
+                </Button>
+              </div>
             ) : groupedExecutions.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                Aucune activité trouvée
+                {executions.length === 0
+                  ? missionScoped
+                    ? 'Aucune activité pour cette mission.'
+                    : 'Aucune activité pour le moment.'
+                  : 'Aucune activité ne correspond à ces filtres.'}
               </div>
             ) : (
               groupedExecutions.map(([date, items]) => (
                 <div key={date} className="space-y-2">
                   {/* Date header */}
                   <div className="flex items-center gap-2 py-2">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <Calendar className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                     <span className="text-sm font-semibold text-foreground uppercase tracking-wide">
                       {formatDateHeader(date)}
                     </span>
                     <div className="flex-1 h-px bg-foreground/20" />
-                    <span className="text-xs text-muted-foreground font-medium">{items.length} action(s)</span>
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {items.length} action{items.length > 1 ? 's' : ''}
+                    </span>
                   </div>
 
                   {/* Items */}
                   {items.map((exec) => {
-                    const actionConfig = actionTypeConfig[exec.step?.action_type || ''] || {
-                      label: exec.step?.action_type || 'Action',
-                      icon: <Activity className="w-4 h-4" />,
-                      color: 'text-muted-foreground',
-                      bgColor: 'bg-muted',
-                    };
-                    const execStatus = statusConfig[exec.status] || statusConfig.scheduled;
+                    const actionType = exec.step?.action_type || '';
+                    const actionStyle = actionTypeStyle[actionType] || defaultActionStyle;
+                    const actionLabel = actionTypeLabel(actionType);
+                    const execStatus = statusStyle[exec.status] || unknownStatusStyle;
                     const isExpanded = expandedItems.has(exec.id);
-                    const hasMessage = exec.final_message || exec.step?.message_template;
-                    const hasError = exec.error_message || exec.skip_reason;
+                    const preview = exec.preview;
+                    const hasMessage = !!preview.message || preview.source === 'ai';
+                    const showError = !!exec.error_message && shouldShowExecutionError(exec.status);
+                    const showReason = !!exec.skip_reason && !isSentExecutionStatus(exec.status);
                     const isPast = isBefore(new Date(exec.scheduled_at), new Date());
                     const isOverdue = exec.status === 'scheduled' && isPast;
+                    const candidateName = exec.enrollment?.profile_name || 'Candidat';
+                    const doneVerb = executionDoneVerb(exec.status);
+                    const canSkip = SKIPPABLE_STATUSES.has(exec.status);
 
                     return (
                       <Collapsible
@@ -470,15 +638,15 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                           <CollapsibleTrigger className="w-full">
                             <div className="p-3 flex items-start gap-3 hover:bg-muted/30 transition-colors">
                               {/* Action icon */}
-                              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", actionConfig.bgColor)}>
-                                <span className={actionConfig.color}>{actionConfig.icon}</span>
+                              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", actionStyle.bgColor)}>
+                                <span className={actionStyle.color}>{actionStyle.icon}</span>
                               </div>
 
                               {/* Main content */}
                               <div className="flex-1 min-w-0 text-left">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-medium text-foreground">
-                                    {exec.enrollment?.profile_name || 'Candidat'}
+                                    {candidateName}
                                   </span>
                                   {exec.enrollment?.profile_url && (
                                     <a
@@ -487,17 +655,18 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                       rel="noopener noreferrer"
                                       className="text-muted-foreground hover:text-linkedin transition-colors"
                                       onClick={(e) => e.stopPropagation()}
+                                      aria-label={`Voir le profil LinkedIn de ${candidateName}`}
                                     >
-                                      <ExternalLink className="w-3.5 h-3.5" />
+                                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                                     </a>
                                   )}
                                   <Badge className={cn("text-xs border h-5", execStatus.className)}>
                                     {execStatus.icon}
-                                    <span className="ml-1">{execStatus.label}</span>
+                                    <span className="ml-1">{executionStatusLabel(exec.status)}</span>
                                   </Badge>
                                 </div>
                                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                                  <span className={cn("font-medium", actionConfig.color)}>{actionConfig.label}</span>
+                                  <span className={cn("font-medium", actionStyle.color)}>{actionLabel}</span>
                                   <span className="text-muted-foreground/50">·</span>
                                   <span className="truncate max-w-[180px]">{exec.enrollment?.sequence?.name}</span>
                                   <span className="text-muted-foreground/50">·</span>
@@ -506,12 +675,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                               </div>
 
                               {/* Expand indicator */}
-                              {(hasMessage || hasError) && (
+                              {(hasMessage || showError || showReason || canSkip) && (
                                 <div className="shrink-0 self-center">
                                   {isExpanded ? (
-                                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                    <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                                   ) : (
-                                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                    <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                                   )}
                                 </div>
                               )}
@@ -521,14 +690,27 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                           <CollapsibleContent>
                             <div className="px-3 pb-3 pt-2 space-y-2 border-t border-border bg-muted/30">
                               {/* Error message */}
-                              {hasError && (
+                              {showError && (
                                 <div className="p-2.5 bg-destructive/10 border border-destructive rounded-lg text-sm">
                                   <div className="flex items-center gap-2 font-medium text-destructive">
-                                    <AlertCircle className="w-4 h-4" />
-                                    {exec.status === 'failed' ? 'Erreur' : 'Raison'}
+                                    <AlertCircle className="w-4 h-4" aria-hidden="true" />
+                                    {exec.status === 'failed' ? 'Erreur' : 'Tentative précédente'}
                                   </div>
                                   <p className="mt-1 text-destructive text-xs">
-                                    {exec.error_message ? formatSequenceError(exec.error_message) : exec.skip_reason}
+                                    {formatSequenceError(exec.error_message)}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Skip reason */}
+                              {showReason && (
+                                <div className="p-2.5 bg-muted border border-border rounded-lg text-sm">
+                                  <div className="flex items-center gap-2 font-medium text-foreground">
+                                    <AlertCircle className="w-4 h-4" aria-hidden="true" />
+                                    Raison
+                                  </div>
+                                  <p className="mt-1 text-muted-foreground text-xs">
+                                    {formatSkipReason(exec.skip_reason)}
                                   </p>
                                 </div>
                               )}
@@ -536,29 +718,34 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                               {/* Message preview */}
                               {hasMessage && (
                                 <div className="p-3 bg-background border border-border rounded-lg mt-2">
-                                  {(exec.final_subject || exec.step?.subject_template) && (
+                                  <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                                    {PREVIEW_TITLES[preview.source]}
+                                  </div>
+                                  {preview.subject && (
                                     <div className="text-xs text-muted-foreground mb-2 pb-2 border-b">
                                       <span className="font-medium">Objet :</span>{' '}
-                                      {exec.final_subject || exec.step?.subject_template}
+                                      {preview.subject}
                                     </div>
                                   )}
-                                  <div className="text-sm text-foreground leading-relaxed">
-                                    {(exec.final_message || exec.step?.message_template || 'Pas de message')
-                                      .split(/\\n|\n/)
-                                      .map((line, i, arr) => (
-                                        <React.Fragment key={i}>
-                                          {line}
-                                          {i < arr.length - 1 && <br />}
-                                        </React.Fragment>
-                                      ))}
-                                  </div>
+                                  {preview.message && (
+                                    <div className="text-sm text-foreground leading-relaxed">
+                                      {preview.message
+                                        .split(/\\n|\n/)
+                                        .map((line, i, arr) => (
+                                          <React.Fragment key={i}>
+                                            {line}
+                                            {i < arr.length - 1 && <br />}
+                                          </React.Fragment>
+                                        ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
-                              {/* Actions for scheduled items */}
-                              {exec.status === 'scheduled' && (
+                              {/* Actions for pending items */}
+                              {canSkip && (
                                 <div className="flex items-center gap-2 pt-2">
-                                  {hasMessage && (
+                                  {exec.status === 'scheduled' && preview.message && (
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -568,7 +755,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                         setEditingExecution(exec);
                                       }}
                                     >
-                                      <Pencil className="w-3 h-3 mr-1.5" />
+                                      <Pencil className="w-3 h-3 mr-1.5" aria-hidden="true" />
                                       Modifier
                                     </Button>
                                   )}
@@ -578,12 +765,14 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                     className="h-7 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setCancelConfirm({ id: exec.id, candidateName: exec.enrollment?.profile_name || 'le candidat' });
+                                      setSkipConfirm({ id: exec.id, candidateName });
                                     }}
-                                    disabled={cancellingId === exec.id}
+                                    disabled={skippingId === exec.id}
                                   >
-                                    <Ban className="w-3 h-3 mr-1.5" />
-                                    {cancellingId === exec.id ? 'Annulation...' : 'Annuler'}
+                                    {skippingId === exec.id
+                                      ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" aria-hidden="true" />
+                                      : <Ban className="w-3 h-3 mr-1.5" aria-hidden="true" />}
+                                    Ne pas envoyer cette étape
                                   </Button>
                                 </div>
                               )}
@@ -591,13 +780,13 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                               {/* Metadata */}
                               <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
                                 <div className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  <span>Planifié : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}</span>
+                                  <Clock className="w-3 h-3" aria-hidden="true" />
+                                  <span>Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}</span>
                                 </div>
-                                {exec.executed_at && (
+                                {exec.executed_at && doneVerb && (
                                   <div className="flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3 text-success-foreground" />
-                                    <span>Exécuté : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}</span>
+                                    <CheckCircle2 className="w-3 h-3 text-success-foreground" aria-hidden="true" />
+                                    <span>{doneVerb} : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}</span>
                                   </div>
                                 )}
                               </div>
@@ -622,26 +811,27 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         onSaved={fetchExecutions}
       />
 
-      {/* Confirmation avant annulation d'une exécution programmée */}
-      <AlertDialog open={!!cancelConfirm} onOpenChange={() => setCancelConfirm(null)}>
+      {/* Confirmation avant de retirer une étape programmée */}
+      <AlertDialog open={!!skipConfirm} onOpenChange={(open) => !open && setSkipConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Annuler cette étape ?</AlertDialogTitle>
+            <AlertDialogTitle>Ne pas envoyer cette étape ?</AlertDialogTitle>
             <AlertDialogDescription>
-              L'envoi prévu pour <strong>{cancelConfirm?.candidateName}</strong> sera annulé.
-              Cette action est irréversible — l'étape ne partira plus.
+              <strong>{skipConfirm?.candidateName}</strong> ne recevra pas cette étape. La séquence passera à
+              l'étape suivante. Pour tout arrêter, mettez ce candidat en pause.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Conserver l'envoi</AlertDialogCancel>
+            <AlertDialogCancel>Garder l'envoi</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (cancelConfirm) handleCancelExecution(cancelConfirm.id);
-                setCancelConfirm(null);
+                const target = skipConfirm;
+                setSkipConfirm(null);
+                if (target) handleSkipExecution(target.id, target.candidateName);
               }}
               className="bg-destructive hover:bg-destructive/90"
             >
-              Annuler l'étape
+              Ne pas envoyer
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

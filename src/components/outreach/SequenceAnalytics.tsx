@@ -1,6 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ABTestResults } from './sequence/ABTestResults';
+import {
+  actionTypeLabel,
+  aggregateVariantResults,
+  computeResponseRate,
+  countContactedEnrollments,
+  isHiddenActionType,
+  isSentExecutionStatus,
+  missionEnrollmentJobIds,
+  type VariantResult,
+} from '@/lib/sequenceErrorMessages';
 import {
   Sheet,
   SheetContent,
@@ -27,9 +37,12 @@ import {
   Clock,
   ArrowDown,
   RefreshCw,
+  Percent,
+  AlertCircle,
 } from 'lucide-react';
 import { format, subDays, differenceInHours } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   BarChart,
@@ -46,6 +59,8 @@ interface SequenceAnalyticsProps {
   onClose: () => void;
   sequenceId?: string;
   sequenceName?: string;
+  /** Mission d'où les statistiques sont ouvertes : ses inscriptions sont comptées par défaut. */
+  projectId?: string | null;
 }
 
 interface AnalyticsRow {
@@ -70,165 +85,206 @@ interface EnrollmentStats {
   avgResponseTimeHours: number | null;
 }
 
-interface VariantResult {
-  variant: string;
+interface StepStat {
+  id: string;
+  step_order: number;
+  action_type: string;
   sent: number;
-  opened: number;
-  clicked: number;
   replied: number;
 }
+
+type Scope = 'mission' | 'all';
+
+/** Relation imbriquée : objet ou tableau selon la façon dont la clé étrangère est lue. */
+const one = <T,>(rel: T | T[] | null | undefined): T | null => (Array.isArray(rel) ? rel[0] ?? null : rel ?? null);
 
 export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   isOpen,
   onClose,
   sequenceId,
   sequenceName,
+  projectId,
 }) => {
   const [analytics, setAnalytics] = useState<AnalyticsRow[]>([]);
   const [enrollmentStats, setEnrollmentStats] = useState<EnrollmentStats | null>(null);
   const [sequences, setSequences] = useState<{ id: string; name: string }[]>([]);
   const [selectedSeqId, setSelectedSeqId] = useState<string>(sequenceId || 'all');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [scope, setScope] = useState<Scope>('mission');
   const [period, setPeriod] = useState<'7' | '30' | '90' | 'custom'>('30');
   const [customStart, setCustomStart] = useState<string>(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [customEnd, setCustomEnd] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [abResults, setAbResults] = useState<VariantResult[]>([]);
-  const [stepStats, setStepStats] = useState<Array<{ step_order: number; action_type: string; sent: number; replied: number }>>([]);
+  const [stepStats, setStepStats] = useState<StepStat[]>([]);
 
-  const fetchData = async () => {
+  const missionScoped = !!projectId && scope === 'mission';
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const startDate = period === 'custom'
         ? customStart
         : format(subDays(new Date(), parseInt(period)), 'yyyy-MM-dd');
       const endDate = period === 'custom' ? customEnd : format(new Date(), 'yyyy-MM-dd');
+      const sinceTs = new Date(`${startDate}T00:00:00`).toISOString();
+      const untilTs = new Date(`${endDate}T23:59:59`).toISOString();
+      const filterSeqId = sequenceId || (selectedSeqId !== 'all' ? selectedSeqId : null);
+
+      // Dans une mission : ses inscriptions seulement (job_id de la mission),
+      // y compris celles faites avec un modèle partagé entre missions.
+      let jobIds: string[] | null = null;
+      if (projectId && scope === 'mission') {
+        const { data: project, error: projectError } = await supabase
+          .from('sourcing_projects')
+          .select('job_id')
+          .eq('id', projectId)
+          .maybeSingle();
+        if (projectError) throw projectError;
+        jobIds = missionEnrollmentJobIds(projectId, project?.job_id);
+      }
 
       if (!sequenceId) {
-        const { data: seqData } = await supabase
+        let seqQuery = supabase
           .from('outreach_sequences')
           .select('id, name')
           .order('created_at', { ascending: false });
+        if (projectId) seqQuery = seqQuery.or(`project_id.eq.${projectId},project_id.is.null`);
+        const { data: seqData, error: seqError } = await seqQuery;
+        if (seqError) throw seqError;
         setSequences(seqData || []);
       }
 
-      let query = supabase
-        .from('sequence_analytics')
-        .select('*')
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: true });
-
-      const filterSeqId = sequenceId || (selectedSeqId !== 'all' ? selectedSeqId : null);
-      if (filterSeqId) {
-        query = query.eq('sequence_id', filterSeqId);
+      // Compteurs journaliers par séquence : ils ne portent pas la mission. En
+      // périmètre mission, on garde les séquences utilisées par ses inscriptions.
+      let analyticsSeqIds: string[] | null = filterSeqId ? [filterSeqId] : null;
+      if (!filterSeqId && jobIds) {
+        const { data: missionSeqRows, error: missionSeqError } = await supabase
+          .from('sequence_enrollments')
+          .select('sequence_id')
+          .in('job_id', jobIds);
+        if (missionSeqError) throw missionSeqError;
+        analyticsSeqIds = [...new Set((missionSeqRows || []).map(r => r.sequence_id))];
       }
 
-      const { data: analyticsData } = await query;
-      setAnalytics(analyticsData || []);
+      if (analyticsSeqIds && analyticsSeqIds.length === 0) {
+        setAnalytics([]);
+      } else {
+        let query = supabase
+          .from('sequence_analytics')
+          .select('*')
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('date', { ascending: true });
+        if (analyticsSeqIds) query = query.in('sequence_id', analyticsSeqIds);
+        const { data: analyticsData, error: analyticsError } = await query;
+        if (analyticsError) throw analyticsError;
+        setAnalytics(analyticsData || []);
+      }
 
+      // Inscriptions de la période (date d'inscription), avec le statut de leurs
+      // étapes : « contacté » = au moins une étape envoyée.
       let enrollQuery = supabase
         .from('sequence_enrollments')
-        .select('status, created_at, replied_at, profile_id');
+        .select('status, created_at, replied_at, profile_id, sequence_step_executions(status)')
+        .gte('created_at', sinceTs)
+        .lte('created_at', untilTs);
+      if (filterSeqId) enrollQuery = enrollQuery.eq('sequence_id', filterSeqId);
+      if (jobIds) enrollQuery = enrollQuery.in('job_id', jobIds);
 
+      const { data: enrollData, error: enrollError } = await enrollQuery;
+      if (enrollError) throw enrollError;
+
+      const byProfile = new Map<string, NonNullable<typeof enrollData>[number]>();
+      for (const e of enrollData || []) {
+        const existing = byProfile.get(e.profile_id);
+        if (!existing || new Date(e.created_at) > new Date(existing.created_at)) {
+          byProfile.set(e.profile_id, e);
+        }
+      }
+      const uniqueEnrollments = Array.from(byProfile.values());
+      const { replied: repliedCount, contacted } = countContactedEnrollments(
+        uniqueEnrollments.map(e => ({
+          status: e.status,
+          execution_statuses: (e.sequence_step_executions || []).map(x => x.status),
+        })),
+      );
+      const responseTimes = uniqueEnrollments
+        .filter(e => e.status === 'replied' && e.replied_at)
+        .map(e => differenceInHours(new Date(e.replied_at as string), new Date(e.created_at)))
+        .filter(h => h > 0 && h < 720);
+
+      setEnrollmentStats({
+        total: uniqueEnrollments.length,
+        contacted,
+        active: uniqueEnrollments.filter(e => e.status === 'active').length,
+        completed: uniqueEnrollments.filter(e => e.status === 'completed').length,
+        replied: repliedCount,
+        paused: uniqueEnrollments.filter(e => e.status === 'paused').length,
+        cancelled: uniqueEnrollments.filter(e => e.status === 'cancelled').length,
+        avgResponseTimeHours: responseTimes.length > 0
+          ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
+          : null,
+      });
+
+      // Résultats A/B : exécutions portant une variante. sequence_step_executions
+      // n'a pas de colonne sequence_id : la liaison passe par l'inscription, dont
+      // le statut porte aussi la réponse (seules les réponses e-mail marquent
+      // l'exécution 'replied').
       if (filterSeqId) {
-        enrollQuery = enrollQuery.eq('sequence_id', filterSeqId);
-      }
-
-      const { data: enrollData } = await enrollQuery;
-
-      if (enrollData) {
-        const byProfile = new Map<string, typeof enrollData[0]>();
-        for (const e of enrollData) {
-          const existing = byProfile.get(e.profile_id);
-          if (!existing || new Date(e.created_at) > new Date(existing.created_at)) {
-            byProfile.set(e.profile_id, e);
-          }
-        }
-        const uniqueEnrollments = Array.from(byProfile.values());
-
-        // "Contacted" = candidates that clearly received outreach (completed or replied)
-        // Excludes 'active' since they may not have sent any message yet
-        const contacted = uniqueEnrollments.filter(e =>
-          ['completed', 'replied'].includes(e.status)
-        );
-        const replied = uniqueEnrollments.filter(e => e.status === 'replied' && e.replied_at);
-        const responseTimes = replied
-          .map(e => differenceInHours(new Date(e.replied_at!), new Date(e.created_at)))
-          .filter(h => h > 0 && h < 720);
-
-        setEnrollmentStats({
-          total: uniqueEnrollments.length,
-          contacted: contacted.length,
-          active: uniqueEnrollments.filter(e => e.status === 'active').length,
-          completed: uniqueEnrollments.filter(e => e.status === 'completed').length,
-          replied: replied.length,
-          paused: uniqueEnrollments.filter(e => e.status === 'paused').length,
-          cancelled: uniqueEnrollments.filter(e => e.status === 'cancelled').length,
-          avgResponseTimeHours: responseTimes.length > 0
-            ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
-            : null,
-        });
-      }
-
-      // Fetch A/B test results from executions with variant_assigned
-      // sequence_step_executions n'a pas de colonne sequence_id : la liaison passe
-      // par enrollment_id → sequence_enrollments.sequence_id. On utilise un inner
-      // join Supabase pour filtrer en une seule requête.
-      const filterForAB = sequenceId || (selectedSeqId !== 'all' ? selectedSeqId : null);
-      if (filterForAB) {
-        const { data: execData } = await (supabase as any)
+        let abQuery = supabase
           .from('sequence_step_executions')
-          .select('variant_assigned, status, sequence_enrollments!inner(sequence_id)')
-          .eq('sequence_enrollments.sequence_id', filterForAB)
-          .not('variant_assigned', 'is', null) as { data: { variant_assigned: string | null; status: string }[] | null };
+          .select('variant_assigned, status, sequence_enrollments!inner(sequence_id, status, job_id)')
+          .eq('sequence_enrollments.sequence_id', filterSeqId)
+          .not('variant_assigned', 'is', null);
+        if (jobIds) abQuery = abQuery.in('sequence_enrollments.job_id', jobIds);
+        const { data: execData, error: abError } = await abQuery;
+        if (abError) throw abError;
 
-        if (execData && execData.length > 0) {
-          const variantMap = new Map<string, { sent: number; opened: number; clicked: number; replied: number }>();
-          for (const exec of execData) {
-            const v = exec.variant_assigned;
-            if (!v) continue;
-            const existing = variantMap.get(v) || { sent: 0, opened: 0, clicked: 0, replied: 0 };
-            if (['sent', 'executed'].includes(exec.status)) existing.sent++;
-            variantMap.set(v, existing);
-          }
-          setAbResults(Array.from(variantMap.entries()).map(([variant, stats]) => ({ variant, ...stats })));
-        } else {
-          setAbResults([]);
-        }
+        setAbResults(aggregateVariantResults((execData || []).map(row => ({
+          variant_assigned: row.variant_assigned,
+          status: row.status,
+          enrollment_status: one(row.sequence_enrollments)?.status ?? null,
+        }))));
       } else {
         setAbResults([]);
       }
 
-      // Stats par étape (drill-down) — reply_rate par step si une séquence est sélectionnée
+      // Stats par étape (drill-down) si une séquence est sélectionnée. Les
+      // étapes internes (attentes, conditions) n'envoient rien : écartées.
       if (filterSeqId) {
-        const { data: stepRows } = await (supabase
+        const { data: stepRows, error: stepError } = await supabase
           .from('sequence_steps')
           .select('id, step_order, action_type')
           .eq('sequence_id', filterSeqId)
-          .order('step_order', { ascending: true }) as any);
+          .order('step_order', { ascending: true });
+        if (stepError) throw stepError;
 
-        if (stepRows && stepRows.length > 0) {
-          const stepIds = (stepRows as any[]).map((s: any) => s.id);
-          // Récupère toutes les executions de ces steps sur la période
-          const sinceTs = new Date(startDate).toISOString();
-          const untilTs = new Date(endDate + 'T23:59:59').toISOString();
-          const { data: execRows } = await (supabase
+        const visibleSteps = (stepRows || []).filter(s => !isHiddenActionType(s.action_type));
+        if (visibleSteps.length > 0) {
+          const stepIds = visibleSteps.map(s => s.id);
+          let execQuery = supabase
             .from('sequence_step_executions')
-            .select('step_id, status')
+            .select('step_id, status, sequence_enrollments!inner(job_id)')
             .in('step_id', stepIds)
             .gte('created_at', sinceTs)
-            .lte('created_at', untilTs) as any);
+            .lte('created_at', untilTs);
+          if (jobIds) execQuery = execQuery.in('sequence_enrollments.job_id', jobIds);
+          const { data: execRows, error: execError } = await execQuery;
+          if (execError) throw execError;
 
           const perStep = new Map<string, { sent: number; replied: number }>();
-          (execRows as any[] || []).forEach((e: any) => {
+          (execRows || []).forEach(e => {
             const cur = perStep.get(e.step_id) || { sent: 0, replied: 0 };
-            if (['sent', 'executed', 'opened', 'clicked', 'replied'].includes(e.status)) cur.sent++;
+            if (isSentExecutionStatus(e.status) || e.status === 'executed') cur.sent++;
             if (e.status === 'replied') cur.replied++;
             perStep.set(e.step_id, cur);
           });
 
           setStepStats(
-            (stepRows as any[]).map((s: any) => ({
+            visibleSteps.map(s => ({
+              id: s.id,
               step_order: s.step_order,
               action_type: s.action_type,
               sent: perStep.get(s.id)?.sent || 0,
@@ -243,15 +299,16 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       }
     } catch (err) {
       console.error('Error fetching analytics:', err);
+      setLoadError(true);
+      toast.error('Impossible de charger les statistiques');
     } finally {
       setLoading(false);
     }
-  };
+  }, [period, customStart, customEnd, sequenceId, selectedSeqId, projectId, scope]);
 
   useEffect(() => {
     if (isOpen) fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, selectedSeqId, period, customStart, customEnd]);
+  }, [isOpen, fetchData]);
 
   const totals = useMemo(() => {
     return analytics.reduce(
@@ -267,10 +324,11 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   }, [analytics]);
 
   const acceptRate = totals.invitesSent > 0 ? Math.round((totals.invitesAccepted / totals.invitesSent) * 100) : 0;
-  // Reply rate = replied / contacted (same logic as dashboard)
-  const replyRate = enrollmentStats && enrollmentStats.contacted > 0
-    ? Math.round((enrollmentStats.replied / enrollmentStats.contacted) * 100)
-    : 0;
+  // Taux de réponse = répondus / contactés (helper partagé avec la mission).
+  const responseRate = computeResponseRate({
+    replied: enrollmentStats?.replied ?? 0,
+    contacted: enrollmentStats?.contacted ?? 0,
+  });
 
   const chartData = useMemo(() => {
     const grouped: Record<string, { date: string; invites: number; messages: number; replies: number }> = {};
@@ -285,20 +343,22 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
     return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
   }, [analytics]);
 
+  // Une seule source pour les réponses : les inscriptions de la période,
+  // comme la tuile « Réponses ».
   const funnelData = useMemo(() => [
     { name: 'VISITES', value: totals.profileVisits },
     { name: 'INVITATIONS', value: totals.invitesSent },
     { name: 'ACCEPTÉES', value: totals.invitesAccepted },
-    { name: 'RÉPONSES', value: totals.repliesReceived },
-  ], [totals]);
+    { name: 'RÉPONSES', value: enrollmentStats?.replied ?? 0 },
+  ], [totals, enrollmentStats]);
 
   const statusData = useMemo(() => {
     if (!enrollmentStats) return [];
     return [
-      { name: 'Actifs', value: enrollmentStats.active },
-      { name: 'Répondu', value: enrollmentStats.replied },
+      { name: 'En cours', value: enrollmentStats.active },
+      { name: 'Ont répondu', value: enrollmentStats.replied },
       { name: 'Terminés', value: enrollmentStats.completed },
-      { name: 'Pause', value: enrollmentStats.paused },
+      { name: 'En pause', value: enrollmentStats.paused },
       { name: 'Annulés', value: enrollmentStats.cancelled },
     ].filter(d => d.value > 0);
   }, [enrollmentStats]);
@@ -310,13 +370,19 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
     return `${days}j`;
   };
 
-  const kpiItems = [
+  const kpiItems: Array<{ icon: typeof Eye; label: string; value: number | string; sub?: string }> = [
     { icon: Eye, label: 'Visites', value: totals.profileVisits },
-    { icon: UserPlus, label: 'Invitations', value: totals.invitesSent, sub: `${acceptRate}%` },
-    { icon: Send, label: 'Messages', value: totals.messagesSent, sub: `${replyRate}%` },
+    { icon: UserPlus, label: 'Invitations', value: totals.invitesSent, sub: `${acceptRate}% acceptées` },
+    { icon: Send, label: 'Messages', value: totals.messagesSent },
+    { icon: Users, label: 'Candidats inscrits', value: enrollmentStats?.total || 0 },
     { icon: MessageCircle, label: 'Réponses', value: enrollmentStats?.replied || 0 },
-    { icon: Users, label: 'Prospects', value: enrollmentStats?.total || 0 },
-    { icon: Clock, label: 'Moy. rép.', value: formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null) },
+    {
+      icon: Percent,
+      label: 'Taux de réponse',
+      value: responseRate.rate === null ? '—' : `${responseRate.rate}%`,
+      sub: `${responseRate.replied}/${responseRate.contacted} contactés`,
+    },
+    { icon: Clock, label: 'Délai de réponse', value: formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null) },
   ];
 
   return (
@@ -325,8 +391,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
         {/* Header */}
         <SheetHeader className="px-5 py-4 border-b border-border bg-accent">
           <SheetTitle className="flex items-center gap-2 text-foreground uppercase tracking-wider text-sm font-bold">
-            <BarChart3 className="w-4 h-4" />
-            {sequenceName ? `Analytics — ${sequenceName}` : 'Analytics globales'}
+            <BarChart3 className="w-4 h-4" aria-hidden="true" />
+            {sequenceName ? `Statistiques · ${sequenceName}` : 'Statistiques des séquences'}
           </SheetTitle>
         </SheetHeader>
 
@@ -334,9 +400,20 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
           <div className="p-4 space-y-4">
             {/* Filters row */}
             <div className="flex flex-wrap items-center gap-2">
+              {projectId && (
+                <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
+                  <SelectTrigger className="w-[170px] bg-background border-border rounded-lg text-xs" aria-label="Périmètre">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background border-border rounded-lg">
+                    <SelectItem value="mission">Cette mission</SelectItem>
+                    <SelectItem value="all">Toutes les missions</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
               {!sequenceId && (
                 <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
-                  <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none bg-background border-border rounded-lg text-xs uppercase tracking-wide">
+                  <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none bg-background border-border rounded-lg text-xs uppercase tracking-wide" aria-label="Séquence">
                     <SelectValue placeholder="Toutes les séquences" />
                   </SelectTrigger>
                   <SelectContent className="bg-background border-border rounded-lg">
@@ -348,7 +425,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 </Select>
               )}
               <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90' | 'custom')}>
-                <SelectTrigger className="w-[140px] bg-background border-border rounded-lg text-xs">
+                <SelectTrigger className="w-[140px] bg-background border-border rounded-lg text-xs" aria-label="Période">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-background border-border rounded-lg">
@@ -393,8 +470,19 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center py-20">
+              <div className="flex items-center justify-center py-20" role="status" aria-label="Chargement des statistiques">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-border" />
+              </div>
+            ) : loadError ? (
+              <div className="border border-destructive/40 bg-destructive/5 text-center py-12 px-4 space-y-3">
+                <AlertCircle className="w-8 h-8 mx-auto text-destructive" aria-hidden="true" />
+                <p className="text-sm text-foreground">
+                  Impossible de charger les statistiques. Vérifiez votre connexion puis réessayez.
+                </p>
+                <Button variant="outline" size="sm" onClick={fetchData}>
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                  Réessayer
+                </Button>
               </div>
             ) : (
               <>
@@ -411,13 +499,13 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                           "hover:bg-accent transition-colors duration-200"
                         )}
                       >
-                        <Icon className="w-3.5 h-3.5 text-muted-foreground mb-1" />
+                        <Icon className="w-3.5 h-3.5 text-muted-foreground mb-1" aria-hidden="true" />
                         <span className="text-lg font-bold text-foreground tabular-nums leading-none">
                           {item.value}
                         </span>
                         {item.sub && (
                           <span className="text-xs text-muted-foreground tabular-nums mt-0.5">
-                            {item.sub} taux
+                            {item.sub}
                           </span>
                         )}
                         <span className="text-3xs text-muted-foreground uppercase tracking-wider mt-1 font-medium">
@@ -427,13 +515,17 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                     );
                   })}
                 </div>
+                <p className="text-2xs text-muted-foreground -mt-2">
+                  Candidats, réponses et taux : candidats inscrits sur la période.
+                  {missionScoped && ' Visites, invitations et messages : toutes missions confondues pour les séquences de cette mission.'}
+                </p>
 
                 {/* Funnel */}
                 <div className="border border-border bg-background">
                   <div className="px-3 py-2 border-b border-border bg-muted flex items-center gap-2">
-                    <TrendingUp className="w-3.5 h-3.5 text-foreground" />
+                    <TrendingUp className="w-3.5 h-3.5 text-foreground" aria-hidden="true" />
                     <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                      Funnel de conversion
+                      Entonnoir de conversion
                     </span>
                   </div>
                   <div className="p-3 space-y-1">
@@ -447,7 +539,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                         <div key={item.name}>
                           {index > 0 && (
                             <div className="flex items-center justify-center py-0.5">
-                              <ArrowDown className="w-3 h-3 text-muted-foreground" />
+                              <ArrowDown className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
                               {convRate !== null && (
                                 <span className="text-xs text-muted-foreground ml-1 tabular-nums font-medium">
                                   {convRate}%
@@ -481,7 +573,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                   <div className="border border-border bg-background">
                     <div className="px-3 py-2 border-b border-border bg-muted">
                       <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                        Répartition prospects
+                        Répartition des candidats
                       </span>
                     </div>
                     <div className="p-3">
@@ -494,7 +586,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                               className="h-full first:border-l-0 bg-foreground border-r border-background transition-all"
                               style={{
                                 width: `${pct}%`,
-                                opacity: item.name === 'Annulés' ? 0.3 : item.name === 'Pause' ? 0.5 : 1,
+                                opacity: item.name === 'Annulés' ? 0.3 : item.name === 'En pause' ? 0.5 : 1,
                               }}
                             />
                           );
@@ -564,12 +656,12 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 {/* Empty state */}
                 {chartData.length === 0 && !enrollmentStats?.total && (
                   <div className="border border-border bg-background text-center py-16">
-                    <BarChart3 className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+                    <BarChart3 className="w-10 h-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
                     <p className="text-sm font-bold text-foreground uppercase tracking-wider">
                       Aucune donnée
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Les analytics seront alimentées à mesure que les séquences s'exécutent.
+                      Les statistiques apparaîtront à mesure que les séquences s'exécutent.
                     </p>
                   </div>
                 )}
@@ -577,31 +669,33 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                 )}
 
                 {/* A/B Test Results */}
-                {abResults.length > 0 && (
+                {!loading && !loadError && abResults.length > 0 && (
                   <ABTestResults results={abResults} />
                 )}
 
                 {/* Stats par étape (drill-down) */}
-                {stepStats.length > 0 && (
+                {!loading && !loadError && stepStats.length > 0 && (
                   <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                     <div className="flex items-center gap-2">
-                      <ArrowDown className="w-4 h-4 text-muted-foreground" />
+                      <ArrowDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                       <h3 className="text-sm font-semibold text-foreground">Performance par étape</h3>
                     </div>
                     <div className="space-y-2">
                       {stepStats.map(s => {
+                        // Seules les réponses e-mail sont rattachées à une étape.
+                        const tracksReplies = s.action_type === 'email';
                         const replyRate = s.sent > 0 ? (s.replied / s.sent) * 100 : 0;
                         return (
                           <div
-                            key={s.step_order}
+                            key={s.id}
                             className="flex items-center gap-3 text-xs p-2 rounded-md bg-background border border-border"
                           >
                             <span className="w-16 font-medium text-foreground">Étape {s.step_order + 1}</span>
-                            <span className="w-32 text-muted-foreground capitalize">{s.action_type.replace(/_/g, ' ')}</span>
+                            <span className="w-32 text-muted-foreground">{actionTypeLabel(s.action_type)}</span>
                             <span className="flex-1 text-muted-foreground">
                               <span className="font-mono font-semibold text-foreground">{s.sent}</span> envoyé
                               {s.sent > 1 ? 's' : ''}
-                              {s.replied > 0 && (
+                              {tracksReplies && s.replied > 0 && (
                                 <>
                                   {' · '}
                                   <span className="font-mono font-semibold text-success">{s.replied}</span> réponse
@@ -612,17 +706,18 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
                             <span
                               className={cn(
                                 'w-16 text-right font-mono font-semibold',
-                                replyRate >= 20 ? 'text-success' : replyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
+                                !tracksReplies ? 'text-muted-foreground' : replyRate >= 20 ? 'text-success' : replyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
                               )}
                             >
-                              {replyRate.toFixed(1)}%
+                              {tracksReplies ? `${replyRate.toFixed(1).replace('.', ',')} %` : '—'}
                             </span>
                           </div>
                         );
                       })}
                     </div>
                     <p className="text-2xs text-muted-foreground">
-                      Taux de réponse par étape — colore en vert si ≥20%, orange si ≥10%, gris sinon.
+                      Réponses suivies pour l'e-mail uniquement : une réponse sur LinkedIn n'est pas rattachée à une
+                      étape. Taux en vert à partir de 20 %, en orange à partir de 10 %.
                     </p>
                   </div>
                 )}

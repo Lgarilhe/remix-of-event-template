@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +21,8 @@ import {
 } from '@/hooks/useMemberQuotas';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
-import type { OrganizationMember } from '@/hooks/useOrganization';
+import { useOrganization, type OrganizationMember } from '@/hooks/useOrganization';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { ErrorBox } from '@/components/marketplace/ErrorBox';
@@ -34,7 +36,8 @@ interface TeamManagementProps {
   isOwner: boolean;
   isLoading?: boolean;
   onUpdateRole: (params: { memberId: string; role: string }) => void;
-  onRemove: (memberId: string) => void;
+  /** Arrête les envois du membre puis le retire (rejette en cas d'échec, rien n'est retiré). */
+  onRemove: (params: { memberId: string; userId: string }) => Promise<unknown>;
 }
 
 // Seul quota EFFECTIVEMENT câblé côté backend (process-sequences /
@@ -80,6 +83,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [selectedLinkedInId, setSelectedLinkedInId] = useState<string>('');
   const [removeConfirm, setRemoveConfirm] = useState<OrganizationMember | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
   // accountId : compte affiché à l'ouverture de la confirmation, transmis au
   // serveur qui refuse une liaison repointée entre-temps.
   const [unlinkConfirm, setUnlinkConfirm] = useState<{ mappingId: string; accountId: string; name: string } | null>(null);
@@ -92,6 +96,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     getMappingForUser, getMappingForAccount,
   } = useMemberLinkedInAccounts();
   const { accounts: linkedInAccounts } = useLinkedInAccounts();
+  const { organizationId } = useOrganization();
   const [editingQuotas, setEditingQuotas] = useState<Record<string, Partial<typeof DEFAULT_QUOTAS>>>({});
 
   const handleLinkLinkedIn = (member: OrganizationMember) => {
@@ -126,6 +131,52 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
         return next;
       }),
     });
+  };
+
+  // Retrait d'un membre : ses inscriptions en cours depuis son compte LinkedIn
+  // relié, comptées pour la confirmation (le serveur les met en pause avant
+  // le retrait).
+  const removeAccountId = removeConfirm
+    ? getMappingForUser(removeConfirm.user_id)?.linkedin_account_id ?? null
+    : null;
+  const activeEnrollments = useQuery({
+    queryKey: ['member-active-enrollments', organizationId, removeAccountId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('sequence_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId!)
+        .eq('account_id', removeAccountId!)
+        .eq('status', 'active');
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!organizationId && !!removeAccountId,
+    staleTime: 0,
+  });
+
+  const sendingStopSentence = (): string => {
+    const generic = 'Ses séquences en cours et ses InMails programmés seront arrêtés.';
+    if (mappingsError || !mappingsReady) return generic;
+    if (!removeAccountId) return "Aucun compte LinkedIn n'est relié à ce membre : aucun envoi LinkedIn n'est à arrêter.";
+    if (!activeEnrollments.isSuccess) return generic;
+    const n = activeEnrollments.data;
+    return n > 0
+      ? `Ses séquences en cours (${n} candidat${n > 1 ? 's' : ''}) et ses InMails programmés seront arrêtés.`
+      : "Aucune séquence n'est en cours depuis son compte LinkedIn ; ses InMails programmés seront annulés.";
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!removeConfirm || isRemoving) return;
+    setIsRemoving(true);
+    try {
+      await onRemove({ memberId: removeConfirm.id, userId: removeConfirm.user_id });
+      setRemoveConfirm(null);
+    } catch {
+      // Erreur annoncée par le hook ; la confirmation reste ouverte pour réessayer.
+    } finally {
+      setIsRemoving(false);
+    }
   };
 
   // Available LinkedIn accounts = those not already linked to another member
@@ -239,7 +290,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             size="icon"
                             className="h-8 w-8 text-muted-foreground hover:text-destructive"
                             onClick={() => setRemoveConfirm(member)}
-                            aria-label={`Supprimer ${memberName}`}
+                            aria-label={`Retirer ${memberName} de l'équipe`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -454,32 +505,35 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       </CardContent>
 
       {/* AlertDialog : suppression de membre */}
-      <AlertDialog open={!!removeConfirm} onOpenChange={(open) => !open && setRemoveConfirm(null)}>
+      <AlertDialog open={!!removeConfirm} onOpenChange={(open) => !open && !isRemoving && setRemoveConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer ce membre ?</AlertDialogTitle>
+            <AlertDialogTitle>Retirer ce membre de l'équipe ?</AlertDialogTitle>
             <AlertDialogDescription>
               {removeConfirm && (
                 <>
-                  <strong>{getDisplayName(removeConfirm.user_id)}</strong> sera retiré de l'équipe.
-                  Cette personne perd l'accès à tous les missions, candidats et données de l'agence.
-                  Cette action est irréversible (vous pouvez réinviter ensuite).
+                  <strong>{getDisplayName(removeConfirm.user_id)}</strong> sera retiré de l'équipe et perdra
+                  l'accès aux missions, candidats et données de l'organisation.
+                  {' '}{sendingStopSentence()}
+                  {' '}Vous pourrez réinscrire ses candidats depuis votre compte, et le réinviter plus tard.
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel disabled={isRemoving}>Annuler</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
-              onClick={() => {
-                if (removeConfirm) {
-                  onRemove(removeConfirm.id);
-                  setRemoveConfirm(null);
-                }
+              disabled={isRemoving}
+              onClick={(e) => {
+                // La confirmation reste ouverte jusqu'au résultat : fermée au
+                // succès, gardée en cas d'échec (rien n'a été retiré).
+                e.preventDefault();
+                void handleConfirmRemove();
               }}
             >
-              Supprimer
+              {isRemoving && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
+              Retirer de l'équipe
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

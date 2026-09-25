@@ -51,12 +51,19 @@ import {
   Download,
   CheckSquare,
   XSquare,
-  StopCircle,
+  Pause,
   Play,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import {
+  missionEnrollmentJobIds,
+  summarizeResumeResponse,
+  type ResumeResponse,
+} from '@/lib/sequenceErrorMessages';
+import { pausedLabel, pauseReasonHint } from '@/lib/sequenceLabels';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -81,6 +88,24 @@ interface ProjectCandidatesTableEnhancedProps {
   onOpenMessage?: (candidate: ProjectCandidate) => void;
 }
 
+/** Inscription d'un candidat dans une séquence de la mission. */
+interface MissionEnrollment {
+  id: string;
+  status: string;
+  pause_reason: string | null;
+  sequence_name: string;
+  created_at: string;
+}
+
+/** Inscriptions en cours et en pause d'un candidat pour cette mission, la plus récente d'abord. */
+interface CandidateMissionEnrollments {
+  active: MissionEnrollment[];
+  paused: MissionEnrollment[];
+}
+
+/** Une pause manuelle (ou antérieure aux raisons de pause) se reprend depuis le pipeline. */
+const isResumableFromPipeline = (e: MissionEnrollment) => !e.pause_reason || e.pause_reason === 'manual';
+
 const statusConfig = {
   untreated: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
   discovered: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
@@ -102,103 +127,186 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [candidateEnrollments, setCandidateEnrollments] = useState<Record<string, { id: string; status: string; sequence_name: string } | null>>({});
-  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'remove'; candidateId: string } | null>(null);
+  const [candidateEnrollments, setCandidateEnrollments] = useState<Record<string, CandidateMissionEnrollments>>({});
+  const [enrollmentsReloadKey, setEnrollmentsReloadKey] = useState(0);
+  const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'resume' | 'remove'; candidate: ProjectCandidate } | null>(null);
+  const [keepSequenceRunning, setKeepSequenceRunning] = useState(false);
 
-  // Fetch active sequence enrollments for candidates
+  // Clé primitive : l'effet ne repart pas à chaque nouvelle référence du tableau.
+  const candidateIdsKey = useMemo(
+    () => Array.from(new Set(candidates.map(c => c.candidate_id))).sort().join(','),
+    [candidates],
+  );
+
+  // Inscriptions de CETTE mission (job_id de la mission) pour les candidats
+  // affichés. Avant, la lecture prenait une inscription au hasard, toutes
+  // missions confondues : « Arrêter » pouvait viser la séquence d'une autre mission.
   useEffect(() => {
+    let cancelled = false;
     const fetchEnrollments = async () => {
-      if (candidates.length === 0) return;
-      
-      const candidateIds = candidates.map(c => c.candidate_id);
-      
-      const { data: enrollments } = await supabase
+      const candidateIds = new Set(candidateIdsKey ? candidateIdsKey.split(',') : []);
+      if (candidateIds.size === 0) {
+        setCandidateEnrollments({});
+        return;
+      }
+
+      const { data: project, error: projectError } = await supabase
+        .from('sourcing_projects')
+        .select('job_id')
+        .eq('id', projectId)
+        .maybeSingle();
+      if (projectError) {
+        console.error('Error loading mission for enrollments:', projectError);
+        if (!cancelled) toast.error('Impossible de charger les séquences des candidats');
+        return;
+      }
+
+      const { data: enrollments, error } = await supabase
         .from('sequence_enrollments')
-        .select('id, profile_id, status, outreach_sequences(name)')
-        .in('profile_id', candidateIds)
-        .in('status', ['active', 'paused']);
-      
-      const enrollmentMap: Record<string, { id: string; status: string; sequence_name: string } | null> = {};
-      for (const candidateId of candidateIds) {
-        const enrollment = enrollments?.find(e => e.profile_id === candidateId);
-        enrollmentMap[candidateId] = enrollment ? {
-          id: enrollment.id,
-          status: enrollment.status,
-          sequence_name: (enrollment.outreach_sequences as any)?.name || 'Séquence',
-        } : null;
+        .select('id, profile_id, status, pause_reason, created_at, outreach_sequences(name)')
+        .in('job_id', missionEnrollmentJobIds(projectId, project?.job_id))
+        .in('status', ['active', 'paused'])
+        .order('created_at', { ascending: false });
+
+      if (cancelled) return;
+      if (error) {
+        console.error('Error loading enrollments:', error);
+        toast.error('Impossible de charger les séquences des candidats');
+        return;
+      }
+
+      const enrollmentMap: Record<string, CandidateMissionEnrollments> = {};
+      for (const e of enrollments || []) {
+        if (!candidateIds.has(e.profile_id)) continue;
+        const entry = enrollmentMap[e.profile_id] ?? (enrollmentMap[e.profile_id] = { active: [], paused: [] });
+        const item: MissionEnrollment = {
+          id: e.id,
+          status: e.status,
+          pause_reason: e.pause_reason ?? null,
+          sequence_name: e.outreach_sequences?.name || 'Séquence',
+          created_at: e.created_at,
+        };
+        if (e.status === 'active') entry.active.push(item);
+        else entry.paused.push(item);
       }
       setCandidateEnrollments(enrollmentMap);
     };
-    
-    fetchEnrollments();
-  }, [candidates]);
 
-  // Stop sequence for a candidate
-  const stopSequence = async (candidateId: string) => {
-    const enrollment = candidateEnrollments[candidateId];
-    if (!enrollment) return;
-    
-    try {
-      // Update enrollment status to paused
-      const { error: enrollError } = await supabase
-        .from('sequence_enrollments')
-        .update({ status: 'paused' })
-        .eq('id', enrollment.id);
-      
-      if (enrollError) throw enrollError;
-      
-      // Cancel pending executions
-      await supabase
-        .from('sequence_step_executions')
-        .update({ status: 'cancelled', skip_reason: 'Arrêt manuel' })
-        .eq('enrollment_id', enrollment.id)
-        .eq('status', 'scheduled');
-      
-      setCandidateEnrollments(prev => ({
+    fetchEnrollments();
+    return () => { cancelled = true; };
+  }, [candidateIdsKey, projectId, enrollmentsReloadKey]);
+
+  const reloadEnrollments = () => setEnrollmentsReloadKey(k => k + 1);
+
+  /**
+   * Met en pause toutes les inscriptions en cours du candidat pour cette
+   * mission (pause manuelle : les étapes prévues gardent leur date, le moteur
+   * n'envoie rien tant qu'elles ne sont pas reprises). Renvoie le nombre
+   * réellement mis en pause, relu en base.
+   */
+  const pauseMissionEnrollments = async (candidateId: string): Promise<{ paused: number; total: number }> => {
+    const entry = candidateEnrollments[candidateId];
+    const ids = entry?.active.map(e => e.id) ?? [];
+    if (ids.length === 0) return { paused: 0, total: 0 };
+
+    const { data, error } = await supabase
+      .from('sequence_enrollments')
+      .update({ status: 'paused', pause_reason: 'manual', updated_at: new Date().toISOString() })
+      .in('id', ids)
+      .eq('status', 'active')
+      .select('id');
+    if (error) throw error;
+
+    const pausedIds = new Set((data || []).map(d => d.id));
+    setCandidateEnrollments(prev => {
+      const current = prev[candidateId];
+      if (!current) return prev;
+      const moved = current.active
+        .filter(e => pausedIds.has(e.id))
+        .map(e => ({ ...e, status: 'paused', pause_reason: 'manual' }));
+      return {
         ...prev,
-        [candidateId]: enrollment ? { ...enrollment, status: 'paused' } : null,
-      }));
-      
-      toast.success('Séquence arrêtée');
+        [candidateId]: {
+          active: current.active.filter(e => !pausedIds.has(e.id)),
+          paused: [...moved, ...current.paused],
+        },
+      };
+    });
+    return { paused: pausedIds.size, total: ids.length };
+  };
+
+  // Mettre en pause les séquences d'un candidat pour cette mission
+  const stopSequence = async (candidate: ProjectCandidate) => {
+    const name = candidate.candidate_name || 'ce candidat';
+    const entry = candidateEnrollments[candidate.candidate_id];
+    setBusyCandidateId(candidate.candidate_id);
+    try {
+      const { paused, total } = await pauseMissionEnrollments(candidate.candidate_id);
+      if (total === 0) return;
+      if (paused === 0) {
+        toast.error("Aucune séquence n'a pu être mise en pause : elles ne sont plus en cours. Actualisation…");
+        reloadEnrollments();
+      } else if (paused < total) {
+        toast.warning(`${paused} séquences mises en pause sur ${total} pour ${name}. Réessayez pour les autres.`);
+        reloadEnrollments();
+      } else {
+        toast.success(
+          paused === 1
+            ? `Séquence « ${entry?.active[0]?.sequence_name ?? 'Séquence'} » mise en pause pour ${name}`
+            : `${paused} séquences mises en pause pour ${name}`,
+        );
+      }
     } catch (error) {
-      console.error('Error stopping sequence:', error);
-      toast.error('Erreur lors de l\'arrêt');
+      console.error('Error pausing sequence:', error);
+      toast.error('La mise en pause a échoué. Réessayez.');
+    } finally {
+      setBusyCandidateId(null);
     }
   };
 
-  // Resume sequence for a candidate
-  const resumeSequence = async (candidateId: string) => {
-    const enrollment = candidateEnrollments[candidateId];
-    if (!enrollment) return;
-    
+  // Reprendre : action serveur resume_enrollments (garde l'étape prévue,
+  // refuse un compte LinkedIn qui n'est plus relié, renvoie le résultat réel).
+  const resumeSequence = async (candidate: ProjectCandidate) => {
+    const entry = candidateEnrollments[candidate.candidate_id];
+    const ids = (entry?.paused ?? []).filter(isResumableFromPipeline).map(e => e.id);
+    if (ids.length === 0) return;
+
+    setBusyCandidateId(candidate.candidate_id);
     try {
-      const { error } = await supabase
-        .from('sequence_enrollments')
-        .update({ status: 'active' })
-        .eq('id', enrollment.id);
-      
-      if (error) throw error;
-      
-      setCandidateEnrollments(prev => ({
-        ...prev,
-        [candidateId]: enrollment ? { ...enrollment, status: 'active' } : null,
-      }));
-      
-      toast.success('Séquence reprise');
+      const { data, error } = await invokeEdgeFunction<ResumeResponse>('process-sequences', {
+        action: 'resume_enrollments',
+        enrollment_ids: ids,
+      });
+      const summary = summarizeResumeResponse(
+        error ? { success: false, message: data?.message || error.message } : data,
+        candidate.candidate_name,
+      );
+      if (summary.tone === 'success') toast.success(summary.message);
+      else if (summary.tone === 'info') toast.info(summary.message);
+      else toast.error(summary.message);
     } catch (error) {
       console.error('Error resuming sequence:', error);
-      toast.error('Erreur lors de la reprise');
+      toast.error('La reprise a échoué. Réessayez.');
+    } finally {
+      setBusyCandidateId(null);
+      reloadEnrollments();
     }
   };
 
   const handleConfirmedAction = async () => {
     if (!confirmAction) return;
-    if (confirmAction.type === 'stop') {
-      await stopSequence(confirmAction.candidateId);
-    } else if (confirmAction.type === 'remove') {
-      await removeFromProject(confirmAction.candidateId);
-    }
+    const { type, candidate } = confirmAction;
+    const keepRunning = keepSequenceRunning;
     setConfirmAction(null);
+    setKeepSequenceRunning(false);
+    if (type === 'stop') {
+      await stopSequence(candidate);
+    } else if (type === 'resume') {
+      await resumeSequence(candidate);
+    } else if (type === 'remove') {
+      await removeFromProject(candidate, keepRunning);
+    }
   };
 
   // Filter candidates
@@ -303,22 +411,58 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
     }
   };
 
-  const removeFromProject = async (candidateId: string) => {
+  // Retirer un candidat de la mission met aussi en pause ses séquences de la
+  // mission, sauf si l'utilisateur coche « Laisser la séquence continuer ».
+  const removeFromProject = async (candidate: ProjectCandidate, keepSequenceRunningForCandidate: boolean) => {
+    const name = candidate.candidate_name || 'Le candidat';
+    const activeCount = candidateEnrollments[candidate.candidate_id]?.active.length ?? 0;
+    let pausedCount = 0;
+    setBusyCandidateId(candidate.candidate_id);
     try {
-      const { error } = await supabase
+      if (activeCount > 0 && !keepSequenceRunningForCandidate) {
+        const { paused, total } = await pauseMissionEnrollments(candidate.candidate_id);
+        pausedCount = paused;
+        if (paused < total) {
+          // Jamais de retrait silencieux d'un candidat qui recevrait encore des messages.
+          toast.error("La séquence n'a pas pu être mise en pause : le candidat n'a pas été retiré. Réessayez.");
+          reloadEnrollments();
+          return;
+        }
+      }
+
+      const { data, error } = await supabase
         .from('job_candidate_status')
         .update({ project_id: null })
-        .eq('id', candidateId);
+        .eq('id', candidate.id)
+        .select('id');
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error(
+          pausedCount > 0
+            ? "La séquence est en pause, mais le candidat n'a pas pu être retiré de la mission. Réessayez."
+            : "Le candidat n'a pas pu être retiré de la mission. Réessayez.",
+        );
+        return;
+      }
 
       queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
-      toast.success('Candidat retiré du projet');
+      toast.success(
+        pausedCount > 0
+          ? `${name} a été retiré de la mission, sa séquence est en pause`
+          : `${name} a été retiré de la mission`,
+      );
     } catch (error) {
       console.error('Error removing from project:', error);
-      toast.error('Erreur lors du retrait');
+      toast.error(
+        pausedCount > 0
+          ? "La séquence est en pause, mais le candidat n'a pas pu être retiré de la mission. Réessayez."
+          : 'Le retrait a échoué. Réessayez.',
+      );
+    } finally {
+      setBusyCandidateId(null);
     }
   };
 
@@ -530,9 +674,10 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+                          aria-label={`Actions pour ${candidate.candidate_name || 'ce candidat'}`}
                         >
-                          <MoreHorizontal className="h-4 w-4" />
+                          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-52">
@@ -555,32 +700,63 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                           </DropdownMenuItem>
                         )}
                         
-                        {/* Sequence actions */}
-                        {candidateEnrollments[candidate.candidate_id] && (
-                          <>
-                            <DropdownMenuSeparator />
-                            {candidateEnrollments[candidate.candidate_id]?.status === 'active' ? (
-                              <DropdownMenuItem
-                                onClick={() => setConfirmAction({ type: 'stop', candidateId: candidate.candidate_id })}
-                                className="text-warning-foreground focus:text-warning-foreground"
-                              >
-                                <StopCircle className="w-4 h-4 mr-2" />
-                                Arrêter la séquence
-                                <span className="ml-auto text-xs text-muted-foreground">
-                                  {candidateEnrollments[candidate.candidate_id]?.sequence_name}
-                                </span>
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem 
-                                onClick={() => resumeSequence(candidate.candidate_id)}
-                                className="text-success-foreground focus:text-success-foreground"
-                              >
-                                <Play className="w-4 h-4 mr-2" />
-                                Reprendre la séquence
-                              </DropdownMenuItem>
-                            )}
-                          </>
-                        )}
+                        {/* Séquences de CETTE mission : le bouton suit l'inscription en cours la plus récente */}
+                        {(() => {
+                          const entry = candidateEnrollments[candidate.candidate_id];
+                          if (!entry || (entry.active.length === 0 && entry.paused.length === 0)) return null;
+                          const isBusy = busyCandidateId === candidate.candidate_id;
+                          if (entry.active.length > 0) {
+                            const latest = entry.active[0];
+                            return (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  disabled={isBusy}
+                                  onClick={() => setConfirmAction({ type: 'stop', candidate })}
+                                  className="text-warning-foreground focus:text-warning-foreground"
+                                >
+                                  <Pause className="w-4 h-4 mr-2" aria-hidden="true" />
+                                  Mettre en pause la séquence
+                                  <span className="ml-auto pl-2 text-xs text-muted-foreground truncate max-w-[120px]">
+                                    {latest.sequence_name}{entry.active.length > 1 ? ` +${entry.active.length - 1}` : ''}
+                                  </span>
+                                </DropdownMenuItem>
+                              </>
+                            );
+                          }
+                          const latestPaused = entry.paused[0];
+                          const resumable = entry.paused.find(isResumableFromPipeline);
+                          return (
+                            <>
+                              <DropdownMenuSeparator />
+                              {resumable ? (
+                                <DropdownMenuItem
+                                  disabled={isBusy}
+                                  onClick={() => setConfirmAction({ type: 'resume', candidate })}
+                                  className="text-success-foreground focus:text-success-foreground"
+                                >
+                                  <Play className="w-4 h-4 mr-2" aria-hidden="true" />
+                                  Reprendre la séquence
+                                  <span className="ml-auto pl-2 text-xs text-muted-foreground truncate max-w-[120px]">
+                                    {resumable.sequence_name}
+                                  </span>
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem disabled className="items-start">
+                                  <Pause className="w-4 h-4 mr-2 mt-0.5 shrink-0" aria-hidden="true" />
+                                  <span className="flex flex-col">
+                                    <span>{pausedLabel(latestPaused.pause_reason)}</span>
+                                    {pauseReasonHint(latestPaused.pause_reason) && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {pauseReasonHint(latestPaused.pause_reason)}
+                                      </span>
+                                    )}
+                                  </span>
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          );
+                        })()}
                         
                         <DropdownMenuSeparator />
                         
@@ -600,11 +776,15 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                         <DropdownMenuSeparator />
                         
                         <DropdownMenuItem
-                          onClick={() => setConfirmAction({ type: 'remove', candidateId: candidate.id })}
+                          disabled={busyCandidateId === candidate.candidate_id}
+                          onClick={() => {
+                            setKeepSequenceRunning(false);
+                            setConfirmAction({ type: 'remove', candidate });
+                          }}
                           className="text-destructive focus:text-destructive"
                         >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Retirer du projet
+                          <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
+                          Retirer de la mission
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -621,24 +801,102 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
         {filteredCandidates.length} sur {candidates.length} candidat(s)
       </div>
 
-      <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+      <AlertDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmAction(null);
+            setKeepSequenceRunning(false);
+          }
+        }}
+      >
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {confirmAction?.type === 'stop' ? 'Arrêter la séquence' : 'Retirer le candidat'}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction?.type === 'stop'
-                ? 'Le candidat ne recevra plus de messages de cette séquence.'
-                : 'Le candidat sera retiré de ce projet.'}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleConfirmedAction}>
-              Confirmer
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          {(() => {
+            if (!confirmAction) return null;
+            const { type, candidate } = confirmAction;
+            const name = candidate.candidate_name || 'ce candidat';
+            const entry = candidateEnrollments[candidate.candidate_id];
+            const active = entry?.active ?? [];
+            const resumable = (entry?.paused ?? []).filter(isResumableFromPipeline);
+
+            if (type === 'stop') {
+              return (
+                <>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Mettre en pause la séquence pour {name} ?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {active.length > 1
+                        ? `Les ${active.length} séquences en cours de ${name} dans cette mission seront mises en pause (${active.map(e => `« ${e.sequence_name} »`).join(', ')}).`
+                        : `${name} ne recevra plus de messages de la séquence « ${active[0]?.sequence_name ?? 'Séquence'} » tant que vous ne la reprenez pas.`}
+                      {' '}Les étapes prévues gardent leur date.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleConfirmedAction}>Mettre en pause</AlertDialogAction>
+                  </AlertDialogFooter>
+                </>
+              );
+            }
+
+            if (type === 'resume') {
+              return (
+                <>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Reprendre {resumable.length > 1 ? `${resumable.length} séquences` : `la séquence « ${resumable[0]?.sequence_name ?? 'Séquence'} »`} pour {name} ?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Les envois reprennent. Chaque étape garde sa date prévue ; celles déjà passées partiront dans les
+                      prochaines minutes.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleConfirmedAction}>Reprendre</AlertDialogAction>
+                  </AlertDialogFooter>
+                </>
+              );
+            }
+
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Retirer {name} de la mission ?</AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-3">
+                      <p>{name} ne fera plus partie de cette mission.</p>
+                      {active.length > 0 && (
+                        <>
+                          <p>
+                            {name} reçoit encore {active.length > 1
+                              ? `${active.length} séquences (${active.map(e => `« ${e.sequence_name} »`).join(', ')})`
+                              : `la séquence « ${active[0].sequence_name} »`}.
+                            {' '}{keepSequenceRunning
+                              ? (active.length > 1 ? 'Elles continueront.' : 'Elle continuera.')
+                              : (active.length > 1 ? 'Elles seront mises en pause.' : 'Elle sera mise en pause.')}
+                          </p>
+                          <label className="flex items-center gap-2 text-foreground cursor-pointer">
+                            <Checkbox
+                              checked={keepSequenceRunning}
+                              onCheckedChange={(checked) => setKeepSequenceRunning(checked === true)}
+                            />
+                            Laisser la séquence continuer
+                          </label>
+                        </>
+                      )}
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleConfirmedAction}>
+                    Retirer
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
         </AlertDialogContent>
       </AlertDialog>
     </div>

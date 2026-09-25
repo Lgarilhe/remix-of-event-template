@@ -4,11 +4,19 @@
 -- Inbox Rotation, Auto-pause, Pre-send Reply Check, Force Reschedule
 --
 -- ~20 scénarios supplémentaires qui complètent la partie 1
+--
+-- ⚠️ RÉSERVÉ À UNE BASE LOCALE (supabase start). Jamais en production ni en
+-- recette partagée : le script crée des séquences et des inscriptions ACTIVES
+-- dans l'organisation choisie, que le moteur traite ensuite (crédits IA de
+-- cette organisation consommés).
+-- Renseigner v_org_id (organisation de test de la base locale) en tête du bloc
+-- DO : sans elle, le script s'arrête sans rien écrire. Le nettoyage ne touche
+-- que cette organisation.
 -- ============================================================================
 
 DO $$
 DECLARE
-  v_org_id uuid;
+  v_org_id uuid := NULL;  -- ⚠️ À RENSEIGNER : organisation de test de la base locale
   v_user_id uuid;
   v_seq uuid;
   v_step uuid;
@@ -24,22 +32,29 @@ DECLARE
   v_exec uuid;
   v_tracking_id text;
 BEGIN
-  SELECT id INTO v_org_id FROM organizations LIMIT 1;
+  -- Organisation explicite (jamais « la première venue »)
+  IF v_org_id IS NULL THEN
+    RAISE EXCEPTION 'Renseignez v_org_id (organisation de test d''une base locale) en tête du script';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = v_org_id) THEN
+    RAISE EXCEPTION 'Organisation % introuvable dans cette base', v_org_id;
+  END IF;
   SELECT user_id INTO v_user_id FROM organization_members WHERE organization_id = v_org_id LIMIT 1;
 
-  -- Cleanup previous part 2 tests
+  -- Cleanup previous part 2 tests (cette organisation seulement)
   DELETE FROM sequence_email_tracking WHERE execution_id IN (
     SELECT x.id FROM sequence_step_executions x
-    JOIN sequence_enrollments e ON x.enrollment_id = e.id WHERE e.profile_name LIKE 'T2_%'
+    JOIN sequence_enrollments e ON x.enrollment_id = e.id
+    WHERE e.profile_name LIKE 'T2_%' AND e.organization_id = v_org_id
   );
   DELETE FROM sequence_step_executions WHERE enrollment_id IN (
-    SELECT id FROM sequence_enrollments WHERE profile_name LIKE 'T2_%'
+    SELECT id FROM sequence_enrollments WHERE profile_name LIKE 'T2_%' AND organization_id = v_org_id
   );
-  DELETE FROM sequence_enrollments WHERE profile_name LIKE 'T2_%';
+  DELETE FROM sequence_enrollments WHERE profile_name LIKE 'T2_%' AND organization_id = v_org_id;
   DELETE FROM sequence_steps WHERE sequence_id IN (
-    SELECT id FROM outreach_sequences WHERE name LIKE '[T2-%'
+    SELECT id FROM outreach_sequences WHERE name LIKE '[T2-%' AND organization_id = v_org_id
   );
-  DELETE FROM outreach_sequences WHERE name LIKE '[T2-%';
+  DELETE FROM outreach_sequences WHERE name LIKE '[T2-%' AND organization_id = v_org_id;
 
   RAISE NOTICE '=== TEST COMPLET PARTIE 2 ===';
 

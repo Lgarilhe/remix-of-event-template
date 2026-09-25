@@ -14,7 +14,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import type { SequenceStepPreview, StepConfigOverride } from '@/hooks/useEnrollmentPreview';
+import { hasBranching, type SequenceStepPreview, type StepConfigOverride } from '@/hooks/useEnrollmentPreview';
 import {
   Mail, MessageSquare, Eye, Clock, GitBranch,
   ArrowDown, CheckCheck, XCircle, Pencil, RotateCcw,
@@ -61,9 +61,9 @@ const ACTION_ICONS: Record<string, LucideIcon> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  email: 'Email',
+  email: 'E-mail',
   message: 'Message LinkedIn',
-  smart_message: 'Smart Message',
+  smart_message: 'Message IA',
   inmail: 'InMail',
   connection_request: 'Invitation LinkedIn',
   whatsapp_message: 'WhatsApp',
@@ -222,7 +222,19 @@ export function SequenceTreeView({ steps, renderStep, getStepConfig, setStepConf
     }
   }
 
-  return <div className="space-y-2">{items}</div>;
+  return (
+    <div className="space-y-2">
+      {hasBranching(sortedSteps) && (
+        <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 px-3 py-2 text-[12px] text-foreground" role="note">
+          <GitBranch className="w-3.5 h-3.5 mt-0.5 shrink-0 text-info" aria-hidden="true" />
+          <span>
+            Cette séquence contient des embranchements. L'aperçu les montre à la suite, un seul chemin sera suivi pour chaque candidat.
+          </span>
+        </div>
+      )}
+      {items}
+    </div>
+  );
 }
 
 // ─── ActionCard (rendu d'un step action — message, visite, invitation) ──
@@ -518,7 +530,7 @@ function SimpleConnector({
                   ? 'bg-brand-purple/10 text-brand-purple border-brand-purple/30 font-semibold'
                   : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted hover:border-border hover:text-foreground'
               )}
-              title={isOverridden ? `Délai modifié pour cette inscription (défaut : ${formatDelay(delayDays ?? 0, delayHours ?? 0)})` : 'Modifier le délai pour cette inscription'}
+              title={isOverridden ? `Délai modifié pour tous les candidats de cette inscription (séquence : ${formatDelay(delayDays ?? 0, delayHours ?? 0)})` : 'Modifier le délai pour tous les candidats de cette inscription'}
             >
               {formatDelay(effDays, effHours)}
               <Pencil className="w-2.5 h-2.5 opacity-60" />
@@ -579,7 +591,7 @@ function InitialDelayChip({
         defaultHours={delayHours ?? 0}
         isOverridden={isOverridden}
         onChange={onChange}
-        title="Délai avant le premier step"
+        title="Délai avant la première étape"
       >
         <button
           type="button"
@@ -656,10 +668,10 @@ function DelayEditor({
       >
         <div>
           <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-1">
-            {title || 'Délai avant ce step'}
+            {title || 'Délai avant cette étape'}
           </p>
           <p className="text-2xs text-muted-foreground leading-snug">
-            Modifie le délai pour <span className="font-semibold text-foreground">cette inscription uniquement</span>. Le template de la séquence n'est pas modifié.
+            Modifie le délai pour <span className="font-semibold text-foreground">tous les candidats de cette inscription</span>. La séquence elle-même n'est pas modifiée.
           </p>
         </div>
 
@@ -704,7 +716,7 @@ function DelayEditor({
               type="button"
               onClick={handleReset}
               className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
-              title="Revenir au délai du template"
+              title="Revenir au délai de la séquence"
             >
               <RotateCcw className="w-3 h-3" />
               Réinitialiser
@@ -748,7 +760,7 @@ function TimeoutEditor({
     return (
       <p className="text-3xs text-warning inline-flex items-center gap-1">
         <Clock className="w-2.5 h-2.5" />
-        Timeout après {effTimeout} jour{effTimeout > 1 ? 's' : ''}
+        Attendre au plus {effTimeout} jour{effTimeout > 1 ? 's' : ''}
       </p>
     );
   }
@@ -769,10 +781,10 @@ function TimeoutEditor({
             ? 'bg-brand-purple/10 text-brand-purple border-brand-purple/30 font-semibold'
             : 'bg-warning/10 text-warning border-warning/30 hover:bg-warning/15'
         )}
-        title={isOverridden ? `Timeout modifié (défaut : ${timeoutDays}j)` : 'Modifier le timeout'}
+        title={isOverridden ? `Attente modifiée pour tous les candidats de cette inscription (séquence : ${timeoutDays} j)` : 'Modifier l\'attente maximale'}
       >
         <Clock className="w-2.5 h-2.5" />
-        Timeout : {effTimeout} jour{effTimeout > 1 ? 's' : ''}
+        Attendre au plus {effTimeout} jour{effTimeout > 1 ? 's' : ''}
         <Pencil className="w-2.5 h-2.5 opacity-60" />
       </button>
     </TimeoutEditorPopover>
@@ -823,10 +835,10 @@ function TimeoutEditorPopover({
       >
         <div>
           <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground mb-1">
-            Timeout
+            Attendre au plus
           </p>
           <p className="text-2xs text-muted-foreground leading-snug">
-            Nombre de jours d'attente avant de basculer sur la branche alternative (ex : InMail si l'invitation n'est pas acceptée).
+            Nombre de jours d'attente avant de passer à l'autre chemin (ex : InMail si l'invitation n'est pas acceptée), pour tous les candidats de cette inscription.
           </p>
         </div>
 
@@ -893,8 +905,8 @@ function getBranches(actionType: string): {
       return {
         main: { label: 'si accepté' },
         alt: {
-          label: 'si timeout',
-          placeholder: 'Si le candidat n\'accepte pas, la séquence passe à l\'InMail de fallback.',
+          label: 'si rien ne se passe',
+          placeholder: 'Si le candidat n\'accepte pas, la séquence passe à l\'InMail de repli.',
           tone: 'warning',
         },
       };
@@ -921,7 +933,7 @@ function getBranches(actionType: string): {
         main: { label: 'connecté' },
         alt: {
           label: 'pas connecté',
-          placeholder: 'Si pas connecté, le step suivant est skippé ou l\'InMail est utilisé.',
+          placeholder: 'Sinon, l\'étape suivante est sautée ou l\'InMail de repli est utilisé.',
           tone: 'info',
         },
       };
@@ -930,7 +942,7 @@ function getBranches(actionType: string): {
         main: { label: 'oui' },
         alt: {
           label: 'non',
-          placeholder: 'Branche alternative non définie dans cette séquence.',
+          placeholder: 'L\'autre chemin de la condition est montré à la suite ; un seul chemin sera suivi pour chaque candidat.',
           tone: 'muted',
         },
       };

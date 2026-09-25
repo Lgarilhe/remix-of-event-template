@@ -22,6 +22,19 @@ export interface ActivityEvent {
   callUserName?: string | null;
 }
 
+/**
+ * Nom utilisable pour rapprocher une conversation d'une inscription : un nom
+ * complet (deux mots au moins), jamais un intitulé générique de repli de la
+ * messagerie (« Conversation », « Conversation du … »). null sinon.
+ */
+export function usableProfileName(name: string | null | undefined): string | null {
+  const trimmed = (name ?? '').replace(/\s+/g, ' ').trim();
+  if (!trimmed) return null;
+  if (/^conversation(\s+du\s.*)?$/i.test(trimmed)) return null;
+  if (trimmed.split(' ').filter(part => part.length >= 2).length < 2) return null;
+  return trimmed;
+}
+
 export function useProfileActivity(profileId: string | null, profileUrl?: string | null, profileName?: string | null) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,13 +70,18 @@ export function useProfileActivity(profileId: string | null, profileUrl?: string
           enrollments = data || [];
         }
 
-        if (!enrollments.length && profileName?.trim()) {
-          const profileNameLike = `%${profileName.trim()}%`;
+        // Dernier repli, par le nom : égalité exacte, et seulement s'il désigne
+        // une seule personne. L'ancienne inclusion partielle (« Paul Martin »
+        // dans « Jean-Paul Martinez ») affichait l'historique d'un autre candidat.
+        const exactName = usableProfileName(profileName);
+        if (!enrollments.length && exactName) {
           const { data } = await supabase
             .from('sequence_enrollments')
-            .select('id, sequence_id')
-            .ilike('profile_name', profileNameLike);
-          enrollments = data || [];
+            .select('id, sequence_id, profile_id')
+            .eq('profile_name', exactName);
+          const rows = data || [];
+          const people = new Set(rows.map(r => r.profile_id || `id:${r.id}`));
+          enrollments = people.size === 1 ? rows : [];
         }
 
         let mapped: ActivityEvent[] = [];

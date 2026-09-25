@@ -12,6 +12,9 @@
  * | Écrivain                                          | type                  | Titre                                | Lien                      | metadata.source       | Classe  |
  * |---------------------------------------------------|-----------------------|--------------------------------------|---------------------------|-----------------------|---------|
  * | unipile-webhook (message reçu)                    | new_message           | Nouveau message de …                 | /inbox?chatId=… ou /inbox | —                     | message |
+ * | unipile-webhook (réponse par e-mail, sans chat_id)| new_message           | Nouveau message de …                 | /missions/…?tab=outreach  | —                     | message |
+ * | unipile-webhook (rebond d'e-mail)                 | action                | Adresse e-mail invalide, séquence arrêtée | /missions/…?tab=outreach | email_bounce     | action  |
+ * | calendly-webhook (RDV pris)                       | action                | RDV pris, séquence arrêtée           | /qualification/… ou /missions | calendly          | action  |
  * | unipile-webhook (compte déconnecté ou en erreur)  | linkedin_disconnected | Compte LinkedIn déconnecté           | /settings?tab=account     | —                     | action  |
  * | unipile-webhook (rattachement du compte échoué)   | error                 | Compte LinkedIn non rattaché         | /settings?tab=account     | —                     | action  |
  * | CandidateCommentsTab (mention)                    | mention               | … vous a mentionné                   | /pipeline?candidate=…     | —                     | action  |
@@ -47,8 +50,12 @@ export interface ClassifiableNotification {
 }
 
 // Types qui demandent une action quel que soit l'écrivain : mention, compte
-// LinkedIn à reconnecter, erreur (fin d'essai, rattachement échoué, tâche interrompue).
-const ACTION_TYPES = new Set(['mention', 'linkedin_disconnected', 'error']);
+// LinkedIn à reconnecter, erreur (fin d'essai, rattachement échoué, tâche
+// interrompue), et 'action' : séquence arrêtée par un événement extérieur
+// (rebond d'e-mail, rendez-vous pris), à vérifier par le recruteur.
+// Une réponse par e-mail reste un new_message : groupReplies la regroupe sur
+// l'id de la notification quand metadata.chat_id manque (sidebarSignals.ts).
+const ACTION_TYPES = new Set(['mention', 'linkedin_disconnected', 'error', 'action']);
 
 const metadataSource = (metadata: unknown): string | null => {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;

@@ -31,6 +31,7 @@ const myAccount = read('src/components/settings/MyLinkedInAccount.tsx');
 const context = read('src/contexts/LinkedInAccountsContext.tsx');
 const memberHook = read('src/hooks/useMemberLinkedInAccounts.ts');
 const accountsFn = read('supabase/functions/unipile-accounts/index.ts');
+const sendingStop = read('supabase/functions/_shared/linkedin-sending-stop.ts');
 
 /** Bloc d'un case du switch de unipile-accounts, jusqu'au case de même niveau suivant. */
 const caseBlock = (name) => {
@@ -329,11 +330,17 @@ test('R12 — unlink_linkedin_account : liaison vérifiée, envois arrêtés, se
   assert.match(block, /assertCanManageAccount\(/);
   assert.match(block, /expected_account_id/);
   assert.match(block, /row\.linkedin_account_id !== expectedAccountId/);
-  assert.match(block, /pause_reason: 'manual'/);
-  assert.match(block, /'account_disconnected'/, 'les pauses automatiques doivent passer en pause manuelle');
-  assert.match(block, /'waiting_event'/);
-  assert.match(block, /from\('inmail_queue'\)/);
-  assert.match(block, /slice\(i, i \+ 100\)/);
+  // Arrêt des envois extrait dans _shared/linkedin-sending-stop.ts (audit
+  // séquences 2026-09-25, SEQ-041/042), partagé avec le changement de compte
+  // et le retrait d'un membre ; appelé avant la suppression de la liaison.
+  assert.match(block, /stopLinkedInAccountSending\(adminClient/);
+  assert.ok(block.indexOf('stopLinkedInAccountSending(') < block.indexOf('.delete()'));
+  assert.match(sendingStop, /pause_reason: 'manual'/);
+  assert.match(sendingStop, /'account_disconnected'/, 'les pauses automatiques doivent passer en pause manuelle');
+  assert.match(sendingStop, /from\('inmail_queue'\)/);
+  // Contrat des lots (sémantique de la pause) : une mise en pause ne touche
+  // plus aux exécutions en attente ; la reprise serveur les garde à leur date.
+  assert.doesNotMatch(sendingStop, /sequence_step_executions/);
   assert.match(block, /\.delete\(\)[\s\S]*?\.select\('id'\)/);
   // D7 : jamais de fermeture de session chez le prestataire
   assert.doesNotMatch(block, /close_session/);

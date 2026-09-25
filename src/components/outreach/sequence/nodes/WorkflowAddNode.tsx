@@ -21,13 +21,20 @@ export const WorkflowAddNode = memo(({ data }: NodeProps) => {
     <>
       <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-transparent !border-transparent" />
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); onClick(); }}
+        aria-label={variant === 'true'
+          ? 'Ajouter une étape dans la branche Si connecté'
+          : variant === 'false'
+            ? 'Ajouter une étape dans la branche Si non connecté'
+            : 'Ajouter une étape'}
+        title="Ajouter une étape"
         className={cn(
           "w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center transition-all duration-200 hover:scale-110 hover:shadow-md",
           variantStyles,
         )}
       >
-        <Plus className="w-4 h-4" />
+        <Plus className="w-4 h-4" aria-hidden="true" />
       </button>
     </>
   );

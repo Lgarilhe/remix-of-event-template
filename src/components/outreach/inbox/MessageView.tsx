@@ -48,6 +48,7 @@ import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { enrollmentStatusLabel } from '@/lib/sequenceLabels';
 import { Chat, Message, SequenceEnrollmentInfo, JobData, ActiveMissionLite } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 import {
@@ -98,6 +99,8 @@ interface MessageViewProps {
   onClearSuggestions: () => void;
   onAddToPipeline: (jobId?: string, jobTitle?: string) => void;
   onEnrollInSequence: () => void;
+  /** Recharge les inscriptions de la messagerie (badges, liste) après une mise en pause. */
+  onEnrollmentsChanged?: () => void;
   onScheduleCall: () => void;
   calendlyLink?: string | null;
   onAddReaction?: (messageId: string, reaction: string) => Promise<boolean>;
@@ -125,6 +128,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onSuggestionClick,
   onSuggestionSend,
   onAddToPipeline,
+  onEnrollmentsChanged,
   onScheduleCall,
   calendlyLink,
   onAddReaction,
@@ -372,21 +376,53 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [summary, setSummary] = useState<SummarizeResult | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
 
-  // Stop séquence depuis l'inbox : workflow naturel quand on prend la
+  // Mise en pause depuis la messagerie : workflow naturel quand on prend la
   // conversation à la main et qu'on veut éviter les relances auto qui
-  // partent encore. Lookup l'enrollment actif via profile_id (pas dans
-  // SequenceEnrollmentInfo qui ne porte pas l'ID), update status='paused'
-  // + cancel les executions schedulées.
+  // partent encore. Les inscriptions actives du candidat sont lues à
+  // l'ouverture de la conversation (pas dans la carte des 500 dernières
+  // inscriptions, ni déduites du statut d'une mission).
   const [stopSeqConfirm, setStopSeqConfirm] = useState(false);
   const [stoppingSeq, setStoppingSeq] = useState(false);
   const [seqStoppedLocal, setSeqStoppedLocal] = useState(false);
+  const [activeEnrollments, setActiveEnrollments] = useState<Array<{ id: string; current_step_order: number | null }>>([]);
+  const [activeEnrollmentsKey, setActiveEnrollmentsKey] = useState(0);
 
-  // Reset le flag local quand on change de chat (sinon on garde "stoppé"
+  // Reset le flag local quand on change de chat (sinon on garde « en pause »
   // affiché en allant sur un autre candidat actif)
   useEffect(() => {
     setSeqStoppedLocal(false);
   }, [selectedChat?.id]);
 
+  const chatProfileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
+  useEffect(() => {
+    if (!chatProfileId) {
+      setActiveEnrollments([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('sequence_enrollments')
+        .select('id, current_step_order')
+        .eq('profile_id', chatProfileId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        // Lecture impossible : pas de bouton (on n'invente pas d'inscription).
+        console.warn('[MessageView] active enrollments lookup failed:', error);
+        setActiveEnrollments([]);
+        return;
+      }
+      setActiveEnrollments(data ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [chatProfileId, activeEnrollmentsKey]);
+  const hasActiveEnrollment = activeEnrollments.length > 0 && !seqStoppedLocal;
+
+  // Mise en pause (contrat de pause) : seules les inscriptions changent de
+  // statut ; les étapes programmées gardent leur date et le moteur les ignore
+  // tant que l'inscription n'est pas reprise.
   const handleStopSequence = async () => {
     if (!selectedChat) return;
     const profileId = getAttendeeProfileId(selectedChat);
@@ -405,27 +441,40 @@ export const MessageView: React.FC<MessageViewProps> = ({
       if (fetchErr) throw fetchErr;
       const ids = (active || []).map(e => e.id);
       if (ids.length === 0) {
-        toast.info('Aucune séquence active pour ce candidat');
-        setStopSeqConfirm(false);
+        toast.info('Aucune séquence en cours pour ce candidat');
+        setActiveEnrollmentsKey(k => k + 1);
         return;
       }
-      // Pause toutes les inscriptions actives (cas rare où il y en aurait plusieurs)
-      const { error: pauseErr } = await supabase
+      // Toutes les inscriptions actives (cas rare où il y en aurait plusieurs),
+      // relues pour détecter un refus silencieux (0 ligne).
+      const { data: paused, error: pauseErr } = await supabase
         .from('sequence_enrollments')
         .update({ status: 'paused', pause_reason: 'manual' })
-        .in('id', ids);
+        .in('id', ids)
+        .eq('status', 'active')
+        .select('id');
       if (pauseErr) throw pauseErr;
-      // Cancel les executions schedulées
-      await supabase
-        .from('sequence_step_executions')
-        .update({ status: 'cancelled', skip_reason: 'Stoppé depuis Inbox' })
-        .in('enrollment_id', ids)
-        .eq('status', 'scheduled');
+      const pausedCount = paused?.length ?? 0;
+      if (pausedCount === 0) {
+        toast.error('Mise en pause impossible', { description: "La séquence n'a pas été mise en pause. Réessayez." });
+        return;
+      }
       setSeqStoppedLocal(true);
-      toast.success(ids.length > 1 ? `${ids.length} séquences arrêtées` : 'Séquence arrêtée');
+      setActiveEnrollmentsKey(k => k + 1);
+      onEnrollmentsChanged?.();
+      const name = getChatDisplayName(selectedChat) || 'Le candidat';
+      if (pausedCount < ids.length) {
+        toast.warning(`${pausedCount} séquence${pausedCount > 1 ? 's' : ''} sur ${ids.length} mise${pausedCount > 1 ? 's' : ''} en pause`, {
+          description: 'Les autres n’ont pas pu être mises en pause. Réessayez.',
+        });
+      } else {
+        toast.success(`${name} est en pause`, {
+          description: 'Aucune relance ne partira tant que vous ne reprenez pas la séquence.',
+        });
+      }
     } catch (err) {
-      console.error('[MessageView] stopSequence error:', err);
-      toast.error("Erreur lors de l'arrêt");
+      console.error('[MessageView] pause sequence error:', err);
+      toast.error('Mise en pause impossible', { description: 'Réessayez dans un instant.' });
     } finally {
       setStoppingSeq(false);
       setStopSeqConfirm(false);
@@ -701,12 +750,15 @@ export const MessageView: React.FC<MessageViewProps> = ({
               <h2 className="font-semibold text-foreground truncate text-[15px] tracking-tight">
                 {displayName}
               </h2>
-              {/* Badge statut séquence si enrollment actif/passé */}
-              {jobInfo && jobInfo.status && (
-                <SequenceStatusBadge status={jobInfo.status} repliedAt={jobInfo.replied_at} />
-              )}
+              {/* Badge statut séquence : inscription active lue à l'ouverture,
+                  sinon la dernière inscription connue du candidat. */}
+              {hasActiveEnrollment ? (
+                <SequenceStatusBadge status="active" repliedAt={null} />
+              ) : jobInfo && jobInfo.status ? (
+                <SequenceStatusBadge status={seqStoppedLocal ? 'paused' : jobInfo.status} repliedAt={jobInfo.replied_at} />
+              ) : null}
               {/* Si pas en séquence mais mission inférée → badge "Hors séquence" */}
-              {!jobInfo && inferredMission && (
+              {!jobInfo && !hasActiveEnrollment && inferredMission && (
                 <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-md border bg-muted/40 text-muted-foreground border-border whitespace-nowrap">
                   Hors séquence
                 </span>
@@ -718,41 +770,41 @@ export const MessageView: React.FC<MessageViewProps> = ({
               </p>
             )}
             {/* Bandeau contexte mission : poste + statut séquence + mode outreach + anonymisation */}
-            {displayContext && (
+            {(displayContext || hasActiveEnrollment) && (
               <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                {displayContext.title && (
+                {/* Mise en pause inline, visible seulement si une inscription
+                    ACTIVE du candidat a été lue en base (jamais d'après le
+                    statut d'une mission) : on prend la conversation à la main
+                    et les relances automatiques s'arrêtent. */}
+                {hasActiveEnrollment && (
+                  <button
+                    type="button"
+                    onClick={() => setStopSeqConfirm(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-warning bg-warning/10 border border-warning/30 px-2 py-0.5 rounded-md hover:bg-warning/20 transition-colors"
+                    title="Mettre la séquence en pause pour ce candidat : aucune relance ne partira tant que vous ne la reprenez pas"
+                  >
+                    <StopCircle className="w-3 h-3" aria-hidden="true" />
+                    Mettre en pause
+                  </button>
+                )}
+                {displayContext?.title && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground bg-foreground/8 border border-border px-2 py-0.5 rounded-md">
                     <Briefcase className="w-3 h-3 text-muted-foreground" />
                     {displayContext.title}
                   </span>
                 )}
-                {displayContext.stepOrder != null && displayContext.status === 'active' && !seqStoppedLocal && (
+                {hasActiveEnrollment && activeEnrollments[0]?.current_step_order != null && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-medium text-info bg-info/10 border border-info/30 px-2 py-0.5 rounded-md">
-                    Étape {(displayContext.stepOrder ?? 0) + 1}
+                    Étape {(activeEnrollments[0].current_step_order ?? 0) + 1}
                   </span>
-                )}
-                {/* Bouton Stop séquence inline — visible uniquement si une
-                    séquence est ACTIVE pour ce candidat. UX : workflow
-                    naturel quand l'user veut prendre la conv à la main et
-                    couper les relances auto qui partent encore. */}
-                {displayContext.status === 'active' && !seqStoppedLocal && (
-                  <button
-                    type="button"
-                    onClick={() => setStopSeqConfirm(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive bg-destructive/8 border border-destructive/30 px-2 py-0.5 rounded-md hover:bg-destructive/15 transition-colors"
-                    title="Arrêter la séquence — annule toutes les relances programmées pour ce candidat"
-                  >
-                    <StopCircle className="w-3 h-3" />
-                    Arrêter
-                  </button>
                 )}
                 {seqStoppedLocal && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded-md">
                     <StopCircle className="w-3 h-3" />
-                    Séquence stoppée
+                    Séquence en pause
                   </span>
                 )}
-                {displayContext.outreachConfig?.recruitment_mode && (
+                {displayContext?.outreachConfig?.recruitment_mode && (
                   <span
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/40 border border-border px-2 py-0.5 rounded-md"
                     title={displayContext.outreachConfig.recruitment_mode === 'internal'
@@ -762,7 +814,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     {displayContext.outreachConfig.recruitment_mode === 'internal' ? '🏢 Interne' : '🤝 Cabinet'}
                   </span>
                 )}
-                {displayContext.outreachConfig?.anonymize_client && (
+                {displayContext?.outreachConfig?.anonymize_client && (
                   <span
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-warning bg-warning/10 border border-warning/30 px-2 py-0.5 rounded-md"
                     title={`Le nom du client est masqué dans les réponses générées (alias : ${displayContext.outreachConfig.anonymized_alias || 'défaut'})`}
@@ -770,7 +822,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                     🕶 Anonyme
                   </span>
                 )}
-                {displayContext.clientName && !displayContext.outreachConfig?.anonymize_client && (
+                {displayContext?.clientName && !displayContext.outreachConfig?.anonymize_client && (
                   <span
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/30 border border-border px-2 py-0.5 rounded-md"
                     title="Client de la mission"
@@ -1313,20 +1365,24 @@ export const MessageView: React.FC<MessageViewProps> = ({
       <AlertDialog open={stopSeqConfirm} onOpenChange={(open) => !open && setStopSeqConfirm(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Arrêter la séquence ?</AlertDialogTitle>
+            <AlertDialogTitle>Mettre la séquence en pause ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Toutes les actions programmées pour ce candidat (relances, InMails, emails) seront annulées.
-              Tu pourras reprendre la séquence depuis l'écran de gestion outreach si besoin.
+              {(selectedChat && getChatDisplayName(selectedChat)) || 'Ce candidat'} ne recevra plus de messages de la séquence tant que vous ne la reprenez pas.
+              Vous pourrez la reprendre depuis le suivi de la séquence.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               disabled={stoppingSeq}
-              onClick={handleStopSequence}
+              onClick={(e) => {
+                // La fenêtre reste ouverte pendant l'écriture ; elle se ferme à la fin.
+                e.preventDefault();
+                void handleStopSequence();
+              }}
             >
               {stoppingSeq ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <StopCircle className="w-4 h-4 mr-2" />}
-              Arrêter la séquence
+              Mettre en pause
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1337,36 +1393,31 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
 /**
  * SequenceStatusBadge — petit badge coloré qui rend visible l'état de
- * l'enrollment du candidat dans la séquence outreach. Affiché dans le
- * header de la conversation à côté du nom.
- *
- * Statuts possibles :
- *  - active     : candidat en cours de séquence (étapes pas encore toutes envoyées)
- *  - replied    : a répondu (la séquence s'arrête automatiquement)
- *  - paused     : en pause (raison: crédits InMail = 0, profil bloqué 403, etc.)
- *  - completed  : toutes les étapes ont été exécutées
- *  - cancelled / stopped : interrompu manuellement
+ * l'inscription du candidat dans la séquence. Affiché dans l'en-tête de la
+ * conversation à côté du nom. Libellés partagés (src/lib/sequenceLabels.ts) :
+ * un statut inconnu s'affiche « Statut inconnu », jamais « En séquence ».
  */
+const SEQUENCE_STATUS_CLASSES: Record<string, string> = {
+  active: 'bg-info/10 text-info border-info/30',
+  replied: 'bg-success/10 text-success border-success/30',
+  paused: 'bg-warning/10 text-warning border-warning/30',
+  completed: 'bg-muted/40 text-muted-foreground border-border',
+  cancelled: 'bg-muted/40 text-muted-foreground border-border',
+  bounced: 'bg-destructive/10 text-destructive border-destructive/30',
+  stopped: 'bg-destructive/10 text-destructive border-destructive/30',
+};
+
 const SequenceStatusBadge: React.FC<{ status: string; repliedAt: string | null }> = ({ status, repliedAt }) => {
   // Si répondu, override le statut pour l'affichage (même si le DB dit "active")
   const effectiveStatus = repliedAt ? 'replied' : status;
-  const config: Record<string, { label: string; className: string }> = {
-    active: { label: 'En séquence', className: 'bg-info/10 text-info border-info/30' },
-    replied: { label: '✓ A répondu', className: 'bg-success/10 text-success border-success/30' },
-    paused: { label: '⏸ En pause', className: 'bg-warning/10 text-warning border-warning/30' },
-    completed: { label: 'Terminé', className: 'bg-muted/40 text-muted-foreground border-border' },
-    cancelled: { label: 'Annulé', className: 'bg-destructive/10 text-destructive border-destructive/30' },
-    stopped: { label: 'Stoppé', className: 'bg-destructive/10 text-destructive border-destructive/30' },
-  };
-  const cfg = config[effectiveStatus] || config.active;
   return (
     <span
       className={cn(
         'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-md border whitespace-nowrap',
-        cfg.className,
+        SEQUENCE_STATUS_CLASSES[effectiveStatus] ?? 'bg-muted/40 text-muted-foreground border-border',
       )}
     >
-      {cfg.label}
+      {enrollmentStatusLabel(effectiveStatus)}
     </span>
   );
 };

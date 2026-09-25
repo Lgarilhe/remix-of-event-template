@@ -6,10 +6,21 @@
  * Handles: variable resolution, AI personalization, tracking pixel/link injection,
  * and sending via the organisation's connected email account.
  */
-import { createClient } from "npm:@supabase/supabase-js@2.75.1";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
 import { interpolatePlaceholders, buildSequenceContext } from "../_shared/template-interpolation.ts";
 import { loadAiContextForEnrollment } from "../_shared/ai-context.ts";
+import {
+  decodeHrefUrl,
+  enrollmentSendDecision,
+  linkSigningSecret,
+  pickMailbox,
+  providerMessageId,
+  recipientList,
+  resolveEmailSender,
+  sentProofValue,
+  signTrackedUrl,
+} from "../_shared/sequence-email-policy.mjs";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -25,10 +36,28 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+// Clé de signature des liens suivis : secret dédié EMAIL_LINK_SIGNING_SECRET,
+// repli sur la clé de service (ancien comportement). sequence-email-track
+// accepte aussi la clé précédente, une rotation ne casse donc pas les liens
+// déjà envoyés.
+const LINK_SIGNING_SECRET = linkSigningSecret((key) => Deno.env.get(key));
 // Note : UNIPILE_API_KEY/UNIPILE_DSN ne sont plus utilisés en globals.
 // On résout les creds par organization via resolveUnipileCredentials() pour
 // supporter le multi-tenant proprement (chaque org peut avoir son propre
 // compte Unipile via organization_integrations).
+
+// Textes lus par le recruteur dans l'historique de la séquence (jamais de nom de fournisseur).
+const SENDER_NOT_IN_ORG_REASON = "Compte d'envoi non rattaché à l'organisation";
+const NO_SENDER_MAILBOX_MESSAGE = "Aucune boîte e-mail n'est reliée pour l'expéditeur : reliez-la dans Paramètres, Connexions.";
+const SUPPRESSED_SKIP_REASON = 'Adresse bloquée pour les envois e-mail';
+const UNCERTAIN_SEND_MESSAGE = "Envoi incertain : vérifiez le dossier Envoyés de la boîte d'envoi avant de relancer.";
+
+function json(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
 
 // ============ HELPERS ============
 
@@ -80,27 +109,22 @@ async function getOrCreateUnsubscribeToken(supabase: any, email: string): Promis
 // le endpoint public sequence-email-track ne redirige vers l'url demandée que
 // si sig = HMAC-SHA256(tid + '|' + url) est valide — sinon un phisher pourrait
 // utiliser notre domaine comme tremplin vers n'importe quel site.
-async function signTrackedUrl(trackingId: string, url: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(SUPABASE_SERVICE_ROLE_KEY),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-  );
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${trackingId}|${url}`));
-  return Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
-}
-
+// signTrackedUrl vit dans _shared/sequence-email-policy.mjs (même calcul des
+// deux côtés).
 async function wrapLinksForTracking(html: string, trackingId: string, baseUrl: string): Promise<string> {
   const linkRegex = /(<a\s[^>]*href=")([^"]+)("[^>]*>)/gi;
   const shouldSkip = (url: string) =>
     url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#') || url.includes('/unsubscribe?token=');
 
   // Passe 1 : collecter les urls à tracker et pré-calculer leur signature
-  // (String.replace ne supporte pas les callbacks async).
+  // (String.replace ne supporte pas les callbacks async). L'attribut href est
+  // du HTML : `&amp;` y désigne `&`. On signe et on redirige vers l'URL réelle,
+  // sinon le site cible reçoit un paramètre `amp;b` au lieu de `b`.
   const sigs = new Map<string, string>();
   for (const m of html.matchAll(linkRegex)) {
-    const url = m[2];
-    if (!shouldSkip(url) && !sigs.has(url)) {
-      sigs.set(url, await signTrackedUrl(trackingId, url));
+    const target = decodeHrefUrl(m[2]);
+    if (!shouldSkip(target) && !sigs.has(target)) {
+      sigs.set(target, await signTrackedUrl(LINK_SIGNING_SECRET, trackingId, target));
     }
   }
 
@@ -109,9 +133,10 @@ async function wrapLinksForTracking(html: string, trackingId: string, baseUrl: s
     // Don't track mailto: / tel: / anchor links, nor the unsubscribe link
     // (le réécrire en redirect de tracking compterait une désinscription
     // comme un clic et casserait la sémantique du lien opt-out).
-    if (shouldSkip(url)) return match;
-    const sig = sigs.get(url) || '';
-    const trackUrl = `${baseUrl}/functions/v1/sequence-email-track?tid=${trackingId}&evt=click&url=${encodeURIComponent(url)}&sig=${sig}`;
+    const target = decodeHrefUrl(url);
+    if (shouldSkip(target)) return match;
+    const sig = sigs.get(target) || '';
+    const trackUrl = `${baseUrl}/functions/v1/sequence-email-track?tid=${trackingId}&evt=click&url=${encodeURIComponent(target)}&sig=${sig}`;
     return `${prefix}${trackUrl}${suffix}`;
   });
 }
@@ -141,6 +166,7 @@ async function generateAiSnippet(
   enrollment: Record<string, unknown>,
   step: Record<string, unknown>,
   orgId: string | null,
+  senderUserId: string | null,
 ): Promise<string | null> {
   if (!ANTHROPIC_API_KEY) {
     console.warn('[sequence-send-email] No ANTHROPIC_API_KEY, skipping AI personalization');
@@ -212,8 +238,9 @@ async function generateAiSnippet(
       anthropicModel = gam(modelId);
     } catch { /* use defaults */ }
 
-    // Load AI context (Settings → Contexte IA) — user + org
-    const emailAiContext = await loadAiContextForEnrollment(supabase, enrollment, step as { sender_id?: string | null });
+    // Load AI context (Settings → Contexte IA) — user + org. Même expéditeur
+    // que le nom affiché et les variables : le titulaire de la boîte d'envoi.
+    const emailAiContext = await loadAiContextForEnrollment(supabase, enrollment, { sender_id: senderUserId });
 
     const { callAnthropicWithRetry: callWithRetry } = await import('../_shared/ai-config.ts');
     const result = await callWithRetry(ANTHROPIC_API_KEY!, {
@@ -271,30 +298,31 @@ async function sendViaUnipile(
   htmlBody: string,
   cc?: string[],
   bcc?: string[],
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<{ success: boolean; messageId?: string | null; error?: string }> {
   if (!unipileApiKey || !unipileDsn) {
     console.error('[sequence-send-email] Email provider not configured: missing API key or DSN for org');
     return { success: false, error: 'email_provider_not_configured' };
   }
 
+  const toRecipients = [{ display_name: '', identifier: to }];
+  const ccRecipients = (cc || []).filter(Boolean).map(e => ({ display_name: '', identifier: e }));
+  const bccRecipients = (bcc || []).filter(Boolean).map(e => ({ display_name: '', identifier: e }));
+
+  // Pas de suivi natif du fournisseur (tracking_options) : ses événements ne
+  // sont rattachés à rien, il doublait le pixel et chaque redirection de lien.
+  const payload: Record<string, unknown> = {
+    account_id: accountId,
+    subject,
+    body: htmlBody,
+    to: toRecipients,
+    ...(ccRecipients.length > 0 ? { cc: ccRecipients } : {}),
+    ...(bccRecipients.length > 0 ? { bcc: bccRecipients } : {}),
+    ...(senderName ? { from: { display_name: senderName } } : {}),
+  };
+
+  let res: Response;
   try {
-    const toRecipients = [{ display_name: '', identifier: to }];
-    const ccRecipients = (cc || []).filter(Boolean).map(e => ({ display_name: '', identifier: e }));
-    const bccRecipients = (bcc || []).filter(Boolean).map(e => ({ display_name: '', identifier: e }));
-
-    const payload: Record<string, unknown> = {
-      account_id: accountId,
-      subject,
-      body: htmlBody,
-      to: toRecipients,
-      ...(ccRecipients.length > 0 ? { cc: ccRecipients } : {}),
-      ...(bccRecipients.length > 0 ? { bcc: bccRecipients } : {}),
-      ...(senderName ? { from: { display_name: senderName } } : {}),
-      // Enable Unipile's native email tracking (opens + clicks) in addition to our pixel
-      tracking_options: { opens: true, links: true },
-    };
-
-    const res = await fetchWithTimeout(`${unipileDsn}/api/v1/emails`, {
+    res = await fetchWithTimeout(`${unipileDsn}/api/v1/emails`, {
       method: 'POST',
       headers: {
         'X-API-KEY': unipileApiKey,
@@ -303,21 +331,84 @@ async function sendViaUnipile(
       },
       body: JSON.stringify(payload),
     });
-
-    if (res.ok) {
-      const data = await res.json();
-      const messageId = data.email_id || data.id || data.message_id || `unipile-${crypto.randomUUID().slice(0, 8)}`;
-      console.log(`[sequence-send-email] Unipile email sent: ${messageId}`);
-      return { success: true, messageId };
-    }
-
-    const errorBody = await res.text();
-    console.error(`[sequence-send-email] Email provider returned ${res.status}: ${errorBody}`);
-    return { success: false, error: `email_send_failed_${res.status}` };
   } catch (err) {
-    console.error(`[sequence-send-email] Email provider error:`, err);
-    return { success: false, error: 'email_send_failed' };
+    // Délai dépassé ou coupure réseau pendant le POST : l'e-mail a pu partir.
+    // Jamais de relance automatique (double envoi), vérification manuelle.
+    console.error(`[sequence-send-email] Email provider error (issue inconnue):`, err);
+    return { success: false, error: 'send_uncertain' };
   }
+
+  if (res.ok) {
+    // Envoi accepté : une réponse illisible ne doit pas le faire passer pour
+    // un échec. Identifiant réel du fournisseur, jamais un identifiant inventé.
+    const data = await res.json().catch(() => null);
+    const messageId = providerMessageId(data);
+    console.log(`[sequence-send-email] Unipile email sent: ${messageId ?? '(sans identifiant)'}`);
+    return { success: true, messageId };
+  }
+
+  const errorBody = await res.text().catch(() => '');
+  console.error(`[sequence-send-email] Email provider returned ${res.status}: ${errorBody}`);
+  // 5xx : le fournisseur a pu accepter l'e-mail avant d'échouer. Même règle
+  // que le délai dépassé : issue inconnue, pas de relance automatique.
+  if (res.status >= 500) return { success: false, error: 'send_uncertain' };
+  return { success: false, error: `email_send_failed_${res.status}` };
+}
+
+// ============ SENDING MAILBOX ============
+
+type SendingMailbox =
+  | { kind: 'ok'; mailboxId: string; senderUserId: string | null }
+  | { kind: 'not_in_org' }
+  | { kind: 'no_mailbox' }
+  | { kind: 'lookup_failed'; error: string };
+
+/**
+ * Boîte e-mail d'envoi, résolue dans l'organisation de l'inscription.
+ * Les identifiants candidats (étape, rotation, inscription) ne servent qu'à
+ * désigner l'expéditeur : un compte e-mail rattaché à l'organisation sert
+ * directement, un compte LinkedIn rattaché désigne son titulaire dont on prend
+ * la boîte. On n'envoie jamais depuis l'identifiant du compte LinkedIn, ni
+ * depuis un compte absent de l'organisation.
+ */
+async function resolveSendingMailbox(
+  supabase: SupabaseClient,
+  orgId: string | null,
+  candidates: unknown[],
+  fallbackUserId: string | null,
+): Promise<SendingMailbox> {
+  if (!orgId) return { kind: 'not_in_org' };
+  const ids = [...new Set(candidates.filter((v): v is string => typeof v === 'string' && v.trim() !== '').map((v) => v.trim()))];
+
+  let emailAccounts: Array<{ email_account_id: string; user_id: string | null }> = [];
+  let linkedinAccounts: Array<{ linkedin_account_id: string; user_id: string | null }> = [];
+  if (ids.length > 0) {
+    const [emailRes, linkedinRes] = await Promise.all([
+      supabase.from('member_email_accounts').select('email_account_id, user_id')
+        .eq('organization_id', orgId).in('email_account_id', ids),
+      supabase.from('member_linkedin_accounts').select('linkedin_account_id, user_id')
+        .eq('organization_id', orgId).in('linkedin_account_id', ids),
+    ]);
+    const lookupError = emailRes.error || linkedinRes.error;
+    if (lookupError) return { kind: 'lookup_failed', error: lookupError.message };
+    emailAccounts = (emailRes.data || []) as typeof emailAccounts;
+    linkedinAccounts = (linkedinRes.data || []) as typeof linkedinAccounts;
+  }
+
+  const decision = resolveEmailSender({ candidates: ids, emailAccounts, linkedinAccounts, fallbackUserId });
+  if (decision.kind === 'not_in_org') return { kind: 'not_in_org' };
+  if (decision.kind === 'mailbox') return { kind: 'ok', mailboxId: decision.mailboxId, senderUserId: decision.ownerUserId };
+  if (!decision.ownerUserId) return { kind: 'no_mailbox' };
+
+  const { data: ownerMailboxes, error: mailboxError } = await supabase
+    .from('member_email_accounts')
+    .select('email_account_id, account_status')
+    .eq('organization_id', orgId)
+    .eq('user_id', decision.ownerUserId);
+  if (mailboxError) return { kind: 'lookup_failed', error: mailboxError.message };
+  const mailboxId = pickMailbox((ownerMailboxes || []) as Array<{ email_account_id: string; account_status: string | null }>);
+  if (!mailboxId) return { kind: 'no_mailbox' };
+  return { kind: 'ok', mailboxId, senderUserId: decision.ownerUserId };
 }
 
 // ============ MAIN HANDLER ============
@@ -383,11 +474,69 @@ Deno.serve(async (req) => {
     // passé : renvoyer succès sans ré-envoyer.
     if (!['sending', 'scheduled'].includes(execution.status)) {
       console.warn(`[sequence-send-email] Execution ${execution_id} already in status '${execution.status}' — skipping duplicate send`);
-      return new Response(JSON.stringify({ success: true, skipped: 'already_processed', status: execution.status }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ success: true, skipped: 'already_processed', status: execution.status });
     }
+
+    // Preuve d'envoi (audit séquences 2026-09, SEQ-005) : une tentative
+    // précédente a pu envoyer l'e-mail sans réussir à écrire le statut 'sent'.
+    // Sa ligne de suivi porte alors un email_message_id non nul, écrit juste
+    // après l'acceptation par le fournisseur. La ligne de suivi seule ne prouve
+    // rien (elle est créée avant l'envoi) : seul l'identifiant compte.
+    {
+      const { data: proofRows, error: proofError } = await supabase
+        .from('sequence_email_tracking')
+        .select('email_message_id, created_at')
+        .eq('execution_id', execution_id)
+        .not('email_message_id', 'is', null)
+        .limit(1);
+      if (proofError) {
+        // Rien n'est envoyé tant qu'on ne sait pas si un envoi a déjà eu lieu.
+        console.error('[sequence-send-email] sent-proof check failed — aborting send', { error: proofError, execution_id });
+        return json({ success: false, error: 'sent_proof_check_failed' }, 500);
+      }
+      if (proofRows && proofRows.length > 0) {
+        const proof = proofRows[0];
+        const { error: markSentError } = await supabase.from('sequence_step_executions').update({
+          status: 'sent',
+          executed_at: proof.created_at || new Date().toISOString(),
+          error_message: null,
+          channel: 'email',
+        }).eq('id', execution_id).in('status', ['sending', 'scheduled']);
+        if (markSentError) {
+          console.error('[sequence-send-email] already sent, status not saved', { error: markSentError, execution_id });
+        }
+        console.warn(`[sequence-send-email] Execution ${execution_id} already sent (${proof.email_message_id}) — no second send`);
+        return json({ success: true, skipped: 'already_sent', message_id: proof.email_message_id });
+      }
+    }
+
+    // Statut de l'inscription (SEQ-200, contrat §1). En pause : l'étape n'est
+    // ni envoyée, ni annulée, elle retrouve son attente avec sa date. Clôturée :
+    // l'étape est annulée. success: false pour que le moteur n'avance pas
+    // l'inscription (le statut de l'exécution est déjà écrit ici).
+    const stopBeforeSend = async (decision: 'hold' | 'cancel', enrollmentStatus: unknown): Promise<Response> => {
+      if (decision === 'hold') {
+        const { error: holdError } = await supabase.from('sequence_step_executions')
+          .update({ status: 'scheduled' })
+          .eq('id', execution_id)
+          .eq('status', 'sending');
+        if (holdError) console.error('[sequence-send-email] Failed to put execution back on hold', { error: holdError, execution_id });
+        console.warn(`[sequence-send-email] Enrollment ${enrollment_id} paused — execution ${execution_id} kept for the resume`);
+        return json({ success: false, skipped: 'enrollment_paused', error: 'enrollment_paused' });
+      }
+      const { error: cancelError } = await supabase.from('sequence_step_executions').update({
+        status: 'cancelled',
+        // Même format que le contrôle de dernière minute du moteur, traduit à l'affichage.
+        skip_reason: `Enrollment became ${String(enrollmentStatus ?? 'deleted')} before send (email re-check)`,
+        executed_at: new Date().toISOString(),
+      }).eq('id', execution_id).in('status', ['sending', 'scheduled']);
+      if (cancelError) console.error('[sequence-send-email] Failed to cancel execution (enrollment closed)', { error: cancelError, execution_id });
+      console.warn(`[sequence-send-email] Enrollment ${enrollment_id} is '${String(enrollmentStatus)}' — execution ${execution_id} cancelled`);
+      return json({ success: false, skipped: 'enrollment_inactive', error: 'enrollment_inactive', enrollment_status: enrollmentStatus ?? null });
+    };
+
+    const initialDecision = enrollmentSendDecision(enrollment.status);
+    if (initialDecision !== 'send') return await stopBeforeSend(initialDecision, enrollment.status);
 
     // 2. Determine recipient email
     const recipientEmail = enrollment.email_used || null;
@@ -400,16 +549,10 @@ Deno.serve(async (req) => {
 
       if (noEmailUpdateError) {
         console.error('[sequence-send-email] Failed to update execution status (no_email)', { error: noEmailUpdateError, execution_id });
-        return new Response(JSON.stringify({ error: 'Failed to update execution status' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return json({ error: 'Failed to update execution status' }, 500);
       }
 
-      return new Response(JSON.stringify({ error: 'no_email' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'no_email' });
     }
 
     // 2b. Suppression list — re-vérifiée AU MOMENT de l'envoi (audit 2026-07,
@@ -426,46 +569,75 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (supErr) {
         console.warn('[sequence-send-email] suppression check failed (fail-open would risk opt-out violation) — aborting send:', supErr);
-        return new Response(JSON.stringify({ success: false, error: 'suppression_check_failed' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return json({ success: false, error: 'suppression_check_failed' }, 500);
       }
       if (suppressed) {
+        // La liste est commune à toutes les organisations : la raison
+        // (désinscription, rebond, plainte) n'est pas exposée dans l'historique.
         await supabase.from('sequence_step_executions').update({
           status: 'skipped',
-          skip_reason: `Adresse en liste de suppression (${suppressed.reason || 'opt-out'})`,
+          skip_reason: SUPPRESSED_SKIP_REASON,
           executed_at: new Date().toISOString(),
         }).eq('id', execution_id);
         console.warn(`[sequence-send-email] Recipient suppressed (${suppressed.reason}) — skipping send for execution ${execution_id}`);
-        return new Response(JSON.stringify({ success: true, skipped: 'suppressed' }), {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return json({ success: true, skipped: 'suppressed' });
       }
     }
 
-    // 3. Resolve sender display name (step.sender_id, else sequence creator).
-    // `profiles` is keyed by user_id and only carries display_name.
+    // 3. Organisation, boîte d'envoi et expéditeur (SEQ-010, SEQ-067, SEQ-100).
+    // L'organisation de référence est celle de l'inscription.
+    const orgId = (enrollment.organization_id || sequence?.organization_id || null) as string | null;
+    const mailbox = await resolveSendingMailbox(
+      supabase,
+      orgId,
+      [step.sender_id, enrollment.assigned_sender_id, enrollment.account_id],
+      (enrollment.created_by as string) || null,
+    );
+    if (mailbox.kind === 'lookup_failed') {
+      // Rien n'est parti : une nouvelle tentative est sans risque.
+      console.error('[sequence-send-email] Sending mailbox lookup failed', { error: mailbox.error, execution_id });
+      return json({ success: false, error: 'sender_lookup_failed' }, 500);
+    }
+    if (mailbox.kind === 'not_in_org') {
+      const { error: notInOrgError } = await supabase.from('sequence_step_executions').update({
+        status: 'cancelled',
+        skip_reason: SENDER_NOT_IN_ORG_REASON,
+        executed_at: new Date().toISOString(),
+        channel: 'email',
+      }).eq('id', execution_id).in('status', ['sending', 'scheduled']);
+      if (notInOrgError) console.error('[sequence-send-email] Failed to cancel execution (sender not in org)', { error: notInOrgError, execution_id });
+      console.error(`[sequence-send-email] Sender account of enrollment ${enrollment_id} is not attached to organization ${orgId} — no send`);
+      return json({ success: false, error: 'sender_account_not_in_org' });
+    }
+    if (mailbox.kind === 'no_mailbox') {
+      const { error: noMailboxError } = await supabase.from('sequence_step_executions').update({
+        status: 'failed',
+        error_message: NO_SENDER_MAILBOX_MESSAGE,
+        executed_at: new Date().toISOString(),
+        channel: 'email',
+      }).eq('id', execution_id).in('status', ['sending', 'scheduled']);
+      if (noMailboxError) console.error('[sequence-send-email] Failed to update execution status (no mailbox)', { error: noMailboxError, execution_id });
+      console.warn(`[sequence-send-email] No email account linked for the sender of enrollment ${enrollment_id}`);
+      return json({ success: false, error: 'no_sender_mailbox' });
+    }
+    const emailAccountId = mailbox.mailboxId;
+    // Expéditeur = titulaire de la boîte d'envoi, repli sur l'auteur de
+    // l'inscription (jamais le créateur de la séquence) : même règle pour le
+    // nom affiché, les variables {{mon_prenom}} et le contexte de l'IA.
+    const senderUserId = mailbox.senderUserId || (enrollment.created_by as string) || null;
+
     let senderName = '';
-    const senderId = step.sender_id || sequence?.created_by;
-    if (senderId) {
+    if (senderUserId) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('display_name')
-        .eq('user_id', senderId)
+        .eq('user_id', senderUserId)
         .maybeSingle();
       senderName = profile?.display_name || '';
     }
 
-    // org_id hoisted — needed both by AI snippet generator (line ~410) and
-    // resolveUnipileCredentials (line ~490). Was previously block-scoped inside
-    // the AI block, causing ReferenceError on the Unipile send path.
-    const orgId = (sequence?.organization_id || enrollment.organization_id || null) as string | null;
-
     // 4. Resolve variables in templates via unified interpolation
     // (30+ vars FR + EN aliases + custom user variables + pipe filters)
-    const senderUserId = (step.sender_id as string) || (sequence?.created_by as string) || null;
     const templateCtx = await buildSequenceContext(supabase, {
       enrollment,
       senderUserId,
@@ -490,7 +662,7 @@ Deno.serve(async (req) => {
     // 5. AI Personalization (only if NOT pre-personalized)
     let aiSnippet: string | null = null;
     if (!pre_personalized_message && step.use_ai_personalization) {
-      aiSnippet = await generateAiSnippet(supabase as any, enrollment, step, orgId);
+      aiSnippet = await generateAiSnippet(supabase as any, enrollment, step, orgId, senderUserId);
 
       if (aiSnippet) {
         // Insert at {ai_snippet} marker or prepend
@@ -507,33 +679,43 @@ Deno.serve(async (req) => {
       ? messageBody // Already HTML
       : textToHtml(messageBody);
 
-    // 6b. Add email signature if configured
-    if (step.signature_id) {
-      try {
-        const { data: sig } = await supabase.from('email_signatures').select('content').eq('id', step.signature_id).single();
-        if (sig?.content) {
-          htmlBody += `<br/><br/>${sig.content}`;
-        }
-      } catch { /* signature not found — skip silently */ }
+    // 6b. Add email signature if configured — seulement une signature de
+    // l'organisation de l'inscription (lecture par la clé de service).
+    let signatureContent: string | null = null;
+    if (step.signature_id && orgId) {
+      const { data: sig, error: sigError } = await supabase
+        .from('email_signatures')
+        .select('content')
+        .eq('id', step.signature_id)
+        .eq('organization_id', orgId)
+        .maybeSingle();
+      if (sigError) console.warn('[sequence-send-email] signature lookup failed — sending without it:', sigError);
+      signatureContent = sig?.content || null;
     }
-    // Also handle {{signature}} variable in the body (for manual insertion)
-    if (htmlBody.includes('{{signature}}') && step.signature_id) {
-      try {
-        const { data: sig } = await supabase.from('email_signatures').select('content').eq('id', step.signature_id).single();
-        if (sig?.content) {
-          htmlBody = htmlBody.replace(/\{\{signature\}\}/g, sig.content);
-        }
-      } catch { /* skip */ }
+    if (signatureContent) {
+      htmlBody += `<br/><br/>${signatureContent}`;
+      // Also handle {{signature}} variable in the body (for manual insertion)
+      if (htmlBody.includes('{{signature}}')) {
+        htmlBody = htmlBody.replace(/\{\{signature\}\}/g, signatureContent);
+      }
     }
     // Clean up any remaining {{signature}} if no signature configured
     htmlBody = htmlBody.replace(/\{\{signature\}\}/g, '');
+
+    // Copies (CC/BCC) : elles reçoivent le même corps que le candidat. Sans
+    // instrumentation dans ce cas : pas de pixel ni de liens suivis (une
+    // ouverture ou un clic d'une copie serait attribué au candidat), pas de
+    // pied de désinscription au jeton du candidat.
+    const cc = recipientList(step.cc_emails);
+    const bcc = recipientList(step.bcc_emails);
+    const hasCopies = cc.length > 0 || bcc.length > 0;
 
     // 7. Add unsubscribe footer if enabled
     // Le lien pointe vers la page /unsubscribe du front (GET valide le token,
     // POST désinscrit + ajoute à suppressed_emails). L'ancien lien
     // `handle-email-unsubscribe?email=...` renvoyait 400 (le handler attend un
     // `token`, pas un `email`) → le candidat ne pouvait JAMAIS se désinscrire.
-    if (step.include_unsubscribe) {
+    if (step.include_unsubscribe && !hasCopies) {
       const unsubToken = await getOrCreateUnsubscribeToken(supabase, recipientEmail);
       if (unsubToken) {
         const appUrl = (Deno.env.get('APP_URL') || 'https://konekt-app-navy.vercel.app').replace(/\/+$/, '');
@@ -547,40 +729,49 @@ Deno.serve(async (req) => {
     // 8. Email tracking
     const trackingId = generateTrackingId();
 
-    // Insert tracking record
+    if (!hasCopies) {
+      // Wrap links for click tracking (liens signés HMAC — anti open-redirect)
+      htmlBody = await wrapLinksForTracking(htmlBody, trackingId, SUPABASE_URL);
+
+      // Add tracking pixel
+      htmlBody = addTrackingPixel(htmlBody, trackingId, SUPABASE_URL);
+    }
+
+    // 9. Send email via the connected email account (Unipile) — no global fallback
+    let sendResult: { success: boolean; messageId?: string | null; error?: string };
+
+    // Resolve Unipile credentials per organization (multi-tenant safe).
+    // Fallback automatique sur les env vars si pas de creds org-specific.
+    const unipileCreds = await resolveUnipileCredentials(orgId, supabase);
+
+    // Dernier contrôle juste avant l'envoi : une réponse du candidat, une pause
+    // ou un arrêt a pu arriver pendant la préparation (SEQ-200).
+    {
+      const { data: latestEnrollment, error: latestError } = await supabase
+        .from('sequence_enrollments')
+        .select('status')
+        .eq('id', enrollment_id)
+        .maybeSingle();
+      if (latestError) {
+        console.error('[sequence-send-email] enrollment re-check failed — aborting send', { error: latestError, execution_id });
+        return json({ success: false, error: 'enrollment_check_failed' }, 500);
+      }
+      const latestDecision = enrollmentSendDecision(latestEnrollment?.status);
+      if (latestDecision !== 'send') return await stopBeforeSend(latestDecision, latestEnrollment?.status ?? null);
+    }
+
+    // Ligne de suivi, créée avant l'envoi : elle porte le tracking_id du pixel
+    // et des liens, puis la preuve d'envoi (email_message_id) juste après.
     const { error: trackingInsertError } = await supabase.from('sequence_email_tracking').insert({
       execution_id,
       tracking_id: trackingId,
     });
     if (trackingInsertError) {
       console.error('[sequence-send-email] Failed to insert tracking record', { error: trackingInsertError, execution_id, trackingId });
-      return new Response(JSON.stringify({ error: 'Failed to create email tracking record' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Failed to create email tracking record' }, 500);
     }
 
-    // Wrap links for click tracking (liens signés HMAC — anti open-redirect)
-    htmlBody = await wrapLinksForTracking(htmlBody, trackingId, SUPABASE_URL);
-
-    // Add tracking pixel
-    htmlBody = addTrackingPixel(htmlBody, trackingId, SUPABASE_URL);
-
-    // 9. Send email via the connected email account (Unipile) — no global fallback
-    const cc = step.cc_emails as string[] || [];
-    const bcc = step.bcc_emails as string[] || [];
-
-    let sendResult: { success: boolean; messageId?: string; error?: string };
-
-    // Determine which email account to use for sending
-    // Priority: step.sender_id > enrollment.assigned_sender_id > enrollment.account_id
-    const emailAccountId = (step.sender_id || enrollment.assigned_sender_id || enrollment.account_id || '') as string;
-
-    // Resolve Unipile credentials per organization (multi-tenant safe).
-    // Fallback automatique sur les env vars si pas de creds org-specific.
-    const unipileCreds = await resolveUnipileCredentials(orgId, supabase);
-
-    if (emailAccountId && unipileCreds?.apiKey && unipileCreds?.dsn) {
+    if (unipileCreds?.apiKey && unipileCreds?.dsn) {
       // Primary: send via Unipile (same infra as LinkedIn — supports Gmail, Outlook, IMAP)
       sendResult = await sendViaUnipile(
         unipileCreds.apiKey,
@@ -594,53 +785,62 @@ Deno.serve(async (req) => {
         bcc,
       );
     } else {
-      // Aucun compte email connecté pour cet expéditeur : pas de repli global
+      // Pas d'identifiants d'envoi pour l'organisation : pas de repli global
       // (l'ancien jeton Microsoft Graph unique pour toutes les organisations a été retiré).
-      console.error('[sequence-send-email] No email sending method available (no email account connected)');
+      console.error('[sequence-send-email] No email sending method available (no provider credentials)');
       sendResult = { success: false, error: 'no_email_method_available' };
     }
 
     // 10. Update execution status
     if (sendResult.success) {
-      const { error: sentUpdateError } = await supabase.from('sequence_step_executions').update({
+      // a) Preuve d'envoi d'abord (SEQ-005) : identifiant du fournisseur, ou
+      // marqueur non nul s'il n'en renvoie pas. C'est elle qu'une nouvelle
+      // invocation lit avant tout envoi.
+      const { error: proofWriteError } = await supabase.from('sequence_email_tracking').update({
+        email_message_id: sentProofValue(sendResult.messageId, trackingId),
+      }).eq('tracking_id', trackingId);
+      if (proofWriteError) {
+        console.error('[sequence-send-email] Failed to write sent proof on tracking record', { error: proofWriteError, trackingId });
+      }
+
+      // b) Puis le statut. error_message remis à null : une tentative
+      // précédente (limite d'envoi, reprise) ne doit plus s'afficher en erreur.
+      const { data: sentRows, error: sentUpdateError } = await supabase.from('sequence_step_executions').update({
         status: 'sent',
         executed_at: new Date().toISOString(),
+        error_message: null,
         final_message: htmlBody,
         final_subject: subject,
         channel: 'email',
         ai_snippet: aiSnippet,
         personalized_subject: subject,
-      }).eq('id', execution_id);
-      if (sentUpdateError) {
-        console.error('[sequence-send-email] Failed to update execution status (sent)', { error: sentUpdateError, execution_id });
-        return new Response(JSON.stringify({ error: 'Email sent but failed to update execution status' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      }).eq('id', execution_id).in('status', ['sending', 'scheduled']).select('id');
+      if (sentUpdateError || !sentRows || sentRows.length === 0) {
+        // L'e-mail EST parti : succès, jamais d'erreur qui déclencherait une
+        // relance. Le moteur avance l'inscription et marque l'étape envoyée.
+        console.error('[sequence-send-email] Email sent but execution status not saved', { error: sentUpdateError, execution_id });
+        return json({ success: true, message_id: sendResult.messageId ?? null, status_update_failed: true });
       }
 
-      // Update tracking record with message ID
-      if (sendResult.messageId) {
-        const { error: trackingUpdateError } = await supabase.from('sequence_email_tracking').update({
-          email_message_id: sendResult.messageId,
-        }).eq('tracking_id', trackingId);
-        if (trackingUpdateError) {
-          console.error('[sequence-send-email] Failed to update tracking record with message ID', { error: trackingUpdateError, trackingId });
-        }
-      }
-
-      return new Response(JSON.stringify({
-        success: true,
-        message_id: sendResult.messageId,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ success: true, message_id: sendResult.messageId ?? null });
     } else {
       // Check if rate limited
       const errorStr = (sendResult.error || '').toLowerCase();
       const isRateLimit = errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('throttl');
 
-      if (isRateLimit) {
+      if (sendResult.error === 'send_uncertain') {
+        // Issue inconnue (délai dépassé, erreur serveur du fournisseur) :
+        // échec sans relance automatique, à vérifier avant de relancer.
+        const { error: uncertainUpdateError } = await supabase.from('sequence_step_executions').update({
+          status: 'failed',
+          error_message: UNCERTAIN_SEND_MESSAGE,
+          executed_at: new Date().toISOString(),
+          channel: 'email',
+        }).eq('id', execution_id);
+        if (uncertainUpdateError) {
+          console.error('[sequence-send-email] Failed to update execution status (uncertain send)', { error: uncertainUpdateError, execution_id });
+        }
+      } else if (isRateLimit) {
         // Reschedule in 1 hour
         const retryAt = new Date(Date.now() + 3600000).toISOString();
         const { error: rateLimitUpdateError } = await supabase.from('sequence_step_executions').update({
@@ -664,13 +864,10 @@ Deno.serve(async (req) => {
         }
       }
 
-      return new Response(JSON.stringify({
+      return json({
         success: false,
         error: sendResult.error,
-      }), {
-        status: 200, // Return 200 so process-sequences knows the function executed
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      }); // 200 so process-sequences knows the function executed
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

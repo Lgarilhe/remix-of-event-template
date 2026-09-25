@@ -1,4 +1,7 @@
-import { SequenceStep } from '../SequenceBuilder';
+// Imports lisibles par Node tel quel (type seul, extension explicite) : ce
+// fichier est testé directement par tests/ux/seq-audit-f1b.test.mjs.
+import type { SequenceStep } from '../SequenceBuilder';
+import { connectionContextOf, previousStepsOf, type ConnectionContext } from './sequenceGraph.ts';
 
 export interface MessageTypeInfo {
   label: string;
@@ -6,10 +9,19 @@ export interface MessageTypeInfo {
   color: string; // tailwind classes
 }
 
+const DIRECT_COLOR = 'bg-brand-purple/10 text-brand-purple';
+const INMAIL_COLOR = 'bg-info/10 text-info';
+
 /**
- * Determines the AI message type that will be generated for a given step
- * based on its position in the sequence graph. This mirrors the logic in
- * process-sequences/index.ts generatePersonalizedMessage().
+ * Type de message annoncé pour une étape, aligné sur la rédaction du moteur
+ * (process-sequences, generatePersonalizedMessage) :
+ * - invitation avec ou sans note selon le texte saisi (le moteur envoie la note) ;
+ * - InMail ou message direct selon la relation avec le candidat, quand le
+ *   parcours la garantit (branche de la vérification, invitation acceptée,
+ *   délai de l'attente dépassé). Sans garantie, un Message IA est annoncé
+ *   « InMail si non connecté » ;
+ * - position (premier message, suite d'invitation, relance) comptée sur les
+ *   étapes réellement jouées avant elle, y compris en mode Liste.
  */
 export function getStepMessageType(
   step: SequenceStep,
@@ -21,11 +33,12 @@ export function getStepMessageType(
   }
 
   if (step.actionType === 'connection_request') {
-    return { label: 'Invitation (pas de note)', shortLabel: 'Invitation', color: 'bg-success/10 text-success' };
+    return step.messageTemplate?.trim()
+      ? { label: 'Invitation avec note', shortLabel: 'Avec note', color: 'bg-success/10 text-success' }
+      : { label: 'Invitation sans note', shortLabel: 'Sans note', color: 'bg-success/10 text-success' };
   }
 
-  // Walk backwards through the graph to find previous message steps in this branch
-  const previousSteps = getPreviousStepsInBranch(step, allSteps);
+  const previousSteps = previousStepsOf(step, allSteps);
 
   if (step.actionType === 'whatsapp_message') {
     const prevWhatsApp = previousSteps.filter(s => s.actionType === 'whatsapp_message');
@@ -35,71 +48,32 @@ export function getStepMessageType(
     return { label: 'WhatsApp relance', shortLabel: 'WA relance', color: 'bg-green-500/10 text-green-500' };
   }
 
-  const prevMessages = previousSteps.filter(s =>
-    ['message', 'smart_message', 'inmail'].includes(s.actionType)
-  );
+  const context: ConnectionContext = step.actionType === 'message' ? 'connected' : connectionContextOf(step, allSteps);
+  const prevInMails = previousSteps.filter(s => ['inmail', 'smart_message'].includes(s.actionType));
+  const prevDirectMsgs = previousSteps.filter(s => ['message', 'smart_message'].includes(s.actionType));
   const hadInvite = previousSteps.some(s => s.actionType === 'connection_request');
 
-  if (step.actionType === 'inmail') {
-    const prevInMails = prevMessages.filter(s => s.actionType === 'inmail');
-    if (prevInMails.length === 0) {
-      return { label: 'InMail initial (formel)', shortLabel: 'InMail initial', color: 'bg-info/10 text-info' };
+  const inmailType = (): MessageTypeInfo => (prevInMails.length === 0
+    ? { label: 'InMail initial (formel)', shortLabel: 'InMail initial', color: INMAIL_COLOR }
+    : { label: 'InMail de relance', shortLabel: 'InMail relance', color: INMAIL_COLOR });
+
+  const directType = (): MessageTypeInfo => {
+    if (prevDirectMsgs.length === 0 && !hadInvite) {
+      return { label: 'Premier message (accroche)', shortLabel: '1er message', color: DIRECT_COLOR };
     }
-    return { label: 'InMail relance', shortLabel: 'InMail relance', color: 'bg-info/10 text-info' };
-  }
-
-  // message or smart_message
-  const prevDirectMsgs = prevMessages.filter(s => ['message', 'smart_message'].includes(s.actionType));
-
-  if (prevDirectMsgs.length === 0 && !hadInvite) {
-    return { label: 'Premier message (accroche)', shortLabel: '1er message', color: 'bg-brand-purple/10 text-brand-purple' };
-  }
-  if (prevDirectMsgs.length === 0 && hadInvite) {
-    return { label: 'Suite invitation (merci + pitch)', shortLabel: 'Post-connexion', color: 'bg-brand-purple/10 text-brand-purple' };
-  }
-  if (prevDirectMsgs.length === 1) {
-    return { label: 'Relance 1', shortLabel: 'Relance 1', color: 'bg-warning/10 text-warning' };
-  }
-  return { label: 'Relance 2', shortLabel: 'Relance 2', color: 'bg-destructive/10 text-destructive' };
-}
-
-/**
- * Walk backwards through the graph to find all steps that come before this one
- * in the same branch path.
- */
-function getPreviousStepsInBranch(
-  targetStep: SequenceStep,
-  allSteps: SequenceStep[]
-): SequenceStep[] {
-  // Build a map of stepId → step for quick lookup
-  const stepMap = new Map(allSteps.map(s => [s.id, s]));
-
-  // Build a reverse adjacency: for each step, who points to it?
-  const pointedToBy = new Map<string, SequenceStep[]>();
-
-  for (const s of allSteps) {
-    const targets = [s.nextStepId, s.ifTrueGotoStep, s.ifFalseGotoStep, s.timeoutBranchStepId].filter(Boolean) as string[];
-    for (const t of targets) {
-      if (!pointedToBy.has(t)) pointedToBy.set(t, []);
-      pointedToBy.get(t)!.push(s);
+    if (prevDirectMsgs.length === 0) {
+      return { label: 'Suite invitation (merci + pitch)', shortLabel: 'Post-connexion', color: DIRECT_COLOR };
     }
-  }
-
-  // Walk backwards from targetStep
-  const visited = new Set<string>();
-  const result: SequenceStep[] = [];
-
-  function walk(stepId: string) {
-    if (visited.has(stepId)) return;
-    visited.add(stepId);
-
-    const parents = pointedToBy.get(stepId) || [];
-    for (const parent of parents) {
-      result.push(parent);
-      walk(parent.id);
+    if (prevDirectMsgs.length === 1) {
+      return { label: 'Relance 1', shortLabel: 'Relance 1', color: 'bg-warning/10 text-warning' };
     }
-  }
+    return { label: 'Relance 2', shortLabel: 'Relance 2', color: 'bg-destructive/10 text-destructive' };
+  };
 
-  walk(targetStep.id);
-  return result;
+  if (context === 'connected') return directType();
+  if (context === 'not_connected' || step.actionType === 'inmail') return inmailType();
+
+  // Message IA sans relation garantie : message direct ou InMail à l'envoi.
+  const direct = directType();
+  return { ...direct, label: `${direct.label}, InMail si non connecté` };
 }
