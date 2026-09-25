@@ -227,6 +227,38 @@ export function renumberByOrderGroup(steps: Step[]): Step[] {
 }
 
 /**
+ * Ordre des étapes d'un modèle (sequence_templates.steps_config). Les modèles
+ * récents enregistrent step_order, commun aux variantes A/B d'une même étape.
+ * Les plus anciens n'ont que leur position : des variantes voisines de lettres
+ * différentes y reprennent un ordre commun. Sans cela, chaque variante avait
+ * son propre ordre, le tirage n'en voyait qu'une et le candidat recevait les
+ * variantes l'une après l'autre.
+ */
+export function templateStepOrders(configs: ReadonlyArray<Record<string, unknown>>): number[] {
+  const declared = configs.map((c) => {
+    const value = typeof c.step_order === 'number' ? c.step_order : c.order;
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  });
+  if (declared.every((v): v is number => v !== null)) return declared;
+
+  const orders: number[] = [];
+  let order = -1;
+  let groupLetters = new Set<string>();
+  for (const c of configs) {
+    const raw = c.variant_group ?? c.variantGroup;
+    const letter = typeof raw === 'string' && raw ? raw : null;
+    if (letter && groupLetters.size > 0 && !groupLetters.has(letter)) {
+      groupLetters.add(letter);
+    } else {
+      order += 1;
+      groupLetters = letter ? new Set([letter]) : new Set();
+    }
+    orders.push(order);
+  }
+  return orders;
+}
+
+/**
  * Étapes affichées dans la liste : une par ordre (la variante A, ou l'étape
  * simple). Une variante sans étape A reste affichée au lieu d'être masquée.
  */

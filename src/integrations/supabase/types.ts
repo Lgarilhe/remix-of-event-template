@@ -6464,6 +6464,14 @@ export type Database = {
           untreated: number
         }[]
       }
+      get_sequence_enrollment_counts: {
+        Args: { p_sequence_ids: string[] }
+        Returns: {
+          count: number
+          sequence_id: string
+          status: string
+        }[]
+      }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       get_vivier_candidates: {
         Args: {
@@ -6622,6 +6630,10 @@ export type Database = {
         Returns: undefined
       }
       invoke_resolve_pedigree_directory: { Args: never; Returns: undefined }
+      is_active_org_collaborator: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
       is_marketplace_partner: {
         Args: { _user_id: string }
         Returns: boolean

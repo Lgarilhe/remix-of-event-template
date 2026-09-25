@@ -263,3 +263,89 @@ test('SEQ-231 — les brouillons d’éditeur sont purgés à la déconnexion', 
   const userSwitch = block(app, 'if (prevUserIdRef.current && prevUserIdRef.current !== newUserId)', 'prevUserIdRef.current = newUserId;');
   assert.match(userSwitch, /clearAllEditorDrafts\(\);/);
 });
+
+// ------------------------------------------------ Demandes croisées (passe 2)
+
+/**
+ * Objet de notification écrit autour d'un repère de sa metadata (source,
+ * canal) : du `user_id:` qui ouvre l'objet jusqu'au repère.
+ */
+const notificationAround = (rel, needle) => {
+  const src = read(rel);
+  const at = src.indexOf(needle);
+  assert.ok(at >= 0, `${rel} : repère introuvable : ${needle}`);
+  const open = src.lastIndexOf('user_id:', at);
+  assert.ok(open >= 0 && at - open < 1500, `${rel} : objet de notification introuvable avant ${needle}`);
+  return src.slice(open, at + needle.length);
+};
+
+test('SEQ-115 — les écrivains réels (rebond, RDV, réponse e-mail) gardent la forme inventoriée', () => {
+  const bounce = notificationAround('supabase/functions/unipile-webhook/index.ts', "source: 'email_bounce',");
+  assert.match(bounce, /type: 'action',/);
+  assert.match(bounce, /title: 'Adresse e-mail invalide, séquence arrêtée',/);
+  const booking = notificationAround('supabase/functions/calendly-webhook/index.ts', "source: 'calendly',");
+  assert.match(booking, /type: 'action',/);
+  assert.match(booking, /title: 'RDV pris, séquence arrêtée',/);
+  // Réponse par e-mail : une réponse de candidat, sans chat_id.
+  const reply = notificationAround('supabase/functions/unipile-webhook/index.ts', "channel: 'email',");
+  assert.match(reply, /type: 'new_message',/);
+  assert.match(reply, /is_candidate: true,/);
+  assert.doesNotMatch(reply, /chat_id/);
+  // Inventaire tenu à jour.
+  const header = block(read('src/lib/notificationKinds.ts'), '/**', '*/');
+  assert.match(header, /\| unipile-webhook \(rebond d'e-mail\)\s+\| action\s+\|/);
+  assert.match(header, /\| calendly-webhook \(RDV pris\)\s+\| action\s+\|/);
+  assert.match(header, /\| unipile-webhook \(réponse par e-mail, sans chat_id\)\| new_message/);
+  assert.match(header, /account_status_updated au passage de OK vers CREDENTIALS, ERROR ou\n \* PERMISSIONS/);
+});
+
+test('SEQ-073 — l’auto-pause d’une séquence est inventoriée et compte dans À traiter', () => {
+  const autoPause = notificationAround('supabase/functions/process-sequences/index.ts', "source: 'sequence_auto_pause'");
+  assert.match(autoPause, /type: 'error',/);
+  assert.match(autoPause, /title: 'Séquence mise en pause automatiquement',/);
+  const header = block(read('src/lib/notificationKinds.ts'), '/**', '*/');
+  assert.match(header, /\| process-sequences \(auto-pause, trop d'échecs\)\s+\| error\s+\| Séquence mise en pause automatiquement \| \/missions\/…\?tab=outreach ou \/missions \| sequence_auto_pause \| action \|/);
+  const row = { type: 'error', link: '/missions/p1?tab=outreach', metadata: { source: 'sequence_auto_pause', sequence_id: 's1' } };
+  assert.equal(kinds.notificationKind(row), 'action');
+  assert.equal(kinds.isActionable({ ...row, link: '/missions' }), true);
+});
+
+test('SEQ-165 — types générés : compteurs d’inscriptions et rôle collaborateur', () => {
+  const functions = block(types, '    Functions: {', '    Enums: {');
+  const counts = block(functions, '      get_sequence_enrollment_counts: {', '\n      }\n');
+  assert.match(counts, /Args: \{ p_sequence_ids: string\[\] \}/);
+  assert.match(counts, /count: number\n\s+sequence_id: string\n\s+status: string\n\s+\}\[\]/);
+  const collaborator = block(functions, '      is_active_org_collaborator: {', '\n      }\n');
+  assert.match(collaborator, /Args: \{ _user_id: string \}/);
+  assert.match(collaborator, /Returns: boolean/);
+  // Colonne passée en text : reste une chaîne.
+  const enrollments = block(types, '      sequence_enrollments: {', 'Relationships: [');
+  assert.equal((enrollments.match(/assigned_sender_id\??: string \| null/g) ?? []).length, 3, 'Row, Insert et Update');
+});
+
+test('SEQ-043 / SEQ-044 — « inscrire », jamais « enrôler », dans les libellés de l’assistant', () => {
+  const files = {
+    'src/components/assistant-ui/tool-uis.tsx': "enroll_in_sequence: 'Inscription en séquence',",
+    'src/components/agent/AgentToolApprovalCard.tsx': "enroll_in_sequence: 'Inscrire dans une séquence',",
+    'src/components/settings/AgentActionsSettings.tsx': "enroll_in_sequence: 'Inscrire dans une séquence',",
+    'src/components/settings/AgentPoliciesSettings.tsx': "{ name: 'enroll_in_sequence', label: 'Inscrire dans une séquence', autoEligible: true },",
+  };
+  for (const [rel, expected] of Object.entries(files)) {
+    const src = read(rel);
+    assert.ok(src.includes(expected), `${rel} : libellé attendu absent`);
+    assert.doesNotMatch(src, /nrôl/i, `${rel} : « enrôler » encore présent`);
+  }
+});
+
+test('SEQ-161 — agenda du jour : une étape reportée ou en cours d’envoi affiche son statut réel', () => {
+  const item = block(todayPanel, '// ─── Render scheduled message', '<motion.button');
+  assert.match(item, /!isDone && msg\.type === 'sequence' && \(msg\.status === 'quota_blocked' \|\| msg\.status === 'sending'\)/);
+  assert.match(item, /\? msg\.statusLabel \|\| null/);
+  assert.match(item, /const subtitle = pendingStatusLabel \? `\$\{pendingStatusLabel\} · \$\{baseSubtitle\}` : baseSubtitle;/);
+  assert.match(todayPanel, /<p className="text-2xs text-muted-foreground truncate">\{subtitle\}<\/p>/);
+  // Le hook fournit bien ce libellé, sur le statut réel de l'exécution.
+  const hook = read('src/hooks/useTodayScheduledMessages.ts');
+  assert.match(hook, /statusLabel\?: string;/);
+  assert.match(hook, /status: sent \? 'sent' : exec\.status,/);
+  assert.match(hook, /statusLabel: executionStatusLabel\(exec\.status\),/);
+});

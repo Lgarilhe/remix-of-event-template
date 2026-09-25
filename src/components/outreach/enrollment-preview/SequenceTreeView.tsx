@@ -15,6 +15,8 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { hasBranching, type SequenceStepPreview, type StepConfigOverride } from '@/hooks/useEnrollmentPreview';
+// Un seul nom par type d'étape, celui de l'éditeur de séquence.
+import { STEP_TYPE_LABELS, stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import {
   Mail, MessageSquare, Eye, Clock, GitBranch,
   ArrowDown, CheckCheck, XCircle, Pencil, RotateCcw,
@@ -58,21 +60,6 @@ const ACTION_ICONS: Record<string, LucideIcon> = {
   wait_profile_visit: Clock,
   check_connection: GitBranch,
   condition_branch: GitBranch,
-};
-
-const ACTION_LABELS: Record<string, string> = {
-  email: 'E-mail',
-  message: 'Message LinkedIn',
-  smart_message: 'Message IA',
-  inmail: 'InMail',
-  connection_request: 'Invitation LinkedIn',
-  whatsapp_message: 'WhatsApp',
-  profile_visit: 'Visite de profil',
-  wait_connection: 'Attendre acceptation',
-  wait_reply: 'Attendre réponse',
-  wait_profile_visit: 'Attendre visite',
-  check_connection: 'Vérifier connexion',
-  condition_branch: 'Condition',
 };
 
 const DECISION_TYPES = new Set([
@@ -265,7 +252,7 @@ function ActionCard({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-semibold text-foreground tracking-tight">
-            {ACTION_LABELS[step.actionType] || step.actionType}
+            {stepTypeLabel(step.actionType)}
           </p>
           <p className="text-2xs text-muted-foreground tabular-nums uppercase tracking-wider mt-0.5">
             Étape {step.stepOrder + 1}
@@ -291,7 +278,7 @@ function DecisionFork({
   setStepConfig?: (stepId: string, config: StepConfigOverride | null) => void;
 }) {
   const Icon = ACTION_ICONS[step.actionType] || GitBranch;
-  const label = ACTION_LABELS[step.actionType] || 'Décision';
+  const label = STEP_TYPE_LABELS[step.actionType] || 'Décision';
   const branches = getBranches(step.actionType);
   const description = (() => {
     switch (step.actionType) {

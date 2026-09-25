@@ -21,6 +21,7 @@ import { useAirtableMatch } from '@/hooks/useAirtableMatch';
 import { useNotionMatch } from '@/hooks/useNotionMatch';
 import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { useProjectEnrollments } from '@/hooks/useProjectEnrollments';
+import { missionEnrollmentJobIds } from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -383,8 +384,12 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   // Enrollments existants pour cette mission → permet d'afficher un badge
   // "En séquence X · Étape N" sur les cards. L'user voit immédiatement
   // qu'un candidat est déjà en séquence avant d'agir dessus.
-  const enrollmentJobId = activeProject?.job_id || activeProject?.id || null;
-  const { enrollments: projectEnrollments } = useProjectEnrollments(enrollmentJobId);
+  // Toutes les valeurs possibles de job_id : une mission rattachée à un job
+  // garde aussi les inscriptions faites depuis le sourcing (job_id = id de la
+  // mission, id synthétique normalisé).
+  const { enrollments: projectEnrollments } = useProjectEnrollments(
+    missionEnrollmentJobIds(activeProject?.id, activeProject?.job_id),
+  );
   // Count by status for filter badges.
   // Statuts DB (scorés/contactés/shortlist/archivés) : comptés sur TOUS les
   // candidats connus du job rehydratables — les pills correspondantes

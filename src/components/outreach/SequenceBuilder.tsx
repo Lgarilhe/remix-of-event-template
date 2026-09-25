@@ -6,6 +6,7 @@ import {
   editorDraftSavedAt,
 } from '@/lib/editorDraft';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -450,6 +451,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
   // brouillon pour cette ouverture (on n'écrase pas un brouillon jamais relu).
   const { user } = useAuthReady();
   const { organizationId } = useOrganization();
+  const navigate = useNavigate();
   const [draftKey] = useState(() => sequenceDraftKey(user?.id, organizationId));
   // Brouillon d'une sequence en cours de creation. On ne conserve rien pour une
   // sequence existante : la verite y est cote base, et repousser une vieille
@@ -806,13 +808,23 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
       }
     }
 
+    // Même condition que la liste des séquences (createInactiveForPlan) : sans
+    // droit d'envoi, la nouvelle séquence est créée désactivée et la liste
+    // n'affiche aucun message ; c'est l'éditeur qui l'annonce.
+    const savedInactiveForPlan = !sequence.id && sequence.isActive && !canSendSequences;
+
     setIsSaving(true);
     try {
       await onSave(sequence);
       enregistreeRef.current = true;
       if (!isEditing && draftKey) clearEditorDraft(draftKey);
       // Le message de réussite vient de la liste des séquences, qui distingue
-      // création et modification (et l'enregistrement désactivé faute d'offre).
+      // création et modification, sauf l'enregistrement désactivé faute d'offre.
+      if (savedInactiveForPlan) {
+        toast.warning('Séquence enregistrée et désactivée : l\'envoi nécessite un abonnement.', {
+          action: { label: 'Voir les offres', onClick: () => navigate('/pricing') },
+        });
+      }
       onClose();
     } catch (err) {
       console.error('[SequenceBuilder] save failed:', err);

@@ -107,7 +107,7 @@ const TOOL_LABEL: Record<string, string> = {
   add_to_shortlist: 'Ajouter à la shortlist',
   draft_outreach_message: 'Rédiger un message d\'approche',
   create_mission: 'Créer une mission',
-  enroll_in_sequence: 'Enrôler dans une séquence',
+  enroll_in_sequence: 'Inscrire dans une séquence',
   schedule_interview: 'Planifier un entretien',
   enrich_candidate_contact: 'Enrichir un contact',
   add_candidate_note: 'Ajouter une note candidat',

@@ -5,7 +5,10 @@ import {
   chooseRotationSender,
   classifySendStatus,
   detectSequenceViolations,
+  directFollowUpType,
+  directMessageActionTypes,
   greetingFor,
+  hasTimeForAiCorrection,
   inmailQueueRetry,
   inviteRejectionSkipReason,
   isFirstDegreeCandidate,
@@ -49,7 +52,7 @@ Deno.test("SEQ-036/037/095 : degré de relation, mode d'envoi et type au ledger"
 });
 
 Deno.test("SEQ-036 : refus d'invitation « déjà en relation / déjà invité » = étape sautée", () => {
-  assertEquals(inviteRejectionSkipReason(422, '{"type":"errors/already_connected"}'), "Déjà en relation");
+  assertEquals(inviteRejectionSkipReason(422, '{"type":"errors/already_connected"}'), "Déjà en relation : invitation inutile");
   assertEquals(inviteRejectionSkipReason(422, '{"type":"errors/already_invited_recently"}'), "Invitation déjà en attente");
   assertEquals(inviteRejectionSkipReason(400, "An invitation is already pending"), "Invitation déjà en attente");
   assertEquals(inviteRejectionSkipReason(422, '{"type":"errors/cannot_resend_yet"}'), "Invitation déjà envoyée récemment");
@@ -115,4 +118,20 @@ Deno.test("SEQ-155 : tous les expéditeurs au plafond = aucun expéditeur, jamai
   assertEquals(chooseRotationSender(pool, "round_robin", new Map([["A", 2], ["B", 2]])), null);
   assertEquals(chooseRotationSender(pool, "least_used", new Map([["A", 1], ["B", 0]]))?.account_id, "B");
   assertEquals(chooseRotationSender(pool, "random", new Map([["A", 2]]), () => 0)?.account_id, "B");
+});
+
+Deno.test("SEQ-074 : pas d'appel de correction à moins de 30 s de l'échéance du cycle", () => {
+  const deadline = 1_000_000;
+  assertEquals(hasTimeForAiCorrection(undefined, deadline), true);
+  assertEquals(hasTimeForAiCorrection(deadline, deadline - 31_000), true);
+  assertEquals(hasTimeForAiCorrection(deadline, deadline - 29_000), false);
+  assertEquals(hasTimeForAiCorrection(deadline, deadline + 1), false);
+});
+
+Deno.test("SEQ-095 : un Message IA parti en direct compte comme message direct, après un InMail seul = RELANCE 1", () => {
+  assertEquals(directMessageActionTypes(false), ["message", "smart_message"]);
+  assertEquals(directMessageActionTypes(true), ["message", "smart_message", "email"]);
+  assertEquals(directFollowUpType(0), "RELANCE 1");
+  assertEquals(directFollowUpType(1), "RELANCE 1");
+  assertEquals(directFollowUpType(2), "RELANCE 2");
 });

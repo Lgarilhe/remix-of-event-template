@@ -11,6 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { transformSync } from 'esbuild';
 
 import {
   CLICK_WITHOUT_OPEN_MIN_DELAY_MS,
@@ -152,6 +153,52 @@ test('SEQ-067 — la boîte e-mail est résolue, jamais l’identifiant du compt
   assert.match(sendEmail, /NO_SENDER_MAILBOX_MESSAGE = "Aucune boîte e-mail n'est reliée pour l'expéditeur/);
 });
 
+// ---------------------------------------------------------------- SEQ-067 (passe 2)
+const importTs = async (source) => {
+  const { code } = transformSync(source, { loader: 'ts', format: 'esm' });
+  return import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+};
+
+test('SEQ-067 — boîte d’envoi déconnectée : refusée avant l’envoi, échec distinct', async () => {
+  const start = sendEmail.indexOf('function isUsableMailboxStatus(');
+  const end = sendEmail.indexOf('\n}\n', start);
+  assert.ok(start > 0 && end > start, 'règle d’état de la boîte introuvable');
+  const { isUsableMailboxStatus } = await importTs(`${sendEmail.slice(start, end + 3)}\nexport { isUsableMailboxStatus };`);
+  for (const usable of ['OK', 'ok', ' OK ', 'CONNECTED', null, undefined, '']) {
+    assert.equal(isUsableMailboxStatus(usable), true, String(usable));
+  }
+  for (const disconnected of ['CREDENTIALS', 'ERROR', 'PERMISSIONS', 'DELETED', 'STOPPED', 'CONNECTING']) {
+    assert.equal(isUsableMailboxStatus(disconnected), false, disconnected);
+  }
+  // pickMailbox garde son choix (même boîte que le moteur) ; c'est l'envoi qui la refuse.
+  assert.equal(pickMailbox([{ email_account_id: 'mb-ko', account_status: 'CREDENTIALS' }]), 'mb-ko');
+
+  const resolver = sendEmail.slice(sendEmail.indexOf('async function resolveSendingMailbox('), sendEmail.indexOf('// ============ MAIN HANDLER'));
+  // Boîte désignée directement : son état est lu dans la même requête.
+  assert.match(resolver, /from\('member_email_accounts'\)\.select\('email_account_id, user_id, account_status'\)/);
+  assert.match(resolver, /decision\.kind === 'mailbox'[\s\S]*?!isUsableMailboxStatus\(status\)\) return \{ kind: 'mailbox_disconnected'/);
+  // Boîte du titulaire : même contrôle après pickMailbox.
+  const afterPick = resolver.slice(resolver.indexOf('const mailboxId = pickMailbox(ownerRows);'));
+  assert.match(afterPick, /!isUsableMailboxStatus\(status\)\) return \{ kind: 'mailbox_disconnected', mailboxId, status \}/);
+
+  const branch = sendHandler.indexOf("mailbox.kind === 'mailbox_disconnected'");
+  assert.ok(branch > 0 && branch < sendCallIndex, 'refus avant l’appel au fournisseur');
+  const branchBody = sendHandler.slice(branch, sendHandler.indexOf('const emailAccountId = mailbox.mailboxId;'));
+  assert.match(branchBody, /status: 'failed',\s*error_message: SENDER_MAILBOX_DISCONNECTED_MESSAGE,/);
+  assert.match(branchBody, /\.in\('status', \['sending', 'scheduled'\]\)/);
+  assert.match(branchBody, /return json\(\{ success: false, error: 'sender_mailbox_disconnected' \}\)/);
+  assert.match(sendEmail, /SENDER_MAILBOX_DISCONNECTED_MESSAGE = "Boîte e-mail de l'expéditeur déconnectée : reconnectez-la dans Paramètres, Connexions\.";/);
+});
+
+// ---------------------------------------------------------------- SEQ-107
+test('SEQ-107 — échec d’envoi : \'failed\', jamais \'bounced\' deviné depuis le texte de l’erreur', () => {
+  const afterSend = sendHandler.slice(sendCallIndex);
+  assert.doesNotMatch(sendEmail, /isBounce/);
+  assert.doesNotMatch(afterSend, /status: [^,\n]*'bounced'/);
+  const failBranch = afterSend.slice(afterSend.indexOf('} else if (isRateLimit) {'));
+  assert.match(failBranch, /\} else \{[\s\S]*?status: 'failed',\s*error_message: sendResult\.error,/);
+});
+
 // ---------------------------------------------------------------- SEQ-012
 test('SEQ-012 — une réponse clôt aussi une inscription en pause', () => {
   const mailReceived = webhooks.slice(webhooks.indexOf('async function handleMailReceived('), webhooks.indexOf('async function handleMailTracking('));
@@ -182,7 +229,9 @@ test('SEQ-039 — in_reply_to est lu sous toutes ses formes', () => {
 test('SEQ-100 — un seul expéditeur : titulaire de la boîte, repli sur l’auteur de l’inscription', () => {
   assert.doesNotMatch(sendEmail, /sequence\?\.created_by/);
   assert.match(sendHandler, /const senderUserId = mailbox\.senderUserId \|\| \(enrollment\.created_by as string\) \|\| null;/);
-  assert.match(sendEmail, /loadAiContextForEnrollment\(supabase, enrollment, \{ sender_id: senderUserId \}\)/);
+  // Expéditeur déjà résolu passé en 4e paramètre (prioritaire), plus en faux sender_id.
+  assert.match(sendEmail, /loadAiContextForEnrollment\(supabase, enrollment, null, senderUserId\)/);
+  assert.doesNotMatch(sendEmail, /loadAiContextForEnrollment\(supabase, enrollment, \{ sender_id: senderUserId \}\)/);
 });
 
 // ---------------------------------------------------------------- SEQ-104

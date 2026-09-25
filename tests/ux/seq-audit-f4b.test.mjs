@@ -452,10 +452,11 @@ test('SEQ-163 — messagerie : libellés partagés, repli neutre au lieu de « E
 // ---------------------------------------------------------------- SEQ-184
 test('SEQ-184 — fil de la messagerie : vrais types d’étape, échec et étape sautée affichés comme tels', () => {
   assert.doesNotMatch(activityCard, /send_connection:/);
-  assert.match(activityCard, /connection_request: \{ icon: UserPlus, label: 'Invitation envoyée'/);
-  assert.match(activityCard, /profile_visit: \{ icon: Eye, label: 'Profil visité'/);
-  assert.match(activityCard, /if \(status === 'failed' \|\| status === 'bounced'\) return 'Échec';/);
-  assert.match(activityCard, /if \(status === 'skipped'\) return 'Sauté';/);
+  // Passe 2 (demande de F5) : libellés et mentions du dictionnaire partagé
+  // src/lib/sequenceActionLabels.ts, comportement vérifié dans seq-audit-f4c.
+  assert.match(activityCard, /connection_request: \{ icon: UserPlus,/);
+  assert.match(activityCard, /profile_visit: \{ icon: Eye,/);
+  assert.match(activityCard, /return sequenceExecutionTitle\(actionType, status\);/);
   assert.match(activityCard, /formatSkipReason\(event\.skipReason\)/);
 });
 

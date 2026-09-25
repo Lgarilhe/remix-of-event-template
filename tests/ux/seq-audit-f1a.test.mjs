@@ -261,7 +261,10 @@ test('SEQ-060 — les modèles gardent l’ordre des variantes et la fin de séq
   assert.match(save, /step_order: s\.step_order/);
   assert.match(save, /ends_sequence: s\.ends_sequence \?\? false/);
   const select = body(selector, 'const handleSelectTemplate');
-  assert.match(select, /order: typeof s\.step_order === 'number' \? s\.step_order : idx/);
+  // Demande croisée F4a (SEQ-032) : un ancien modèle sans step_order garde
+  // aussi un ordre commun à ses variantes (templateStepOrders, voir f1c).
+  assert.match(select, /const orders = templateStepOrders\(template\.steps_config \|\| \[\]\);/);
+  assert.match(select, /order: orders\[idx\],/);
   assert.match(select, /nextStepId: s\.ends_sequence \? '__end__' : remap\(/);
   assert.doesNotMatch(select, /order: idx,/);
 });

@@ -53,6 +53,7 @@ import { cn } from '@/lib/utils';
 import { SEQUENCE_LEVEL_PAUSE_REASONS } from '@/lib/sequenceLabels';
 import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import type { StopConditions, SenderAccountConfig } from './SequenceBuilder';
+import { rowToSequenceStep } from './sequence/sequenceGraph';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
 import { SequenceEnrollmentsPanel } from './SequenceEnrollmentsPanel';
 import { SequenceActivityLog } from './SequenceActivityLog';
@@ -169,12 +170,26 @@ interface ResumeCounts {
 }
 interface ResumeResponse {
   success?: boolean;
+  results?: Array<{ enrollment_id: string; outcome: keyof ResumeCounts; message?: string }>;
   counts?: ResumeCounts;
   /** Candidats non traités faute de temps côté serveur (reprise par séquence). */
   remaining?: number;
   message?: string;
   error?: string;
 }
+
+// Reprise par séquence : le serveur s'arrête avant la limite de temps d'un appel
+// et compte le reste dans `remaining`. On le rappelle tant qu'il en reste et
+// qu'il progresse.
+const MAX_RESUME_ROUNDS = 10;
+
+// DETAIL du refus STEP_HAS_HISTORY : « Étape(s) concernée(s) : 0, 2 », en
+// step_order (base 0, trié comme du texte). L'éditeur numérote à partir de 1.
+const blockedStepsNotice = (details: string | null | undefined): string => {
+  const numbers = [...new Set((details?.match(/\d+/g) ?? []).map(n => Number(n) + 1))].sort((a, b) => a - b);
+  if (numbers.length === 0) return '';
+  return numbers.length > 1 ? ` Étapes concernées : ${numbers.join(', ')}.` : ` Étape concernée : ${numbers[0]}.`;
+};
 
 export const SequencesList: React.FC<SequencesListProps> = ({
   accounts,
@@ -270,11 +285,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         organization_id: organizationId,
         sequence_ids: missionSequenceIds,
       });
-      const payload = data as { success?: boolean; advanced?: number; rescheduled?: number; message?: string; error?: string } | null;
+      const payload = data as { success?: boolean; advanced?: number; message?: string; error?: string } | null;
       if (error || !payload?.success) {
         throw new Error(payload?.message || error?.message || payload?.error || 'Réessayez dans un instant.');
       }
-      const count = payload.advanced ?? payload.rescheduled ?? 0;
+      const count = payload.advanced ?? 0;
       if (count > 0) {
         toast.success(`${count} action${count > 1 ? 's' : ''} avancée${count > 1 ? 's' : ''}`, {
           description: 'Elles partiront progressivement pendant vos heures d’envoi.',
@@ -511,7 +526,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       // Sauvegarde transactionnelle des steps : UPDATE in-place des existants,
       // INSERT des nouveaux, DELETE des seuls steps réellement retirés. Ne
       // détruit PLUS les exécutions planifiées des enrollments actifs (bloquant B1).
-      const { error: stepsError } = await supabase.rpc('save_sequence_steps' as any, {
+      const { error: stepsError } = await supabase.rpc('save_sequence_steps', {
         p_sequence_id: targetSequenceId,
         p_steps: buildStepsPayload(),
       });
@@ -528,7 +543,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         // exécutions et son suivi e-mail disparaissaient, et une réponse à cet
         // e-mail n'était plus détectée).
         if (stepsError.hint === 'STEP_HAS_HISTORY' || stepsError.message?.includes('STEP_HAS_HISTORY')) {
-          throw new Error('Cette étape a déjà été envoyée à des candidats : elle ne peut pas être supprimée. Modifiez son contenu à la place.');
+          throw new Error(`Cette étape a déjà été envoyée à des candidats : elle ne peut pas être supprimée. Modifiez son contenu à la place.${blockedStepsNotice(stepsError.details)}`);
         }
         throw stepsError;
       }
@@ -664,26 +679,55 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       // auto-pause du moteur), garde la date de chaque étape en attente (au plus
       // tôt dans une minute), ne transforme jamais une attente (acceptation,
       // réponse) en envoi, et refuse un compte LinkedIn qui n'est plus relié.
-      const { data, error } = await invokeEdgeFunction('process-sequences', {
-        action: 'resume_enrollments',
-        sequence_id: sequenceId,
-        pause_reasons: SEQUENCE_LEVEL_PAUSE_REASONS,
-      });
-      const payload = data as ResumeResponse | null;
-      if (error || !payload?.success || !payload.counts) {
-        // L'interrupteur reste actif : les candidats encore en pause ne
-        // reçoivent rien, rien n'est envoyé à l'insu de l'utilisateur.
-        toast.error('La séquence est réactivée, mais les candidats en pause n’ont pas pu reprendre', {
-          description: `${payload?.message || error?.message || ''} Désactivez puis réactivez la séquence pour réessayer, ou reprenez-les depuis la liste des inscrits.`.trim(),
+      // Il s'arrête avant la limite de temps d'un appel et compte le reste dans
+      // `remaining` : on le rappelle tant qu'il en reste et qu'il progresse,
+      // puis un seul bilan.
+      // Un candidat resté en pause est relu par l'appel suivant : son dernier
+      // résultat fait foi, il n'est compté qu'une fois.
+      const outcomes = new Map<string, keyof ResumeCounts>();
+      const countsWithoutResults: Required<ResumeCounts> = { resumed: 0, nothing_to_resume: 0, account_unlinked: 0, not_paused: 0, error: 0 };
+      let remaining = 0;
+      for (let round = 0; round < MAX_RESUME_ROUNDS; round += 1) {
+        if (round > 0) {
+          toast.loading(`Reprise en cours : ${candidats(remaining)} encore à reprendre…`, { id: `resume-${sequenceId}` });
+        }
+        const { data, error } = await invokeEdgeFunction('process-sequences', {
+          action: 'resume_enrollments',
+          sequence_id: sequenceId,
+          pause_reasons: SEQUENCE_LEVEL_PAUSE_REASONS,
         });
-        return;
+        const payload = data as ResumeResponse | null;
+        if (error || !payload?.success || !payload.counts) {
+          if (round > 0) break; // Bilan des appels réussis ; le reste est signalé plus bas.
+          // L'interrupteur reste actif : les candidats encore en pause ne
+          // reçoivent rien, rien n'est envoyé à l'insu de l'utilisateur.
+          toast.error('La séquence est réactivée, mais les candidats en pause n’ont pas pu reprendre', {
+            description: `${payload?.message || error?.message || ''} Désactivez puis réactivez la séquence pour réessayer, ou reprenez-les depuis la liste des inscrits.`.trim(),
+          });
+          return;
+        }
+        if (Array.isArray(payload.results)) {
+          for (const r of payload.results) outcomes.set(r.enrollment_id, r.outcome);
+        } else {
+          for (const key of Object.keys(countsWithoutResults) as Array<keyof ResumeCounts>) {
+            countsWithoutResults[key] += payload.counts[key] ?? 0;
+          }
+        }
+        const previous = remaining;
+        remaining = payload.remaining ?? 0;
+        // Plus rien à traiter, ou aucun progrès depuis l'appel précédent.
+        if (remaining === 0 || (round > 0 && remaining >= previous)) break;
       }
+      toast.dismiss(`resume-${sequenceId}`);
 
-      const resumed = payload.counts.resumed ?? 0;
-      const failed = payload.counts.error ?? 0;
-      const unlinked = payload.counts.account_unlinked ?? 0;
-      const nothing = payload.counts.nothing_to_resume ?? 0;
-      const remaining = payload.remaining ?? 0;
+      const tally = { ...countsWithoutResults };
+      for (const outcome of outcomes.values()) {
+        if (outcome in tally) tally[outcome] += 1;
+      }
+      const resumed = tally.resumed;
+      const failed = tally.error;
+      const unlinked = tally.account_unlinked;
+      const nothing = tally.nothing_to_resume;
       const details = [
         unlinked > 0 ? `${candidats(unlinked)} ${unlinked > 1 ? 'restent' : 'reste'} en pause : compte LinkedIn qui n’est plus relié.` : null,
         nothing > 0 ? `${candidats(nothing)} ${nothing > 1 ? 'n’avaient' : 'n’avait'} plus d’étape à envoyer.` : null,
@@ -702,6 +746,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       }
     } catch (err) {
       console.error('Error activating sequence:', err);
+      toast.dismiss(`resume-${sequenceId}`);
       toast.error('La réactivation a échoué. Réessayez.');
     } finally {
       setTogglingId(null);
@@ -874,7 +919,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           timeout_branch_step_id: s.timeout_branch_step_id ?? null,
           next_step_id: s.next_step_id ?? null,
         }));
-        const { error: stepsCreateErr } = await supabase.rpc('save_sequence_steps' as any, {
+        const { error: stepsCreateErr } = await supabase.rpc('save_sequence_steps', {
           p_sequence_id: newSeq.id,
           p_steps: payload,
         });
@@ -936,43 +981,17 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       senderAccounts: seq.sender_accounts ?? [],
       rotationMode: seq.rotation_mode ?? 'round_robin',
       multiSenderEnabled: !!seq.multi_sender_enabled,
+      // Même lecture que le choix de modèle (rowToSequenceStep) : variantes,
+      // options e-mail, renvois, « Fin de séquence » et « Si timeout » déduit de
+      // l'étape de repli. S'y ajoutent les valeurs que l'éditeur affiche par
+      // défaut quand la colonne est vide (seuil de score, délai d'attente).
       steps: steps.map(s => ({
-        id: s.id,
-        order: s.step_order,
-        actionType: s.action_type,
-        conditionType: s.condition_type || 'always',
+        ...rowToSequenceStep(s),
         conditionValue: s.condition_value?.trim()
           ? s.condition_value
           : (s.condition_type === 'if_score_above' ? DEFAULT_SCORE_THRESHOLD : undefined),
-        delayDays: s.delay_days,
-        delayHours: s.delay_hours,
-        delayMinutes: s.delay_minutes || 0,
-        preferredHourStart: s.preferred_hour_start ?? 9,
-        preferredHourEnd: s.preferred_hour_end ?? 18,
-        subjectTemplate: s.subject_template,
-        messageTemplate: s.message_template,
-        useAiPersonalization: s.use_ai_personalization,
-        aiTone: s.ai_tone,
         timeoutDays: s.timeout_days
           ?? (TIMEOUT_REQUIRED_ACTIONS.includes(s.action_type) ? DEFAULT_WAIT_TIMEOUT_DAYS : undefined),
-        waitForEvent: s.wait_for_event,
-        // Recharger AUSSI les configs A/B et options email — avant, une simple
-        // ré-édition + save détruisait variant_group/cc/bcc/signature
-        // silencieusement (audit 2026-07, Builder H3).
-        variantGroup: s.variant_group ?? undefined,
-        variantWeight: s.variant_weight ?? undefined,
-        ccEmails: s.cc_emails ?? undefined,
-        bccEmails: s.bcc_emails ?? undefined,
-        includeUnsubscribe: s.include_unsubscribe ?? undefined,
-        signatureId: s.signature_id ?? undefined,
-        // timeout_action n'existe pas en base : l'étape de repli fait foi. Sans
-        // cette déduction, l'écran affichait « Passer à l'étape suivante » alors
-        // que le repli restait actif.
-        timeoutAction: s.timeout_branch_step_id ? 'alternative_step' : 'skip',
-        timeoutBranchStepId: s.timeout_branch_step_id,
-        ifTrueGotoStep: s.if_true_goto_step,
-        ifFalseGotoStep: s.if_false_goto_step,
-        nextStepId: s.ends_sequence ? '__end__' : s.next_step_id,
       })),
     };
     setEditingSequence(sequence);

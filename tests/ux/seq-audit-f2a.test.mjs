@@ -87,9 +87,11 @@ test('SEQ-004 — reprise et relance passent par le serveur, sans réarmer d’e
   assert.doesNotMatch(panel, /\.filter\(e => e\.status === 'cancelled'\)\s*\.sort\(\(a, b\) => a\.step_order - b\.step_order\)/);
   assert.doesNotMatch(panel, /\.in\('status', \['cancelled', 'scheduled', 'failed', 'quota_blocked'\]\)/);
   assert.doesNotMatch(panel, /from\('sequence_step_executions'\)\s*\.update\(\{\s*status: 'scheduled'/);
-  // Toasts selon le résultat réel.
-  assert.match(panel, /Rien à reprendre : cette séquence est terminée pour \$\{name\}/);
-  assert.match(panel, /Ce compte LinkedIn n’est plus relié\. Reliez-le avant de reprendre la séquence\./);
+  // Toasts selon le résultat réel : bilan partagé pour la reprise (même texte
+  // que la fiche candidat), textes propres à la relance.
+  assert.match(body(panel, 'resumeEnrollment'), /summarizeResumeResponse\(payload, name\)/);
+  assert.match(panel, /Rien à relancer : cette séquence est terminée pour \$\{name\}/);
+  assert.match(panel, /Ce compte LinkedIn n’est plus relié\. Reliez-le avant de relancer la séquence\./);
 });
 
 test('Contrat §4/§6 — « Marquer comme répondu » passe par la clôture serveur', () => {
@@ -210,5 +212,9 @@ test('SEQ-060 — « Dupliquer » recopie fin de séquence, options e-mail et r�
 
 // ---------------------------------------------------------------- SEQ-069
 test('SEQ-069 — à la réouverture, « Si timeout » reflète l’étape de repli', () => {
-  assert.match(body(list, 'handleEdit'), /timeoutAction: s\.timeout_branch_step_id \? 'alternative_step' : 'skip'/);
+  // Une seule lecture des étapes (celle du choix de modèle), qui déduit le repli.
+  assert.match(body(list, 'handleEdit'), /\.\.\.rowToSequenceStep\(s\),/);
+  assert.match(list, /import \{ rowToSequenceStep \} from '\.\/sequence\/sequenceGraph';/);
+  const graph = read('src/components/outreach/sequence/sequenceGraph.ts');
+  assert.match(graph, /timeoutAction: s\.timeout_branch_step_id \? 'alternative_step' : 'skip'/);
 });

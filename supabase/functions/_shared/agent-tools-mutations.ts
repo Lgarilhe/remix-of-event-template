@@ -462,8 +462,9 @@ const createMission: AgentTool = {
 // Anti-doublon organisation (lot P0-D, docs/p0-plan-2026-09-06.md, section 2) :
 // un candidat encore en séquence dans l'organisation (inscription active ou en
 // pause, quelle que soit sa date : SEQ-128) ou contacté dans les 90 derniers
-// jours (inscription répondue ou terminée), toute séquence et tout compte, est
-// refusé, sauf `force: true` posé par un propriétaire ou administrateur.
+// jours (inscription répondue ou terminée, InMail groupé programmé, en cours
+// ou envoyé : SEQ-125), toute séquence et tout compte, est refusé, sauf
+// `force: true` posé par un propriétaire ou administrateur.
 // Rapprochement (SEQ-046) : profile_id, provider_id et resolved_profile_id
 // (identifiant Recruiter ou classique), plus le slug de profile_url, comparés
 // après normalisation (identifiant LinkedIn ou URL en minuscules sans barre
@@ -474,13 +475,17 @@ const RECENT_CONTACT_WINDOW_DAYS = 90;
 const LIVE_CONTACT_STATUSES = ['active', 'paused'];
 /** Contact terminé : signalé sur RECENT_CONTACT_WINDOW_DAYS jours. */
 const RECENT_CONTACT_STATUSES = ['replied', 'completed'];
+/** InMails groupés comptés comme un contact, sur RECENT_CONTACT_WINDOW_DAYS jours. */
+const INMAIL_CONTACT_STATUSES = ['scheduled', 'sending', 'sent'];
 
 interface RecentOrgContact {
   createdBy: string | null;
   createdByFirstName: string | null;
   createdAt: string;
-  sequenceId: string;
+  /** Séquence de l'inscription, null pour un InMail groupé. */
+  sequenceId: string | null;
   sequenceName: string | null;
+  source: 'sequence' | 'inmail';
 }
 
 function normalizeEnrollmentKey(value: unknown): string | null {
@@ -504,14 +509,16 @@ function formatRecentContact(recent: RecentOrgContact): string {
   const date = new Date(recent.createdAt).toLocaleDateString('fr-FR', {
     day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Paris',
   });
+  const via = recent.source === 'inmail' ? ' par InMail' : '';
   const seq = recent.sequenceName ? ` (séquence « ${recent.sequenceName} »)` : '';
-  return `Déjà contacté par ${who} le ${date}${seq}`;
+  return `Déjà contacté par ${who} le ${date}${via}${seq}`;
 }
 
 /**
- * Inscription de l'organisation qui concerne déjà ce candidat : en cours
- * (active ou en pause, sans limite de date) ou close depuis moins de 90 jours.
- * La plus récente, ou null.
+ * Contact de l'organisation qui concerne déjà ce candidat : inscription en
+ * cours (active ou en pause, sans limite de date), inscription close depuis
+ * moins de 90 jours, ou InMail groupé (inmail_queue) programmé, en cours ou
+ * envoyé depuis moins de 90 jours. Le plus récent, ou null.
  */
 async function findRecentOrgContact(
   params: Record<string, unknown>,
@@ -547,8 +554,10 @@ async function findRecentOrgContact(
   const columns = 'profile_id, provider_id, resolved_profile_id, profile_url, created_by, created_at, status, sequence_id';
 
   // Deux requêtes (un second .or() se combinerait en ET avec le filtre
-  // d'identité) : inscriptions vivantes sans date, closes sur 90 jours.
-  const [live, recentClosed] = await Promise.all([
+  // d'identité) : inscriptions vivantes sans date, closes sur 90 jours. Plus
+  // les InMails groupés de l'organisation sur 90 jours (SEQ-125), rapprochés
+  // par recipient_profile_id, comme dans src/lib/enrollmentDuplicates.ts.
+  const [live, recentClosed, inmails] = await Promise.all([
     ctx.adminClient
       .from('sequence_enrollments')
       .select(columns)
@@ -566,29 +575,59 @@ async function findRecentOrgContact(
       .or(identityFilter)
       .order('created_at', { ascending: false })
       .limit(20),
+    ctx.adminClient
+      .from('inmail_queue')
+      .select('recipient_profile_id, created_by, created_at, status')
+      .eq('organization_id', ctx.organizationId)
+      .gte('created_at', since)
+      .in('status', INMAIL_CONTACT_STATUSES)
+      .in('recipient_profile_id', Array.from(queryValues))
+      .order('created_at', { ascending: false })
+      .limit(20),
   ]);
-  const error = live.error ?? recentClosed.error;
+  const error = live.error ?? recentClosed.error ?? inmails.error;
   if (error) throw new Error(`Vérification des contacts récents impossible : ${error.message}`);
 
-  const rows = [...(live.data ?? []), ...(recentClosed.data ?? [])] as Array<Record<string, unknown>>;
-  rows.sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
-  const match = rows.find((row) => {
-    for (const value of [row.profile_id, row.provider_id, row.resolved_profile_id]) {
-      const key = normalizeEnrollmentKey(value);
-      if (key && keys.has(key)) return true;
-      const slug = linkedInSlugOf(value);
-      if (slug && keys.has(slug)) return true;
-    }
-    const urlSlug = linkedInSlugOf(row.profile_url);
-    return !!urlSlug && slugs.has(urlSlug);
-  });
+  const matchesKey = (value: unknown): boolean => {
+    const key = normalizeEnrollmentKey(value);
+    if (key && keys.has(key)) return true;
+    const slug = linkedInSlugOf(value);
+    return !!slug && keys.has(slug);
+  };
+  const enrollmentRows = [...(live.data ?? []), ...(recentClosed.data ?? [])] as Array<Record<string, unknown>>;
+  const contacts: Array<{ created_by: unknown; created_at: unknown; sequence_id: string | null; source: 'sequence' | 'inmail' }> = [
+    ...enrollmentRows
+      .filter((row) => {
+        if ([row.profile_id, row.provider_id, row.resolved_profile_id].some(matchesKey)) return true;
+        const urlSlug = linkedInSlugOf(row.profile_url);
+        return !!urlSlug && slugs.has(urlSlug);
+      })
+      .map((row) => ({
+        created_by: row.created_by,
+        created_at: row.created_at,
+        sequence_id: row.sequence_id ? String(row.sequence_id) : null,
+        source: 'sequence' as const,
+      })),
+    ...((inmails.data ?? []) as Array<Record<string, unknown>>)
+      .filter((row) => matchesKey(row.recipient_profile_id))
+      .map((row) => ({
+        created_by: row.created_by,
+        created_at: row.created_at,
+        sequence_id: null,
+        source: 'inmail' as const,
+      })),
+  ];
+  contacts.sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
+  const match = contacts[0];
   if (!match) return null;
 
   const [{ data: profile }, { data: seq }] = await Promise.all([
     match.created_by
       ? ctx.adminClient.from('profiles').select('display_name').eq('user_id', String(match.created_by)).maybeSingle()
       : Promise.resolve({ data: null }),
-    ctx.adminClient.from('outreach_sequences').select('name').eq('id', String(match.sequence_id)).maybeSingle(),
+    match.sequence_id
+      ? ctx.adminClient.from('outreach_sequences').select('name').eq('id', match.sequence_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
   const firstName = String(profile?.display_name ?? '').trim().split(/\s+/)[0] || null;
 
@@ -596,8 +635,9 @@ async function findRecentOrgContact(
     createdBy: match.created_by ? String(match.created_by) : null,
     createdByFirstName: firstName,
     createdAt: String(match.created_at),
-    sequenceId: String(match.sequence_id),
+    sequenceId: match.sequence_id,
     sequenceName: seq?.name ? String(seq.name) : null,
+    source: match.source,
   };
 }
 
@@ -609,7 +649,7 @@ const enrollInSequence: AgentTool = {
     "Requires the candidate to already exist on the mission and the sequence to belong to the user's org. " +
     "Messages are always sent from the requesting user's OWN connected LinkedIn account (never a teammate's): " +
     "omit account_id to use it; an account_id that is not linked to the user is refused. " +
-    "Refused when the organization is already in a sequence with the candidate, or contacted them in the last 90 days (any sequence, any account); " +
+    "Refused when the organization is already in a sequence with the candidate, or contacted them in the last 90 days (any sequence, any account, or a bulk InMail); " +
     "only an owner or admin can override with force: true after explicit confirmation.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -2793,6 +2833,8 @@ const resumeSequence: AgentTool = {
       success?: boolean;
       message?: string;
       counts?: Partial<Record<'resumed' | 'nothing_to_resume' | 'account_unlinked' | 'not_paused' | 'error', number>>;
+      /** Inscriptions non traitées dans le budget de temps de l'action serveur (un second appel les reprend). */
+      remaining?: number;
     } = {};
     try {
       const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/process-sequences`, {
@@ -2817,9 +2859,11 @@ const resumeSequence: AgentTool = {
     const resumed = counts.resumed ?? 0;
     const unlinked = counts.account_unlinked ?? 0;
     const failed = counts.error ?? 0;
+    const remaining = typeof body.remaining === 'number' && body.remaining > 0 ? body.remaining : 0;
     const notes: string[] = [];
     if (unlinked > 0) notes.push(`${unlinked} restent en pause : leur compte LinkedIn d'envoi n'est plus relié`);
     if (failed > 0) notes.push(`${failed} n'ont pas pu être repris`);
+    if (remaining > 0) notes.push(`${remaining} n'ont pas encore été traités faute de temps : relancez la réactivation pour les reprendre`);
     return {
       success: true,
       data: {
@@ -2827,6 +2871,7 @@ const resumeSequence: AgentTool = {
         is_active: row.is_active,
         updated_at: row.updated_at,
         counts,
+        remaining,
         message: `Séquence réactivée : ${resumed} candidat(s) repris, chaque étape garde sa date prévue.` +
           (notes.length > 0 ? ` ${notes.join(' ; ')}.` : ''),
       },

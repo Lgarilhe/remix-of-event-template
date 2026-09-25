@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { Sequence, SequenceStep } from './SequenceBuilder';
 import {
   renumberByOrderGroup,
+  templateStepOrders,
   rowToSequenceStep,
   asStopConditions,
   asSenderAccounts,
@@ -148,11 +149,13 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
       return idMap.get(String(ref)); // ref inconnue → undefined (purge propre)
     };
 
+    // Ordre enregistré dans le modèle : les variantes A/B d'une étape le
+    // partagent. Un ancien modèle sans step_order est relu par position, ses
+    // variantes voisines regroupées sur un même ordre (templateStepOrders).
+    const orders = templateStepOrders(template.steps_config || []);
     const steps: SequenceStep[] = (template.steps_config || []).map((s: any, idx: number) => ({
       id: (s.id && idMap.get(String(s.id))) || crypto.randomUUID(),
-      // Ordre enregistré dans le modèle : les variantes A/B d'une étape le
-      // partagent. L'index ne sert que pour les anciens modèles sans step_order.
-      order: typeof s.step_order === 'number' ? s.step_order : idx,
+      order: orders[idx],
       actionType: s.action_type || s.actionType || 'message',
       conditionType: s.condition_type || s.conditionType || 'always',
       conditionValue: s.condition_value || s.conditionValue,

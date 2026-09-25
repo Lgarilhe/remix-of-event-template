@@ -59,14 +59,26 @@
 --                étape, organisation, canal et suivi non modifiables ; rien ne
 --                change sur une étape en cours d'envoi, envoyée ou sautée ; le
 --                texte ne change que sur une étape encore programmée.
+--   3f. SEQ-043  sequence_enrollments, à l'insertion : refus d'une inscription
+--                dont le compte d'envoi est relié (member_linkedin_accounts,
+--                même organisation) à un autre membre que son auteur
+--                (created_by) ou que l'utilisateur connecté (HINT
+--                ENROLL_ACCOUNT_OF_OTHER_MEMBER). Décision produit : chacun
+--                inscrit depuis son propre compte relié. Un compte sans liaison
+--                (compte e-mail) n'est pas bloqué ; la rotation multi-expéditeurs
+--                (assigned_sender_id, fixé à l'envoi) n'est pas concernée.
 -- 4. Fonctions
 --   4a. SEQ-057  increment_sequence_analytics pose organization_id (et ne
 --                laisse plus un compteur NULL en prod, colonnes sans défaut).
 --   4b. SEQ-059  save_sequence_steps refuse de supprimer une étape qui a un
 --                historique (HINT STEP_HAS_HISTORY) ; les exécutions en attente
 --                des étapes retirées disparaissent avec elles (rien n'était parti).
---   4c. SEQ-165  get_sequence_enrollment_counts : compteurs par séquence et
---                statut, calculés en base (plus de liste tronquée à 1 000 lignes).
+--   4c. SEQ-165  get_sequence_enrollment_counts : compteurs par séquence,
+--                statut et raison de pause (pause_reason renseignée pour les
+--                inscriptions en pause seulement, NULL sinon), calculés en base
+--                (plus de liste tronquée à 1 000 lignes). DROP puis CREATE : le
+--                type de retour a changé depuis la première écriture de ce
+--                fichier, et CREATE OR REPLACE ne sait pas le changer.
 --   4d. SEQ-119  is_active_org_collaborator : rôle collaborateur dans
 --                l'organisation active, pour les policies.
 -- 5. Policies (SEQ-009, 011, 056, 057, 058, 119, 216) : sur les dix tables du
@@ -510,6 +522,62 @@ CREATE TRIGGER sequence_step_executions_client_guard
   FOR EACH ROW EXECUTE FUNCTION public.sequence_step_executions_client_guard();
 
 -- ---------------------------------------------------------------------
+-- 3f. SEQ-043 : on inscrit depuis son propre compte LinkedIn relié
+--     SECURITY DEFINER : la liaison d'un collègue doit être vue même si la
+--     RLS de member_linkedin_accounts la cache à l'appelant. Le nom du
+--     déclencheur le fait passer après sequence_enrollments_check_org (ordre
+--     alphabétique), qui a déjà complété organization_id ; repli sur la
+--     séquence par prudence.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.sequence_enrollments_check_sender_owner()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid;
+  v_uid uuid;
+BEGIN
+  IF NEW.account_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  v_org := NEW.organization_id;
+  IF v_org IS NULL THEN
+    SELECT s.organization_id INTO v_org
+    FROM public.outreach_sequences s
+    WHERE s.id = NEW.sequence_id;
+  END IF;
+
+  -- Utilisateur connecté (navigateur, API) : created_by est fourni par le
+  -- client, on contrôle aussi l'appelant réel. Chemins serveur (agent,
+  -- service_role) : created_by seul.
+  IF COALESCE(auth.role(), '') = 'authenticated' THEN
+    v_uid := auth.uid();
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.member_linkedin_accounts m
+    WHERE m.organization_id = v_org
+      AND m.linkedin_account_id = NEW.account_id
+      AND (m.user_id <> NEW.created_by
+           OR (v_uid IS NOT NULL AND m.user_id <> v_uid))
+  ) THEN
+    RAISE EXCEPTION 'Ce compte LinkedIn est relié à un autre membre de l''équipe. Inscrivez les candidats depuis votre propre compte.'
+      USING ERRCODE = '42501', HINT = 'ENROLL_ACCOUNT_OF_OTHER_MEMBER';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.sequence_enrollments_check_sender_owner() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS sequence_enrollments_check_sender_owner ON public.sequence_enrollments;
+CREATE TRIGGER sequence_enrollments_check_sender_owner
+  BEFORE INSERT ON public.sequence_enrollments
+  FOR EACH ROW EXECUTE FUNCTION public.sequence_enrollments_check_sender_owner();
+
+-- ---------------------------------------------------------------------
 -- 4a. SEQ-057 : statistiques rattachées à l'organisation de la séquence
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.increment_sequence_analytics(
@@ -724,20 +792,27 @@ REVOKE ALL ON FUNCTION public.save_sequence_steps(uuid, jsonb) FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION public.save_sequence_steps(uuid, jsonb) TO authenticated, service_role;
 
 -- ---------------------------------------------------------------------
--- 4c. SEQ-165 : compteurs d'inscriptions par séquence et statut
+-- 4c. SEQ-165 : compteurs d'inscriptions par séquence, statut et raison de
+--     pause (alertes de la liste des séquences, SEQ-179).
 --     SECURITY INVOKER : la RLS borne le résultat à ce que l'appelant voit.
+--     Aucune policy ni vue ne dépend de la fonction : le DROP est sans effet
+--     de bord (et sans objet sur une base qui ne l'a jamais eue).
 -- ---------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.get_sequence_enrollment_counts(p_sequence_ids uuid[])
-RETURNS TABLE (sequence_id uuid, status text, count bigint)
+DROP FUNCTION IF EXISTS public.get_sequence_enrollment_counts(uuid[]);
+CREATE FUNCTION public.get_sequence_enrollment_counts(p_sequence_ids uuid[])
+RETURNS TABLE (sequence_id uuid, status text, pause_reason text, count bigint)
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
 SET search_path = public
 AS $$
-  SELECT e.sequence_id, e.status, count(*)::bigint
+  SELECT e.sequence_id,
+         e.status,
+         CASE WHEN e.status = 'paused' THEN e.pause_reason END,
+         count(*)::bigint
   FROM public.sequence_enrollments e
   WHERE e.sequence_id = ANY (p_sequence_ids)
-  GROUP BY e.sequence_id, e.status
+  GROUP BY 1, 2, 3
 $$;
 
 REVOKE ALL ON FUNCTION public.get_sequence_enrollment_counts(uuid[]) FROM PUBLIC, anon;

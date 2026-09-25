@@ -228,7 +228,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                 );
               })}
               <p className="text-xs text-muted-foreground">
-                Chaque nouveau candidat est attribué à un expéditeur, qui envoie ensuite toute sa séquence. Un expéditeur qui a atteint ce nombre d'actions dans la journée ne reçoit plus de nouveaux candidats jusqu'au lendemain. Les plafonds d'envoi LinkedIn restent ceux du compte (Paramètres, Équipe).
+                Chaque nouveau candidat est attribué à un expéditeur, qui envoie ensuite toute sa séquence. Un expéditeur qui a atteint ce nombre d'actions (invitations, messages et InMails) dans la journée ne reçoit plus de nouveaux candidats jusqu'au lendemain. Quand tous les expéditeurs l'ont atteint, les nouveaux candidats attendent le lendemain. Les plafonds d'envoi LinkedIn restent ceux du compte (Paramètres, Équipe).
               </p>
             </div>
           ) : (

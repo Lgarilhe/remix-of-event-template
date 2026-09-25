@@ -155,6 +155,9 @@ test('SEQ-024 — assistant : la reprise vérifie le plan puis passe par resume_
   assert.match(resume, /pause_reasons: SEQUENCE_LEVEL_PAUSE_REASONS/);
   assert.match(mutations, /const SEQUENCE_LEVEL_PAUSE_REASONS = \['sequence_inactive', 'auto_paused'\];/);
   assert.match(resume, /if \(!res\.ok \|\| body\.success !== true\)/, 'jamais de succès sans preuve');
+  // Reprise par séquence interrompue par le budget de temps du serveur : le reste est annoncé.
+  assert.match(resume, /const remaining = typeof body\.remaining === 'number' && body\.remaining > 0 \? body\.remaining : 0;/);
+  assert.match(resume, /if \(remaining > 0\) notes\.push\(/);
   assert.doesNotMatch(resume, /'pending'/);
 });
 
@@ -167,10 +170,12 @@ test('SEQ-031 — assistant : « attendre une réponse » attend vraiment, avec 
 
 // ------------------------------------------------------------------ SEQ-039
 test('SEQ-039 — réponse e-mail : rattachée par le message d’origine, puis par l’organisation de la boîte', () => {
-  assert.match(newMail, /inReplyToMessageIds\(payload\.in_reply_to\)/);
+  // Normalisation partagée avec sequence-webhooks-handler (règle de B4,
+  // exécutée dans tests/ux/seq-audit-b4.test.mjs) : plus de copie locale.
+  assert.match(webhook, /import \{ inReplyToCandidates \} from "\.\.\/_shared\/sequence-email-policy\.mjs";/);
+  assert.match(newMail, /const repliedToIds = inReplyToCandidates\(payload\.in_reply_to\);/);
+  assert.doesNotMatch(webhook, /function inReplyToMessageIds\(/);
   assert.match(newMail, /\.from\('sequence_email_tracking'\)\s*\.select\('execution_id'\)\s*\.in\('email_message_id', repliedToIds\)/);
-  const ids = fnBody(webhook, 'function inReplyToMessageIds(');
-  assert.match(ids, /\[value\.message_id, value\.id\]/);
   assert.match(newMail, /resolveMailboxOrganizations\(supabase, account_id\)/);
   const byEmail = fnBody(webhook, 'async function findOpenEnrollmentsByEmail(');
   assert.match(byEmail, /\.in\('organization_id', mailboxOrgs\)/);
@@ -256,6 +261,29 @@ test('SEQ-046 / SEQ-128 — anti-doublon de l’assistant : autres identifiants,
   // La fenêtre de 90 jours ne s'applique qu'aux inscriptions closes.
   const live = sliceBetween(find, ".in('status', LIVE_CONTACT_STATUSES)", '.limit(20)');
   assert.doesNotMatch(live, /created_at', since/);
+});
+
+// ------------------------------------------------------------------ SEQ-125
+test('SEQ-125 — anti-doublon de l’assistant : un InMail groupé récent compte comme un contact', () => {
+  const find = fnBody(mutations, 'async function findRecentOrgContact(');
+  assert.match(mutations, /const INMAIL_CONTACT_STATUSES = \['scheduled', 'sending', 'sent'\];/);
+  const inmail = sliceBetween(find, ".from('inmail_queue')", '.limit(20)');
+  assert.match(inmail, /\.select\('recipient_profile_id, created_by, created_at, status'\)/);
+  assert.match(inmail, /\.eq\('organization_id', ctx\.organizationId\)/);
+  assert.match(inmail, /\.gte\('created_at', since\)/);
+  assert.match(inmail, /\.in\('status', INMAIL_CONTACT_STATUSES\)/);
+  assert.match(inmail, /\.in\('recipient_profile_id', Array\.from\(queryValues\)\)/);
+  // Lecture en échec : l'inscription est refusée (verifyAccess), jamais un faux « aucun contact ».
+  assert.match(find, /const error = live\.error \?\? recentClosed\.error \?\? inmails\.error;/);
+  // Rapprochement exact de recipient_profile_id, puis le plus récent toutes sources confondues.
+  assert.match(find, /\.filter\(\(row\) => matchesKey\(row\.recipient_profile_id\)\)/);
+  assert.match(find, /sequence_id: null,\s*source: 'inmail' as const,/);
+  assert.match(find, /contacts\.sort\(/);
+  // Pas de lecture de séquence pour un InMail ; libellé « par InMail ».
+  assert.match(find, /match\.sequence_id\s*\?\s*ctx\.adminClient\.from\('outreach_sequences'\)/);
+  assert.match(fnBody(mutations, 'function formatRecentContact('), /recent\.source === 'inmail' \? ' par InMail' : ''/);
+  // Un InMail ne se confond pas avec « déjà inscrit dans cette séquence ».
+  assert.match(mutations, /sequenceId: string \| null;/);
 });
 
 // ------------------------------------------------------------------ SEQ-054

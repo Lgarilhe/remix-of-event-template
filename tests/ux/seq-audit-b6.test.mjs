@@ -247,11 +247,44 @@ test('SEQ-119 — un collaborateur ne modifie que ses inscriptions et ne lit que
 
 // ---------------------------------------------------------------- SEQ-165
 test('SEQ-165 — compteurs d’inscriptions calculés en base, sous la RLS de l’appelant', () => {
-  const fn = between(b6, 'CREATE OR REPLACE FUNCTION public.get_sequence_enrollment_counts', '$$;');
-  assert.match(fn, /RETURNS TABLE \(sequence_id uuid, status text, count bigint\)/);
+  const fn = between(b6, 'CREATE FUNCTION public.get_sequence_enrollment_counts', '$$;');
+  assert.ok(fn, 'définition de get_sequence_enrollment_counts absente');
+  // Demande croisée de F2b : le compte par raison de pause (alertes SEQ-179).
+  assert.match(fn, /RETURNS TABLE \(sequence_id uuid, status text, pause_reason text, count bigint\)/);
+  assert.match(fn, /CASE WHEN e\.status = 'paused' THEN e\.pause_reason END/, 'raison renseignée pour les seules inscriptions en pause');
+  assert.match(fn, /GROUP BY 1, 2, 3/);
   assert.match(fn, /SECURITY INVOKER/);
-  assert.match(fn, /GROUP BY e\.sequence_id, e\.status/);
+  // Type de retour changé : DROP avant CREATE (CREATE OR REPLACE le refuserait).
+  const drop = b6.indexOf('DROP FUNCTION IF EXISTS public.get_sequence_enrollment_counts(uuid[]);');
+  assert.ok(drop !== -1 && drop < b6.indexOf('CREATE FUNCTION public.get_sequence_enrollment_counts'), 'DROP avant CREATE');
   assert.match(b6, /GRANT EXECUTE ON FUNCTION public\.get_sequence_enrollment_counts\(uuid\[\]\) TO authenticated/);
+  // Contrôlé en base par l'audit (S18).
+  assert.match(stripSql(read('supabase/tests/rls_two_orgs_audit.sql')), /WHERE status = 'paused' AND pause_reason = 'sequence_inactive'/);
+});
+
+// ---------------------------------------------------------------- SEQ-043
+test('SEQ-043 — on n’inscrit pas depuis le compte LinkedIn relié à un collègue (garde serveur)', () => {
+  const fn = between(b6, 'CREATE OR REPLACE FUNCTION public.sequence_enrollments_check_sender_owner()', '\n$$;');
+  assert.ok(fn, 'fonction de garde absente');
+  assert.match(fn, /SECURITY DEFINER/, 'voit la liaison d’un collègue malgré la RLS');
+  assert.match(fn, /FROM public\.member_linkedin_accounts m\s+WHERE m\.organization_id = v_org\s+AND m\.linkedin_account_id = NEW\.account_id/);
+  assert.match(fn, /m\.user_id <> NEW\.created_by/);
+  // Utilisateur connecté : l'appelant réel compte, pas seulement created_by (fourni par le client).
+  assert.match(fn, /IF COALESCE\(auth\.role\(\), ''\) = 'authenticated' THEN\s+v_uid := auth\.uid\(\);/);
+  assert.match(fn, /v_uid IS NOT NULL AND m\.user_id <> v_uid/);
+  assert.match(fn, /USING ERRCODE = '42501', HINT = 'ENROLL_ACCOUNT_OF_OTHER_MEMBER'/);
+  // Même texte que le blocage du front (useSendingAccount).
+  const front = read('src/components/outreach/enrollment-preview/useSendingAccount.ts');
+  assert.ok(front.includes("Ce compte LinkedIn est relié à un autre membre de l'équipe. Inscrivez les candidats depuis votre propre compte."));
+  assert.ok(fn.includes("Ce compte LinkedIn est relié à un autre membre de l''équipe. Inscrivez les candidats depuis votre propre compte."));
+  // À l'insertion seulement, et après le complément d'organisation (ordre alphabétique des déclencheurs).
+  assert.match(b6, /CREATE TRIGGER sequence_enrollments_check_sender_owner\s+BEFORE INSERT ON public\.sequence_enrollments\s+FOR EACH ROW/);
+  assert.ok('sequence_enrollments_check_org' < 'sequence_enrollments_check_sender_owner');
+  // Rejoué en base par l'audit (S19) : refus avec le HINT, compte sans liaison accepté.
+  const audit = stripSql(read('supabase/tests/rls_two_orgs_audit.sql'));
+  assert.match(audit, /VALUES \(seq_a, 'acc-li-a', 'prof-b-2', org_a, u_a, 'active'\)/, 'usurpation de created_by contrôlée');
+  assert.match(audit, /VALUES \(seq_a, 'mail-b@audit\.test', 'prof-b-3', org_a, u_b, 'active'\)/, 'compte sans liaison accepté');
+  assert.match(audit, /v_hint IS DISTINCT FROM 'ENROLL_ACCOUNT_OF_OTHER_MEMBER'/);
 });
 
 // ---------------------------------------------------------------- SEQ-214

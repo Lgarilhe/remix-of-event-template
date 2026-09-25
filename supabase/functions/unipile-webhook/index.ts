@@ -5,6 +5,7 @@ import { resolveV2WebhookToken } from "../_shared/unipile-v2.ts";
 import { ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON } from "../_shared/linkedin-quotas.ts";
 import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 import { stopLinkedInAccountSending } from "../_shared/linkedin-sending-stop.ts";
+import { inReplyToCandidates } from "../_shared/sequence-email-policy.mjs";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1698,26 +1699,6 @@ function isAutoReplyMail(payload: WebhookPayload, subjectLower: string, senderEm
   return false;
 }
 
-/** Identifiants du message auquel cet e-mail répond (chaîne ou objet { message_id, id }), avec et sans chevrons. */
-function inReplyToMessageIds(value: WebhookPayload['in_reply_to']): string[] {
-  const raw = typeof value === 'string'
-    ? [value]
-    : value && typeof value === 'object'
-      ? [value.message_id, value.id]
-      : [];
-  const ids = new Set<string>();
-  for (const candidate of raw) {
-    if (typeof candidate !== 'string') continue;
-    const trimmed = candidate.trim();
-    if (!trimmed) continue;
-    const bare = trimmed.replace(/^</, '').replace(/>$/, '');
-    ids.add(trimmed);
-    ids.add(bare);
-    ids.add(`<${bare}>`);
-  }
-  return [...ids];
-}
-
 /** Organisation(s) de la boîte mail qui reçoit (member_email_accounts). Lève en cas d'erreur de lecture. */
 async function resolveMailboxOrganizations(supabase: SupabaseClient, accountId: string): Promise<string[]> {
   const { data, error } = await supabase
@@ -1860,9 +1841,14 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
 
   const mailboxOrgs = await resolveMailboxOrganizations(supabase, account_id);
 
-  // 1. Rattachement par le message d'origine (in_reply_to).
+  // 1. Rattachement par le message d'origine (in_reply_to), normalisé par la
+  //    règle partagée avec sequence-webhooks-handler (chaîne ou objet
+  //    { message_id, id }, avec et sans chevrons). email_message_id contient
+  //    l'identifiant renvoyé à l'envoi, ou le marqueur konekt-sent:<tracking_id>
+  //    qui ne correspond à aucune réponse : le repli par adresse (2.) reste
+  //    nécessaire.
   let enrollments: MailEnrollment[] = [];
-  const repliedToIds = inReplyToMessageIds(payload.in_reply_to);
+  const repliedToIds = inReplyToCandidates(payload.in_reply_to);
   if (repliedToIds.length > 0) {
     const { data: tracked, error: trackedError } = await supabase
       .from('sequence_email_tracking')

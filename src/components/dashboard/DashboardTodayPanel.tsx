@@ -581,12 +581,19 @@ const TodayItem: React.FC<{
   const msg = item.payload as ScheduledMessage;
   const isInmail = msg.type === 'inmail';
   const recipientName = msg.recipientName || 'Profil LinkedIn';
-  const subtitle =
+  // Étape reportée par la limite LinkedIn ou en cours d'envoi : le statut réel
+  // passe en tête du sous-titre, pour ne pas la lire comme un envoi normal.
+  const pendingStatusLabel =
+    !isDone && msg.type === 'sequence' && (msg.status === 'quota_blocked' || msg.status === 'sending')
+      ? msg.statusLabel || null
+      : null;
+  const baseSubtitle =
     isInmail && msg.subject
       ? msg.subject
       : msg.sequenceName
       ? `${msg.sequenceName} · Étape ${(msg.stepOrder || 0) + 1}`
       : msg.recipientHeadline || '—';
+  const subtitle = pendingStatusLabel ? `${pendingStatusLabel} · ${baseSubtitle}` : baseSubtitle;
 
   return (
     <motion.button

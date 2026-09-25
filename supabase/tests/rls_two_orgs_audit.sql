@@ -514,6 +514,95 @@ BEGIN
   END;
   RESET ROLE;
 
+  -- S18. SEQ-165 : les compteurs portent la raison de pause des inscriptions en pause.
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  UPDATE public.sequence_enrollments SET status = 'paused', pause_reason = 'sequence_inactive' WHERE id = enr_a;
+  PERFORM set_config('request.jwt.claims', claims_a, true);
+  PERFORM set_config('request.jwt.claim.sub', u_a::text, true);
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  SET LOCAL ROLE authenticated;
+  checks := checks + 1;
+  BEGIN
+    SELECT count INTO n FROM public.get_sequence_enrollment_counts(ARRAY[seq_a])
+    WHERE status = 'paused' AND pause_reason = 'sequence_inactive';
+    IF n IS DISTINCT FROM 1 THEN failures := failures || format('[SEQ-165 : %s pause(s) « séquence désactivée » au lieu de 1] ', n); END IF;
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[SEQ-165 raison de pause : %s] ', SQLERRM);
+  END;
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  UPDATE public.sequence_enrollments SET status = 'active', pause_reason = NULL WHERE id = enr_a;
+
+  -- S19. SEQ-043 : on inscrit depuis son propre compte LinkedIn relié. B, membre
+  --      de l'org A le temps du contrôle, n'inscrit pas depuis le compte relié à A,
+  --      même en se déclarant auteur à la place de A ; un compte sans liaison
+  --      (e-mail) reste accepté, et le chemin serveur contrôle created_by.
+  INSERT INTO public.member_linkedin_accounts (organization_id, user_id, linkedin_account_id, linked_by)
+  VALUES (org_a, u_a, 'acc-li-a', u_a);
+  checks := checks + 1;
+  BEGIN
+    INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
+    VALUES (seq_a, 'acc-li-a', 'prof-srv-b', org_a, u_b, 'active');
+    failures := failures || '[SEQ-043 : serveur, inscription depuis le compte relié à un autre membre acceptée] ';
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'ENROLL_ACCOUNT_OF_OTHER_MEMBER' THEN
+      failures := failures || format('[SEQ-043 serveur : refus sans le HINT attendu (%s)] ', SQLERRM);
+    END IF;
+  WHEN OTHERS THEN failures := failures || format('[SEQ-043 serveur : %s] ', SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
+    VALUES (seq_a, 'acc-li-a', 'prof-srv-a', org_a, u_a, 'active');
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[Régression SEQ-043 : le serveur n''inscrit plus depuis le compte de l''auteur (%s)] ', SQLERRM);
+  END;
+  INSERT INTO public.organization_members (organization_id, user_id, role) VALUES (org_a, u_b, 'collaborator');
+  UPDATE public.profiles SET active_organization_id = org_a WHERE user_id = u_b;
+  PERFORM set_config(cache_b, '', true);
+  PERFORM set_config('request.jwt.claims', claims_b, true);
+  PERFORM set_config('request.jwt.claim.sub', u_b::text, true);
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
+    VALUES (seq_a, 'acc-li-a', 'prof-b-1', org_a, u_b, 'active');
+    failures := failures || '[SEQ-043 : B inscrit depuis le compte relié à A] ';
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'ENROLL_ACCOUNT_OF_OTHER_MEMBER' THEN
+      failures := failures || format('[SEQ-043 : refus sans le HINT attendu (%s)] ', SQLERRM);
+    END IF;
+  WHEN OTHERS THEN failures := failures || format('[SEQ-043 : %s] ', SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
+    VALUES (seq_a, 'acc-li-a', 'prof-b-2', org_a, u_a, 'active');
+    failures := failures || '[SEQ-043 : B inscrit depuis le compte de A en se déclarant A] ';
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'ENROLL_ACCOUNT_OF_OTHER_MEMBER' THEN
+      failures := failures || format('[SEQ-043 usurpation : refus sans le HINT attendu (%s)] ', SQLERRM);
+    END IF;
+  WHEN OTHERS THEN failures := failures || format('[SEQ-043 usurpation : %s] ', SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
+    VALUES (seq_a, 'mail-b@audit.test', 'prof-b-3', org_a, u_b, 'active');
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[Régression SEQ-043 : compte sans liaison refusé (%s)] ', SQLERRM);
+  END;
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  DELETE FROM public.sequence_enrollments WHERE sequence_id = seq_a AND profile_id IN ('prof-srv-a', 'prof-b-3');
+  DELETE FROM public.member_linkedin_accounts WHERE organization_id = org_a AND linkedin_account_id = 'acc-li-a';
+  DELETE FROM public.organization_members WHERE organization_id = org_a AND user_id = u_b;
+  UPDATE public.profiles SET active_organization_id = org_b WHERE user_id = u_b;
+  PERFORM set_config(cache_b, '', true);
+
   IF failures <> '' THEN
     RAISE EXCEPTION 'rls_two_orgs_audit (séquences) : contrôles en échec %', failures;
   END IF;

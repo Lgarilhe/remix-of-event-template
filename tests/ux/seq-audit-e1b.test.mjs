@@ -208,7 +208,9 @@ test('SEQ-192 / SEQ-193 — service indisponible reporté d\'une heure, report d
   assert.match(creds, /stepSendChannel\(step\) !== 'email'/);
   assert.match(creds, /error_message: PROVIDER_UNAVAILABLE_MESSAGE/);
   const gate = slice(loop, 'await checkQuotaForAction(', 'results.quota_blocked++;');
-  assert.match(gate, /quotaBlockedRetryAt\(quotaCheck\.scope/);
+  // Passe 2 (demande SEQ-193 de E3) : plus aucun crédit InMail → comme le plafond du jour.
+  assert.match(gate, /const retryScope = quotaCheck\.scope === 'inmail_credits' \? 'daily' : quotaCheck\.scope;/);
+  assert.match(gate, /quotaBlockedRetryAt\(retryScope,/);
   assert.doesNotMatch(gate, /Date\.now\(\) \+ 86400000/);
 });
 

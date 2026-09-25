@@ -49,6 +49,7 @@ const LINK_SIGNING_SECRET = linkSigningSecret((key) => Deno.env.get(key));
 // Textes lus par le recruteur dans l'historique de la séquence (jamais de nom de fournisseur).
 const SENDER_NOT_IN_ORG_REASON = "Compte d'envoi non rattaché à l'organisation";
 const NO_SENDER_MAILBOX_MESSAGE = "Aucune boîte e-mail n'est reliée pour l'expéditeur : reliez-la dans Paramètres, Connexions.";
+const SENDER_MAILBOX_DISCONNECTED_MESSAGE = "Boîte e-mail de l'expéditeur déconnectée : reconnectez-la dans Paramètres, Connexions.";
 const SUPPRESSED_SKIP_REASON = 'Adresse bloquée pour les envois e-mail';
 const UNCERTAIN_SEND_MESSAGE = "Envoi incertain : vérifiez le dossier Envoyés de la boîte d'envoi avant de relancer.";
 
@@ -239,8 +240,9 @@ async function generateAiSnippet(
     } catch { /* use defaults */ }
 
     // Load AI context (Settings → Contexte IA) — user + org. Même expéditeur
-    // que le nom affiché et les variables : le titulaire de la boîte d'envoi.
-    const emailAiContext = await loadAiContextForEnrollment(supabase, enrollment, { sender_id: senderUserId });
+    // que le nom affiché et les variables : le titulaire de la boîte d'envoi,
+    // passé en expéditeur déjà résolu (4e paramètre, prioritaire).
+    const emailAiContext = await loadAiContextForEnrollment(supabase, enrollment, null, senderUserId);
 
     const { callAnthropicWithRetry: callWithRetry } = await import('../_shared/ai-config.ts');
     const result = await callWithRetry(ANTHROPIC_API_KEY!, {
@@ -361,7 +363,21 @@ type SendingMailbox =
   | { kind: 'ok'; mailboxId: string; senderUserId: string | null }
   | { kind: 'not_in_org' }
   | { kind: 'no_mailbox' }
+  | { kind: 'mailbox_disconnected'; mailboxId: string; status: string | null }
   | { kind: 'lookup_failed'; error: string };
+
+/**
+ * Boîte en état d'envoyer : état OK (ou CONNECTED), ou inconnu (liaison sans
+ * état). Tout autre état (CREDENTIALS, ERROR, CONNECTING…) : la boîte est à
+ * reconnecter, rien n'est envoyé. Même règle que l'écran Connexions
+ * (isUsableEmailAccountStatus). pickMailbox choisit la boîte, comme le moteur ;
+ * ce contrôle refuse ensuite une boîte retenue faute de mieux (SEQ-067).
+ */
+function isUsableMailboxStatus(status: string | null | undefined): boolean {
+  if (typeof status !== 'string' || !status.trim()) return true;
+  const normalized = status.trim().toUpperCase();
+  return normalized === 'OK' || normalized === 'CONNECTED';
+}
 
 /**
  * Boîte e-mail d'envoi, résolue dans l'organisation de l'inscription.
@@ -380,11 +396,11 @@ async function resolveSendingMailbox(
   if (!orgId) return { kind: 'not_in_org' };
   const ids = [...new Set(candidates.filter((v): v is string => typeof v === 'string' && v.trim() !== '').map((v) => v.trim()))];
 
-  let emailAccounts: Array<{ email_account_id: string; user_id: string | null }> = [];
+  let emailAccounts: Array<{ email_account_id: string; user_id: string | null; account_status: string | null }> = [];
   let linkedinAccounts: Array<{ linkedin_account_id: string; user_id: string | null }> = [];
   if (ids.length > 0) {
     const [emailRes, linkedinRes] = await Promise.all([
-      supabase.from('member_email_accounts').select('email_account_id, user_id')
+      supabase.from('member_email_accounts').select('email_account_id, user_id, account_status')
         .eq('organization_id', orgId).in('email_account_id', ids),
       supabase.from('member_linkedin_accounts').select('linkedin_account_id, user_id')
         .eq('organization_id', orgId).in('linkedin_account_id', ids),
@@ -397,7 +413,11 @@ async function resolveSendingMailbox(
 
   const decision = resolveEmailSender({ candidates: ids, emailAccounts, linkedinAccounts, fallbackUserId });
   if (decision.kind === 'not_in_org') return { kind: 'not_in_org' };
-  if (decision.kind === 'mailbox') return { kind: 'ok', mailboxId: decision.mailboxId, senderUserId: decision.ownerUserId };
+  if (decision.kind === 'mailbox') {
+    const status = emailAccounts.find((row) => row.email_account_id === decision.mailboxId)?.account_status ?? null;
+    if (!isUsableMailboxStatus(status)) return { kind: 'mailbox_disconnected', mailboxId: decision.mailboxId, status };
+    return { kind: 'ok', mailboxId: decision.mailboxId, senderUserId: decision.ownerUserId };
+  }
   if (!decision.ownerUserId) return { kind: 'no_mailbox' };
 
   const { data: ownerMailboxes, error: mailboxError } = await supabase
@@ -406,8 +426,11 @@ async function resolveSendingMailbox(
     .eq('organization_id', orgId)
     .eq('user_id', decision.ownerUserId);
   if (mailboxError) return { kind: 'lookup_failed', error: mailboxError.message };
-  const mailboxId = pickMailbox((ownerMailboxes || []) as Array<{ email_account_id: string; account_status: string | null }>);
+  const ownerRows = (ownerMailboxes || []) as Array<{ email_account_id: string; account_status: string | null }>;
+  const mailboxId = pickMailbox(ownerRows);
   if (!mailboxId) return { kind: 'no_mailbox' };
+  const status = ownerRows.find((row) => row.email_account_id === mailboxId)?.account_status ?? null;
+  if (!isUsableMailboxStatus(status)) return { kind: 'mailbox_disconnected', mailboxId, status };
   return { kind: 'ok', mailboxId, senderUserId: decision.ownerUserId };
 }
 
@@ -619,6 +642,18 @@ Deno.serve(async (req) => {
       if (noMailboxError) console.error('[sequence-send-email] Failed to update execution status (no mailbox)', { error: noMailboxError, execution_id });
       console.warn(`[sequence-send-email] No email account linked for the sender of enrollment ${enrollment_id}`);
       return json({ success: false, error: 'no_sender_mailbox' });
+    }
+    if (mailbox.kind === 'mailbox_disconnected') {
+      // Boîte à reconnecter : rien n'est parti, échec explicite (SEQ-067).
+      const { error: disconnectedError } = await supabase.from('sequence_step_executions').update({
+        status: 'failed',
+        error_message: SENDER_MAILBOX_DISCONNECTED_MESSAGE,
+        executed_at: new Date().toISOString(),
+        channel: 'email',
+      }).eq('id', execution_id).in('status', ['sending', 'scheduled']);
+      if (disconnectedError) console.error('[sequence-send-email] Failed to update execution status (mailbox disconnected)', { error: disconnectedError, execution_id });
+      console.warn(`[sequence-send-email] Sending mailbox ${mailbox.mailboxId} of enrollment ${enrollment_id} is '${String(mailbox.status)}' — no send`);
+      return json({ success: false, error: 'sender_mailbox_disconnected' });
     }
     const emailAccountId = mailbox.mailboxId;
     // Expéditeur = titulaire de la boîte d'envoi, repli sur l'auteur de
@@ -852,15 +887,17 @@ Deno.serve(async (req) => {
           console.error('[sequence-send-email] Failed to reschedule rate-limited execution', { error: rateLimitUpdateError, execution_id });
         }
       } else {
-        const isBounce = errorStr.includes('bounce') || errorStr.includes('invalid') || errorStr.includes('not found');
+        // Échec d'envoi : 'failed'. Le statut 'bounced' n'est posé qu'à la
+        // réception d'un rebond réel (unipile-webhook, handleBounce) : aucune
+        // erreur renvoyée ici ne signale un rebond (SEQ-107).
         const { error: failUpdateError } = await supabase.from('sequence_step_executions').update({
-          status: isBounce ? 'bounced' : 'failed',
+          status: 'failed',
           error_message: sendResult.error,
           executed_at: new Date().toISOString(),
           channel: 'email',
         }).eq('id', execution_id);
         if (failUpdateError) {
-          console.error('[sequence-send-email] Failed to update execution status (failed/bounced)', { error: failUpdateError, execution_id });
+          console.error('[sequence-send-email] Failed to update execution status (failed)', { error: failUpdateError, execution_id });
         }
       }
 

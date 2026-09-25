@@ -46,6 +46,8 @@ import {
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
 import { checkProfilesCompat, pickFirstStep } from '@/lib/sequenceCompatibility';
+// Un seul nom par type d'étape, celui de l'éditeur de séquence.
+import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
 import { useSendingAccount, type SendingAccountState } from './enrollment-preview/useSendingAccount';
 import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
@@ -117,21 +119,6 @@ const ACTION_ICONS: Record<string, typeof Mail> = {
   wait_profile_visit: Clock,
   check_connection: GitBranch,
   condition_branch: GitBranch,
-};
-
-const ACTION_LABELS: Record<string, string> = {
-  email: 'E-mail',
-  message: 'Message LinkedIn',
-  smart_message: 'Message IA',
-  inmail: 'InMail',
-  connection_request: 'Invitation LinkedIn',
-  whatsapp_message: 'WhatsApp',
-  profile_visit: 'Visite de profil',
-  wait_connection: 'Attendre connexion',
-  wait_reply: 'Attendre réponse',
-  wait_profile_visit: 'Attendre visite',
-  check_connection: 'Vérifier connexion',
-  condition_branch: 'Condition',
 };
 
 // Channel colors via design tokens. Backgrounds harmonisés avec les
@@ -1531,7 +1518,7 @@ function CompactStepCard({ step, Icon, index }: { step: SequenceStepPreview; Ico
       </div>
       <div className="flex items-center gap-3 px-3 py-2 bg-muted/30 rounded-lg border border-border/50">
         <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <span className="text-[11.5px] font-medium text-foreground/80">{ACTION_LABELS[step.actionType] || step.actionType}</span>
+        <span className="text-[11.5px] font-medium text-foreground/80">{stepTypeLabel(step.actionType)}</span>
         {(step.delayDays || step.delayHours) ? (
           <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
             +{step.delayDays ? `${step.delayDays}j` : ''}{step.delayHours ? `${step.delayHours}h` : ''}
@@ -1595,7 +1582,7 @@ function MessageStepCard({
           <Icon className="w-3.5 h-3.5" strokeWidth={2.25} />
         </div>
         <span className="text-[12.5px] font-semibold tracking-tight text-foreground">
-          {ACTION_LABELS[step.actionType]}
+          {stepTypeLabel(step.actionType)}
         </span>
         {step.useAiPersonalization && (
           <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-purple/10 text-brand-purple border border-brand-purple/20 font-semibold uppercase tracking-wider">
@@ -1885,7 +1872,7 @@ function SummaryMode({
               <div key={step.stepId} className="flex items-center gap-2 px-2 py-1.5 text-xs">
                 <span className="text-[10px] text-muted-foreground tabular-nums w-4">#{i + 1}</span>
                 <Icon className="w-3 h-3 text-muted-foreground" />
-                <span>{ACTION_LABELS[step.actionType]}</span>
+                <span>{stepTypeLabel(step.actionType)}</span>
                 {step.useAiPersonalization && <Sparkles className="w-2.5 h-2.5 text-warning" />}
                 {(step.delayDays || step.delayHours) ? (
                   <span className="text-[10px] text-muted-foreground ml-auto">

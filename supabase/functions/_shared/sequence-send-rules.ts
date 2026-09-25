@@ -98,7 +98,8 @@ export function sendLedgerActionType(actionType: string, firstDegree: boolean): 
 
 // ─── SEQ-036 : invitation inutile ───────────────────────────────────────────
 
-export const ALREADY_CONNECTED_SKIP_REASON = 'Déjà en relation';
+// Motif affiché au journal quand l'invitation est sautée (SEQ-036, SEQ-045).
+export const ALREADY_CONNECTED_SKIP_REASON = 'Déjà en relation : invitation inutile';
 export const INVITE_PENDING_SKIP_REASON = 'Invitation déjà en attente';
 export const INVITE_RECENTLY_SENT_SKIP_REASON = 'Invitation déjà envoyée récemment';
 
@@ -183,6 +184,43 @@ export function aiMessageBody(message: string, senderName: string): string {
 /** Le texte renvoyé par l'IA peut-il partir (chaîne, et assez long hors signature) ? */
 export function isUsableAiMessage(message: unknown, senderName: string): message is string {
   return typeof message === 'string' && aiMessageBody(message, senderName).length >= MIN_AI_MESSAGE_CHARS;
+}
+
+// ─── SEQ-074 : budget du cycle et second appel IA ───────────────────────────
+
+/** Temps minimal à garder avant l'échéance du cycle pour lancer l'appel de correction. */
+export const AI_CORRECTION_MIN_REMAINING_MS = 30_000;
+
+/**
+ * L'appel de correction (second appel au modèle) a-t-il encore le temps de
+ * finir avant l'échéance du cycle ? Sans échéance connue : oui. Sinon, le
+ * premier brouillon est gardé et la revérification finale des garde-fous
+ * bloque l'envoi s'il reste une violation.
+ */
+export function hasTimeForAiCorrection(deadlineMs: number | null | undefined, now: number): boolean {
+  if (!deadlineMs) return true;
+  return now <= deadlineMs - AI_CORRECTION_MIN_REMAINING_MS;
+}
+
+// ─── SEQ-095 : position d'un message direct dans la séquence ────────────────
+
+/**
+ * Étapes déjà parties comptées comme messages directs pour situer une relance
+ * de message direct : message et Message IA (parti en direct vers une
+ * relation, comme l'annonce l'éditeur), plus les e-mails pour une relance
+ * e-mail.
+ */
+export function directMessageActionTypes(isEmailStep: boolean): string[] {
+  return isEmailStep ? ['message', 'smart_message', 'email'] : ['message', 'smart_message'];
+}
+
+/**
+ * Relance d'un message direct, quand au moins un message est déjà parti :
+ * RELANCE 1 tant qu'au plus un message direct précède (y compris zéro, par
+ * exemple après un InMail seul), RELANCE 2 au-delà.
+ */
+export function directFollowUpType(prevDirectCount: number): 'RELANCE 1' | 'RELANCE 2' {
+  return prevDirectCount <= 1 ? 'RELANCE 1' : 'RELANCE 2';
 }
 
 export interface SequenceViolation {

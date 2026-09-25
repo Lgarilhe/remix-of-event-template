@@ -68,6 +68,8 @@ interface DiagnosticData {
   activeEnrollments: Figure;
   recentErrors: Array<{ id: string; error_message: string; at: string }>;
   lastCronRunAt: Date | null;
+  /** Issue du dernier passage : 'ok', 'skipped' (un autre passage tenait le verrou) ou 'error'. */
+  lastCronStatus: string | null;
   cronStatusKnown: boolean;
 }
 
@@ -82,6 +84,7 @@ const initialState: DiagnosticData = {
   activeEnrollments: null,
   recentErrors: [],
   lastCronRunAt: null,
+  lastCronStatus: null,
   cronStatusKnown: false,
 };
 
@@ -169,7 +172,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
 
     const heartbeatQuery = supabase
       .from('cron_heartbeat')
-      .select('last_run_at')
+      .select('last_run_at, last_status')
       .eq('job_name', 'process-sequences:process')
       .maybeSingle();
 
@@ -204,6 +207,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
           .filter(e => e.error_message)
           .map(e => ({ id: e.id, error_message: e.error_message as string, at: e.executed_at || e.updated_at })),
         lastCronRunAt: heartbeatRes.data?.last_run_at ? new Date(heartbeatRes.data.last_run_at) : null,
+        lastCronStatus: heartbeatRes.data?.last_status ?? null,
         cronStatusKnown: !heartbeatRes.error,
       });
     } catch (err) {
@@ -222,7 +226,14 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
   };
 
   const lastCronRunAt = data.lastCronRunAt;
-  const cronHealthy = lastCronRunAt ? Date.now() - lastCronRunAt.getTime() < HEALTHY_DELAY_MS : false;
+  const cronRecent = lastCronRunAt ? Date.now() - lastCronRunAt.getTime() < HEALTHY_DELAY_MS : false;
+  // Un passage récent n'est un succès que s'il a vraiment tourné : 'skipped'
+  // quand un autre passage tenait encore le verrou (rien n'a été traité),
+  // 'error' quand il s'est terminé en erreur.
+  const cronSkipped = cronRecent && data.lastCronStatus === 'skipped';
+  const cronFailed = cronRecent && data.lastCronStatus === 'error';
+  const cronHealthy = cronRecent && !cronSkipped && !cronFailed;
+  const lastRunAgo = lastCronRunAt ? formatDistanceToNow(lastCronRunAt, { addSuffix: true, locale: fr }) : '';
 
   const figureText = (value: Figure) => (value === null ? 'Chiffre indisponible' : String(value));
 
@@ -278,29 +289,41 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                     ? 'bg-muted/20 border-border'
                     : cronHealthy
                       ? 'bg-success/5 border-success/30'
-                      : 'bg-destructive/5 border-destructive/30',
+                      : cronSkipped
+                        ? 'bg-warning/5 border-warning/30'
+                        : 'bg-destructive/5 border-destructive/30',
                 )}
               >
                 <div className="flex items-center gap-2 mb-2">
                   {cronHealthy ? (
                     <CheckCircle2 className="w-4 h-4 text-success" aria-hidden="true" />
+                  ) : cronSkipped ? (
+                    <AlertCircle className="w-4 h-4 text-warning" aria-hidden="true" />
                   ) : (
                     <XCircle className={cn('w-4 h-4', data.cronStatusKnown ? 'text-destructive' : 'text-muted-foreground')} aria-hidden="true" />
                   )}
                   <span className="text-sm font-semibold">
                     {!data.cronStatusKnown
                       ? 'État de l’envoi automatique indisponible'
-                      : cronHealthy ? 'Envoi automatique opérationnel' : 'Envoi automatique en retard'}
+                      : cronHealthy
+                        ? 'Envoi automatique opérationnel'
+                        : cronSkipped
+                          ? 'Passage sauté (un autre passage était en cours)'
+                          : cronFailed ? 'Dernier passage en erreur' : 'Envoi automatique en retard'}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {!data.cronStatusKnown
                     ? 'Actualisez dans quelques instants.'
                     : cronHealthy && lastCronRunAt
-                      ? `Envoi automatique opérationnel, dernier passage ${formatDistanceToNow(lastCronRunAt, { addSuffix: true, locale: fr })}.`
-                      : lastCronRunAt
-                        ? `Les envois automatiques semblent interrompus depuis ${formatDistanceToNow(lastCronRunAt, { locale: fr })}. Réessayez dans quelques minutes ou contactez le support.`
-                        : 'Aucun passage de l’envoi automatique n’a encore été enregistré. Réessayez dans quelques minutes ou contactez le support.'}
+                      ? `Envoi automatique opérationnel, dernier passage ${lastRunAgo}.`
+                      : cronSkipped
+                        ? `Le dernier passage, ${lastRunAgo}, a été sauté : un autre passage était encore en cours. Les envois reprennent au passage suivant ; contactez le support si cela dure.`
+                        : cronFailed
+                          ? `Le dernier passage, ${lastRunAgo}, s’est terminé en erreur. Réessayez dans quelques minutes ou contactez le support si cela dure.`
+                          : lastCronRunAt
+                            ? `Les envois automatiques semblent interrompus depuis ${formatDistanceToNow(lastCronRunAt, { locale: fr })}. Réessayez dans quelques minutes ou contactez le support.`
+                            : 'Aucun passage de l’envoi automatique n’a encore été enregistré. Réessayez dans quelques minutes ou contactez le support.'}
                 </p>
                 {data.lastSentAt && (
                   <p className="text-[11px] text-muted-foreground/70 mt-1">

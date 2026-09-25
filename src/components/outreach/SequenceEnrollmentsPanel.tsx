@@ -11,6 +11,8 @@ import {
   isSentExecutionStatus,
   actionTypeLabel,
   isHiddenActionType,
+  summarizeResumeResponse,
+  type ResumeResponse,
 } from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -109,6 +111,8 @@ interface Enrollment {
   connection_status: string | null;
   /** Raison de pause (liste dans src/lib/sequenceLabels.ts). NULL hors pause. */
   pause_reason?: string | null;
+  /** Suivi du moteur ; `pause_reason` y précise parfois une pause (texte en français). */
+  tracking_data?: unknown;
   executions?: StepExecution[];
 }
 
@@ -136,14 +140,21 @@ const NEUTRAL_STATUS_STYLE = { icon: <AlertCircle className="w-3 h-3" aria-hidde
 /** Raisons de pause qu'un « Reprendre » individuel peut lever (les autres ont leur propre action). */
 const RESUMABLE_PAUSE_REASONS = new Set<string>(['manual', 'send_failed']);
 
-// Réponse des actions serveur de reprise (process-sequences : resume_enrollments, re_enroll).
-type ResumeOutcome = 'resumed' | 'nothing_to_resume' | 'account_unlinked' | 'not_paused' | 'error';
-interface ResumeResponse {
-  success?: boolean;
-  results?: Array<{ enrollment_id: string; outcome: ResumeOutcome; message?: string }>;
-  message?: string;
-  error?: string;
-}
+/**
+ * Pause « échec d'envoi » sans échec à montrer : le moteur en donne la cause
+ * dans tracking_data.pause_reason (ex. relation LinkedIn du candidat inconnue
+ * après « Vérifier la connexion » ; la reprise relance la vérification).
+ * Une étape en échec l'emporte : c'est elle qu'il faut consulter (le texte peut
+ * rester d'une pause précédente, la reprise ne l'efface pas).
+ */
+const sendFailedDetail = (enrollment: Enrollment): string | null => {
+  if (enrollment.status !== 'paused' || enrollment.pause_reason !== 'send_failed') return null;
+  if ((enrollment.executions || []).some(e => e.status === 'failed')) return null;
+  const tracking = enrollment.tracking_data;
+  if (!tracking || typeof tracking !== 'object' || Array.isArray(tracking)) return null;
+  const text = (tracking as Record<string, unknown>).pause_reason;
+  return typeof text === 'string' && text.trim() ? text.trim() : null;
+};
 
 const isDoneStatus = (status: string) => (DONE_EXECUTION_STATUSES as readonly string[]).includes(status);
 const isPendingStatus = (status: string) => (PENDING_EXECUTION_STATUSES as readonly string[]).includes(status);
@@ -417,24 +428,20 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     }
     const result = payload.results?.find(r => r.enrollment_id === enrollmentId);
     if (!result) throw new Error('Le résultat n’a pas pu être lu. Actualisez la liste.');
-    return result;
+    return { result, payload };
   };
 
   const resumeEnrollment = async (enrollmentId: string) => {
     const name = nameOf(enrollmentId);
     try {
-      const result = await callResumeAction('resume_enrollments', enrollmentId);
-      if (result.outcome === 'resumed') {
-        toast.success(`Séquence reprise pour ${name}`);
-      } else if (result.outcome === 'nothing_to_resume') {
-        toast.info(`Rien à reprendre : cette séquence est terminée pour ${name}`);
-      } else if (result.outcome === 'account_unlinked') {
-        toast.error('Ce compte LinkedIn n’est plus relié. Reliez-le avant de reprendre la séquence.');
-      } else if (result.outcome === 'not_paused') {
-        toast.info(`${name} n’est plus en pause : la liste a été actualisée.`);
-      } else {
-        toast.error(`La séquence n’a pas pu reprendre pour ${name}`, { description: result.message });
-      }
+      // Même bilan que la fiche candidat et la liste de la mission (message
+      // selon le résultat réel : reprise, rien à reprendre, compte non relié,
+      // séquence désactivée…).
+      const { payload } = await callResumeAction('resume_enrollments', enrollmentId);
+      const summary = summarizeResumeResponse(payload, name);
+      if (summary.tone === 'success') toast.success(summary.message);
+      else if (summary.tone === 'info') toast.info(summary.message);
+      else toast.error(summary.message);
     } catch (error) {
       console.error('Error resuming enrollment:', error);
       toast.error(`La séquence n’a pas pu reprendre pour ${name}`, {
@@ -476,7 +483,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const reEnroll = async (enrollmentId: string) => {
     const name = nameOf(enrollmentId);
     try {
-      const result = await callResumeAction('re_enroll', enrollmentId);
+      const { result } = await callResumeAction('re_enroll', enrollmentId);
       if (result.outcome === 'resumed') {
         toast.success(`Séquence relancée pour ${name}`, {
           description: 'La prochaine action partira dans les prochaines minutes, pendant vos heures d’envoi.',
@@ -736,6 +743,10 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                     : enrollmentStatusLabel(enrollment.status);
                   const isExpanded = expandedEnrollments.has(enrollment.id);
                   const executions = enrollment.executions || [];
+                  const pauseDetail = sendFailedDetail(enrollment);
+                  const pauseHint = enrollment.status === 'paused'
+                    ? (pauseDetail ?? pauseReasonHint(enrollment.pause_reason))
+                    : null;
                   
                   return (
                     <Collapsible
@@ -816,9 +827,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     );
                                   })()}
                                 </div>
-                                {enrollment.status === 'paused' && pauseReasonHint(enrollment.pause_reason) && (
+                                {pauseHint && (
                                   <p className="text-xs text-muted-foreground mt-1">
-                                    {pauseReasonHint(enrollment.pause_reason)}
+                                    {pauseHint}
                                   </p>
                                 )}
                               </div>
@@ -867,7 +878,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                         </Link>
                                       </DropdownMenuItem>
                                     )}
-                                    {enrollment.pause_reason === 'send_failed' && (
+                                    {enrollment.pause_reason === 'send_failed' && !pauseDetail && (
                                       <DropdownMenuItem onClick={() => showEnrollmentDetail(enrollment.id)}>
                                         <AlertCircle className="w-4 h-4 mr-2" aria-hidden="true" />
                                         Voir l'erreur
@@ -879,7 +890,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                         className="text-success-foreground"
                                       >
                                         <Play className="w-4 h-4 mr-2" aria-hidden="true" />
-                                        {enrollment.pause_reason === 'send_failed' ? 'Reprendre à l’étape suivante' : 'Reprendre la séquence'}
+                                        {enrollment.pause_reason === 'send_failed' && !pauseDetail ? 'Reprendre à l’étape suivante' : 'Reprendre la séquence'}
                                       </DropdownMenuItem>
                                     )}
                                   </>
@@ -921,7 +932,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             </DropdownMenu>
                           </div>
                           {/* Action qui débloque, visible sans ouvrir le menu */}
-                          {enrollment.status === 'paused' && ['account_disconnected', 'subscription_required', 'send_failed'].includes(enrollment.pause_reason || '') && (
+                          {enrollment.status === 'paused' && ['account_disconnected', 'subscription_required', 'send_failed'].includes(enrollment.pause_reason || '') && !pauseDetail && (
                             <div className="mt-2 pl-6">
                               {enrollment.pause_reason === 'account_disconnected' ? (
                                 <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
@@ -1019,16 +1030,20 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                                 <span className="text-muted-foreground">
                                                   Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
                                                 </span>
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setConfirmAction({ type: 'skipStep', stepId: exec.id });
-                                                  }}
-                                                  className="text-xs text-muted-foreground hover:text-foreground underline px-1 py-0.5"
-                                                  title="Sauter cette étape pour ce candidat"
-                                                >
-                                                  Sauter
-                                                </button>
+                                                {/* Le serveur refuse de sauter l'étape d'un candidat en
+                                                    pause ou clos (enrollment_not_active) : bouton masqué. */}
+                                                {enrollment.status === 'active' && (
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setConfirmAction({ type: 'skipStep', stepId: exec.id });
+                                                    }}
+                                                    className="text-xs text-muted-foreground hover:text-foreground underline px-1 py-0.5"
+                                                    title="Sauter cette étape pour ce candidat"
+                                                  >
+                                                    Sauter
+                                                  </button>
+                                                )}
                                               </div>
                                             )}
                                             {exec.status === 'quota_blocked' && (

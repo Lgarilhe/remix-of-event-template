@@ -11,6 +11,8 @@
 //
 //   deno test --no-check supabase/functions/_shared/sequence-sender.test.ts
 
+import { pickMailbox, resolveEmailSender } from './sequence-email-policy.mjs';
+
 // Les appelants mélangent les clients `npm:` et `esm.sh` (types internes
 // incompatibles) : même convention permissive que ai-context.ts.
 // deno-lint-ignore no-explicit-any
@@ -83,16 +85,106 @@ export async function resolveSendingAccountOwner(
   }
 }
 
+// ─── Étape e-mail : boîte d'envoi et titulaire (SEQ-067, SEQ-100) ───────────
+
+/** Étape envoyée par e-mail (canal ou type d'action), comme le moteur la route. */
+export function isEmailStep(step?: { action_type?: unknown; step_channel?: unknown } | null): boolean {
+  return !!step && (step.action_type === 'email' || step.step_channel === 'email');
+}
+
+/** États d'une boîte e-mail qui ne peut plus envoyer tant qu'elle n'est pas reconnectée. */
+export const MAILBOX_DISCONNECTED_STATUSES: readonly string[] = ['CREDENTIALS', 'ERROR', 'PERMISSIONS', 'DELETED'];
+
+export function isMailboxDisconnected(status: unknown): boolean {
+  return typeof status === 'string' && MAILBOX_DISCONNECTED_STATUSES.includes(status.toUpperCase());
+}
+
+export type EmailStepSender =
+  | { kind: 'ok'; mailboxId: string; mailboxStatus: string | null; ownerUserId: string | null }
+  | { kind: 'not_in_org' }
+  | { kind: 'no_mailbox'; ownerUserId: string | null }
+  | { kind: 'lookup_failed' };
+
 /**
- * Expéditeur d'une inscription : titulaire du compte d'envoi, sinon le repli
- * fourni, sinon l'auteur de l'inscription.
+ * Boîte d'envoi et titulaire d'une étape e-mail, avec EXACTEMENT la règle de
+ * sequence-send-email (resolveEmailSender puis pickMailbox de
+ * sequence-email-policy.mjs, lignes filtrées par l'organisation de
+ * l'inscription) : le moteur contrôle l'état de la boîte que l'envoi
+ * utilisera, et signe au nom de son titulaire.
+ */
+export async function resolveEmailStepSender(
+  client: SupabaseLikeClient,
+  enrollment: SenderEnrollment,
+  step?: { sender_id?: unknown } | null,
+): Promise<EmailStepSender> {
+  const orgId = enrollmentOrgId(enrollment);
+  if (!orgId) return { kind: 'not_in_org' };
+  const ids = [...new Set(
+    [step?.sender_id, enrollment.assigned_sender_id, enrollment.account_id]
+      .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+      .map((v) => v.trim()),
+  )];
+  const fallbackUserId = typeof enrollment.created_by === 'string' && enrollment.created_by ? enrollment.created_by : null;
+  try {
+    let emailAccounts: Array<{ email_account_id: string; user_id: string | null; account_status?: string | null }> = [];
+    let linkedinAccounts: Array<{ linkedin_account_id: string; user_id: string | null }> = [];
+    if (ids.length > 0) {
+      const [emailRes, linkedinRes] = await Promise.all([
+        client.from('member_email_accounts').select('email_account_id, user_id, account_status')
+          .eq('organization_id', orgId).in('email_account_id', ids),
+        client.from('member_linkedin_accounts').select('linkedin_account_id, user_id')
+          .eq('organization_id', orgId).in('linkedin_account_id', ids),
+      ]);
+      if (emailRes.error || linkedinRes.error) {
+        console.warn('[sequence-sender] boîte e-mail illisible:', (emailRes.error || linkedinRes.error).message);
+        return { kind: 'lookup_failed' };
+      }
+      emailAccounts = emailRes.data || [];
+      linkedinAccounts = linkedinRes.data || [];
+    }
+    const decision = resolveEmailSender({ candidates: ids, emailAccounts, linkedinAccounts, fallbackUserId });
+    if (decision.kind === 'not_in_org') return { kind: 'not_in_org' };
+    if (decision.kind === 'mailbox') {
+      const row = emailAccounts.find((r) => r.email_account_id === decision.mailboxId);
+      return { kind: 'ok', mailboxId: decision.mailboxId, mailboxStatus: row?.account_status ?? null, ownerUserId: decision.ownerUserId };
+    }
+    if (!decision.ownerUserId) return { kind: 'no_mailbox', ownerUserId: null };
+    const { data: rows, error } = await client
+      .from('member_email_accounts')
+      .select('email_account_id, account_status')
+      .eq('organization_id', orgId)
+      .eq('user_id', decision.ownerUserId);
+    if (error) {
+      console.warn('[sequence-sender] boîtes du titulaire illisibles:', error.message);
+      return { kind: 'lookup_failed' };
+    }
+    const ownerRows = (rows || []) as Array<{ email_account_id: string; account_status: string | null }>;
+    const mailboxId = pickMailbox(ownerRows);
+    if (!mailboxId) return { kind: 'no_mailbox', ownerUserId: decision.ownerUserId };
+    const picked = ownerRows.find((r) => r.email_account_id === mailboxId);
+    return { kind: 'ok', mailboxId, mailboxStatus: picked?.account_status ?? null, ownerUserId: decision.ownerUserId };
+  } catch (e) {
+    console.warn('[sequence-sender] boîte e-mail illisible:', e);
+    return { kind: 'lookup_failed' };
+  }
+}
+
+/**
+ * Expéditeur d'une inscription : titulaire du compte d'envoi (pour une étape
+ * e-mail, titulaire de la boîte que sequence-send-email utilisera), sinon le
+ * repli fourni, sinon l'auteur de l'inscription.
  */
 export async function resolveSequenceSenderUserId(
   client: SupabaseLikeClient,
   enrollment: SenderEnrollment,
-  step?: { sender_id?: unknown } | null,
+  step?: { sender_id?: unknown; action_type?: unknown; step_channel?: unknown } | null,
   fallbackUserId?: string | null,
 ): Promise<string | null> {
+  if (isEmailStep(step)) {
+    const mailbox = await resolveEmailStepSender(client, enrollment, step);
+    const mailboxOwner = mailbox.kind === 'ok' || mailbox.kind === 'no_mailbox' ? mailbox.ownerUserId : null;
+    if (mailboxOwner) return mailboxOwner;
+  }
   const owner = await resolveSendingAccountOwner(client, enrollment, step);
   if (owner) return owner;
   if (fallbackUserId) return fallbackUserId;

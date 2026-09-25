@@ -66,6 +66,9 @@ const DONE_EXECUTION_STATUSES = ['sent', 'opened', 'clicked', 'replied', 'skippe
 // (tracking_data.pause_reason) quand l'organisation n'a ni abonnement actif ni
 // essai en cours (lot P0-C, docs/p0-plan-2026-09-06.md).
 const SUBSCRIPTION_REQUIRED_REASON = SUBSCRIPTION_REQUIRED_SKIP_REASON;
+// Rotation multi-expéditeurs sans compte disponible (SEQ-155), sur l'exécution
+// passée 'quota_blocked'.
+const ROTATION_SENDERS_EXHAUSTED_REASON = 'Tous les expéditeurs ont atteint leur limite du jour';
 
 // Actions qui balaient TOUTES les organisations : réservées au cron et aux
 // appels internes en clé de service (SEC-041).
@@ -638,6 +641,23 @@ async function isSenderAccountLinked(supabase: any, orgId: string | null | undef
 }
 
 /**
+ * SEQ-010 / SEQ-013 : tant que la migration B6 n'a pas vidé
+ * assigned_sender_id, la colonne peut contenir un user_id hérité de BUG-023
+ * (format uuid, jamais un identifiant de compte d'envoi). Non rattaché à
+ * l'organisation, il est ignoré comme le fait sequence-send-email
+ * (resolveEmailSender prend l'identifiant suivant) : l'envoi part du compte de
+ * l'inscription au lieu d'une mise en pause « compte non rattaché » à tort.
+ * Lecture impossible (null) : valeur gardée, le contrôle d'appartenance
+ * reportera l'étape.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function isLegacyAssignedSender(supabase: any, orgId: string | null | undefined, assignedSenderId: unknown, cache: Map<string, boolean>): Promise<boolean> {
+  if (typeof assignedSenderId !== 'string' || !UUID_RE.test(assignedSenderId)) return false;
+  return (await isSenderAccountLinked(supabase, orgId, assignedSenderId, cache)) === false;
+}
+
+/**
  * Met en pause des inscriptions ACTIVES avec une raison (contrat §2 : jamais
  * de pause_reason NULL), sans toucher à leurs exécutions en attente (contrat
  * §1 : le moteur les ignore tant que l'inscription n'est pas active). Si la
@@ -743,7 +763,11 @@ const KNOWN_PAUSE_REASONS = [
   'sequence_inactive', 'auto_paused', 'send_failed', 'blocked_by_candidate',
 ];
 const RESUME_BATCH_MAX = 100;
-const RESUME_DEADLINE_MS = 45_000;
+// SEQ-024 : sous le délai d'attente des appelants (45 s pour l'outil
+// resume_sequence de l'assistant, 55 s pour l'interface), marge comprise pour
+// la dernière inscription et la réponse. À 45 s, l'assistant coupait l'appel
+// avant la réponse et annonçait un échec alors que la reprise avait lieu.
+const RESUME_DEADLINE_MS = 35_000;
 
 const RESUME_MESSAGES = {
   notFound: 'Inscription introuvable dans votre organisation.',
@@ -912,7 +936,10 @@ async function resumeOneEnrollment(supabase: any, mode: ResumeMode, enr: ResumeE
 
   // Compte d'envoi toujours relié à l'organisation (sinon les messages
   // repartiraient depuis le compte d'un collègue parti ou d'une autre organisation).
-  const senderAccount = enr.assigned_sender_id || enr.account_id;
+  // SEQ-010 : un user_id hérité dans assigned_sender_id (avant B6) n'est pas un compte.
+  const assignedSender = await isLegacyAssignedSender(supabase, enrOrgId, enr.assigned_sender_id, accountCache)
+    ? null : enr.assigned_sender_id;
+  const senderAccount = assignedSender || enr.account_id;
   if (senderAccount) {
     const linked = await isSenderAccountLinked(supabase, enrOrgId, senderAccount, accountCache);
     if (linked === null) return { outcome: 'error', message: RESUME_MESSAGES.failed };
@@ -1481,6 +1508,9 @@ async function handleProcess(supabase: any, force = false) {
       }
       const processedBefore = results.processed;
       const failedBefore = results.failed;
+      // Fuseau d'envoi résolu (SEQ-197), connu aussi du catch pour le report
+      // après une limite du fournisseur (SEQ-088).
+      let resolvedSendTimezone: string | null = null;
       try {
 
         // Mise en pause entre la sélection et ce passage : on n'y touche pas.
@@ -1692,9 +1722,60 @@ async function handleProcess(supabase: any, force = false) {
         // multi-sender, on décompte/vérifie le mauvais compte et on peut dépasser
         // les limites LinkedIn du compte réellement utilisé (risque de restriction
         // du compte — conformité #260513-007211).
+        // SEQ-010 : user_id hérité dans assigned_sender_id (avant B6) ignoré pour
+        // cet envoi, comme sequence-send-email, au lieu d'une pause à tort.
+        if (await isLegacyAssignedSender(supabase, enrollmentOrgId, enrollment.assigned_sender_id, senderAccountCache)) {
+          console.warn(`[process] assigned_sender_id hérité (identifiant d'utilisateur) ignoré pour l'inscription ${enrollment.id}`);
+          enrollment.assigned_sender_id = null;
+        }
         if (sequence?.multi_sender_enabled && sequence.sender_accounts?.length > 0 && !enrollment.assigned_sender_id) {
-          const sender = await pickSenderForRotation(supabase, sequence);
-          if (sender) {
+          // SEQ-013 : conversation déjà engagée (une étape partie) sans
+          // expéditeur attribué, par exemple rotation activée après les
+          // premiers envois : figée sur le compte de l'inscription, jamais de
+          // nouveau tirage. Sinon la suite partait d'un autre compte (échec, ou
+          // InMail payé vers un candidat déjà en conversation). Comme pour le
+          // tirage, rien ne part tant que le compte n'est pas enregistré.
+          const { data: engagedRows, error: engagedErr } = await supabase
+            .from('sequence_step_executions').select('id')
+            .eq('enrollment_id', enrollment.id).in('status', SENT_EXECUTION_STATUSES).limit(1);
+          if (engagedErr) {
+            console.error(`[process] Rotation: historique d'envoi illisible pour ${enrollment.id}, envoi repoussé:`, engagedErr);
+            await supabase.from('sequence_step_executions').update({
+              scheduled_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            }).eq('id', exec.id).eq('status', 'scheduled');
+            results.skipped++;
+            continue;
+          }
+          if ((engagedRows ?? []).length > 0) {
+            if (enrollment.account_id) {
+              const { error: freezeErr } = await supabase.from('sequence_enrollments')
+                .update({ assigned_sender_id: enrollment.account_id }).eq('id', enrollment.id);
+              if (freezeErr) {
+                console.error(`[process] Rotation: compte de la conversation engagée non figé pour ${enrollment.id}, envoi repoussé:`, freezeErr);
+                await supabase.from('sequence_step_executions').update({
+                  scheduled_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+                }).eq('id', exec.id).eq('status', 'scheduled');
+                results.skipped++;
+                continue;
+              }
+              enrollment.assigned_sender_id = enrollment.account_id;
+              console.log(`[process] Rotation: conversation engagée, expéditeur figé sur le compte de l'inscription ${enrollment.account_id} (${enrollment.id})`);
+            }
+          } else {
+            const sender = await pickSenderForRotation(supabase, sequence);
+            if (!sender) {
+              // SEQ-155 : aucun expéditeur disponible (tous au plafond du jour,
+              // groupe vide ou illisible). Jamais de repli sur le compte de
+              // l'inscription (plafond du jour dépassé) : étape bloquée jusqu'au
+              // début de la plage d'envoi du lendemain.
+              await supabase.from('sequence_step_executions').update({
+                status: 'quota_blocked',
+                skip_reason: ROTATION_SENDERS_EXHAUSTED_REASON,
+                scheduled_at: quotaBlockedRetryAt('daily', new Date(), enrollment.user_timezone, DEFAULT_USER_QUOTAS.business_hours_start).toISOString(),
+              }).eq('id', exec.id).eq('status', 'scheduled');
+              results.quota_blocked++;
+              continue;
+            }
             // SEQ-013 : l'expéditeur choisi doit être ENREGISTRÉ avant d'envoyer.
             // Une écriture refusée (colonne encore en uuid) laissait partir
             // l'étape depuis un compte jamais persisté : relance suivante
@@ -1800,6 +1881,7 @@ async function handleProcess(supabase: any, force = false) {
         const userTimezone = pickSendingTimezone(
           await loadMemberTimezone(supabase, enrollmentOrgId ?? null, quotaUserId), enrollment.user_timezone,
         );
+        resolvedSendTimezone = userTimezone;
         if (!force && !isWithinBusinessHours(userTimezone, userQuotas.business_hours_start, userQuotas.business_hours_end)) {
           const nextSlot = getNextBusinessHourSlot(userTimezone, userQuotas.business_hours_start, userQuotas.business_hours_end);
           await supabase.from('sequence_step_executions').update({ scheduled_at: nextSlot.toISOString() }).eq('id', exec.id);
@@ -1875,16 +1957,22 @@ async function handleProcess(supabase: any, force = false) {
         // toujours ou routée vers la mauvaise branche.
         if (isConditionRetry(rawCondition)) {
           const conditionRetryCount = exec.retry_count || 0;
+          // SEQ-077 / SEQ-078 : pour « Si pas de réponse », c'est la
+          // vérification de réponse qui a échoué, pas la lecture du profil.
+          const replyCheckRetry = step.condition_type === 'if_no_response' && !step.wait_for_event;
           if (conditionRetryCount < MAX_RETRIES) {
             await supabase.from('sequence_step_executions').update({
               retry_count: conditionRetryCount + 1,
               scheduled_at: new Date(Date.now() + RETRY_DELAY_MS).toISOString(),
-              error_message: PROFILE_READ_RETRY_MESSAGE(conditionRetryCount + 1, MAX_RETRIES),
+              error_message: replyCheckRetry
+                ? REPLY_CHECK_RETRY_MESSAGE(conditionRetryCount + 1, MAX_RETRIES)
+                : PROFILE_READ_RETRY_MESSAGE(conditionRetryCount + 1, MAX_RETRIES),
             }).eq('id', exec.id).eq('status', 'scheduled');
             results.retried++;
           } else {
             await supabase.from('sequence_step_executions').update({
-              status: 'failed', executed_at: new Date().toISOString(), error_message: PROFILE_READ_FAILED_MESSAGE,
+              status: 'failed', executed_at: new Date().toISOString(),
+              error_message: replyCheckRetry ? REPLY_CHECK_FAILED_MESSAGE : PROFILE_READ_FAILED_MESSAGE,
             }).eq('id', exec.id).eq('status', 'scheduled');
             results.failed++;
           }
@@ -2218,9 +2306,10 @@ async function handleProcess(supabase: any, force = false) {
           );
           if (!quotaCheck.allowed) {
             // SEQ-193 : report selon la cause du refus (panne passagère du
-            // contrôle +30 min, plafond du jour au début de la plage du
-            // lendemain, plafond hebdomadaire ou crédits InMail +24 h).
-            const retryAt = quotaBlockedRetryAt(quotaCheck.scope, new Date(), userTimezone, userQuotas.business_hours_start);
+            // contrôle +30 min, plafond du jour ou aucun crédit InMail au début
+            // de la plage du lendemain, plafond hebdomadaire +24 h).
+            const retryScope = quotaCheck.scope === 'inmail_credits' ? 'daily' : quotaCheck.scope;
+            const retryAt = quotaBlockedRetryAt(retryScope, new Date(), userTimezone, userQuotas.business_hours_start);
             await supabase.from('sequence_step_executions').update({
               status: 'quota_blocked', skip_reason: quotaCheck.reason,
               scheduled_at: retryAt.toISOString(),
@@ -2309,6 +2398,10 @@ async function handleProcess(supabase: any, force = false) {
             // 'scheduled' (+30 min), avec son contenu d'avant le verrou pour que
             // l'essai suivant régénère, puis 'failed' après MAX_RETRIES.
             const aiRetryCount = exec.retry_count || 0;
+            // SEQ-092 : cause précise de l'échec (crédits IA épuisés, message
+            // non conforme, vide...), sans la mention « étape reportée » déjà
+            // portée par le message ci-dessous.
+            const aiFailure = (aiDiag.reason || 'Génération IA indisponible').replace(/\s*:\s*étape reportée$/, '');
             if (aiRetryCount < MAX_RETRIES) {
               await supabase.from('sequence_step_executions').update({
                 status: 'scheduled',
@@ -2317,7 +2410,7 @@ async function handleProcess(supabase: any, force = false) {
                 final_message: preLockMessage,
                 final_subject: preLockSubject,
                 tracking_data: preLockTracking,
-                error_message: `Génération IA indisponible : nouvel essai ${aiRetryCount + 1}/${MAX_RETRIES} dans 30 min`,
+                error_message: `${aiFailure} : nouvel essai ${aiRetryCount + 1}/${MAX_RETRIES} dans 30 min`,
               }).eq('id', exec.id).eq('status', 'sending');
               results.retried++;
             } else {
@@ -2327,7 +2420,7 @@ async function handleProcess(supabase: any, force = false) {
                 final_message: preLockMessage,
                 final_subject: preLockSubject,
                 tracking_data: preLockTracking,
-                error_message: 'Génération IA indisponible : message non envoyé après plusieurs essais. Relancez l\'étape plus tard.',
+                error_message: `${aiFailure} : message non envoyé après plusieurs essais. Relancez l'étape plus tard.`,
               }).eq('id', exec.id).eq('status', 'sending');
               results.ai_unavailable++;
             }
@@ -2680,9 +2773,26 @@ async function handleProcess(supabase: any, force = false) {
               results.failed++;
             }
             console.warn(`[process] ⚠️ Account disconnected for enrollment ${enrollment.id} — paused (${ACCOUNT_DISCONNECTED_PAUSE_REASON}): ${errorStr}`);
+          } else if (errorStr.toLowerCase().startsWith('inmail_credits_exhausted')) {
+            // SEQ-121 : plus aucun crédit InMail (le solde a changé depuis le
+            // gate). Rien n'est parti : ni relance à 30 min, ni essai consommé,
+            // ni échec compté pour l'auto-pause de la séquence. Étape bloquée
+            // jusqu'au début de la plage d'envoi du lendemain, texte résolu gardé.
+            await supabase.from('sequence_step_executions').update({
+              status: 'quota_blocked',
+              skip_reason: 'Crédits InMail épuisés',
+              scheduled_at: quotaBlockedRetryAt('daily', new Date(), userTimezone, userQuotas.business_hours_start).toISOString(),
+              final_message: finalMessage || null,
+              final_subject: finalSubject || null,
+              ...(aiWillGenerate ? { tracking_data: withContentOrigin(exec.tracking_data, RESOLVED_CONTENT_ORIGIN) } : {}),
+            }).eq('id', exec.id).eq('status', 'sending');
+            console.log(`[process] ⏸️ Crédits InMail épuisés pour ${enrollment.id} : étape bloquée jusqu'à la prochaine plage d'envoi`);
+            results.quota_blocked++;
           } else if (isRateLimitError(errorStr)) {
             // Rate limit: NO retry counter increment, reschedule based on action type
-            const retryAt = getRateLimitRetryDate(step.action_type, enrollment.user_timezone || 'Europe/Paris');
+            // SEQ-088 : erreur et mode réellement utilisé (InMail ou message
+            // direct) transmis, fuseau d'envoi résolu (SEQ-197).
+            const retryAt = getRateLimitRetryDate(step.action_type, userTimezone, { error: errorStr, sentAsInMail: executeResult.needsInMail });
             await supabase.from('sequence_step_executions').update({
               status: 'scheduled',
               error_message: `Rate limit (${step.action_type}) → rescheduled to ${retryAt.toISOString()}`,
@@ -2755,7 +2865,7 @@ async function handleProcess(supabase: any, force = false) {
           }
           console.warn(`[process] ⚠️ Account disconnected (in catch) for enrollment ${enrollment?.id} — paused (${ACCOUNT_DISCONNECTED_PAUSE_REASON}): ${errorMsg}`);
         } else if (isRateLimitError(errorMsg)) {
-          const retryAt = getRateLimitRetryDate(catchActionType, enrollment?.user_timezone || 'Europe/Paris');
+          const retryAt = getRateLimitRetryDate(catchActionType, resolvedSendTimezone || enrollment?.user_timezone || 'Europe/Paris', { error: errorMsg });
           await supabase.from('sequence_step_executions').update({
             status: 'scheduled',
             error_message: `Rate limit (${catchActionType}) → rescheduled to ${retryAt.toISOString()}`,
@@ -3417,6 +3527,10 @@ function accountDisconnectedLabel(
   const channel = (step.step_channel === 'email' || step.action_type === 'email') ? 'email'
     : (step.step_channel === 'whatsapp' || step.action_type === 'whatsapp_message') ? 'WhatsApp'
     : 'LinkedIn';
+  // Boîte e-mail trouvée déconnectée avant l'envoi (SEQ-067) : rien n'a été tenté.
+  if (rawError.startsWith('email_account_disconnected')) {
+    return "Boîte e-mail d'envoi déconnectée : reconnectez-la dans Paramètres, Connexions, puis reprenez l'inscription.";
+  }
   const codeMatch = rawError.match(/\b([45]\d{2})\b/);
   const code = codeMatch ? ` (code ${codeMatch[1]})` : '';
   return `Compte ${channel} déconnecté : le service de connexion ${channel} a refusé l'envoi${code}. Reconnectez le compte dans les paramètres.`;
@@ -4587,6 +4701,16 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
 
     switch (actionType) {
       case 'email': {
+        // Boîte d'envoi résolue comme sequence-send-email la résoudra (même
+        // règle partagée, SEQ-067). Déconnectée : rien ne part, l'appelant met
+        // l'inscription en pause « compte déconnecté » (isAccountDisconnectedError).
+        // Résolution illisible ou sans boîte : sequence-send-email tranche.
+        const { resolveEmailStepSender, isMailboxDisconnected } = await import('../_shared/sequence-sender.ts');
+        const mailbox = await resolveEmailStepSender(supabase, enrollment, step as { sender_id?: string | null });
+        if (mailbox.kind === 'ok' && isMailboxDisconnected(mailbox.mailboxStatus)) {
+          console.warn(`[executeStepAction] Boîte e-mail ${mailbox.mailboxId} en état ${mailbox.mailboxStatus} : e-mail non envoyé (${String(enrollment.id)})`);
+          return { success: false, error: `email_account_disconnected: boîte e-mail d'envoi déconnectée (${mailbox.mailboxStatus})` };
+        }
         // Delegate to sequence-send-email edge function
         // Pass pre-personalized message so sequence-send-email uses it instead of its basic AI
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -4796,11 +4920,17 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           // pour que la détection de limite "dure" (limit_exceeded…) fonctionne.
           return { success: false, error: `linkedin_send_failed_${status}: ${e}`, needsInMail };
         }
-        // Capte le signal usage fournisseur (% de proximité avec la limite LinkedIn)
-        // → pause proactive du compte à ≥90 %.
-        const sendBody = await r.json().catch(() => ({}));
-        await recordUsageSignal(supabase, accountId, parseUsagePct(sendBody), (enrollment as any).user_timezone);
-        await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
+        // Le message est parti : le suivi (signal d'usage, statistiques) ne
+        // doit jamais transformer cet envoi en échec relancé (SEQ-005).
+        try {
+          // Capte le signal usage fournisseur (% de proximité avec la limite LinkedIn)
+          // → pause proactive du compte à ≥90 %.
+          const sendBody = await r.json().catch(() => ({}));
+          await recordUsageSignal(supabase, accountId, parseUsagePct(sendBody), (enrollment as any).user_timezone);
+          await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
+        } catch (trackErr) {
+          console.error(`[executeStepAction] Suivi après envoi en échec (message parti) :`, trackErr);
+        }
         return { success: true, message: msg, subject: needsInMail ? subj : undefined, needsInMail };
       }
       case 'whatsapp_message': {
@@ -4868,8 +4998,14 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           }
           return { success: false, error: `whatsapp_send_failed_${waR?.status}` };
         }
-        await waR.json();
-        await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
+        // Message parti : un corps illisible ou un suivi en échec ne doit
+        // jamais le faire passer pour un échec relancé (SEQ-005).
+        try {
+          await waR.json().catch(() => null);
+          await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
+        } catch (trackErr) {
+          console.error(`[executeStepAction] Suivi après envoi WhatsApp en échec (message parti) :`, trackErr);
+        }
         return { success: true, message: msg };
       }
       case 'connection_request': {
@@ -5006,11 +5142,18 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           }
           return { success: false, error: `Invite ${r.status}: ${e}` };
         }
-        // L'endpoint invite renvoie le champ `usage` (% du quota provider) → pause à ≥90 %.
-        const inviteBody = await r.json().catch(() => ({}));
-        await recordUsageSignal(supabase, accountId, parseUsagePct(inviteBody), (enrollment as any).user_timezone);
-        await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
-        await supabase.from('sequence_enrollments').update({ connection_status: 'pending_invite' }).eq('id', enrollment.id);
+        // Invitation partie : le suivi ne doit jamais la faire passer pour un
+        // échec relancé (seconde invitation, SEQ-005).
+        try {
+          // L'endpoint invite renvoie le champ `usage` (% du quota provider) → pause à ≥90 %.
+          const inviteBody = await r.json().catch(() => ({}));
+          await recordUsageSignal(supabase, accountId, parseUsagePct(inviteBody), (enrollment as any).user_timezone);
+          await logAnalytics(supabase, enrollment.sequence_id as string, 'invites_sent');
+          const { error: pendingErr } = await supabase.from('sequence_enrollments').update({ connection_status: 'pending_invite' }).eq('id', enrollment.id);
+          if (pendingErr) console.warn(`[connection_request] connection_status not saved for ${String(enrollment.id)}:`, pendingErr.message);
+        } catch (trackErr) {
+          console.error(`[connection_request] Suivi après invitation en échec (invitation partie) :`, trackErr);
+        }
         // Note réellement envoyée (tronquée à 300 caractères) : c'est elle que
         // le journal doit montrer, pas le texte complet (SEQ-096).
         return { success: true, message: invitePayload.message };
@@ -5190,16 +5333,14 @@ async function updateNotionPageSeq(pageId: string, properties: Record<string, un
   return response.ok;
 }
 
-async function findCandidateInNotionSeq(name: string, linkedinUrl?: string): Promise<string | null> {
-  if (linkedinUrl) {
-    const r = await notionQuerySeq(CANDIDATS_DATABASE_ID, { property: 'URL Linkedin', url: { equals: linkedinUrl } });
-    if (r?.results?.[0]?.id) return r.results[0].id;
-  }
-  if (name) {
-    const r = await notionQuerySeq(CANDIDATS_DATABASE_ID, { property: 'Nom', title: { equals: name } });
-    if (r?.results?.[0]?.id) return r.results[0].id;
-  }
-  return null;
+// SEQ-007 : rapprochement par URL LinkedIn exacte uniquement. La recherche
+// par nom seul désignait la fiche d'un homonyme, qui était alors mise à jour.
+// Le nom reste en paramètre pour les appelants existants, il n'est plus lu.
+async function findCandidateInNotionSeq(_name: string, linkedinUrl?: string): Promise<string | null> {
+  const url = (linkedinUrl || '').trim();
+  if (!url) return null;
+  const r = await notionQuerySeq(CANDIDATS_DATABASE_ID, { property: 'URL Linkedin', url: { equals: url } });
+  return r?.results?.[0]?.id ?? null;
 }
 
 async function findShortlistsForCandidateSeq(candidateId: string): Promise<string[]> {
@@ -5282,7 +5423,13 @@ async function syncNotionStageAfterAction(actionType: string, enrollment: Record
   try {
     const profileName = enrollment.profile_name as string;
     const profileUrl = enrollment.profile_url as string | undefined;
-    
+    // SEQ-007 : sans URL LinkedIn, aucune fiche n'est rapprochée (le nom seul
+    // visait un homonyme) ni créée (une fiche en double à chaque action).
+    if (!profileUrl || !profileUrl.trim()) {
+      console.log(`[notion-sync] ${profileName || String(enrollment.id)} : pas d'URL LinkedIn, synchro Notion ignorée`);
+      return;
+    }
+
     let candidateId = await findCandidateInNotionSeq(profileName, profileUrl);
     
     if (!candidateId) {
@@ -5464,7 +5611,7 @@ function sanitizeSequenceMessage(message: string): string {
  * « Message IA non conforme »…), à afficher dans le journal.
  */
 // deno-lint-ignore no-explicit-any
-async function generatePersonalizedMessage(supabase: any, enrollment: Record<string, unknown>, step: Record<string, unknown>, _exec: Record<string, unknown>, apiKey?: string, dsn?: string, diag?: { reason?: string }): Promise<{ message: string; subject?: string } | null> {
+async function generatePersonalizedMessage(supabase: any, enrollment: Record<string, unknown>, step: Record<string, unknown>, _exec: Record<string, unknown>, apiKey?: string, dsn?: string, diag?: { reason?: string; deadlineMs?: number }): Promise<{ message: string; subject?: string } | null> {
   if (!ANTHROPIC_API_KEY) {
     if (diag) diag.reason = 'Génération IA indisponible';
     return null;
@@ -5705,8 +5852,10 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
 
     // deno-lint-ignore no-explicit-any
     const prevInMails = prevMessages.filter((ps: any) => ['inmail', 'smart_message'].includes(ps.step?.action_type));
-    // Relance d'un e-mail : les e-mails précédents comptent comme messages directs.
-    const directMessageTypes = isEmailStep ? ['message', 'email'] : ['message'];
+    // Messages directs déjà partis : message et Message IA (parti en direct
+    // vers une relation, comme l'annonce l'éditeur), plus les e-mails pour une
+    // relance e-mail (SEQ-095, SEQ-108).
+    const directMessageTypes = rules.directMessageActionTypes(isEmailStep);
     // deno-lint-ignore no-explicit-any
     const prevDirectMsgs = prevMessages.filter((ps: any) => directMessageTypes.includes(ps.step?.action_type));
     
@@ -5746,7 +5895,9 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
 - Bref remerciement (1 phrase) puis pitch direct
 - NE DIS PAS "je reviens vers vous"
 - 200-400 caractères`;
-      } else if (prevDirectMsgs.length === 1) {
+      } else if (rules.directFollowUpType(prevDirectMsgs.length) === 'RELANCE 1') {
+        // Au plus un message direct avant (aucun après un InMail seul) :
+        // première relance, jamais RELANCE 2 d'emblée (SEQ-095).
         msgType = 'RELANCE 1';
         toneInstructions = `PREMIÈRE RELANCE. Tu PEUX référencer ton précédent message.
 - Apporte un angle complémentaire ou renforce le pitch
@@ -5770,13 +5921,16 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
       `MESSAGE ${i + 1} (${ps.step?.action_type}): "${(ps.final_message || '').slice(0, 200)}"`
     ).join('\n') : '';
 
-    // Get sender name : titulaire du compte d'envoi (rotation comprise), repli
-    // sur l'auteur de l'inscription (SEQ-100). Sans nom connu, aucune signature
-    // n'est imposée (jamais « Recruteur »).
+    // Get sender name : titulaire du compte d'envoi (rotation comprise ; pour
+    // un e-mail, titulaire de la boîte que sequence-send-email utilisera),
+    // repli sur l'auteur de l'inscription (SEQ-100, SEQ-067). Sans nom connu,
+    // aucune signature n'est imposée (jamais « Recruteur »). Le même titulaire
+    // fournit le contexte IA plus bas.
     let senderName = '';
+    let senderUserId: string | null = null;
     try {
       const { resolveSequenceSenderUserId } = await import('../_shared/sequence-sender.ts');
-      const senderUserId = await resolveSequenceSenderUserId(supabase, enrollment, step as { sender_id?: string | null });
+      senderUserId = await resolveSequenceSenderUserId(supabase, enrollment, step as { sender_id?: string | null; action_type?: string | null; step_channel?: string | null });
       if (senderUserId) {
         const { data: senderProfile, error: senderErr } = await supabase.from('profiles').select('display_name').eq('user_id', senderUserId).maybeSingle();
         if (senderErr) console.warn('[generatePersonalizedMessage] sender profile read failed:', senderErr.message);
@@ -6133,7 +6287,8 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     // dans `billing`, réglés dans le finally.
 
     // Load AI context (Settings → Contexte IA) once, reused across both callAI invocations
-    const seqAiContext = await loadAiContextForEnrollment(supabase, enrollment, step as { sender_id?: string | null });
+    // Contexte IA du même expéditeur que la signature (SEQ-100).
+    const seqAiContext = await loadAiContextForEnrollment(supabase, enrollment, step as { sender_id?: string | null }, senderUserId);
 
     const callAI = async (userPrompt: string) => {
       try {
@@ -6181,7 +6336,14 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
 
     // Guardrails: detect violations and retry once if needed
     const violations = rules.detectSequenceViolations(isRPO, typeof parsed.message === 'string' ? parsed.message : '', parsed.subject).map((v) => v.label);
-    if (violations.length > 0) {
+    // SEQ-074 : pas d'appel de correction si le cycle n'a plus le temps de le
+    // finir. Le premier brouillon est gardé ; la revérification finale des
+    // garde-fous (SEQ-091) renvoie null s'il reste une violation bloquante.
+    const correctionAllowed = rules.hasTimeForAiCorrection(diag?.deadlineMs, Date.now());
+    if (violations.length > 0 && !correctionAllowed) {
+      console.warn(`[generatePersonalizedMessage] Violations détectées, correction sautée (échéance du cycle proche) :`, violations);
+    }
+    if (violations.length > 0 && correctionAllowed) {
       console.warn(`[generatePersonalizedMessage] Violations detected, retrying:`, violations);
       const correctionPrompt = `${prompt}\n\n=== CORRECTION STRICTE ===\nLe draft viole ces règles: ${violations.join(' ; ')}.\n${isRPO ? `En MODE RPO: jamais "ils", "leur", "mon client", "j'accompagne". Toujours "on", "nous", "${chezClient}".` : ''}\nJAMAIS mentionner le salaire ou la rémunération.\nAucun tiret nulle part. MAX 400 caractères.\n\nDRAFT: ${JSON.stringify(parsed)}\n\nRéponds en JSON valide: {"subject": "...", "message": "..."}`;
       const retryContent = await callAI(correctionPrompt);

@@ -19,33 +19,43 @@ import {
   Phone,
 } from 'lucide-react';
 import { formatMessageTime } from '@/hooks/useMessagesInboxHelpers';
-import { actionTypeLabel, formatSequenceError, formatSkipReason } from '@/lib/sequenceErrorMessages';
+import { formatSequenceError, formatSkipReason } from '@/lib/sequenceErrorMessages';
+import {
+  isInternalSequenceAction,
+  sequenceExecutionStatusMention,
+  sequenceExecutionTitle,
+} from '@/lib/sequenceActionLabels';
+import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import aircallLogo from '@/assets/aircall-logo.webp';
 
-// Types d'étape réels (sequence_steps.action_type) : libellé une fois l'action
-// faite. Un échec, une étape sautée ou annulée s'affichent avec le nom de
-// l'action et leur statut, jamais comme une action réussie.
-const ACTION_CONFIG: Record<string, { icon: React.ElementType; label: string; color: string }> = {
-  profile_visit: { icon: Eye, label: 'Profil visité', color: 'text-blue-500' },
-  connection_request: { icon: UserPlus, label: 'Invitation envoyée', color: 'text-green-500' },
-  message: { icon: MessageSquare, label: 'Message envoyé', color: 'text-primary' },
-  smart_message: { icon: MessageSquare, label: 'Message IA envoyé', color: 'text-primary' },
-  inmail: { icon: Mail, label: 'InMail envoyé', color: 'text-purple-500' },
-  email: { icon: Mail, label: 'E-mail envoyé', color: 'text-primary' },
-  whatsapp_message: { icon: MessageSquare, label: 'WhatsApp envoyé', color: 'text-green-600' },
-  wait_connection: { icon: Hourglass, label: "Attente d'acceptation", color: 'text-amber-500' },
-  wait_reply: { icon: Hourglass, label: 'Attente de réponse', color: 'text-amber-500' },
-  check_connection: { icon: GitBranch, label: 'Vérification de la connexion', color: 'text-muted-foreground' },
-  calendly_booking: { icon: CalendarCheck, label: '📅 RDV planifié', color: 'text-emerald-500' },
-  aircall_call: { icon: Phone, label: 'Appel Aircall', color: 'text-green-600' },
+// Icônes par type d'étape réel (sequence_steps.action_type, mêmes clés que
+// SEQUENCE_ACTION_LABELS). Les libellés viennent du dictionnaire partagé
+// (src/lib/sequenceActionLabels.ts), comme la frise de la fiche candidat.
+const ACTION_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
+  profile_visit: { icon: Eye, color: 'text-blue-500' },
+  connection_request: { icon: UserPlus, color: 'text-green-500' },
+  message: { icon: MessageSquare, color: 'text-primary' },
+  smart_message: { icon: MessageSquare, color: 'text-primary' },
+  inmail: { icon: Mail, color: 'text-purple-500' },
+  email: { icon: Mail, color: 'text-primary' },
+  whatsapp_message: { icon: MessageSquare, color: 'text-green-600' },
+  wait_connection: { icon: Hourglass, color: 'text-amber-500' },
+  wait_reply: { icon: Hourglass, color: 'text-amber-500' },
+  check_connection: { icon: GitBranch, color: 'text-muted-foreground' },
+  calendly_booking: { icon: CalendarCheck, color: 'text-emerald-500' },
+  aircall_call: { icon: Phone, color: 'text-green-600' },
 };
 
-/** Mention de statut d'une étape non réussie (« Échec », « Sauté », « Annulé »), null sinon. */
-function statusMention(status: string): string | null {
-  if (status === 'failed' || status === 'bounced') return 'Échec';
-  if (status === 'skipped') return 'Sauté';
-  if (status === 'cancelled') return 'Annulé';
-  return null;
+/**
+ * Titre d'une étape de séquence exécutée, identique à la fiche candidat :
+ * « InMail envoyé », « InMail : échec », « Invitation : étape sautée ». Une
+ * étape interne (attente, vérification) prend le nom de son type dans
+ * l'éditeur de séquence, suivi de son statut s'il n'est pas « faite ».
+ */
+function sequenceStepTitle(actionType: string, status: string): string {
+  if (!isInternalSequenceAction(actionType)) return sequenceExecutionTitle(actionType, status);
+  const mention = sequenceExecutionStatusMention(status);
+  return mention ? `${stepTypeLabel(actionType)} : ${mention.toLowerCase()}` : stepTypeLabel(actionType);
 }
 
 const STATUS_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
@@ -57,11 +67,12 @@ const STATUS_ICONS: Record<string, { icon: React.ElementType; color: string }> =
 
 export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event }) => {
   const navigate = useNavigate();
-  const baseConfig = ACTION_CONFIG[event.actionType] || { icon: GitBranch, label: actionTypeLabel(event.actionType), color: 'text-muted-foreground' };
-  const mention = event.type === 'sequence_step' ? statusMention(event.status) : null;
-  // Étape non partie (échec, sautée, annulée) : nom de l'action
-  // (« Invitation LinkedIn ») suivi du statut, pas « Invitation envoyée ».
-  const config = mention ? { ...baseConfig, label: actionTypeLabel(event.actionType) } : baseConfig;
+  const isSequenceStep = event.type === 'sequence_step';
+  const config = ACTION_ICONS[event.actionType] || { icon: GitBranch, color: 'text-muted-foreground' };
+  // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
+  // jamais présentée comme envoyée.
+  const label = isSequenceStep ? sequenceStepTitle(event.actionType, event.status) : '📅 RDV planifié';
+  const stepFailed = isSequenceStep && (event.status === 'failed' || event.status === 'bounced');
   const statusConfig = STATUS_ICONS[event.status];
   const Icon = config.icon;
   const StatusIcon = statusConfig?.icon;
@@ -95,10 +106,10 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
           <Icon className={cn("w-3.5 h-3.5 shrink-0", config.color)} />
         )}
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-xs font-medium text-foreground truncate">
+          <span className={cn('text-xs font-medium truncate', stepFailed ? 'text-destructive' : 'text-foreground')}>
             {isAircall 
               ? `${event.callDirection === 'inbound' ? '📞 Appel entrant' : '📞 Appel sortant'}`
-              : config.label
+              : label
             }
           </span>
           {isAircall && event.callDuration != null && event.callDuration > 0 && (
@@ -114,11 +125,6 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
           {isBooking && event.eventName && (
             <span className="text-xs text-muted-foreground truncate">
               — {event.eventName}
-            </span>
-          )}
-          {mention && (
-            <span className={cn('text-xs font-medium', mention === 'Échec' ? 'text-destructive' : 'text-muted-foreground')}>
-              · {mention}
             </span>
           )}
           {event.status === 'skipped' && event.skipReason && (
