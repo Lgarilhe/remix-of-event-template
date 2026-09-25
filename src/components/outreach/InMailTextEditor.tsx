@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useCallback, useEffect, useMemo, useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { 
   Tooltip,
@@ -62,7 +62,7 @@ const EMOJI_GROUPS = [
 export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   value,
   onChange,
-  placeholder = 'Rédigez votre message...',
+  placeholder = 'Rédigez votre message',
   className,
   minHeight = '200px',
   maxHeight = '400px',
@@ -74,6 +74,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalChange = useRef(false);
+  const countId = useId();
 
   const displayHTML = useMemo(() => incomingToEditorHTML(value), [value]);
 
@@ -223,7 +224,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   return (
     <div className="space-y-2">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 p-1 bg-muted/50 border border-border">
+      <div className="flex flex-wrap items-center gap-0.5 rounded-lg border border-border bg-muted p-1" role="group" aria-label="Mise en forme">
         <TooltipProvider delayDuration={200}>
           {/* Formatting buttons */}
           <Tooltip>
@@ -231,11 +232,12 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
+                size="icon-sm"
+                className="max-md:h-11 max-md:w-11"
                 onClick={() => formatText('bold')}
+                aria-label="Gras"
               >
-                <Bold className="h-4 w-4" />
+                <Bold aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -248,11 +250,12 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
+                size="icon-sm"
+                className="max-md:h-11 max-md:w-11"
                 onClick={() => formatText('italic')}
+                aria-label="Italique"
               >
-                <Italic className="h-4 w-4" />
+                <Italic aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -265,11 +268,12 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
+                size="icon-sm"
+                className="max-md:h-11 max-md:w-11"
                 onClick={insertLink}
+                aria-label="Insérer un lien"
               >
-                <Link className="h-4 w-4" />
+                <Link aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -277,7 +281,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
             </TooltipContent>
           </Tooltip>
 
-          <div className="w-px h-6 bg-border mx-1" />
+          <div className="mx-1 h-6 w-px bg-border" aria-hidden="true" />
 
           {/* Lists */}
           <Tooltip>
@@ -285,11 +289,12 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
+                size="icon-sm"
+                className="max-md:h-11 max-md:w-11"
                 onClick={() => formatText('insertUnorderedList')}
+                aria-label="Liste à puces"
               >
-                <List className="h-4 w-4" />
+                <List aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -302,11 +307,12 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
+                size="icon-sm"
+                className="max-md:h-11 max-md:w-11"
                 onClick={() => formatText('insertOrderedList')}
+                aria-label="Liste numérotée"
               >
-                <ListOrdered className="h-4 w-4" />
+                <ListOrdered aria-hidden="true" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -314,7 +320,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
             </TooltipContent>
           </Tooltip>
 
-          <div className="w-px h-6 bg-border mx-1" />
+          <div className="mx-1 h-6 w-px bg-border" aria-hidden="true" />
 
           {/* Emoji picker */}
           <Popover>
@@ -322,10 +328,11 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
+                size="icon-sm"
+                className="max-md:h-11 max-md:w-11"
+                aria-label="Insérer un emoji"
               >
-                <Smile className="h-4 w-4" />
+                <Smile aria-hidden="true" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-72 p-2" align="start">
@@ -337,14 +344,16 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
                     </p>
                     <div className="flex flex-wrap gap-1">
                       {group.emojis.map((emoji) => (
-                        <button
+                        <Button
                           key={emoji}
                           type="button"
-                          className="w-8 h-8 text-lg hover:bg-muted rounded transition-colors flex items-center justify-center"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-lg max-md:h-11 max-md:w-11"
                           onClick={() => insertEmoji(emoji)}
                         >
                           {emoji}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -354,22 +363,22 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
           </Popover>
 
           {/* Info */}
-          <div className="ml-auto flex items-center">
+          <div className="ml-auto hidden items-center sm:flex">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-muted-foreground"
+                  size="icon-sm"
+                  className="text-muted-foreground max-md:h-11 max-md:w-11"
+                  aria-label="À propos de la mise en forme"
                 >
-                  <Info className="h-4 w-4" />
+                  <Info aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[280px]">
+              <TooltipContent side="bottom" className="max-w-72">
                 <p className="text-xs">
-                  Éditeur WYSIWYG pour LinkedIn Recruiter. 
-                  Le formatage (gras, italique, liens, listes) sera conservé dans le message envoyé.
+                  La mise en forme (gras, italique, liens, listes) est conservée dans le message envoyé.
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -382,6 +391,10 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
         ref={editorRef}
         id={id}
         contentEditable
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Message"
+        aria-describedby={showWordCount ? countId : undefined}
         onInput={handleInput}
         onPaste={handlePaste}
         onKeyDown={handleKeyDown}
@@ -396,7 +409,7 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
           "[&_strong]:font-bold [&_b]:font-bold",
           "[&_em]:italic [&_i]:italic",
           "[&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4",
-          isOverLimit && "border-red-500 focus-visible:ring-red-500",
+          isOverLimit && "border-danger focus-visible:ring-danger",
           className
         )}
         style={{ 
@@ -407,9 +420,9 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
 
       {/* Footer with counts */}
       {showWordCount && (
-        <div className="flex justify-between items-center text-xs text-muted-foreground">
-          <span>{wordCount} mots</span>
-          <span className={cn(isOverLimit && "text-red-500 font-medium")}>
+        <div id={countId} className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{wordCount} {wordCount > 1 ? 'mots' : 'mot'}</span>
+          <span className={cn(isOverLimit && "font-medium text-danger")}>
             {charCount}{maxCharacters ? ` / ${maxCharacters}` : ''} caractères
             {isOverLimit && " (limite dépassée)"}
           </span>

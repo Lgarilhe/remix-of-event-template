@@ -5,10 +5,11 @@
  * - Heartbeat du cron (dernière exécution + statut)
  * - Statistiques des step_executions (24h)
  * - Erreurs récentes
- * - Bouton "Forcer un cycle" pour déclencher process-sequences manuellement
+ * - Bouton qui avance les étapes planifiées (nudge_sequences de process-sequences)
  *
  * Utilisé pour valider que le pipeline d'outreach tourne correctement
- * en prod, sans avoir à fouiller les logs Supabase.
+ * en prod, sans avoir à fouiller les logs Supabase. Les textes parlent au
+ * recruteur : « envois », « passage », jamais « cron » ni nom de fonction.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -21,15 +22,13 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState, StatGrid, StatTile } from '@/components/layout';
 import {
-  Activity,
   CheckCircle2,
   AlertCircle,
   XCircle,
   RefreshCw,
-  Zap,
-  Clock,
-  Loader2,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -68,6 +67,14 @@ interface DiagnosticData {
 
 const WEEKLY_INVITE_LIMIT = 100;
 
+// Le passage principal des envois tourne toutes les 5 minutes
+// (migration 20260513200000_slow_down_sequence_cron). Sans passage depuis
+// 10 minutes, deux passages ont manqué : l'aide cite le même seuil.
+const RUN_INTERVAL_MIN = 5;
+const SILENCE_THRESHOLD_MIN = 10;
+
+const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
+
 const initialState: DiagnosticData = {
   loading: true,
   lastExecutionAt: null,
@@ -88,18 +95,22 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
 }) => {
   const [data, setData] = useState<DiagnosticData>(initialState);
   const [running, setRunning] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setData(prev => ({ ...prev, loading: true }));
+    setLoadError(null);
 
     try {
       // 1. Build sequence_id filter si projectId fourni
       let sequenceIds: string[] | null = null;
       if (projectId) {
-        const { data: seqs } = await supabase
+        const { data: seqs, error: seqsError } = await supabase
           .from('outreach_sequences')
           .select('id')
           .eq('project_id', projectId);
+        if (seqsError) throw seqsError;
         sequenceIds = (seqs || []).map((s: any) => s.id);
       }
 
@@ -114,10 +125,11 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         .limit(200) as any;
       if (sequenceIds && sequenceIds.length > 0) {
         // Filter via enrollment.sequence_id — needs join
-        const { data: enr } = await supabase
+        const { data: enr, error: enrError } = await supabase
           .from('sequence_enrollments')
           .select('id')
           .in('sequence_id', sequenceIds);
+        if (enrError) throw enrError;
         const enrollmentIds = (enr || []).map((e: any) => e.id);
         if (enrollmentIds.length === 0) {
           execQuery = execQuery.eq('id', '00000000-0000-0000-0000-000000000000'); // empty
@@ -125,7 +137,8 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
           execQuery = execQuery.in('enrollment_id', enrollmentIds);
         }
       }
-      const { data: executions } = await execQuery;
+      const { data: executions, error: execError } = await execQuery;
+      if (execError) throw execError;
       const execList = (executions || []) as any[];
 
       // 3. Active enrollments count
@@ -136,7 +149,8 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
       if (sequenceIds && sequenceIds.length > 0) {
         enrCountQuery = enrCountQuery.in('sequence_id', sequenceIds);
       }
-      const { count: activeCount } = await enrCountQuery;
+      const { count: activeCount, error: activeError } = await enrCountQuery;
+      if (activeError) throw activeError;
 
       // 4. Scheduled (pending) executions count
       let schedQuery = supabase
@@ -144,10 +158,11 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         .select('id', { count: 'exact', head: true })
         .eq('status', 'scheduled') as any;
       if (sequenceIds && sequenceIds.length > 0) {
-        const { data: enr } = await supabase
+        const { data: enr, error: enrError } = await supabase
           .from('sequence_enrollments')
           .select('id')
           .in('sequence_id', sequenceIds);
+        if (enrError) throw enrError;
         const enrollmentIds = (enr || []).map((e: any) => e.id);
         if (enrollmentIds.length === 0) {
           schedQuery = schedQuery.eq('id', '00000000-0000-0000-0000-000000000000');
@@ -155,7 +170,8 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
           schedQuery = schedQuery.in('enrollment_id', enrollmentIds);
         }
       }
-      const { count: scheduledCount } = await schedQuery;
+      const { count: scheduledCount, error: schedError } = await schedQuery;
+      if (schedError) throw schedError;
 
       // 5. Compute stats
       const sentCount24h = execList.filter(e => e.status === 'sent').length;
@@ -170,11 +186,12 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         .map(e => ({ id: e.id, error_message: e.error_message, created_at: e.created_at }));
 
       // 6. Cron heartbeats (table cron_heartbeat, écrite par chaque cron run)
-      const { data: heartbeatRows } = await (supabase
+      const { data: heartbeatRows, error: heartbeatError } = await (supabase
         .from('cron_heartbeat')
         .select('job_name, last_run_at, last_status, last_error, run_count, error_count')
         .like('job_name', 'process-sequences:%')
         .order('last_run_at', { ascending: false }) as any);
+      if (heartbeatError) throw heartbeatError;
 
       // 7. Quota invitations LinkedIn cette semaine (lookback 7j depuis maintenant).
       // Seul les connection_request envoyés (status='sent') comptent dans la limite Unipile.
@@ -186,10 +203,11 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         .eq('step.action_type', 'connection_request')
         .gte('executed_at', since7d) as any;
       if (sequenceIds && sequenceIds.length > 0) {
-        const { data: enr } = await supabase
+        const { data: enr, error: enrError } = await supabase
           .from('sequence_enrollments')
           .select('id')
           .in('sequence_id', sequenceIds);
+        if (enrError) throw enrError;
         const enrollmentIds = (enr || []).map((e: any) => e.id);
         if (enrollmentIds.length > 0) {
           inviteQuery = inviteQuery.in('enrollment_id', enrollmentIds);
@@ -197,7 +215,8 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
           inviteQuery = inviteQuery.eq('id', '00000000-0000-0000-0000-000000000000');
         }
       }
-      const { count: inviteCount } = await inviteQuery;
+      const { count: inviteCount, error: inviteError } = await inviteQuery;
+      if (inviteError) throw inviteError;
 
       setData({
         loading: false,
@@ -211,10 +230,12 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
         heartbeats: (heartbeatRows as CronHeartbeat[]) || [],
         invitesSentThisWeek: inviteCount || 0,
       });
+      setHasLoaded(true);
     } catch (err) {
       console.error('[SequenceDiagnostic] refresh error:', err);
       setData(prev => ({ ...prev, loading: false }));
-      toast.error('Erreur de chargement du diagnostic');
+      // Une panne ne se lit pas comme des compteurs à zéro : état d'erreur avec « Réessayer ».
+      setLoadError(err instanceof Error ? err.message : String(err));
     }
   }, [projectId]);
 
@@ -237,234 +258,205 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
       if (!payload?.success) throw new Error(payload?.error || 'Échec');
       const count = payload.rescheduled || 0;
       toast.success(count > 0
-        ? `${count} action(s) avancée(s) — envoi dans la minute qui vient`
-        : 'Aucune action à avancer');
+        ? `${plural(count, 'étape avancée', 'étapes avancées')} : envoi au prochain passage, dans les ${RUN_INTERVAL_MIN} minutes.`
+        : 'Aucune étape à avancer : tout est déjà en file ou terminé.');
       await refresh();
     } catch (err) {
       console.error('[SequenceDiagnostic] runCycle error:', err);
-      toast.error('Erreur lors du déclenchement', {
-        description: err instanceof Error ? err.message : undefined,
-      });
+      toast.error("Les envois n'ont pas pu être relancés. Réessayez dans un instant.");
     } finally {
       setRunning(false);
     }
   };
 
-  // Le cron principal est 'process-sequences:process' (toutes les minutes).
-  // On regarde son heartbeat pour savoir si le pipeline tourne, indépendamment
-  // de la présence de trafic (avant on devinait via la dernière step_execution
+  // Le cron principal est 'process-sequences:process'. On regarde son
+  // heartbeat pour savoir si les envois tournent, indépendamment de la
+  // présence de trafic (avant on devinait via la dernière step_execution
   // — peu fiable si aucune séquence active).
   const mainHeartbeat = data.heartbeats.find(h => h.job_name === 'process-sequences:process');
   const lastCronRunAt = mainHeartbeat?.last_run_at ? new Date(mainHeartbeat.last_run_at) : null;
   const cronHealthy = lastCronRunAt
-    ? Date.now() - lastCronRunAt.getTime() < 5 * 60 * 1000 // < 5 min (cron toutes les min)
+    ? Date.now() - lastCronRunAt.getTime() < SILENCE_THRESHOLD_MIN * 60 * 1000
     : false;
-  const cronHasErrors = (mainHeartbeat?.error_count || 0) > 0;
+  const cronErrorCount = mainHeartbeat?.error_count || 0;
+
+  const ratio = data.invitesSentThisWeek / WEEKLY_INVITE_LIMIT;
+  const isOverWarn = ratio >= 0.8;
+  const isCritical = ratio >= 0.95;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader className="mb-4">
-          <SheetTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5" />
-            Diagnostic séquences
-          </SheetTitle>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+        <SheetHeader className="space-y-1 border-b border-border px-6 py-5 pr-14 text-left">
+          <SheetTitle>Diagnostic des envois</SheetTitle>
           <SheetDescription>
-            État de santé du pipeline d'envoi {projectId ? '(cette mission)' : '(toutes missions)'}
+            État des envois automatiques {projectId ? 'de cette mission' : 'de toutes vos missions'}.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-4">
-          {/* Bouton refresh */}
-          <Button
-            onClick={refresh}
-            disabled={data.loading}
-            variant="outline"
-            size="sm"
-            className="w-full"
-          >
-            <RefreshCw className={cn('w-3.5 h-3.5 mr-2', data.loading && 'animate-spin')} />
-            Actualiser
-          </Button>
-
-          {data.loading && !data.lastExecutionAt ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {loadError ? (
+            <ErrorState
+              title="Impossible de charger le diagnostic"
+              description="Vérifiez votre connexion, puis réessayez."
+              detail={loadError}
+              onRetry={refresh}
+              retrying={data.loading}
+            />
+          ) : data.loading && !hasLoaded ? (
+            <DiagnosticSkeleton />
           ) : (
             <>
-              {/* Cron heartbeat — lecture directe de la table cron_heartbeat */}
-              <div
-                className={cn(
-                  'p-4 rounded-xl border',
-                  cronHealthy
-                    ? 'bg-success/5 border-success/30'
-                    : 'bg-destructive/5 border-destructive/30',
-                )}
-              >
-                <div className="flex items-center gap-2 mb-2">
+              <div className="flex justify-end">
+                <Button onClick={refresh} disabled={data.loading} variant="outline" size="sm" className="max-md:h-11">
+                  <RefreshCw className={cn(data.loading && 'animate-spin')} aria-hidden="true" />
+            Actualiser
+          </Button>
+            </div>
+
+              {/* Passage des envois : lecture directe de la table cron_heartbeat */}
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2">
                   {cronHealthy ? (
-                    <CheckCircle2 className="w-4 h-4 text-success" />
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-destructive" />
+                    <XCircle className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
                   )}
-                  <span className="text-sm font-semibold">
-                    {cronHealthy ? 'Pipeline actif' : 'Pipeline silencieux'}
-                  </span>
+                  <p className="text-sm font-semibold text-foreground">
+                    {cronHealthy ? 'Envois actifs' : 'Envois interrompus'}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="mt-1 text-sm text-foreground-secondary">
                   {lastCronRunAt
-                    ? `Dernière exécution cron ${formatDistanceToNow(lastCronRunAt, { addSuffix: true, locale: fr })}`
-                    : 'Aucune exécution cron enregistrée. Vérifie que pg_cron est branché.'}
+                    ? `Dernier passage des envois ${formatDistanceToNow(lastCronRunAt, { addSuffix: true, locale: fr })}.`
+                    : 'Aucun passage des envois enregistré.'}
                 </p>
-                {!cronHealthy && lastCronRunAt && (
-                  <p className="text-xs text-destructive mt-1">
-                    ⚠ Plus de 5 min sans run — le cron est probablement gelé
+                {!cronHealthy && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Les envois passent toutes les {RUN_INTERVAL_MIN} minutes. Si aucun passage n'a lieu dans les prochaines minutes, contactez le support Konekt.
                   </p>
                 )}
-                {cronHasErrors && (
-                  <p className="text-xs text-warning mt-1">
-                    {mainHeartbeat?.error_count} erreur(s) cumulées · dernier run: {mainHeartbeat?.last_status}
+                {cronErrorCount > 0 && (
+                  <p className="mt-2 text-xs text-warning">
+                    {plural(cronErrorCount, 'passage en échec', 'passages en échec')} au total
+                    {mainHeartbeat?.last_status === 'error' ? ', dont le dernier.' : '.'}
                   </p>
                 )}
                 {data.lastExecutionAt && (
-                  <p className="text-[11px] text-muted-foreground/70 mt-1">
-                    Dernier message envoyé {formatDistanceToNow(data.lastExecutionAt, { addSuffix: true, locale: fr })}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Dernier message envoyé {formatDistanceToNow(data.lastExecutionAt, { addSuffix: true, locale: fr })}.
                   </p>
                 )}
               </div>
 
-              {/* Quota LinkedIn invitations (limite Unipile 100/semaine) */}
-              {(() => {
-                const ratio = data.invitesSentThisWeek / WEEKLY_INVITE_LIMIT;
-                const isOverWarn = ratio >= 0.8;
-                const isCritical = ratio >= 0.95;
-                const barColor = isCritical
-                  ? 'bg-destructive'
-                  : isOverWarn
-                    ? 'bg-warning'
-                    : 'bg-success';
-                return (
-                  <div className="p-3 rounded-xl border border-border bg-card">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-semibold text-foreground">Quota invitations LinkedIn</p>
-                      <span className="text-xs font-mono font-medium text-foreground">
-                        {data.invitesSentThisWeek}<span className="text-muted-foreground"> / {WEEKLY_INVITE_LIMIT}</span>
+              {/* Invitations LinkedIn de la semaine (limite ~100/semaine) */}
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">Invitations LinkedIn de la semaine</p>
+                  <span className="text-sm font-medium tabular-nums text-foreground">
+                    {data.invitesSentThisWeek}
+                    <span className="text-muted-foreground"> sur {WEEKLY_INVITE_LIMIT}</span>
                       </span>
                     </div>
-                    <div className="h-2 rounded-full bg-muted overflow-hidden">
                       <div
-                        className={cn('h-full transition-all', barColor)}
+                  className="h-2 overflow-hidden rounded-full bg-muted"
+                  role="progressbar"
+                  aria-label="Invitations LinkedIn envoyées cette semaine"
+                  aria-valuemin={0}
+                  aria-valuemax={WEEKLY_INVITE_LIMIT}
+                  aria-valuenow={data.invitesSentThisWeek}
+                >
+                  <div
+                    className={cn(
+                      'h-full rounded-full',
+                      isCritical ? 'bg-danger' : isOverWarn ? 'bg-warning' : 'bg-foreground-secondary',
+                    )}
                         style={{ width: `${Math.min(100, ratio * 100)}%` }}
                       />
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-1.5">
-                      Glissant 7 jours · LinkedIn limite ~100/semaine pour éviter le ban
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Sur 7 jours glissants. LinkedIn tolère environ {WEEKLY_INVITE_LIMIT} invitations par semaine : au-delà, le compte risque d'être restreint.
                     </p>
-                    {isCritical && (
-                      <p className="text-[11px] text-destructive mt-1 font-medium">
-                        ⚠ Quota presque épuisé — les nouvelles invitations seront rejetées
+                {isCritical ? (
+                  <p className="mt-1 text-xs font-medium text-danger">
+                    Limite presque atteinte : les nouvelles invitations seront refusées.
                       </p>
-                    )}
-                    {isOverWarn && !isCritical && (
-                      <p className="text-[11px] text-warning mt-1">
-                        Attention : tu approches la limite hebdo
+                ) : isOverWarn ? (
+                  <p className="mt-1 text-xs font-medium text-warning">
+                    Vous approchez de la limite de la semaine.
                       </p>
-                    )}
+                ) : null}
                   </div>
-                );
-              })()}
 
-              {/* Stats 24h */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="p-3 rounded-xl border border-border bg-card">
-                  <p className="text-[11px] text-muted-foreground font-medium mb-1">Envoyées 24h</p>
-                  <p className="text-xl font-semibold text-success">{data.sentCount24h}</p>
-                </div>
-                <div className="p-3 rounded-xl border border-border bg-card">
-                  <p className="text-[11px] text-muted-foreground font-medium mb-1">Échecs 24h</p>
-                  <p
-                    className={cn(
-                      'text-xl font-semibold',
-                      data.failedCount24h > 0 ? 'text-destructive' : 'text-foreground',
-                    )}
-                  >
-                    {data.failedCount24h}
-                  </p>
-                </div>
-                <div className="p-3 rounded-xl border border-border bg-card">
-                  <p className="text-[11px] text-muted-foreground font-medium mb-1">En attente</p>
-                  <p className="text-xl font-semibold">{data.scheduledCount}</p>
-                </div>
-                <div className="p-3 rounded-xl border border-border bg-card">
-                  <p className="text-[11px] text-muted-foreground font-medium mb-1">Inscrits actifs</p>
-                  <p className="text-xl font-semibold">{data.activeEnrollments}</p>
-                </div>
-              </div>
+              {/* Activité des dernières 24 heures */}
+              <StatGrid cols={{ base: 2 }}>
+                <StatTile label="Envoyées (24 h)" value={data.sentCount24h} />
+                <StatTile
+                  label="Échecs (24 h)"
+                  value={data.failedCount24h}
+                  variant="destructive"
+                  accent={data.failedCount24h > 0}
+                />
+                <StatTile label="Étapes planifiées" value={data.scheduledCount} />
+                <StatTile label="Inscriptions en cours" value={data.activeEnrollments} />
+              </StatGrid>
 
-              {/* Erreurs récentes */}
+              {/* Échecs récents */}
               {data.recentErrors.length > 0 && (
-                <div className="p-3 rounded-xl border border-destructive/30 bg-destructive/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="w-4 h-4 text-destructive" />
-                    <span className="text-sm font-semibold text-destructive">
-                      Erreurs récentes ({data.recentErrors.length})
-                    </span>
+                <section aria-labelledby="diagnostic-errors" className="rounded-xl border border-border bg-card p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+                    <h3 id="diagnostic-errors" className="text-sm font-semibold text-foreground">
+                      {data.recentErrors.length > 1 ? `${data.recentErrors.length} derniers échecs` : 'Dernier échec'}
+                    </h3>
                   </div>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  <ul className="max-h-48 space-y-2 overflow-y-auto">
                     {data.recentErrors.map(err => (
-                      <div key={err.id} className="text-xs">
+                      <li key={err.id} className="text-xs">
                         {/* formatSequenceError : traduit + strip les noms de
                             vendors (le message brut du provider atteignait
                             l'UI — audit 2026-07, Frontend M6 + règle branding) */}
-                        <p className="text-destructive break-words">
-                          {formatSequenceError(err.error_message) || 'Erreur inconnue'}
+                        <p className="break-words text-foreground-secondary">
+                          {formatSequenceError(err.error_message) || 'Échec sans détail'}
                         </p>
-                        <p className="text-muted-foreground/70 text-[10px] mt-0.5">
-                          <Clock className="w-2.5 h-2.5 inline mr-0.5" />
+                        <p className="mt-0.5 text-muted-foreground">
                           {formatDistanceToNow(new Date(err.created_at), { addSuffix: true, locale: fr })}
                         </p>
-                      </div>
+                      </li>
                     ))}
-                  </div>
-                </div>
+                  </ul>
+                </section>
               )}
 
-              {/* Bouton run cycle */}
-              <div className="pt-2 border-t border-border">
+              {/* Avancer les étapes planifiées */}
+              <div className="space-y-2 border-t border-border pt-4">
                 <Button
                   onClick={handleRunCycle}
-                  disabled={running}
-                  className="w-full"
-                  size="sm"
+                  loading={running}
+                  className="w-full max-md:h-11"
                 >
-                  {running ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                      Exécution en cours…
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-3.5 h-3.5 mr-2" />
-                      Forcer un cycle maintenant
-                    </>
-                  )}
+                  Relancer les envois maintenant
                 </Button>
-                <p className="text-[11px] text-muted-foreground mt-2">
-                  Lance immédiatement <code className="font-mono bg-muted/50 px-1 py-0.5 rounded">process-sequences</code> sans
-                  attendre le cron (≤1 min).
+                <p className="text-xs text-muted-foreground">
+                  Avance les étapes planifiées de toutes vos séquences, hors invitations LinkedIn : elles partent au prochain passage des envois, dans les {RUN_INTERVAL_MIN} minutes.
                 </p>
               </div>
 
               {/* Aide */}
-              <div className="p-3 rounded-xl border border-border bg-muted/20 text-xs space-y-1.5">
-                <p className="font-semibold text-foreground">Comment lire ce diagnostic ?</p>
-                <ul className="text-muted-foreground space-y-1 list-disc list-inside">
-                  <li><strong>Pipeline actif</strong> = cron a tourné dans les 10 dernières min</li>
-                  <li><strong>En attente</strong> = étapes prévues dont l'heure n'est pas encore arrivée</li>
-                  <li><strong>Échecs 24h &gt; 0</strong> = vérifie les erreurs ci-dessus, souvent un compte LinkedIn déconnecté</li>
+              <section aria-labelledby="diagnostic-help" className="rounded-xl border border-border bg-muted p-4 text-xs">
+                <h3 id="diagnostic-help" className="font-semibold text-foreground">Comment lire ce diagnostic ?</h3>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-foreground-secondary">
+                  <li>
+                    <span className="font-medium text-foreground">Envois actifs</span> : un passage des envois a eu lieu dans les {SILENCE_THRESHOLD_MIN} dernières minutes (ils passent toutes les {RUN_INTERVAL_MIN} minutes).
+                  </li>
+                  <li>
+                    <span className="font-medium text-foreground">Étapes planifiées</span> : étapes prévues qui ne sont pas encore parties.
+                  </li>
+                  <li>
+                    <span className="font-medium text-foreground">Échecs (24 h)</span> : lisez les messages ci-dessus ; la cause la plus fréquente est un compte LinkedIn déconnecté.
+                  </li>
                 </ul>
-              </div>
+              </section>
             </>
           )}
         </div>
@@ -472,3 +464,16 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
     </Sheet>
   );
 };
+
+/** Squelette du diagnostic : état des envois, invitations, puis quatre tuiles. */
+const DiagnosticSkeleton: React.FC = () => (
+  <div className="space-y-4" aria-hidden="true">
+    <Skeleton className="h-24 w-full rounded-xl" />
+    <Skeleton className="h-28 w-full rounded-xl" />
+    <div className="grid grid-cols-2 gap-3">
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+  </div>
+);

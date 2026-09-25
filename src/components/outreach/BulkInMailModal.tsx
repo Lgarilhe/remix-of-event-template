@@ -1,32 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { executionStatusMeta, MESSAGE_TONES, type MessageTone } from '@/lib/sequenceCatalog';
+import { formatSequenceError } from '@/lib/sequenceErrorMessages';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { InMailTextEditor } from './InMailTextEditor';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Progress } from '@/components/ui/progress';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { EmptyState, ErrorState } from '@/components/layout';
 import { 
-  Mail, 
   Clock, 
-  CheckCircle, 
-  XCircle, 
-  Loader2,
-  Users,
-  Calendar,
-  Info,
-  Sparkles,
   PenLine,
   ChevronLeft,
   ChevronRight,
@@ -35,6 +41,8 @@ import {
   Edit2,
   Check,
   AlertTriangle,
+  Briefcase,
+  Lightbulb,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -67,7 +75,7 @@ interface GeneratedMessage {
   isEdited: boolean;
 }
 
-type Tone = 'professional' | 'casual' | 'enthusiastic';
+type Tone = MessageTone;
 
 interface QueueStats {
   pending: number;
@@ -88,6 +96,28 @@ interface QueueItem {
   sent_at: string | null;
   error_message: string | null;
 }
+
+/**
+ * Statuts de la file InMail : le ton du badge vient du catalogue des séquences
+ * (même statut, même couleur partout) ; le libellé s'accorde avec « InMail »,
+ * masculin, là où le catalogue qualifie une étape.
+ */
+const QUEUE_STATUS_LABELS: Record<string, string> = {
+  pending: 'Planifié',
+  scheduled: 'Planifié',
+  sending: "En cours d'envoi",
+  sent: 'Envoyé',
+  failed: 'En échec',
+  cancelled: 'Annulé',
+};
+
+const QueueStatusBadge: React.FC<{ status: string }> = ({ status }) => (
+  <Badge variant={executionStatusMeta(status === 'pending' ? 'scheduled' : status).tone} className="shrink-0">
+    {QUEUE_STATUS_LABELS[status] || 'Statut inconnu'}
+  </Badge>
+);
+
+const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
 export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   isOpen,
@@ -117,6 +147,13 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const [isQueueing, setIsQueueing] = useState(false);
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  const senderId = useId();
+  const subjectId = useId();
+  const messageId = useId();
 
   // InMail balance from real API
   const { balance, isLoading: isLoadingBalance, error: balanceError, refetch: refetchBalance, hasCredits, getCredits } = useInMailBalance(accountId);
@@ -140,6 +177,11 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const hasGeneratedMessages = readyCount > 0 && !isGenerating;
   const allGenerated = readyCount === recipients.length;
 
+  const hasUnsavedEdit = !!currentMessage && (
+    editingSubject !== currentMessage.subject ||
+    editingMessage !== currentMessage.message
+  );
+
   // Save sender name to localStorage
   const handleSenderNameChange = (name: string) => {
     setSenderName(name);
@@ -159,18 +201,23 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
   // Fetch queue status
   const fetchQueueStatus = async () => {
+    setQueueLoading(true);
+    setQueueError(null);
     try {
       const { data, error } = await invokeEdgeFunction<{ stats?: any; items?: any[] }>('process-inmail-queue', {
         action: 'status',
       });
 
       if (error) throw error;
-      if (data?.success) {
-        setQueueStats(data.stats);
-        setQueueItems(data.items || []);
-      }
+      if (!data?.success) throw new Error(data?.error || 'status');
+      setQueueStats(data.stats);
+      setQueueItems(data.items || []);
     } catch (err) {
       console.error('Error fetching queue status:', err);
+      // Une panne ne se lit pas comme une file vide : état d'erreur avec « Réessayer ».
+      setQueueError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQueueLoading(false);
     }
   };
 
@@ -269,7 +316,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // Generate all messages
   const handleGenerateAll = async () => {
     if (!selectedJob) {
-      toast.error('Sélectionnez un poste pour générer les messages');
+      toast.error('Choisissez un poste pour générer les messages.');
       return;
     }
     
@@ -292,7 +339,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     
     setIsGenerating(false);
     setCurrentRecipientIndex(0); // Reset to first recipient to show editor
-    toast.success(`${Object.keys(newMessages).length} messages générés ! Cliquez sur chaque message pour le visualiser et modifier.`);
+    const generated = Object.keys(newMessages).length;
+    if (generated === recipients.length) {
+      toast.success(`${plural(generated, 'message généré', 'messages générés')} : relisez-les avant de planifier l'envoi.`);
+    } else if (generated > 0) {
+      toast.warning(`${generated} messages générés sur ${recipients.length} : régénérez les messages manquants avant de planifier.`);
+    } else {
+      toast.error("Aucun message n'a pu être généré. Réessayez dans un instant.");
+    }
   };
 
   // Regenerate current message
@@ -306,6 +360,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       setGeneratedMessages(prev => ({ ...prev, [currentRecipient.id]: message }));
       setEditingSubject(message.subject);
       setEditingMessage(message.message);
+    } else {
+      toast.error(`Le message de ${currentRecipient.name} n'a pas pu être régénéré. Réessayez.`);
     }
     
     setIsGenerating(false);
@@ -325,16 +381,13 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       }
     }));
     
-    toast.success('Message sauvegardé');
+    toast.success(`Modifications enregistrées pour ${currentRecipient.name}`);
   };
 
   // Navigate to previous/next recipient
   const goToRecipient = (direction: 'prev' | 'next') => {
     // Auto-save if edited
-    if (currentMessage && (
-      editingSubject !== currentMessage.subject || 
-      editingMessage !== currentMessage.message
-    )) {
+    if (hasUnsavedEdit) {
       handleSaveEdit();
     }
     
@@ -348,13 +401,13 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // Queue all messages
   const handleQueueAll = async () => {
     if (readyCount === 0) {
-      toast.error('Générez d\'abord les messages');
+      toast.error("Générez d'abord les messages.");
       return;
     }
     
     // Check credit availability before queueing
     if (!hasEnoughCredits) {
-      toast.error(`Crédits InMail insuffisants (${recruiterCredits} restants, ${creditsNeeded} requis)`);
+      toast.error(`Crédits InMail insuffisants : ${recruiterCredits} restants pour ${creditsNeeded} candidats.`);
       return;
     }
     
@@ -399,31 +452,32 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       });
 
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erreur lors de la mise en queue');
+      if (!data?.success) throw new Error(data?.error || 'queue');
 
       // Refetch balance after queueing to update credits display
       refetchBalance();
       
-      toast.success(`${data.queued} InMails planifiés pour envoi`);
+      const queued = data.queued || 0;
+      toast.success(`${plural(queued, 'InMail planifié', 'InMails planifiés')} : envoi pendant vos horaires d'envoi.`);
       setGeneratedMessages({});
       setActiveTab('queue');
       fetchQueueStatus();
     } catch (err) {
       console.error('Error queueing InMails:', err);
-      toast.error(err instanceof Error ? err.message : 'Erreur lors de la planification');
+      toast.error("Les InMails n'ont pas pu être planifiés. Réessayez.");
     } finally {
       setIsQueueing(false);
     }
   };
 
+  const pendingIds = queueItems
+    .filter(item => ['pending', 'scheduled'].includes(item.status))
+    .map(item => item.id);
+
   // Cancel pending items
   const handleCancelPending = async () => {
-    const pendingIds = queueItems
-      .filter(item => ['pending', 'scheduled'].includes(item.status))
-      .map(item => item.id);
-
     if (pendingIds.length === 0) {
-      toast.info('Aucun InMail en attente à annuler');
+      toast.info('Aucun InMail en attente à annuler.');
       return;
     }
 
@@ -433,11 +487,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       });
 
       if (error) throw error;
-      toast.success(`${data?.cancelled || 0} InMails annulés`);
+      const cancelled = data?.cancelled || 0;
+      toast.success(cancelled > 0
+        ? `${plural(cancelled, 'InMail annulé', 'InMails annulés')} : ${cancelled > 1 ? 'ils ne partiront pas' : 'il ne partira pas'}.`
+        : 'Aucun InMail annulé : ils étaient déjà partis.');
       fetchQueueStatus();
     } catch (err) {
       console.error('Error cancelling InMails:', err);
-      toast.error('Erreur lors de l\'annulation');
+      toast.error("Les envois n'ont pas pu être annulés. Réessayez.");
     }
   };
 
@@ -458,462 +515,460 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'pending':
-      case 'scheduled':
-        return <Badge variant="outline" className="bg-info/10 text-info-foreground border-info/20"><Clock className="w-3 h-3 mr-1" />Planifié</Badge>;
-      case 'sending':
-        return <Badge variant="outline" className="bg-warning/10 text-warning-foreground border-warning/20"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Envoi...</Badge>;
-      case 'sent':
-        return <Badge variant="outline" className="bg-success/10 text-success-foreground border-success/20"><CheckCircle className="w-3 h-3 mr-1" />Envoyé</Badge>;
-      case 'failed':
-        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20"><XCircle className="w-3 h-3 mr-1" />Échoué</Badge>;
-      case 'cancelled':
-        return <Badge variant="outline" className="bg-muted text-muted-foreground border-border"><XCircle className="w-3 h-3 mr-1" />Annulé</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const totalInQueue = queueStats ? 
     queueStats.pending + queueStats.scheduled + queueStats.sending : 0;
 
+  const timezoneCity = (userTimezone.split('/')[1] || userTimezone).replace(/_/g, ' ');
+
+  const queueCounters = queueStats
+    ? [
+        { label: 'Planifiés', value: queueStats.pending + queueStats.scheduled },
+        { label: "En cours d'envoi", value: queueStats.sending },
+        { label: 'Envoyés', value: queueStats.sent },
+        { label: 'En échec', value: queueStats.failed, danger: queueStats.failed > 0 },
+        { label: 'Annulés', value: queueStats.cancelled },
+      ]
+    : [];
+
+  const selectRecipient = (index: number) => {
+    if (hasUnsavedEdit) {
+      handleSaveEdit();
+    }
+    setCurrentRecipientIndex(index);
+  };
+
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-0">
-        {/* Clean header — icône en colonne, titre + sous-titre alignés ensemble.
-            Avant : le sous-titre était flush-left sous l'icône, créant un décalage
-            visuel avec le titre qui commence après l'icône. */}
-        <div className="px-6 py-4 border-b border-border bg-background shrink-0">
+      <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <div className="shrink-0 border-b border-border px-6 py-4 pr-14">
           <DialogHeader>
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-linkedin flex items-center justify-center shrink-0">
-                <Mail className="w-4 h-4 text-white" />
-              </div>
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <DialogTitle className="text-lg leading-tight">
-                  InMails personnalisés
-                </DialogTitle>
-                <DialogDescription className="text-sm leading-tight">
-                  Génération IA de messages pour {recipients.length} candidat{recipients.length > 1 ? 's' : ''}
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted">
+                <ChannelIcon channel="linkedin" size="sm" />
+              </span>
+              <div className="flex min-w-0 flex-col gap-0.5 text-left">
+                <DialogTitle>InMail groupé</DialogTitle>
+                <DialogDescription>
+                  Un message personnalisé par l'IA Konekt pour {recipients.length > 1 ? `chacun des ${recipients.length} candidats` : 'le candidat'}, à relire avant l'envoi.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'compose' | 'queue')} className="flex-1 overflow-hidden flex flex-col">
-          <div className="px-6 pt-4 shrink-0">
-            <TabsList className="w-full bg-muted/80 p-1 h-10">
-              <TabsTrigger value="compose" className="flex-1 gap-2 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <PenLine className="w-3.5 h-3.5" />
-                Composer ({readyCount}/{recipients.length})
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'compose' | 'queue')} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="shrink-0 px-6 pt-4">
+            <TabsList className="w-full">
+              <TabsTrigger value="compose" className="flex-1 gap-2">
+                <PenLine className="h-3.5 w-3.5" aria-hidden="true" />
+                Rédaction ({readyCount} sur {recipients.length})
               </TabsTrigger>
-              <TabsTrigger value="queue" className="flex-1 gap-2 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <Clock className="w-3.5 h-3.5" />
-                File d'attente {totalInQueue > 0 && `(${totalInQueue})`}
+              <TabsTrigger value="queue" className="flex-1 gap-2">
+                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                File d'attente{totalInQueue > 0 && ` (${totalInQueue})`}
               </TabsTrigger>
             </TabsList>
           </div>
 
-          {/* Compose Tab */}
-          <TabsContent value="compose" className="flex-1 overflow-y-auto px-6 pb-6 mt-0">
+          {/* Rédaction */}
+          <TabsContent value="compose" className="mt-0 min-h-0 flex-1 overflow-y-auto px-6 pb-6">
             {!selectedJob ? (
-              // No job selected
-              <div className="flex-1 flex items-center justify-center py-12">
-                <div className="text-center">
-                  <Sparkles className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-                  <h3 className="font-medium text-foreground mb-1">Sélectionnez un poste</h3>
-                  <p className="text-sm text-muted-foreground max-w-xs">
-                    Pour générer des messages personnalisés, sélectionnez d'abord un poste.
-                  </p>
-                </div>
-              </div>
+              <EmptyState
+                className="mt-4"
+                variant="compact"
+                icon={Briefcase}
+                title="Choisissez d'abord un poste"
+                description="Les messages s'appuient sur le poste pour se personnaliser."
+              />
             ) : !hasGeneratedMessages ? (
-              // Generation setup - clean design
               <div className="space-y-5 pt-4">
-                {/* Context row: Job + Recipients + Credits - compact */}
-                <div className="flex items-center justify-between gap-4 pb-4 border-b border-border">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs font-medium truncate max-w-[180px]">
-                        {selectedJob.title}
-                      </Badge>
-                      {selectedJob.client?.name && (
-                        <Badge variant="secondary" className="text-xs">
-                          {selectedJob.client.name}
-                        </Badge>
-                      )}
-                    </div>
+                {/* Poste et crédits */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="max-w-full truncate">
+                      {selectedJob.title}
+                    </Badge>
+                    {selectedJob.client?.name && (
+                      <Badge variant="muted">{selectedJob.client.name}</Badge>
+                    )}
                   </div>
-                  
-                  {/* Credits indicator - compact */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className={cn(
-                      "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
-                      !hasEnoughCredits
-                        ? "bg-destructive/10 text-destructive"
-                        : isNearLimit
-                        ? "bg-warning/10 text-warning-foreground"
-                        : "bg-success/10 text-success-foreground"
-                    )}>
-                      <Mail className="w-3 h-3" />
-                      {recruiterCredits} crédits
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => refetchBalance()}
-                      disabled={isLoadingBalance}
-                      aria-label="Rafraîchir le solde de crédits InMail"
-                    >
-                      <RefreshCw className={cn("h-3 w-3", isLoadingBalance && "animate-spin")} aria-hidden="true" />
-                    </Button>
+
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Badge variant={!hasEnoughCredits ? 'danger' : isNearLimit ? 'warning' : 'muted'}>
+                      {plural(recruiterCredits, 'crédit InMail', 'crédits InMail')}
+                    </Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="max-md:h-11 max-md:w-11"
+                          onClick={() => refetchBalance()}
+                          disabled={isLoadingBalance}
+                          aria-label="Actualiser le solde de crédits InMail"
+                        >
+                          <RefreshCw className={cn(isLoadingBalance && 'animate-spin')} aria-hidden="true" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Actualiser le solde</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
-
-                {/* Error message for credits if needed */}
+                  
+                {/* Crédits insuffisants */}
                 {!hasEnoughCredits && (
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>Crédits insuffisants ({recruiterCredits} restants, {creditsNeeded} requis)</span>
+                  <div role="alert" className="flex items-start gap-2 rounded-lg bg-danger-muted p-3 text-sm text-danger">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>
+                      {balanceError
+                        ? "Le solde de crédits InMail n'a pas pu être lu. Actualisez le solde, puis réessayez."
+                        : `Crédits InMail insuffisants : ${recruiterCredits} restants pour ${creditsNeeded} candidats.`}
+                    </span>
                   </div>
                 )}
 
-                {/* Configuration section */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Sender name */}
-                  <div>
-                    <Label htmlFor="senderName" className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                      Ton prénom (signature)
+                {/* Signature et ton */}
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={senderId} className="text-xs font-medium text-muted-foreground">
+                      Votre prénom (signature)
                     </Label>
                     <Input
-                      id="senderName"
+                      id={senderId}
                       value={senderName}
                       onChange={(e) => handleSenderNameChange(e.target.value)}
-                      placeholder="Ex: Marc"
-                      className="h-9"
+                      placeholder="Ex. : Camille"
                     />
                   </div>
-                  
-                  {/* Tone selector */}
-                  <div>
-                    <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">Ton</Label>
-                    <div className="flex gap-1.5">
-                      {[
-                        { value: 'professional', label: 'Pro', emoji: '👔' },
-                        { value: 'casual', label: 'Cool', emoji: '😊' },
-                        { value: 'enthusiastic', label: 'Wow', emoji: '🚀' },
-                      ].map((t) => (
-                        <Button
-                          key={t.value}
-                          variant={tone === t.value ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setTone(t.value as Tone)}
-                          className={cn(
-                            "flex-1 h-9 text-xs",
-                            tone === t.value ? 'bg-linkedin hover:bg-linkedin-hover' : ''
-                          )}
-                        >
-                          {t.emoji} {t.label}
-                        </Button>
-                      ))}
-                    </div>
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground" aria-hidden="true">Ton</p>
+                    <SegmentedControl<Tone>
+                      aria-label="Ton des messages"
+                      size="default"
+                      value={tone}
+                      onValueChange={setTone}
+                      options={MESSAGE_TONES.map((t) => ({ value: t.value, label: t.label }))}
+                      className="max-w-full"
+                    />
                   </div>
                 </div>
 
-                {/* Generate button - clean */}
+                {/* Générer */}
                 <Button
+                  variant="primary"
+                  size="lg"
                   onClick={handleGenerateAll}
-                  disabled={isGenerating || !hasEnoughCredits}
-                  className={cn(
-                    "w-full h-11",
-                    !hasEnoughCredits 
-                      ? "bg-muted cursor-not-allowed"
-                      : "bg-linkedin hover:bg-linkedin-hover"
-                  )}
+                  disabled={!hasEnoughCredits}
+                  loading={isGenerating}
+                  className="w-full"
                 >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Génération {generatingIndex + 1}/{recipients.length}...
-                    </>
-                  ) : !hasEnoughCredits ? (
-                    'Crédits insuffisants'
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Générer {recipients.length} messages
-                    </>
-                  )}
+                  {isGenerating
+                    ? `Génération ${generatingIndex + 1} sur ${recipients.length}…`
+                    : !hasEnoughCredits
+                      ? 'Crédits InMail insuffisants'
+                      : recipients.length > 1 ? `Générer les ${recipients.length} messages` : 'Générer le message'}
                 </Button>
 
-                {/* Progress bar */}
+                {/* Progression de la génération */}
                 {isGenerating && (
-                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                    <div 
-                      className="bg-linkedin h-full transition-all duration-300"
+                  <div
+                    className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                    role="progressbar"
+                    aria-label="Génération des messages"
+                    aria-valuemin={0}
+                    aria-valuemax={recipients.length}
+                    aria-valuenow={generatingIndex + 1}
+                  >
+                    <div
+                      className="h-full rounded-full bg-brand transition-[width] duration-200"
                       style={{ width: `${((generatingIndex + 1) / recipients.length) * 100}%` }}
                     />
                   </div>
                 )}
 
-                {/* Info text - subtle */}
-                <p className="text-xs text-muted-foreground text-center">
-                  Envoi entre 8h-19h ({userTimezone.split('/')[1] || userTimezone}) • Délai 2-5 min entre chaque
+                <p className="text-center text-xs text-muted-foreground">
+                  Envoi pendant vos horaires d'envoi (de 8 h à 19 h par défaut, heure de {timezoneCity}), avec quelques minutes entre deux InMails.
                 </p>
               </div>
             ) : (
-              // Message editing view
-              <div className="flex-1 overflow-hidden flex flex-col gap-4">
-                {/* Navigation header */}
-                <div className="flex items-center justify-between bg-muted/50 rounded-lg p-2">
+              // Relecture message par message
+              <div className="flex flex-col gap-4 pt-4">
+                {/* Précédent / suivant */}
+                <div className="flex items-center justify-between rounded-lg bg-muted p-1">
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="max-md:h-11"
                     onClick={() => goToRecipient('prev')}
                     disabled={currentRecipientIndex === 0}
                   >
-                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    <ChevronLeft aria-hidden="true" />
                     Précédent
                   </Button>
-                  <div className="text-sm font-medium">
-                    {currentRecipientIndex + 1} / {recipients.length}
-                  </div>
+                  <p className="text-sm font-medium tabular-nums text-foreground" aria-live="polite">
+                    Message {currentRecipientIndex + 1} sur {recipients.length}
+                  </p>
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="max-md:h-11"
                     onClick={() => goToRecipient('next')}
                     disabled={currentRecipientIndex === recipients.length - 1}
                   >
                     Suivant
-                    <ChevronRight className="w-4 h-4 ml-1" />
+                    <ChevronRight aria-hidden="true" />
                   </Button>
                 </div>
 
-                {/* Current recipient info - clean */}
+                {/* Destinataire */}
                 {currentRecipient && (
-                  <div className="flex items-center justify-between py-3 border-b border-border">
+                  <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-foreground text-sm">{currentRecipient.name}</div>
-                      <div className="text-xs text-muted-foreground truncate max-w-[350px]">
-                        {currentRecipient.headline}
-                      </div>
+                      <p className="truncate text-sm font-medium text-foreground">{currentRecipient.name}</p>
+                      {currentRecipient.headline && (
+                        <p className="truncate text-xs text-muted-foreground">{currentRecipient.headline}</p>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex shrink-0 items-center gap-2">
                       {currentMessage?.isEdited && (
-                        <span className="text-xs text-warning-foreground flex items-center gap-1">
-                          <Edit2 className="w-3 h-3" />
-                          modifié
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Edit2 className="h-3 w-3" aria-hidden="true" />
+                          Modifié
                         </span>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRegenerateMessage}
-                        disabled={isGenerating}
-                        className="h-8 w-8 p-0"
-                      >
-                        <RefreshCw className={cn("w-3.5 h-3.5", isGenerating && "animate-spin")} />
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="max-md:h-11 max-md:w-11"
+                            onClick={handleRegenerateMessage}
+                            disabled={isGenerating}
+                            aria-label={`Régénérer le message de ${currentRecipient.name}`}
+                          >
+                            <RefreshCw className={cn(isGenerating && 'animate-spin')} aria-hidden="true" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Régénérer ce message</TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                 )}
 
-                {/* Message editor - clean */}
-                <div className="flex-1 overflow-auto space-y-3 pt-3">
-                  <div>
-                    <Label htmlFor="subject" className="text-xs font-medium text-muted-foreground">Objet</Label>
+                {/* Objet et message */}
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={subjectId} className="text-xs font-medium text-muted-foreground">Objet</Label>
                     <Input
-                      id="subject"
+                      id={subjectId}
                       value={editingSubject}
                       onChange={(e) => setEditingSubject(e.target.value)}
-                      placeholder="Objet du message..."
-                      className="mt-1 h-9"
+                      placeholder="Objet de l'InMail"
                     />
                   </div>
 
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <Label htmlFor="message" className="text-xs font-medium text-muted-foreground">Message</Label>
-                      {currentMessage && (
-                        editingSubject !== currentMessage.subject || 
-                        editingMessage !== currentMessage.message
-                      ) && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleSaveEdit}
-                          className="text-success-foreground hover:text-success-foreground/80 h-7 text-xs"
-                        >
-                          <Check className="w-3 h-3 mr-1" />
-                          Sauvegarder
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor={messageId} className="text-xs font-medium text-muted-foreground">Message</Label>
+                      {hasUnsavedEdit && (
+                        <Button size="xs" variant="ghost" onClick={handleSaveEdit} className="max-md:h-11">
+                          <Check aria-hidden="true" />
+                          Enregistrer les modifications
                         </Button>
                       )}
                     </div>
                     <InMailTextEditor
-                      id="message"
+                      id={messageId}
                       value={editingMessage}
                       onChange={setEditingMessage}
-                      placeholder="Le message d'approche..."
+                      placeholder="Le message d'approche"
                       minHeight="150px"
                       maxCharacters={1900}
                     />
                   </div>
 
-                  {/* Personalization points - subtle */}
+                  {/* Points de personnalisation */}
                   {currentMessage?.personalizationPoints && currentMessage.personalizationPoints.length > 0 && (
-                    <div className="text-xs text-muted-foreground pt-2 border-t border-border">
-                      <span className="font-medium text-muted-foreground flex items-center gap-1 mb-1">
-                        <Sparkles className="w-3 h-3" />
+                    <div className="border-t border-border pt-3">
+                      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                        <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
                         Points de personnalisation
-                      </span>
-                      <div className="flex flex-wrap gap-1">
+                      </p>
+                      <ul className="flex flex-wrap gap-1.5">
                         {currentMessage.personalizationPoints.map((point, i) => (
-                          <span key={i} className="bg-muted px-2 py-0.5 rounded text-muted-foreground">
-                            {point}
-                          </span>
+                          <li key={i}>
+                            <Badge variant="muted">{point}</Badge>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
                 </div>
 
-                {/* Quick navigation dots */}
-                <div className="flex justify-center gap-1 py-2 border-t border-border">
-                  {recipients.slice(0, 15).map((r, i) => (
-                    <button
-                      key={r.id}
-                      onClick={() => {
-                        if (currentMessage && (
-                          editingSubject !== currentMessage.subject || 
-                          editingMessage !== currentMessage.message
-                        )) {
-                          handleSaveEdit();
-                        }
-                        setCurrentRecipientIndex(i);
-                      }}
-                      className={cn(
-                        "w-2 h-2 rounded-full transition-all",
-                        i === currentRecipientIndex 
-                          ? "bg-linkedin scale-125" 
-                          : generatedMessages[r.id] 
-                            ? "bg-success"
-                            : "bg-muted"
-                      )}
-                    />
-                  ))}
+                {/* Accès direct à un message (ordinateur) : un bouton nommé par candidat */}
+                <nav aria-label="Messages par candidat" className="hidden flex-wrap items-center justify-center gap-1 border-t border-border pt-3 sm:flex">
+                  {recipients.slice(0, 15).map((r, i) => {
+                    const isCurrent = i === currentRecipientIndex;
+                    const isReady = !!generatedMessages[r.id];
+                    return (
+                      <Tooltip key={r.id}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => selectRecipient(i)}
+                            aria-current={isCurrent ? 'step' : undefined}
+                            aria-label={`Message ${i + 1} : ${r.name}${isReady ? '' : ' (non généré)'}`}
+                            className={cn(
+                              'tabular-nums text-xs',
+                              isCurrent ? 'bg-brand/15 text-brand hover:bg-brand/15 hover:text-brand' : 'text-muted-foreground',
+                              !isReady && 'border border-dashed border-border',
+                            )}
+                          >
+                            {i + 1}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{r.name}{isReady ? '' : ' (non généré)'}</TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
                   {recipients.length > 15 && (
-                    <span className="text-xs text-muted-foreground ml-1">+{recipients.length - 15}</span>
+                    <span className="ml-1 text-xs text-muted-foreground">et {recipients.length - 15} autres</span>
                   )}
-                </div>
+                </nav>
               </div>
             )}
           </TabsContent>
 
-          {/* Queue Tab */}
-          <TabsContent value="queue" className="flex-1 overflow-hidden flex flex-col px-6 pb-6 mt-0">
-            {/* Queue Stats - compact */}
-            {queueStats && (
-              <div className="grid grid-cols-5 gap-2 text-center py-3 border-b border-border mb-3">
-                <div>
-                  <div className="text-lg font-semibold text-info-foreground">{queueStats.scheduled}</div>
-                  <div className="text-xs text-muted-foreground uppercase">Planifiés</div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold text-warning-foreground">{queueStats.sending}</div>
-                  <div className="text-xs text-muted-foreground uppercase">En cours</div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold text-success-foreground">{queueStats.sent}</div>
-                  <div className="text-xs text-muted-foreground uppercase">Envoyés</div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold text-destructive">{queueStats.failed}</div>
-                  <div className="text-xs text-muted-foreground uppercase">Échoués</div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold text-muted-foreground">{queueStats.cancelled}</div>
-                  <div className="text-xs text-muted-foreground uppercase">Annulés</div>
-                </div>
+          {/* File d'attente */}
+          <TabsContent value="queue" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-6">
+            {queueError ? (
+              <ErrorState
+                className="mt-4"
+                variant="compact"
+                title="Impossible de charger la file d'attente"
+                description="Vérifiez votre connexion, puis réessayez."
+                detail={queueError}
+                onRetry={fetchQueueStatus}
+                retrying={queueLoading}
+              />
+            ) : queueLoading && !queueStats ? (
+              <div className="space-y-2 pt-4" aria-hidden="true">
+                <Skeleton className="h-14 w-full rounded-lg" />
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                ))}
               </div>
-            )}
-
-            {/* Queue items */}
-            <ScrollArea className="flex-1">
-              <div className="space-y-2">
-                {queueItems.length === 0 ? (
-                  <div className="text-center py-10 text-muted-foreground">
-                    <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm">Aucun InMail en file d'attente</p>
-                  </div>
-                ) : (
-                  queueItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm text-foreground truncate">{item.recipient_name || 'Inconnu'}</div>
-                        <div className="text-xs text-muted-foreground truncate">{item.subject}</div>
-                        {item.scheduled_at && ['pending', 'scheduled'].includes(item.status) && (
-                          <div className="text-xs text-info-foreground flex items-center gap-1 mt-1">
-                            <Calendar className="w-3 h-3" />
-                            {formatScheduledTime(item.scheduled_at)}
-                          </div>
-                        )}
-                        {item.error_message && (
-                          <div className="text-xs text-destructive mt-1">{item.error_message}</div>
-                        )}
+            ) : (
+              <>
+                {queueStats && (
+                  <dl className="mb-3 grid grid-cols-3 gap-2 border-b border-border py-3 sm:grid-cols-5">
+                    {queueCounters.map((c) => (
+                      <div key={c.label} className="flex flex-col-reverse items-center text-center">
+                        <dt className="text-xs text-muted-foreground">{c.label}</dt>
+                        <dd className={cn('text-lg font-semibold tabular-nums', c.danger ? 'text-danger' : 'text-foreground')}>
+                          {c.value}
+                        </dd>
                       </div>
-                      {getStatusBadge(item.status)}
-                    </div>
-                  ))
+                    ))}
+                  </dl>
                 )}
-              </div>
-            </ScrollArea>
 
-            {totalInQueue > 0 && (
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={handleCancelPending}
-                className="text-destructive hover:text-destructive/80 hover:bg-destructive/10 mt-3"
-              >
-                Annuler les envois en attente
-              </Button>
+                <ScrollArea className="min-h-0 flex-1">
+                  {queueItems.length === 0 ? (
+                    <EmptyState
+                      variant="compact"
+                      icon={Clock}
+                      title="Aucun InMail planifié"
+                      description="Les InMails que vous planifiez apparaissent ici jusqu'à leur envoi."
+                    />
+                  ) : (
+                    <ul className="space-y-2">
+                      {queueItems.map(item => (
+                        <li key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-foreground">{item.recipient_name || 'Candidat'}</p>
+                            <p className="truncate text-xs text-muted-foreground">{item.subject}</p>
+                            {item.scheduled_at && ['pending', 'scheduled'].includes(item.status) && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Prévu le {formatScheduledTime(item.scheduled_at)}
+                              </p>
+                            )}
+                            {item.error_message && (
+                              <p className="mt-1 text-xs text-danger">{formatSequenceError(item.error_message)}</p>
+                            )}
+                          </div>
+                          <QueueStatusBadge status={item.status} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </ScrollArea>
+
+                {pendingIds.length > 0 && (
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmCancel(true)}
+                      className="text-danger hover:text-danger max-md:h-11"
+                    >
+                      Annuler les envois en attente
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </TabsContent>
         </Tabs>
 
-        {/* Footer — aligné avec le body : même bg-background, juste un
-            border-t pour séparer. Avant : bg-muted créait une bande grise
-            visuellement détachée du reste de la modal. */}
-        <div className="px-6 py-3 border-t border-border bg-background flex justify-end gap-2 shrink-0">
+        {/* Pied : même fond que le corps, un filet pour séparer */}
+        <div className="flex shrink-0 justify-end gap-2 border-t border-border px-6 py-3">
           <Button variant="outline" onClick={onClose}>
             Fermer
           </Button>
 
           {activeTab === 'compose' && hasGeneratedMessages && (
             <Button
+              variant="primary"
               onClick={handleQueueAll}
-              disabled={isQueueing || readyCount === 0}
-              className="bg-linkedin hover:bg-linkedin-hover text-white"
+              disabled={readyCount === 0}
+              loading={isQueueing}
             >
-              {isQueueing ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Planification...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Planifier {readyCount} InMail{readyCount > 1 ? 's' : ''}
-                </>
-              )}
+              {!isQueueing && <Send aria-hidden="true" />}
+              {readyCount > 1 ? `Planifier les ${readyCount} InMails` : "Planifier l'InMail"}
+              {!allGenerated && readyCount > 0 && <span className="sr-only"> (sur {recipients.length} candidats)</span>}
             </Button>
           )}
         </div>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {pendingIds.length > 1 ? `Annuler les ${pendingIds.length} InMails en attente ?` : "Annuler l'InMail en attente ?"}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {pendingIds.length > 1 ? 'Ils ne partiront pas.' : 'Il ne partira pas.'} Les InMails déjà envoyés ou en cours d'envoi ne sont pas concernés. Cette action est irréversible.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Garder les envois</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive"
+            onClick={() => {
+              setConfirmCancel(false);
+              handleCancelPending();
+            }}
+          >
+            {pendingIds.length > 1 ? 'Annuler les envois' : "Annuler l'envoi"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };

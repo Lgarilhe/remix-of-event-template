@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,11 +8,11 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Save, Loader2, Calendar, Clock as ClockIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -45,6 +46,9 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const subjectId = useId();
+  const messageId = useId();
+  const helpId = useId();
 
   const actionType = execution?.step?.action_type;
   const needsSubject = actionType === 'inmail';
@@ -60,12 +64,12 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
     if (!execution) return;
     
     if (!message.trim()) {
-      toast.error('Le message ne peut pas être vide');
+      toast.error('Écrivez le message avant de l’enregistrer.');
       return;
     }
 
     if (needsSubject && !subject.trim()) {
-      toast.error("L'objet ne peut pas être vide pour un InMail");
+      toast.error('Ajoutez un objet : un InMail part toujours avec un objet.');
       return;
     }
 
@@ -88,18 +92,18 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       if (error) throw error;
 
       if (!updated || updated.length === 0) {
-        toast.error("Ce message est déjà en cours d'envoi ou envoyé — modification impossible.");
+        toast.error("Ce message est déjà en cours d'envoi ou envoyé : il ne peut plus être modifié.");
         onSaved();
         onClose();
         return;
       }
 
-      toast.success('Message mis à jour');
+      toast.success('Message modifié : la nouvelle version partira à l’heure prévue.');
       onSaved();
       onClose();
     } catch (err) {
       console.error('Error updating message:', err);
-      toast.error('Erreur lors de la mise à jour');
+      toast.error("Le message n'a pas pu être enregistré. Réessayez.");
     } finally {
       setSaving(false);
     }
@@ -107,60 +111,46 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
 
   if (!execution) return null;
 
+  const scheduledAt = new Date(execution.scheduled_at);
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[550px]">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Save className="w-5 h-5 text-blue-600" />
-            Modifier le message planifié
-          </DialogTitle>
+          <DialogTitle>Modifier le message planifié</DialogTitle>
+          <DialogDescription>
+            {sequenceActionLabel(actionType)} · envoi prévu pour {execution.enrollment?.profile_name || 'le candidat'} le{' '}
+            {format(scheduledAt, 'EEEE d MMMM', { locale: fr })} à {format(scheduledAt, 'HH:mm')}.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Recipient info */}
-          <div className="p-3 bg-muted/50 rounded-lg">
-            <div className="text-sm font-medium">
-              {execution.enrollment?.profile_name || 'Candidat'}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-              <div className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                <span>{format(new Date(execution.scheduled_at), 'EEEE d MMMM', { locale: fr })}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <ClockIcon className="w-3 h-3" />
-                <span>{format(new Date(execution.scheduled_at), 'HH:mm')}</span>
-              </div>
-            </div>
-          </div>
-
+        <div className="space-y-4">
           {/* Subject (for InMail) */}
           {needsSubject && (
             <div className="space-y-2">
-              <Label htmlFor="subject">Objet</Label>
+              <Label htmlFor={subjectId}>Objet</Label>
               <Input
-                id="subject"
+                id={subjectId}
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="Objet de l'InMail..."
+                placeholder="Ex. : Lead Backend Go chez Nova Pay"
               />
             </div>
           )}
 
           {/* Message */}
           <div className="space-y-2">
-            <Label htmlFor="message">Message</Label>
+            <Label htmlFor={messageId}>Message</Label>
             <Textarea
-              id="message"
+              id={messageId}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Contenu du message..."
+              aria-describedby={helpId}
               rows={8}
               className="resize-none"
             />
-            <p className="text-xs text-muted-foreground">
-              Les variables comme {'{firstName}'} seront remplacées automatiquement.
+            <p id={helpId} className="text-xs text-muted-foreground">
+              Les variables comme {'{{first_name}}'} sont remplacées à l'envoi.
             </p>
           </div>
         </div>
@@ -169,18 +159,8 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
           <Button variant="outline" onClick={onClose}>
             Annuler
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Enregistrement...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Enregistrer
-              </>
-            )}
+          <Button variant="primary" onClick={handleSave} loading={saving}>
+            Enregistrer le message
           </Button>
         </DialogFooter>
       </DialogContent>

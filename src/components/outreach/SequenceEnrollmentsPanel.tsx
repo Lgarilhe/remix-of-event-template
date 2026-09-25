@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { formatSequenceError as formatErrorMessage } from '@/lib/sequenceErrorMessages';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +18,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
@@ -33,33 +33,24 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
+import { EmptyState, ErrorState, StatGrid, StatTile } from '@/components/layout';
+import { EnrollmentStatusBadge, ExecutionStatusBadge, SequenceActionIcon } from './SequenceBadges';
+import { stepReasonLabel } from './activity-log/stepReasons';
 import { 
   Users, 
   ExternalLink, 
   MoreHorizontal, 
   StopCircle, 
   Play,
-  CheckCircle,
-  MessageCircle,
-  Clock,
-  XCircle,
-  ChevronDown,
-  ChevronRight,
-  Send,
-  UserPlus,
-  Eye,
-  Mail,
-  AlertCircle,
   CheckCircle2,
-  Timer,
-  SkipForward,
+  ChevronRight,
   RefreshCw,
-  Zap,
-  CalendarCheck,
+  Clock,
   Search,
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -105,72 +96,17 @@ interface SequenceEnrollmentsPanelProps {
   sequenceName: string;
 }
 
-const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  active: {
-    label: 'Active',
-    icon: <Clock className="w-3 h-3" />,
-    className: 'bg-info text-info-foreground border border-info'
-  },
-  paused: {
-    label: 'En pause',
-    icon: <StopCircle className="w-3 h-3" />,
-    className: 'bg-warning text-warning-foreground border border-warning'
-  },
-  completed: {
-    label: 'Terminée',
-    icon: <CheckCircle className="w-3 h-3" />,
-    className: 'bg-success text-success-foreground border border-success'
-  },
-  replied: {
-    label: 'Répondu',
-    icon: <MessageCircle className="w-3 h-3" />,
-    className: 'bg-purple-500 text-white border border-purple-600'
-  },
-  cancelled: {
-    label: 'Annulée',
-    icon: <XCircle className="w-3 h-3" />,
-    className: 'bg-muted text-muted-foreground border border-border'
-  },
-  booked: {
-    label: 'RDV pris',
-    icon: <CalendarCheck className="w-3 h-3" />,
-    className: 'bg-success text-success-foreground border border-success'
-  },
-};
-
-// Libellé d'une inscription en pause selon sequence_enrollments.pause_reason.
-const PAUSE_REASON_LABELS: Record<string, string> = {
-  account_disconnected: 'En pause (compte déconnecté)',
-  quota_reached: 'En pause (limite atteinte)',
-  subscription_required: 'En pause (abonnement requis)',
-};
-const pausedLabel = (reason: string | null | undefined): string =>
-  PAUSE_REASON_LABELS[reason || ''] || 'En pause';
-
 // Actions to hide from UI (internal/noise)
 const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event']);
 
-const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
-  send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
-  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
-  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
-  visit_profile: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
-  smart_message: { label: 'Message intelligent', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-700', bgColor: 'bg-indigo-500' },
-  profile_visit: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
-  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
-  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
-  inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
-};
+const plural = (n: number, singular: string, pluralForm = `${singular}s`) => `${n} ${n > 1 ? pluralForm : singular}`;
 
-const executionStatusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border border-dashed' },
-  scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-info/10 text-info-foreground border-info/30' },
-  executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border' },
-  failed: { label: 'Échoué', icon: <AlertCircle className="w-3 h-3" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
-  cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border' },
-};
+/** « 26/09 à 10:42 » */
+const formatWhen = (value: string) => format(new Date(value), "dd/MM 'à' HH:mm", { locale: fr });
+
+/** Délai d'une étape après la précédente : « 1 j 2 h », « 30 min ». */
+const formatDelay = (days: number, hours: number, minutes?: number | null) =>
+  [days > 0 && `${days} j`, hours > 0 && `${hours} h`, minutes && minutes > 0 && `${minutes} min`].filter(Boolean).join(' ');
 
 interface SequenceStep {
   id: string;
@@ -204,22 +140,27 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
   const [processingSequences, setProcessingSequences] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string; name?: string } | null>(null);
 
   const fetchEnrollments = async (append = false) => {
     try {
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else {
+        setLoading(true);
+        setLoadError(null);
+      }
 
       // Fetch sequence steps FIRST to get the full workflow.
       // Pour append on réutilise allSteps déjà en state.
       let stepsLookup = allSteps;
       if (!append) {
-        const { data: stepsData } = await supabase
+        const { data: stepsData, error: stepsError } = await supabase
           .from('sequence_steps')
           .select('id, action_type, message_template, subject_template, step_order, delay_days, delay_hours, delay_minutes, timeout_days, timeout_branch_step_id, if_true_goto_step, if_false_goto_step, wait_for_event')
           .eq('sequence_id', sequenceId)
           .order('step_order', { ascending: true });
+        if (stepsError) throw stepsError;
         stepsLookup = stepsData || [];
         setAllSteps(stepsLookup);
 
@@ -246,11 +187,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
       // Fetch all step executions for these enrollments
       const enrollmentIds = enrollData?.map(e => e.id) || [];
-      const { data: execData } = await supabase
+      const { data: execData, error: execError } = await supabase
         .from('sequence_step_executions')
         .select('*')
         .in('enrollment_id', enrollmentIds)
         .order('step_order', { ascending: true });
+      if (execError) throw execError;
 
       // Attach executions to enrollments (stepsLookup déjà résolu plus haut)
       const enriched = (enrollData || []).map(enrollment => ({
@@ -266,7 +208,10 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       setEnrollments(prev => append ? [...prev, ...enriched] : enriched);
     } catch (err) {
       console.error('Error fetching enrollments:', err);
-      toast.error('Erreur lors du chargement');
+      // Une panne ne se lit pas comme une liste vide : état d'erreur avec
+      // « Réessayer » ; la suite d'une liste déjà affichée échoue par un toast.
+      if (append) toast.error("La suite de la liste n'a pas pu être chargée. Réessayez.");
+      else setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -291,6 +236,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     });
   };
 
+  const candidateName = (enrollmentId: string) =>
+    enrollments.find(e => e.id === enrollmentId)?.profile_name || 'ce candidat';
+
   const stopEnrollment = async (enrollmentId: string) => {
     try {
       // Update enrollment status
@@ -311,10 +259,10 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       setEnrollments(prev => 
         prev.map(e => e.id === enrollmentId ? { ...e, status: 'paused' } : e)
       );
-      toast.success('Séquence arrêtée');
+      toast.success(`Séquence arrêtée pour ${candidateName(enrollmentId)}`);
     } catch (error) {
       console.error('Error stopping enrollment:', error);
-      toast.error('Erreur lors de l\'arrêt');
+      toast.error("La séquence n'a pas pu être arrêtée. Réessayez.");
     }
   };
 
@@ -353,11 +301,11 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       setEnrollments(prev => 
         prev.map(e => e.id === enrollmentId ? { ...e, status: 'active' } : e)
       );
-      toast.success('Séquence reprise');
+      toast.success(`Séquence reprise pour ${candidateName(enrollmentId)}`);
       fetchEnrollments(); // Refresh to show updated executions
     } catch (error) {
       console.error('Error resuming enrollment:', error);
-      toast.error('Erreur lors de la reprise');
+      toast.error("La séquence n'a pas pu reprendre. Réessayez.");
     }
   };
 
@@ -384,10 +332,10 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       setEnrollments(prev => 
         prev.map(e => ids.includes(e.id) ? { ...e, status: 'paused' } : e)
       );
-      toast.success(`${ids.length} séquence(s) arrêtée(s)`);
+      toast.success(ids.length > 1 ? `${ids.length} inscriptions arrêtées` : '1 inscription arrêtée');
     } catch (error) {
       console.error('Error bulk stopping:', error);
-      toast.error('Erreur lors de l\'arrêt groupé');
+      toast.error("Les inscriptions n'ont pas pu être arrêtées. Réessayez.");
     }
   };
 
@@ -431,12 +379,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       setEnrollments(prev =>
         prev.map(e => e.id === enrollmentId ? { ...e, status: 'active', replied_at: null } : e)
       );
-      toast.success('Candidat ré-enrôlé', {
-        description: 'La prochaine étape part dans les prochaines minutes.',
+      toast.success(`Inscription relancée pour ${candidateName(enrollmentId)}`, {
+        description: 'La prochaine étape part au prochain passage des envois, dans les 5 minutes.',
       });
     } catch (err) {
       console.error('[EnrollmentsPanel] reEnroll failed:', err);
-      toast.error('Erreur lors du ré-enrôlement');
+      toast.error("La réinscription n'a pas abouti. Réessayez.");
     }
   };
 
@@ -451,19 +399,25 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         action: 'skip_execution',
         execution_id: executionId,
       });
-      if (error) throw error;
-      const payload = data as { success?: boolean; error?: string } | null;
-      if (!payload?.success) throw new Error(payload?.error || 'Échec du saut d\'étape');
+      const payload = data as { success?: boolean; error?: string; status?: string } | null;
+      if (error || !payload?.success) {
+        // Réponse 409 avec statut (le corps reste dans data) : l'étape est déjà
+        // partie ou traitée.
+        if (payload?.status) {
+          toast.error('Cette étape est déjà partie ou traitée : il n’y a plus rien à passer.');
+          await fetchEnrollments();
+          return;
+        }
+        throw error || new Error(payload?.error || 'skip_execution');
+      }
 
-      toast.success('Étape sautée', {
-        description: 'La séquence passe à l\'étape suivante.',
+      toast.success('Étape passée', {
+        description: "La séquence continue à l'étape suivante.",
       });
       await fetchEnrollments();
     } catch (err) {
       console.error('[EnrollmentsPanel] skipStep failed:', err);
-      toast.error('Erreur lors du saut d\'étape', {
-        description: err instanceof Error ? err.message : undefined,
-      });
+      toast.error("L'étape n'a pas pu être passée. Réessayez.");
     }
   };
 
@@ -489,12 +443,12 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       setEnrollments(prev =>
         prev.map(e => e.id === enrollmentId ? { ...e, status: 'replied', replied_at: new Date().toISOString() } : e)
       );
-      toast.success('Marqué comme répondu', {
+      toast.success(`Réponse enregistrée pour ${candidateName(enrollmentId)}`, {
         description: 'Les étapes restantes ont été annulées.',
       });
     } catch (err) {
       console.error('[EnrollmentsPanel] markReplied failed:', err);
-      toast.error('Erreur lors du marquage');
+      toast.error("Le candidat n'a pas pu être marqué comme ayant répondu. Réessayez.");
     }
   };
 
@@ -531,26 +485,27 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
       if (error) {
         console.error('[processSequencesNow] error:', error);
-        toast.error(`Erreur : ${error.message || 'Échec du traitement'}`);
+        toast.error("Les étapes n'ont pas pu être avancées. Réessayez dans un instant.");
         return;
       }
 
       const payload = data as { success?: boolean; rescheduled?: number; error?: string } | null;
       if (!payload?.success) {
         console.error('[processSequencesNow] Unexpected response:', payload);
-        toast.error(payload?.error || 'Erreur lors du traitement');
+        toast.error("Les étapes n'ont pas pu être avancées. Réessayez dans un instant.");
         return;
       }
 
+      // Le moteur d'envoi passe toutes les 5 minutes (migration 20260513200000).
       const count = payload.rescheduled || 0;
       toast.success(count > 0
-        ? `${count} action(s) avancée(s) — elles partent dans la minute qui vient.`
-        : 'Aucune action à avancer : tout est déjà en file ou terminé.');
+        ? `${plural(count, 'étape avancée', 'étapes avancées')} : ${count > 1 ? 'elles partent' : 'elle part'} au prochain passage des envois, dans les 5 minutes.`
+        : 'Aucune étape à avancer : tout est déjà en file ou terminé.');
 
       await fetchEnrollments();
     } catch (error) {
       console.error('[processSequencesNow] Exception:', error);
-      toast.error('Erreur réseau lors du traitement');
+      toast.error("Connexion interrompue : les étapes n'ont pas été avancées. Réessayez.");
     } finally {
       setProcessingSequences(false);
     }
@@ -560,451 +515,398 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const pausedCount = enrollments.filter(e => e.status === 'paused').length;
   const completedCount = enrollments.filter(e => ['completed', 'replied'].includes(e.status)).length;
 
-  // Check if there are any pending executions that are past their scheduled time
+  // Étapes planifiées dont l'heure est passée
   const pendingExecutions = enrollments.flatMap(e => e.executions || [])
     .filter(exec => exec.status === 'scheduled' && new Date(exec.scheduled_at) < new Date());
+
+  const query = searchQuery.toLowerCase().trim();
+  const filtered = query
+    ? enrollments.filter(e =>
+        (e.profile_name || '').toLowerCase().includes(query) ||
+        (e.profile_headline || '').toLowerCase().includes(query)
+      )
+    : enrollments;
+                  
+  const visibleSteps = allSteps.filter(s => !HIDDEN_ACTION_TYPES.has(s.action_type));
+
+  const description = loading
+    ? 'Chargement des inscriptions…'
+    : loadError
+      ? 'Inscriptions indisponibles'
+      : totalCount === 0
+        ? 'Aucun candidat inscrit'
+        : plural(totalCount, 'candidat inscrit', 'candidats inscrits');
+
+  const confirmName = confirmAction?.name || 'ce candidat';
+  const confirmCopy = (() => {
+    switch (confirmAction?.type) {
+      case 'bulkStop':
+        return {
+          title: activeCount > 1 ? `Arrêter les ${activeCount} inscriptions en cours ?` : "Arrêter l'inscription en cours ?",
+          description: `${activeCount > 1 ? `Les ${activeCount} candidats en cours ne recevront` : 'Le candidat en cours ne recevra'} plus de messages de cette séquence. Les étapes planifiées sont annulées ; vous pourrez reprendre chaque inscription depuis ce panneau.`,
+          action: activeCount > 1 ? 'Arrêter les inscriptions' : "Arrêter l'inscription",
+          cancel: 'Laisser en cours',
+          destructive: true,
+        };
+      case 'markReplied':
+        return {
+          title: `Marquer ${confirmName} comme ayant répondu ?`,
+          description: 'Les étapes restantes seront annulées. À utiliser quand le candidat vous a répondu en dehors de Konekt (téléphone, e-mail, rendez-vous).',
+          action: 'Marquer comme ayant répondu',
+          cancel: 'Annuler',
+          destructive: false,
+        };
+      case 'reEnroll':
+        return {
+          title: `Réinscrire ${confirmName} ?`,
+          description: "L'inscription repasse en cours : la prochaine étape non envoyée part au prochain passage des envois, dans les 5 minutes, pendant vos horaires d'envoi.",
+          action: 'Réinscrire',
+          cancel: 'Annuler',
+          destructive: false,
+        };
+      case 'skipStep':
+        return {
+          title: 'Passer cette étape ?',
+          description: `Cette étape ne sera pas envoyée à ${confirmName} : la séquence passe directement à l'étape suivante.`,
+          action: "Passer l'étape",
+          cancel: "Garder l'étape",
+          destructive: true,
+        };
+      default:
+        return {
+          title: `Arrêter la séquence pour ${confirmName} ?`,
+          description: `${confirmName} ne recevra plus de messages de cette séquence. Vous pourrez la reprendre depuis ce panneau.`,
+          action: 'Arrêter la séquence',
+          cancel: 'Laisser en cours',
+          destructive: true,
+        };
+    }
+  })();
 
   return (
     <>
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-lg border-l border-border">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2 uppercase tracking-wide">
-            <div className="h-7 w-7 bg-foreground text-background flex items-center justify-center">
-              <Users className="w-4 h-4" />
-            </div>
-            {sequenceName}
-          </SheetTitle>
+      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
+        <SheetHeader className="space-y-1 border-b border-border px-6 py-5 pr-14 text-left">
+          <p className="eyebrow">Inscriptions</p>
+          <SheetTitle className="break-words">{sequenceName}</SheetTitle>
+          <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
 
-        <div className="mt-6 space-y-4">
-          {/* Process now button - always show if there are pending tasks */}
-          {pendingExecutions.length > 0 && (
-            <div className="p-3 bg-background border border-border">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-foreground">
-                  <AlertCircle className="w-4 h-4" />
-                  <span className="text-sm font-medium">
-                    {pendingExecutions.length} action(s) en attente
-                  </span>
-                </div>
-                <button
-                  onClick={processSequencesNow}
-                  disabled={processingSequences}
-                  className="relative overflow-hidden h-8 px-4 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
-                >
-                  <span className="relative z-10 flex items-center gap-1.5">
-                    {processingSequences ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Zap className="w-3.5 h-3.5" />
-                    )}
-                    Traiter maintenant
-                  </span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-0 border border-border">
-            <div className="p-3 text-center border-r border-border">
-              <div className="text-xl font-bold text-foreground">{activeCount}</div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Actifs</div>
-            </div>
-            <div className="p-3 text-center border-r border-border">
-              <div className="text-xl font-bold text-foreground">{pausedCount}</div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">En pause</div>
-            </div>
-            <div className="p-3 text-center">
-              <div className="text-xl font-bold text-foreground">{completedCount}</div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Terminés</div>
-            </div>
-          </div>
-
-          {/* Bulk actions */}
-          {activeCount > 0 && (
-            <button
-              onClick={() => setConfirmAction({ type: 'bulkStop' })}
-              className="w-full relative overflow-hidden h-9 px-4 bg-background text-destructive border border-destructive text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
-            >
-              <StopCircle className="w-3.5 h-3.5" />
-              <span>Arrêter toutes les séquences actives ({activeCount})</span>
-            </button>
-          )}
-
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher un candidat…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-8 text-xs border-border rounded-lg"
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {loading ? (
+            <EnrollmentsSkeleton />
+          ) : loadError ? (
+            <ErrorState
+              title="Impossible de charger les inscriptions"
+              description="Vérifiez votre connexion, puis réessayez."
+              detail={loadError}
+              onRetry={() => fetchEnrollments()}
             />
-          </div>
-
-          {/* Enrollments list */}
-          <div className="h-[calc(100vh-340px)] overflow-y-auto">
-            <div className="space-y-2">
-              {loading ? (
-                <BrutalLoader compact messages={['Chargement des inscriptions…', 'Récupération des étapes…', 'Synchronisation…']} />
-              ) : enrollments.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Aucun candidat inscrit
-                </div>
-              ) : (() => {
-                const query = searchQuery.toLowerCase().trim();
-                const filtered = query
-                  ? enrollments.filter(e => 
-                      (e.profile_name || '').toLowerCase().includes(query) ||
-                      (e.profile_headline || '').toLowerCase().includes(query)
-                    )
-                  : enrollments;
-                return filtered.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm">
-                    Aucun résultat pour « {searchQuery} »
+          ) : enrollments.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="Aucun candidat inscrit"
+              description="Inscrivez des candidats depuis la recherche ou la messagerie : leur progression dans la séquence s'affichera ici."
+            />
+          ) : (
+            <>
+              {pendingExecutions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 sm:flex-nowrap">
+                  <Clock className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {plural(pendingExecutions.length, 'étape en retard', 'étapes en retard')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {pendingExecutions.length > 1
+                        ? "Leur heure est passée : elles partent au prochain passage des envois, pendant vos horaires d'envoi."
+                        : "Son heure est passée : elle part au prochain passage des envois, pendant vos horaires d'envoi."}
+                    </p>
                   </div>
-                ) : filtered.map((enrollment) => {
-                  const status = statusConfig[enrollment.status] || statusConfig.active;
-                  const isExpanded = expandedEnrollments.has(enrollment.id);
-                  const executions = enrollment.executions || [];
-                  
-                  return (
-                    <Collapsible
-                      key={enrollment.id}
-                      open={isExpanded}
-                      onOpenChange={() => toggleExpanded(enrollment.id)}
-                    >
-                      <div className="border border-border">
-                        {/* Header - always visible */}
-                        <div className="p-3 bg-background hover:bg-accent/10 group">
-                          <div className="flex items-start gap-2 w-full">
-                            <CollapsibleTrigger className="flex items-start gap-2 flex-1 min-w-0 text-left">
-                              <div className="mt-0.5 shrink-0">
-                                {isExpanded ? (
-                                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-foreground truncate">
-                                    {enrollment.profile_name || 'Candidat'}
-                                  </span>
-                                  {enrollment.profile_url && (
-                                    <a
-                                      href={enrollment.profile_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-muted-foreground hover:text-linkedin shrink-0"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <ExternalLink className="w-3.5 h-3.5" />
-                                    </a>
-                                  )}
-                                </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={processSequencesNow}
+                        loading={processingSequences}
+                        className="shrink-0 max-md:h-11 max-md:w-full"
+                      >
+                        Traiter maintenant
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Avance les prochaines étapes de cette séquence (hors invitations LinkedIn) : elles partent dans les 5 minutes.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              )}
+
+              <StatGrid cols={{ base: 3 }}>
+                <StatTile label="En cours" value={activeCount} />
+                <StatTile label="En pause" value={pausedCount} />
+                <StatTile label="Terminées" value={completedCount} />
+              </StatGrid>
+
+              {activeCount > 0 && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmAction({ type: 'bulkStop' })}
+                    className="text-danger hover:text-danger max-md:h-11 max-md:w-full"
+                  >
+                    <StopCircle aria-hidden="true" />
+                    {activeCount > 1 ? `Arrêter les ${activeCount} inscriptions en cours` : "Arrêter l'inscription en cours"}
+                  </Button>
+                </div>
+              )}
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="search"
+                  aria-label="Rechercher un candidat"
+                  placeholder="Rechercher un candidat"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+
+              {filtered.length === 0 ? (
+                <EmptyState
+                  variant="compact"
+                  icon={Search}
+                  title={`Aucun candidat ne correspond à « ${searchQuery.trim()} »`}
+                  description="Cherchez par nom ou par intitulé de poste."
+                  action={
+                    <Button variant="outline" size="sm" onClick={() => setSearchQuery('')}>
+                      Effacer la recherche
+                    </Button>
+                  }
+                />
+              ) : (
+                <ul className="space-y-2" aria-label="Candidats inscrits">
+                  {filtered.map((enrollment) => {
+                    const isExpanded = expandedEnrollments.has(enrollment.id);
+                    const executions = enrollment.executions || [];
+                    const shownExecutions = executions.filter(e => !HIDDEN_ACTION_TYPES.has(e.step?.action_type || ''));
+                    const nextScheduled = shownExecutions
+                      .filter(e => e.status === 'scheduled')
+                      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0];
+                    const lastExecuted = shownExecutions
+                      .filter(e => (e.status === 'executed' || e.status === 'sent') && e.executed_at)
+                      .sort((a, b) => new Date(b.executed_at!).getTime() - new Date(a.executed_at!).getTime())[0];
+                    const name = enrollment.profile_name || 'Candidat';
+
+                    return (
+                      <li key={enrollment.id}>
+                        <Collapsible
+                          open={isExpanded}
+                          onOpenChange={() => toggleExpanded(enrollment.id)}
+                          className="rounded-xl border border-border bg-card"
+                        >
+                          <div className="flex items-start gap-1 p-2">
+                            <CollapsibleTrigger className="flex min-w-0 flex-1 items-start gap-2 rounded-lg p-1.5 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                              <ChevronRight
+                                className={cn('mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150', isExpanded && 'rotate-90')}
+                                aria-hidden="true"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-foreground">{name}</p>
                                 {enrollment.profile_headline && (
-                                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                                    {enrollment.profile_headline}
-                                  </p>
+                                  <p className="truncate text-xs text-muted-foreground">{enrollment.profile_headline}</p>
                                 )}
-                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                  <Badge className={`text-xs rounded-full ${status.className}`}>
-                                    {status.icon}
-                                    <span className="ml-1">
-                                      {enrollment.status === 'paused' ? pausedLabel(enrollment.pause_reason) : status.label}
+                                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <EnrollmentStatusBadge status={enrollment.status} pauseReason={enrollment.pause_reason} />
+                                  {lastExecuted && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Dernière étape le {formatWhen(lastExecuted.executed_at!)}
                                     </span>
-                                  </Badge>
-                                  {(() => {
-                                    // Find next scheduled or last executed action
-                                    const scheduledExecs = executions
-                                      .filter(e => e.status === 'scheduled')
-                                      .filter(e => e.status === 'scheduled' && !HIDDEN_ACTION_TYPES.has(e.step?.action_type || ''))
-                                      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
-                                    const executedExecs = executions
-                                      .filter(e => (e.status === 'executed' || e.status === 'sent') && e.executed_at && !HIDDEN_ACTION_TYPES.has(e.step?.action_type || ''))
-                                      .sort((a, b) => new Date(b.executed_at!).getTime() - new Date(a.executed_at!).getTime());
-
-                                    const nextScheduled = scheduledExecs[0];
-                                    const lastExecuted = executedExecs[0];
-
-                                    return (
-                                      <>
-                                        {lastExecuted && (
-                                          <span className="text-xs text-success-foreground">
-                                            ✓ {format(new Date(lastExecuted.executed_at!), 'dd/MM à HH:mm', { locale: fr })}
-                                          </span>
-                                        )}
-                                        {nextScheduled && (
-                                          <span className="text-xs text-info-foreground font-medium">
-                                            → {(() => {
-                                              const actionType = nextScheduled.step?.action_type || '';
-                                              const label = actionTypeConfig[actionType]?.label || actionType;
-                                              return label;
-                                            })()} le {format(new Date(nextScheduled.scheduled_at), 'dd/MM à HH:mm', { locale: fr })}
-                                          </span>
-                                        )}
-                                        {!nextScheduled && !lastExecuted && (
-                                          <span className="text-xs text-muted-foreground">
-                                            {executions.length} étape(s)
-                                          </span>
-                                        )}
-                                      </>
-                                    );
-                                  })()}
+                                  )}
+                                  {nextScheduled && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Prochaine : {sequenceActionLabel(nextScheduled.step?.action_type)}, le {formatWhen(nextScheduled.scheduled_at)}
+                                    </span>
+                                  )}
+                                  {!nextScheduled && !lastExecuted && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {shownExecutions.length === 0 ? 'Aucune étape planifiée' : 'Aucune étape envoyée'}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </CollapsibleTrigger>
 
-                            {/* Actions menu */}
                             <DropdownMenu modal={false}>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0 border-border rounded-lg"
-                                  onClick={(e) => e.stopPropagation()}
-                                  aria-label="Actions de l'inscription"
-                                >
-                                  <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="bg-background border-border rounded-lg">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      className="shrink-0 max-md:h-11 max-md:w-11"
+                                      aria-label={`Actions pour ${name}`}
+                                    >
+                                      <MoreHorizontal aria-hidden="true" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>Actions</TooltipContent>
+                              </Tooltip>
+                              <DropdownMenuContent align="end">
                                 {enrollment.status === 'active' ? (
-                                  <DropdownMenuItem
-                                    onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id })}
-                                    className="text-warning-foreground"
-                                  >
-                                    <StopCircle className="w-4 h-4 mr-2" />
+                                  <DropdownMenuItem onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id, name })}>
+                                    <StopCircle className="mr-2 h-4 w-4" aria-hidden="true" />
                                     Arrêter la séquence
                                   </DropdownMenuItem>
                                 ) : enrollment.status === 'paused' ? (
-                                  <DropdownMenuItem
-                                    onClick={() => resumeEnrollment(enrollment.id)}
-                                    className="text-success-foreground"
-                                  >
-                                    <Play className="w-4 h-4 mr-2" />
+                                  <DropdownMenuItem onClick={() => resumeEnrollment(enrollment.id)}>
+                                    <Play className="mr-2 h-4 w-4" aria-hidden="true" />
                                     Reprendre la séquence
                                   </DropdownMenuItem>
                                 ) : null}
-                                {/* Marquer répondu manuellement (cas réponse hors-canal :
-                                    téléphone, en personne, autre boîte mail). Évite de
-                                    continuer à spammer le candidat. */}
+                                {/* Réponse hors canal (téléphone, en personne, autre boîte mail) :
+                                    évite de continuer à relancer le candidat. */}
                                 {(enrollment.status === 'active' || enrollment.status === 'paused' || enrollment.status === 'completed') && (
-                                  <DropdownMenuItem
-                                    onClick={() => setConfirmAction({ type: 'markReplied', id: enrollment.id })}
-                                  >
-                                    <CheckCircle2 className="w-4 h-4 mr-2 text-success" />
-                                    Marquer comme répondu
+                                  <DropdownMenuItem onClick={() => setConfirmAction({ type: 'markReplied', id: enrollment.id, name })}>
+                                    <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                                    Marquer comme ayant répondu
                                   </DropdownMenuItem>
                                 )}
-                                {/* Ré-enrôler : utile après un stop / replied résolu / completed */}
+                                {/* Réinscrire : après un arrêt, une réponse traitée ou une séquence terminée */}
                                 {(enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'paused' || enrollment.status === 'cancelled' || enrollment.status === 'stopped') && (
-                                  <DropdownMenuItem
-                                    onClick={() => setConfirmAction({ type: 'reEnroll', id: enrollment.id })}
-                                  >
-                                    <RefreshCw className="w-4 h-4 mr-2 text-foreground" />
-                                    Ré-enrôler
+                                  <DropdownMenuItem onClick={() => setConfirmAction({ type: 'reEnroll', id: enrollment.id, name })}>
+                                    <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                                    Réinscrire à la séquence
                                   </DropdownMenuItem>
                                 )}
                                 {enrollment.profile_url && (
                                   <DropdownMenuItem asChild>
-                                    <a
-                                      href={enrollment.profile_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      <ExternalLink className="w-4 h-4 mr-2" />
-                                      Voir sur LinkedIn
+                                    <a href={enrollment.profile_url} target="_blank" rel="noopener noreferrer">
+                                      <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                                      Ouvrir le profil LinkedIn
                                     </a>
                                   </DropdownMenuItem>
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
-                        </div>
 
-                        {/* Expanded content - Full workflow timeline */}
-                        <CollapsibleContent>
-                          <div className="border-t border-border bg-muted p-3">
-                            {allSteps.length === 0 ? (
-                              <p className="text-xs text-muted-foreground text-center py-2">
-                                Aucune étape dans la séquence
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                <p className="text-xs font-medium text-foreground mb-2 uppercase tracking-wide">
-                                  Workflow :
+                          <CollapsibleContent>
+                            <div className="border-t border-border px-4 pb-4 pt-3">
+                              {visibleSteps.length === 0 ? (
+                                <p className="py-2 text-center text-xs text-muted-foreground">
+                                  Cette séquence n'a pas encore d'étape.
                                 </p>
-                                {allSteps.filter(s => !HIDDEN_ACTION_TYPES.has(s.action_type)).map((step, idx) => {
-                                  // Find execution for this step if it exists
-                                  const exec = executions.find(e => e.step_id === step.id);
-                                  const actionConfig = actionTypeConfig[step.action_type] || { 
-                                    label: step.action_type, 
-                                    icon: <Send className="w-3.5 h-3.5" />,
-                                    color: 'text-muted-foreground',
-                                    bgColor: 'bg-muted'
-                                  };
-                                  
-                                  // Determine status: from execution or 'pending' if no execution yet
-                                  const status = exec?.status || 'pending';
-                                  const execStatus = executionStatusConfig[status] || executionStatusConfig.pending;
-                                  const isPending = status === 'pending';
-                                  const isFailed = status === 'failed';
-                                  const isSkipped = status === 'skipped';
-                                  const isChannelSkip = isSkipped && exec?.skip_reason?.toLowerCase().includes('channel');
+                              ) : (
+                                <>
+                                  <p className="eyebrow mb-2">Déroulé</p>
+                                  <ol className="space-y-2">
+                                    {visibleSteps.map((step) => {
+                                      const exec = executions.find(e => e.step_id === step.id);
+                                      const status = exec?.status || 'pending';
+                                      const isPending = status === 'pending';
+                                      const isDone = status === 'executed' || status === 'sent';
+                                      const delay = formatDelay(step.delay_days, step.delay_hours, step.delay_minutes);
+                                      const reason = exec && ['skipped', 'cancelled', 'quota_blocked'].includes(exec.status)
+                                        ? stepReasonLabel(exec.skip_reason)
+                                        : null;
 
-                                  return (
-                                    <div 
-                                      key={step.id}
-                                      className={cn(
-                                        "flex items-start gap-3 p-2.5 border transition-colors",
-                                        isFailed && "bg-destructive/5 border-destructive/30",
-                                        isChannelSkip && "bg-muted/50 border-border/5 opacity-60",
-                                        isSkipped && !isChannelSkip && "bg-muted border-border",
-                                        !isFailed && !isSkipped && execStatus.className
-                                      )}
-                                    >
-                                      {/* Step number with icon */}
-                                      <div className={cn(
-                                        "flex-shrink-0 w-7 h-7 flex items-center justify-center",
-                                        isPending ? 'bg-muted text-muted-foreground' : `${actionConfig.bgColor} text-white`
-                                      )}>
-                                        {actionConfig.icon}
-                                      </div>
-
-                                      {/* Step details */}
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className={cn(
-                                            "text-sm font-medium", 
-                                            isPending ? 'text-muted-foreground' : 'text-foreground'
-                                          )}>
-                                            {actionConfig.label}
+                                      return (
+                                        <li key={step.id} className="flex items-start gap-3 rounded-lg border border-border p-2.5">
+                                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                                            <SequenceActionIcon type={step.action_type} />
                                           </span>
-                                          <Badge variant="outline" className={cn(
-                                            "text-xs px-1.5 py-0 h-4",
-                                            execStatus.className
-                                          )}>
-                                            {execStatus.icon}
-                                            <span className="ml-0.5">{execStatus.label}</span>
-                                          </Badge>
-                                          {/* Show delay for pending steps */}
-                                          {isPending && (step.delay_days > 0 || step.delay_hours > 0) && (
-                                            <span className="text-xs text-muted-foreground">
-                                              +{step.delay_days > 0 ? `${step.delay_days}j` : ''}{step.delay_hours > 0 ? `${step.delay_hours}h` : ''}
-                                            </span>
-                                          )}
-                                        </div>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                              <span className={cn('text-sm font-medium', isPending ? 'text-foreground-secondary' : 'text-foreground')}>
+                                                {sequenceActionLabel(step.action_type)}
+                                              </span>
+                                              <ExecutionStatusBadge status={status} />
+                                              {isPending && delay && (
+                                                <span className="text-xs text-muted-foreground">Délai {delay}</span>
+                                              )}
+                                            </div>
 
-
-                                        {/* Timing info from execution */}
-                                        {exec && (
-                                          <div className="text-xs mt-1">
-                                            {exec.status === 'scheduled' && (
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-muted-foreground">
-                                                  Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
-                                                </span>
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setConfirmAction({ type: 'skipStep', stepId: exec.id });
-                                                  }}
-                                                  className="text-[10px] text-muted-foreground hover:text-foreground underline"
-                                                  title="Sauter cette étape pour ce candidat"
+                                            {exec?.status === 'scheduled' && (
+                                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                                <span className="text-xs text-muted-foreground">Prévue le {formatWhen(exec.scheduled_at)}</span>
+                                                <Button
+                                                  variant="outline"
+                                                  size="xs"
+                                                  className="max-md:h-11"
+                                                  onClick={() => setConfirmAction({ type: 'skipStep', stepId: exec.id, name })}
                                                 >
-                                                  Sauter
-                                                </button>
+                                                  Passer l'étape
+                                                </Button>
                                               </div>
                                             )}
-                                            {(exec.status === 'executed' || exec.status === 'sent') && exec.executed_at && (
-                                              <span className="text-success-foreground">
-                                                ✓ {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
-                                              </span>
-                                            )}
-                                            {exec.status === 'skipped' && exec.skip_reason && (
-                                              <span className={cn(
-                                                "text-muted-foreground flex items-center gap-1",
-                                                isChannelSkip && "italic"
-                                              )}>
-                                                {isChannelSkip && <span>⏭️</span>}
-                                                {isChannelSkip 
-                                                  ? `Étape ${step.step_order + 1} skippée — canal indisponible`
-                                                  : exec.skip_reason
-                                                }
-                                              </span>
-                                            )}
-                                            {exec.status === 'cancelled' && exec.skip_reason && (
-                                              <span className="text-muted-foreground">
-                                                {exec.skip_reason}
-                                              </span>
-                                            )}
-                                            {exec.status === 'failed' && exec.error_message && (
-                                              <div className="text-destructive mt-1 p-2 bg-destructive/10 border border-destructive/20 text-xs">
-                                                <strong>Erreur :</strong> {formatErrorMessage(exec.error_message)}
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-
-                                        {/* Message preview if executed/sent */}
-                                        {(exec?.status === 'executed' || exec?.status === 'sent') && exec.final_message && (
-                                          <div className="mt-2 p-2 bg-background border border-border text-xs text-muted-foreground">
-                                            {exec.final_subject && (
-                                              <p className="font-medium text-foreground mb-1 pb-1 border-b text-xs">
-                                                {exec.final_subject}
+                                            {isDone && exec?.executed_at && (
+                                              <p className="mt-1 text-xs text-muted-foreground">
+                                                {status === 'sent' ? 'Envoyée' : 'Faite'} le {formatWhen(exec.executed_at)}
                                               </p>
                                             )}
-                                            <p className="line-clamp-2 leading-relaxed">
-                                              {exec.final_message.replace(/\\n/g, ' ').substring(0, 120)}...
-                                            </p>
-                                          </div>
-                                        )}
+                                            {reason && <p className="mt-1 text-xs text-muted-foreground">{reason}</p>}
+                                            {exec?.status === 'failed' && exec.error_message && (
+                                              <p className="mt-1.5 rounded-md bg-danger-muted px-2.5 py-1.5 text-xs text-danger">
+                                                Échec : {formatErrorMessage(exec.error_message)}
+                                              </p>
+                                            )}
 
-                                        {/* Template preview for pending steps */}
-                                        {isPending && step.message_template && (
-                                          <div className="mt-1.5 text-xs text-muted-foreground/70 italic line-clamp-1">
-                                            « {step.message_template.replace(/\\n/g, ' ').substring(0, 80)}... »
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        </CollapsibleContent>
-                      </div>
-                    </Collapsible>
-                  );
-                });
-              })()}
+                                            {isDone && exec?.final_message && (
+                                              <div className="mt-2 rounded-md border border-border bg-background p-2.5 text-xs">
+                                                {exec.final_subject && (
+                                                  <p className="mb-1 font-medium text-foreground">{exec.final_subject}</p>
+                                                )}
+                                                <p className="line-clamp-2 leading-relaxed text-foreground-secondary">
+                                                  {exec.final_message.replace(/\\n|\n/g, ' ')}
+                                                </p>
+                                              </div>
+                                            )}
 
-              {/* Pagination — Charger plus si > PAGE_SIZE candidats */}
-              {hasMore && !loading && (
-                <div className="text-center py-3 border-t border-border mt-2">
+                                            {isPending && step.message_template && (
+                                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                                Modèle : {step.message_template.replace(/\\n|\n/g, ' ')}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </li>
+                                      );
+                                    })}
+                                  </ol>
+                                </>
+                              )}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {/* Pagination : 200 inscriptions par page */}
+              {hasMore && (
+                <div className="flex justify-center pt-1">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => fetchEnrollments(true)}
-                    disabled={loadingMore}
-                    className="text-xs"
+                    loading={loadingMore}
+                    className="max-md:h-11"
                   >
-                    {loadingMore ? 'Chargement…' : `Charger plus (${enrollments.length} / ${totalCount})`}
+                    Afficher la suite ({enrollments.length} sur {totalCount})
                   </Button>
                 </div>
               )}
               {!hasMore && enrollments.length >= PAGE_SIZE && (
-                <div className="text-center py-3 text-xs text-muted-foreground">
-                  Tous les candidats chargés ({totalCount})
-                </div>
+                <p className="text-center text-xs text-muted-foreground">Les {totalCount} candidats sont affichés.</p>
               )}
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>
@@ -1012,39 +914,16 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            {confirmAction?.type === 'bulkStop'
-              ? `Arrêter toutes les séquences actives (${activeCount})`
-              : confirmAction?.type === 'markReplied'
-                ? 'Marquer comme répondu'
-                : confirmAction?.type === 'reEnroll'
-                  ? 'Ré-enrôler ce candidat'
-                  : confirmAction?.type === 'skipStep'
-                    ? 'Sauter cette étape ?'
-                    : 'Arrêter la séquence'}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {confirmAction?.type === 'bulkStop'
-              ? `Les ${activeCount} candidat(s) actif(s) ne recevront plus de messages de cette séquence.`
-              : confirmAction?.type === 'markReplied'
-                ? 'L\'enrollment passera en "Répondu" et toutes les étapes restantes seront annulées. Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).'
-                : confirmAction?.type === 'reEnroll'
-                  ? 'Le candidat repassera en statut actif. La prochaine étape pending sera reschedulée à maintenant. Utile pour relancer un candidat après une réponse résolue.'
-                  : confirmAction?.type === 'skipStep'
-                    ? 'Cette étape ne sera pas envoyée pour ce candidat. La séquence passera directement à l\'étape suivante.'
-                    : 'Le candidat ne recevra plus de messages de cette séquence.'}
-          </AlertDialogDescription>
+          <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
+          <AlertDialogDescription>{confirmCopy.description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogCancel>{confirmCopy.cancel}</AlertDialogCancel>
           <AlertDialogAction
-            className={['markReplied', 'reEnroll'].includes(confirmAction?.type || '') ? '' : 'bg-destructive hover:bg-destructive/90'}
+            className={confirmCopy.destructive ? 'bg-destructive' : undefined}
             onClick={handleConfirmedAction}
           >
-            {confirmAction?.type === 'markReplied' ? 'Marquer répondu'
-              : confirmAction?.type === 'reEnroll' ? 'Ré-enrôler'
-              : confirmAction?.type === 'skipStep' ? 'Sauter l\'étape'
-              : 'Confirmer'}
+            {confirmCopy.action}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -1052,3 +931,22 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     </>
   );
 };
+
+/** Squelette du panneau : tuiles, recherche, puis quatre lignes de candidat. */
+const EnrollmentsSkeleton: React.FC = () => (
+  <div className="space-y-4" aria-hidden="true">
+    <div className="grid grid-cols-3 gap-3">
+      {[0, 1, 2].map((i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+    <Skeleton className="h-9 w-full rounded-lg" />
+    {[0, 1, 2, 3].map((i) => (
+      <div key={i} className="space-y-2 rounded-xl border border-border p-4">
+        <Skeleton className="h-4 w-2/5 rounded-sm" />
+        <Skeleton className="h-3 w-3/5 rounded-sm" />
+        <Skeleton className="h-5 w-24 rounded-full" />
+      </div>
+    ))}
+  </div>
+);

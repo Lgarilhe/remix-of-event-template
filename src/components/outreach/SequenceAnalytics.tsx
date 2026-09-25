@@ -1,14 +1,20 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useId } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { enrollmentStatusMeta, sequenceActionLabel, type StatusTone } from '@/lib/sequenceCatalog';
 import { ABTestResults } from './sequence/ABTestResults';
+import { EnrollmentStatusBadge } from './SequenceBadges';
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -16,16 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { EmptyState, ErrorState, Section, StatGrid, StatTile } from '@/components/layout';
 import {
   BarChart3,
-  TrendingUp,
-  Users,
-  Send,
-  Eye,
-  UserPlus,
-  MessageCircle,
-  Clock,
-  ArrowDown,
   RefreshCw,
 } from 'lucide-react';
 import { format, subDays, differenceInHours } from 'date-fns';
@@ -78,6 +77,34 @@ interface VariantResult {
   replied: number;
 }
 
+/**
+ * Séries du graphique d'activité : deux neutres et l'accent pour les réponses
+ * (le résultat attendu). Jetons vérifiés avec le validateur de palette de la
+ * revue : écart ΔE ≥ 15 entre voisins, en sombre comme en clair. La légende
+ * reprend exactement ces couleurs (revue design D-60).
+ */
+const SERIES = [
+  { key: 'invites', label: 'Invitations', fill: 'hsl(var(--foreground))', swatch: 'bg-foreground' },
+  { key: 'messages', label: 'Messages', fill: 'hsl(var(--foreground-secondary))', swatch: 'bg-foreground-secondary' },
+  { key: 'replies', label: 'Réponses', fill: 'hsl(var(--brand))', swatch: 'bg-brand' },
+] as const;
+
+/** Remplissage d'un segment de la répartition, du ton de badge de son statut. */
+const TONE_FILL: Record<StatusTone, string> = {
+  info: 'bg-info',
+  success: 'bg-success',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+  muted: 'bg-muted-foreground',
+};
+
+const PERIOD_LABELS: Record<'7' | '30' | '90' | 'custom', string> = {
+  '7': '7 derniers jours',
+  '30': '30 derniers jours',
+  '90': '90 derniers jours',
+  custom: 'Période personnalisée',
+};
+
 export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   isOpen,
   onClose,
@@ -89,14 +116,18 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   const [sequences, setSequences] = useState<{ id: string; name: string }[]>([]);
   const [selectedSeqId, setSelectedSeqId] = useState<string>(sequenceId || 'all');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [period, setPeriod] = useState<'7' | '30' | '90' | 'custom'>('30');
   const [customStart, setCustomStart] = useState<string>(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [customEnd, setCustomEnd] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [abResults, setAbResults] = useState<VariantResult[]>([]);
   const [stepStats, setStepStats] = useState<Array<{ step_order: number; action_type: string; sent: number; replied: number }>>([]);
+  const startId = useId();
+  const endId = useId();
 
   const fetchData = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const startDate = period === 'custom'
         ? customStart
@@ -104,10 +135,11 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       const endDate = period === 'custom' ? customEnd : format(new Date(), 'yyyy-MM-dd');
 
       if (!sequenceId) {
-        const { data: seqData } = await supabase
+        const { data: seqData, error: seqError } = await supabase
           .from('outreach_sequences')
           .select('id, name')
           .order('created_at', { ascending: false });
+        if (seqError) throw seqError;
         setSequences(seqData || []);
       }
 
@@ -123,7 +155,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
         query = query.eq('sequence_id', filterSeqId);
       }
 
-      const { data: analyticsData } = await query;
+      const { data: analyticsData, error: analyticsError } = await query;
+      if (analyticsError) throw analyticsError;
       setAnalytics(analyticsData || []);
 
       let enrollQuery = supabase
@@ -134,7 +167,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
         enrollQuery = enrollQuery.eq('sequence_id', filterSeqId);
       }
 
-      const { data: enrollData } = await enrollQuery;
+      const { data: enrollData, error: enrollError } = await enrollQuery;
+      if (enrollError) throw enrollError;
 
       if (enrollData) {
         const byProfile = new Map<string, typeof enrollData[0]>();
@@ -176,11 +210,12 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       // join Supabase pour filtrer en une seule requête.
       const filterForAB = sequenceId || (selectedSeqId !== 'all' ? selectedSeqId : null);
       if (filterForAB) {
-        const { data: execData } = await (supabase as any)
+        const { data: execData, error: abError } = await (supabase as any)
           .from('sequence_step_executions')
           .select('variant_assigned, status, sequence_enrollments!inner(sequence_id)')
           .eq('sequence_enrollments.sequence_id', filterForAB)
-          .not('variant_assigned', 'is', null) as { data: { variant_assigned: string | null; status: string }[] | null };
+          .not('variant_assigned', 'is', null) as { data: { variant_assigned: string | null; status: string }[] | null; error: unknown };
+        if (abError) throw abError;
 
         if (execData && execData.length > 0) {
           const variantMap = new Map<string, { sent: number; opened: number; clicked: number; replied: number }>();
@@ -201,23 +236,25 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
 
       // Stats par étape (drill-down) — reply_rate par step si une séquence est sélectionnée
       if (filterSeqId) {
-        const { data: stepRows } = await (supabase
+        const { data: stepRows, error: stepRowsError } = await (supabase
           .from('sequence_steps')
           .select('id, step_order, action_type')
           .eq('sequence_id', filterSeqId)
           .order('step_order', { ascending: true }) as any);
+        if (stepRowsError) throw stepRowsError;
 
         if (stepRows && stepRows.length > 0) {
           const stepIds = (stepRows as any[]).map((s: any) => s.id);
           // Récupère toutes les executions de ces steps sur la période
           const sinceTs = new Date(startDate).toISOString();
           const untilTs = new Date(endDate + 'T23:59:59').toISOString();
-          const { data: execRows } = await (supabase
+          const { data: execRows, error: execRowsError } = await (supabase
             .from('sequence_step_executions')
             .select('step_id, status')
             .in('step_id', stepIds)
             .gte('created_at', sinceTs)
             .lte('created_at', untilTs) as any);
+          if (execRowsError) throw execRowsError;
 
           const perStep = new Map<string, { sent: number; replied: number }>();
           (execRows as any[] || []).forEach((e: any) => {
@@ -243,6 +280,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
       }
     } catch (err) {
       console.error('Error fetching analytics:', err);
+      // Une panne ne se lit pas comme des statistiques vides : état d'erreur avec « Réessayer ».
+      setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -286,357 +325,319 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   }, [analytics]);
 
   const funnelData = useMemo(() => [
-    { name: 'VISITES', value: totals.profileVisits },
-    { name: 'INVITATIONS', value: totals.invitesSent },
-    { name: 'ACCEPTÉES', value: totals.invitesAccepted },
-    { name: 'RÉPONSES', value: totals.repliesReceived },
+    { name: 'Visites', value: totals.profileVisits },
+    { name: 'Invitations', value: totals.invitesSent },
+    { name: 'Acceptées', value: totals.invitesAccepted },
+    { name: 'Réponses', value: totals.repliesReceived },
   ], [totals]);
 
+  // Répartition des inscriptions, avec les libellés et tons du catalogue.
   const statusData = useMemo(() => {
     if (!enrollmentStats) return [];
     return [
-      { name: 'Actifs', value: enrollmentStats.active },
-      { name: 'Répondu', value: enrollmentStats.replied },
-      { name: 'Terminés', value: enrollmentStats.completed },
-      { name: 'Pause', value: enrollmentStats.paused },
-      { name: 'Annulés', value: enrollmentStats.cancelled },
+      { key: 'active', value: enrollmentStats.active },
+      { key: 'replied', value: enrollmentStats.replied },
+      { key: 'completed', value: enrollmentStats.completed },
+      { key: 'paused', value: enrollmentStats.paused },
+      { key: 'cancelled', value: enrollmentStats.cancelled },
     ].filter(d => d.value > 0);
   }, [enrollmentStats]);
 
   const formatAvgTime = (hours: number | null) => {
-    if (hours === null) return '—';
-    if (hours < 24) return `${hours}h`;
+    if (hours === null) return '–';
+    if (hours < 24) return `${hours} h`;
     const days = Math.round(hours / 24);
-    return `${days}j`;
+    return `${days} j`;
   };
 
-  const kpiItems = [
-    { icon: Eye, label: 'Visites', value: totals.profileVisits },
-    { icon: UserPlus, label: 'Invitations', value: totals.invitesSent, sub: `${acceptRate}%` },
-    { icon: Send, label: 'Messages', value: totals.messagesSent, sub: `${replyRate}%` },
-    { icon: MessageCircle, label: 'Réponses', value: enrollmentStats?.replied || 0 },
-    { icon: Users, label: 'Prospects', value: enrollmentStats?.total || 0 },
-    { icon: Clock, label: 'Moy. rép.', value: formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null) },
-  ];
+  const hasData = chartData.length > 0 || !!enrollmentStats?.total;
+  const title = sequenceName ? `Statistiques : ${sequenceName}` : 'Statistiques de toutes les séquences';
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[580px] sm:max-w-[580px] bg-background p-0 rounded-lg border-l border-border">
-        {/* Header */}
-        <SheetHeader className="px-5 py-4 border-b border-border bg-accent">
-          <SheetTitle className="flex items-center gap-2 text-foreground uppercase tracking-wider text-sm font-bold">
-            <BarChart3 className="w-4 h-4" />
-            {sequenceName ? `Analytics — ${sequenceName}` : 'Analytics globales'}
-          </SheetTitle>
+      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
+        <SheetHeader className="space-y-1 border-b border-border px-6 py-5 pr-14 text-left">
+          <SheetTitle className="break-words">{title}</SheetTitle>
+          <SheetDescription>
+            Envois, réponses et inscriptions {sequenceId ? 'de cette séquence' : 'de vos séquences'}, sur la période choisie.
+          </SheetDescription>
         </SheetHeader>
 
-        <ScrollArea className="h-[calc(100vh-64px)]">
-          <div className="p-4 space-y-4">
-            {/* Filters row */}
-            <div className="flex flex-wrap items-center gap-2">
-              {!sequenceId && (
-                <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
-                  <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none bg-background border-border rounded-lg text-xs uppercase tracking-wide">
-                    <SelectValue placeholder="Toutes les séquences" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background border-border rounded-lg">
-                    <SelectItem value="all">Toutes les séquences</SelectItem>
-                    {sequences.map(s => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90' | 'custom')}>
-                <SelectTrigger className="w-[140px] bg-background border-border rounded-lg text-xs">
-                  <SelectValue />
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {/* Filtres */}
+          <div className="flex flex-wrap items-end gap-2">
+            {!sequenceId && (
+              <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
+                <SelectTrigger className="w-full sm:w-56" aria-label="Séquence">
+                  <SelectValue placeholder="Toutes les séquences" />
                 </SelectTrigger>
-                <SelectContent className="bg-background border-border rounded-lg">
-                  <SelectItem value="7">7 jours</SelectItem>
-                  <SelectItem value="30">30 jours</SelectItem>
-                  <SelectItem value="90">90 jours</SelectItem>
-                  <SelectItem value="custom">Personnalisé</SelectItem>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les séquences</SelectItem>
+                  {sequences.map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              {period === 'custom' && (
-                <div className="flex items-center gap-1.5">
-                  <input
+            )}
+            <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90' | 'custom')}>
+              <SelectTrigger className="min-w-0 flex-1 sm:w-48 sm:flex-none" aria-label="Période">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">{PERIOD_LABELS['7']}</SelectItem>
+                <SelectItem value="30">{PERIOD_LABELS['30']}</SelectItem>
+                <SelectItem value="90">{PERIOD_LABELS['90']}</SelectItem>
+                <SelectItem value="custom">{PERIOD_LABELS.custom}</SelectItem>
+              </SelectContent>
+            </Select>
+            <UiTooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={fetchData}
+                  disabled={loading}
+                  className="shrink-0 max-md:h-11 max-md:w-11"
+                  aria-label="Actualiser les statistiques"
+                >
+                  <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Actualiser</TooltipContent>
+            </UiTooltip>
+            {period === 'custom' && (
+              <div className="flex w-full flex-wrap gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor={startId} className="text-xs text-muted-foreground">Du</Label>
+                  <Input
+                    id={startId}
                     type="date"
                     value={customStart}
                     onChange={(e) => setCustomStart(e.target.value)}
                     max={customEnd}
-                    className="h-9 px-2 text-xs rounded-lg border border-border bg-background text-foreground"
-                    aria-label="Date de début"
+                    className="w-40"
                   />
-                  <span className="text-xs text-muted-foreground">→</span>
-                  <input
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={endId} className="text-xs text-muted-foreground">Au</Label>
+                  <Input
+                    id={endId}
                     type="date"
                     value={customEnd}
                     onChange={(e) => setCustomEnd(e.target.value)}
                     min={customStart}
                     max={format(new Date(), 'yyyy-MM-dd')}
-                    className="h-9 px-2 text-xs rounded-lg border border-border bg-background text-foreground"
-                    aria-label="Date de fin"
+                    className="w-40"
                   />
                 </div>
-              )}
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={fetchData}
-                disabled={loading}
-                className="border-border rounded-lg h-9 w-9"
-                aria-label="Rafraîchir les statistiques"
-              >
-                <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} aria-hidden="true" />
-              </Button>
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-border" />
               </div>
-            ) : (
-              <>
-                {/* KPI Strip */}
-                <div className="flex flex-wrap gap-0">
-                  {kpiItems.map((item, index) => {
-                    const Icon = item.icon;
+            )}
+          </div>
+
+          {loading ? (
+            <AnalyticsSkeleton />
+          ) : loadError ? (
+            <ErrorState
+              title="Impossible de charger les statistiques"
+              description="Vérifiez votre connexion, puis réessayez."
+              detail={loadError}
+              onRetry={fetchData}
+            />
+          ) : !hasData ? (
+            <EmptyState
+              icon={BarChart3}
+              title="Pas encore de statistiques"
+              description={sequenceId
+                ? 'Les chiffres apparaissent dès les premiers envois de cette séquence.'
+                : 'Les chiffres apparaissent dès les premiers envois de vos séquences.'}
+            />
+          ) : (
+            <>
+              {/* Indicateurs */}
+              <StatGrid cols={{ base: 2, sm: 3 }}>
+                <StatTile label="Visites de profil" value={totals.profileVisits} />
+                <StatTile
+                  label="Invitations"
+                  value={totals.invitesSent}
+                  trailing={<span className="text-xs text-muted-foreground">{acceptRate} % acceptées</span>}
+                />
+                <StatTile label="Messages" value={totals.messagesSent} />
+                <StatTile
+                  label="Réponses"
+                  value={enrollmentStats?.replied || 0}
+                  trailing={<span className="text-xs text-muted-foreground">{replyRate} % des contactés</span>}
+                />
+                <StatTile label="Candidats inscrits" value={enrollmentStats?.total || 0} />
+                <StatTile
+                  label="Délai de réponse"
+                  value={formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null)}
+                  trailing={<span className="text-xs text-muted-foreground">en moyenne</span>}
+                />
+              </StatGrid>
+
+              {/* Entonnoir */}
+              <Section title="Entonnoir de conversion" padded>
+                <ol className="space-y-3">
+                  {funnelData.map((item, index) => {
+                    const maxVal = Math.max(...funnelData.map(f => f.value), 1);
+                    const width = item.value > 0 ? Math.max((item.value / maxVal) * 100, 2) : 0;
+                    const prevValue = index > 0 ? funnelData[index - 1].value : null;
+                    const convRate = prevValue && prevValue > 0 ? Math.round((item.value / prevValue) * 100) : null;
+
                     return (
-                      <div
-                        key={item.label}
-                        className={cn(
-                          "flex flex-col items-center px-3 py-3 border border-border bg-background min-w-[80px] flex-1",
-                          index > 0 && "-ml-px",
-                          "hover:bg-accent transition-colors duration-200"
-                        )}
-                      >
-                        <Icon className="w-3.5 h-3.5 text-muted-foreground mb-1" />
-                        <span className="text-lg font-bold text-foreground tabular-nums leading-none">
+                      <li key={item.name} className="grid grid-cols-[6rem_1fr_5rem] items-center gap-3">
+                        <span className="truncate text-xs text-muted-foreground">{item.name}</span>
+                        <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                          <div className="h-full rounded-full bg-foreground-secondary" style={{ width: `${width}%` }} />
+                        </div>
+                        <span className="text-right text-sm font-medium tabular-nums text-foreground">
                           {item.value}
+                          {convRate !== null && (
+                            <span className="ml-1 text-xs font-normal text-muted-foreground">({convRate} %)</span>
+                          )}
                         </span>
-                        {item.sub && (
-                          <span className="text-xs text-muted-foreground tabular-nums mt-0.5">
-                            {item.sub} taux
-                          </span>
-                        )}
-                        <span className="text-3xs text-muted-foreground uppercase tracking-wider mt-1 font-medium">
-                          {item.label}
-                        </span>
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ol>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Entre parenthèses : la part de l'étape précédente.
+                </p>
+              </Section>
 
-                {/* Funnel */}
-                <div className="border border-border bg-background">
-                  <div className="px-3 py-2 border-b border-border bg-muted flex items-center gap-2">
-                    <TrendingUp className="w-3.5 h-3.5 text-foreground" />
-                    <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                      Funnel de conversion
-                    </span>
+              {/* Répartition des inscriptions */}
+              {statusData.length > 0 && enrollmentStats && (
+                <Section title="Répartition des inscriptions" padded>
+                  <div className="mb-3 flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
+                    {statusData.map((item) => (
+                      <div
+                        key={item.key}
+                        className={cn('h-full', TONE_FILL[enrollmentStatusMeta(item.key).tone])}
+                        style={{ width: `${(item.value / enrollmentStats.total) * 100}%` }}
+                      />
+                    ))}
                   </div>
-                  <div className="p-3 space-y-1">
-                    {funnelData.map((item, index) => {
-                      const maxVal = Math.max(...funnelData.map(f => f.value), 1);
-                      const width = Math.max((item.value / maxVal) * 100, 3);
-                      const prevValue = index > 0 ? funnelData[index - 1].value : null;
-                      const convRate = prevValue && prevValue > 0 ? Math.round((item.value / prevValue) * 100) : null;
+                  <ul className="flex flex-wrap gap-x-4 gap-y-2">
+                    {statusData.map((item) => (
+                      <li key={item.key} className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold tabular-nums text-foreground">{item.value}</span>
+                        <EnrollmentStatusBadge status={item.key} />
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
 
+              {/* Activité quotidienne */}
+              {chartData.length > 0 && (
+                <Section title="Activité quotidienne" padded>
+                  <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Légende">
+                    {SERIES.map((s) => (
+                      <li key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className={cn('h-2.5 w-2.5 rounded-sm', s.swatch)} aria-hidden="true" />
+                        {s.label}
+                      </li>
+                    ))}
+                  </ul>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={chartData} barGap={2} barCategoryGap="20%">
+                      <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(d) => format(new Date(d), 'dd/MM', { locale: fr })}
+                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                        axisLine={{ stroke: 'hsl(var(--border))' }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        width={28}
+                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'hsl(var(--accent))' }}
+                        labelFormatter={(d) => format(new Date(d as string), 'd MMMM yyyy', { locale: fr })}
+                        contentStyle={{
+                          borderRadius: 8,
+                          border: '1px solid hsl(var(--border))',
+                          backgroundColor: 'hsl(var(--popover))',
+                          fontSize: 12,
+                        }}
+                        labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
+                        itemStyle={{ color: 'hsl(var(--foreground-secondary))' }}
+                      />
+                      {SERIES.map((s) => (
+                        <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.fill} radius={[4, 4, 0, 0]} maxBarSize={24} />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Section>
+              )}
+
+              {/* Résultats A/B */}
+              {abResults.length > 0 && (
+                <ABTestResults results={abResults} />
+              )}
+
+              {/* Performance par étape */}
+              {stepStats.length > 0 && (
+                <Section title="Performance par étape" padded>
+                  <ul className="space-y-2">
+                    {stepStats.map(s => {
+                      const stepReplyRate = s.sent > 0 ? (s.replied / s.sent) * 100 : 0;
                       return (
-                        <div key={item.name}>
-                          {index > 0 && (
-                            <div className="flex items-center justify-center py-0.5">
-                              <ArrowDown className="w-3 h-3 text-muted-foreground" />
-                              {convRate !== null && (
-                                <span className="text-xs text-muted-foreground ml-1 tabular-nums font-medium">
-                                  {convRate}%
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2">
-                            <div className="w-[70px] text-xs text-muted-foreground text-right uppercase tracking-wider font-medium shrink-0">
-                              {item.name}
-                            </div>
-                            <div className="flex-1 h-6 bg-muted overflow-hidden relative">
-                              <div
-                                className="h-full bg-foreground transition-all duration-500 flex items-center px-2"
-                                style={{ width: `${width}%` }}
-                              >
-                                <span className="text-xs font-bold text-background tabular-nums">
-                                  {item.value}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        <li
+                          key={s.step_order}
+                          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-background p-2.5 text-xs"
+                        >
+                          <span className="w-14 shrink-0 font-medium text-foreground">Étape {s.step_order + 1}</span>
+                          <span className="min-w-0 flex-1 truncate text-foreground-secondary">{sequenceActionLabel(s.action_type)}</span>
+                          <span className="text-muted-foreground">
+                            <span className="font-semibold tabular-nums text-foreground">{s.sent}</span> {s.sent > 1 ? 'envoyées' : 'envoyée'}
+                            {s.replied > 0 && (
+                              <>
+                                {' · '}
+                                <span className="font-semibold tabular-nums text-foreground">{s.replied}</span> {s.replied > 1 ? 'réponses' : 'réponse'}
+                              </>
+                            )}
+                          </span>
+                          <span
+                            className={cn(
+                              'w-14 shrink-0 text-right font-semibold tabular-nums',
+                              stepReplyRate >= 20 ? 'text-success' : stepReplyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
+                            )}
+                          >
+                            {stepReplyRate.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %
+                          </span>
+                        </li>
                       );
                     })}
-                  </div>
-                </div>
-
-                {/* Enrollment status breakdown */}
-                {statusData.length > 0 && (
-                  <div className="border border-border bg-background">
-                    <div className="px-3 py-2 border-b border-border bg-muted">
-                      <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                        Répartition prospects
-                      </span>
-                    </div>
-                    <div className="p-3">
-                      <div className="flex h-3 w-full overflow-hidden mb-3">
-                        {statusData.map((item) => {
-                          const pct = enrollmentStats ? (item.value / enrollmentStats.total) * 100 : 0;
-                          return (
-                            <div
-                              key={item.name}
-                              className="h-full first:border-l-0 bg-foreground border-r border-background transition-all"
-                              style={{
-                                width: `${pct}%`,
-                                opacity: item.name === 'Annulés' ? 0.3 : item.name === 'Pause' ? 0.5 : 1,
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1">
-                        {statusData.map((item) => (
-                          <div key={item.name} className="flex items-center gap-1.5">
-                            <span className="text-sm font-bold text-foreground tabular-nums">{item.value}</span>
-                            <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
-                              {item.name}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Activity chart */}
-                {chartData.length > 0 && (
-                  <div className="border border-border bg-background">
-                    <div className="px-3 py-2 border-b border-border bg-muted">
-                      <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                        Activité quotidienne
-                      </span>
-                    </div>
-                    <div className="p-3">
-                      <ResponsiveContainer width="100%" height={180}>
-                        <BarChart data={chartData} barGap={1}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                          <XAxis
-                            dataKey="date"
-                            tickFormatter={(d) => format(new Date(d), 'dd/MM', { locale: fr })}
-                            tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
-                            axisLine={{ stroke: 'hsl(var(--foreground))' }}
-                            tickLine={{ stroke: 'hsl(var(--foreground))' }}
-                          />
-                          <YAxis
-                            tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
-                            axisLine={{ stroke: 'hsl(var(--foreground))' }}
-                            tickLine={{ stroke: 'hsl(var(--foreground))' }}
-                          />
-                          <Tooltip
-                            labelFormatter={(d) => format(new Date(d as string), 'dd MMMM yyyy', { locale: fr })}
-                            contentStyle={{
-                              borderRadius: 0,
-                              border: '1px solid hsl(var(--foreground))',
-                              backgroundColor: 'hsl(var(--background))',
-                              fontSize: 11,
-                            }}
-                          />
-                          <Bar dataKey="invites" name="Invitations" fill="hsl(var(--foreground))" radius={0} />
-                          <Bar dataKey="messages" name="Messages" fill="hsl(var(--muted-foreground))" radius={0} />
-                          <Bar dataKey="replies" name="Réponses" fill="hsl(var(--primary))" radius={0} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                      <div className="flex items-center gap-4 mt-2 justify-center">
-                        <LegendDot label="Invitations" className="bg-foreground" />
-                        <LegendDot label="Messages" className="bg-muted-foreground" />
-                        <LegendDot label="Réponses" className="bg-accent" />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Empty state */}
-                {chartData.length === 0 && !enrollmentStats?.total && (
-                  <div className="border border-border bg-background text-center py-16">
-                    <BarChart3 className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-                    <p className="text-sm font-bold text-foreground uppercase tracking-wider">
-                      Aucune donnée
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Les analytics seront alimentées à mesure que les séquences s'exécutent.
-                    </p>
-                  </div>
-                )}
-              </>
-                )}
-
-                {/* A/B Test Results */}
-                {abResults.length > 0 && (
-                  <ABTestResults results={abResults} />
-                )}
-
-                {/* Stats par étape (drill-down) */}
-                {stepStats.length > 0 && (
-                  <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <ArrowDown className="w-4 h-4 text-muted-foreground" />
-                      <h3 className="text-sm font-semibold text-foreground">Performance par étape</h3>
-                    </div>
-                    <div className="space-y-2">
-                      {stepStats.map(s => {
-                        const replyRate = s.sent > 0 ? (s.replied / s.sent) * 100 : 0;
-                        return (
-                          <div
-                            key={s.step_order}
-                            className="flex items-center gap-3 text-xs p-2 rounded-md bg-background border border-border"
-                          >
-                            <span className="w-16 font-medium text-foreground">Étape {s.step_order + 1}</span>
-                            <span className="w-32 text-muted-foreground capitalize">{s.action_type.replace(/_/g, ' ')}</span>
-                            <span className="flex-1 text-muted-foreground">
-                              <span className="font-mono font-semibold text-foreground">{s.sent}</span> envoyé
-                              {s.sent > 1 ? 's' : ''}
-                              {s.replied > 0 && (
-                                <>
-                                  {' · '}
-                                  <span className="font-mono font-semibold text-success">{s.replied}</span> réponse
-                                  {s.replied > 1 ? 's' : ''}
-                                </>
-                              )}
-                            </span>
-                            <span
-                              className={cn(
-                                'w-16 text-right font-mono font-semibold',
-                                replyRate >= 20 ? 'text-success' : replyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
-                              )}
-                            >
-                              {replyRate.toFixed(1)}%
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <p className="text-2xs text-muted-foreground">
-                      Taux de réponse par étape — colore en vert si ≥20%, orange si ≥10%, gris sinon.
-                    </p>
-                  </div>
-                )}
-          </div>
-        </ScrollArea>
+                  </ul>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Taux de réponse de chaque étape : en vert à partir de 20 %, en orange de 10 à 20 %, en gris en dessous.
+                  </p>
+                </Section>
+              )}
+            </>
+          )}
+        </div>
       </SheetContent>
     </Sheet>
   );
 };
 
-const LegendDot: React.FC<{ label: string; className: string }> = ({ label, className }) => (
-  <div className="flex items-center gap-1.5">
-    <div className={cn("w-2 h-2", className)} />
-    <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">{label}</span>
+/** Squelette des statistiques : six tuiles, puis deux blocs. */
+const AnalyticsSkeleton: React.FC = () => (
+  <div className="space-y-4" aria-hidden="true">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+    <Skeleton className="h-44 w-full rounded-xl" />
+    <Skeleton className="h-56 w-full rounded-xl" />
   </div>
 );
 
