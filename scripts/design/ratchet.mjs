@@ -164,8 +164,10 @@ const METRICS = [
   },
   {
     id: 'emoji_interface',
-    label: 'Emoji dans les textes visibles (sélecteurs d’emoji des messages compris)',
+    label: 'Emoji dans les textes visibles (hors contenu de message, src/lib/messageEmojis.ts)',
     scope: 'texte',
+    // Émojis qu'on insère dans un message à un candidat : contenu, pas interface (D-70).
+    skip: new Set(['src/lib/messageEmojis.ts']),
     // Caractères rendus en emoji : présentation emoji par défaut, ou pictogramme suivi du sélecteur U+FE0F.
     re: /\p{Emoji_Presentation}|\p{Extended_Pictographic}️/gu,
   },
@@ -217,7 +219,7 @@ function measure() {
         let hay;
         if (m.scope === 'code') hay = code;
         else if (m.scope === 'code-hors-ui') hay = inUi ? '' : code;
-        else if (m.scope === 'texte') hay = texts;
+        else if (m.scope === 'texte') hay = m.skip?.has(rel) ? '' : texts;
         else if (m.scope === 'texte-hors-legal') hay = LEGAL_PAGES.has(rel) ? '' : texts;
         n = hay ? (hay.match(m.re) || []).length : 0;
       }

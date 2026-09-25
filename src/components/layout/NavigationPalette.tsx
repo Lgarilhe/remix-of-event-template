@@ -99,7 +99,7 @@ export function NavigationPalette() {
           <CommandGroup heading="Navigation">
             <CommandItem onSelect={() => go('/dashboard')}>
               <LayoutDashboard className="mr-2 h-4 w-4" aria-hidden="true" />
-              Dashboard
+              Tableau de bord
               <CommandShortcut>G D</CommandShortcut>
             </CommandItem>
             <CommandItem onSelect={() => go('/missions')}>

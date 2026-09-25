@@ -63,16 +63,7 @@ import {
   formatMessageTime,
 } from '@/hooks/useMessagesInboxHelpers';
 import { jobDataToBrief } from '@/lib/jobBriefForCta';
-
-// Réactions proposées (contenu envoyé sur LinkedIn), avec leur nom lu à voix haute
-const REACTIONS: Array<{ emoji: string; label: string }> = [
-  { emoji: '👍', label: 'pouce levé' },
-  { emoji: '❤️', label: 'cœur' },
-  { emoji: '🔥', label: 'feu' },
-  { emoji: '👏', label: 'applaudissements' },
-  { emoji: '😂', label: 'rire' },
-  { emoji: '😮', label: 'surprise' },
-];
+import { LINKEDIN_REACTIONS } from '@/lib/messageEmojis';
 
 // Boutons icône de l'en-tête : 44 px au doigt, 32 px à la souris (01-direction.md, § 5)
 const HEADER_ICON = 'h-11 w-11 text-muted-foreground hover:text-foreground md:h-8 md:w-8';
@@ -1167,7 +1158,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                         </Tooltip>
                         <PopoverContent side="top" align="start" className="w-auto p-1">
                           <div className="flex gap-0.5" role="group" aria-label="Réactions">
-                            {REACTIONS.map(({ emoji, label }) => (
+                            {LINKEDIN_REACTIONS.map(({ emoji, label }) => (
                               <Button
                                 key={emoji}
                                 variant="ghost"

@@ -49,5 +49,5 @@ La session « Audit complet du dépôt » refond l'expérience mission, la barre
 | 7 | Pipeline global, scorecard, coaching, assistant IA | fait (restent des décisions produit : table d'étapes, shortlist) |
 | 8 | Pages publiques et portails | fait |
 | 9 | Onboarding, invitation, qualification, marketplace | fait |
-| 10 | Passe texte | à faire |
+| 10 | Passe texte | fait pour les zones du chantier (restent les espaces insécables et les zones des autres sessions) |
 | 11 | Nettoyage, après la fusion de la refonte mission | à faire |

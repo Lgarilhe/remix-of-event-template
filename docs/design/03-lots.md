@@ -257,6 +257,20 @@ Constats : A-06, A-32, A-35, A-46, B-13 et C-05 pour les écrans du chantier, E-
 - Cliquet : tirets longs, emoji et noms de fournisseurs à zéro dans les zones du chantier.
 - Outil : `node scripts/design/texts.mjs` liste, fichier par fichier, le tutoiement et le franglais des textes visibles (le 25 septembre : 85 fichiers, 109 tutoiements, 177 anglicismes, dont une moitié dans les zones de l'autre session).
 
+Fait (zones du chantier) :
+
+- `scripts/design/texts.mjs` passé sur tout `src/` : dans les zones du chantier, il ne relève plus que des faux positifs (« requêtes », « êtes », « bêta », Go le langage, messages de console). Le tutoiement et le franglais restants sont dans les zones des autres sessions (liste ci-dessous).
+- Palette de navigation : « Tableau de bord » au lieu de « Dashboard », comme la page, la barre latérale et l'aide des raccourcis.
+- Crédits IA : « Proposer une suite » au lieu de « Suggérer une réponse + CTA », le nom du bouton de la messagerie.
+- Historique d'un candidat : verdicts, étapes et appels en mots (« Verdict : Qualifié », « Invitation LinkedIn », « Score 72 · Lead Developer Backend »), sans émoji ni clé brute.
+- Émojis : ceux qu'on insère dans un message (composeur de la messagerie, éditeur InMail) et les réactions LinkedIn sont du contenu de message, rassemblés dans `src/lib/messageEmojis.ts`, une seule liste pour les deux éditeurs. Le cliquet ne compte plus ce fichier comme interface : plus aucun émoji ni tiret long d'interface dans les zones du chantier.
+- Marqueurs de fichier joint envoyés à l'assistant sans tiret long ; accords du pluriel par `plural` dans la liste de contrôle de l'éditeur.
+
+Reste :
+
+- Espace insécable avant « : » et « ? » : posée dans les fichiers repris aux lots 7 à 9. Ailleurs, environ 600 espaces simples dans 129 fichiers (le compte inclut des ternaires) ; conversion en masse écartée, pour un effet rare (une coupure de ligne juste avant la ponctuation). La règle vaut pour tout texte nouveau.
+- À transmettre aux autres sessions : brief, création, process et configuration de mission ; recherche, filtres et résultats ; Paramètres (modèles de messages écrits « template », connexion Notion, extension) ; fiche candidat (CV, contacts, aperçu, séquences) ; tutoriel du pipeline de mission (« funnel », « board ») ; libellés de priorité du brief avec émojis (`src/types/jobDetails.ts`) ; textes des hooks lus seulement par ces zones (`useMessageTemplates`, `useInvitationsReceived`, `useOrganization`, `useCandidateEnrollments`, `SequenceEnrollButton`).
+
 ### Lot 11 · Nettoyage
 
 Après la fusion de la refonte mission : suppression du code mort (G-19), des jetons `--k-*` et `--skalr-*` devenus sans lecteur, des variantes de bouton en double. Le faire plus tôt casserait du code que l'autre session n'a pas encore fusionné.

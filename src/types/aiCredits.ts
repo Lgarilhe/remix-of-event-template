@@ -121,7 +121,7 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   auto_analyze_message: { action: "auto_analyze_message", label: "Classification message", floor: 1, typicalTokens: 1_000, routingTier: "fast", category: "outreach" },
   // CTA "job_details" peut générer ~2k tokens (message long + JSON wrap), les
   // autres CTA sont autour de 800-1200 tokens : 1.5k typique (miroir ai-config).
-  cta_reply: { action: "cta_reply", label: "Suggérer une réponse + CTA", floor: 1, typicalTokens: 1_500, routingTier: "fast", category: "outreach" },
+  cta_reply: { action: "cta_reply", label: "Proposer une suite", floor: 1, typicalTokens: 1_500, routingTier: "fast", category: "outreach" },
   // Lots de 30 conversations (useChatCategories), jusqu'à 6 messages de 300
   // caractères chacune : l'entrée pèse bien plus que la sortie.
   auto_categorize_chats: { action: "auto_categorize_chats", label: "Classement des conversations", floor: 1, typicalTokens: 10_000, routingTier: "fast", category: "outreach" },

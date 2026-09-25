@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { AlertCircle, Check, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Sequence } from '../SequenceBuilder';
+import { plural } from '@/lib/plural';
 
 interface ValidationItem {
   id: string;
@@ -38,7 +39,7 @@ function getValidationItems(sequence: Sequence): ValidationItem[] {
   result.push({
     id: 'steps', label: 'Étapes',
     description: sequence.steps.length > 0
-      ? `${sequence.steps.length} étape${sequence.steps.length > 1 ? 's' : ''}`
+      ? plural(sequence.steps.length, 'étape')
       : 'Aucune étape',
     status: sequence.steps.length > 0 ? 'pass' : 'fail', category: 'required',
   });
@@ -115,7 +116,7 @@ function getValidationItems(sequence: Sequence): ValidationItem[] {
   if (noDelaySteps.length > 0) {
     result.push({
       id: 'delays', label: 'Délais entre étapes',
-      description: `${noDelaySteps.length} étape${noDelaySteps.length > 1 ? 's' : ''} sans délai`,
+      description: `${plural(noDelaySteps.length, 'étape')} sans délai`,
       status: 'warning', category: 'recommended',
     });
   }

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InfoHint } from '@/components/ui/info-hint';
+import { MESSAGE_EMOJIS } from '@/lib/messageEmojis';
 import { promptDialog } from '@/lib/promptDialog';
 import {
   escapeHTML,
@@ -42,22 +43,6 @@ interface InMailTextEditorProps {
   onSend?: () => void;
   autoResize?: boolean;
 }
-
-// Common emojis for professional LinkedIn messages
-const EMOJI_GROUPS = [
-  {
-    label: 'Professionnels',
-    emojis: ['👋', '🤝', '💼', '📈', '🎯', '💡', '✨', '🚀', '⭐', '🏆']
-  },
-  {
-    label: 'Communication',
-    emojis: ['📩', '📞', '💬', '📋', '📌', '✅', '👍', '🙌', '💪', '🔥']
-  },
-  {
-    label: 'Tech',
-    emojis: ['💻', '🖥️', '⚙️', '🔧', '📱', '🌐', '☁️', '🔒', '📊', '🗂️']
-  },
-];
 
 export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
   value,
@@ -335,28 +320,19 @@ export const InMailTextEditor: React.FC<InMailTextEditorProps> = ({
                 <Smile aria-hidden="true" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-72 p-2" align="start">
-              <div className="space-y-3">
-                {EMOJI_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                      {group.label}
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {group.emojis.map((emoji) => (
-                        <Button
-                          key={emoji}
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-lg max-md:h-11 max-md:w-11"
-                          onClick={() => insertEmoji(emoji)}
-                        >
-                          {emoji}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
+            <PopoverContent className="w-auto p-2" align="start" aria-label="Émojis">
+              <div className="grid grid-cols-6 gap-1">
+                {MESSAGE_EMOJIS.map((emoji) => (
+                  <Button
+                    key={emoji}
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-lg max-md:h-11 max-md:w-11"
+                    onClick={() => insertEmoji(emoji)}
+                  >
+                    {emoji}
+                  </Button>
                 ))}
               </div>
             </PopoverContent>

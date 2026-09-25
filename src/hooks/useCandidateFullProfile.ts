@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { aiRecommendationMeta } from '@/lib/verdicts';
+import { aiRecommendationMeta, qualificationVerdictMeta } from '@/lib/verdicts';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 
 export interface CandidateActivity {
   type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added' | 'appointment' | 'shortlist_added' | 'aircall_call';
@@ -438,7 +439,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       timeline.push({
         type: 'qualification_verdict',
         date: qs.eventStartAt || '',
-        title: `Verdict : ${qs.verdict === 'go' ? '✅ Go' : qs.verdict === 'no_go' ? '❌ No-Go' : '🤔 Maybe'}`,
+        title: `Verdict : ${qualificationVerdictMeta(qs.verdict)?.label ?? 'À revoir'}`,
         detail: qs.verdictNotes || undefined,
       });
     }
@@ -448,25 +449,18 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     timeline.push({
       type: 'sequence_enrolled',
       date: se.createdAt,
-      title: `Inscrit à "${se.sequenceName}"`,
+      title: `Inscription à « ${se.sequenceName} »`,
       detail: se.status === 'completed' ? 'Séquence terminée' : se.repliedAt ? 'A répondu' : `Étape ${se.currentStep}`,
     });
   });
 
   // Detailed sequence steps
   sequenceSteps.forEach(step => {
-    const actionLabels: Record<string, string> = {
-      send_connection: '🔗 Invitation envoyée',
-      send_message: '💬 Message envoyé',
-      send_inmail: '📧 InMail envoyé',
-      visit_profile: '👀 Visite de profil',
-      check_connection: '🔍 Vérification connexion',
-    };
     timeline.push({
       type: 'sequence_step',
       date: step.executedAt || '',
-      title: actionLabels[step.actionType] || `Action : ${step.actionType}`,
-      detail: step.sequenceName ? `${step.sequenceName} • Étape ${step.stepOrder}` : `Étape ${step.stepOrder}`,
+      title: sequenceActionLabel(step.actionType),
+      detail: step.sequenceName ? `${step.sequenceName} · étape ${step.stepOrder}` : `Étape ${step.stepOrder}`,
     });
   });
 
@@ -475,7 +469,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       type: 'inmail_sent',
       date: im.sentAt || im.createdAt,
       title: `InMail : ${im.subject}`,
-      detail: im.status === 'sent' ? 'Envoyé' : im.status === 'replied' ? 'Répondu' : im.status,
+      detail: im.status === 'sent' ? 'Envoyé' : im.status === 'replied' ? 'A répondu' : undefined,
     });
   });
 
@@ -484,7 +478,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       timeline.push({
         type: 'scored',
         date: sr.updatedAt,
-        title: `Scoring : ${sr.score}% ${sr.jobTitle ? `• ${sr.jobTitle}` : ''}`,
+        title: `Score ${sr.score}${sr.jobTitle ? ` · ${sr.jobTitle}` : ''}`,
         detail: aiRecommendationMeta(sr.scoringDetails?.recommendation || sr.recommendation)?.label,
       });
     }
@@ -507,7 +501,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     timeline.push({
       type: 'note_added',
       date: n.noteDate || '',
-      title: n.title ? `📝 ${n.title}` : '📝 Note',
+      title: n.title || 'Note',
       detail: n.detail || undefined,
       meta: { author: n.author, source: 'airtable' },
     });
@@ -518,21 +512,21 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     timeline.push({
       type: 'appointment',
       date: a.appointmentDate || '',
-      title: a.title || `RDV ${a.appointmentType || ''}`,
+      title: a.title || `Rendez-vous ${a.appointmentType || ''}`.trim(),
       detail: a.status || undefined,
     });
   });
 
   // Aircall calls in timeline
   aircallCalls.forEach(c => {
-    const dirLabel = c.direction === 'inbound' ? '📞 Appel reçu' : '📞 Appel émis';
+    const dirLabel = c.direction === 'inbound' ? 'Appel reçu' : 'Appel émis';
     const statusLabel = c.status === 'missed' || c.status === 'no-answer' ? ' (manqué)' : '';
-    const durationLabel = c.duration > 0 ? ` • ${Math.floor(c.duration / 60)}min${c.duration % 60 > 0 ? ` ${c.duration % 60}s` : ''}` : '';
+    const durationLabel = c.duration > 0 ? ` · ${Math.floor(c.duration / 60)} min${c.duration % 60 > 0 ? ` ${c.duration % 60} s` : ''}` : '';
     timeline.push({
       type: 'aircall_call',
       date: c.startedAt || '',
       title: `${dirLabel}${statusLabel}${durationLabel}`,
-      detail: [c.userName, c.notes].filter(Boolean).join(' — ') || undefined,
+      detail: [c.userName, c.notes].filter(Boolean).join(' · ') || undefined,
     });
   });
 

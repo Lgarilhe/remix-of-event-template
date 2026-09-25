@@ -40,10 +40,9 @@ import {
 } from '@/lib/templatePlaceholders';
 import { useTextActions, type RewriteVariant, type CtaChatMessage } from '@/hooks/useTextActions';
 import { CtaReplyButton } from './CtaReplyButton';
+import { MESSAGE_EMOJIS } from '@/lib/messageEmojis';
 
 // Emoji à insérer dans le message (contenu du message, pas icônes d'interface)
-const QUICK_EMOJIS = ['👋', '🤝', '💼', '🚀', '⭐', '🙏', '😊', '👍', '🔥', '💡', '✨', '🎯', '📌', '✅', '💬'];
-
 // Outils de la barre : 44 px au doigt, 28 px à la souris (01-direction.md, § 5)
 const TOOL_ICON = 'h-11 w-11 text-muted-foreground hover:text-foreground sm:h-7 sm:w-7';
 const TOOL_TEXT = 'h-11 w-11 px-0 text-muted-foreground hover:text-foreground sm:h-7 sm:w-auto sm:px-2';
@@ -482,7 +481,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               </Tooltip>
               <PopoverContent className="w-auto p-2" side="top" align="start">
                 <div className="grid grid-cols-5 gap-1">
-                  {QUICK_EMOJIS.map((emoji) => (
+                  {MESSAGE_EMOJIS.map((emoji) => (
                     <Button
                       key={emoji}
                       type="button"
