@@ -366,7 +366,7 @@ export const ChatListSidebar: React.FC<ChatListSidebarProps> = ({
                   onChange={(e) => onSearchChange(e.target.value)}
                   placeholder="Rechercher"
                   aria-label="Rechercher une conversation (nom, poste, message)"
-                  className="h-8 pl-8"
+                  className="h-8 pl-8 max-md:h-11"
                 />
               </div>
               <FilterPill label="Filtres" icon={ListFilter} count={filterCount} align="end" contentClassName="w-64 max-h-[70vh] overflow-y-auto">
