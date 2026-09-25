@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useId } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -10,19 +10,15 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Users,
-  GitBranch,
-  CheckCircle,
-  AlertCircle,
-  AlertTriangle,
-  Loader2,
-} from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { AlertTriangle, CheckCircle2, Info, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { LinkedInProfile } from './types';
 import { EnrollmentPreviewModal } from './EnrollmentPreviewModal';
-import { checkProfilesCompat } from '@/lib/sequenceCompatibility';
+import { CandidateAvatar } from '@/components/candidates/shared/CandidateAvatar';
+import { checkProfilesCompat, type CompatIssue } from '@/lib/sequenceCompatibility';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -55,6 +51,31 @@ interface SequenceEnrollModalProps {
 
 const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
 
+/** « 1 candidat », « 3 candidats ». */
+function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${n} ${n > 1 ? pluralForm : singular}`;
+}
+
+/**
+ * Motif d'incompatibilité, écrit ici au vouvoiement et sans tiret long : les
+ * phrases de `src/lib/sequenceCompatibility.ts` tutoient encore (revue design
+ * D-51, D-71). À retirer quand la bibliothèque aura ses propres libellés.
+ */
+function compatMessage(issue: CompatIssue, blocking: boolean): string {
+  switch (issue) {
+    case 'connection_already_connected':
+      return blocking
+        ? "déjà en relation : l'invitation LinkedIn échouera. Choisissez une séquence sans invitation."
+        : "déjà en relation : l'invitation prévue plus loin dans la séquence échouera.";
+    case 'inmail_wasted':
+      return "déjà en relation : un message direct serait gratuit, l'InMail consomme un crédit.";
+    case 'too_far':
+      return 'hors de votre réseau LinkedIn : contact impossible sans InMail Recruiter.';
+    default:
+      return 'à vérifier avant inscription.';
+  }
+}
+
 export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   isOpen,
   onClose,
@@ -72,6 +93,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [enrollDuplicatesAnyway, setEnrollDuplicatesAnyway] = useState(false);
   const { organizationId, isAdmin } = useOrganization();
+  const excludeId = useId();
+  const duplicatesId = useId();
 
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -153,8 +176,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
   const handleEnroll = async () => {
     if (!organizationId) {
-      toast.error('Organisation non détectée', {
-        description: 'Recharge la page ou reconnecte-toi.',
+      toast.error("Votre organisation n'a pas pu être identifiée", {
+        description: 'Rechargez la page ou reconnectez votre compte.',
       });
       return;
     }
@@ -218,7 +241,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         // Tous déjà inscrits → exit avant tout INSERT
         enrollmentResults.skipped = enrollSet.length;
         setResults(enrollmentResults);
-        toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
+        toast.info(`${plural(enrollmentResults.skipped, 'candidat déjà inscrit', 'candidats déjà inscrits')} dans cette séquence`);
         return;
       }
 
@@ -280,7 +303,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       }
       if (insertedRows.length === 0) {
         setResults(enrollmentResults);
-        toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
+        toast.info(`${plural(enrollmentResults.skipped, 'candidat déjà inscrit', 'candidats déjà inscrits')} dans cette séquence`);
         return;
       }
 
@@ -310,8 +333,11 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         const { error: execError } = await supabase.from('sequence_step_executions').insert(execRows);
         if (execError) {
           console.error('[SequenceEnrollModal] Failed to schedule first executions:', execError);
-          toast.error('Inscriptions créées mais étapes non planifiées', {
-            description: 'Lance "Traiter les séquences" depuis Outreach pour relancer.',
+          // Le moteur d'envoi reprend seul les inscriptions actives sans
+          // étape planifiée (process-sequences, reprise des inscriptions
+          // « dormantes ») : on le dit, sans renvoyer vers un bouton.
+          toast.warning('Premier envoi pas encore planifié', {
+            description: 'Les candidats sont bien inscrits. La planification sera reprise automatiquement : les premiers messages partiront avec au moins une heure de retard.',
           });
           // Ne pas throw — l'enrollment est déjà créé, le cron pourra rattraper
         }
@@ -350,16 +376,18 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       setResults(enrollmentResults);
 
       if (enrollmentResults.success > 0) {
-        toast.success(`${enrollmentResults.success} candidat(s) inscrits dans la séquence`);
+        toast.success(`${plural(enrollmentResults.success, 'candidat inscrit', 'candidats inscrits')} dans « ${sequence.name} »`);
       }
       if (enrollmentResults.skipped > 0) {
-        toast.info(`${enrollmentResults.skipped} candidat(s) déjà inscrits`);
+        toast.info(`${plural(enrollmentResults.skipped, 'candidat déjà inscrit', 'candidats déjà inscrits')} dans cette séquence`);
       }
     } catch (err: any) {
       console.error('Enrollment error:', err);
       enrollmentResults.errors.push(err?.message || err?.details || err?.hint || JSON.stringify(err));
       setResults(enrollmentResults);
-      toast.error('Erreur lors de l\'inscription');
+      toast.error("L'inscription n'a pas abouti", {
+        description: 'Vérifiez votre connexion, puis réessayez.',
+      });
     } finally {
       setIsEnrolling(false);
     }
@@ -373,77 +401,69 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     }
   };
 
+  const incompatible = [...compat.blockers, ...compat.warnings];
+  const excludedIds = new Set(profiles.filter(p => !profilesToEnroll.some(e => e.id === p.id)).map(p => p.id));
+  const isBlocker = (id: string) => compat.blockers.some(r => r.profile.id === id);
+  const enrollLabel = profilesToEnroll.length > 0
+    ? `Inscrire ${plural(profilesToEnroll.length, 'candidat')}`
+    : 'Aucun candidat à inscrire';
+  const failed = !!results && results.errors.length > 0 && results.success === 0;
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto bg-background border-border rounded-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-             <GitBranch className="w-5 h-5 text-foreground" />
-             <span className="uppercase tracking-wide text-sm">Inscrire dans la séquence</span>
-          </DialogTitle>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+      <DialogContent aria-modal="true" className="flex max-h-[90dvh] w-[calc(100vw-2rem)] max-w-lg flex-col gap-4 overflow-hidden">
+        <DialogHeader className="pr-8">
+          <DialogTitle>Inscrire dans la séquence</DialogTitle>
           <DialogDescription>
-            Ajouter les candidats sélectionnés à "{sequence.name}"
+            Les candidats sélectionnés rejoindront la séquence « {sequence.name} ».
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Summary */}
-          <div className="p-4 bg-muted/50 border border-border space-y-3">
-            <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-foreground" />
-              <span className="font-medium">
-                {profilesToEnroll.length} / {profiles.length} candidat(s) à inscrire
-              </span>
-            </div>
-
-            {job && (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{job.title}</Badge>
-              </div>
-            )}
-
-            <div className="text-sm text-muted-foreground">
-              Séquence de {sequence.steps.length} étape(s)
+        <div className="-mx-6 min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto px-6">
+          {/* Résumé */}
+          <div className="space-y-2 rounded-xl border border-border bg-muted/40 p-3">
+            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Users className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              {profilesToEnroll.length === profiles.length
+                ? `${plural(profiles.length, 'candidat')} à inscrire`
+                : `${profilesToEnroll.length} sur ${plural(profiles.length, 'candidat')} à inscrire`}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {job && <Badge variant="outline">{job.title}</Badge>}
+              <span>Séquence de {plural(sequence.steps.length, 'étape')}</span>
             </div>
           </div>
 
-          {/* Warning compat — détecte 1st degree + connection_request,
-              hors réseau, etc. Évite les échecs silencieux à l'envoi. */}
-          {(compat.blockers.length > 0 || compat.warnings.length > 0) && (
-            <div className="p-3 border border-warning/40 bg-warning/5 rounded-md space-y-2">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0 space-y-2">
-                  <p className="text-xs font-semibold text-warning">
-                    {compat.blockers.length > 0
-                      ? `${compat.blockers.length} profil(s) incompatibles avec cette séquence`
-                      : `${compat.warnings.length} profil(s) avec un avertissement`}
-                  </p>
-                  <ul className="text-[11px] text-muted-foreground space-y-1 max-h-24 overflow-y-auto">
-                    {[...compat.blockers, ...compat.warnings].slice(0, 5).map(r => (
-                      <li key={r.profile.id} className="truncate">
-                        <span className="font-medium text-foreground">{r.profile.name}</span>
-                        {' — '}{r.message}
-                      </li>
-                    ))}
-                    {compat.blockers.length + compat.warnings.length > 5 && (
-                      <li className="italic">
-                        … et {compat.blockers.length + compat.warnings.length - 5} autre(s)
-                      </li>
-                    )}
-                  </ul>
-                  <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={excludeIncompatible}
-                      onChange={(e) => setExcludeIncompatible(e.target.checked)}
-                      className="h-3 w-3 rounded border-border"
-                    />
-                    <span className="text-foreground">
-                      Exclure les profils incompatibles ({compat.blockers.length + compat.warnings.length})
-                    </span>
-                  </label>
-                </div>
+          {/* Compatibilité : 1er niveau et invitation, hors réseau, etc.
+              Évite les échecs silencieux à l'envoi. */}
+          {incompatible.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-warning/25 bg-warning-muted p-3">
+              <p className="flex items-start gap-2 text-sm font-medium text-foreground">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                {compat.blockers.length > 0
+                  ? `${plural(compat.blockers.length, 'profil incompatible', 'profils incompatibles')} avec cette séquence`
+                  : `${plural(compat.warnings.length, 'profil', 'profils')} avec un avertissement`}
+              </p>
+              <ul className="max-h-24 space-y-1 overflow-y-auto pl-6 text-xs text-foreground-secondary">
+                {incompatible.slice(0, 5).map(r => (
+                  <li key={r.profile.id} className="break-words">
+                    <span className="font-medium text-foreground">{r.profile.name}</span>
+                    {' : '}{compatMessage(r.issue, isBlocker(r.profile.id))}
+                  </li>
+                ))}
+                {incompatible.length > 5 && (
+                  <li>et {plural(incompatible.length - 5, 'autre')}</li>
+                )}
+              </ul>
+              <div className="flex items-center gap-2 pl-6">
+                <Checkbox
+                  id={excludeId}
+                  checked={excludeIncompatible}
+                  onCheckedChange={(checked) => setExcludeIncompatible(checked === true)}
+                />
+                <Label htmlFor={excludeId} className="cursor-pointer text-xs font-normal text-foreground max-md:py-3">
+                  Exclure les profils incompatibles ({incompatible.length})
+                </Label>
               </div>
             </div>
           )}
@@ -452,139 +472,109 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
               par un membre, toute séquence et tout compte. Exclus par défaut ;
               dérogation réservée aux propriétaires et administrateurs. */}
           {isCheckingDuplicates && (
-            <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Vérification des contacts récents de l'organisation
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner size="sm" label="Vérification en cours" />
+              Vérification des contacts récents de votre organisation…
             </p>
           )}
           {duplicateProfiles.length > 0 && recentEnrollments && (
-            <div className="p-3 border border-warning/40 bg-warning/5 rounded-md space-y-2">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0 space-y-2">
-                  <p className="text-xs font-semibold text-warning">
-                    {duplicateProfiles.length} candidat(s) déjà contacté(s) par votre organisation ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours
-                  </p>
-                  <ul className="text-[11px] text-muted-foreground space-y-1 max-h-24 overflow-y-auto">
-                    {duplicateProfiles.slice(0, 5).map(p => {
-                      const entry = recentEnrollments.get(p.id);
-                      return (
-                        <li key={p.id} className="truncate">
-                          <span className="font-medium text-foreground">{p.name}</span>
-                          {' : '}{entry ? formatRecentContactLabel(entry) : 'Déjà contacté'}
-                        </li>
-                      );
-                    })}
-                    {duplicateProfiles.length > 5 && (
-                      <li className="italic">
-                        et {duplicateProfiles.length - 5} autre(s)
-                      </li>
-                    )}
-                  </ul>
-                  {isAdmin ? (
-                    <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={enrollDuplicatesAnyway}
-                        onChange={(e) => setEnrollDuplicatesAnyway(e.target.checked)}
-                        className="h-3 w-3 rounded border-border"
-                      />
-                      <span className="text-foreground">
-                        Inscrire quand même ({duplicateProfiles.length})
-                      </span>
-                    </label>
-                  ) : (
-                    <p className="text-[11px] text-muted-foreground">
-                      Exclus de l'inscription. Seuls les propriétaires et administrateurs peuvent les inscrire quand même.
-                    </p>
-                  )}
+            <div className="space-y-2 rounded-xl border border-warning/25 bg-warning-muted p-3">
+              <p className="flex items-start gap-2 text-sm font-medium text-foreground">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                {duplicateProfiles.length > 1
+                  ? `${duplicateProfiles.length} candidats déjà contactés`
+                  : '1 candidat déjà contacté'} par votre organisation ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours
+              </p>
+              <ul className="max-h-24 space-y-1 overflow-y-auto pl-6 text-xs text-foreground-secondary">
+                {duplicateProfiles.slice(0, 5).map(p => {
+                  const entry = recentEnrollments.get(p.id);
+                  return (
+                    <li key={p.id} className="break-words">
+                      <span className="font-medium text-foreground">{p.name}</span>
+                      {' : '}{entry ? formatRecentContactLabel(entry) : 'Déjà contacté'}
+                    </li>
+                  );
+                })}
+                {duplicateProfiles.length > 5 && (
+                  <li>et {plural(duplicateProfiles.length - 5, 'autre')}</li>
+                )}
+              </ul>
+              {isAdmin ? (
+                <div className="flex items-center gap-2 pl-6">
+                  <Checkbox
+                    id={duplicatesId}
+                    checked={enrollDuplicatesAnyway}
+                    onCheckedChange={(checked) => setEnrollDuplicatesAnyway(checked === true)}
+                  />
+                  <Label htmlFor={duplicatesId} className="cursor-pointer text-xs font-normal text-foreground max-md:py-3">
+                    Inscrire quand même ({duplicateProfiles.length})
+                  </Label>
                 </div>
-              </div>
+              ) : (
+                <p className="pl-6 text-xs text-foreground-secondary">
+                  Exclus de l'inscription. Seuls les propriétaires et administrateurs peuvent les inscrire quand même.
+                </p>
+              )}
             </div>
           )}
 
-          {/* Profiles preview */}
-          <ScrollArea className="h-[200px] sm:h-[240px] border border-border bg-muted/30 p-1">
-            <div className="space-y-1.5">
-              {profiles.map((profile) => (
-                <div
-                  key={profile.id}
-                   className="flex items-center gap-3 p-2.5 bg-background border border-border"
-                 >
-                  {profile.profile_picture_url ? (
-                    <img
-                      src={profile.profile_picture_url}
-                      alt={profile.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                      <span className="text-sm font-medium">
-                        {profile.name?.charAt(0) || '?'}
-                      </span>
-                    </div>
+          {/* Candidats sélectionnés */}
+          <ul className="max-h-60 divide-y divide-border overflow-y-auto rounded-xl border border-border" aria-label="Candidats sélectionnés">
+            {profiles.map((profile) => (
+              <li key={profile.id} className="flex items-center gap-3 px-3 py-2.5">
+                <CandidateAvatar name={profile.name} imageUrl={profile.profile_picture_url} size="md" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{profile.name}</p>
+                  {profile.headline && (
+                    <p className="truncate text-xs text-muted-foreground">{profile.headline}</p>
                   )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{profile.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {profile.headline}
-                    </p>
-                  </div>
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
+                {!results && excludedIds.has(profile.id) && (
+                  <Badge variant="muted" className="shrink-0">Exclu</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
 
-          {/* Results */}
+          {/* Résultat */}
           {results && (
-            <div className="p-4 border border-border space-y-2">
+            <div role="status" className="space-y-1.5 rounded-xl border border-border p-3 text-sm">
               {results.success > 0 && (
-                <div className="flex items-center gap-2 text-foreground">
-                  <CheckCircle className="w-4 h-4" />
-                  <span>{results.success} inscrit(s) avec succès</span>
-                </div>
+                <p className="flex items-center gap-2 text-foreground">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                  {plural(results.success, 'candidat inscrit', 'candidats inscrits')}
+                </p>
               )}
               {results.skipped > 0 && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{results.skipped} déjà inscrit(s)</span>
-                </div>
+                <p className="flex items-center gap-2 text-muted-foreground">
+                  <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {plural(results.skipped, 'candidat déjà inscrit', 'candidats déjà inscrits')}
+                </p>
               )}
               {results.errors.length > 0 && (
-                <div className="text-sm text-destructive">
-                  {results.errors.map((err, i) => (
-                    <p key={i}>{err}</p>
-                  ))}
-                </div>
+                <p className="flex items-start gap-2 text-foreground">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+                  L'inscription n'a pas abouti. Vérifiez votre connexion, puis réessayez.
+                </p>
               )}
             </div>
           )}
         </div>
 
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={handleClose} className="border-border rounded-lg">
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose} className="max-md:h-11">
             {results ? 'Fermer' : 'Annuler'}
           </Button>
-          {!results && (
-            <div className="flex items-center gap-2">
-              <Button
-                 onClick={handleEnroll}
-                 disabled={isEnrolling || profilesToEnroll.length === 0}
-                 className="bg-foreground text-background rounded-lg"
-              >
-                {isEnrolling ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Inscription...
-                  </>
-                ) : (
-                  <>
-                    <GitBranch className="w-4 h-4 mr-2" />
-                    Inscrire {profilesToEnroll.length} candidat(s)
-                  </>
-                )}
-              </Button>
-            </div>
+          {(!results || failed) && (
+            <Button
+              variant="primary"
+              onClick={handleEnroll}
+              loading={isEnrolling}
+              disabled={profilesToEnroll.length === 0}
+              className="max-md:h-11"
+            >
+              {isEnrolling ? 'Inscription en cours…' : failed ? 'Réessayer' : enrollLabel}
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

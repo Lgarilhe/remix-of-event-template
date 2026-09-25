@@ -2,12 +2,15 @@ import React, { useMemo, useState } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { computeYearsOfExperience } from './types';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { MapPin, Briefcase, GraduationCap, ChevronRight, Mail, Sparkles } from 'lucide-react';
+import { MapPin, Briefcase, GraduationCap, ChevronRight } from 'lucide-react';
 import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { ScoreBadge } from '@/components/ui/score-badge';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
 import { CandidateAvatar } from '@/components/candidates/shared/CandidateAvatar';
 
 interface Props {
@@ -16,6 +19,10 @@ interface Props {
   linkedinUrl: string | null;
 }
 
+/**
+ * En-tête du candidat affiché dans la préparation : surface plate, aucun
+ * mouvement, score au barème commun (revue design D-50).
+ */
 export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
   const yearsXP = useMemo(() => computeYearsOfExperience(profile), [profile]);
   const isOpenToWork = profile.open_to_work || (profile as any).is_open_to_work;
@@ -28,102 +35,69 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
   const education = useMemo(() => {
     const edu = profile.education?.[0];
     if (!edu) return null;
-    return [edu.school, edu.degree, edu.field_of_study].filter(Boolean).join(' — ');
+    return [edu.school, edu.degree, edu.field_of_study].filter(Boolean).join(', ');
   }, [profile.education]);
 
   const skills = useMemo(() => {
     return (profile.skills || []).slice(0, 6).map(s => typeof s === 'string' ? s : s.name).filter(Boolean);
   }, [profile.skills]);
 
-  const hasEmail = profile.contact_info?.emails?.length;
+  const hasEmail = !!profile.contact_info?.emails?.length;
+  const positions = profile.work_experience?.length || 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-      className="rounded-2xl border border-border bg-gradient-to-br from-card to-muted/20 p-5 sm:p-6 shadow-sm"
-    >
-      {/* Hero row : avatar XL + identité forte */}
-      <div className="flex items-start gap-4 sm:gap-5">
-        <div className="relative shrink-0">
-          <CandidateAvatar
-            name={profile.name}
-            imageUrl={profile.profile_picture_url}
-            size="lg"
-            className="!w-16 !h-16 sm:!w-20 sm:!h-20 ring-2 ring-background shadow-md"
-          />
-          {isOpenToWork && (
-            <span
-              className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-success border-2 border-background grid place-items-center shadow-sm"
-              title="Open to Work"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-white" style={{ animation: 'konektPulseDot 1.6s ease-in-out infinite' }} />
-            </span>
-          )}
-        </div>
+    <section aria-label={`Profil de ${profile.name || 'ce candidat'}`} className="rounded-xl border border-border bg-card p-4 sm:p-5">
+      <div className="flex items-start gap-4">
+        <CandidateAvatar name={profile.name} imageUrl={profile.profile_picture_url} size="lg" className="sm:h-14 sm:w-14" />
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
             <div className="min-w-0 flex-1">
-              <h2 className="font-display text-[20px] sm:text-[22px] font-bold leading-tight tracking-tight text-foreground">
-                {profile.name}
-              </h2>
-              <p className="text-[13px] text-muted-foreground mt-1 line-clamp-2 leading-snug">
-                {profile.headline || '—'}
-              </p>
+              <h3 className="text-lg font-semibold leading-tight text-foreground">{profile.name}</h3>
+              {profile.headline && (
+                <p className="mt-1 line-clamp-2 text-sm leading-snug text-foreground-secondary">{profile.headline}</p>
+              )}
             </div>
-            {score?.score != null && (
-              <ScoreCircle score={score.score} recommendation={score.recommendation} />
-            )}
+            <ScoreBadge score={score?.score} showLevel className="shrink-0" />
           </div>
 
-          {/* Meta row : location + xp + email status */}
-          <div className="flex items-center gap-3 mt-3 flex-wrap text-[12px]">
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
             {profile.location && (
-              <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <MapPin className="w-3.5 h-3.5" />
-                <span>{profile.location.split(',')[0]}</span>
+              <span className="inline-flex items-center gap-1">
+                <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                {profile.location.split(',')[0]}
               </span>
             )}
             {yearsXP != null && (
-              <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Briefcase className="w-3.5 h-3.5" />
-                <span><strong className="text-foreground tabular-nums">{yearsXP}</strong> ans XP</span>
+              <span className="inline-flex items-center gap-1">
+                <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="tabular-nums">{yearsXP} ans d'expérience</span>
               </span>
             )}
             {hasEmail && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30 text-[11px] font-medium">
-                <Mail className="w-3 h-3" />
-                Email
+              <span className="inline-flex items-center gap-1">
+                <span aria-hidden="true" className="inline-flex"><ChannelIcon channel="email" size="xs" /></span>
+                Adresse e-mail connue
               </span>
             )}
-            {isOpenToWork && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 text-[11px] font-medium">
-                <span className="h-1.5 w-1.5 rounded-full bg-success" style={{ animation: 'konektPulseDot 1.6s ease-in-out infinite' }} />
-                Open to Work
-              </span>
-            )}
+            {isOpenToWork && <Badge variant="success">Ouvert aux opportunités</Badge>}
           </div>
         </div>
       </div>
 
-      {/* Parcours + Formation : visuel plus aéré */}
       {(workSummary || education) && (
-        <div className="mt-5 space-y-2 pt-4 border-t border-border/60">
+        <div className="mt-4 space-y-2 border-t border-border pt-4">
           {workSummary && (
             <div className="flex items-start gap-2.5">
-              <div className="h-7 w-7 rounded-lg bg-foreground/5 grid place-items-center shrink-0 mt-0.5">
-                <Briefcase className="w-3.5 h-3.5 text-foreground/70" />
-              </div>
+              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-0.5">
-                  Parcours
-                </p>
-                <p className="text-[13px] text-foreground leading-snug">
+                <p className="eyebrow">Parcours</p>
+                <p className="text-sm leading-snug text-foreground">
                   {workSummary}
-                  <span className="text-muted-foreground/70 ml-1.5 text-[11.5px]">
-                    ({profile.work_experience?.length || 0} postes)
+                  <span className="ml-1.5 text-xs text-muted-foreground">
+                    ({positions} {positions > 1 ? 'postes' : 'poste'})
                   </span>
                 </p>
               </div>
@@ -131,98 +105,36 @@ export function CandidateContextHeader({ profile, score, linkedinUrl }: Props) {
           )}
           {education && (
             <div className="flex items-start gap-2.5">
-              <div className="h-7 w-7 rounded-lg bg-foreground/5 grid place-items-center shrink-0 mt-0.5">
-                <GraduationCap className="w-3.5 h-3.5 text-foreground/70" />
-              </div>
+              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                <GraduationCap className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-0.5">
-                  Formation
-                </p>
-                <p className="text-[13px] text-foreground leading-snug">
-                  {education}
-                </p>
+                <p className="eyebrow">Formation</p>
+                <p className="text-sm leading-snug text-foreground">{education}</p>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Skills tags — plus visibles, plus présents */}
       {skills.length > 0 && (
-        <div className="mt-4 flex items-center gap-1.5 flex-wrap">
+        <ul className="mt-4 flex flex-wrap items-center gap-1.5" aria-label="Compétences">
           {skills.map(s => (
-            <span
-              key={s}
-              className="text-[11.5px] px-2.5 py-1 rounded-full bg-foreground/5 border border-border text-foreground/80 font-medium hover:bg-foreground/10 transition-colors"
-            >
-              {s}
-            </span>
+            <li key={s}>
+              <Badge variant="muted" className="font-normal">{s}</Badge>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* Lazy-loaded history */}
       <CandidateHistorySection candidateId={profile.id} linkedinUrl={linkedinUrl} />
-    </motion.div>
+    </section>
   );
 }
 
-// ─── Score Circle (gauge visuelle au lieu d'une pill plate) ─────────
-function ScoreCircle({ score, recommendation }: { score: number; recommendation: string | null }) {
-  const tone = score >= 70 ? 'success' : score >= 50 ? 'warning' : 'destructive';
-  const colors = {
-    success: { ring: 'hsl(var(--status-success))', bg: 'hsl(var(--status-success-muted))', text: 'hsl(var(--status-success))' },
-    warning: { ring: 'hsl(var(--status-warning))', bg: 'hsl(var(--status-warning-muted))', text: 'hsl(var(--status-warning))' },
-    destructive: { ring: 'hsl(var(--destructive))', bg: 'hsl(var(--destructive) / 0.1)', text: 'hsl(var(--destructive))' },
-  }[tone];
-
-  // Circle dimensions
-  const size = 56;
-  const stroke = 4;
-  const radius = (size - stroke) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (Math.min(score, 100) / 100) * circumference;
-
-  return (
-    <div className="flex flex-col items-center shrink-0" title={recommendation || `Score ${score}/100`}>
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke="hsl(var(--border))"
-            strokeWidth={stroke}
-            fill="none"
-          />
-          <motion.circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={colors.ring}
-            strokeWidth={stroke}
-            fill="none"
-            strokeLinecap="round"
-            initial={{ strokeDashoffset: circumference }}
-            animate={{ strokeDashoffset: offset }}
-            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
-            style={{ strokeDasharray: circumference }}
-          />
-        </svg>
-        <div className="absolute inset-0 grid place-items-center">
-          <span className="font-display font-bold text-[14px] tabular-nums" style={{ color: colors.text }}>
-            {score}
-          </span>
-        </div>
-      </div>
-      {recommendation && (
-        <span className="text-[10px] uppercase tracking-wider font-semibold mt-1" style={{ color: colors.text }}>
-          {recommendation}
-        </span>
-      )}
-    </div>
-  );
-}
+const triggerClass =
+  'inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11';
 
 function CandidateHistorySection({ candidateId, linkedinUrl }: { candidateId: string; linkedinUrl: string | null }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -234,13 +146,13 @@ function CandidateHistorySection({ candidateId, linkedinUrl }: { candidateId: st
   };
 
   return (
-    <div className="mt-4 pt-3 border-t border-border/60">
+    <div className="mt-4 border-t border-border pt-3">
       {loaded ? (
         <CandidateHistoryLoaded candidateId={candidateId} linkedinUrl={linkedinUrl} isOpen={isOpen} onOpenChange={handleOpen} />
       ) : (
         <Collapsible open={isOpen} onOpenChange={handleOpen}>
-          <CollapsibleTrigger className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-foreground transition-colors font-medium">
-            <ChevronRight className="w-3.5 h-3.5" />
+          <CollapsibleTrigger className={triggerClass}>
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             Historique des interactions
           </CollapsibleTrigger>
         </Collapsible>
@@ -255,31 +167,36 @@ function CandidateHistoryLoaded({ candidateId, linkedinUrl, isOpen, onOpenChange
   const { timeline, loading } = useCandidateFullProfile(candidateId, linkedinUrl);
   const recentTimeline = timeline.slice(0, 5);
 
-  if (!loading && recentTimeline.length === 0) return null;
-
   return (
     <Collapsible open={isOpen} onOpenChange={onOpenChange}>
-      <CollapsibleTrigger className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-foreground transition-colors font-medium">
-        <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
-        Historique <span className="opacity-70 tabular-nums">({loading ? '…' : `${timeline.length} interaction${timeline.length > 1 ? 's' : ''}`})</span>
+      <CollapsibleTrigger className={triggerClass}>
+        <ChevronRight className={cn('h-3.5 w-3.5 transition-transform duration-150', isOpen && 'rotate-90')} aria-hidden="true" />
+        Historique des interactions
+        {!loading && (
+          <span className="tabular-nums">({timeline.length})</span>
+        )}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="pl-4 mt-2 space-y-1.5 border-l-2 border-border/60 ml-1.5">
+        <div className="ml-1.5 mt-2 space-y-1.5 border-l border-border pl-4">
           {loading ? (
             <>
               <Skeleton className="h-3 w-48" />
               <Skeleton className="h-3 w-40" />
             </>
+          ) : recentTimeline.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Aucune interaction avec ce candidat pour le moment.</p>
           ) : (
             recentTimeline.map((item, i) => (
-              <div key={i} className="text-[11.5px] text-muted-foreground leading-snug">
-                <span className="font-semibold text-foreground/80 tabular-nums">
-                  {item.date ? format(new Date(item.date), 'dd MMM', { locale: fr }) : '—'}
-                </span>
-                <span className="mx-1.5 opacity-50">·</span>
+              <p key={i} className="text-xs leading-snug text-muted-foreground">
+                {item.date && (
+                  <span className="font-medium tabular-nums text-foreground">
+                    {format(new Date(item.date), 'd MMM', { locale: fr })}
+                  </span>
+                )}
+                {item.date && <span aria-hidden="true"> · </span>}
                 {item.title}
-                {item.detail && <span className="italic opacity-70"> — {item.detail}</span>}
-              </div>
+                {item.detail && <span> · {item.detail}</span>}
+              </p>
             ))
           )}
         </div>

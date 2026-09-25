@@ -1,21 +1,21 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { CandidateState, computeYearsOfExperience, getChannelAvailability } from './types';
 import { cn } from '@/lib/utils';
-import { Check, Pencil, MapPin, Briefcase, MoreVertical, X as XIcon, SkipForward, BarChart3, History, ExternalLink, Mail } from 'lucide-react';
+import { Check, ExternalLink, History, MailX, MoreHorizontal, PhoneOff, Pencil, SkipForward, BarChart3, X as XIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ScoreBadge } from '@/components/ui/score-badge';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
 // I3 — primitive partagée pour avatar candidat
 import { CandidateAvatar } from '@/components/candidates/shared/CandidateAvatar';
-// Logos officiels (cohérence avec le reste de la modal)
-import linkedinLogo from '@/assets/linkedin-logo.svg';
-import whatsappLogo from '@/assets/whatsapp-logo.svg';
 
 interface Props {
   profile: LinkedInProfile;
@@ -24,6 +24,8 @@ interface Props {
   hasEdits: boolean;
   state: CandidateState;
   score: number | null | undefined;
+  /** Texte d'aide des raccourcis de la liste (aria-describedby). */
+  shortcutsHelpId?: string;
   onSelect: () => void;
   onRemove: () => void;
   onSkip: () => void;
@@ -31,240 +33,162 @@ interface Props {
   onViewHistory: () => void;
 }
 
+/**
+ * Ligne d'un candidat dans la préparation : un bouton qui affiche ses aperçus
+ * et un menu « Actions » toujours visible, au doigt comme au clavier. Les
+ * raccourcis (↑ ↓, P, X ou Suppr) sont gérés par la liste (revue design D-44).
+ */
 export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
-  profile, isSelected, allGenerated, hasEdits, state, score,
+  profile, isSelected, allGenerated, hasEdits, state, score, shortcutsHelpId,
   onSelect, onRemove, onSkip, onViewScoring, onViewHistory,
 }: Props) {
   const yearsXP = useMemo(() => computeYearsOfExperience(profile), [profile]);
   const channels = useMemo(() => getChannelAvailability(profile), [profile]);
+  // La fenêtre du score ou de l'historique ne s'ouvre qu'une fois le menu
+  // refermé : ouverte pendant sa fermeture, elle perdait aussitôt le focus et
+  // se refermait (souris comme clavier).
+  const pendingPanelRef = useRef<'score' | 'history' | null>(null);
 
   if (state.removed) return null;
 
   const linkedinUrl = profile.profile_url || profile.public_profile_url;
+  const name = profile.name || 'Candidat sans nom';
+  const city = profile.location?.split(',')[0];
 
   return (
-    <div
-      onClick={onSelect}
-      className={cn(
-        "group w-full max-w-full flex flex-col gap-2 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer relative border overflow-hidden",
-        state.skipped && "opacity-50",
-        isSelected
-          ? "bg-foreground/[0.04] border-foreground/20 shadow-sm"
-          : "bg-transparent border-transparent hover:bg-muted/40 hover:border-border"
-      )}
-    >
-      {/* Active indicator bar (left) */}
-      {isSelected && (
-        <span
-          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-foreground"
-          aria-hidden="true"
-        />
-      )}
+    <div className="relative">
+      <Button
+        type="button"
+        variant="ghost"
+        data-candidate-id={profile.id}
+        aria-current={isSelected ? 'true' : undefined}
+        aria-describedby={shortcutsHelpId}
+        onClick={onSelect}
+        className={cn(
+          // Ligne de liste : pleine largeur, sur plusieurs lignes, sans effet d'appui.
+          'h-auto w-full min-w-0 items-start justify-start gap-2.5 whitespace-normal border px-3 py-2.5 pr-11 text-left font-normal active:scale-100 max-md:pr-14 [&_svg]:size-3',
+          isSelected ? 'border-border-strong bg-accent' : 'border-transparent',
+        )}
+      >
+        <CandidateAvatar name={profile.name} imageUrl={profile.profile_picture_url} size="sm" className="mt-0.5" />
 
-      <div className="flex items-start gap-2.5 min-w-0">
-        {/* Avatar — taille augmentée pour plus de présence */}
-        <div className="relative shrink-0">
-          <CandidateAvatar
-            name={profile.name}
-            imageUrl={profile.profile_picture_url}
-            size="sm"
-            className="!w-9 !h-9 ring-1 ring-border"
-          />
-          {allGenerated && (
-            <span
-              className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-success border-2 border-background grid place-items-center"
-              title="Tous les messages générés"
-            >
-              <Check className="w-2 h-2 text-white" strokeWidth={3} />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className={cn('truncate text-sm font-semibold leading-tight', state.skipped ? 'text-muted-foreground' : 'text-foreground')}>
+              {name}
+            </span>
+            {state.skipped && <Badge variant="muted" className="shrink-0 px-1.5 py-0 text-3xs">Passé</Badge>}
+          </span>
+          {profile.headline && (
+            <span className="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">{profile.headline}</span>
+          )}
+
+          {(city || yearsXP != null || score != null) && (
+            <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              {city && <span>{city}</span>}
+              {yearsXP != null && <span className="tabular-nums">{yearsXP} ans d'exp.</span>}
+              <ScoreBadge score={score} className="px-1.5 py-0" />
             </span>
           )}
-        </div>
 
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <p className={cn(
-              "text-[13px] font-semibold truncate text-foreground tracking-tight leading-tight min-w-0",
-              state.skipped && "line-through"
-            )}>
-              {profile.name}
-            </p>
-            {state.skipped && (
-              <Badge variant="outline" className="text-3xs h-4 px-1.5 border-warning/30 bg-warning/10 text-warning shrink-0">
-                Passé
-              </Badge>
-            )}
-            {hasEdits && (
-              <span title="Édité manuellement" className="shrink-0">
-                <Pencil className="w-2.5 h-2.5 text-warning" />
+          {/* Canaux : logo ou icône quand le candidat est joignable, le manque
+              écrit en toutes lettres (jamais la couleur ni l'opacité seules). */}
+          <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <ChannelAvailability available={channels.linkedin} channel="linkedin" />
+            <ChannelAvailability available={channels.email} channel="email" />
+            <ChannelAvailability available={channels.whatsapp} channel="whatsapp" />
+            {(allGenerated || hasEdits) && (
+              <span className="ml-auto inline-flex items-center gap-1">
+                {hasEdits ? <Pencil aria-hidden="true" /> : <Check aria-hidden="true" />}
+                {hasEdits ? 'Retouché' : 'Aperçus prêts'}
               </span>
             )}
-          </div>
-          {/* Headline en 2 lignes max (line-clamp) au lieu de truncate single ligne :
-              les headlines LinkedIn sont souvent longues, 2 lignes lisibles >>
-              "Tech Lead | Software Architect | Symfony C..." en 1 ligne tronquée */}
-          <p
-            className="text-2xs text-muted-foreground mt-0.5 leading-snug min-w-0 overflow-hidden"
-            style={{
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              wordBreak: 'break-word',
-            }}
-          >
-            {profile.headline || '—'}
-          </p>
-        </div>
-
-        {/* Action menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              onClick={e => e.stopPropagation()}
-              className="h-6 w-6 grid place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-muted transition-all shrink-0"
-            >
-              <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={e => { e.stopPropagation(); onRemove(); }}>
-              <XIcon className="w-3.5 h-3.5 mr-2" /> Retirer de la sélection
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={e => { e.stopPropagation(); onSkip(); }}>
-              <SkipForward className="w-3.5 h-3.5 mr-2" /> {state.skipped ? 'Réintégrer' : 'Passer'}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={e => { e.stopPropagation(); onViewScoring(); }}>
-              <BarChart3 className="w-3.5 h-3.5 mr-2" /> Voir le scoring
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={e => { e.stopPropagation(); onViewHistory(); }}>
-              <History className="w-3.5 h-3.5 mr-2" /> Voir l'historique
-            </DropdownMenuItem>
-            {linkedinUrl && (
-              <DropdownMenuItem onClick={e => { e.stopPropagation(); window.open(linkedinUrl, '_blank'); }}>
-                <ExternalLink className="w-3.5 h-3.5 mr-2" /> Ouvrir LinkedIn
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Meta row : meilleure typographie + score plus visible */}
-      <div className="flex items-center gap-2 pl-[44px] flex-wrap text-2xs">
-        {profile.location && (
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <MapPin className="w-2.5 h-2.5" />
-            {profile.location.split(',')[0]}
           </span>
-        )}
-        {yearsXP != null && (
-          <span className="inline-flex items-center gap-1 text-muted-foreground tabular-nums">
-            <Briefcase className="w-2.5 h-2.5" />
-            {yearsXP}<span className="opacity-60">ans</span>
-          </span>
-        )}
-        {score != null && (
-          <span className={cn(
-            "inline-flex items-center px-1.5 py-0.5 rounded-full font-semibold tabular-nums border",
-            score >= 70 ? "bg-success/10 text-success border-success/30"
-              : score >= 50 ? "bg-warning/10 text-warning border-warning/30"
-              : "bg-muted/50 text-muted-foreground border-border"
-          )}>
-            {score}
-          </span>
-        )}
-      </div>
+        </span>
+      </Button>
 
-      {/* Channel badges — vrais logos LinkedIn/WhatsApp + icon Lucide
-          pour Email. Logo coloré quand dispo, grisé quand manquant. */}
-      <TooltipProvider delayDuration={300}>
-        <div className="flex items-center gap-1 pl-[44px]">
-          <ChannelBadge
-            available={channels.email}
-            kind="email"
-            tooltipMissing="Pas d'email — étapes Email skippées"
-            tooltipAvailable="Email disponible"
-          />
-          <ChannelBadge
-            available={channels.linkedin}
-            kind="linkedin"
-            tooltipMissing="Pas de profil LinkedIn"
-            tooltipAvailable="LinkedIn disponible"
-          />
-          <ChannelBadge
-            available={channels.whatsapp}
-            kind="whatsapp"
-            tooltipMissing="Pas de téléphone — étapes WhatsApp skippées"
-            tooltipAvailable="WhatsApp disponible"
-          />
-        </div>
-      </TooltipProvider>
+      {/* Actions : toujours visibles (plus d'apparition au survol seul). */}
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Actions pour ${name}`}
+                className="absolute right-1.5 top-1.5 text-muted-foreground max-md:h-11 max-md:w-11"
+              >
+                <MoreHorizontal aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="left">Actions</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent
+          align="end"
+          className="w-56"
+          onCloseAutoFocus={(e) => {
+            const panel = pendingPanelRef.current;
+            if (!panel) return;
+            e.preventDefault();
+            pendingPanelRef.current = null;
+            if (panel === 'score') onViewScoring();
+            else onViewHistory();
+          }}
+        >
+          <DropdownMenuItem onSelect={onRemove}>
+            <XIcon className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Retirer de la sélection
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onSkip}>
+            <SkipForward className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> {state.skipped ? 'Réintégrer' : 'Passer ce candidat'}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { pendingPanelRef.current = 'score'; }}>
+            <BarChart3 className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Voir le détail du score
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { pendingPanelRef.current = 'history'; }}>
+            <History className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Voir l'historique
+          </DropdownMenuItem>
+          {linkedinUrl && (
+            <DropdownMenuItem onSelect={() => window.open(linkedinUrl, '_blank', 'noopener,noreferrer')}>
+              <ExternalLink className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Ouvrir le profil LinkedIn
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 });
 
-function ChannelBadge({
-  available, kind, tooltipMissing, tooltipAvailable,
-}: {
-  available: boolean;
-  kind: 'email' | 'linkedin' | 'whatsapp';
-  tooltipMissing: string;
-  tooltipAvailable: string;
-}) {
-  const renderIcon = () => {
-    if (kind === 'email') {
-      return <Mail className="w-3 h-3" strokeWidth={2.25} />;
-    }
-    if (kind === 'linkedin') {
-      return (
-        <img
-          src={linkedinLogo}
-          alt=""
-          className={cn(
-            'w-3 h-3 object-contain',
-            !available && 'opacity-40 grayscale',
-          )}
-          aria-hidden="true"
-        />
-      );
-    }
-    // whatsapp
+const MISSING: Record<'linkedin' | 'email' | 'whatsapp', { icon: React.ElementType; text: string; label: string }> = {
+  linkedin: { icon: XIcon, text: 'sans LinkedIn', label: 'Pas de profil LinkedIn' },
+  email: { icon: MailX, text: 'sans e-mail', label: "Pas d'adresse e-mail : les étapes e-mail seront ignorées" },
+  whatsapp: { icon: PhoneOff, text: 'sans tél.', label: 'Pas de téléphone : les messages WhatsApp seront ignorés' },
+};
+
+const AVAILABLE: Record<'linkedin' | 'email' | 'whatsapp', string> = {
+  linkedin: 'LinkedIn disponible',
+  email: 'Adresse e-mail disponible',
+  whatsapp: 'Téléphone disponible pour WhatsApp',
+};
+
+/** Canal joignable (logo ou icône du canal) ou manquant (icône et mot). */
+function ChannelAvailability({ available, channel }: { available: boolean; channel: 'linkedin' | 'email' | 'whatsapp' }) {
+  if (available) {
     return (
-      <img
-        src={whatsappLogo}
-        alt=""
-        className={cn(
-          'w-3 h-3 object-contain',
-          !available && 'opacity-40 grayscale',
-        )}
-        aria-hidden="true"
-      />
+      <span className="inline-flex" title={AVAILABLE[channel]}>
+        <span className="sr-only">{AVAILABLE[channel]}</span>
+        <span aria-hidden="true" className="inline-flex">
+          <ChannelIcon channel={channel} size="xs" />
+        </span>
+      </span>
     );
-  };
-
-  const colorClass = (() => {
-    if (!available) return 'border-border text-muted-foreground/50 bg-muted/30';
-    if (kind === 'email') return 'border-info/30 text-info bg-info/10';
-    if (kind === 'linkedin') return 'border-info/30 bg-info/10';
-    return 'border-success/30 bg-success/10';
-  })();
-
-  const badge = (
-    <span
-      className={cn(
-        'inline-flex items-center justify-center h-5 w-5 rounded border transition-colors',
-        colorClass,
-      )}
-      aria-label={`${kind}${available ? ' disponible' : ' indisponible'}`}
-    >
-      {renderIcon()}
-    </span>
-  );
-
+  }
+  const Missing = MISSING[channel].icon;
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{badge}</TooltipTrigger>
-      <TooltipContent side="bottom" className="text-xs">
-        {available ? tooltipAvailable : tooltipMissing}
-      </TooltipContent>
-    </Tooltip>
+    <span className="inline-flex items-center gap-0.5" title={MISSING[channel].label}>
+      <Missing aria-hidden="true" />
+      <span aria-hidden="true">{MISSING[channel].text}</span>
+      <span className="sr-only">{MISSING[channel].label}</span>
+    </span>
   );
 }
