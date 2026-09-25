@@ -289,7 +289,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       // Get Deepgram key
       const { data: keyData, error: keyError } = await invokeEdgeFunction<{ key?: string }>('deepgram-temp-key');
-      if (keyError || !keyData?.key) { stream.getTracks().forEach(t => t.stop()); throw new Error('Failed to get Deepgram key'); }
+      if (keyError || !keyData?.key) { stream.getTracks().forEach(t => t.stop()); throw new Error('La transcription est indisponible. Réessayez dans un instant.'); }
 
       callStartRef.current = Date.now();
       fullTranscriptRef.current = '';
@@ -415,7 +415,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
 
       dgSocket.onerror = (err) => {
         console.error('Deepgram error:', err);
-        toast.error('Erreur de connexion Deepgram');
+        toast.error('La transcription est indisponible. Réessayez dans un instant.');
       };
 
       dgSocket.onclose = () => console.log('Deepgram socket closed');

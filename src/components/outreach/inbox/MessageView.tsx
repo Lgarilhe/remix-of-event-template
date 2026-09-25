@@ -721,7 +721,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             {displayContext && (
               <div className="flex items-center gap-2 flex-wrap mt-1.5">
                 {displayContext.title && (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground bg-foreground/8 border border-border px-2 py-0.5 rounded-md">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
                     <Briefcase className="w-3 h-3 text-muted-foreground" />
                     {displayContext.title}
                   </span>
@@ -739,7 +739,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setStopSeqConfirm(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive bg-destructive/8 border border-destructive/30 px-2 py-0.5 rounded-md hover:bg-destructive/15 transition-colors"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive bg-danger-muted border border-destructive/30 px-2 py-0.5 rounded-md hover:bg-destructive/15 transition-colors"
                     title="Arrêter la séquence — annule toutes les relances programmées pour ce candidat"
                   >
                     <StopCircle className="w-3 h-3" />

@@ -37,9 +37,12 @@ Teinte 40°, saturation 3 %. Le thème sombre est le thème par défaut, le clai
 | `--accent` | survol d'une ligne ou d'un item | `40 3% 20%` | `40 8% 93%` |
 | `--sidebar-background` | barre latérale | `40 3% 8%` | `40 8% 96%` |
 | `--border` | filet | blanc 10 % | `40 8% 90%` |
-| `--border-strong` | filet appuyé, focus d'un champ | blanc 18 % | `40 8% 80%` |
+| `--border-strong` | filet appuyé | blanc 18 % | `40 8% 80%` |
+| `--input` | bord de champ, de case à cocher, piste d'interrupteur éteint | blanc 36 % | `40 3% 53%` |
 
-Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gris de survol, pas la couleur de marque. La couleur de marque s'appelle `brand`.
+`--input` atteint 3:1 sur toutes les surfaces (3,1:1 au pire, sur `muted` en sombre et sur `accent` en clair) : un champ se repère sans son libellé. Au survol, son bord passe à `muted-foreground` ; au focus, à `brand`.
+
+Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gris de survol, pas la couleur de marque. La couleur de marque s'appelle `brand`. Pour ne pas laisser d'anciens usages invisibles, `text-accent` et `border-accent` rendent `brand` ; le nouveau code écrit `text-brand`.
 
 ### Le texte
 
@@ -50,6 +53,8 @@ Attention au nom : dans ce dépôt, `accent` (hérité de shadcn) désigne le gr
 | `--muted-foreground` | métadonnées, libellés discrets | `40 3% 62%` | `40 4% 42%` |
 
 Contraste vérifié : `muted-foreground` dépasse 4,5:1 sur le fond, la carte et `muted`, dans les deux thèmes (5,1:1 au pire). L'ancienne valeur sombre (56 %) tombait à 4,2:1 sur `muted`, l'ancienne valeur claire (46 %) à 4,3:1 sur le fond.
+
+Pas d'opacité sur un jeton de texte (`text-muted-foreground/60`, `text-foreground/70`) : elle fait tomber le texte sous 4,5:1. Choisir l'un des trois niveaux ci-dessus.
 
 ### L'accent
 
@@ -149,6 +154,8 @@ Un bouton icône a toujours un `aria-label` et une infobulle.
 
 Badges : variantes `success`, `warning`, `info`, `danger`, `brand`, `muted`, `outline`, toutes en fond teinté. Un statut se peint de la même façon sur tous les écrans.
 
+Toasts : un seul système, sonner (`import { toast } from "sonner"`). L'ancienne API `useToast` passe par lui. L'action d'un toast (« Annuler ») reste cliquable quand un dialogue est ouvert, et ce clic ne ferme pas le dialogue.
+
 ## 7. Mouvement
 
 | Usage | Durée | Courbe |
@@ -190,6 +197,6 @@ Chaque écran qui charge des données prévoit quatre états :
 
 ## 11. Ce qui garde ces règles
 
-- `npm run audit:design` compte la dette visuelle de `src/` (couleurs brutes, tailles arbitraires, effets décoratifs, rayons hors système, emoji, tirets longs, noms de fournisseurs, boutons et champs faits main).
+- `npm run audit:design` compte la dette visuelle de `src/` : couleurs brutes et ancienne palette de marque, tailles arbitraires, effets décoratifs, rayons hors système, texte atténué par opacité, variables CSS lues sans être déclarées, emoji, tirets longs, noms de fournisseurs, boutons et champs faits main.
 - Le job CI « Design (ratchet) » refuse une PR qui fait monter un de ces compteurs par rapport à `main`.
 - Le banc visuel (`docs/design/05-banc-visuel.md`) capture chaque écran en clair, en sombre, sur ordinateur et sur téléphone, avant et après un lot.

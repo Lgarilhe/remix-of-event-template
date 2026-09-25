@@ -3,6 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import * as React from "react";
 
+import { isToastTarget } from "@/lib/overlayInteractions";
 import { cn } from "@/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
@@ -60,8 +61,10 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
         className={cn(sheetVariants({ side }), className)}
         onPointerDownOutside={(e) => {
           // Prevent sheet from closing when interacting with portaled Radix components (Select, Popover, etc.)
+          // or with a toast (its action button must act, not close the sheet).
           const target = e.target as HTMLElement;
           if (
+            isToastTarget(e.target) ||
             target?.closest?.('[data-radix-popper-content-wrapper]') ||
             target?.closest?.('[role="listbox"]') ||
             target?.closest?.('[role="dialog"]') ||
@@ -74,6 +77,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
         onInteractOutside={(e) => {
           const target = e.target as HTMLElement;
           if (
+            isToastTarget(e.target) ||
             target?.closest?.('[data-radix-popper-content-wrapper]') ||
             target?.closest?.('[role="listbox"]') ||
             target?.closest?.('[role="dialog"]') ||

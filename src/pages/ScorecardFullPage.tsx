@@ -685,7 +685,7 @@ export default function ScorecardFullPage() {
 
                 {jobDetails?.description && (
                   <SidebarSection icon={Briefcase} title="Description du poste">
-                    <p className="text-2xs text-foreground/85 leading-relaxed line-clamp-8 whitespace-pre-line">
+                    <p className="text-2xs text-foreground/85 leading-relaxed line-clamp-6 whitespace-pre-line">
                       {jobDetails.description}
                     </p>
                   </SidebarSection>

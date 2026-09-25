@@ -57,7 +57,7 @@ Statut au commit du lot 2 (`b90f07a1`). « Lot n » renvoie à `03-lots.md`.
 | B-04 | Stepper : phases cochées « terminées » selon leur position, pas leur complétude | remis à la refonte mission |
 | B-05 | Liste des missions : le KPI « Réponses » compte des shortlistés | remis à la refonte mission |
 | B-06 | « Shortlister » ajoute en statut `untreated` et annonce « shortlisté » | remis à la refonte mission |
-| B-07 | Noms de fournisseurs visibles : « Apollo » (badge de source), « Deepgram » (toast de la dictée) | lot 9 (Apollo, onboarding) et lot 7 (Deepgram, avec le coaching) |
+| B-07 | Noms de fournisseurs visibles : « Apollo » (badge de source), « Deepgram » (toast de la dictée) | corrigé (lot 3) |
 | B-08 | Revue des filtres : modale maison sans rôle, sans piège de focus, voile blanc à 60 % en sombre | remis à la refonte mission |
 | B-09 | État vide de /missions : fond animé, particules, bouton dans un bouton, faux logos d'intégration | remis à la refonte mission |
 | B-10 | CTA principaux en dégradé animé avec reflet | partiel (lot 1 : aplat indigo sans animation) ; remis à la refonte mission |
@@ -116,7 +116,7 @@ Statut au commit du lot 2 (`b90f07a1`). « Lot n » renvoie à `03-lots.md`.
 | E-07 | Bouton « Portail » annoncé pour le client, crée le lien du portail candidat | remis à la refonte mission (fiche) |
 | E-08 | Quatre actions IA de la fiche sans effet | remis à la refonte mission (fiche) |
 | E-09 | Coaching : boutons sans effet | lot 7 |
-| E-10 | « Deepgram » visible (règle de marque) | lot 7 |
+| E-10 | « Deepgram » visible (règle de marque) | corrigé (lot 3) |
 | E-11 | Scores illisibles en clair | partiel (lot 1 : statuts par thème) ; lot 7 hors mission, refonte mission pour la mission |
 | E-12 | `text-accent` invisible (page Agents, outils de l'assistant) | corrigé (lot 1) |
 | E-13 | Coaching : textes à 1,06:1 et 1,24:1 (`*-foreground` sur teinte) | lot 7 |
@@ -139,26 +139,26 @@ Tous les constats G sont listés : ils portent sur le socle et conditionnent les
 | ID | Prio | Constat | Statut |
 |---|---|---|---|
 | G-01 | P1 | 96 classes d'opacité sur des jetons à alpha intégré : CSS invalide en sombre | corrigé (lot 1) |
-| G-02 | P1 | `var(--success)`, `var(--info)`, `var(--k-bad)` lus sans exister : courbes et anneaux non tracés | corrigé (lot 1) ; contrôle ajouté au cliquet au lot 3 |
+| G-02 | P1 | `var(--success)`, `var(--info)`, `var(--k-bad)` lus sans exister : courbes et anneaux non tracés | corrigé (lot 1) ; le cliquet compte les variables inconnues depuis le lot 3 (0) |
 | G-04 | P1 | 53 variantes `dark:` inertes (texte d'alerte LinkedIn à 1,57:1) | corrigé (lot 1) |
-| G-05 | P1 | Statuts à valeur unique pour les deux thèmes ; 290 `text-muted-foreground/NN` sous 4,5:1 | partiel (lot 1 : statuts par thème) ; opacités de texte comptées par le cliquet au lot 3, reprises écran par écran |
+| G-05 | P1 | Statuts à valeur unique pour les deux thèmes ; 290 `text-muted-foreground/NN` sous 4,5:1 | partiel (lot 1 : statuts par thème ; lot 3 : opacités de texte comptées par le cliquet, 484 au départ) ; reprises écran par écran |
 | G-06 | P1 | Anneau de focus à 2,3:1 ; `focus:` au lieu de `focus-visible:` dans quatre primitives | corrigé (lot 1) |
-| G-03 | P2 | Classes sans CSS généré (`bg-foreground/8`, `w-4.5`, `line-clamp-8`) | lot 3 |
+| G-03 | P2 | Classes sans CSS généré (`bg-foreground/8`, `w-4.5`, `line-clamp-8`) | corrigé (lot 3) |
 | G-07 | P2 | Bouton principal jamais employé, 143 aplats inversés refaits à la main ; `AlertDialogAction` transparent | partiel (lot 1 : `primary` monochrome, `AlertDialogAction` en `primary` ou `destructive`) ; aplats repris dans les lots d'écran |
 | G-08 | P2 | Hauteurs : 48 % des `Button`, 71 % des `Input`, 79 % des `SelectTrigger` surchargent la leur | partiel (lot 1 : échelle 28, 32, 36, 40) ; surcharges retirées dans les lots d'écran |
 | G-09 | P2 | 1 124 tailles `text-[Npx]`, règle Outfit sur les titres, six familles chargées | partiel (lot 1 : une famille, règle retirée, paliers nommés) ; tailles reprises dans les lots d'écran |
-| G-10 | P2 | Deux systèmes de toast ; l'action d'un toast est inopérante quand un dialogue est ouvert | partiel (lot 1 : thème de l'application) ; lot 3 |
+| G-10 | P2 | Deux systèmes de toast ; l'action d'un toast est inopérante quand un dialogue est ouvert | corrigé (lot 1 : thème ; lot 3 : un seul système, toast cliquable par-dessus un dialogue) |
 | G-11 | P2 | Aucune échelle de calques ; quatre modales faites main sans rôle ni piège de focus | partiel (lot 1 : calques nommés) ; `SequenceBuilder` et `EnrollmentPreviewModal` au lot 6, `FilterWizard` et `CreateProjectModal` remis à la refonte mission |
 | G-12 | P2 | Deux jeux de jetons qui se doublonnent (`--k-*` et shadcn) | partiel (lot 1 : `--k-*` pointent vers les jetons communs) ; usages de la recherche remis à la refonte mission |
 | G-13 | P2 | `accent` désigne un gris de survol, `text-accent` écrit en gris | corrigé (lot 1) : `bg-accent` reste le survol, `text-accent` et `border-accent` rendent l'indigo |
 | G-14 | P2 | 16 rayons en circulation, cinq dans les seules primitives | partiel (lot 1 : primitives alignées) ; usages repris dans les lots d'écran |
 | G-15 | P2 | Mouvement réduit ignoré par 48 fichiers framer-motion | corrigé (lot 1) ; boucles décoratives retirées dans les lots d'écran |
-| G-16 | P2 | Ancien dégradé « skalr » et 123 classes `brand-purple` | partiel (lot 1 : classes partagées à plat) ; compteur ajouté au lot 3 |
+| G-16 | P2 | Ancien dégradé « skalr » et 123 classes `brand-purple` | partiel (lot 1 : classes partagées à plat ; lot 3 : compteur, 158 au départ) ; lots d'écran |
 | G-17 | P2 | 433 couleurs de palette brute, dont 76 tuiles d'icône émeraude | partiel (lot 1 : `IconTile` neutre par défaut) ; lots d'écran |
 | G-18 | P2 | Pas de primitives d'état : deux `EmptyState`, `ErrorBox` isolé, trois systèmes de chargement | partiel (lot 2 : `EmptyState`, `ErrorState`, `Spinner`) ; adoption dans les lots d'écran |
 | G-19 | P3 | Code mort : 16 fichiers de `ui/`, 4 de `layout/`, classes CSS orphelines | lot 11 (après fusion de la refonte mission) |
 | G-20 | P3 | Deux bascules de thème désynchronisées, `theme-color` faux | corrigé (lot 2) |
-| G-21 | P3 | Contrôles peu visibles : bord de champ 1,44:1, case vide 1,36:1, interrupteur éteint 1,46:1 | lot 3 |
+| G-21 | P3 | Contrôles peu visibles : bord de champ 1,44:1, case vide 1,36:1, interrupteur éteint 1,46:1 | partiel (lot 3 : champs, cases et interrupteurs à 3:1 ; onglet actif et item de menu sous 3:1, soumis à la contre-revue) |
 
 ## Ce qui attend une décision du propriétaire du produit
 

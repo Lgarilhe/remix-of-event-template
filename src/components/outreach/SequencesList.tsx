@@ -779,7 +779,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                     )}
                     {seq.enrollments.completed > 0 && (
                       <span
-                        className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-foreground/8 text-foreground/70 border border-border"
+                        className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-muted text-foreground/70 border border-border"
                         title={`${seq.enrollments.completed} candidat(s) ont parcouru toute la séquence sans répondre`}
                       >
                         ✓ {seq.enrollments.completed}
@@ -926,7 +926,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                     </span>
                   )}
                   {seq.enrollments.completed > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-foreground/8 text-foreground/70 border border-border">
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full bg-muted text-foreground/70 border border-border">
                       ✓ {seq.enrollments.completed}
                     </span>
                   )}

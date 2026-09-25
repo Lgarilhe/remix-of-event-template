@@ -52,17 +52,18 @@ Constats corrigés : A-02, A-04, A-05, A-07 à A-13, G-20. A-14 est partiel : le
 
 Reste : A-01 et A-03 (bande d'en-tête vide, cible tactile du bouton de navigation) et A-15 (aide contextuelle) vont à la barre latérale ; A-06 (noms des pages) au lot 10 pour les pages du chantier.
 
-### Lot 3 · Socle, suite
+### Lot 3 · Socle, suite (fait)
 
-Ce que la revue G a relevé et que le lot 1 laisse ouvert.
+Ce que la revue G a relevé et que le lot 1 laissait ouvert.
 
-- Bords de champ, de case à cocher et d'interrupteur à 3:1 dans les deux thèmes (G-21), comme l'annonce `01-direction.md` § 10.
-- Un seul système de toast : `Auth` et l'accueil passent à sonner, l'ancien `Toaster` est démonté. Un toast reste cliquable quand un dialogue est ouvert, et le clic ne ferme pas le dialogue (G-10).
-- Classes qui ne génèrent aucun CSS remplacées par des valeurs de l'échelle (G-03) ; keyframe manquante de `shimmer-button`.
-- Bandeau d'essai : fermeture mémorisée pour « Essai terminé », lien vers l'abonnement dans les Paramètres (F-65).
-- Cliquet : trois compteurs de plus, ancienne marque (`brand-purple`…), texte atténué par opacité (`text-muted-foreground/60`), variables CSS lues sans être déclarées (G-02, G-05, G-16).
+- Bords de champ, de case à cocher et d'interrupteur à 3:1 dans les deux thèmes (`--input` : blanc 36 % en sombre, `40 3% 53%` en clair, 3,1:1 au pire), survol en `muted-foreground`, focus en `brand`. L'onglet actif d'un `Tabs` prend un filet `border-strong` (G-21).
+- Un seul système de toast : l'ancienne API `useToast` passe par sonner, l'ancien `Toaster` est démonté et ses fichiers retirés. Un toast reste cliquable quand un dialogue ou un panneau est ouvert, et ce clic ne le ferme plus : vérifié dans Chromium sur « Nouvelle tâche » et sur la palette « Aller à » (G-10).
+- Les classes qui ne généraient aucun CSS (quatorze occurrences dans six fichiers) prennent des valeurs de l'échelle ; une recompilation de Tailwind sur toutes les classes du code n'en trouve plus (G-03). La keyframe `shimmer-spin` reste absente à dessein : l'effet est proscrit, et le seul bouton qui l'emploie part avec l'état vide des missions (B-09).
+- Bandeau d'essai : « Essai terminé » se ferme et reste fermé pour l'organisation, « Choisir un plan » mène à l'abonnement dans les Paramètres, un membre lit le nom du propriétaire (F-65).
+- Noms de fournisseurs : les quatre « Deepgram » de la dictée et du coaching deviennent « la transcription » ou « la dictée », le badge de source « Apollo » de l'onboarding devient « Base Konekt » (B-07, E-10). Le compteur couvre aussi les fournisseurs de transcription, de recherche et d'enrichissement.
+- Cliquet : trois compteurs de plus, avec leurs valeurs de départ : ancienne palette de marque 158, texte atténué par opacité 484, variables CSS lues sans être déclarées 0 (G-02, G-05, G-16).
 
-Fini quand : toast « Annuler » cliquable par-dessus un dialogue ouvert (vérifié dans Chromium), contrastes des contrôles mesurés à 3:1 ou plus, zéro variable inconnue.
+Reste : l'onglet actif et l'item de menu survolé se distinguent de leurs voisins sous 3:1 (fond, filet, couleur du texte). Relever ces fonds alourdirait tous les menus ; le choix est soumis à la contre-revue.
 
 ### Lot 4 · Tableau de bord
 
@@ -110,14 +111,14 @@ Remis : D-21, D-28 (onglet Outreach), D-52 (bouton « Séquence » des résultat
 
 ### Lot 7 · Pipeline global, scorecard, coaching, assistant IA, page Agents
 
-Périmètre : `src/pages/ATS.tsx` et les vues de `/pipeline` (tableau, chronologie, analyse, shortlist client), `ScorecardTab` et `ScorecardFullPage`, coaching en direct, `AgentsPage`, tiroir de l'assistant, IA en ligne, sheet de poste ; la chaîne « Deepgram » de la dictée (B-07).
+Périmètre : `src/pages/ATS.tsx` et les vues de `/pipeline` (tableau, chronologie, analyse, shortlist client), `ScorecardTab` et `ScorecardFullPage`, coaching en direct, `AgentsPage`, tiroir de l'assistant, IA en ligne, sheet de poste.
 
-Constats : E-04, E-05 (scorecard), E-09, E-10, E-13, E-14 (P1) ; E-11 hors mission ; E-15 à E-28, E-32 à E-40, E-43 à E-48, E-51, E-53.
+Constats : E-04, E-05 (scorecard), E-09, E-13, E-14 (P1) ; E-11 hors mission ; E-15 à E-28, E-32 à E-40, E-43 à E-48, E-51, E-53.
 
 - Un seul rendu du score (`ScoreBadge`) et un seul module de libellés d'étapes pour l'affichage, en attendant la décision sur la table d'étapes (E-01).
 - Carte de pipeline sur trois lignes ; glisser-déposer au clavier, avec annonces en français et « Annuler ».
 - Scorecard enregistrée en continu, suppression et régénération confirmées, verdicts en français.
-- Coaching : plus d'action sans effet, plus de nom de fournisseur, textes lisibles.
+- Coaching : plus d'action sans effet, textes lisibles.
 - Assistant : plus d'œil animé ni de texte miroitant ; étapes nommées, bouton « Arrêter », vouvoiement.
 
 Remis à la refonte mission : E-02, E-03, E-05 (fiche), E-06 à E-08, E-29 à E-31, E-41, E-42, E-49, E-52.
@@ -139,10 +140,10 @@ Attend : l'adresse de prise de rendez-vous (F-33) et la table d'étapes (F-53).
 
 Périmètre : `/onboarding` et `src/components/onboarding/**`, `WelcomeOnboardingModal`, `CollaboratorWelcome`, `/mission-invite/:token`, `/qualification/:id`, `/marketplace`.
 
-Constats : B-01 (P1), B-07 (Apollo), B-62 à B-67, B-72, B-85, B-87, B-88 ; E-50 ; F-26 à F-31.
+Constats : B-01 (P1), B-62 à B-67, B-72, B-85, B-87, B-88 ; E-50 ; F-26 à F-31.
 
 - Acceptation d'invitation en un seul appel, un message par cause, « Réessayer » pour le réseau.
-- Onboarding : sources de postes sans nom de fournisseur, plus d'analyse simulée, plus de confettis ni d'interstitiel.
+- Onboarding : plus d'analyse simulée, plus de confettis ni d'interstitiel.
 - Qualification : statut d'enregistrement visible, verdicts sans emoji (vocabulaire suivant la décision produit).
 - Marketplace sur les primitives.
 

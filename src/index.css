@@ -54,9 +54,10 @@
     --border-strong: 0 0% 100% / 18%;
     --border-strong-hsl: 0 0% 100%;
     --border-strong-alpha: 0.18;
-    --input: 0 0% 100% / 12%;
+    /* Bord de champ, de case et d'interrupteur : 3:1 sur toutes les surfaces (WCAG 1.4.11). */
+    --input: 0 0% 100% / 36%;
     --input-hsl: 0 0% 100%;
-    --input-alpha: 0.12;
+    --input-alpha: 0.36;
     --ring: 248 54% 72%;
 
     --radius: 0.5rem;
@@ -138,7 +139,7 @@
     --k-surface-2: hsl(var(--popover));
     --k-surface-3: hsl(var(--muted));
     --k-hairline: hsl(var(--border));
-    --k-hairline-hover: hsl(var(--input));
+    --k-hairline-hover: hsl(0 0% 100% / 12%); /* valeur d'avant le relèvement de --input */
     --k-hairline-focus: hsl(var(--border-strong));
     --k-text: hsl(var(--foreground));
     --k-text-2: hsl(var(--foreground-secondary));
@@ -190,9 +191,10 @@
     --border-strong: 40 8% 80%;
     --border-strong-hsl: 40 8% 80%;
     --border-strong-alpha: 1;
-    --input: 40 8% 88%;
-    --input-hsl: 40 8% 88%;
+    --input: 40 3% 53%;
+    --input-hsl: 40 3% 53%;
     --input-alpha: 1;
+    --k-hairline-hover: hsl(40 8% 88%);
     --ring: 248 45% 58%;
 
     --sidebar-background: 40 8% 96%;

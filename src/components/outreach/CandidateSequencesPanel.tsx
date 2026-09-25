@@ -48,7 +48,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   active: { label: 'En cours', color: 'bg-success/10 text-success border-success/30', icon: <Play className="w-3 h-3" /> },
   paused: { label: 'En pause', color: 'bg-muted text-muted-foreground border-border', icon: <Pause className="w-3 h-3" /> },
   replied: { label: 'Répondu', color: 'bg-info/10 text-info border-info/30', icon: <MessageCircle className="w-3 h-3" /> },
-  completed: { label: 'Terminé', color: 'bg-foreground/8 text-foreground border-border', icon: <CheckCircle2 className="w-3 h-3" /> },
+  completed: { label: 'Terminé', color: 'bg-muted text-foreground border-border', icon: <CheckCircle2 className="w-3 h-3" /> },
   stopped: { label: 'Stoppé', color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <StopCircle className="w-3 h-3" /> },
 };
 

@@ -118,7 +118,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
       };
 
       dgSocket.onerror = () => {
-        toast.error('Erreur de connexion Deepgram');
+        toast.error('La dictée est indisponible. Réessayez dans un instant.');
         stopRecording();
       };
 

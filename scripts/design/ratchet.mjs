@@ -36,6 +36,17 @@ function walk(dir) {
   return out;
 }
 
+function walkStyles(dir) {
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    if (IGNORED_DIRS.has(name)) continue;
+    const abs = join(dir, name);
+    if (statSync(abs).isDirectory()) out.push(...walkStyles(abs));
+    else if (/\.css$/.test(name)) out.push(abs);
+  }
+  return out;
+}
+
 /** Code sans commentaires (les commentaires citent souvent ce qu'on veut bannir). */
 function stripComments(src) {
   return src
@@ -131,6 +142,26 @@ const METRICS = [
     re: /<(?:input|select|textarea)\b/g,
   },
   {
+    id: 'couleurs_ancienne_marque',
+    label: 'Ancienne palette de marque (brand-purple…, --skalr-*)',
+    // Reste de la marque Skalr : contredit l'accent unique (01-direction.md, § 2).
+    scope: 'code',
+    re: /\b(?:bg|text|border|ring|from|to|via|fill|stroke|shadow|outline|decoration|divide|placeholder|caret|accent)-brand-(?:purple|pink|blue|cyan|green)\b|var\(--skalr-/g,
+  },
+  {
+    id: 'texte_attenue',
+    label: 'Texte atténué par opacité (text-muted-foreground/60…)',
+    // Descend sous 4,5:1 ; trois niveaux de texte existent (01-direction.md, § 2).
+    scope: 'code',
+    re: /\btext-(?:muted-)?foreground\/(?:\d+|\[[^\]]+\])/g,
+  },
+  {
+    id: 'variables_inconnues',
+    label: 'Variables CSS lues sans être déclarées (var(--x))',
+    // Une variable absente rend la propriété invalide sans erreur visible (revue G-02).
+    scope: 'variables',
+  },
+  {
     id: 'emoji_interface',
     label: 'Emoji dans les textes visibles (sélecteurs d’emoji des messages compris)',
     scope: 'texte',
@@ -147,30 +178,59 @@ const METRICS = [
     id: 'noms_fournisseurs',
     label: 'Noms de fournisseurs dans les textes visibles (hors pages légales)',
     scope: 'texte-hors-legal',
-    re: /\b(?:Unipile|Apollo|People Data Labs|PDL|Brandfetch|Clearbit|Logo\.dev|Resend|Anthropic|Claude)\b/g,
+    re: /\b(?:Unipile|Apollo|People Data Labs|PDL|Brandfetch|Clearbit|Logo\.dev|Resend|Anthropic|Claude|Deepgram|Coresignal|BetterContact|Dropcontact|Perplexity|Firecrawl|OpenAI)\b/g,
   },
 ];
+
+// Variables fournies par les bibliothèques (Radix, Tailwind, sonner, vaul) : jamais déclarées dans src/.
+const LIBRARY_VARIABLE = /^(?:radix|tw|sonner|vaul)-/;
+// { '--x': … }, { ['--x' as string]: … }, ou une règle CSS (--x: …).
+const DECLARATION = /(?:^|[\s{;'"`(,[])--([a-zA-Z][\w-]*)['"]?(?:\s+as\s+[\w.]+)?\]?\s*:/g;
+const VARIABLE_USE = /var\(\s*--([a-zA-Z][\w-]*)/g;
 
 function measure() {
   if (!existsSync(SRC)) throw new Error(`src/ introuvable depuis ${ROOT}`);
   const totals = Object.fromEntries(METRICS.map((m) => [m.id, 0]));
   const perFile = Object.fromEntries(METRICS.map((m) => [m.id, {}]));
-  for (const abs of walk(SRC)) {
+  const files = walk(SRC).map((abs) => {
     const rel = relative(ROOT, abs).split('\\').join('/');
-    const code = stripComments(readFileSync(abs, 'utf8'));
+    return { rel, code: stripComments(readFileSync(abs, 'utf8')) };
+  });
+  // Déclarées : feuilles de style de src/ et objets style du code ({ '--x': … }).
+  const declared = new Set();
+  const sheets = walkStyles(SRC).map((abs) => ({
+    rel: relative(ROOT, abs).split('\\').join('/'),
+    code: readFileSync(abs, 'utf8').replace(/\/\*[\s\S]*?\*\//g, ''),
+  }));
+  for (const { code } of [...sheets, ...files]) for (const m of code.matchAll(DECLARATION)) declared.add(m[1]);
+  const unknownVariables = (code) =>
+    [...code.matchAll(VARIABLE_USE)].filter((m) => !declared.has(m[1]) && !LIBRARY_VARIABLE.test(m[1])).length;
+
+  for (const { rel, code } of files) {
     const texts = visibleStrings(code).join('\n');
     const inUi = rel.startsWith('src/components/ui/');
     for (const m of METRICS) {
-      let hay;
-      if (m.scope === 'code') hay = code;
-      else if (m.scope === 'code-hors-ui') hay = inUi ? '' : code;
-      else if (m.scope === 'texte') hay = texts;
-      else if (m.scope === 'texte-hors-legal') hay = LEGAL_PAGES.has(rel) ? '' : texts;
-      const n = hay ? (hay.match(m.re) || []).length : 0;
+      let n = 0;
+      if (m.scope === 'variables') n = unknownVariables(code);
+      else {
+        let hay;
+        if (m.scope === 'code') hay = code;
+        else if (m.scope === 'code-hors-ui') hay = inUi ? '' : code;
+        else if (m.scope === 'texte') hay = texts;
+        else if (m.scope === 'texte-hors-legal') hay = LEGAL_PAGES.has(rel) ? '' : texts;
+        n = hay ? (hay.match(m.re) || []).length : 0;
+      }
       if (n) {
         totals[m.id] += n;
         perFile[m.id][rel] = n;
       }
+    }
+  }
+  for (const { rel, code } of sheets) {
+    const n = unknownVariables(code);
+    if (n) {
+      totals.variables_inconnues += n;
+      perFile.variables_inconnues[rel] = n;
     }
   }
   return { totals, perFile };

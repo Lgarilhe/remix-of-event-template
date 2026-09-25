@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef, lazy, Suspense } from "react";
 import * as Sentry from "@sentry/react";
-import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -142,7 +141,6 @@ const AppContent = () => {
 
   return (
     <>
-      <Toaster />
       <Sonner />
       <Suspense fallback={suspenseFallback}>
         <Routes>

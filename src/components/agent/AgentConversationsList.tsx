@@ -37,7 +37,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="border border-border/8 p-3 flex items-center gap-3 animate-fade-in"
+            className="border border-border p-3 flex items-center gap-3 animate-fade-in"
             style={{ animationDelay: `${i * 100}ms`, animationFillMode: 'backwards' }}
           >
             <div className="w-2 h-2 bg-foreground/10 shrink-0" />
@@ -94,7 +94,7 @@ export const AgentConversationsList: React.FC<Props> = ({ onSelect, listConversa
               onClick={() => onSelect(conv)}
               className={cn(
                 "w-full text-left px-3 py-3 transition-all duration-150 group flex items-center gap-3",
-                "border-b border-border/8 hover:bg-foreground/[0.02]",
+                "border-b border-border hover:bg-foreground/[0.02]",
                 isRunning && "border-l-2 border-l-primary",
                 conv.status === 'completed' && "border-l-2 border-l-emerald-500/50",
               )}

@@ -15,7 +15,7 @@ const SCENARIOS = [
       { text: 'Avant de lancer le coaching, partagez l\'onglet de votre visio dans Chrome', important: true },
       { text: 'Cliquez "Partager l\'écran" → sélectionnez l\'onglet de la visio', important: false },
       { text: 'Cochez "Partager aussi l\'audio de l\'onglet"', important: true },
-      { text: 'Deepgram recevra les 2 voix : votre micro + l\'audio de la visio', important: false },
+      { text: 'Le service de transcription recevra les deux voix : votre micro et l\'audio de la visio', important: false },
     ],
     alternativeTitle: 'Alternative : mixeur audio virtuel',
     alternative: 'Installez VB-Cable (Windows) ou BlackHole (Mac) pour mixer automatiquement le micro et la sortie audio. Configuration unique de 5 min.',

@@ -82,11 +82,11 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
             compact ? "w-7 h-7" : "w-9 h-9"
           )}>
             {isWhatsApp ? (
-              <img src={whatsappLogo} alt="WhatsApp" className={compact ? "w-3.5 h-3.5" : "w-4.5 h-4.5"} />
+              <img src={whatsappLogo} alt="WhatsApp" className={compact ? "w-3.5 h-3.5" : "h-4 w-4"} />
             ) : Icon ? (
-              <Icon className={compact ? "w-3.5 h-3.5" : "w-4.5 h-4.5"} />
+              <Icon className={compact ? "w-3.5 h-3.5" : "h-4 w-4"} />
             ) : (
-              <Mail className={compact ? "w-3.5 h-3.5" : "w-4.5 h-4.5"} />
+              <Mail className={compact ? "w-3.5 h-3.5" : "h-4 w-4"} />
             )}
           </div>
 

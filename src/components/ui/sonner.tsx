@@ -11,6 +11,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme}
       className="toaster group"
+      // Un dialogue modal coupe les clics hors de lui (pointer-events: none sur
+      // <body>) : sans cette ligne, l'action d'un toast est inatteignable.
+      style={{ pointerEvents: "auto" }}
       toastOptions={{
         classNames: {
           toast:
