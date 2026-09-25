@@ -1,54 +1,104 @@
 /**
- * ScorecardFullPage — vue plein écran de la scorecard d'évaluation.
+ * ScorecardFullPage : la grille d'entretien en plein écran, avec le profil du
+ * candidat et le poste dans un panneau latéral repliable.
  *
- * V3 (mai 2026) : refonte workspace pro
- * - max-width supprimée → utilise toute la largeur (suppression max-w-5xl)
- * - Header riche avec progress bar visuelle + score running + recommendation
- *   compacts en pill
- * - Sidebar collapsible (bouton Réduire/Étendre) pour donner du focus au
- *   workspace si besoin
- * - Live progress de la scorecard chargée depuis la DB pour pré-render le
- *   header avec X/Y critères évalués + score moyen avant même que ScorecardTab
- *   finisse son load (UX plus snappy)
- * - Mobile : tabs en haut comme avant
+ * L'en-tête suit la grille ouverte (critères notés, moyenne, recommandation)
+ * par les événements de ScorecardTab, sans interroger la base toutes les 5 s
+ * (revue design E-32). L'indicateur d'enregistrement n'apparaît que pendant un
+ * enregistrement réel de l'assistant d'entretien (E-33).
  */
 
-import { useEffect, useState, useMemo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { ScorecardTab } from '@/components/ats/ScorecardTab';
-import { ATSCandidate } from '@/hooks/useATSData';
-import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import {
-  ArrowLeft,
-  ExternalLink,
-  MapPin,
-  Building2,
-  Briefcase,
-  GraduationCap,
-  Mic,
-  Loader2,
-  User,
-  Target,
-  Sparkles,
-  PanelLeftClose,
-  PanelLeftOpen,
-  CheckCircle2,
+  ArrowLeft, Briefcase, Building2, ExternalLink, GraduationCap, ListChecks, MapPin, Mic, PanelLeftClose,
+  PanelLeftOpen, Target, UserX, type LucideIcon,
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { ScorecardTab, type ScorecardSummary } from '@/components/ats/ScorecardTab';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
+import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { ErrorState } from '@/components/layout/ErrorState';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ScoreBadge } from '@/components/ui/score-badge';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ATSCandidate } from '@/hooks/useATSData';
 import { useNotionJobs } from '@/hooks/useNotionJobs';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { toast } from 'sonner';
+import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
+import { aiRecommendationMeta, hiringVerdictMeta } from '@/lib/verdicts';
 import { cn } from '@/lib/utils';
 
 type SidebarTab = 'candidate' | 'job';
+type MobilePane = 'sidebar' | 'scorecard';
+type LoadState = 'loading' | 'error' | 'not_found' | 'ready';
 
-interface QuickEval {
-  criteriaCount: number;
-  ratedCount: number;
-  overallScore: number | null;
-  recommendation: string | null;
+/**
+ * Clés historiques de la recommandation de l'IA (moteur de scoring : go, maybe,
+ * skip ; anciennes données : strong_match, potential, weak…) ramenées à celles
+ * de src/lib/verdicts.ts. Une valeur inconnue ne s'affiche jamais brute.
+ */
+const AI_RECOMMENDATION_ALIASES: Record<string, string> = {
+  go: 'shortlist',
+  strong_match: 'shortlist',
+  good_match: 'shortlist',
+  possible_match: 'maybe',
+  potential: 'maybe',
+  weak_match: 'skip',
+  weak: 'skip',
+  no_match: 'skip',
+  no_go: 'skip',
+};
+
+function aiRecommendation(value: string | null | undefined) {
+  if (!value) return null;
+  const key = value.trim().toLowerCase();
+  return aiRecommendationMeta(AI_RECOMMENDATION_ALIASES[key] ?? key);
+}
+
+const formatAverage = (value: number) =>
+  value.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** « 2021-03 » devient « mars 2021 » ; une année seule reste telle quelle. */
+function formatMonth(value?: string): string {
+  if (!value) return '';
+  const match = /^(\d{4})(?:-(\d{1,2}))?/.exec(value);
+  if (!match) return value;
+  if (!match[2]) return match[1];
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return match[1];
+  return format(new Date(Number(match[1]), month - 1, 1), 'MMMM yyyy', { locale: fr });
+}
+
+function PageSkeleton() {
+  return (
+    <div className="flex h-dvh flex-col bg-background" aria-busy="true">
+      <span className="sr-only" role="status">Chargement de la grille d'entretien</span>
+      <div className="flex h-14 items-center gap-3 border-b border-border px-4 sm:px-6">
+        <Skeleton className="h-8 w-8 rounded-full" />
+        <div className="space-y-1.5">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-4 w-44" />
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <div className="hidden w-80 space-y-4 border-r border-border p-4 sm:block">
+          <Skeleton className="h-14 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-40 rounded-xl" />
+        </div>
+        <div className="flex-1 space-y-4 p-4 sm:p-6">
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-96 rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function ScorecardFullPage() {
@@ -56,21 +106,30 @@ export default function ScorecardFullPage() {
   const [searchParams] = useSearchParams();
   const autoCoaching = searchParams.get('coaching') === '1';
   const navigate = useNavigate();
+  const location = useLocation();
+  const sidebarId = useId();
   const [candidate, setCandidate] = useState<ATSCandidate | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [reloadTick, setReloadTick] = useState(0);
   const [jobOpen, setJobOpen] = useState(false);
   const [logoErrors, setLogoErrors] = useState<Set<string>>(new Set());
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('candidate');
-  const [mobilePane, setMobilePane] = useState<'sidebar' | 'scorecard'>('scorecard');
+  const [mobilePane, setMobilePane] = useState<MobilePane>('scorecard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [quickEval, setQuickEval] = useState<QuickEval | null>(null);
+  // Grille ouverte, remontée par ScorecardTab à chaque modification.
+  const [quickEval, setQuickEval] = useState<ScorecardSummary | null>(null);
+  const [recording, setRecording] = useState(false);
 
   const { data: notionJobs } = useNotionJobs();
 
   useEffect(() => {
-    if (!candidateId) return;
+    if (!candidateId) {
+      setLoadState('not_found');
+      return;
+    }
+    let cancelled = false;
     const load = async () => {
-      setLoading(true);
+      setLoadState('loading');
       const { data, error } = await supabase
         .from('job_candidate_status')
         .select('*')
@@ -79,9 +138,14 @@ export default function ScorecardFullPage() {
         .limit(1)
         .maybeSingle();
 
-      if (error || !data) {
-        toast.error('Candidat introuvable');
-        navigate(-1);
+      if (cancelled) return;
+      if (error) {
+        console.error('[ScorecardFullPage] lecture impossible :', error);
+        setLoadState('error');
+        return;
+      }
+      if (!data) {
+        setLoadState('not_found');
         return;
       }
 
@@ -104,7 +168,7 @@ export default function ScorecardFullPage() {
         createdAt: data.created_at,
         score: data.score,
         recommendation: data.recommendation,
-        scoringDetails: data.scoring_details as any,
+        scoringDetails: data.scoring_details as unknown as ATSCandidate['scoringDetails'],
         linkedinProfileData: data.linkedin_profile_data,
         tags: data.tags || [],
       };
@@ -119,57 +183,35 @@ export default function ScorecardFullPage() {
         if (proj?.job_title) c.jobTitle = proj.job_title;
       }
 
+      if (cancelled) return;
       setCandidate(c);
-      setLoading(false);
+      setLoadState('ready');
     };
-    load();
-  }, [candidateId, navigate]);
-
-  // Load quick eval stats (for header progress bar)
-  useEffect(() => {
-    if (!candidateId) return;
-    const loadEval = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from('candidate_evaluations')
-        .select('criteria, ratings, overall_score, recommendation')
-        .eq('candidate_id', candidateId)
-        .eq('created_by', user.id)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (!data) {
-        setQuickEval(null);
-        return;
-      }
-      const criteria = (data.criteria as any[]) || [];
-      const ratings = (data.ratings as Record<string, number>) || {};
-      const ratedCount = Object.values(ratings).filter((r) => r != null).length;
-      setQuickEval({
-        criteriaCount: criteria.length,
-        ratedCount,
-        overallScore: data.overall_score ? Number(data.overall_score) : null,
-        recommendation: (data as any).recommendation || null,
-      });
+    load().catch((err) => {
+      if (cancelled) return;
+      console.error('[ScorecardFullPage] lecture impossible :', err);
+      setLoadState('error');
+    });
+    return () => {
+      cancelled = true;
     };
-    loadEval();
-    // Refresh à chaque fois que ScorecardTab modifie la DB (debounced auto-save)
-    const interval = setInterval(loadEval, 5_000);
-    return () => clearInterval(interval);
-  }, [candidateId]);
+  }, [candidateId, reloadTick]);
 
   const enrichedProfile = useMemo<EnrichedProfile | null>(() => {
     if (!candidate?.linkedinProfileData) return null;
+    // Données brutes du profil LinkedIn, de forme variable selon la source.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = candidate.linkedinProfileData as any;
 
-    const workExperience = p.work_experience || p.experiences || p.positions || [];
-    const currentJob = workExperience.find((exp: any) => !exp.end) || workExperience[0];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type Raw = any;
+    const workExperience: Raw[] = p.work_experience || p.experiences || p.positions || [];
+    const currentJob = workExperience.find((exp) => !exp.end) || workExperience[0];
 
     let yearsOfExperience: number | undefined = p.years_of_experience;
     if (!yearsOfExperience) {
       const allStartYears = workExperience
-        .map((exp: any) => exp.start?.year)
+        .map((exp) => exp.start?.year)
         .filter(Boolean) as number[];
       if (allStartYears.length > 0) {
         yearsOfExperience = new Date().getFullYear() - Math.min(...allStartYears);
@@ -183,8 +225,8 @@ export default function ScorecardFullPage() {
       currentRole: currentJob?.role || currentJob?.title,
       currentCompany: currentJob?.company || currentJob?.company_name,
       location: typeof p.location === 'string' ? p.location : p.location?.name || p.city,
-      skills: p.skills?.map((s: any) => typeof s === 'string' ? s : s.name).filter(Boolean) || [],
-      experiences: workExperience.map((exp: any) => ({
+      skills: p.skills?.map((s: Raw) => (typeof s === 'string' ? s : s.name)).filter(Boolean) || [],
+      experiences: workExperience.map((exp) => ({
         title: exp.role || exp.title || '',
         company: exp.company || exp.company_name || '',
         logo: exp.company_logo || exp.logo_url || exp.logo || undefined,
@@ -193,7 +235,7 @@ export default function ScorecardFullPage() {
         endDate: exp.end ? `${exp.end.year || ''}${exp.end.month ? `-${String(exp.end.month).padStart(2, '0')}` : ''}` : (exp.end_date || ''),
         isCurrent: !exp.end && !exp.end_date,
       })),
-      education: (p.education || []).map((edu: any) => {
+      education: (p.education || []).map((edu: Raw) => {
         const schoolName = typeof edu.school === 'string'
           ? edu.school
           : edu.school?.name || edu.school_name || edu.school_details?.name || '';
@@ -214,551 +256,456 @@ export default function ScorecardFullPage() {
 
   const jobDetails = useMemo(() => {
     if (!candidate?.jobId) return null;
-    return notionJobs?.find(j => j.id === candidate.jobId) || null;
+    return notionJobs?.find((j) => j.id === candidate.jobId) || null;
   }, [candidate?.jobId, notionJobs]);
 
-  if (loading) {
+  const goBack = useCallback(() => {
+    // Ouverte dans un nouvel onglet ou par un lien direct : pas de page précédente dans l'application.
+    if (location.key !== 'default') navigate(-1);
+    else navigate('/pipeline');
+  }, [location.key, navigate]);
+
+  // Bouton « Voir le profil » de l'assistant d'entretien : le panneau du candidat s'affiche.
+  const showProfile = useCallback(() => {
+    setSidebarTab('candidate');
+    setSidebarCollapsed(false);
+    setMobilePane('sidebar');
+  }, []);
+
+  const backButton = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Retour" onClick={goBack} className="shrink-0 max-md:h-11 max-md:w-11">
+          <ArrowLeft aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Retour</TooltipContent>
+    </Tooltip>
+  );
+
+  if (loadState === 'loading') return <PageSkeleton />;
+
+  if (loadState === 'error' || loadState === 'not_found' || !candidate) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="flex min-h-dvh flex-col bg-background text-foreground">
+        <div className="flex h-14 items-center border-b border-border px-4 sm:px-6">{backButton}</div>
+        <div className="mx-auto w-full max-w-md px-4 py-10">
+          {loadState === 'error' ? (
+            <ErrorState
+              title="Impossible de charger le candidat"
+              description="Vérifiez votre connexion, puis réessayez."
+              onRetry={() => setReloadTick((t) => t + 1)}
+            />
+          ) : (
+            <EmptyState
+              icon={UserX}
+              title="Candidat introuvable"
+              description="Ce candidat n'existe plus, ou votre compte n'y a pas accès."
+              action={
+                <Button asChild variant="outline" className="max-md:min-h-11">
+                  <Link to="/pipeline">Ouvrir le pipeline</Link>
+                </Button>
+              }
+            />
+          )}
+        </div>
       </div>
     );
   }
 
-  if (!candidate) return null;
-
-  const profileData = candidate.linkedinProfileData as any;
+  const profileData = candidate.linkedinProfileData as unknown as { profile_picture_url?: string } | null;
   const avatarUrl = profileData?.profile_picture_url;
-  const initials = candidate.name.split(' ').slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
-
-  // Quick eval derived
   const progressPct = quickEval && quickEval.criteriaCount > 0
     ? (quickEval.ratedCount / quickEval.criteriaCount) * 100
     : 0;
+  const verdict = hiringVerdictMeta(quickEval?.recommendation);
+  const aiReco = aiRecommendation(candidate.recommendation);
+  const years = enrichedProfile?.yearsOfExperience;
+  const mustHave = (jobDetails as unknown as { mustHave?: unknown } | null)?.mustHave;
+  const mustHaveList = Array.isArray(mustHave) ? (mustHave as string[]) : [];
 
-  const recoTone = (() => {
-    const r = quickEval?.recommendation;
-    if (r === 'strong_yes') return { bg: 'bg-success/15', text: 'text-success', border: 'border-success/30', label: 'Strong Yes' };
-    if (r === 'yes') return { bg: 'bg-success/10', text: 'text-success', border: 'border-success/30', label: 'Yes' };
-    if (r === 'maybe') return { bg: 'bg-warning/10', text: 'text-warning', border: 'border-warning/30', label: 'Maybe' };
-    if (r === 'no') return { bg: 'bg-destructive/10', text: 'text-destructive', border: 'border-destructive/30', label: 'No' };
-    if (r === 'strong_no') return { bg: 'bg-destructive/15', text: 'text-destructive', border: 'border-destructive/30', label: 'Strong No' };
-    return null;
-  })();
+  const progressBar = (className: string) => (
+    <div
+      role="progressbar"
+      aria-label="Critères notés"
+      aria-valuemin={0}
+      aria-valuemax={quickEval?.criteriaCount ?? 0}
+      aria-valuenow={quickEval?.ratedCount ?? 0}
+      className={cn('overflow-hidden rounded-full bg-muted', className)}
+    >
+      <div className="h-full rounded-full bg-brand transition-[width] duration-200" style={{ width: `${progressPct}%` }} />
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col overflow-hidden">
-      {/* ═══ Header riche ═══ */}
-      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md border-b border-border">
-        <div className="flex items-center gap-3 px-4 sm:px-6 h-14 max-w-none">
-          <button
-            onClick={() => navigate(-1)}
-            className="h-9 w-9 grid place-items-center rounded-full border border-border bg-background hover:bg-accent transition-colors shrink-0"
-            aria-label="Retour"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
+    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+      {/* En-tête */}
+      <header className="shrink-0 border-b border-border bg-background">
+        <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
+          {backButton}
 
-          {/* Avatar + name + headline compact */}
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <Avatar className="w-8 h-8 ring-2 ring-border shadow-sm shrink-0">
-              <AvatarImage src={avatarUrl} alt={candidate.name} />
-              <AvatarFallback className="bg-gradient-to-br from-foreground/20 to-foreground/10 text-foreground font-bold text-xs">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} size={32} />
             <div className="min-w-0 flex-1">
-              <p className="text-3xs uppercase tracking-wider text-muted-foreground font-bold leading-none mb-0.5 hidden sm:block">
-                Scorecard d'entretien
-              </p>
-              <h1 className="font-display text-[14px] sm:text-[15px] font-bold truncate leading-tight">
+              <p className="eyebrow hidden leading-none sm:block">Grille d'entretien</p>
+              <h1 className="truncate text-sm font-semibold sm:text-md">
                 {candidate.name}
                 {candidate.jobTitle && (
-                  <span className="text-muted-foreground font-medium hidden sm:inline">
-                    {' · '}{candidate.jobTitle}
-                  </span>
+                  <span className="hidden font-medium text-muted-foreground sm:inline"> · {candidate.jobTitle}</span>
                 )}
               </h1>
             </div>
           </div>
 
-          {/* Progress + score + reco compact */}
           {quickEval && quickEval.criteriaCount > 0 && (
-            <div className="hidden md:flex items-center gap-3 shrink-0">
-              {/* Progress bar */}
+            <div className="hidden shrink-0 items-center gap-3 md:flex">
               <div className="flex items-center gap-2">
-                <span className="text-2xs tabular-nums font-display font-bold text-foreground">
+                <span className="text-xs font-semibold tabular-nums text-foreground">
                   {quickEval.ratedCount}/{quickEval.criteriaCount}
                 </span>
-                <div className="h-1.5 w-24 rounded-full bg-muted/40 overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500/70 transition-all duration-500"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
+                {progressBar('h-1.5 w-24')}
               </div>
-
-              {/* Score running */}
               {quickEval.overallScore != null && (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-card">
-                  <Sparkles className="w-3 h-3 text-foreground/60" />
-                  <span className="text-2xs font-bold tabular-nums">
-                    {quickEval.overallScore.toFixed(1)}/5
-                  </span>
-                </div>
-              )}
-
-              {/* Recommendation */}
-              {recoTone && (
-                <span
-                  className={cn(
-                    'inline-flex items-center text-3xs uppercase tracking-wider font-bold px-2.5 py-1 rounded-full border',
-                    recoTone.bg, recoTone.text, recoTone.border,
-                  )}
-                >
-                  {recoTone.label}
+                <span className="text-xs font-semibold tabular-nums text-foreground">
+                  <span className="sr-only">Moyenne </span>
+                  {formatAverage(quickEval.overallScore)}
+                  <span className="font-medium text-muted-foreground">/5</span>
                 </span>
               )}
+              {verdict && <Badge variant={verdict.tone}>{verdict.label}</Badge>}
             </div>
           )}
 
-          {/* Coaching live indicator */}
-          {autoCoaching && (
-            <div className="hidden lg:flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full bg-destructive/10 border border-destructive/30">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
-              </span>
-              <span className="text-2xs text-destructive uppercase tracking-wider font-bold inline-flex items-center gap-1">
-                <Mic className="w-3 h-3" />
-                Coaching Live
-              </span>
-            </div>
+          {recording && (
+            <Badge variant="danger" className="shrink-0 gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-danger" aria-hidden="true" />
+              <Mic className="h-3 w-3 sm:hidden" aria-hidden="true" />
+              <span className="max-sm:sr-only">Enregistrement en cours</span>
+            </Badge>
           )}
 
-          {/* Sidebar toggle (desktop) */}
-          <button
-            onClick={() => setSidebarCollapsed((p) => !p)}
-            className="hidden sm:grid h-9 w-9 place-items-center rounded-full border border-border bg-background hover:bg-accent transition-colors shrink-0"
-            title={sidebarCollapsed ? 'Afficher la sidebar candidat' : 'Réduire la sidebar pour focus'}
-            aria-label={sidebarCollapsed ? 'Afficher sidebar' : 'Réduire sidebar'}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={sidebarCollapsed ? 'Afficher le panneau du candidat' : 'Masquer le panneau du candidat'}
+                aria-expanded={!sidebarCollapsed}
+                aria-controls={sidebarId}
+                onClick={() => setSidebarCollapsed((p) => !p)}
+                className="hidden shrink-0 sm:inline-flex"
+              >
+                {sidebarCollapsed ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {sidebarCollapsed ? 'Afficher le panneau du candidat' : 'Masquer le panneau du candidat'}
+            </TooltipContent>
+          </Tooltip>
         </div>
 
-        {/* Mobile pane toggle */}
-        <div className="sm:hidden flex items-center border-t border-border bg-muted/10">
-          <button
-            onClick={() => setMobilePane('sidebar')}
-            className={cn(
-              'flex-1 py-2 text-2xs font-medium text-center transition-colors',
-              mobilePane === 'sidebar' ? 'text-foreground border-b-2 border-foreground' : 'text-muted-foreground',
-            )}
-          >
-            Profil & Poste
-          </button>
-          <button
-            onClick={() => setMobilePane('scorecard')}
-            className={cn(
-              'flex-1 py-2 text-2xs font-medium text-center transition-colors',
-              mobilePane === 'scorecard' ? 'text-foreground border-b-2 border-foreground' : 'text-muted-foreground',
-            )}
-          >
-            Scorecard
-          </button>
+        {/* Téléphone : profil ou grille */}
+        <div className="border-t border-border px-4 py-2 sm:hidden">
+          <SegmentedControl<MobilePane>
+            aria-label="Affichage"
+            value={mobilePane}
+            onValueChange={setMobilePane}
+            options={[
+              { value: 'scorecard', label: 'Grille' },
+              { value: 'sidebar', label: 'Profil et poste' },
+            ]}
+            className="h-11"
+          />
         </div>
 
-        {/* Mobile mini progress bar (visible sur petit écran) */}
-        {quickEval && quickEval.criteriaCount > 0 && (
-          <div className="md:hidden h-0.5 bg-muted/40 relative">
-            <div
-              className="absolute inset-y-0 left-0 bg-emerald-500/70 transition-all"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        )}
+        {quickEval && quickEval.criteriaCount > 0 && progressBar('h-0.5 md:hidden')}
       </header>
 
-      {/* ═══ Body 2-col ═══ */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar gauche (collapsible sur desktop) */}
+      <div className="flex min-h-0 flex-1">
+        {/* Panneau latéral : candidat ou poste */}
         <aside
+          id={sidebarId}
+          aria-label="Candidat et poste"
           className={cn(
-            'border-r border-border bg-muted/10 flex-col shrink-0 min-w-0 transition-all duration-300',
-            'sm:flex',
-            sidebarCollapsed ? 'sm:w-0 sm:border-r-0 sm:overflow-hidden' : 'sm:w-[320px] lg:w-[340px]',
-            mobilePane === 'sidebar' ? 'flex flex-1 sm:flex-none w-full' : 'hidden sm:flex',
+            'min-h-0 shrink-0 flex-col overflow-y-auto border-r border-border',
+            mobilePane === 'sidebar' ? 'flex w-full' : 'hidden',
+            sidebarCollapsed ? 'sm:hidden' : 'sm:flex sm:w-80',
           )}
         >
-          {/* Tabs candidat/poste */}
-          <div className="border-b border-border p-2 flex items-center gap-1 shrink-0">
-            <button
-              onClick={() => setSidebarTab('candidate')}
-              className={cn(
-                'flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium transition-colors',
-                sidebarTab === 'candidate'
-                  ? 'bg-foreground text-background shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
-              )}
-            >
-              <User className="w-3.5 h-3.5" />
-              Candidat
-            </button>
-            <button
-              onClick={() => setSidebarTab('job')}
-              className={cn(
-                'flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium transition-colors',
-                sidebarTab === 'job'
-                  ? 'bg-foreground text-background shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
-              )}
-            >
-              <Briefcase className="w-3.5 h-3.5" />
-              Poste
-            </button>
+          <div className="border-b border-border p-2">
+            <SegmentedControl<SidebarTab>
+              aria-label="Contenu du panneau"
+              value={sidebarTab}
+              onValueChange={setSidebarTab}
+              options={[
+                { value: 'candidate', label: 'Candidat' },
+                { value: 'job', label: 'Poste' },
+              ]}
+              className="max-md:h-11"
+            />
           </div>
 
-          <ScrollArea className="flex-1 w-full">
-            {sidebarTab === 'candidate' ? (
-              <div className="p-4 space-y-4 w-full min-w-0 max-w-full">
-                {/* Identity */}
-                <div className="flex items-start gap-3">
-                  <Avatar className="w-12 h-12 ring-2 ring-border shadow-sm">
-                    <AvatarImage src={avatarUrl} alt={candidate.name} />
-                    <AvatarFallback className="bg-gradient-to-br from-foreground/20 to-foreground/10 text-foreground font-bold">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <h2 className="font-display font-bold text-[15px] tracking-tight leading-tight truncate">
-                      {candidate.name}
-                    </h2>
-                    {enrichedProfile?.headline && (
-                      <p className="text-2xs text-muted-foreground line-clamp-2 leading-snug mt-0.5">
-                        {enrichedProfile.headline}
-                      </p>
-                    )}
-                  </div>
+          {sidebarTab === 'candidate' ? (
+            <div className="min-w-0 space-y-4 p-4">
+              <div className="flex items-start gap-3">
+                <CandidateAvatar name={candidate.name} avatarUrl={avatarUrl} size={48} />
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-md font-semibold text-foreground">{candidate.name}</h2>
+                  {enrichedProfile?.headline && (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{enrichedProfile.headline}</p>
+                  )}
                 </div>
+              </div>
 
-                {/* Progress + score */}
-                {quickEval && quickEval.criteriaCount > 0 && (
-                  <div className="rounded-xl border border-border bg-card p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">
-                        Progression
-                      </p>
-                      <span className="text-2xs font-bold tabular-nums">
-                        {quickEval.ratedCount}/{quickEval.criteriaCount}
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mb-2">
-                      <div
-                        className="h-full bg-emerald-500/70 transition-all duration-500"
-                        style={{ width: `${progressPct}%` }}
-                      />
-                    </div>
-                    {quickEval.overallScore != null && (
-                      <div className="flex items-center justify-between text-2xs mt-2">
-                        <span className="text-muted-foreground">Score moyen</span>
-                        <span className="font-bold tabular-nums">{quickEval.overallScore.toFixed(2)}/5</span>
-                      </div>
-                    )}
-                    {recoTone && (
-                      <div className={cn('mt-2 px-2 py-1 rounded-full text-3xs uppercase tracking-wider font-bold border text-center', recoTone.bg, recoTone.text, recoTone.border)}>
-                        {recoTone.label}
-                      </div>
-                    )}
+              {quickEval && quickEval.criteriaCount > 0 && (
+                <div className="space-y-2 rounded-xl border border-border bg-card p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="eyebrow">Progression</p>
+                    <span className="text-xs font-semibold tabular-nums">
+                      {quickEval.ratedCount} sur {quickEval.criteriaCount}
+                    </span>
                   </div>
-                )}
-
-                {/* Score IA initial */}
-                {candidate.score != null && candidate.score > 0 && (
-                  <div className={cn(
-                    'rounded-xl border px-3 py-2.5 flex items-center gap-3',
-                    candidate.score >= 70 ? 'border-success/30 bg-success/5' :
-                    candidate.score >= 50 ? 'border-warning/30 bg-warning/5' :
-                    'border-destructive/30 bg-destructive/5',
-                  )}>
-                    <div className={cn(
-                      'h-10 w-10 rounded-lg grid place-items-center font-display font-bold tabular-nums shrink-0',
-                      candidate.score >= 70 ? 'bg-success/15 text-success' :
-                      candidate.score >= 50 ? 'bg-warning/15 text-warning' :
-                      'bg-destructive/15 text-destructive',
-                    )}>
-                      {candidate.score}
+                  {progressBar('h-1.5')}
+                  {quickEval.overallScore != null && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Moyenne</span>
+                      <span className="font-semibold tabular-nums">{formatAverage(quickEval.overallScore)}/5</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-3xs uppercase tracking-wider font-bold text-muted-foreground">
-                        Score IA initial
-                      </p>
-                      <p className="text-2xs font-medium text-foreground truncate">
-                        {candidate.recommendation === 'shortlist' ? 'Recommandé' :
-                         candidate.recommendation === 'skip' ? 'Non recommandé' :
-                         'À évaluer'}
-                      </p>
+                  )}
+                  {verdict && (
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground">Recommandation</span>
+                      <Badge variant={verdict.tone}>{verdict.label}</Badge>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+              )}
 
-                {/* Meta row */}
+              {candidate.score != null && candidate.score > 0 && (
+                <div className="space-y-2 rounded-xl border border-border bg-card p-3">
+                  <p className="eyebrow">Score de l'IA</p>
+                  <ScoreBadge score={candidate.score} showLevel />
+                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-foreground-secondary">
+                    {`Recommandation de l'IA\u00a0:`}
+                    {aiReco ? <Badge variant={aiReco.tone}>{aiReco.label}</Badge> : <span>aucune</span>}
+                  </p>
+                </div>
+              )}
+
+              {(enrichedProfile?.currentCompany || enrichedProfile?.location || years) && (
                 <div className="flex flex-wrap gap-1.5">
                   {enrichedProfile?.currentCompany && (
-                    <span className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
-                      <Building2 className="w-3 h-3" />
+                    <Badge variant="outline" className="font-normal">
+                      <Building2 className="h-3 w-3" aria-hidden="true" />
                       {enrichedProfile.currentCompany}
-                    </span>
+                    </Badge>
                   )}
                   {enrichedProfile?.location && (
-                    <span className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
-                      <MapPin className="w-3 h-3" />
+                    <Badge variant="outline" className="font-normal">
+                      <MapPin className="h-3 w-3" aria-hidden="true" />
                       {enrichedProfile.location.split(',')[0]}
-                    </span>
+                    </Badge>
                   )}
-                  {enrichedProfile?.yearsOfExperience && (
-                    <span className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
-                      <Sparkles className="w-3 h-3" />
-                      {enrichedProfile.yearsOfExperience} ans
-                    </span>
-                  )}
+                  {years ? (
+                    <Badge variant="outline" className="font-normal">
+                      <Briefcase className="h-3 w-3" aria-hidden="true" />
+                      {years > 1 ? `${years} ans d'expérience` : `${years} an d'expérience`}
+                    </Badge>
+                  ) : null}
                 </div>
+              )}
 
-                {/* Quick actions */}
-                {candidate.linkedin && (
-                  <a
-                    href={candidate.linkedin}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full inline-flex items-center justify-center gap-2 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background hover:bg-accent transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Ouvrir LinkedIn
+              {candidate.linkedin && (
+                <Button asChild variant="outline" size="sm" className="w-full max-md:min-h-11">
+                  <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink aria-hidden="true" />
+                    Ouvrir le profil LinkedIn
+                    <span className="sr-only"> (nouvel onglet)</span>
                   </a>
-                )}
+                </Button>
+              )}
 
-                {/* Expérience compact */}
-                {(enrichedProfile?.experiences?.length || 0) > 0 && (
-                  <SidebarSection
-                    icon={Briefcase}
-                    title="Expérience"
-                    eyebrow={`${enrichedProfile!.experiences.length} positions`}
-                  >
-                    <div className="space-y-2.5">
-                      {enrichedProfile!.experiences.slice(0, 4).map((exp, i) => (
-                        <CompactExperienceItem
-                          key={i}
-                          exp={exp}
-                          logoErrors={logoErrors}
-                          setLogoErrors={setLogoErrors}
-                        />
-                      ))}
-                      {enrichedProfile!.experiences.length > 4 && (
-                        <p className="text-2xs text-muted-foreground/70 italic pl-9">
-                          +{enrichedProfile!.experiences.length - 4} autres
-                        </p>
-                      )}
-                    </div>
-                  </SidebarSection>
-                )}
-
-                {/* Formation */}
-                {(enrichedProfile?.education?.length || 0) > 0 && (
-                  <SidebarSection
-                    icon={GraduationCap}
-                    title="Formation"
-                    eyebrow={`${enrichedProfile!.education.length} école${enrichedProfile!.education.length > 1 ? 's' : ''}`}
-                  >
-                    <div className="space-y-2">
-                      {enrichedProfile!.education.slice(0, 3).map((edu, i) => (
-                        <div key={i} className="flex items-start gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-emerald-500/15 grid place-items-center shrink-0">
-                            {edu.logo ? (
-                              <img src={edu.logo} alt="" className="w-5 h-5 object-contain rounded" />
-                            ) : (
-                              <GraduationCap className="w-3.5 h-3.5 text-foreground" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-2xs font-semibold truncate">{edu.school}</p>
-                            {(edu.degree || edu.field) && (
-                              <p className="text-2xs text-muted-foreground truncate">
-                                {[edu.degree, edu.field].filter(Boolean).join(' · ')}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </SidebarSection>
-                )}
-
-                {/* Skills */}
-                {(enrichedProfile?.skills?.length || 0) > 0 && (
-                  <SidebarSection
-                    icon={Sparkles}
-                    title="Compétences"
-                    eyebrow={`${enrichedProfile!.skills.length} skills`}
-                  >
-                    <div className="flex flex-wrap gap-1 min-w-0">
-                      {enrichedProfile!.skills.slice(0, 14).map((skill, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center text-2xs px-1.5 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border max-w-full break-words"
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                      {enrichedProfile!.skills.length > 14 && (
-                        <span className="inline-flex items-center text-2xs px-1.5 py-0.5 rounded-full text-muted-foreground border border-border bg-muted/30">
-                          +{enrichedProfile!.skills.length - 14}
-                        </span>
-                      )}
-                    </div>
-                  </SidebarSection>
-                )}
-              </div>
-            ) : (
-              // ═══ Job sidebar ═══
-              <div className="p-4 space-y-4 w-full min-w-0 max-w-full">
-                <div>
-                  <p className="text-3xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
-                    Mission
-                  </p>
-                  <h2 className="font-display font-bold text-[15px] tracking-tight leading-tight">
-                    {candidate.jobTitle || jobDetails?.title || 'Poste non spécifié'}
-                  </h2>
-                  {jobDetails?.client?.name && (
-                    <p className="text-2xs text-muted-foreground mt-0.5">
-                      {jobDetails.client.name}
-                      {jobDetails.location && ` · ${jobDetails.location}`}
+              {(enrichedProfile?.experiences?.length || 0) > 0 && (
+                <SidebarSection
+                  icon={Briefcase}
+                  title="Expérience"
+                  meta={`${enrichedProfile!.experiences.length} poste${enrichedProfile!.experiences.length > 1 ? 's' : ''}`}
+                >
+                  <ul className="space-y-2.5">
+                    {enrichedProfile!.experiences.slice(0, 4).map((exp, i) => (
+                      <CompactExperienceItem key={i} exp={exp} logoErrors={logoErrors} setLogoErrors={setLogoErrors} />
+                    ))}
+                  </ul>
+                  {enrichedProfile!.experiences.length > 4 && (
+                    <p className="mt-2 pl-9 text-2xs text-muted-foreground">
+                      et {enrichedProfile!.experiences.length - 4} autre{enrichedProfile!.experiences.length - 4 > 1 ? 's' : ''}
                     </p>
                   )}
-                </div>
+                </SidebarSection>
+              )}
 
-                {jobDetails && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {jobDetails.seniority && (
-                      <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30 font-medium">
-                        {jobDetails.seniority}
-                      </span>
-                    )}
-                    {jobDetails.contractType && (
-                      <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
-                        {jobDetails.contractType}
-                      </span>
-                    )}
-                    {jobDetails.remote && (
-                      <span className="inline-flex items-center text-2xs px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 font-medium">
-                        Remote
-                      </span>
+              {(enrichedProfile?.education?.length || 0) > 0 && (
+                <SidebarSection
+                  icon={GraduationCap}
+                  title="Formation"
+                  meta={`${enrichedProfile!.education.length} école${enrichedProfile!.education.length > 1 ? 's' : ''}`}
+                >
+                  <ul className="space-y-2">
+                    {enrichedProfile!.education.slice(0, 3).map((edu, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <div className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-md bg-muted">
+                          {edu.logo ? (
+                            <img src={edu.logo} alt="" className="h-5 w-5 rounded-sm object-contain" />
+                          ) : (
+                            <GraduationCap className="h-3.5 w-3.5 text-foreground-secondary" aria-hidden="true" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold">{edu.school}</p>
+                          {(edu.degree || edu.field) && (
+                            <p className="truncate text-2xs text-muted-foreground">
+                              {[edu.degree, edu.field].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </SidebarSection>
+              )}
+
+              {(enrichedProfile?.skills?.length || 0) > 0 && (
+                <SidebarSection
+                  icon={ListChecks}
+                  title="Compétences"
+                  meta={`${enrichedProfile!.skills.length} compétence${enrichedProfile!.skills.length > 1 ? 's' : ''}`}
+                >
+                  <div className="flex min-w-0 flex-wrap gap-1">
+                    {enrichedProfile!.skills.slice(0, 14).map((skill, i) => (
+                      <Badge key={i} variant="outline" className="max-w-full break-words font-normal">
+                        {skill}
+                      </Badge>
+                    ))}
+                    {enrichedProfile!.skills.length > 14 && (
+                      <Badge variant="muted" className="font-normal">
+                        et {enrichedProfile!.skills.length - 14} autres
+                      </Badge>
                     )}
                   </div>
-                )}
-
-                {candidate.jobId && (
-                  <button
-                    onClick={() => setJobOpen(true)}
-                    className="w-full inline-flex items-center justify-center gap-2 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background hover:bg-accent transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Voir tous les détails
-                  </button>
-                )}
-
-                {(jobDetails as any)?.mustHave && Array.isArray((jobDetails as any).mustHave) && (jobDetails as any).mustHave.length > 0 && (
-                  <SidebarSection
-                    icon={Target}
-                    title="Compétences obligatoires"
-                    eyebrow={`${(jobDetails as any).mustHave.length} skills`}
-                  >
-                    <div className="flex flex-wrap gap-1">
-                      {(jobDetails as any).mustHave.map((s: string, i: number) => (
-                        <span key={i} className="inline-flex items-center text-2xs px-1.5 py-0.5 rounded-full bg-success/10 text-success border border-success/30">
-                          <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" />
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </SidebarSection>
-                )}
-
-                {jobDetails?.description && (
-                  <SidebarSection icon={Briefcase} title="Description du poste">
-                    <p className="text-2xs text-foreground/85 leading-relaxed line-clamp-6 whitespace-pre-line">
-                      {jobDetails.description}
-                    </p>
-                  </SidebarSection>
+                </SidebarSection>
+              )}
+            </div>
+          ) : (
+            <div className="min-w-0 space-y-4 p-4">
+              <div>
+                <p className="eyebrow">Mission</p>
+                <h2 className="mt-1 text-md font-semibold text-foreground">
+                  {candidate.jobTitle || jobDetails?.title || 'Poste non précisé'}
+                </h2>
+                {jobDetails?.client?.name && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {jobDetails.client.name}
+                    {jobDetails.location && ` · ${jobDetails.location}`}
+                  </p>
                 )}
               </div>
-            )}
-          </ScrollArea>
+
+              {jobDetails && (jobDetails.seniority || jobDetails.contractType || jobDetails.remote) && (
+                <div className="flex flex-wrap gap-1.5">
+                  {jobDetails.seniority && <Badge variant="outline" className="font-normal">{jobDetails.seniority}</Badge>}
+                  {jobDetails.contractType && <Badge variant="outline" className="font-normal">{jobDetails.contractType}</Badge>}
+                  {jobDetails.remote && (
+                    <Badge variant="outline" className="font-normal">{`Télétravail\u00a0: ${jobDetails.remote}`}</Badge>
+                  )}
+                </div>
+              )}
+
+              {candidate.jobId ? (
+                <Button variant="outline" size="sm" onClick={() => setJobOpen(true)} className="w-full max-md:min-h-11">
+                  <ExternalLink aria-hidden="true" />
+                  Voir la fiche du poste
+                </Button>
+              ) : (
+                <p className="text-sm text-muted-foreground">Aucun poste n'est rattaché à ce candidat.</p>
+              )}
+
+              {mustHaveList.length > 0 && (
+                <SidebarSection
+                  icon={Target}
+                  title="Compétences indispensables"
+                  meta={`${mustHaveList.length} compétence${mustHaveList.length > 1 ? 's' : ''}`}
+                >
+                  <div className="flex flex-wrap gap-1">
+                    {mustHaveList.map((s, i) => (
+                      <Badge key={i} variant="outline" className="font-normal">{s}</Badge>
+                    ))}
+                  </div>
+                </SidebarSection>
+              )}
+
+              {jobDetails?.description && (
+                <SidebarSection icon={Briefcase} title="Description du poste">
+                  <p className="line-clamp-6 whitespace-pre-line text-xs leading-relaxed text-foreground-secondary">
+                    {jobDetails.description}
+                  </p>
+                </SidebarSection>
+              )}
+            </div>
+          )}
         </aside>
 
-        {/* Main area : ScorecardTab — pleine largeur */}
+        {/* Grille */}
         <main
           className={cn(
-            'flex-1 min-w-0 overflow-hidden',
-            'sm:block',
+            'min-h-0 min-w-0 flex-1 overflow-y-auto',
             mobilePane === 'scorecard' ? 'block' : 'hidden sm:block',
           )}
         >
-          <ScrollArea className="h-full w-full">
-            <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 min-w-0 w-full max-w-[1400px] mx-auto">
-              <ScorecardTab
-                candidate={candidate}
-                enrichedProfile={enrichedProfile}
-                onOpenProfile={() => setMobilePane('sidebar')}
-                autoStartCoaching={autoCoaching}
-                autoOpenFirst
-              />
-            </div>
-          </ScrollArea>
+          <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+            <ScorecardTab
+              candidate={candidate}
+              enrichedProfile={enrichedProfile}
+              onOpenProfile={showProfile}
+              autoStartCoaching={autoCoaching}
+              autoOpenFirst
+              onActiveEvaluationChange={setQuickEval}
+              onRecordingChange={setRecording}
+            />
+          </div>
         </main>
       </div>
 
-      <JobDetailSheet
-        jobId={candidate.jobId}
-        open={jobOpen}
-        onOpenChange={setJobOpen}
-      />
+      <JobDetailSheet jobId={candidate.jobId} open={jobOpen} onOpenChange={setJobOpen} />
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Sub-components
+// Sous-composants
 // ═══════════════════════════════════════════════════════════════════
 
 function SidebarSection({
-  icon: Icon, title, eyebrow, children,
+  icon: Icon, title, meta, children,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   title: string;
-  eyebrow?: string;
+  meta?: string;
   children: React.ReactNode;
 }) {
+  const headingId = useId();
   return (
-    <div className="rounded-xl border border-border bg-card p-3 w-full min-w-0 max-w-full overflow-hidden">
-      <div className="flex items-center gap-2 mb-2 min-w-0">
-        <div className="h-6 w-6 rounded-md bg-emerald-500/15 grid place-items-center shrink-0">
-          <Icon className="w-3 h-3 text-foreground" />
+    <section aria-labelledby={headingId} className="w-full min-w-0 overflow-hidden rounded-xl border border-border bg-card p-3">
+      <div className="mb-2 flex min-w-0 items-center gap-2">
+        <div className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted">
+          <Icon className="h-3.5 w-3.5 text-foreground-secondary" aria-hidden="true" />
         </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-display font-bold text-[12px] tracking-tight text-foreground truncate">
-            {title}
-          </h3>
-          {eyebrow && (
-            <p className="text-3xs uppercase tracking-wider font-semibold text-muted-foreground/70 truncate">
-              {eyebrow}
-            </p>
-          )}
+        <div className="min-w-0 flex-1">
+          <h3 id={headingId} className="truncate text-xs font-semibold text-foreground">{title}</h3>
+          {meta && <p className="truncate text-2xs text-muted-foreground">{meta}</p>}
         </div>
       </div>
-      <div className="min-w-0 max-w-full">
-        {children}
-      </div>
-    </div>
+      <div className="min-w-0">{children}</div>
+    </section>
   );
 }
 
@@ -774,38 +721,32 @@ function CompactExperienceItem({
   const clearbitUrl = companySlug ? `https://logo.clearbit.com/${companySlug}.com` : null;
   const hasLogoError = logoErrors.has(logoKey);
   const logoSrc = exp.logo || (!hasLogoError && clearbitUrl ? clearbitUrl : null);
+  const start = formatMonth(exp.startDate);
+  const end = formatMonth(exp.endDate);
+  const period = start ? `${start} – ${end || "aujourd'hui"}` : end;
 
   return (
-    <div className="flex items-start gap-2.5">
-      <div className="h-7 w-7 rounded-md bg-emerald-500/15 grid place-items-center shrink-0 overflow-hidden">
+    <li className="flex items-start gap-2.5">
+      <div className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-md bg-muted">
         {logoSrc ? (
           <img
             src={logoSrc}
             alt=""
-            className="w-5 h-5 object-contain rounded-sm"
-            onError={() => setLogoErrors(prev => new Set(prev).add(logoKey))}
+            className="h-5 w-5 rounded-sm object-contain"
+            onError={() => setLogoErrors((prev) => new Set(prev).add(logoKey))}
           />
         ) : (
-          <Building2 className="w-3.5 h-3.5 text-foreground" />
+          <Building2 className="h-3.5 w-3.5 text-foreground-secondary" aria-hidden="true" />
         )}
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-2xs font-semibold leading-tight truncate">
-          {exp.title}
-          {exp.isCurrent && (
-            <span className="inline-flex items-center gap-0.5 text-3xs font-bold uppercase tracking-wider px-1 py-0 rounded-full bg-success/10 text-success border border-success/30 ml-1.5 align-middle">
-              <span className="h-1 w-1 rounded-full bg-success animate-pulse" />
-              Actuel
-            </span>
-          )}
+      <div className="min-w-0 flex-1">
+        <p className="flex min-w-0 items-center gap-1.5 text-xs font-semibold leading-tight">
+          <span className="truncate">{exp.title || exp.company}</span>
+          {exp.isCurrent && <Badge variant="muted" className="shrink-0 px-1.5 py-0 text-3xs">Actuel</Badge>}
         </p>
-        <p className="text-2xs text-muted-foreground truncate">{exp.company}</p>
-        {(exp.startDate || exp.endDate) && (
-          <p className="text-3xs text-muted-foreground/70 tabular-nums mt-0.5">
-            {exp.startDate} {exp.endDate ? `→ ${exp.endDate}` : '→ Présent'}
-          </p>
-        )}
+        {exp.title && <p className="truncate text-2xs text-muted-foreground">{exp.company}</p>}
+        {period && <p className="mt-0.5 text-2xs tabular-nums text-muted-foreground">{period}</p>}
       </div>
-    </div>
+    </li>
   );
 }

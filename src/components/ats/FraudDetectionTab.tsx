@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
-import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
+import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { ATSCandidate } from '@/hooks/useATSData';
-import { Shield, ShieldAlert, ShieldCheck, ShieldX, Loader2, AlertTriangle, Clock, TrendingUp, GraduationCap, Shuffle } from 'lucide-react';
+import { Clock, GraduationCap, Shield, ShieldAlert, ShieldCheck, ShieldX, Shuffle, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/layout/EmptyState';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { IconTile } from '@/components/ui/IconTile';
+import { Spinner } from '@/components/ui/spinner';
 
 interface Props {
   candidate: ATSCandidate;
@@ -23,17 +27,18 @@ interface FraudResult {
   anomalies: Anomaly[];
 }
 
+/** Catégories d'anomalie : un libellé et une icône neutres (revue design E-32, E-45). */
 const CATEGORY_CONFIG = {
-  TIMELINE: { icon: Clock, label: 'Timeline', color: 'text-info' },
-  INFLATION: { icon: TrendingUp, label: 'Inflation', color: 'text-warning' },
-  EDUCATION: { icon: GraduationCap, label: 'Éducation', color: 'text-brand-purple' },
-  COHERENCE: { icon: Shuffle, label: 'Cohérence', color: 'text-info' },
+  TIMELINE: { icon: Clock, label: 'Chronologie' },
+  INFLATION: { icon: TrendingUp, label: 'Intitulés gonflés' },
+  EDUCATION: { icon: GraduationCap, label: 'Formation' },
+  COHERENCE: { icon: Shuffle, label: 'Cohérence' },
 };
 
 const SEVERITY_CONFIG = {
-  low: { label: 'Faible', bg: 'bg-info/10 text-info', dot: 'bg-info' },
-  medium: { label: 'Moyen', bg: 'bg-warning/10 text-warning', dot: 'bg-warning' },
-  high: { label: 'Élevé', bg: 'bg-destructive/10 text-destructive', dot: 'bg-destructive' },
+  low: { label: 'Gravité faible', variant: 'muted' as const },
+  medium: { label: 'Gravité moyenne', variant: 'warning' as const },
+  high: { label: 'Gravité élevée', variant: 'danger' as const },
 };
 
 export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
@@ -46,16 +51,29 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fnError } = await invokeWithCredits('detect-profile-fraud', 'screen_candidate', {
+      const { data, error: fnError } = await invokeWithCredits<FraudResult & { error?: string }>('detect-profile-fraud', 'screen_candidate', {
         profileData: candidate.linkedinProfileData,
         candidateName: candidate.name,
         headline: candidate.headline,
       }, { modelOverride: selectedModel ?? undefined });
-      if (fnError) throw fnError;
-      if (data?.error) throw new Error(data.error);
-      setResult(data as any);
-    } catch (e: any) {
-      setError(e.message || 'Erreur lors de l\'analyse');
+      if (fnError) {
+        console.error('[FraudDetectionTab] vérification impossible :', fnError);
+        setError(
+          isInsufficientCreditsError(fnError)
+            ? 'Crédits IA insuffisants pour lancer la vérification.'
+            : 'La vérification a échoué. Réessayez dans un instant.',
+        );
+        return;
+      }
+      if (data?.error || !Array.isArray(data?.anomalies)) {
+        console.error('[FraudDetectionTab] réponse inattendue :', data);
+        setError('La vérification a échoué. Réessayez dans un instant.');
+        return;
+      }
+      setResult(data);
+    } catch (e) {
+      console.error('[FraudDetectionTab] vérification impossible :', e);
+      setError('La vérification a échoué. Réessayez dans un instant.');
     } finally {
       setLoading(false);
     }
@@ -63,50 +81,46 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
 
   if (!candidate.linkedinProfileData) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <ShieldAlert className="w-10 h-10 text-muted-foreground mb-3" />
-        <p className="text-sm font-medium text-foreground">Données de profil indisponibles</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          L'analyse nécessite les données LinkedIn enrichies du candidat.
-        </p>
-      </div>
-    );
-  }
-
-  if (!result && !loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <IconTile icon={Shield} size="lg" className="mb-3 rounded-2xl" />
-        <p className="font-display text-base font-bold tracking-tight text-foreground">Détection de fraude IA</p>
-        <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-          Analyse automatique du profil pour détecter les incohérences : dates, titres gonflés, diplômes douteux.
-        </p>
-        <div className="flex items-center gap-2 mt-4">
-          <button
-            type="button"
-            onClick={runAnalysis}
-            className="h-9 px-5 rounded-full bg-foreground text-background text-xs font-medium hover:bg-foreground/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            Lancer l'analyse
-          </button>
-          <CreditCostBadge actionId="screen_candidate" />
-          <ModelPicker actionId="screen_candidate" value={selectedModel} onChange={setSelectedModel} compact />
-        </div>
-        {error && <p className="text-xs text-destructive mt-2">{error}</p>}
-      </div>
+      <EmptyState
+        variant="compact"
+        icon={ShieldAlert}
+        title="Profil LinkedIn indisponible"
+        description="La vérification a besoin du profil LinkedIn complet du candidat."
+      />
     );
   }
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-foreground mb-3" />
-        <p className="text-xs text-muted-foreground uppercase tracking-wider">Analyse en cours…</p>
+      <div className="flex flex-col items-center justify-center gap-3 py-12">
+        <Spinner label="Vérification du profil en cours" />
+        <p className="text-sm text-muted-foreground" aria-hidden="true">Vérification en cours…</p>
       </div>
     );
   }
 
-  if (!result) return null;
+  if (!result) {
+    return (
+      <div className="flex flex-col items-center justify-center py-10 text-center">
+        <IconTile icon={Shield} size="lg" className="mb-3" />
+        <p className="text-md font-semibold text-foreground">Vérifier la cohérence du profil</p>
+        <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+          L'IA Konekt repère les incohérences du profil&nbsp;: dates, intitulés gonflés, diplômes douteux.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <Button variant="primary" onClick={() => void runAnalysis()} className="max-md:min-h-11">
+            {error ? 'Relancer la vérification' : 'Lancer la vérification'}
+          </Button>
+          <ModelPicker actionId="screen_candidate" value={selectedModel} onChange={setSelectedModel} compact />
+        </div>
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-danger">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   const ScoreIcon = result.trust_score >= 80 ? ShieldCheck
     : result.trust_score >= 50 ? ShieldAlert
@@ -114,67 +128,58 @@ export const FraudDetectionTab: React.FC<Props> = ({ candidate }) => {
 
   const scoreColor = result.trust_score >= 80 ? 'text-success'
     : result.trust_score >= 50 ? 'text-warning'
-    : 'text-destructive';
+    : 'text-danger';
 
   return (
     <div className="space-y-4">
-      {/* Trust Score */}
-      <div className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
-        <ScoreIcon className={cn("w-10 h-10 shrink-0", scoreColor)} />
-        <div className="flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className={cn("font-display text-3xl font-bold tabular-nums tracking-tight", scoreColor)}>
-              {result.trust_score}
-            </span>
-            <span className="text-xs text-muted-foreground">/100 confiance</span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
+      {/* Indice de confiance */}
+      <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+        <ScoreIcon className={cn('h-10 w-10 shrink-0', scoreColor)} aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-baseline gap-2">
+            <span className={cn('text-3xl font-bold tabular-nums', scoreColor)}>{result.trust_score}</span>
+            <span className="text-xs text-muted-foreground">sur 100, indice de confiance</span>
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {result.anomalies.length === 0
-              ? 'Aucune anomalie détectée — profil cohérent.'
-              : `${result.anomalies.length} anomalie${result.anomalies.length > 1 ? 's' : ''} détectée${result.anomalies.length > 1 ? 's' : ''}`
-            }
+              ? 'Aucune anomalie détectée\u00a0: le profil est cohérent.'
+              : `${result.anomalies.length} anomalie${result.anomalies.length > 1 ? 's' : ''} détectée${result.anomalies.length > 1 ? 's' : ''}`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={runAnalysis}
-          disabled={loading}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
-        >
-          Relancer
-        </button>
+        <Button variant="ghost" size="xs" onClick={() => void runAnalysis()} className="shrink-0 max-md:min-h-11">
+          Relancer la vérification
+        </Button>
       </div>
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error} Le résultat affiché est celui de la vérification précédente.
+        </p>
+      )}
 
-      {/* Anomalies List */}
+      {/* Anomalies */}
       {result.anomalies.length > 0 && (
-        <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
           {result.anomalies.map((anomaly, i) => {
-            const cat = CATEGORY_CONFIG[anomaly.category];
-            const sev = SEVERITY_CONFIG[anomaly.severity];
+            const cat = CATEGORY_CONFIG[anomaly.category] ?? CATEGORY_CONFIG.COHERENCE;
+            const sev = SEVERITY_CONFIG[anomaly.severity] ?? SEVERITY_CONFIG.low;
             const CatIcon = cat.icon;
             return (
-              <div key={i} className="p-3">
+              <li key={i} className="p-3">
                 <div className="flex items-start gap-2.5">
-                  <CatIcon className={cn("w-4 h-4 mt-0.5 shrink-0", cat.color)} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {cat.label}
-                      </span>
-                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", sev.bg)}>
-                        {sev.label}
-                      </span>
+                  <CatIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-0.5 flex flex-wrap items-center gap-2">
+                      <span className="eyebrow">{cat.label}</span>
+                      <Badge variant={sev.variant}>{sev.label}</Badge>
                     </div>
                     <p className="text-sm font-medium text-foreground">{anomaly.description}</p>
-                    {anomaly.detail && (
-                      <p className="text-xs text-muted-foreground mt-1">{anomaly.detail}</p>
-                    )}
+                    {anomaly.detail && <p className="mt-1 text-xs text-muted-foreground">{anomaly.detail}</p>}
                   </div>
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );
