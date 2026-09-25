@@ -947,10 +947,25 @@ Deno.serve(async (req: Request) => {
         cancelled: 0,
       };
 
-      (queueItems || []).forEach((item: InMailQueueItem) => {
-        if (item.status in stats) {
-          stats[item.status as keyof typeof stats]++;
+      // Compteurs exacts sur toute la file de l'appelant (SEQ-126), pas sur
+      // les 100 lignes renvoyées dans `items`. Un comptage illisible retombe
+      // sur le décompte de ces lignes pour ce statut.
+      const statusKeys = Object.keys(stats) as Array<keyof typeof stats>;
+      const counts = await Promise.all(statusKeys.map((status) =>
+        supabase
+          .from("inmail_queue")
+          .select("id", { count: "exact", head: true })
+          .eq("created_by", user.id)
+          .eq("status", status)
+      ));
+      statusKeys.forEach((status, i) => {
+        const { count, error: countError } = counts[i];
+        if (!countError && typeof count === "number") {
+          stats[status] = count;
+          return;
         }
+        console.warn(`[process-inmail-queue] status: comptage « ${status} » illisible, décompte des lignes affichées`, countError);
+        stats[status] = (queueItems || []).filter((item: InMailQueueItem) => item.status === status).length;
       });
 
       return new Response(

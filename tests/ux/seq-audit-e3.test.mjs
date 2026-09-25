@@ -165,7 +165,7 @@ test('SEQ-035 — message IA vide ou réduit à la signature : rien ne part', ()
 // ---------------------------------------------------------------- SEQ-036 (high)
 test('SEQ-036 — invitation à une relation ou à un candidat déjà invité : étape sautée', () => {
   assert.equal(rules.inviteRejectionSkipReason(422, '{"type":"errors/already_invited_recently"}'), 'Invitation déjà en attente');
-  assert.equal(rules.inviteRejectionSkipReason(422, 'already connected'), 'Déjà en relation');
+  assert.equal(rules.inviteRejectionSkipReason(422, 'already connected'), 'Déjà en relation : invitation inutile');
   assert.equal(rules.inviteRejectionSkipReason(503, 'already invited'), null);
   const invite = sliceBetween(executeStep, "case 'connection_request': {", "default: return { success: false, error: '__SKIP_UNSUPPORTED__' };");
   const skipAt = invite.indexOf("skipReason: rules.ALREADY_CONNECTED_SKIP_REASON");

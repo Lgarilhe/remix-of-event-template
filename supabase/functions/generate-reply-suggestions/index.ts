@@ -582,11 +582,27 @@ Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le conta
     let outreachContextBlock = '';
     if (context.outreachConfig && (context.outreachConfig.recruitment_mode || context.outreachConfig.sender_role || context.outreachConfig.anonymize_client)) {
       try {
+        // Nom de l'organisation vérifiée de l'appelant (membre de son
+        // organisation active) : identité de l'expéditeur, jamais « Konekt » (SEQ-097).
+        let organizationName: string | null = null;
+        if (orgId) {
+          const { data: membership, error: memberError } = await svc.from('organization_members')
+            .select('id').eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+          if (memberError) console.warn('[generate-reply-suggestions] membership check failed:', memberError.message);
+          if (membership) {
+            const { data: orgRow, error: orgError } = await svc.from('organizations').select('name').eq('id', orgId).maybeSingle();
+            if (orgError) console.warn('[generate-reply-suggestions] organization name read failed:', orgError.message);
+            organizationName = String((orgRow as { name?: string | null } | null)?.name || '').trim() || null;
+          }
+        }
         const { buildOutreachContext } = await import('../_shared/outreach-context.ts');
         outreachContextBlock = '\n' + buildOutreachContext(
           context.outreachConfig as any,
-          context.outreachClientName || jobData?.client?.name,
+          // context.jobData : `jobData` seul n'existait pas dans ce bloc, l'erreur
+          // levée supprimait tout le contexte d'approche sans nom de client.
+          context.outreachClientName || context.jobData?.client?.name,
           context.candidateName || 'le recruteur',
+          organizationName,
         );
       } catch (e) {
         console.warn('[generate-reply-suggestions] outreach-context import failed:', e);

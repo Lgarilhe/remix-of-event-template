@@ -197,3 +197,22 @@ export function applyClientAnonymization(
   const regex = new RegExp(`\\b${escaped}\\b`, "gi");
   return message.replace(regex, alias);
 }
+
+const MISSION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MISSION_JOB_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * Identifiant de mission transmis par le front, pour relire sa configuration
+ * d'approche (SEQ-051) : « project:{uuid} » (job synthétique du sourcing) →
+ * uuid, comparé à sourcing_projects.id et job_id ; un autre identifiant n'est
+ * comparé qu'à job_id (même règle que useMissionOutreachConfig). Tout
+ * identifiant hors de ces formats est refusé (il finirait dans un filtre).
+ */
+export function normalizeMissionId(raw: unknown): { kind: "uuid" | "job_id"; id: string } | null {
+  if (typeof raw !== "string") return null;
+  const id = raw.trim().replace(/^project:/, "").trim();
+  if (!id) return null;
+  if (MISSION_UUID_RE.test(id)) return { kind: "uuid", id };
+  if (MISSION_JOB_ID_RE.test(id)) return { kind: "job_id", id };
+  return null;
+}
