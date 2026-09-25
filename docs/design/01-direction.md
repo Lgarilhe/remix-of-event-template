@@ -192,7 +192,7 @@ Chaque écran qui charge des données prévoit quatre états :
 - Français partout : pas de « step », « preview », « enrollment », « Strong Yes ». Les statuts techniques (`active`, `replied`) ne s'affichent jamais bruts.
 - Vocabulaire des séquences : inscrire et inscription (pas « enrôler »), étape, aperçu, modèle, expéditeur, délai, statistiques, e-mail. Les libellés des étapes, des statuts et des raisons d'arrêt viennent de `src/lib/sequenceCatalog.ts`.
 - Un entretien passé appelle un « compte rendu », pas un « débrief ».
-- Décisions sur un candidat : « Oui, clairement », « Oui », « À revoir », « Non », « Non, clairement », « En attente » ; recommandation de l'IA : « Recommandé », « À évaluer », « Peu adapté » (`src/lib/verdicts.ts`). Jamais « Strong Yes », « GO » ni une clé brute.
+- Décisions sur un candidat (`src/lib/verdicts.ts`) : recommandation d'une personne « Oui, clairement », « Oui », « À revoir », « Non », « Non, clairement » ; verdict d'une qualification « Qualifié », « Non qualifié », « À revoir », « En attente » ; recommandation de l'IA « Recommandé », « À évaluer », « Peu adapté ». Jamais « Strong Yes », « GO » ni une clé brute.
 - Boutons : un verbe à l'infinitif et son objet (« Créer la mission »), en casse de phrase.
 - Pas de tiret long dans l'interface : virgule, deux points ou parenthèses.
 - Aucun nom de fournisseur visible (règle de `CLAUDE.md`, section Branding).

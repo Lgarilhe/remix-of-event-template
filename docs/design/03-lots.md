@@ -134,29 +134,45 @@ Constats : E-04, E-05 (scorecard), E-09, E-13, E-14 (P1) ; E-11 hors mission ; E
 
 Remis à la refonte mission : E-02, E-03, E-05 (fiche), E-06 à E-08, E-29 à E-31, E-41, E-42, E-49, E-52.
 
-### Lot 8 · Pages publiques et portails
+Fait (assistant, page Agents, IA en ligne, sheet de poste) :
 
-Périmètre : accueil (`/`), `/auth`, `/pricing`, `/portal/:token`, `/client/:token`, `/r/:slug`, `/unsubscribe`, `/privacy`, `/privacy-extension`.
+- Page `/agents` renommée « Assistant » comme l'onglet de la barre latérale et la palette ; « Nouvelle conversation » ouvre le tiroir ; erreur avec « Réessayer », squelette, état vide ; statuts partagés avec l'historique du tiroir (`src/lib/agentConversations.ts`, E-35, E-39).
+- Plus d'œil animé : monogramme Konekt fixe ; ligne d'état en texte avant la première réponse ; bloc « Réflexion » sans étincelle ni miroitement, contenu replié non monté ; bouton « Arrêter » pendant une réponse (E-14, E-36 partiel).
+- Vouvoiement de l'accueil, des placeholders et des erreurs ; un seul nom, « l'assistant » ; bouton d'envoi nommé et monochrome ; composeur à 12 px (E-37).
+- Carte d'approbation sans ombre décalée ni police mono, textes rédigés, boutons du kit ; puces d'outils sans emoji, repli « Action de l'assistant » au lieu du nom technique (E-38).
+- Aide à la rédaction (`AiTextarea`) : commandes à l'infinitif, sans emoji ni violet, « Aperçu » ; sélecteur de modèle et coût en toutes lettres (« 3 crédits »), sans étincelle ni « tokens » (E-40, E-47, E-51 partiel).
+- Sheet de poste : statut en français, filtres avec les libellés de la recherche, onglets `Tabs`, onglet « Analyse » sans jargon, critères « Indispensable, Important, Appréciable », scores par `ScoreBadge` ; la fiche remplace le sheet au lieu de s'empiler ; un poste de mission (« project:… ») affiche enfin son brief (E-34).
 
-Constats : F-33, F-34, F-53, F-54 (P1) ; F-35 à F-52, F-55 à F-64.
+Reste pour l'assistant : la carte d'approbation insérée dans le fil sous le message qui la propose (E-36) ; la trace des connecteurs consultés, masquée à dessein après succès (choix figé par `tests/agent/chat-rendering.test.mjs`) ; le choix du modèle réglé une fois dans les Paramètres plutôt qu'à chaque action (E-51).
 
-- Bricolage Grotesque réservé aux titres des pages publiques ; logo lisible sur les deux fonds.
-- Un seul écran d'impasse public (logo, titre, phrase, action), qui distingue lien expiré et problème de connexion.
-- Portail client : étapes en libellés ; portail candidat : étape réelle.
-- Désinscription : une panne ne se lit pas comme un succès.
+### Lot 8 · Pages publiques et portails (fait)
 
-Attend : l'adresse de prise de rendez-vous (F-33) et la table d'étapes (F-53).
+Périmètre : accueil (`/`), `/auth`, `/pricing`, `/portal/:token`, `/client/:token`, `/r/:slug`, `/unsubscribe`, `/privacy`, `/privacy-extension`. Composants communs sous `src/components/public/`.
 
-### Lot 9 · Onboarding, invitation, qualification, marketplace
+- Coquille publique commune : en-tête (logo qui suit le thème), pied de page (tarifs, confidentialité, mentions légales), écran d'impasse unique qui distingue lien expiré, page introuvable et panne, seule la panne proposant « Réessayer » (F-34, F-48, F-60).
+- Accueil : suit le thème du visiteur, kit partout, plus de dégradé ni de pastille, Bricolage Grotesque aux titres et Instrument Sans ailleurs, chiffres non sourcés et témoignage anonyme retirés, démo jouée une fois puis figée, un seul appel principal « Commencer l'essai gratuit » qui ouvre l'inscription, formulaire de contact en ligne (F-35 à F-41, F-43 à F-45).
+- « Réserver une démo » devient « Demander une démo » et mène au formulaire de contact (F-33, partiel).
+- Connexion : libellés visibles, erreurs traduites, deux boutons du kit de même hauteur (F-46, F-47).
+- Tarifs, dans l'intention de la PR #245 : plus de dégradé ni de violet, plan recommandé signalé par un filet et un badge d'accent, action principale monochrome, bascule mensuel ou annuel en segment, erreur avec « Réessayer » (F-49 à F-52).
+- Portails : étapes en libellés français, repli neutre, jamais de clé brute ; non-retenus comptés à part ; vouvoiement ; primitives du kit ; score par `ScoreBadge` (F-53 à F-59).
+- Profil public et désinscription : une panne propose « Réessayer » au lieu d'un faux « lien invalide » (F-61, F-62).
+- Pages légales : un gabarit, une adresse de contact unique (F-63).
+
+Changements de comportement : « Commencer l'essai gratuit » ouvre l'inscription ; le résumé enregistré d'une évaluation client s'écrit « Évaluation de X, note moyenne 4,2/5 » ; les évaluations envoyées depuis le portail sont mémorisées dans le navigateur.
+
+Reste, à fournir par le propriétaire : l'adresse de prise de rendez-vous (F-33) ; l'identité légale des mentions (siège, RCS ou SIREN, capital, directeur de la publication, hébergeur : F-42) ; la confirmation que la boîte `privacy@konekt.io` existe (F-63). Reste côté base : l'étape réelle du candidat dans `get_portal_by_token` (F-54), les évaluations déjà faites renvoyées par `client-portal-data` (F-58), le nom de l'expéditeur dans `handle-email-unsubscribe` (F-62). F-64 (liste des routes publiques de `src/App.tsx`) n'est pas traité : changement d'une ligne proposé à la coquille.
+
+### Lot 9 · Onboarding, invitation, qualification, marketplace (fait)
 
 Périmètre : `/onboarding` et `src/components/onboarding/**`, `WelcomeOnboardingModal`, `CollaboratorWelcome`, `/mission-invite/:token`, `/qualification/:id`, `/marketplace`.
 
-Constats : B-01 (P1), B-62 à B-67, B-72, B-85, B-87, B-88 ; E-50 ; F-26 à F-31.
+- Acceptation d'invitation : un seul appel par lien (trois auparavant sur un succès), un message par cause (acceptée, expirée, autre adresse, introuvable, session expirée), « Réessayer » pour une panne (B-01, B-72).
+- Onboarding : plus d'analyse simulée ni d'attente artificielle, une recherche avec squelette puis la fiche ; plus d'interstitiel, de confettis ni de fond animé ; initiales neutres ; « Continuer » et « Retour » partout (B-62 à B-66).
+- Qualification : statut d'enregistrement visible (non enregistré, en cours, enregistré à HH:mm, échec avec « Réessayer »), notes enregistrées 10 s après la frappe, chaque écriture relue ; verdicts « Qualifié », « Non qualifié », « À revoir », « En attente » en groupe radio, sans emoji ; vouvoiement (B-67, B-85 partiel, B-13 et B-30 pour cet écran, E-50 partiel).
+- Marketplace : une anatomie de carte, une action par carte, champs du kit reliés à leur libellé, squelettes et états vides, en-tête `PageHeader` (F-26 à F-30, F-31 partiel).
+- Tuiles et onglets du kit (B-87, B-88) ; cibles de 44 px sur téléphone.
 
-- Acceptation d'invitation en un seul appel, un message par cause, « Réessayer » pour le réseau.
-- Onboarding : plus d'analyse simulée, plus de confettis ni d'interstitiel.
-- Qualification : statut d'enregistrement visible, verdicts sans emoji (vocabulaire suivant la décision produit).
-- Marketplace sur les primitives.
+Reste : l'adresse d'équipe du Cercle partenaires (F-31) ; côté base, l'appel `update-candidate-stage` de la Qualification ne correspond pas au contrat de la fonction (échec désormais signalé par un toast, correction attendue avec la table d'étapes, E-01) ; l'enregistrement automatique des notes repasse une qualification terminée en « en cours » ; `accept-mission-invitation` devrait renvoyer un code d'erreur distinct pour « autre adresse ».
 
 ### Lot 10 · Passe texte
 

@@ -231,11 +231,11 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, o
   if (type === 'readonly') {
     return (
       <div className="flex flex-col gap-1">
-        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
-          {label} <span className="font-mono normal-case">(lecture seule)</span>
+        <Label className="text-xs font-medium text-muted-foreground">
+          {label} <span className="font-normal">(lecture seule)</span>
         </Label>
-        <div className="text-xs font-mono text-muted-foreground bg-muted/40 px-2 py-1 rounded break-all">
-          {String(value ?? '∅')}
+        <div className="text-xs font-mono text-muted-foreground bg-muted px-2 py-1 rounded-md break-all">
+          {value === null || value === undefined || value === '' ? 'vide' : String(value)}
         </div>
       </div>
     );
@@ -244,7 +244,7 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, o
   if (type === 'boolean') {
     return (
       <div className="flex items-center justify-between gap-2">
-        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+        <Label className="text-xs font-medium text-muted-foreground">
           {label}
         </Label>
         <Switch checked={!!value} onCheckedChange={onChange} />
@@ -255,7 +255,7 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, o
   if (type === 'number') {
     return (
       <div className="flex flex-col gap-1">
-        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{label}</Label>
+        <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
         <Input
           type="number"
           value={String(value ?? '')}
@@ -272,7 +272,7 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, o
   if (type === 'textarea') {
     return (
       <div className="flex flex-col gap-1">
-        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{label}</Label>
+        <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
         <Textarea
           value={String(value ?? '')}
           onChange={(e) => onChange(e.target.value)}
@@ -287,8 +287,8 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, o
     // Object / array : JSON read-write textarea, best-effort
     return (
       <div className="flex flex-col gap-1">
-        <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
-          {label} <span className="normal-case">(JSON)</span>
+        <Label className="text-xs font-medium text-muted-foreground">
+          {label} <span className="font-normal">(données structurées)</span>
         </Label>
         <Textarea
           value={JSON.stringify(value, null, 2)}
@@ -310,7 +310,7 @@ const EditableParamField: React.FC<EditableParamFieldProps> = ({ field, value, o
   // default string
   return (
     <div className="flex flex-col gap-1">
-      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{label}</Label>
+      <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
       <Input
         value={String(value ?? '')}
         onChange={(e) => onChange(e.target.value)}
@@ -394,7 +394,12 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           { execution_id: executionId, action },
         );
         if (error || !data?.success) {
-          toast.error(data?.error || error?.message || `Action ${action} a échoué`);
+          console.warn('[AgentToolApprovalCard] action', action, data?.error || error?.message);
+          toast.error(
+            action === 'approve'
+              ? "L'action n'a pas pu être exécutée. Réessayez dans un instant."
+              : "L'action n'a pas pu être rejetée. Réessayez dans un instant.",
+          );
           return;
         }
         if (action === 'reject') {
@@ -410,7 +415,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           });
           toast.success(`Action programmée pour ${when}`, { duration: 6000 });
         } else {
-          toast.success('Action exécutée ✓');
+          toast.success('Action exécutée');
         }
         // Optimistic remove (realtime confirmera)
         setPending((prev) => prev.filter((p) => p.id !== executionId));
@@ -432,7 +437,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           .eq('id', executionId)
           .eq('status', 'proposed');
         if (updateError) {
-          toast.error(`Sauvegarde échouée : ${updateError.message}`);
+          console.warn('[AgentToolApprovalCard] save', updateError.message);
+          toast.error("Vos modifications n'ont pas pu être enregistrées. Réessayez.");
           return;
         }
         // 2. Approve via the existing edge fn (re-runs dryRun → execute with the new params)
@@ -441,7 +447,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
           { execution_id: executionId, action: 'approve' },
         );
         if (error || !data?.success) {
-          toast.error(data?.error || error?.message || 'Approbation après édition a échoué');
+          console.warn('[AgentToolApprovalCard] approve after edit', data?.error || error?.message);
+          toast.error("L'action n'a pas pu être exécutée avec vos modifications. Réessayez.");
           return;
         }
         if (data?.data?.scheduled === true && typeof data.data.scheduled_for === 'string') {
@@ -452,9 +459,9 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
             hour: '2-digit',
             minute: '2-digit',
           });
-          toast.success(`Action programmée pour ${when} (avec tes modifs)`, { duration: 6000 });
+          toast.success(`Action programmée pour ${when}, avec vos modifications`, { duration: 6000 });
         } else {
-          toast.success('Action exécutée avec tes modifs ✓');
+          toast.success('Action exécutée avec vos modifications');
         }
         setEditingId(null);
         setEditedParams({});
@@ -481,9 +488,9 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
   return (
     <div className="flex flex-col gap-2 px-4 py-3 border-b border-border bg-muted/30">
       {pending.map((row) => {
-        const summary = row.dry_run_result?.summary || `Action proposée : ${row.tool_name}`;
+        const summary = row.dry_run_result?.summary || "Action proposée par l'assistant";
         const warning = row.dry_run_result?.warning;
-        const label = TOOL_LABEL[row.tool_name] || row.tool_name;
+        const label = TOOL_LABEL[row.tool_name] || "Action de l'assistant";
         const loading = actionLoading[row.id];
         const isEditing = editingId === row.id;
         const isSensitive = isSensitiveAction(row.tool_name, row.params);
@@ -495,23 +502,18 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
         return (
           <div
             key={row.id}
-            className="border border-border bg-background p-3 flex flex-col gap-2 shadow-sm"
-            style={{ boxShadow: '3px 3px 0px 0px hsl(var(--primary))' }}
+            className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] font-bold text-muted-foreground">
-                    Action proposée
-                  </span>
-                  <span className="text-[10px] font-mono text-muted-foreground/60">
-                    {label}
-                  </span>
+                  <span className="eyebrow">Action proposée</span>
+                  <span className="text-2xs text-muted-foreground">· {label}</span>
                 </div>
                 <p className="text-sm text-foreground leading-snug">{summary}</p>
                 {warning && (
                   <div className="mt-1.5 flex items-start gap-1.5 text-xs text-warning">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
                     <span>{warning}</span>
                   </div>
                 )}
@@ -519,10 +521,8 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
             </div>
 
             {isEditing && (
-              <div className="mt-2 pt-2 border-t border-dashed border-border flex flex-col gap-2.5">
-                <div className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground/80">
-                  Modifier les paramètres avant d'exécuter
-                </div>
+              <div className="mt-2 pt-2 border-t border-border flex flex-col gap-2.5">
+                <p className="text-xs font-medium text-foreground">Modifier les réglages avant d'exécuter</p>
                 {Object.entries(editedParams).map(([field, value]) => (
                   <EditableParamField
                     key={field}
@@ -535,13 +535,12 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
             )}
 
             {isSensitive && !isEditing && (
-              <div className="mt-1 flex items-start gap-2 rounded border border-warning/40 bg-warning/5 p-2">
-                <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5 text-warning" />
-                <div className="text-xs leading-snug text-foreground">
-                  <span className="font-bold text-warning/90">Action sensible</span> — une
-                  fenêtre de confirmation s'ouvrira au clic sur Approuver pour vérifier la
-                  cible (<strong>{targetLabel}</strong>).
-                </div>
+              <div className="mt-1 flex items-start gap-2 rounded-lg bg-warning-muted p-2">
+                <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5 text-warning" aria-hidden="true" />
+                <p className="text-xs leading-snug text-foreground">
+                  <span className="font-semibold text-warning">Action sensible :</span> une confirmation
+                  vous sera demandée au moment d'approuver, pour vérifier la cible (<strong>{targetLabel}</strong>).
+                </p>
               </div>
             )}
 
@@ -549,27 +548,26 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
               {!isEditing ? (
                 <>
                   <Button
-                    size="sm"
+                    size="xs"
                     variant="outline"
                     onClick={() => handleAction(row.id, 'reject')}
                     disabled={loading != null}
-                    className="h-7 px-2.5 text-xs gap-1 border-border"
                   >
-                    {loading === 'reject' ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                    {loading === 'reject' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <X aria-hidden="true" />}
                     Rejeter
                   </Button>
                   <Button
-                    size="sm"
+                    size="xs"
                     variant="outline"
                     onClick={() => startEditing(row)}
                     disabled={loading != null}
-                    className="h-7 px-2.5 text-xs gap-1 border-border"
                   >
-                    <Pencil className="w-3 h-3" />
+                    <Pencil aria-hidden="true" />
                     Modifier
                   </Button>
                   <Button
-                    size="sm"
+                    size="xs"
+                    variant="primary"
                     onClick={() => {
                       if (approveNeedsDialog) {
                         setConfirmDialogId(row.id);
@@ -578,32 +576,20 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                       }
                     }}
                     disabled={loading != null}
-                    className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
                   >
-                    {loading === 'approve' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    {loading === 'approve' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
                     Approuver
                   </Button>
                 </>
               ) : (
                 <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={cancelEditing}
-                    disabled={loading != null}
-                    className="h-7 px-2.5 text-xs gap-1 border-border"
-                  >
-                    <X className="w-3 h-3" />
+                  <Button size="xs" variant="outline" onClick={cancelEditing} disabled={loading != null}>
+                    <X aria-hidden="true" />
                     Annuler
                   </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => handleSaveAndApprove(row.id)}
-                    disabled={loading != null}
-                    className="h-7 px-2.5 text-xs gap-1 bg-foreground text-background hover:bg-foreground/90"
-                  >
-                    {loading === 'save' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                    Approuver avec modifs
+                  <Button size="xs" variant="primary" onClick={() => handleSaveAndApprove(row.id)} disabled={loading != null}>
+                    {loading === 'save' ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
+                    Enregistrer et approuver
                   </Button>
                 </>
               )}
@@ -626,13 +612,16 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                   return (
                     <>
                       <p className="mb-2">
-                        Tu vas effectuer cette action sur <strong>{target}</strong>.
+                        Vous allez effectuer cette action sur <strong>{target}</strong>.
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {row.dry_run_result?.summary || row.tool_name}
                       </p>
                       {row.dry_run_result?.warning && (
-                        <p className="mt-2 text-xs text-warning">⚠️ {row.dry_run_result.warning}</p>
+                        <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          {row.dry_run_result.warning}
+                        </p>
                       )}
                     </>
                   );
@@ -650,7 +639,7 @@ export const AgentToolApprovalCard: React.FC<AgentToolApprovalCardProps> = ({ co
                 }
               }}
             >
-              Oui, j'approuve
+              Approuver l'action
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

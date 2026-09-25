@@ -268,13 +268,13 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
         // voyait un tour assistant vide sans savoir quoi faire.
         const errorText =
           resp.status === 401
-            ? 'Ta session a expiré. Reconnecte-toi puis renvoie ton message.'
+            ? 'Votre session a expiré. Reconnectez-vous, puis renvoyez votre message.'
             : resp.status === 402
               ? (serverMessage ?? CREDITS_EXHAUSTED_TEXT)
               : resp.status === 403
-                ? "Cette action n'est pas autorisée pour ton compte dans cette organisation."
+                ? "Cette action n'est pas autorisée pour votre compte dans cette organisation."
                 : resp.status === 429
-                  ? 'Trop de demandes en même temps. Attends quelques secondes puis réessaie.'
+                  ? 'Trop de demandes en même temps. Patientez quelques secondes, puis réessayez.'
                   : "L'assistant est momentanément indisponible. Réessayez dans un instant.";
         yield { content: [{ type: 'text' as const, text: errorText }] };
         return;
@@ -405,7 +405,7 @@ export function createSkalrChatAdapter(config: SkalrAdapterConfig): ChatModelAda
         // comme bulle vide perdue (cf. bug remonté par Laurent).
         finalParts.push({
           type: 'text' as const,
-          text: "Je n'ai pas pu formuler de réponse. Si une action attend ton approbation, elle s'affiche en bandeau au-dessus du chat. Sinon, reformule ta demande.",
+          text: "Je n'ai pas pu formuler de réponse. Si une action attend votre validation, elle s'affiche au-dessus de la conversation. Sinon, reformulez votre demande.",
         });
       }
       if (finalParts.length > 0) {

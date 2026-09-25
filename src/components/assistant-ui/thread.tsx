@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import {
+  AuiIf,
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   useMessage,
 } from '@assistant-ui/react';
 import {
-  ArrowUp, ChevronRight, Sparkles, Paperclip, X, FileText,
+  ArrowUp, ChevronRight, Paperclip, X, FileText,
   Search, PenLine, BarChart3, Lightbulb, SlidersHorizontal,
   ClipboardList, MessageSquare, CheckCircle2, XCircle, AlertTriangle,
-  MapPin, Briefcase,
+  MapPin, Briefcase, Loader2, Square,
 } from 'lucide-react';
-import { AnimatedOrb } from '@/components/ui/AnimatedOrb';
+import KonektLogo from '@/components/KonektLogo';
+import { Badge } from '@/components/ui/badge';
+import { ScoreBadge } from '@/components/ui/score-badge';
+import { aiRecommendationMeta } from '@/lib/verdicts';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -41,26 +45,26 @@ type WelcomeConfig = { title: string; subtitle: string; suggestions: Suggestion[
 // click (ThreadPrimitive.Suggestion `send`). Shown only on an empty thread.
 const WELCOME: Record<string, WelcomeConfig> = {
   free: {
-    title: 'Comment puis-je t’aider ?',
+    title: 'Comment puis-je vous aider ?',
     subtitle: 'Sourcing, messages d’approche, analyse de profils, prochaines actions.',
     suggestions: [
       { icon: Search, label: 'Sourcer des candidats', prompt: 'Je cherche des candidats pour un poste. Aide-moi à définir les critères.' },
       { icon: PenLine, label: 'Rédiger un message d’approche', prompt: 'Aide-moi à rédiger un message d’approche personnalisé pour un candidat.' },
       { icon: BarChart3, label: 'Analyser mes priorités', prompt: 'Analyse mes missions ouvertes et dis-moi quoi prioriser aujourd’hui.' },
-      { icon: Lightbulb, label: 'Que peux-tu faire ?', prompt: 'Que peux-tu faire pour m’aider dans mon recrutement ?' },
+      { icon: Lightbulb, label: 'Ce que l’assistant sait faire', prompt: 'Que pouvez-vous faire pour m’aider dans mon recrutement ?' },
     ],
   },
   sourcing: {
-    title: 'Calibrons ta recherche',
-    subtitle: 'Décris le poste, je structure les critères puis l’agent lance la recherche.',
+    title: 'Calibrons votre recherche',
+    subtitle: 'Décrivez le poste : je structure les critères, puis je lance la recherche.',
     suggestions: [
-      { icon: Search, label: 'Lancer le sourcing sur ce poste', prompt: 'Lançons le sourcing pour cette mission. Pose-moi les questions nécessaires pour calibrer.' },
+      { icon: Search, label: 'Lancer le sourcing sur ce poste', prompt: 'Lançons le sourcing pour cette mission. Posez-moi les questions nécessaires pour calibrer.' },
       { icon: SlidersHorizontal, label: 'Affiner les critères', prompt: 'Aide-moi à affiner les critères de recherche pour ce poste.' },
     ],
   },
   brief: {
     title: 'Construisons le brief',
-    subtitle: 'Je t’aide à cadrer le besoin, poste par poste.',
+    subtitle: 'Je vous aide à cadrer le besoin, poste par poste.',
     suggestions: [
       { icon: ClipboardList, label: 'Compléter le brief', prompt: 'Aide-moi à compléter le brief de ce poste, champ par champ.' },
       { icon: MessageSquare, label: 'Questions à poser au client', prompt: 'Quelles questions dois-je poser au client pour bien cadrer ce recrutement ?' },
@@ -68,7 +72,7 @@ const WELCOME: Record<string, WelcomeConfig> = {
   },
   process: {
     title: 'Définissons le process',
-    subtitle: 'Étapes d’évaluation, critères, deal-breakers.',
+    subtitle: 'Étapes d’évaluation, critères, points rédhibitoires.',
     suggestions: [
       { icon: ClipboardList, label: 'Proposer un process d’évaluation', prompt: 'Propose-moi un process d’évaluation adapté à ce poste.' },
     ],
@@ -84,9 +88,9 @@ const WELCOME: Record<string, WelcomeConfig> = {
 };
 
 /**
- * Claude/Notion-style reasoning toggle. Auto-expands while the model is still
- * "thinking" (no answer text yet), then collapses to a discreet line once the
- * answer streams. The header shimmers while thinking.
+ * Raisonnement du modèle, replié par défaut une fois la réponse commencée.
+ * Texte fixe (« Réflexion en cours… »), sans étincelle ni miroitement ; le
+ * contenu replié n'est pas monté (revue design E-36).
  */
 const ReasoningBlock = ({ text }: { text: string }) => {
   const isRunning = useMessage((s) => s.status?.type === 'running');
@@ -98,50 +102,51 @@ const ReasoningBlock = ({ text }: { text: string }) => {
   const open = userToggled ?? streaming;
 
   return (
-    <div className="text-[13px]">
+    <div className="text-sm">
       <button
+        type="button"
         onClick={() => setUserToggled(!open)}
-        className="group flex items-center gap-1.5 py-0.5 text-left"
+        aria-expanded={open}
+        className="group flex items-center gap-1.5 rounded-sm py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChevronRight
-          className={cn(
-            'h-3.5 w-3.5 text-muted-foreground/60 transition-transform duration-200',
-            open && 'rotate-90'
-          )}
+          className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform duration-150', open && 'rotate-90')}
+          aria-hidden="true"
         />
-        <Sparkles className="h-3 w-3 text-muted-foreground/70" />
-        <span
-          className={cn(
-            'text-[11px] font-semibold uppercase tracking-wider',
-            streaming ? 'konekt-shimmer-text' : 'text-muted-foreground/70 group-hover:text-muted-foreground'
-          )}
-        >
-          {streaming ? 'Réflexion en cours' : 'Réflexion'}
+        <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">
+          {streaming ? 'Réflexion en cours…' : 'Réflexion'}
         </span>
       </button>
-      <div
-        className={cn(
-          'grid transition-all duration-200 ease-out',
-          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        )}
-      >
-        <div className="overflow-hidden">
-          <div className="ml-[7px] mt-1 border-l border-border/60 pl-3 text-xs leading-relaxed text-muted-foreground/80 whitespace-pre-wrap">
-            {text}
-          </div>
+      {open && (
+        <div className="ml-1.5 mt-1 whitespace-pre-wrap border-l border-border pl-3 text-xs leading-relaxed text-muted-foreground">
+          {text}
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
-/** Claude/Notion-style shimmering status line (only when nothing rendered yet) */
-const ShimmerThinking = () => (
-  <div className="flex items-center gap-2.5 animate-fade-in px-1">
-    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted/60">
-      <AnimatedOrb size={20} speed={6} />
-    </div>
-    <span className="konekt-shimmer-text text-[13px] font-medium">Réflexion en cours…</span>
+/** Avatar de l'assistant : le monogramme Konekt, fixe (plus d'œil animé, E-14). */
+const AssistantAvatar = ({ size = 'sm' }: { size?: 'sm' | 'lg' }) => (
+  <span
+    className={cn(
+      'flex shrink-0 items-center justify-center rounded-full bg-muted',
+      size === 'lg' ? 'h-10 w-10' : 'h-7 w-7',
+    )}
+    aria-hidden="true"
+  >
+    <KonektLogo variant="mark" theme="auto" size={size === 'lg' ? 20 : 14} ariaLabel="" />
+  </span>
+);
+
+/** Avant le premier contenu : une ligne d'état en texte, avec l'indicateur de chargement. */
+const ThinkingLine = () => (
+  <div className="flex items-center gap-3 px-1" role="status">
+    <AssistantAvatar />
+    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+      L’assistant prépare sa réponse…
+    </span>
   </div>
 );
 
@@ -304,16 +309,16 @@ const MarkdownText = ({ text }: { text: string }) => {
       {stripped && (
         <div
           className={cn(
-            'text-[14px] leading-[1.7] text-foreground',
+            'text-md leading-relaxed text-foreground',
             '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
             '[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_ul]:list-disc [&_ol]:list-decimal',
             '[&_li]:my-1 [&_li]:break-words [&_li]:marker:text-muted-foreground [&_li>p]:my-0.5',
             '[&_strong]:font-semibold [&_strong]:text-foreground',
-            '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_a]:cursor-pointer hover:[&_a]:text-primary/80',
-            '[&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-[12.5px] [&_code]:font-mono',
+            '[&_a]:text-brand [&_a]:underline [&_a]:underline-offset-2 [&_a]:cursor-pointer hover:[&_a]:text-foreground',
+            '[&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-xs [&_code]:font-mono',
             '[&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-xl [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0',
-            '[&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-1.5',
-            '[&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-1.5',
+            '[&_h1]:text-base [&_h1]:font-semibold [&_h1]:mt-4 [&_h1]:mb-1.5',
+            '[&_h2]:text-md [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1.5',
             '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1',
             '[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2',
             '[&_hr]:my-3 [&_hr]:border-border/60',
@@ -324,24 +329,24 @@ const MarkdownText = ({ text }: { text: string }) => {
             components={{
               table: ({ children }) => (
                 <div
-                  className="my-3 w-full max-w-full overflow-x-auto rounded-xl border border-border/70 bg-card/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="my-3 w-full max-w-full overflow-x-auto rounded-xl border border-border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   role="region"
-                  aria-label="Tableau de résultats — faire défiler horizontalement si nécessaire"
+                  aria-label="Tableau de résultats, à faire défiler horizontalement si nécessaire"
                   tabIndex={0}
                 >
-                  <table className="w-full min-w-[520px] border-collapse text-left text-[12.5px] leading-relaxed">
+                  <table className="w-full min-w-[520px] border-collapse text-left text-xs leading-relaxed">
                     {children}
                   </table>
                 </div>
               ),
-              thead: ({ children }) => <thead className="bg-muted/60 text-foreground">{children}</thead>,
-              tbody: ({ children }) => <tbody className="divide-y divide-border/60">{children}</tbody>,
-              tr: ({ children }) => <tr className="transition-colors hover:bg-muted/25">{children}</tr>,
+              thead: ({ children }) => <thead className="bg-muted text-foreground">{children}</thead>,
+              tbody: ({ children }) => <tbody className="divide-y divide-border">{children}</tbody>,
+              tr: ({ children }) => <tr className="transition-colors hover:bg-accent/40">{children}</tr>,
               th: ({ children }) => (
                 <th className="whitespace-nowrap px-3 py-2 font-semibold text-foreground">{children}</th>
               ),
               td: ({ children }) => (
-                <td className="min-w-[5rem] px-3 py-2 align-top text-foreground/85">{children}</td>
+                <td className="min-w-[5rem] px-3 py-2 align-top text-foreground-secondary">{children}</td>
               ),
               a: ({ href, children, ...props }) => {
                 const raw = String(href ?? '');
@@ -440,100 +445,85 @@ const SearchPlanCard = ({ plan }: { plan: SearchPlanData }) => {
   const targetGo = stop.target_go_profiles;
 
   return (
-    <div className="border border-border/60 rounded-xl overflow-hidden bg-card my-2">
-      <div className="px-3.5 py-2.5 bg-muted/30 flex items-center gap-2 border-b border-border/40">
-        <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Search className="h-3.5 w-3.5 text-primary" />
-        </div>
-        <span className="text-xs font-bold text-foreground">Plan de recherche</span>
+    <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
+        <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <span className="text-sm font-semibold text-foreground">Plan de recherche</span>
         {typeof targetGo === 'number' && (
-          <span className="ml-auto px-2 py-0.5 text-[10px] font-semibold rounded-md bg-muted text-muted-foreground">
-            cible : {targetGo} profils
-          </span>
+          <Badge variant="muted" className="ml-auto">
+            Objectif : {targetGo} profils
+          </Badge>
         )}
       </div>
-      <div className="px-3.5 py-3 space-y-2.5">
+      <dl className="space-y-2.5 px-3.5 py-3">
         {items.map((item, i) => (
-          <div key={i} className="flex items-start gap-3">
-            <span className="h-1.5 w-1.5 rounded-full bg-foreground/20 shrink-0 mt-[7px]" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">{item.label}</p>
-              <p className="text-[13px] text-foreground/80 mt-0.5 leading-relaxed break-words">{item.value}</p>
-            </div>
+          <div key={i} className="min-w-0">
+            <dt className="eyebrow">{item.label}</dt>
+            <dd className="mt-0.5 break-words text-sm leading-relaxed text-foreground">{item.value}</dd>
           </div>
         ))}
-      </div>
+      </dl>
     </div>
   );
 };
 
 /** Card pour le bloc [SCORING_TEST] — preview du scoring sur quelques profils. */
 const ScoringTestCard = ({ data }: { data: ScoringTestData }) => {
-  const verdictCfg: Record<string, { icon: typeof CheckCircle2; cls: string }> = {
-    pass: { icon: CheckCircle2, cls: 'text-success bg-success/10 border-success/20' },
-    partial: { icon: AlertTriangle, cls: 'text-warning bg-warning/10 border-warning/20' },
-    fail: { icon: XCircle, cls: 'text-destructive bg-destructive/10 border-destructive/20' },
-  };
-  const recCfg: Record<string, { label: string; cls: string }> = {
-    go: { label: 'À contacter', cls: 'bg-success/15 text-success border-success/20' },
-    maybe: { label: 'À évaluer', cls: 'bg-warning/15 text-warning border-warning/20' },
-    skip: { label: 'Peu adapté', cls: 'bg-muted text-muted-foreground border-border' },
+  // Critère rempli, partiel ou manquant : icône et mot, la couleur n'est qu'un appoint.
+  const verdictCfg: Record<string, { icon: typeof CheckCircle2; cls: string; label: string }> = {
+    pass: { icon: CheckCircle2, cls: 'text-success', label: 'Rempli' },
+    partial: { icon: AlertTriangle, cls: 'text-warning', label: 'En partie' },
+    fail: { icon: XCircle, cls: 'text-danger', label: 'Manquant' },
   };
 
   return (
-    <div className="border border-border/60 rounded-xl overflow-hidden bg-card my-2">
-      <div className="px-3.5 py-2.5 bg-muted/30 border-b border-border/40">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="h-6 w-6 rounded-lg bg-primary/10 flex items-center justify-center">
-            <BarChart3 className="h-3.5 w-3.5 text-primary" />
-          </div>
-          <span className="text-xs font-bold text-foreground">Test de scoring</span>
+    <div className="my-2 overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-3.5 py-2.5">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <span className="text-sm font-semibold text-foreground">Test du scoring</span>
         </div>
-        {data.purpose && (
-          <p className="text-[11px] text-muted-foreground leading-relaxed pl-[34px]">{data.purpose}</p>
-        )}
+        {data.purpose && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{data.purpose}</p>}
       </div>
-      <div className="divide-y divide-border/30">
+      <ul className="divide-y divide-border">
         {data.profiles.map((profile, i) => {
-          const rec = recCfg[profile.recommendation] ?? recCfg.maybe;
-          const scoreColor =
-            profile.score >= 75 ? 'text-success' : profile.score >= 50 ? 'text-warning' : 'text-destructive';
+          const rec = aiRecommendationMeta(profile.recommendation === 'go' ? 'shortlist' : profile.recommendation);
           return (
-            <div key={i} className="px-3.5 py-3 space-y-2">
+            <li key={i} className="space-y-2 px-3.5 py-3">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-muted border border-border/40">
-                  <span className={cn('text-base font-black tabular-nums', scoreColor)}>{profile.score}</span>
+                <ScoreBadge score={profile.score} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">{profile.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {[profile.title, profile.company].filter(Boolean).join(' · ')}
+                  </p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-foreground truncate">{profile.name}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{profile.title} @ {profile.company}</p>
-                </div>
-                <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0', rec.cls)}>
-                  {rec.label}
-                </span>
+                {rec && (
+                  <Badge variant={rec.tone} className="shrink-0">
+                    {rec.label}
+                  </Badge>
+                )}
               </div>
-              <div className="space-y-1 pl-12">
+              <ul className="space-y-1">
                 {profile.criteria.map((c, j) => {
                   const v = verdictCfg[c.verdict] ?? verdictCfg.partial;
                   const VI = v.icon;
                   return (
-                    <div
-                      key={j}
-                      className={cn('flex items-start gap-2 px-2 py-1 rounded-lg border text-[11px]', v.cls)}
-                    >
-                      <VI className="h-3 w-3 shrink-0 mt-0.5" />
-                      <div className="min-w-0 leading-snug">
-                        <span className="font-semibold">{c.label}</span>
-                        <span className="text-foreground/60 ml-1.5">— {c.detail}</span>
-                      </div>
-                    </div>
+                    <li key={j} className="flex items-start gap-2 text-xs">
+                      <VI className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', v.cls)} aria-hidden="true" />
+                      <span className="min-w-0 leading-snug">
+                        <span className="sr-only">{v.label} : </span>
+                        <span className="font-medium text-foreground">{c.label}</span>
+                        {c.detail && <span className="text-muted-foreground"> : {c.detail}</span>}
+                      </span>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
+              </ul>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 };
@@ -552,84 +542,76 @@ const SampleProfilesCards = ({ profiles }: { profiles: SampleProfileData[] }) =>
           .map((w) => w[0]?.toUpperCase())
           .join('')
           .slice(0, 2);
-        const scoreColor =
-          profile.score == null
-            ? 'text-foreground'
-            : profile.score >= 75
-            ? 'text-success'
-            : profile.score >= 50
-            ? 'text-warning'
-            : 'text-destructive';
         return (
-          <div key={i} className="border border-border/60 rounded-xl overflow-hidden bg-card">
-            <div className="px-3.5 py-3 flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+          <div key={i} className="overflow-hidden rounded-xl border border-border bg-card">
+            <div className="flex items-start gap-3 px-3.5 py-3">
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground"
+                aria-hidden="true"
+              >
                 {initials}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-semibold text-foreground truncate">{profile.name}</p>
-                  {typeof profile.score === 'number' && (
-                    <span className={cn('text-[11px] font-bold tabular-nums', scoreColor)}>{profile.score}</span>
-                  )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-semibold text-foreground">{profile.name}</p>
+                  <ScoreBadge score={profile.score} />
                 </div>
                 {profile.title && (
-                  <p className="text-xs text-muted-foreground truncate mt-0.5 flex items-center gap-1">
-                    <Briefcase className="h-3 w-3 shrink-0" />
-                    {profile.title}
-                    {profile.company && <span>@ {profile.company}</span>}
+                  <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                    <Briefcase className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    {[profile.title, profile.company].filter(Boolean).join(' · ')}
                   </p>
                 )}
-                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                  {profile.location && (
-                    <span className="flex items-center gap-0.5">
-                      <MapPin className="h-3 w-3" /> {profile.location}
-                    </span>
-                  )}
-                  {profile.yearsExp > 0 && <span>· {profile.yearsExp} ans XP</span>}
-                </div>
+                {(profile.location || profile.yearsExp > 0) && (
+                  <p className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                    {profile.location && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3" aria-hidden="true" /> {profile.location}
+                      </span>
+                    )}
+                    {profile.yearsExp > 0 && <span>{profile.yearsExp} ans d’expérience</span>}
+                  </p>
+                )}
               </div>
             </div>
             {profile.tags.length > 0 && (
-              <div className="px-3.5 pb-2 flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1 px-3.5 pb-2">
                 {profile.tags.slice(0, 8).map((tag, j) => (
-                  <span
-                    key={j}
-                    className="text-[10px] font-medium px-1.5 py-0.5 bg-primary/10 text-primary rounded-md"
-                  >
+                  <Badge key={j} variant="muted">
                     {tag}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             )}
             {profile.trajectory.length > 0 && (
               <div className="px-3.5 pb-2">
-                <p className="text-[10px] font-semibold text-muted-foreground mb-1">Parcours</p>
-                <div className="flex items-center gap-1.5 text-[11px] text-foreground/70 overflow-x-auto no-scrollbar">
-                  {profile.trajectory.slice(0, 5).map((t, j) => (
-                    <React.Fragment key={j}>
-                      {j > 0 && <span className="text-muted-foreground/30">→</span>}
-                      <span className="whitespace-nowrap">{t}</span>
-                    </React.Fragment>
-                  ))}
-                </div>
+                <p className="eyebrow mb-1">Parcours</p>
+                <p className="text-xs leading-relaxed text-foreground-secondary">
+                  {profile.trajectory.slice(0, 5).join(' → ')}
+                </p>
               </div>
             )}
             {(profile.strengths.length > 0 || profile.concerns.length > 0) && (
-              <div className="px-3.5 pb-3 space-y-1">
+              <ul className="space-y-1 px-3.5 pb-3">
                 {profile.strengths.map((s, j) => (
-                  <div key={`s-${j}`} className="flex items-start gap-1.5 text-[11px]">
-                    <CheckCircle2 className="h-3 w-3 text-success shrink-0 mt-0.5" />
-                    <span className="text-foreground/70">{s}</span>
-                  </div>
+                  <li key={`s-${j}`} className="flex items-start gap-1.5 text-xs">
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
+                    <span className="text-foreground-secondary">
+                      <span className="sr-only">Point fort : </span>
+                      {s}
+                    </span>
+                  </li>
                 ))}
                 {profile.concerns.map((c, j) => (
-                  <div key={`c-${j}`} className="flex items-start gap-1.5 text-[11px]">
-                    <AlertTriangle className="h-3 w-3 text-warning shrink-0 mt-0.5" />
-                    <span className="text-foreground/70">{c}</span>
-                  </div>
+                  <li key={`c-${j}`} className="flex items-start gap-1.5 text-xs">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+                    <span className="text-foreground-secondary">
+                      <span className="sr-only">Point de vigilance : </span>
+                      {c}
+                    </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
         );
@@ -664,16 +646,14 @@ const OptionsChips = ({ options }: { options: string[] }) => {
           prompt={opt}
           send
           className={cn(
-            'group flex items-center gap-2 rounded-2xl border border-border/70 bg-card/60 px-3 py-2 text-left',
-            'text-[13px] text-foreground/80 transition-all',
-            'hover:border-primary/40 hover:bg-accent hover:text-foreground',
-            'active:scale-[0.98]',
-            stacked ? 'w-full' : 'rounded-full text-xs px-3 py-1.5',
+            'group flex items-center gap-2 border border-border bg-card text-left text-sm text-foreground transition-colors',
+            'hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            stacked ? 'w-full rounded-lg px-3 py-2' : 'rounded-full px-3 py-1.5 text-xs',
           )}
         >
           <span className="flex-1 leading-snug">{opt}</span>
           {stacked && (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
           )}
         </ThreadPrimitive.Suggestion>
       ))}
@@ -694,17 +674,17 @@ const AssistantMessage = () => {
     s.content?.some((part: any) => part.type === 'tool-call')
   );
 
-  // Nothing streamed yet at all → single shimmer line (no double indicator).
+  // Rien encore reçu : une seule ligne d’état (pas de double indicateur).
   // Les chips de tools comptent comme du contenu : on les montre dès qu'un
-  // outil démarre au lieu de rester sur le shimmer.
+  // outil démarre au lieu de rester sur la ligne d’état.
   if (isRunning && !hasText && !hasReasoning && !hasToolCalls) {
-    return <ShimmerThinking />;
+    return <ThinkingLine />;
   }
 
   return (
     <div className="flex gap-3 animate-fade-in">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted/60 mt-0.5">
-        <AnimatedOrb size={20} speed={isRunning ? 6 : 2} />
+      <div className="mt-0.5">
+        <AssistantAvatar />
       </div>
       <div className="flex-1 min-w-0 space-y-2 pt-0.5">
         <MessagePrimitive.Content
@@ -717,7 +697,7 @@ const AssistantMessage = () => {
           }}
         />
         {isRunning && hasText && (
-          <span className="inline-block w-1.5 h-4 bg-foreground/40 animate-pulse rounded-sm align-middle" />
+          <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-muted-foreground align-middle" aria-hidden="true" />
         )}
       </div>
     </div>
@@ -727,7 +707,7 @@ const AssistantMessage = () => {
 /** User message — soft right-aligned bubble (ChatGPT/Claude style) */
 const UserMessage = () => (
   <div className="flex justify-end animate-fade-in">
-    <div className="max-w-[80%] rounded-3xl rounded-br-md bg-muted px-4 py-2.5 text-[14px] leading-relaxed text-foreground">
+    <div className="max-w-[80%] rounded-xl rounded-br-sm bg-muted px-4 py-2.5 text-md leading-relaxed text-foreground">
       <MessagePrimitive.Content components={{ Text: ({ text }) => <span className="whitespace-pre-wrap">{text}</span> }} />
     </div>
   </div>
@@ -756,13 +736,9 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
           {/* Notion-style welcome — only on an empty thread */}
           <ThreadPrimitive.Empty>
             <div className="flex flex-col items-center text-center pt-10 pb-7">
-              <AnimatedOrb size={48} />
-              <h3 className="mt-4 text-xl font-display font-bold tracking-tight text-foreground">
-                {w.title}
-              </h3>
-              <p className="mt-1.5 text-[13px] text-muted-foreground max-w-[20rem] leading-relaxed">
-                {w.subtitle}
-              </p>
+              <AssistantAvatar size="lg" />
+              <h3 className="mt-4 text-lg font-semibold text-foreground">{w.title}</h3>
+              <p className="mt-1.5 max-w-[20rem] text-sm leading-relaxed text-muted-foreground">{w.subtitle}</p>
             </div>
             <div className="flex flex-col gap-2 w-full max-w-md mx-auto">
               {w.suggestions.map((s) => (
@@ -770,14 +746,12 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                   key={s.prompt}
                   prompt={s.prompt}
                   send
-                  className="group flex w-full items-center gap-3 rounded-2xl border border-border/70 bg-card/40 px-3.5 py-3 text-left transition-all hover:border-primary/40 hover:bg-accent active:scale-[0.99]"
+                  className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground-secondary" aria-hidden="true">
                     <s.icon className="h-4 w-4" />
                   </span>
-                  <span className="text-[13px] font-medium text-foreground/80 group-hover:text-foreground">
-                    {s.label}
-                  </span>
+                  <span className="text-sm font-medium text-foreground">{s.label}</span>
                 </ThreadPrimitive.Suggestion>
               ))}
             </div>
@@ -799,14 +773,14 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
         <div className="mx-auto w-full max-w-2xl">
           {/* Formats alignés sur ingest-user-file (PDF, Word .docx, images, texte). */}
           <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.docx,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
-            <ComposerPrimitive.Root className="relative flex flex-col rounded-[1.75rem] border border-border bg-background p-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
+            <ComposerPrimitive.Root className="relative flex flex-col rounded-xl border border-input bg-background p-2 transition-colors focus-within:border-brand">
               {/* Attached files */}
               {files.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pt-1.5 pb-1">
                   {files.map((f, i) => (
                     <span
                       key={`${f.name}-${i}`}
-                      className="group flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 py-1 pl-2 pr-1 text-[11px] text-foreground/80"
+                      className="group flex items-center gap-1.5 rounded-lg border border-border bg-muted py-1 pl-2 pr-1 text-2xs text-foreground-secondary"
                     >
                       <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
                       <span className="max-w-[140px] truncate">{f.name}</span>
@@ -814,7 +788,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                         type="button"
                         onClick={() => removeFile(i)}
                         className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
-                        aria-label="Retirer le fichier"
+                        aria-label={`Retirer le fichier ${f.name}`}
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -826,14 +800,15 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
               <ComposerPrimitive.Input
                 placeholder={
                   contextMode === 'sourcing'
-                    ? 'Décris le profil recherché…'
+                    ? 'Décrivez le profil recherché…'
                     : contextMode === 'brief'
-                    ? 'Pose une question sur le brief…'
-                    : 'Écris un message à Konekt IA…'
+                    ? 'Posez une question sur le brief…'
+                    : 'Écrivez à l’assistant…'
                 }
+                aria-label="Message à l’assistant"
                 rows={1}
                 autoFocus
-                className="w-full resize-none bg-transparent px-3 py-2.5 text-[14px] leading-relaxed text-foreground placeholder:text-muted-foreground/50 outline-none max-h-40 min-h-[24px]"
+                className="w-full resize-none bg-transparent px-3 py-2.5 text-md leading-relaxed text-foreground placeholder:text-muted-foreground outline-none max-h-40 min-h-[24px]"
               />
 
               {/* Toolbar */}
@@ -843,39 +818,51 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                     <button
                       type="button"
                       title="Joindre un fichier"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      aria-label="Joindre un fichier"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <Paperclip className="h-4 w-4" />
+                      <Paperclip className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </FileUploadTrigger>
                 )}
 
                 {modelSlot}
 
-                <ComposerPrimitive.Send
-                  className={cn(
-                    'ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all',
-                    'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 active:scale-95',
-                    'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100'
-                  )}
-                >
-                  <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-                </ComposerPrimitive.Send>
+                {/* Pendant la réponse, « Arrêter » remplace l'envoi (E-36). */}
+                <AuiIf condition={(st) => !st.thread.isRunning}>
+                  <ComposerPrimitive.Send
+                    aria-label="Envoyer"
+                    title="Envoyer"
+                    className={cn(
+                      'ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors',
+                      'bg-foreground text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                      'disabled:cursor-not-allowed disabled:opacity-40'
+                    )}
+                  >
+                    <ArrowUp className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+                  </ComposerPrimitive.Send>
+                </AuiIf>
+                <AuiIf condition={(st) => st.thread.isRunning}>
+                  <ComposerPrimitive.Cancel className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Square className="h-3 w-3 fill-current" aria-hidden="true" />
+                    Arrêter
+                  </ComposerPrimitive.Cancel>
+                </AuiIf>
               </div>
             </ComposerPrimitive.Root>
 
             {/* Drag-and-drop overlay */}
             <FileUploadContent>
-              <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary/50 bg-background px-10 py-8 shadow-xl">
-                <Paperclip className="h-7 w-7 text-primary" />
-                <p className="text-sm font-medium text-foreground">Dépose tes fichiers ici</p>
-                <p className="text-xs text-muted-foreground">Images, PDF, Word, texte — 5 max</p>
+              <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-brand bg-background px-10 py-8 shadow-xl">
+                <Paperclip className="h-7 w-7 text-brand" aria-hidden="true" />
+                <p className="text-sm font-medium text-foreground">Déposez vos fichiers ici</p>
+                <p className="text-xs text-muted-foreground">Images, PDF, Word ou texte, 5 au plus</p>
               </div>
             </FileUploadContent>
           </FileUpload>
 
-          <p className="mt-2 text-center text-[10.5px] text-muted-foreground/50">
-            Konekt IA peut faire des erreurs — vérifie les infos importantes.
+          <p className="mt-2 text-center text-3xs text-muted-foreground">
+            L’assistant peut se tromper : vérifiez les informations importantes.
           </p>
         </div>
       </div>

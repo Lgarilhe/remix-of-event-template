@@ -4,8 +4,9 @@
  * coaching, l'historique de scoring, l'assistant. Jamais de clé brute
  * (« strong_yes », « NO_GO », « shortlist ») ni d'anglais (« Strong Yes »).
  *
- * Deux familles :
- * - la décision d'une personne (scorecard, qualification, coaching) ;
+ * Trois familles :
+ * - la recommandation d'une personne (scorecard, compte rendu du coaching) ;
+ * - le verdict d'une qualification ;
  * - la recommandation de l'IA après scoring.
  */
 
@@ -26,7 +27,7 @@ export const HIRING_VERDICTS: Record<string, VerdictMeta> = {
   pending: { label: 'En attente', tone: 'muted' },
 };
 
-/** Clés d'autres surfaces : qualification (go, no_go) et compte rendu du coaching (GO, NO_GO, MAYBE). */
+/** Clés du compte rendu du coaching (GO, NO_GO, MAYBE). */
 const VERDICT_ALIASES: Record<string, string> = {
   go: 'yes',
   no_go: 'no',
@@ -36,6 +37,22 @@ export function hiringVerdictMeta(value: string | null | undefined): VerdictMeta
   if (!value) return null;
   const key = value.toLowerCase();
   return HIRING_VERDICTS[VERDICT_ALIASES[key] ?? key] ?? null;
+}
+
+/**
+ * Verdict d'une qualification (`go`, `no_go`, `maybe`, `pending`) : la
+ * question posée est « le candidat est-il qualifié ? ».
+ */
+export const QUALIFICATION_VERDICTS: Record<string, VerdictMeta> = {
+  go: { label: 'Qualifié', tone: 'success' },
+  no_go: { label: 'Non qualifié', tone: 'danger' },
+  maybe: { label: 'À revoir', tone: 'warning' },
+  pending: { label: 'En attente', tone: 'muted' },
+};
+
+export function qualificationVerdictMeta(value: string | null | undefined): VerdictMeta | null {
+  if (!value) return null;
+  return QUALIFICATION_VERDICTS[value.toLowerCase()] ?? null;
 }
 
 /** Recommandation de l'IA après scoring (`shortlist`, `maybe`, `skip`). */

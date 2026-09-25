@@ -36,7 +36,7 @@ Les 429 constats se ramènent à dix causes. Les traiter à la source règle des
 
 ## Les constats P1
 
-Statut tenu à jour à chaque lot (dernier : lot 5). « Lot n » renvoie à `03-lots.md`.
+Statut tenu à jour à chaque lot (derniers : lots 8, 9 et l'assistant du lot 7). « Lot n » renvoie à `03-lots.md`.
 
 ### A. Coquille, tableau de bord, tâches, agenda
 
@@ -51,7 +51,7 @@ Statut tenu à jour à chaque lot (dernier : lot 5). « Lot n » renvoie à `03-
 
 | ID | Constat | Statut |
 |---|---|---|
-| B-01 | Acceptation d'invitation : après un succès, la page bascule sur « Invitation invalide » (effet relancé) | lot 9 |
+| B-01 | Acceptation d'invitation : après un succès, la page bascule sur « Invitation invalide » (effet relancé) | corrigé (lot 9 : un seul appel par lien, un message par cause) |
 | B-02 | Vue d'ensemble : process inventé affiché même quand la mission a le sien | remis à la refonte mission |
 | B-03 | Vue d'ensemble : funnel toujours à 0 pour Répondu, Entretien, Offre (colonnes inexistantes) | remis à la refonte mission |
 | B-04 | Stepper : phases cochées « terminées » selon leur position, pas leur complétude | remis à la refonte mission |
@@ -120,17 +120,17 @@ Statut tenu à jour à chaque lot (dernier : lot 5). « Lot n » renvoie à `03-
 | E-11 | Scores illisibles en clair | partiel (lot 1 : statuts par thème) ; lot 7 hors mission, refonte mission pour la mission |
 | E-12 | `text-accent` invisible (page Agents, outils de l'assistant) | corrigé (lot 1) |
 | E-13 | Coaching : textes à 1,06:1 et 1,24:1 (`*-foreground` sur teinte) | lot 7 |
-| E-14 | Œil animé de l'assistant, entonnoir à particules, boucles infinies | partiel (lot 1 : mouvement réduit) ; lot 7 |
+| E-14 | Œil animé de l'assistant, entonnoir à particules, boucles infinies | partiel (lot 7 : œil retiré, monogramme fixe ; l'entonnoir de /pipeline part avec la vue pipeline du lot 7) |
 
 ### F. Paramètres, marketplace, pages publiques
 
 | ID | Constat | Statut |
 |---|---|---|
 | F-10 | Installation de l'extension : commandes de développeur (`npm run build`) demandées au client | remis à la session Paramètres, décision produit |
-| F-33 | Accueil : les quatre « Réserver une démo » ouvrent un agenda générique (`calendly.com/demo`) | lot 8, adresse à fournir |
-| F-34 | Logo bleu marine peu lisible sur fond sombre (/auth, /pricing) | partiel (lot 2 : le logo sait suivre le thème) ; lot 8 |
-| F-53 | Portail client : étapes brutes (« 📋 dismissed », identifiant) | décision produit (étapes) ; lot 8 |
-| F-54 | Portail candidat : étape figée à la création du lien | lot 8, à confirmer en base |
+| F-33 | Accueil : les quatre « Réserver une démo » ouvrent un agenda générique (`calendly.com/demo`) | partiel (lot 8 : « Demander une démo » mène au formulaire de contact ; l'adresse de prise de rendez-vous reste à fournir) |
+| F-34 | Logo bleu marine peu lisible sur fond sombre (/auth, /pricing) | corrigé (lot 8 : logo qui suit le thème sur toutes les pages publiques) |
+| F-53 | Portail client : étapes brutes (« 📋 dismissed », identifiant) | partiel (lot 8 : libellé français pour chaque clé connue, repli « En cours » ; attend la table d'étapes unique) |
+| F-54 | Portail candidat : étape figée à la création du lien | partiel (lot 8 : libellés et repli ; l'étape vient toujours du lien, correctif proposé dans `get_portal_by_token`) |
 
 ## Les constats du design system (G)
 

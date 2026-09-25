@@ -9,7 +9,7 @@
  *     placeholder="Tape /ai pour les commandes IA"
  *   />
  *
- * Commandes disponibles (déclenchées en tapant /ai au début ou via le bouton ✨) :
+ * Commandes disponibles (déclenchées en tapant /ai au début ou via le bouton d'aide à la rédaction) :
  *   - rédige     : génère depuis zéro avec contexte
  *   - améliore   : reformule le texte actuel
  *   - raccourcis : compresse le texte actuel
@@ -29,7 +29,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Sparkles, Loader2, Check, X, ArrowRight } from 'lucide-react';
+import { Loader2, Check, X, PenLine } from 'lucide-react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -60,8 +60,8 @@ const DEFAULT_TONE = 'casual';
 const COMMANDS: AiCommand[] = [
   {
     id: 'redige',
-    label: '✍️ Rédige',
-    description: 'Génère depuis zéro (utilise le contexte)',
+    label: 'Rédiger',
+    description: 'Écrit un premier jet à partir du contexte',
     needsCurrentText: false,
     buildSystemPrompt: (ctx) =>
       `Tu es un assistant qui rédige du texte court et percutant. Ton: ${ctx.tone ?? DEFAULT_TONE}. Tutoiement par défaut. Réponds UNIQUEMENT le texte final, sans préfixe ni explication.`,
@@ -70,8 +70,8 @@ const COMMANDS: AiCommand[] = [
   },
   {
     id: 'ameliore',
-    label: '✨ Améliore',
-    description: 'Reformule en mieux (clarté, impact)',
+    label: 'Améliorer',
+    description: 'Reformule pour plus de clarté et d’impact',
     needsCurrentText: true,
     buildSystemPrompt: () =>
       'Tu améliores le texte fourni : plus clair, plus percutant, sans changer le sens. Réponds UNIQUEMENT le texte amélioré, sans préambule.',
@@ -79,8 +79,8 @@ const COMMANDS: AiCommand[] = [
   },
   {
     id: 'raccourcis',
-    label: '✂️ Raccourcis',
-    description: 'Compresse en gardant l\'essentiel',
+    label: 'Raccourcir',
+    description: 'Garde l’essentiel en moitié moins de mots',
     needsCurrentText: true,
     buildSystemPrompt: () =>
       'Tu raccourcis le texte de moitié sans perdre l\'essentiel. Réponds UNIQUEMENT le texte raccourci, sans préambule.',
@@ -88,8 +88,8 @@ const COMMANDS: AiCommand[] = [
   },
   {
     id: 'allonge',
-    label: '📝 Allonge',
-    description: 'Étoffe avec plus de détails',
+    label: 'Développer',
+    description: 'Ajoute du contexte et des détails',
     needsCurrentText: true,
     buildSystemPrompt: () =>
       'Tu étoffes le texte fourni avec plus de contexte et de détails pertinents. Réponds UNIQUEMENT le texte étoffé.',
@@ -97,8 +97,8 @@ const COMMANDS: AiCommand[] = [
   },
   {
     id: 'traduis_en',
-    label: '🇬🇧 Traduis EN',
-    description: 'Vers l\'anglais professionnel',
+    label: 'Traduire en anglais',
+    description: 'Anglais professionnel, même ton',
     needsCurrentText: true,
     buildSystemPrompt: () =>
       'You translate the text from French to professional English, keeping tone and intent. Reply ONLY with the translation.',
@@ -106,8 +106,8 @@ const COMMANDS: AiCommand[] = [
   },
   {
     id: 'corrige',
-    label: '🔍 Corrige',
-    description: 'Orthographe + grammaire',
+    label: 'Corriger',
+    description: 'Orthographe et grammaire',
     needsCurrentText: true,
     buildSystemPrompt: () =>
       'Tu corriges l\'orthographe et la grammaire sans changer le style. Réponds UNIQUEMENT le texte corrigé.',
@@ -115,8 +115,8 @@ const COMMANDS: AiCommand[] = [
   },
   {
     id: 'tutoiement',
-    label: '👋 Tu',
-    description: 'Passe au tutoiement',
+    label: 'Passer au tutoiement',
+    description: 'Réécrit le texte en tutoyant',
     needsCurrentText: true,
     buildSystemPrompt: () =>
       'Tu convertis le texte en tutoiement, naturellement. Réponds UNIQUEMENT le texte au tutoiement.',
@@ -124,8 +124,8 @@ const COMMANDS: AiCommand[] = [
   },
   {
     id: 'vouvoiement',
-    label: '🎩 Vous',
-    description: 'Passe au vouvoiement',
+    label: 'Passer au vouvoiement',
+    description: 'Réécrit le texte en vouvoyant',
     needsCurrentText: true,
     buildSystemPrompt: () =>
       'Tu convertis le texte en vouvoiement professionnel. Réponds UNIQUEMENT le texte au vouvoiement.',
@@ -179,7 +179,8 @@ export const AiTextarea: React.FC<AiTextareaProps> = ({
           { messages },
         );
         if (error || !data?.success || !data.response) {
-          toast.error(data?.error || error?.message || 'Échec génération IA');
+          console.warn('[AiTextarea]', data?.error || error?.message);
+          toast.error("La rédaction n'a pas abouti. Réessayez dans un instant.");
           return;
         }
         setPreview({ command, text: data.response.trim() });
@@ -219,52 +220,46 @@ export const AiTextarea: React.FC<AiTextareaProps> = ({
           if (preview) return; // freeze pendant preview
           onChange?.(e);
         }}
-        className={cn(preview && 'border-brand-purple/50 bg-brand-purple/5', className)}
+        className={cn(preview && 'border-brand', className)}
         {...props}
       />
 
-      {/* Bouton ✨ AI flottant */}
+      {/* Aide à la rédaction : bouton flottant, en haut à droite du champ */}
       {!preview && !loading && (
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button
               type="button"
-              size="icon"
+              size="icon-xs"
               variant="ghost"
-              className="absolute top-1.5 right-1.5 h-7 w-7 hover:bg-brand-purple/10 text-muted-foreground hover:text-brand-purple"
-              title="Commandes IA (/ai)"
-              aria-label="Commandes IA"
+              className="absolute right-1.5 top-1.5 text-muted-foreground hover:text-foreground"
+              title="Aide à la rédaction (/ai)"
+              aria-label="Aide à la rédaction"
             >
-              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              <PenLine aria-hidden="true" />
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-2">
             <div className="space-y-1">
               {currentText.trim().startsWith('/ai') && (
-                <div className="px-2 py-1.5 mb-1 border-b border-border">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                    Instruction détectée
-                  </p>
-                  <p className="text-xs text-foreground italic">{userInput || '(commande vide)'}</p>
+                <div className="mb-1 border-b border-border px-2 py-1.5">
+                  <p className="eyebrow mb-1">Votre instruction</p>
+                  <p className="text-xs text-foreground">{userInput || '(aucune instruction)'}</p>
                 </div>
               )}
               {COMMANDS.map((cmd) => {
                 const disabled = cmd.needsCurrentText && !currentText.replace(/^\/ai\s*/, '').trim();
                 return (
                   <button
+                    type="button"
                     key={cmd.id}
                     onClick={() => runCommand(cmd)}
                     disabled={disabled}
-                    className={cn(
-                      'w-full flex items-start gap-2 px-2 py-1.5 text-left rounded hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
-                    )}
+                    title={disabled ? 'Écrivez d’abord un texte' : undefined}
+                    className="flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <span className="text-sm shrink-0">{cmd.label.split(' ')[0]}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-foreground">{cmd.label.split(' ').slice(1).join(' ')}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">{cmd.description}</p>
-                    </div>
-                    <ArrowRight className="w-3 h-3 mt-0.5 text-muted-foreground/40" />
+                    <span className="text-xs font-medium text-foreground">{cmd.label}</span>
+                    <span className="w-full truncate text-2xs text-muted-foreground">{cmd.description}</span>
                   </button>
                 );
               })}
@@ -275,38 +270,35 @@ export const AiTextarea: React.FC<AiTextareaProps> = ({
 
       {/* Loader */}
       {loading && (
-        <div className="absolute top-1.5 right-1.5 flex items-center gap-1.5 px-2 py-1 bg-brand-purple/10 border border-brand-purple/30 text-brand-purple">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          <span className="text-[10px] font-bold uppercase tracking-wider">Génération…</span>
+        <div className="absolute right-1.5 top-1.5 flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-muted-foreground" role="status">
+          <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+          <span className="text-2xs font-medium">Rédaction…</span>
         </div>
       )}
 
       {/* Preview accept/reject bar */}
       {preview && (
-        <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1.5 px-2 py-1 bg-background border border-brand-purple shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-brand-purple">
-            Preview {preview.command.label.split(' ').slice(1).join(' ')}
-          </span>
+        <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1.5 rounded-lg border border-border bg-popover px-2 py-1 shadow-sm">
+          <span className="text-2xs font-medium text-foreground">Aperçu : {preview.command.label}</span>
           <Button
             type="button"
-            size="icon"
+            size="icon-xs"
             variant="ghost"
             onClick={rejectPreview}
-            className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
-            title="Rejeter"
-            aria-label="Rejeter la prévisualisation IA"
+            title="Revenir au texte d’origine"
+            aria-label="Revenir au texte d’origine"
           >
-            <X className="w-3 h-3" aria-hidden="true" />
+            <X aria-hidden="true" />
           </Button>
           <Button
             type="button"
-            size="icon"
+            size="icon-xs"
+            variant="primary"
             onClick={acceptPreview}
-            className="h-6 w-6 bg-brand-purple text-white hover:bg-brand-purple/90"
-            title="Accepter"
-            aria-label="Accepter la prévisualisation IA"
+            title="Garder ce texte"
+            aria-label="Garder ce texte"
           >
-            <Check className="w-3 h-3" aria-hidden="true" />
+            <Check aria-hidden="true" />
           </Button>
         </div>
       )}

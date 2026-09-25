@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ScoreBadge } from '@/components/ui/score-badge';
 import { EmptyState, Section, StatGrid, StatTile } from '@/components/layout';
 import { PublicDeadEnd } from '@/components/public/PublicDeadEnd';
 import { PoweredByKonekt } from '@/components/public/PublicFooter';
@@ -723,7 +724,7 @@ const PipelineCard: React.FC<{
             <span className="block truncate text-2xs text-muted-foreground">{candidate.candidate_headline}</span>
           )}
         </span>
-        {candidate.score != null && <ScoreChip score={candidate.score} />}
+        <ScoreBadge score={candidate.score} className="shrink-0" />
       </span>
       <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
         <Clock className="!size-3" aria-hidden="true" />
@@ -874,7 +875,7 @@ const CandidateRow: React.FC<{
         )}
       </span>
       <StageBadge stage={stage} />
-      {candidate.score != null && <ScoreChip score={candidate.score} />}
+      <ScoreBadge score={candidate.score} className="shrink-0" />
       {showTime && (
         <span className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
           <Clock className="!size-3" aria-hidden="true" />
@@ -892,19 +893,6 @@ const StageBadge: React.FC<{ stage: ClientStage }> = ({ stage }) => (
 );
 
 /** Score d'adéquation sur 100 : le chiffre porte l'information, la teinte la souligne. */
-const ScoreChip: React.FC<{ score: number }> = ({ score }) => (
-  <span
-    className={cn(
-      'inline-flex h-7 min-w-9 shrink-0 items-center justify-center rounded-md px-1.5 text-xs font-semibold tabular-nums',
-      score >= 80 ? 'bg-success-muted text-success' : score >= 60 ? 'bg-info-muted text-info' : 'bg-muted text-muted-foreground',
-    )}
-  >
-    <span className="sr-only">Score </span>
-    {score}
-    <span className="sr-only"> sur 100</span>
-  </span>
-);
-
 const Initials: React.FC<{ name: string | null; size: 'sm' | 'md' | 'lg' }> = ({ name, size }) => (
   <span
     className={cn(

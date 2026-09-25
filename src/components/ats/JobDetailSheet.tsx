@@ -6,12 +6,20 @@ import { useAgent } from '@/contexts/AgentContext';
 import { CandidateDetailModal } from './CandidateDetailModal';
 import { ATSCandidate, useATSData } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ScoreBadge } from '@/components/ui/score-badge';
+import { Spinner } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/layout';
+import { SCORE_THRESHOLDS } from '@/lib/scoreScale';
 import {
   Briefcase, Building2, MapPin, FileText, CalendarDays, X,
   ClipboardList, Users, Brain, GitBranch, Loader2, ChevronRight,
   Zap, BarChart3, Database, MessageSquare, Send, Target
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import type { JobDetails } from '@/types/jobDetails';
 import { fr } from 'date-fns/locale';
 
 /* ─── types ─── */
@@ -58,19 +66,48 @@ const TABS = [
   { key: 'fiche' as const, label: 'Fiche', icon: FileText },
   { key: 'candidats' as const, label: 'Candidats', icon: Users },
   { key: 'sequences' as const, label: 'Séquences', icon: GitBranch },
-  { key: 'ia' as const, label: 'IA', icon: Brain },
+  { key: 'ia' as const, label: 'Analyse', icon: BarChart3 },
 ] as const;
 
 type TabKey = typeof TABS[number]['key'];
 
-/* ─── status badge color ─── */
-function statusColor(status: string | null) {
-  if (!status) return 'border-border text-muted-foreground';
+/* ─── statut de la mission : un mot en français, jamais la valeur brute (E-34) ─── */
+function missionStatus(status: string | null): { label: string; tone: 'success' | 'warning' | 'muted' } | null {
+  if (!status) return null;
   const s = status.toLowerCase();
-  if (['active', 'open', 'en cours'].includes(s)) return 'border-success/40 text-success bg-success/10';
-  if (['closed', 'fermé', 'pourvu'].includes(s)) return 'border-destructive/40 text-destructive bg-destructive/10';
-  if (['paused', 'pause'].includes(s)) return 'border-amber-400 text-amber-600 bg-warning/10';
-  return 'border-border text-muted-foreground';
+  if (['active', 'open', 'en cours'].includes(s)) return { label: 'En cours', tone: 'success' };
+  if (['paused', 'pause'].includes(s)) return { label: 'En pause', tone: 'warning' };
+  if (['closed', 'fermé', 'pourvu', 'filled'].includes(s)) return { label: 'Terminée', tone: 'muted' };
+  if (s === 'draft') return { label: 'Brouillon', tone: 'muted' };
+  if (s === 'archived') return { label: 'Archivée', tone: 'muted' };
+  return null;
+}
+
+/* ─── filtres de recherche : libellés de l'écran de recherche, jamais la clé technique ─── */
+const FILTER_LABELS: Record<string, string> = {
+  keywords: 'Mots-clés',
+  location: 'Localisation',
+  location_keywords: 'Localisation',
+  skills: 'Compétences',
+  skills_keywords: 'Compétences',
+  role: 'Intitulés',
+  title_keywords: 'Intitulés',
+  company_keywords: 'Entreprises',
+  industry: 'Secteur',
+  seniority: 'Séniorité',
+  languages: 'Langues',
+};
+
+function filterValue(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((v) => (typeof v === 'string' ? v : v && typeof v === 'object' && 'keywords' in v ? String((v as { keywords: unknown }).keywords) : null))
+      .filter((v): v is string => !!v);
+    return parts.length ? parts.join(', ') : null;
+  }
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  return null;
 }
 
 export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProps) {
@@ -121,22 +158,36 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
         companyDescription: null,
       };
 
-      const { data: proj } = await supabase
-        .from('sourcing_projects')
-        .select('*')
-        .eq('job_id', jobId)
+      // Un poste de mission arrive sous la forme « project:<id> » (poste
+      // synthétique tiré du brief) : on lit alors la mission par son id, et le
+      // brief (job_details) complète les champs vides.
+      const projectId = jobId.startsWith('project:') ? jobId.slice('project:'.length) : null;
+      const projectQuery = supabase.from('sourcing_projects').select('*');
+      const { data: proj } = await (projectId ? projectQuery.eq('id', projectId) : projectQuery.eq('job_id', jobId))
         .limit(1)
         .maybeSingle();
 
       if (proj) {
-        info.jobTitle = proj.job_title;
-        info.clientName = proj.client_name;
-        info.description = proj.description;
+        const brief = ((proj as { job_details?: unknown }).job_details ?? {}) as JobDetails;
+        info.jobTitle = proj.job_title || brief.title || proj.name || null;
+        info.clientName = proj.client_name || brief.client?.name || null;
+        info.description = proj.description || brief.mission_description || null;
         info.notes = proj.notes;
         info.calendlyLink = proj.calendly_link;
         info.filtersSnapshot = proj.filters_snapshot;
         info.status = proj.status;
         info.createdAt = proj.created_at;
+        info.city = brief.location || null;
+        info.seniority = brief.seniority ? brief.seniority.replace(/^./, (c) => c.toUpperCase()) : null;
+        if (brief.salary_min && brief.salary_max && brief.salary_type !== 'daily') {
+          // Montants annuels en euros (65000) ou déjà en milliers (65)
+          const toK = (v: number) => (v >= 1000 ? Math.round(v / 1000) : v);
+          info.salaryMin = toK(brief.salary_min);
+          info.salaryMax = toK(brief.salary_max);
+        }
+        if (brief.skills_must_have?.length) info.mustHave = brief.skills_must_have.join(', ');
+        if (brief.skills_should_have?.length) info.shouldHave = brief.skills_should_have.join(', ');
+        if (brief.skills_nice_to_have?.length) info.niceToHave = brief.skills_nice_to_have.join(', ');
       }
 
       const { data: atJob } = await supabase
@@ -207,8 +258,8 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
     const scored = jobCandidates.filter(c => c.score != null);
     if (scored.length === 0) return null;
     const avg = Math.round(scored.reduce((s, c) => s + (c.score || 0), 0) / scored.length);
-    const above70 = scored.filter(c => (c.score || 0) >= 70).length;
-    return { avg, total: scored.length, above70 };
+    const strong = scored.filter(c => (c.score || 0) >= SCORE_THRESHOLDS.strong).length;
+    return { avg, total: scored.length, strong };
   }, [jobCandidates]);
 
   const filters = jobInfo?.filtersSnapshot as any;
@@ -216,113 +267,106 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="sm:w-[540px] sm:max-w-[540px] w-full p-0 border-l border-border flex flex-col">
-          {/* Header */}
-          <div className="shrink-0 border-b-2 border-border p-4">
-            <SheetHeader className="space-y-0">
-              <SheetTitle className="sr-only">Détail du poste</SheetTitle>
-            </SheetHeader>
-            {loading ? (
-              <div className="flex items-center gap-2 py-4">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-xs text-muted-foreground uppercase tracking-wider">Chargement…</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-bold uppercase tracking-wider text-foreground leading-tight">
-                      {jobInfo?.jobTitle || 'Poste non spécifié'}
-                    </h2>
-                    {jobInfo?.clientName && (
-                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                        <Building2 className="w-3 h-3" /> {jobInfo.clientName}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      {jobInfo?.city && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="w-3 h-3" /> {jobInfo.city}
-                        </span>
-                      )}
-                      {jobInfo?.status && (
-                        <span className={cn("text-xs px-1.5 py-0.5 border font-medium uppercase tracking-wider", statusColor(jobInfo.status))}>
-                          {jobInfo.status}
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {jobCandidates.length} candidat{jobCandidates.length !== 1 ? 's' : ''}
-                      </span>
-                    </div>
+        <SheetContent side="right" className="flex w-full flex-col border-l border-border p-0 sm:w-[540px] sm:max-w-[540px]">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)} className="flex min-h-0 flex-1 flex-col">
+            {/* En-tête */}
+            <div className="shrink-0 border-b border-border p-4">
+              {loading ? (
+                <>
+                  <SheetHeader className="space-y-0">
+                    <SheetTitle className="sr-only">Détail du poste</SheetTitle>
+                  </SheetHeader>
+                  <div className="py-4">
+                    <Spinner label="Chargement du poste" />
                   </div>
-                  {jobInfo?.calendlyLink && (
-                    <a href={jobInfo.calendlyLink} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-border text-foreground text-[11px] font-medium hover:bg-accent transition-colors shrink-0">
-                      <CalendarDays className="w-3 h-3" /> Calendly
-                    </a>
-                  )}
-                </div>
-
-                {/* Tabs */}
-                <div className="flex gap-0 mt-4">
-                  {TABS.map((t, i) => (
-                    <button key={t.key} onClick={() => setTab(t.key)}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-full border border-border transition-colors",
-                        i > 0 && "border-l-0",
-                        tab === t.key
-                          ? "bg-foreground text-background"
-                          : "bg-background text-muted-foreground hover:bg-accent/50"
-                      )}>
-                      <t.icon className="w-3 h-3" />
-                      {t.label}
-                      {t.key === 'candidats' && jobCandidates.length > 0 && (
-                        <span className="ml-0.5 text-xs">({jobCandidates.length})</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Content */}
-          <ScrollArea className="flex-1">
-            <div className="p-4">
-              {loading ? null : !jobInfo && tab === 'fiche' ? (
-                <p className="text-xs text-muted-foreground py-8 text-center">Aucune information disponible</p>
+                </>
               ) : (
                 <>
-                  {/* ── FICHE ── */}
-                  {tab === 'fiche' && jobInfo && <FicheTab jobInfo={jobInfo} filters={filters} />}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <SheetHeader className="space-y-0 text-left">
+                        <SheetTitle className="text-base font-semibold leading-tight text-foreground">
+                          {jobInfo?.jobTitle || 'Poste sans intitulé'}
+                        </SheetTitle>
+                      </SheetHeader>
+                      {jobInfo?.clientName && (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                          <Building2 className="h-3 w-3" aria-hidden="true" /> {jobInfo.clientName}
+                        </p>
+                      )}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        {jobInfo?.city && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3" aria-hidden="true" /> {jobInfo.city}
+                          </span>
+                        )}
+                        {(() => {
+                          const st = missionStatus(jobInfo?.status ?? null);
+                          return st ? <Badge variant={st.tone}>{st.label}</Badge> : null;
+                        })()}
+                        <span className="text-xs text-muted-foreground">
+                          {jobCandidates.length} candidat{jobCandidates.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    </div>
+                    {jobInfo?.calendlyLink && (
+                      <Button asChild variant="outline" size="xs" className="shrink-0">
+                        <a href={jobInfo.calendlyLink} target="_blank" rel="noopener noreferrer">
+                          <CalendarDays aria-hidden="true" /> Calendly
+                        </a>
+                      </Button>
+                    )}
+                  </div>
 
-                  {/* ── CANDIDATS ── */}
-                  {tab === 'candidats' && (
-                    <CandidatsTab
-                      candidates={jobCandidates}
-                      stageCounts={stageCounts}
-                      onCandidateClick={setSelectedCandidate}
-                    />
-                  )}
-
-                  {/* ── SÉQUENCES ── */}
-                  {tab === 'sequences' && (
-                    <SequencesTab sequences={sequences} loading={seqLoading} />
-                  )}
-
-                  {/* ── IA ── */}
-                  {tab === 'ia' && (
-                    <IATab
-                      jobId={jobId}
-                      ragCount={ragCount}
-                      scoreSummary={scoreSummary}
-                      openAgent={openAgent}
-                    />
-                  )}
+                  <TabsList className="mt-4">
+                    {TABS.map((t) => (
+                      <TabsTrigger key={t.key} value={t.key} className="gap-1.5">
+                        <t.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                        {t.label}
+                        {t.key === 'candidats' && jobCandidates.length > 0 && (
+                          <span className="tabular-nums text-muted-foreground">{jobCandidates.length}</span>
+                        )}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
                 </>
               )}
             </div>
-          </ScrollArea>
+
+            {/* Contenu */}
+            <ScrollArea className="flex-1">
+              <div className="p-4">
+                {!loading && (
+                  <>
+                    <TabsContent value="fiche" className="mt-0">
+                      {jobInfo ? (
+                        <FicheTab jobInfo={jobInfo} filters={filters} />
+                      ) : (
+                        <EmptyState variant="compact" icon={FileText} title="Aucune information sur ce poste" />
+                      )}
+                    </TabsContent>
+                    <TabsContent value="candidats" className="mt-0">
+                      <CandidatsTab
+                        candidates={jobCandidates}
+                        stageCounts={stageCounts}
+                        onCandidateClick={(c) => {
+                          // La fiche remplace le panneau au lieu de s'empiler dessus (E-34).
+                          onOpenChange(false);
+                          setSelectedCandidate(c);
+                        }}
+                      />
+                    </TabsContent>
+                    <TabsContent value="sequences" className="mt-0">
+                      <SequencesTab sequences={sequences} loading={seqLoading} />
+                    </TabsContent>
+                    <TabsContent value="ia" className="mt-0">
+                      <IATab jobId={jobId} ragCount={ragCount} scoreSummary={scoreSummary} openAgent={openAgent} />
+                    </TabsContent>
+                  </>
+                )}
+              </div>
+            </ScrollArea>
+          </Tabs>
         </SheetContent>
       </Sheet>
 
@@ -347,96 +391,92 @@ function FicheTab({ jobInfo, filters }: { jobInfo: JobInfo; filters: any }) {
   const infoGrid = [
     { label: 'Localisation', value: jobInfo.city },
     { label: 'Contrat', value: jobInfo.contractType },
-    { label: 'Salaire', value: jobInfo.salary || (jobInfo.salaryMin && jobInfo.salaryMax ? `${jobInfo.salaryMin}–${jobInfo.salaryMax}k€` : null) },
-    { label: 'TJM', value: jobInfo.tjm ? `${jobInfo.tjm}€` : null },
+    { label: 'Salaire', value: jobInfo.salary || (jobInfo.salaryMin && jobInfo.salaryMax ? `${jobInfo.salaryMin} à ${jobInfo.salaryMax} k€` : null) },
+    { label: 'TJM', value: jobInfo.tjm ? `${jobInfo.tjm} €` : null },
     { label: 'Séniorité', value: jobInfo.seniority },
-    { label: 'Remote', value: jobInfo.remote },
+    { label: 'Télétravail', value: jobInfo.remote },
   ].filter(i => i.value);
+
+  const filterRows = filters && typeof filters === 'object'
+    ? Object.entries(filters as Record<string, unknown>)
+        .map(([key, value]) => ({ label: FILTER_LABELS[key], value: filterValue(value) }))
+        .filter((r): r is { label: string; value: string } => !!r.label && !!r.value && r.value.length <= 160)
+    : [];
 
   return (
     <div className="space-y-5">
-      {/* Info grid */}
       {infoGrid.length > 0 && (
-        <div className="grid grid-cols-2 gap-2">
+        <dl className="grid grid-cols-2 gap-2">
           {infoGrid.map(item => (
             <div key={item.label} className="rounded-xl border border-border bg-card p-2.5">
-              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-0.5">{item.label}</p>
-              <p className="text-xs text-foreground font-medium">{item.value}</p>
+              <dt className="eyebrow mb-0.5">{item.label}</dt>
+              <dd className="text-xs font-medium text-foreground">{item.value}</dd>
             </div>
           ))}
-        </div>
+        </dl>
       )}
 
-      {/* Stack */}
       {jobInfo.stack && jobInfo.stack.length > 0 && (
-        <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">Stack technique</p>
+        <section>
+          <h3 className="eyebrow mb-1.5">Stack technique</h3>
           <div className="flex flex-wrap gap-1.5">
             {jobInfo.stack.map((s, i) => (
-              <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full border border-border text-[11px] font-medium bg-foreground/[0.06] text-foreground/85">{s}</span>
+              <Badge key={i} variant="muted">{s}</Badge>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Description */}
-      {jobInfo.description ? (
-        <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">Description</p>
-          <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{jobInfo.description}</p>
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground text-center py-3">Aucune description</p>
-      )}
+      <section>
+        <h3 className="eyebrow mb-1.5">Description</h3>
+        {jobInfo.description ? (
+          <p className="whitespace-pre-line text-xs leading-relaxed text-foreground">{jobInfo.description}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Aucune description.</p>
+        )}
+      </section>
 
-      {/* Criteria */}
       {(jobInfo.mustHave || jobInfo.shouldHave || jobInfo.niceToHave || jobInfo.criteria) && (
-        <div className="space-y-3">
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Critères</p>
-          {jobInfo.mustHave && <CriteriaBlock label="Must-have" content={jobInfo.mustHave} color="border-red-300" />}
-          {jobInfo.shouldHave && <CriteriaBlock label="Should-have" content={jobInfo.shouldHave} color="border-amber-300" />}
-          {jobInfo.niceToHave && <CriteriaBlock label="Nice-to-have" content={jobInfo.niceToHave} color="border-green-300" />}
+        <section className="space-y-2">
+          <h3 className="eyebrow">Critères</h3>
+          {jobInfo.mustHave && <CriteriaBlock label="Indispensable" content={jobInfo.mustHave} />}
+          {jobInfo.shouldHave && <CriteriaBlock label="Important" content={jobInfo.shouldHave} />}
+          {jobInfo.niceToHave && <CriteriaBlock label="Appréciable" content={jobInfo.niceToHave} />}
           {jobInfo.criteria && !jobInfo.mustHave && (
-            <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{jobInfo.criteria}</p>
+            <p className="whitespace-pre-line text-xs leading-relaxed text-foreground">{jobInfo.criteria}</p>
           )}
-        </div>
+        </section>
       )}
 
-      {/* Filters snapshot */}
-      {filters && typeof filters === 'object' && Object.keys(filters).length > 0 && (
-        <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">Filtres de recherche</p>
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(filters).map(([key, value]) => {
-              if (!value || (Array.isArray(value) && value.length === 0)) return null;
-              const display = Array.isArray(value) ? (value as string[]).join(', ') : String(value);
-              if (display.length > 100) return null;
-              return (
-                <span key={key} className="inline-flex items-center px-2 py-0.5 rounded-full border border-border text-[11px] text-muted-foreground">
-                  <span className="font-semibold text-foreground">{key}:</span> {display}
-                </span>
-              );
-            })}
-          </div>
-        </div>
+      {filterRows.length > 0 && (
+        <section>
+          <h3 className="eyebrow mb-1.5">Filtres de recherche</h3>
+          <dl className="space-y-1">
+            {filterRows.map((row) => (
+              <div key={row.label} className="flex gap-2 text-xs">
+                <dt className="w-24 shrink-0 text-muted-foreground">{row.label}</dt>
+                <dd className="min-w-0 text-foreground">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       )}
 
-      {/* Notes */}
       {jobInfo.notes && (
-        <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-1.5">Notes</p>
-          <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{jobInfo.notes}</p>
-        </div>
+        <section>
+          <h3 className="eyebrow mb-1.5">Notes</h3>
+          <p className="whitespace-pre-line text-xs leading-relaxed text-foreground">{jobInfo.notes}</p>
+        </section>
       )}
     </div>
   );
 }
 
-function CriteriaBlock({ label, content, color }: { label: string; content: string; color: string }) {
+function CriteriaBlock({ label, content }: { label: string; content: string }) {
   return (
-    <div className={cn("rounded-lg border border-border bg-card px-3 py-2", color)}>
-      <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-0.5">{label}</p>
-      <p className="text-xs text-foreground leading-relaxed whitespace-pre-line">{content}</p>
+    <div className="rounded-lg border border-border bg-card px-3 py-2">
+      <p className="mb-0.5 text-xs font-medium text-foreground">{label}</p>
+      <p className="whitespace-pre-line text-xs leading-relaxed text-foreground-secondary">{content}</p>
     </div>
   );
 }
@@ -454,12 +494,7 @@ function CandidatsTab({
   onCandidateClick: (c: ATSCandidate) => void;
 }) {
   if (candidates.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <Users className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-        <p className="text-xs text-muted-foreground uppercase tracking-wider">Aucun candidat associé</p>
-      </div>
-    );
+    return <EmptyState variant="compact" icon={Users} title="Aucun candidat sur ce poste" />;
   }
 
   const stageEntries = Object.entries(stageCounts).sort((a, b) => b[1] - a[1]);
@@ -469,9 +504,9 @@ function CandidatsTab({
       {/* Stage counters */}
       <div className="flex flex-wrap gap-1.5">
         {stageEntries.map(([stage, count]) => (
-          <span key={stage} className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full border border-border font-medium">
+          <Badge key={stage} variant="outline" className="tabular-nums">
             {count} {stage}
-          </span>
+          </Badge>
         ))}
       </div>
 
@@ -479,30 +514,22 @@ function CandidatsTab({
       <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
         {candidates.map(candidate => (
           <button
+            type="button"
             key={candidate.id}
             onClick={() => onCandidateClick(candidate)}
-            className="w-full text-left px-3 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3 group"
+            className="group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-foreground truncate">{candidate.name}</span>
-                {candidate.score != null && (
-                  <span className={cn(
-                    "text-xs font-bold px-1 py-0.5 border shrink-0",
-                    candidate.score >= 70 ? 'border-border bg-accent' : candidate.score >= 40 ? 'border-border' : 'border-destructive text-destructive'
-                  )}>
-                    {candidate.score}%
-                  </span>
-                )}
+                <span className="truncate text-xs font-medium text-foreground">{candidate.name}</span>
+                <ScoreBadge score={candidate.score} />
               </div>
               {candidate.headline && (
-                <p className="text-xs text-muted-foreground truncate">{candidate.headline}</p>
+                <p className="truncate text-xs text-muted-foreground">{candidate.headline}</p>
               )}
             </div>
-            <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full border border-border uppercase tracking-wider font-semibold shrink-0">
-              {candidate.stage}
-            </span>
-            <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Badge variant="muted" className="shrink-0">{candidate.stage}</Badge>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true" />
           </button>
         ))}
       </div>
@@ -516,19 +543,14 @@ function CandidatsTab({
 function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loading: boolean }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      <div className="flex justify-center py-12">
+        <Spinner label="Chargement des séquences" />
       </div>
     );
   }
 
   if (sequences.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <GitBranch className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-        <p className="text-xs text-muted-foreground uppercase tracking-wider">Aucune séquence liée</p>
-      </div>
-    );
+    return <EmptyState variant="compact" icon={GitBranch} title="Aucune séquence sur ce poste" />;
   }
 
   return (
@@ -537,21 +559,21 @@ function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loadi
         const responseRate = seq.sentCount > 0 ? Math.round((seq.repliedCount / seq.sentCount) * 100) : 0;
         return (
           <div key={seq.id} className="rounded-xl border border-border bg-card p-3">
-            <p className="font-display font-bold text-[13px] tracking-tight text-foreground mb-2">{seq.name}</p>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="text-center">
-                <p className="text-lg font-bold text-foreground">{seq.enrolledCount}</p>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Enrollés</p>
+            <p className="mb-2 text-sm font-semibold text-foreground">{seq.name}</p>
+            <dl className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <dd className="text-lg font-semibold tabular-nums text-foreground">{seq.enrolledCount}</dd>
+                <dt className="text-xs text-muted-foreground">Inscrits</dt>
               </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-foreground">{seq.sentCount}</p>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Envoyés</p>
+              <div>
+                <dd className="text-lg font-semibold tabular-nums text-foreground">{seq.sentCount}</dd>
+                <dt className="text-xs text-muted-foreground">Contactés</dt>
               </div>
-              <div className="text-center">
-                <p className={cn("text-lg font-bold", responseRate >= 20 ? "text-success" : "text-foreground")}>{responseRate}%</p>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Réponse</p>
+              <div>
+                <dd className="text-lg font-semibold tabular-nums text-foreground">{responseRate} %</dd>
+                <dt className="text-xs text-muted-foreground">Taux de réponse</dt>
               </div>
-            </div>
+            </dl>
           </div>
         );
       })}
@@ -570,60 +592,55 @@ function IATab({
 }: {
   jobId: string | null;
   ragCount: number | null;
-  scoreSummary: { avg: number; total: number; above70: number } | null;
+  scoreSummary: { avg: number; total: number; strong: number } | null;
   openAgent: (jobId?: string) => void;
 }) {
   return (
-    <div className="space-y-5">
-      {/* Analyze button */}
-      <button
-        onClick={() => jobId && openAgent(jobId)}
-        className="inline-flex items-center justify-center gap-2 w-full h-10 rounded-full border border-border text-foreground text-[12px] font-medium hover:bg-accent transition-colors"
-      >
-        <Brain className="w-4 h-4 relative z-10" />
-        <span className="relative z-10">Analyser ce poste avec l'Agent</span>
-      </button>
+    <div className="space-y-4">
+      <Button type="button" variant="outline" className="w-full" onClick={() => jobId && openAgent(jobId)} disabled={!jobId}>
+        <MessageSquare aria-hidden="true" />
+        Analyser ce poste avec l'assistant
+      </Button>
 
-      {/* RAG context */}
-      <div className="rounded-xl border border-border bg-card p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Database className="w-4 h-4 text-foreground" />
-          <p className="font-display font-bold text-[13px] tracking-tight text-foreground">Contexte RAG</p>
-        </div>
+      <section className="rounded-xl border border-border bg-card p-3">
+        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          Documents de la mission
+        </h3>
         {ragCount !== null ? (
           <p className="text-xs text-muted-foreground">
-            <span className="font-bold text-foreground text-base">{ragCount}</span> chunk{ragCount !== 1 ? 's' : ''} indexé{ragCount !== 1 ? 's' : ''} pour ce poste
+            <span className="font-semibold tabular-nums text-foreground">{ragCount}</span> passage{ragCount > 1 ? 's' : ''} de
+            documents lu{ragCount > 1 ? 's' : ''} par l'assistant pour ce poste
           </p>
         ) : (
-          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          <Spinner size="sm" label="Chargement" />
         )}
-      </div>
+      </section>
 
-      {/* Score summary */}
-      <div className="rounded-xl border border-border bg-card p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <BarChart3 className="w-4 h-4 text-foreground" />
-          <p className="font-display font-bold text-[13px] tracking-tight text-foreground">Scoring candidats</p>
-        </div>
+      <section className="rounded-xl border border-border bg-card p-3">
+        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+          <BarChart3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          Scores des candidats
+        </h3>
         {scoreSummary ? (
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <dl className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <p className="text-lg font-bold text-foreground">{scoreSummary.avg}%</p>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Score moyen</p>
+              <dd className="flex justify-center"><ScoreBadge score={scoreSummary.avg} /></dd>
+              <dt className="mt-1 text-xs text-muted-foreground">Score moyen</dt>
             </div>
             <div>
-              <p className="text-lg font-bold text-foreground">{scoreSummary.total}</p>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Scorés</p>
+              <dd className="text-lg font-semibold tabular-nums text-foreground">{scoreSummary.total}</dd>
+              <dt className="text-xs text-muted-foreground">Candidats scorés</dt>
             </div>
             <div>
-              <p className="text-lg font-bold text-success">{scoreSummary.above70}</p>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">≥ 70%</p>
+              <dd className="text-lg font-semibold tabular-nums text-foreground">{scoreSummary.strong}</dd>
+              <dt className="text-xs text-muted-foreground">Scores forts ({SCORE_THRESHOLDS.strong} et plus)</dt>
             </div>
-          </div>
+          </dl>
         ) : (
-          <p className="text-xs text-muted-foreground">Aucun candidat scoré</p>
+          <p className="text-xs text-muted-foreground">Aucun candidat scoré pour l'instant.</p>
         )}
-      </div>
+      </section>
     </div>
   );
 }

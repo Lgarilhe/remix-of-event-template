@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ModelLogo, ProviderLabel } from './ModelLogo';
+import { ModelLogo } from './ModelLogo';
 import { cn } from '@/lib/utils';
 
 interface ModelPickerProps {
@@ -27,6 +27,9 @@ interface ModelPickerProps {
   compact?: boolean;
   disabled?: boolean;
 }
+
+/** « 1 crédit », « 3 crédits » : jamais « ~3 cr » (revue design E-51). */
+const creditsLabel = (n: number) => `${n} crédit${n > 1 ? 's' : ''}`;
 
 const modelOrder: string[] = [
   'claude-haiku-4-5',
@@ -66,9 +69,11 @@ export const ModelPicker = ({
       <DropdownMenuTrigger asChild disabled={disabled}>
         <button
           type="button"
+          aria-label={`Modèle : ${isAutoRouted ? 'automatique' : resolvedModel?.name ?? 'Avancé'}, environ ${creditsLabel(estimatedCost)}`}
+          title="Choisir le modèle"
           className={cn(
-            "inline-flex items-center gap-1.5 text-xs rounded-sm border border-border px-2 py-1 transition-colors",
-            "hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "inline-flex h-8 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs transition-colors",
+            "hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             disabled && "opacity-50 cursor-not-allowed",
             !compact && "min-w-[140px]"
           )}
@@ -76,22 +81,17 @@ export const ModelPicker = ({
           <ModelLogo modelId={resolvedModelId} size={14} />
           {!compact && (
             <span className="truncate text-muted-foreground">
-              {resolvedModel?.name ?? 'Avancé'}
+              {isAutoRouted ? 'Automatique' : resolvedModel?.name ?? 'Avancé'}
             </span>
           )}
-          <span className="ml-auto font-medium text-foreground whitespace-nowrap">
-            ~{estimatedCost} cr
+          <span className="ml-auto whitespace-nowrap font-medium tabular-nums text-foreground">
+            {creditsLabel(estimatedCost)}
           </span>
-          {isAutoRouted && (
-            <span className="text-xs text-muted-foreground/70 uppercase tracking-wider">auto</span>
-          )}
         </button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel className="text-xs font-bold text-foreground pb-1">
-          Modèle
-        </DropdownMenuLabel>
+        <DropdownMenuLabel className="pb-1 text-xs font-semibold text-foreground">Modèle</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         <DropdownMenuRadioGroup
@@ -103,9 +103,9 @@ export const ModelPicker = ({
         >
           {/* Auto option */}
           <DropdownMenuRadioItem value="__auto__" className="cursor-pointer py-3">
-            <div className="flex items-center gap-3 w-full">
-              <span className="text-base shrink-0">✨</span>
+            <div className="flex min-w-0 flex-col">
               <span className="text-sm font-medium">Automatique</span>
+              <span className="truncate text-xs text-muted-foreground">Le modèle adapté à chaque demande</span>
             </div>
           </DropdownMenuRadioItem>
 
@@ -128,9 +128,7 @@ export const ModelPicker = ({
                     <span className="text-sm font-medium">{model.name}</span>
                     <span className="text-xs text-muted-foreground truncate">{model.description}</span>
                   </div>
-                  <span className="text-xs px-1.5 py-0.5 bg-muted text-muted-foreground font-medium rounded-sm ml-auto shrink-0">
-                    ~{cost} cr
-                  </span>
+                  <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">{creditsLabel(cost)}</span>
                 </div>
               </DropdownMenuRadioItem>
             );

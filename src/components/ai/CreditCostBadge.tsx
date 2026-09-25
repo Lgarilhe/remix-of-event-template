@@ -1,5 +1,6 @@
 import { estimateCredits, ACTION_COSTS, resolveModel, MODEL_CATALOG } from '@/types/aiCredits';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 import {
   Tooltip,
   TooltipContent,
@@ -17,8 +18,8 @@ interface CreditCostBadgeProps {
 }
 
 /**
- * Small badge showing estimated credit cost for an AI action.
- * Displays "~X cr" with a tooltip explaining the estimation.
+ * Coût estimé d'une action IA, en toutes lettres (« 2 crédits »), avec une
+ * infobulle qui dit qu'il s'agit d'une estimation (revue design E-51).
  *
  * Usage: place next to any button that triggers an AI action.
  */
@@ -33,24 +34,15 @@ export const CreditCostBadge = ({ actionId, modelId, className }: CreditCostBadg
     <TooltipProvider delayDuration={400}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            className={cn(
-              "inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-sm",
-              "bg-muted/80 text-muted-foreground border border-border/50",
-              "select-none shrink-0",
-              className
-            )}
-          >
-            ~{cost} cr
-          </span>
+          <Badge variant="muted" className={cn('shrink-0 select-none tabular-nums', className)}>
+            {cost} crédit{cost > 1 ? 's' : ''}
+          </Badge>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs max-w-[220px]">
           <p>
-            Estimation : ~{cost} crédit{cost > 1 ? 's' : ''} avec le modèle {MODEL_CATALOG[resolvedModel]?.name ?? 'Avancé'}
+            Environ {cost} crédit{cost > 1 ? 's' : ''} avec le modèle {MODEL_CATALOG[resolvedModel]?.name ?? 'Avancé'}.
           </p>
-          <p className="text-muted-foreground mt-0.5">
-            Coût réel basé sur les tokens consommés.
-          </p>
+          <p className="mt-0.5 text-muted-foreground">Le coût réel dépend de la longueur du texte traité.</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

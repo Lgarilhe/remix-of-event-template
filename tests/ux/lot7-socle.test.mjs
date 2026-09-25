@@ -66,6 +66,17 @@ test('E-16 : une décision se lit en français, quelle que soit sa clé d’orig
   }
 });
 
+test('E-16 : verdict de qualification, les libellés de la page Qualification', () => {
+  assert.equal(verdicts.qualificationVerdictMeta('go').label, 'Qualifié');
+  assert.equal(verdicts.qualificationVerdictMeta('no_go').label, 'Non qualifié');
+  assert.equal(verdicts.qualificationVerdictMeta('maybe').label, 'À revoir');
+  assert.equal(verdicts.qualificationVerdictMeta('pending').label, 'En attente');
+  const page = read('src/pages/Qualification.tsx');
+  for (const label of ['Qualifié', 'Non qualifié', 'À revoir', 'En attente']) {
+    assert.ok(page.includes(`'${label}'`), `Qualification : « ${label} » absent`);
+  }
+});
+
 test('E-16 : types d’entretien en français', () => {
   assert.equal(verdicts.interviewTypeLabel('phone_screen'), 'Préqualification');
   assert.equal(verdicts.interviewTypeLabel('culture_fit'), 'Adéquation culturelle');

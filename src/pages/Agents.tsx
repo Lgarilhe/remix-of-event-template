@@ -1,33 +1,53 @@
+/**
+ * Agents — page « Assistant » (/agents) : toutes les conversations avec
+ * l'assistant. Même nom que l'onglet de la barre latérale et l'entrée de la
+ * palette ; plus d'« agents » ni de « Nouvel agent » (revue design E-35).
+ *
+ * Mes conversations seulement, comme l'historique du tiroir. « Nouvelle
+ * conversation » ouvre le tiroir de l'assistant. Une lecture en échec
+ * s'affiche comme une erreur avec « Réessayer », jamais comme un vide.
+ */
+
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { formatDistanceToNow, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { ChevronRight, MessageSquare, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { useOrganization } from '@/hooks/useOrganization';
-import { Bot, Play, Pause, CheckCircle, Clock, AlertCircle, ChevronRight, Plus } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useAgent } from '@/contexts/AgentContext';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { SEOHead } from '@/components/SEOHead';
+import { EmptyState, ErrorState, PageHeader, PageLayout, Section } from '@/components/layout';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { agentConversationStatus, agentResultsSummary } from '@/lib/agentConversations';
 
-const STATUS_CONFIG: Record<string, { label: string; icon: typeof Play; cls: string }> = {
-  calibrating: { label: 'Calibration', icon: Clock, cls: 'text-warning bg-warning/10 border-warning/30' },
-  plan_proposed: { label: 'Plan proposé', icon: AlertCircle, cls: 'text-primary bg-primary/10 border-primary/30' },
-  running: { label: 'En cours', icon: Play, cls: 'text-accent bg-accent/10 border-accent/30' },
-  completed: { label: 'Terminé', icon: CheckCircle, cls: 'text-muted-foreground bg-muted border-border' },
-  paused: { label: 'En pause', icon: Pause, cls: 'text-warning bg-warning/10 border-warning/30' },
-  failed: { label: 'Erreur', icon: AlertCircle, cls: 'text-destructive bg-destructive/10 border-destructive/30' },
-};
+interface ConversationRow {
+  id: string;
+  status: string | null;
+  title: string | null;
+  job_title: string | null;
+  search_config: { summary?: string } | null;
+  results_summary: unknown;
+  updated_at: string | null;
+}
 
 const AgentsPage = () => {
-  const navigate = useNavigate();
   const { organizationId } = useOrganization();
-  const { openConversation } = useAgent();
+  const { openConversation, startNewConversation } = useAgent();
   const { user } = useAuthReady();
   const userId = user?.id;
 
-  // Mes conversations seulement, comme l'historique du tiroir : la page est
-  // désormais reliée depuis la palette et le tiroir de l'assistant.
-  const { data: conversations, isLoading } = useQuery({
+  const {
+    data: conversations = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isRefetching,
+  } = useQuery({
     queryKey: ['agent-conversations', organizationId, userId],
     queryFn: async () => {
       const { data, error } = await (supabase
@@ -38,135 +58,121 @@ const AgentsPage = () => {
         .is('archived_at', null)
         .order('updated_at', { ascending: false }) as any);
       if (error) throw error;
-      return data || [];
+      return (data || []) as ConversationRow[];
     },
     enabled: !!organizationId && !!userId,
     staleTime: 30_000,
   });
 
-  const activeAgents = useMemo(() =>
-    (conversations || []).filter((c: any) => c.status === 'running'),
-  [conversations]);
+  const running = useMemo(() => conversations.filter((c) => c.status === 'running'), [conversations]);
+  const others = useMemo(() => conversations.filter((c) => c.status !== 'running'), [conversations]);
 
-  const otherAgents = useMemo(() =>
-    (conversations || []).filter((c: any) => c.status !== 'running'),
-  [conversations]);
-
-  if (isLoading) {
-    return (
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-6">
-        <BrutalLoader variant="default" rows={3} messages={['Chargement des agents...']} />
-      </div>
-    );
-  }
+  const newConversation = (
+    <Button type="button" variant="primary" onClick={startNewConversation}>
+      <Plus aria-hidden="true" />
+      Nouvelle conversation
+    </Button>
+  );
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-xl font-bold text-foreground uppercase tracking-tight">Assistant</h1>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Vos agents de sourcing autonomes
-              </p>
-            </div>
-            <button
-              onClick={() => navigate('/missions')}
-              className="flex items-center gap-2 h-9 px-4 text-xs font-medium border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Nouvel agent
-            </button>
-          </div>
+    <PageLayout maxWidth="lg">
+      <SEOHead title="Assistant | Konekt" description="Vos conversations avec l'assistant" />
 
-          {/* Active agents */}
-          {activeAgents.length > 0 && (
-            <div className="mb-6">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                Agents actifs ({activeAgents.length})
-              </p>
-              <div className="space-y-2">
-                {activeAgents.map((agent: any) => (
-                  <AgentCard key={agent.id} agent={agent} onOpen={openConversation} />
+      <PageHeader
+        title="Assistant"
+        subtitle="Toutes vos conversations avec l'assistant, et les recherches qu'il mène pour vous."
+        actions={newConversation}
+      />
+
+      {isLoading ? (
+        <div className="space-y-2" role="status" aria-label="Chargement des conversations">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-16 rounded-xl" />
+          ))}
+        </div>
+      ) : isError ? (
+        <ErrorState
+          title="Impossible de charger vos conversations"
+          description="Vérifiez votre connexion, puis réessayez. Vos conversations ne sont pas perdues."
+          detail={error instanceof Error ? error.message : null}
+          onRetry={() => refetch()}
+          retrying={isRefetching}
+        />
+      ) : conversations.length === 0 ? (
+        <EmptyState
+          icon={MessageSquare}
+          title="Aucune conversation"
+          description="Posez une question à l'assistant ou confiez-lui une recherche."
+          action={newConversation}
+        />
+      ) : (
+        <div className="space-y-4">
+          {running.length > 0 && (
+            <Section headingLevel={2} title="En cours" subtitle={String(running.length)}>
+              <ul className="divide-y divide-border">
+                {running.map((c) => (
+                  <ConversationRowItem key={c.id} conversation={c} onOpen={openConversation} />
                 ))}
-              </div>
-            </div>
+              </ul>
+            </Section>
           )}
-
-          {/* Other agents */}
-          {otherAgents.length > 0 && (
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-                Historique ({otherAgents.length})
-              </p>
-              <div className="space-y-2">
-                {otherAgents.map((agent: any) => (
-                  <AgentCard key={agent.id} agent={agent} onOpen={openConversation} />
+          {others.length > 0 && (
+            <Section headingLevel={2} title="Historique" subtitle={String(others.length)}>
+              <ul className="divide-y divide-border">
+                {others.map((c) => (
+                  <ConversationRowItem key={c.id} conversation={c} onOpen={openConversation} />
                 ))}
-              </div>
-            </div>
+              </ul>
+            </Section>
           )}
-
-          {/* Empty state */}
-          {(!conversations || conversations.length === 0) && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-14 h-14 border border-border flex items-center justify-center mb-4">
-                <Bot className="w-6 h-6 text-muted-foreground" />
-              </div>
-              <h2 className="text-sm font-bold uppercase tracking-wider mb-2">Aucun agent</h2>
-              <p className="text-xs text-muted-foreground max-w-md mb-6">
-                Créez un agent depuis une mission pour lancer le sourcing autonome.
-              </p>
-              <button
-                onClick={() => navigate('/missions')}
-                className="h-9 px-5 text-xs font-medium border border-border bg-foreground text-background"
-              >
-                Aller aux missions
-              </button>
-            </div>
-          )}
-      </div>
-    </div>
+        </div>
+      )}
+    </PageLayout>
   );
 };
 
-function AgentCard({ agent, onOpen }: { agent: any; onOpen: (conversationId: string) => void }) {
-  const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.calibrating;
-  const Icon = config.icon;
-  const results = agent.results_summary || {};
-  const goCount = results.go_count || 0;
-  const totalScanned = results.total_scanned || 0;
-  const title = agent.title || agent.job_title || agent.search_config?.summary || 'Agent sans titre';
-  const updatedAt = agent.updated_at ? new Date(agent.updated_at) : null;
+function ConversationRowItem({
+  conversation,
+  onOpen,
+}: {
+  conversation: ConversationRow;
+  onOpen: (conversationId: string) => void;
+}) {
+  const status = agentConversationStatus(conversation.status);
+  const title = conversation.title || conversation.job_title || conversation.search_config?.summary || 'Conversation sans titre';
+  const results = agentResultsSummary(conversation.results_summary);
+  const updated = (() => {
+    if (!conversation.updated_at) return null;
+    try {
+      return `il y a ${formatDistanceToNow(parseISO(conversation.updated_at), { locale: fr })}`;
+    } catch {
+      return null;
+    }
+  })();
 
   return (
-    <button
-      onClick={() => onOpen(agent.id)}
-      className="w-full flex items-center gap-4 p-4 border border-border bg-card hover:bg-muted/30 transition-colors text-left rounded-lg group"
-    >
-      <div className="w-10 h-10 flex items-center justify-center border border-border shrink-0 rounded-lg bg-muted/30">
-        <Bot className="w-5 h-5 text-muted-foreground" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <p className="text-sm font-semibold text-foreground truncate">{title}</p>
-          <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium border rounded-full shrink-0", config.cls)}>
-            <Icon className="w-2.5 h-2.5" />
-            {config.label}
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpen(conversation.id)}
+        className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium text-foreground">{title}</span>
+            <Badge variant={status.tone} className="shrink-0">
+              {status.label}
+            </Badge>
           </span>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          {goCount > 0 && <span className="font-medium text-accent">{goCount} shortlistés</span>}
-          {totalScanned > 0 && <span>{totalScanned} scannés</span>}
-          {updatedAt && (
-            <span>{updatedAt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+          {(results || updated) && (
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+              {[results, updated].filter(Boolean).join(' · ')}
+            </span>
           )}
-        </div>
-      </div>
-      <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-colors shrink-0" />
-    </button>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true" />
+      </button>
+    </li>
   );
 }
 
