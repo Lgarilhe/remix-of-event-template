@@ -16,6 +16,13 @@
 --             Un auteur remis à NULL (clé étrangère ON DELETE SET NULL, compte
 --             utilisateur supprimé) n'est pas contrôlé : la suppression d'un
 --             utilisateur ne doit jamais échouer sur ce déclencheur.
+--    SEQ-043  assigned_sender_id (compte tiré par la rotation, prioritaire sur
+--             account_id pour l'envoi et la signature) : écrit par le moteur
+--             seul (service_role). Un utilisateur connecté ne peut que le
+--             remettre à NULL, à l'insertion comme à la mise à jour ; sinon
+--             il ferait envoyer son inscription depuis le compte d'un
+--             collègue hors de toute rotation configurée sur la séquence.
+--             Aucun écran ni appel du navigateur n'écrit cette colonne.
 -- 2. sequence_templates, sequence_snippets : created_by référençait
 --             profiles(id) sur une base construite depuis les migrations, alors
 --             que le front écrit l'identifiant auth.users (« Enregistrer comme
@@ -47,6 +54,34 @@ CREATE TRIGGER sequence_enrollments_check_sender_owner_update
   WHEN (OLD.account_id IS DISTINCT FROM NEW.account_id
         OR (OLD.created_by IS DISTINCT FROM NEW.created_by AND NEW.created_by IS NOT NULL))
   EXECUTE FUNCTION public.sequence_enrollments_check_sender_owner();
+
+-- Expéditeur de rotation : réservé au moteur. Chemins serveur (service_role,
+-- cron, migrations) non contrôlés ; une valeur répétée à l'identique par une
+-- mise à jour complète passe.
+CREATE OR REPLACE FUNCTION public.sequence_enrollments_check_assigned_sender()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF COALESCE(auth.role(), '') <> 'authenticated' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.assigned_sender_id IS NOT DISTINCT FROM OLD.assigned_sender_id THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'L''expéditeur de la rotation est choisi par le moteur d''envoi : il ne se modifie pas depuis l''application.'
+    USING ERRCODE = '42501', HINT = 'ASSIGNED_SENDER_SERVER_ONLY';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.sequence_enrollments_check_assigned_sender() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS sequence_enrollments_check_assigned_sender ON public.sequence_enrollments;
+CREATE TRIGGER sequence_enrollments_check_assigned_sender
+  BEFORE INSERT OR UPDATE OF assigned_sender_id ON public.sequence_enrollments
+  FOR EACH ROW
+  WHEN (NEW.assigned_sender_id IS NOT NULL)
+  EXECUTE FUNCTION public.sequence_enrollments_check_assigned_sender();
 
 -- ---------------------------------------------------------------------
 -- 2. created_by des modèles et des extraits : identifiant auth.users

@@ -339,9 +339,14 @@ test('SEQ-107 / SEQ-115 — rebond : exécution e-mail marquée, recruteur prév
 });
 
 test('SEQ-111 — InMails « répondu » : seulement ceux du compte qui reçoit la réponse', () => {
-  const inmail = sliceBetween(newMessage, "const { data: exactInmailMatch", '// ── Create notification');
-  const reads = inmail.match(/\.from\('inmail_queue'\)\s*\.select\([^)]*\)\s*\.eq\('account_id', account_id\)/g) ?? [];
-  assert.equal(reads.length, 2);
+  // Une seule lecture (identifiant exact et alternatifs ensemble) : l'ancienne
+  // seconde lecture, faite seulement sans résultat exact, laissait « envoyé »
+  // un InMail adressé à l'autre identifiant (revue SEQ-110 / SEQ-212).
+  const inmail = sliceBetween(newMessage, "const { data: inmailRows", '// ── Create notification');
+  const reads = inmail.match(/\.from\('inmail_queue'\)\s*\.select\(/g) ?? [];
+  const scoped = inmail.match(/\.from\('inmail_queue'\)\s*\.select\([^)]*\)\s*\.eq\('account_id', account_id\)/g) ?? [];
+  assert.equal(scoped.length, 1);
+  assert.equal(reads.length, scoped.length);
 });
 
 test('SEQ-112 — Calendly : statut « completed » admis, exécutions annulées seulement si l’inscription a changé', () => {

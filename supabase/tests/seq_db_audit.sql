@@ -867,8 +867,10 @@ END $$;
 -- garde-compte-contournements (SEQ-043, SEQ-010)
 -- « Chacun inscrit depuis son propre compte relié » : le changement du
 -- compte d'une inscription existante doit aussi être refusé (HINT
--- ENROLL_ACCOUNT_OF_OTHER_MEMBER). L'insertion serveur sans auteur attend
--- une décision produit (constat en NOTICE).
+-- ENROLL_ACCOUNT_OF_OTHER_MEMBER), et l'expéditeur de rotation
+-- (assigned_sender_id, prioritaire sur account_id à l'envoi) n'est écrit que
+-- par le moteur (HINT ASSIGNED_SENDER_SERVER_ONLY). L'insertion serveur sans
+-- auteur attend une décision produit (constat en NOTICE).
 -- ---------------------------------------------------------------------
 DO $$
 DECLARE
@@ -917,7 +919,68 @@ BEGIN
     IF v_acc = 'seqdb-acc-owner' THEN
       f := f || format('[DÉFAUT seq-db-garde-compte-update : relecture, l''inscription du %s part du compte du propriétaire] ', v_who);
     END IF;
+
+    -- (a') même contournement par l'expéditeur de rotation, sur leur propre
+    -- inscription puis à l'insertion depuis un compte à eux.
+    c := c + 1;
+    PERFORM pg_temp.seqdb_as(v_uid);
+    SET LOCAL ROLE authenticated;
+    BEGIN
+      UPDATE public.sequence_enrollments SET assigned_sender_id = 'seqdb-acc-owner' WHERE id = v_enr;
+      f := f || format('[DÉFAUT seq-db-garde-compte-update : %s, expéditeur de rotation posé sur le compte relié d''un collègue] ', v_who);
+    EXCEPTION WHEN insufficient_privilege THEN
+      GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+      IF v_hint IS DISTINCT FROM 'ASSIGNED_SENDER_SERVER_ONLY' THEN
+        f := f || format('[%s expéditeur de rotation : refus sans le HINT ASSIGNED_SENDER_SERVER_ONLY (%s)] ', v_who, v_hint);
+      END IF;
+    WHEN OTHERS THEN f := f || format('[%s expéditeur de rotation : %s (%s)] ', v_who, SQLERRM, SQLSTATE);
+    END;
+    c := c + 1;
+    BEGIN
+      INSERT INTO public.sequence_enrollments (sequence_id, account_id, assigned_sender_id, profile_id, organization_id, created_by, status)
+      VALUES (seq_a, 'seqdb-mail-' || v_who || '@audit.test', 'seqdb-acc-owner', 'seqdb-prof-gi-' || v_who, org_a, v_uid, 'active');
+      f := f || format('[DÉFAUT seq-db-garde-compte-update : %s, inscription créée avec le compte relié d''un collègue en expéditeur de rotation] ', v_who);
+    EXCEPTION WHEN insufficient_privilege THEN
+      GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+      IF v_hint IS DISTINCT FROM 'ASSIGNED_SENDER_SERVER_ONLY' THEN
+        f := f || format('[%s insertion avec expéditeur de rotation : refus sans le HINT ASSIGNED_SENDER_SERVER_ONLY (%s)] ', v_who, v_hint);
+      END IF;
+    WHEN OTHERS THEN f := f || format('[%s insertion avec expéditeur de rotation : %s (%s)] ', v_who, SQLERRM, SQLSTATE);
+    END;
+    RESET ROLE;
+    PERFORM pg_temp.seqdb_as(NULL);
+    SELECT assigned_sender_id INTO v_acc FROM public.sequence_enrollments WHERE id = v_enr;
+    IF v_acc IS NOT NULL THEN
+      f := f || format('[DÉFAUT seq-db-garde-compte-update : relecture, l''inscription du %s a pour expéditeur de rotation %s] ', v_who, v_acc);
+    END IF;
   END LOOP;
+
+  -- (a'') témoins : le moteur (chemin serveur) pose l'expéditeur de rotation sur
+  -- le compte d'un collègue ; le membre le répète à l'identique dans une mise à
+  -- jour complète, puis le remet à NULL.
+  c := c + 1;
+  PERFORM pg_temp.seqdb_as(NULL);
+  BEGIN
+    UPDATE public.sequence_enrollments SET assigned_sender_id = 'seqdb-acc-owner' WHERE id = v_enr_m;
+  EXCEPTION WHEN OTHERS THEN f := f || format('[témoin : rotation du moteur refusée : %s (%s)] ', SQLERRM, SQLSTATE);
+  END;
+  PERFORM pg_temp.seqdb_as(u_m);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    UPDATE public.sequence_enrollments
+    SET assigned_sender_id = 'seqdb-acc-owner', tracking_data = COALESCE(tracking_data, '{}'::jsonb) || '{"seqdb_temoin": true}'::jsonb
+    WHERE id = v_enr_m;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    IF v_n <> 1 THEN f := f || format('[témoin : mise à jour complète après rotation, %s ligne] ', v_n); END IF;
+    UPDATE public.sequence_enrollments SET assigned_sender_id = NULL WHERE id = v_enr_m;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    IF v_n <> 1 THEN f := f || format('[témoin : expéditeur de rotation remis à NULL, %s ligne] ', v_n); END IF;
+  EXCEPTION WHEN OTHERS THEN f := f || format('[témoin : expéditeur de rotation après rotation du moteur : %s (%s)] ', SQLERRM, SQLSTATE);
+  END;
+  RESET ROLE;
+  PERFORM pg_temp.seqdb_as(NULL);
+  SELECT assigned_sender_id INTO v_acc FROM public.sequence_enrollments WHERE id = v_enr_m;
+  IF v_acc IS NOT NULL THEN f := f || format('[témoin : expéditeur de rotation non remis à NULL (%s)] ', v_acc); END IF;
 
   -- (a2) témoins : une mise à jour ordinaire d'une inscription posée sur le compte
   -- relié d'un autre membre (ici le propriétaire), account_id répété à l'identique
@@ -956,7 +1019,8 @@ BEGIN
   WHEN OTHERS THEN f := f || format('[auteur absent : %s (%s)] ', SQLERRM, SQLSTATE);
   END;
 
-  DELETE FROM public.sequence_enrollments WHERE profile_id IN ('seqdb-prof-gm', 'seqdb-prof-gc', 'seqdb-prof-gw', 'seqdb-prof-gnull');
+  DELETE FROM public.sequence_enrollments WHERE profile_id IN ('seqdb-prof-gm', 'seqdb-prof-gc', 'seqdb-prof-gw', 'seqdb-prof-gnull',
+    'seqdb-prof-gi-membre', 'seqdb-prof-gi-collaborateur');
   INSERT INTO seq_db_results VALUES ('garde-compte-contournements', c, f);
 END $$;
 
@@ -981,6 +1045,9 @@ ALTER TABLE public.sequence_step_executions ALTER COLUMN status SET DEFAULT 'pen
 UPDATE public.sequence_enrollments SET assigned_sender_id = NULL
 WHERE assigned_sender_id IS NOT NULL
   AND assigned_sender_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+-- Garde de l'expéditeur de rotation (20260927194905, postérieure à B6) : absente
+-- de la prod d'avant B6, et sa clause WHEN interdirait le changement de type.
+DROP TRIGGER IF EXISTS sequence_enrollments_check_assigned_sender ON public.sequence_enrollments;
 ALTER TABLE public.sequence_enrollments ALTER COLUMN assigned_sender_id TYPE uuid USING assigned_sender_id::uuid;
 
 -- Jeu de données hérité. session_replication_role = replica coupe les

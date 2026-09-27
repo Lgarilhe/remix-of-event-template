@@ -681,11 +681,53 @@ BEGIN
     END IF;
   WHEN OTHERS THEN failures := failures || format('[SEQ-043 changement de compte : %s] ', SQLERRM);
   END;
+  -- Ni par l'expéditeur de rotation (assigned_sender_id, prioritaire à l'envoi),
+  -- réservé au moteur : refusé à la mise à jour comme à l'insertion.
+  BEGIN
+    UPDATE public.sequence_enrollments SET assigned_sender_id = 'acc-li-a' WHERE sequence_id = seq_a AND profile_id = 'prof-b-3';
+    failures := failures || '[SEQ-043 : B pose le compte relié à A en expéditeur de rotation de son inscription] ';
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'ASSIGNED_SENDER_SERVER_ONLY' THEN
+      failures := failures || format('[SEQ-043 expéditeur de rotation : refus sans le HINT attendu (%s)] ', SQLERRM);
+    END IF;
+  WHEN OTHERS THEN failures := failures || format('[SEQ-043 expéditeur de rotation : %s] ', SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO public.sequence_enrollments (sequence_id, account_id, assigned_sender_id, profile_id, organization_id, created_by, status)
+    VALUES (seq_a, 'mail-b@audit.test', 'acc-li-a', 'prof-b-4', org_a, u_b, 'active');
+    failures := failures || '[SEQ-043 : B inscrit avec le compte relié à A en expéditeur de rotation] ';
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'ASSIGNED_SENDER_SERVER_ONLY' THEN
+      failures := failures || format('[SEQ-043 insertion avec expéditeur de rotation : refus sans le HINT attendu (%s)] ', SQLERRM);
+    END IF;
+  WHEN OTHERS THEN failures := failures || format('[SEQ-043 insertion avec expéditeur de rotation : %s] ', SQLERRM);
+  END;
   RESET ROLE;
   PERFORM set_config('request.jwt.claims', '', true);
   PERFORM set_config('request.jwt.claim.sub', '', true);
   PERFORM set_config('request.jwt.claim.role', '', true);
-  DELETE FROM public.sequence_enrollments WHERE sequence_id = seq_a AND profile_id IN ('prof-srv-a', 'prof-b-3');
+  -- Le moteur (chemin serveur) pose toujours l'expéditeur de rotation ; B peut ensuite le remettre à NULL.
+  BEGIN
+    UPDATE public.sequence_enrollments SET assigned_sender_id = 'acc-li-a' WHERE sequence_id = seq_a AND profile_id = 'prof-b-3';
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[Régression SEQ-013 : le moteur ne pose plus l''expéditeur de rotation (%s)] ', SQLERRM);
+  END;
+  PERFORM set_config('request.jwt.claims', claims_b, true);
+  PERFORM set_config('request.jwt.claim.sub', u_b::text, true);
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    UPDATE public.sequence_enrollments SET assigned_sender_id = NULL WHERE sequence_id = seq_a AND profile_id = 'prof-b-3';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    IF n <> 1 THEN failures := failures || format('[Régression SEQ-043 : expéditeur de rotation remis à NULL sur %s ligne] ', n); END IF;
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[Régression SEQ-043 : remise à NULL de l''expéditeur de rotation refusée (%s)] ', SQLERRM);
+  END;
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  DELETE FROM public.sequence_enrollments WHERE sequence_id = seq_a AND profile_id IN ('prof-srv-a', 'prof-b-3', 'prof-b-4');
   DELETE FROM public.member_linkedin_accounts WHERE organization_id = org_a AND linkedin_account_id = 'acc-li-a';
   DELETE FROM public.organization_members WHERE organization_id = org_a AND user_id = u_b;
   UPDATE public.profiles SET active_organization_id = org_b WHERE user_id = u_b;
