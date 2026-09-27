@@ -1469,7 +1469,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-lg" aria-hidden="true">{getSequenceEmoji(index)}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    {/* flex-wrap : dans une colonne étroite la pastille passe à la
+                        ligne au lieu d'écraser le nom à une largeur nulle. */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <div className="font-medium text-foreground truncate">{seq.name}</div>
                       {/* Séquence rattachée à aucune mission : elle apparaît et
                           envoie dans toutes les missions (ce n'est pas un modèle). */}
