@@ -6,6 +6,14 @@
 //   GET    /__log?account_id=X    appels d'un compte (isolation entre tests)
 //   DELETE /__log                 vide le journal et les modes
 //   POST   /__mode                { "<account_id>" | "*": { fail_send: 500, distance: "SECOND_DEGREE" } }
+//
+// Réponses scriptées, par compte (clé "*" : tous les comptes, à éviter entre
+// tests parallèles) : la première route qui correspond gagne, `times` limite le
+// nombre d'utilisations (absent = illimité), `delay_ms` simule un délai ou un
+// timeout (le moteur coupe à 15 s).
+//   POST /__mode { "<account_id>": { "routes": [
+//     { "method": "POST", "path": "^/api/v1/chats$", "status": 500, "body": {...}, "delay_ms": 0, "times": 1 }
+//   ] } }
 import http from 'node:http';
 
 let log = [];
@@ -51,6 +59,16 @@ http.createServer((req, res) => {
     const account_id = url.searchParams.get('account_id') ?? (body && typeof body === 'object' ? body.account_id : undefined) ?? null;
     log.push({ at: new Date().toISOString(), host: req.headers['x-original-host'] ?? null, method: req.method, path: p, query: Object.fromEntries(url.searchParams), account_id, body });
     const mode = { ...(modes['*'] ?? {}), ...(account_id ? modes[account_id] ?? {} : {}) };
+
+    const routes = [...((account_id && modes[account_id]?.routes) || []), ...(modes['*']?.routes || [])];
+    const route = routes.find((r) => (!r.method || r.method === req.method) && new RegExp(r.path).test(p)
+      && (r.times === undefined || r.times > 0));
+    if (route) {
+      if (route.times !== undefined) route.times -= 1;
+      log[log.length - 1].scripted = true;
+      const reply = () => send(res, route.status ?? 200, route.body ?? {});
+      return route.delay_ms ? setTimeout(reply, route.delay_ms) : reply();
+    }
 
     const isSend = req.method === 'POST'
       && (p === '/api/v1/chats' || /^\/api\/v1\/chats\/[^/]+\/messages$/.test(p) || p === '/api/v1/users/invite');

@@ -109,6 +109,7 @@ env SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_S
   UNIPILE_API_KEY=mock-key UNIPILE_DSN=unipile.mock ANTHROPIC_API_KEY=mock-key \
   PROCESS_SEQUENCES_SECRET=local-cron-secret UNIPILE_WEBHOOK_SECRET=local-webhook-secret \
   SEQUENCE_WEBHOOK_SECRET=local-sequence-webhook-secret EMAIL_LINK_SIGNING_SECRET=local-link-secret \
+  STRIPE_SECRET_KEY=sk_test_local STRIPE_WEBHOOK_SECRET=whsec_local_test CALENDLY_WEBHOOK_SIGNING_KEY=local-calendly-key \
   ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080 APP_URL=http://localhost:8080 \
   NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost "${CERT_ENV[@]}" \
   nohup $DENO_BIN run -A --no-check --import-map="$HERE/import_map.json" "$HERE/functions-server.ts" \
@@ -124,6 +125,9 @@ E2E_EDGE_FUNCTIONS=1
 E2E_VENDOR_MOCK_URL=http://127.0.0.1:54340
 E2E_PROCESS_SEQUENCES_SECRET=local-cron-secret
 E2E_UNIPILE_WEBHOOK_SECRET=local-webhook-secret
+E2E_SEQUENCE_WEBHOOK_SECRET=local-sequence-webhook-secret
+E2E_STRIPE_WEBHOOK_SECRET=whsec_local_test
+E2E_CALENDLY_SIGNING_KEY=local-calendly-key
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_PUBLISHABLE_KEY=$ANON_KEY
 NO_PROXY=127.0.0.1,localhost
