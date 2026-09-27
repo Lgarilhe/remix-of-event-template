@@ -166,6 +166,105 @@ export function shouldReadNextSelectionPage(
   return pageRows >= pageSize && selectedCount < target && pageIndex + 1 < maxPages;
 }
 
+// ─── SEQ-187 (fin) : comptes au plafond exclus en base des pages suivantes ──
+
+/** Comptes exclus au plus du filtre des pages suivantes (longueur de l'URL). */
+export const SELECTION_EXCLUDED_ACCOUNTS_MAX = 40;
+const SAFE_ACCOUNT_ID = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Comptes d'envoi déjà au plafond du cycle : une exécution d'inscription
+ * active a été écartée par un plafond (envois visibles du compte, étapes
+ * invisibles du cycle). Compte de l'inscription (expéditeur de rotation, sinon
+ * compte de l'inscription), seule donnée filtrable en base ; une étape à
+ * expéditeur propre (sender_id, hérité) n'exclut rien. Ordre de première
+ * apparition, borné : la liste ne fait que s'allonger d'une page à l'autre.
+ * Identifiant hors [A-Za-z0-9_-] ignoré (pas d'injection dans le filtre).
+ */
+export function accountsAtCycleCap<T extends { step?: BatchStep | null; enrollment?: BatchEnrollment | null }>(
+  candidates: T[], selected: T[], max = SELECTION_EXCLUDED_ACCOUNTS_MAX,
+): string[] {
+  const picked = new Set(selected);
+  const out: string[] = [];
+  for (const exec of candidates) {
+    if (out.length >= max) break;
+    if (picked.has(exec)) continue;
+    const status = exec.enrollment?.status;
+    if (status && status !== 'active') continue;
+    if (exec.step?.sender_id) continue;
+    const account = exec.enrollment?.assigned_sender_id || exec.enrollment?.account_id;
+    if (typeof account !== 'string' || !SAFE_ACCOUNT_ID.test(account) || out.includes(account)) continue;
+    out.push(account);
+  }
+  return out;
+}
+
+/**
+ * Filtre PostgREST (.or sur l'inscription jointe) qui écarte les exécutions
+ * d'inscriptions actives, sans expéditeur de rotation, dont le compte est au
+ * plafond. Les inscriptions closes (à annuler) et celles en rotation restent
+ * lues. null sans compte à exclure.
+ */
+export function accountExclusionFilter(excluded: readonly string[]): string | null {
+  const ids = excluded.filter((id) => SAFE_ACCOUNT_ID.test(id));
+  if (ids.length === 0) return null;
+  return `status.neq.active,assigned_sender_id.not.is.null,account_id.is.null,account_id.not.in.(${ids.join(',')})`;
+}
+
+/** Même règle que accountExclusionFilter, côté code : l'exécution est-elle lue ? */
+export function keptByAccountExclusion(enrollment: BatchEnrollment | null | undefined, excluded: readonly string[]): boolean {
+  const ids = excluded.filter((id) => SAFE_ACCOUNT_ID.test(id));
+  if (ids.length === 0 || !enrollment) return true;
+  if (enrollment.status !== 'active') return true;
+  if (enrollment.assigned_sender_id != null) return true;
+  if (enrollment.account_id == null) return true;
+  return !ids.includes(enrollment.account_id);
+}
+
+export type CycleSelection<T> = { selected: T[]; invisible: number; visible: number; email: number; closed: number };
+
+/**
+ * Lecture paginée des exécutions dues et sélection du cycle. À partir de la
+ * deuxième page, les comptes déjà au plafond sont exclus EN BASE : chaque page
+ * apporte d'autres comptes. Avant, 1 200 candidats inscrits d'un coup sur un
+ * compte remplissaient les 5 pages, 3 étaient retenus et les exécutions des
+ * autres organisations n'étaient jamais lues (5 à 6 h sans envoi pour elles).
+ * Les pages couvrent un préfixe continu du filtre courant (la liste exclue ne
+ * fait que s'allonger) : l'offset d'une page est le nombre d'exécutions déjà
+ * lues que ce filtre garde. Erreur sur la première page : renvoyée ; sur une
+ * suivante : lot limité aux pages lues.
+ */
+export async function readCycleSelection<T extends { id: string; step?: BatchStep | null; enrollment?: (BatchEnrollment & { profile_id?: string | null }) | null }>(
+  readPage: (page: { from: number; to: number; exclusionFilter: string | null }) => Promise<{ rows: T[] | null; error: unknown }>,
+  opts: { pageSize?: number; maxPages?: number; target?: number; onPageError?: (pageIndex: number, error: unknown) => void } = {},
+): Promise<{ due: T[]; selection: CycleSelection<T>; error: unknown }> {
+  const pageSize = opts.pageSize ?? SELECTION_PAGE_SIZE;
+  const due: T[] = [];
+  const seen = new Set<string>();
+  let selection: CycleSelection<T> = selectCycleBatch<T>([]);
+  let excluded: string[] = [];
+  for (let page = 0; ; page++) {
+    const from = due.filter((e) => keptByAccountExclusion(e.enrollment, excluded)).length;
+    const { rows, error } = await readPage({ from, to: from + pageSize - 1, exclusionFilter: accountExclusionFilter(excluded) });
+    if (error) {
+      if (page === 0) return { due, selection, error };
+      opts.onPageError?.(page, error);
+      break;
+    }
+    const pageList = rows ?? [];
+    for (const row of pageList) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      due.push(row);
+    }
+    const deduped = dedupeByProfile(due);
+    selection = selectCycleBatch<T>(deduped);
+    if (!shouldReadNextSelectionPage(page, pageList.length, selection.selected.length, opts)) break;
+    excluded = accountsAtCycleCap(deduped, selection.selected);
+  }
+  return { due, selection, error: null };
+}
+
 // ─── SEQ-155 (suite) : rotation sans expéditeur disponible ──────────────────
 
 export type RotationUnavailablePlan =

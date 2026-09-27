@@ -5,11 +5,16 @@
  * traitera pas comme prévu. Exemples :
  * - Séquence avec connection_request → profil 1st degree : le moteur saute
  *   l'invitation (« Déjà en relation : invitation inutile ») et envoie les
- *   messages suivants (SEQ-036). Avertissement, non bloquant.
+ *   messages suivants (SEQ-036). Avertissement, non bloquant, s'il reste un
+ *   message ou un InMail à envoyer ; bloquant si la séquence ne contient que
+ *   l'invitation (rien ne partirait).
  * - Séquence avec inmail uniquement → profil 1st degree pourrait recevoir
  *   un message direct au lieu d'un InMail (gaspillage crédits InMail)
  * - Hors réseau sans InMail → injoignable : bloquant.
  */
+
+// Miroir front des canaux fermés du moteur (D2). Module pur, sans dépendance applicative.
+import { isStepTypeOffered } from '@/components/outreach/sequence/sequenceGraph';
 
 export type NetworkDistance =
   | 'FIRST_DEGREE'
@@ -51,6 +56,7 @@ export interface ProfileCompat {
 
 export type CompatIssue =
   | 'connection_already_connected'   // 1st degree → l'invitation sera sautée, la suite part
+  | 'connection_only_already_connected' // 1st degree → invitation seule : rien ne partira
   | 'inmail_wasted'                  // 1st degree → InMail gaspille un crédit
   | 'too_far'                        // > 3rd degree → ne peut pas être contacté
   | null;
@@ -98,6 +104,32 @@ export function getSequenceActionTypes(steps: SequenceStep[]): Set<string> {
 export const ALREADY_CONNECTED_COMPAT_MESSAGE =
   "Déjà en relation : l'invitation sera sautée, les messages suivants partiront.";
 
+/** Candidat déjà en relation et séquence sans autre envoi que l'invitation (bloquant). */
+export const CONNECTION_ONLY_ALREADY_CONNECTED_COMPAT_MESSAGE =
+  "Déjà en relation : cette séquence ne contient qu'une invitation, rien ne lui sera envoyé.";
+
+/**
+ * Types d'étape d'un canal fermé (décision D2 : e-mail et WhatsApp). Le moteur
+ * les saute sans rien envoyer puis continue la séquence : l'aperçu ne génère
+ * pas leur message, ne les compte pas comme déjà envoyées et ne les annonce
+ * pas. Miroir front de CLOSED_SEND_CHANNELS (sequence-engine-rules.ts), dérivé
+ * de isStepTypeOffered : rouvrir le canal dans l'éditeur le rouvre partout ici.
+ */
+export const CLOSED_CHANNEL_ACTION_TYPES: readonly string[] = ['email', 'whatsapp_message']
+  .filter(t => !isStepTypeOffered(t));
+
+/** Vrai si l'étape passe par un canal fermé (sautée par le moteur, D2). */
+export function isClosedChannelStep(actionType: string | null | undefined): boolean {
+  return !!actionType && CLOSED_CHANNEL_ACTION_TYPES.includes(actionType);
+}
+
+/**
+ * Étapes qui atteignent un candidat déjà en relation une fois l'invitation
+ * sautée. Les canaux fermés ne comptent pas.
+ */
+const REACH_AFTER_INVITE_ACTIONS = ['message', 'smart_message', 'inmail', 'email', 'whatsapp_message']
+  .filter(t => !isClosedChannelStep(t));
+
 /**
  * Calcule la compatibilité d'un profil avec une séquence.
  * Retourne un objet avec issue=null si tout est OK.
@@ -112,13 +144,13 @@ export function checkProfileCompat(
 
   // Cas 1 : 1st degree + séquence avec connection_request → le moteur saute
   // l'invitation et planifie la suite (SEQ-036) : avertissement seulement.
+  // Sans autre envoi après l'invitation, l'inscription se terminerait sans
+  // rien envoyer : bloquant.
   if (distance === 'FIRST_DEGREE' && actions.has('connection_request')) {
-    return {
-      profile,
-      distance,
-      issue: 'connection_already_connected',
-      message: ALREADY_CONNECTED_COMPAT_MESSAGE,
-    };
+    const otherReach = REACH_AFTER_INVITE_ACTIONS.some(t => actions.has(t));
+    return otherReach
+      ? { profile, distance, issue: 'connection_already_connected', message: ALREADY_CONNECTED_COMPAT_MESSAGE }
+      : { profile, distance, issue: 'connection_only_already_connected', message: CONNECTION_ONLY_ALREADY_CONNECTED_COMPAT_MESSAGE };
   }
 
   // Cas 2 : 1st degree + séquence en InMail uniquement → gaspillage de crédit
@@ -164,8 +196,10 @@ export function checkProfilesCompat(
     const result = checkProfileCompat(profile, steps);
     if (result.issue === null) {
       compatible.push(result);
-    } else if (result.issue === 'too_far') {
-      // Seul un candidat injoignable bloque. Déjà en relation : l'invitation
+    } else if (result.issue === 'too_far' || result.issue === 'connection_only_already_connected') {
+      // Bloquent : un candidat injoignable, et un candidat déjà en relation
+      // quand la séquence ne contient que l'invitation (rien ne partirait).
+      // Déjà en relation avec des messages après l'invitation : l'invitation
       // est sautée par le moteur, les messages suivants partent (avertissement).
       blockers.push(result);
     } else {

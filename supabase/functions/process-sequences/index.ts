@@ -13,6 +13,7 @@ import {
   SENT_EXECUTION_STATUSES, EMAIL_CHANNEL_SKIP_REASON, LINKEDIN_CHANNEL_SKIP_REASON, WHATSAPP_CHANNEL_SKIP_REASON,
   MANUAL_SKIP_REASON, resolveStepContent, isMissingRequiredText, missionJobIds,
   closedChannelSkipReason, isEmailOutcomeUnknown, siblingEnrollmentsFilter, SIBLING_REPLY_SKIP_REASON,
+  siblingStopScope, type SiblingStopScope,
 } from "../_shared/sequence-engine-rules.ts";
 import {
   planResume, countOutcomes, ACCOUNT_NOT_IN_ORG_REASON, SUBSCRIPTION_REQUIRED_SKIP_REASON,
@@ -22,8 +23,8 @@ import {
 } from "../_shared/sequence-resume.ts";
 import { isGdprBlocked } from "../_shared/get-or-fetch-contact.ts";
 import {
-  CYCLE_BUDGET_MS, hasTimeToLock, selectCycleBatch, sendingAccountKey, stepSendChannel, executionChannel,
-  MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE, dedupeByProfile, shouldReadNextSelectionPage, SELECTION_PAGE_SIZE,
+  CYCLE_BUDGET_MS, hasTimeToLock, readCycleSelection, sendingAccountKey, stepSendChannel, executionChannel,
+  MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE,
   SELECTION_TARGET, rotationUnavailablePlan, stepUsesLinkedInSender, isInvalidTextRepresentation,
   ROTATION_SENDER_NOT_SAVED_MESSAGE,
   sequencesToAutoPause, quotaBlockedRetryAt, normalizeReplyCheck, isConditionRetry, dormantResumeRoute,
@@ -849,6 +850,8 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
   // ── Cible : liste d'inscriptions, ou séquence + raisons de pause.
   let targetIds: string[] = [];
   let beyondReadLimit = 0;
+  // Contrat §8 : pauses visées mais laissées aux autres membres (collaborateur, D3).
+  let otherMembers = 0;
   const bySequence = mode === 'resume' && req.enrollmentIds === null && !!req.sequenceId;
   if (req.rawEnrollmentIds !== undefined && !Array.isArray(req.rawEnrollmentIds)) {
     return memberError('invalid_request', 'La liste des candidats est invalide.', 400);
@@ -886,6 +889,18 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
     // exact du même filtre). Avant, `remaining: 0` arrêtait la boucle de
     // l'interface et les suivants restaient en pause dans une séquence active.
     beyondReadLimit = Math.max(0, (typeof pausedTotal === 'number' ? pausedTotal : targetIds.length) - targetIds.length);
+    // Contrat §8 : pour un collaborateur, même filtre sans created_by. Les
+    // candidats inscrits par ses collègues restent en pause (D3) : l'interface
+    // doit le dire au lieu d'annoncer une reprise complète.
+    if (callerUserId && caller.role === 'collaborator') {
+      const { count: allPaused, error: allErr } = await supabase
+        .from('sequence_enrollments').select('id', { count: 'exact', head: true })
+        .eq('sequence_id', req.sequenceId).eq('status', 'paused').in('pause_reason', reasons);
+      if (allErr) console.warn(`[${mode}] pauses des autres membres non comptées:`, allErr);
+      else if (typeof allPaused === 'number') {
+        otherMembers = Math.max(0, allPaused - (typeof pausedTotal === 'number' ? pausedTotal : targetIds.length));
+      }
+    }
   } else {
     targetIds = [...new Set(req.enrollmentIds ?? [])];
     if (targetIds.length === 0) return memberError('invalid_request', 'Aucun candidat sélectionné.', 400);
@@ -953,7 +968,7 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
   remaining += beyondReadLimit;
   const counts = countOutcomes(results);
   console.log(`[${mode}] org=${orgId ?? 'service'} ${results.length} traité(s)`, counts, remaining ? `reste ${remaining}` : '');
-  return json200({ success: true, results, counts, remaining });
+  return json200({ success: true, results, counts, remaining, other_members: otherMembers });
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1124,7 +1139,7 @@ async function handleMarkReplied(supabase: any, organizationId: string | null, e
 
   const { data: enr, error } = await supabase
     .from('sequence_enrollments')
-    .select('id, status, sequence_id, organization_id, profile_id, resolved_profile_id, provider_id, job_id, created_by, sequence:outreach_sequences(organization_id)')
+    .select('id, status, completed_at, sequence_id, organization_id, profile_id, resolved_profile_id, provider_id, job_id, created_by, sequence:outreach_sequences(organization_id)')
     .eq('id', enrollmentId).maybeSingle();
   if (error) {
     console.error('[mark_replied] lookup failed:', error);
@@ -1141,7 +1156,13 @@ async function handleMarkReplied(supabase: any, organizationId: string | null, e
   // Une séquence terminée peut aussi être marquée (réponse arrivée après la
   // dernière relance, par téléphone ou hors LinkedIn).
   const target = { ...enr, organization_id: enrOrgId };
-  const closed = await closeEnrollmentAsReplied(supabase, target, null, 'Réponse marquée manuellement', ['active', 'paused', 'completed']);
+  // Contrat §8 : active ou en pause, toutes les autres inscriptions du
+  // candidat s'arrêtent (SEQ-212) ; déjà terminée, seulement celles créées
+  // avant sa fin (jamais une prise de contact démarrée ensuite par un collègue).
+  const closed = await closeEnrollmentAsReplied(
+    supabase, target, null, 'Réponse marquée manuellement', ['active', 'paused', 'completed'],
+    siblingStopScope(enr.status, enr.completed_at),
+  );
   // Échec seulement si l'inscription n'a pas été close. Close mais étapes en
   // attente non annulées : la réponse est enregistrée (le moteur n'envoie
   // rien pour une inscription close et annule ses étapes à leur échéance). Avant, un 500
@@ -1156,6 +1177,8 @@ async function handleMarkReplied(supabase: any, organizationId: string | null, e
   return json200({
     success: true,
     changed: closed.changed,
+    // Autres inscriptions du même candidat arrêtées (contrat §8), annoncées par l'interface.
+    stopped_siblings: closed.stoppedSiblings,
     ...(closed.failed ? { warning: 'Réponse enregistrée. Certaines étapes en attente n\'ont pas pu être annulées : elles ne partiront pas et seront annulées automatiquement.' } : {}),
   });
 }
@@ -1541,30 +1564,30 @@ async function handleProcess(supabase: any, force = false) {
         account_id?: string | null; sequence_id?: string | null;
       } | null;
     };
-    const dueCandidates: DueExecution[] = [];
-    let cycleSelection = selectCycleBatch<DueExecution>([]);
-    for (let page = 0; ; page++) {
-      const from = page * SELECTION_PAGE_SIZE;
-      const { data: pageRows, error: pageErr } = await supabase
+    // SEQ-187 (fin) : à partir de la deuxième page, les comptes déjà au plafond
+    // du cycle sont exclus EN BASE (readCycleSelection) : chaque page apporte
+    // d'autres comptes. Avant, 1 200 candidats inscrits d'un coup sur un compte
+    // remplissaient les 5 pages et les autres organisations n'étaient jamais lues.
+    const selectionRead = await readCycleSelection<DueExecution>(async ({ from, to, exclusionFilter }) => {
+      let pageQuery = supabase
         .from('sequence_step_executions')
         .select('id, step:sequence_steps(action_type, step_channel, sender_id), enrollment:sequence_enrollments!inner(profile_id, status, assigned_sender_id, account_id, sequence_id, sequence:outreach_sequences!inner(is_active))')
         .eq('status', 'scheduled')
         .lte('scheduled_at', now)
         .neq('enrollment.status', 'paused')
-        .eq('enrollment.sequence.is_active', true)
+        .eq('enrollment.sequence.is_active', true);
+      if (exclusionFilter) pageQuery = pageQuery.or(exclusionFilter, { referencedTable: 'enrollment' });
+      const { data: pageRows, error: pageErr } = await pageQuery
         .order('scheduled_at', { ascending: true })
         .order('id', { ascending: true })
-        .range(from, from + SELECTION_PAGE_SIZE - 1);
-      if (pageErr) {
-        if (page === 0) throw pageErr;
-        console.warn(`[process] Page ${page + 1} de la sélection illisible : lot limité aux pages lues`, pageErr);
-        break;
-      }
-      const pageList = (pageRows ?? []) as DueExecution[];
-      dueCandidates.push(...pageList);
-      cycleSelection = selectCycleBatch<DueExecution>(dedupeByProfile(dueCandidates));
-      if (!shouldReadNextSelectionPage(page, pageList.length, cycleSelection.selected.length)) break;
-    }
+        .range(from, to);
+      return { rows: (pageRows ?? null) as DueExecution[] | null, error: pageErr };
+    }, {
+      onPageError: (page, pageErr) => console.warn(`[process] Page ${page + 1} de la sélection illisible : lot limité aux pages lues`, pageErr),
+    });
+    if (selectionRead.error) throw selectionRead.error;
+    const dueCandidates = selectionRead.due;
+    const cycleSelection = selectionRead.selection;
     const selectedIds = cycleSelection.selected.slice(0, SELECTION_TARGET).map((e) => e.id);
 
     const { data: executions, error: fetchError } = selectedIds.length === 0
@@ -3417,7 +3440,10 @@ async function handleCheckTimeouts(supabase: any) {
   // anciennes, toutes organisations confondues, l'expiration étant décidée
   // ensuite en JS : 200 attentes d'acceptation non échues cachaient une
   // attente de réponse déjà échue (branche « sans réponse » en retard de jours).
-  const waitSelect = `*, enrollment:sequence_enrollments!inner(*), step:sequence_steps!inner(*)`;
+  // D1 : séquence active seulement (jointure interne filtrée, comme le janitor
+  // quota_blocked d'E1). L'attente d'une séquence désactivée reste en attente,
+  // ni expirée, ni réarmée, ni suivie de sa branche de délai.
+  const waitSelect = `*, enrollment:sequence_enrollments!inner(*, sequence:outreach_sequences!inner(is_active)), step:sequence_steps!inner(*)`;
   const waitSources = [
     {
       label: 'attentes',
@@ -3427,6 +3453,7 @@ async function handleCheckTimeouts(supabase: any) {
         .select(waitSelect)
         .eq('status', 'waiting_event')
         .eq('enrollment.status', 'active')
+        .eq('enrollment.sequence.is_active', true)
         .gt('step.timeout_days', 0)
         .order('scheduled_at', { ascending: true })
         .order('id', { ascending: true }),
@@ -3441,6 +3468,7 @@ async function handleCheckTimeouts(supabase: any) {
         .select(waitSelect)
         .eq('status', 'waiting_event')
         .eq('enrollment.status', 'active')
+        .eq('enrollment.sequence.is_active', true)
         .is('step.timeout_days', null)
         .is('step.wait_for_event', null)
         .in('step.action_type', IMPLICIT_WAIT_ACTIONS)
@@ -3563,11 +3591,13 @@ async function handleCheckWaitEvents(supabase: any) {
   // SEQ-085 : attentes de CONNEXION seulement. Une attente de réponse d'un
   // candidat connecté était réarmée à chaque passage puis réévaluée chez le
   // fournisseur (plusieurs appels, places du cycle d'envoi consommées).
-  // SEQ-027 : inscriptions actives seulement.
+  // SEQ-027 : inscriptions actives seulement. D1 : séquences actives seulement
+  // (une attente d'une séquence désactivée n'est pas réarmée).
   const { data: dbConnected, error: dbConnectedErr } = await supabase.from('sequence_step_executions')
-    .select(`id, enrollment:sequence_enrollments!inner(id, status, connection_status, network_distance, sequence_id, profile_name), step:sequence_steps!inner(action_type, wait_for_event, condition_type)`)
+    .select(`id, enrollment:sequence_enrollments!inner(id, status, connection_status, network_distance, sequence_id, profile_name, sequence:outreach_sequences!inner(is_active)), step:sequence_steps!inner(action_type, wait_for_event, condition_type)`)
     .eq('status', 'waiting_event')
     .eq('enrollment.status', 'active')
+    .eq('enrollment.sequence.is_active', true)
     .eq('enrollment.connection_status', 'connected')
     .or(CONNECTION_WAIT_STEP_FILTER, { referencedTable: 'step' })
     .limit(100);
@@ -3620,10 +3650,15 @@ async function handleCheckWaitEvents(supabase: any) {
   // actives (SEQ-027), la moins récemment vérifiée d'abord. Une attente
   // vérifiée sans événement est « touchée » (updated_at) et passe en fin de
   // file : avant, les 20 mêmes étaient revérifiées à chaque passage.
+  // D1 : séquences actives seulement, filtre dans la requête (aucune lecture
+  // de profil au ledger pour une séquence arrêtée, et la file n'est pas
+  // occupée par ses attentes). Une réponse reste détectée par check_replies
+  // et par le webhook.
   const { data: waitingExecutions, error: waitingErr } = await supabase.from('sequence_step_executions')
-    .select(`*, enrollment:sequence_enrollments!inner(*), step:sequence_steps!inner(*)`)
+    .select(`*, enrollment:sequence_enrollments!inner(*, sequence:outreach_sequences!inner(is_active)), step:sequence_steps!inner(*)`)
     .eq('status', 'waiting_event')
     .eq('enrollment.status', 'active')
+    .eq('enrollment.sequence.is_active', true)
     .or(POLLABLE_WAIT_STEP_FILTER, { referencedTable: 'step' })
     .order('updated_at', { ascending: true })
     .limit(20);
@@ -5585,7 +5620,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
  */
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
-async function closeEnrollmentAsReplied(supabase: any, enrollment: { id: string; sequence_id?: string | null }, fulfilledExecutionId: string | null, reason: string, allowedFrom: readonly string[] = ['active', 'paused']): Promise<{ changed: boolean; failed: boolean }> {
+async function closeEnrollmentAsReplied(supabase: any, enrollment: { id: string; sequence_id?: string | null }, fulfilledExecutionId: string | null, reason: string, allowedFrom: readonly string[] = ['active', 'paused'], siblingScope: SiblingStopScope = { kind: 'all' }): Promise<{ changed: boolean; failed: boolean; stoppedSiblings: number }> {
   const nowIso = new Date().toISOString();
 
   // SEQ-191 : clôture conditionnée au statut (active ou en pause par défaut).
@@ -5598,7 +5633,7 @@ async function closeEnrollmentAsReplied(supabase: any, enrollment: { id: string;
     // Inscription restée ouverte : ses étapes ne sont pas annulées (une
     // inscription active sans étape serait replanifiée par le rattrapage).
     console.error(`[closeAsReplied] enrollment ${enrollment.id} non clôturé:`, enrErr);
-    return { changed: false, failed: true };
+    return { changed: false, failed: true, stoppedSiblings: 0 };
   }
   const changed = (closedRows ?? []).length > 0;
 
@@ -5618,9 +5653,10 @@ async function closeEnrollmentAsReplied(supabase: any, enrollment: { id: string;
   // SEQ-212 : aucune relance après une réponse, quel que soit le compte. Avant,
   // seul le webhook arrêtait les autres inscriptions du candidat ; la
   // vérification avant envoi, la scrutation et « Marquer comme répondu » ne
-  // closaient que celle-ci.
-  if (changed) await stopSiblingEnrollmentsAfterReply(supabase, enrollment);
-  return { changed, failed: !cancelled };
+  // closaient que celle-ci. Portée bornée par l'appelant (contrat §8 :
+  // inscription déjà terminée = sœurs créées avant sa fin seulement).
+  const stoppedSiblings = changed ? await stopSiblingEnrollmentsAfterReply(supabase, enrollment, siblingScope) : 0;
+  return { changed, failed: !cancelled, stoppedSiblings };
 }
 
 /**
@@ -5632,13 +5668,17 @@ async function closeEnrollmentAsReplied(supabase: any, enrollment: { id: string;
  */
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
-async function stopSiblingEnrollmentsAfterReply(supabase: any, enrollment: Record<string, any>): Promise<number> {
+async function stopSiblingEnrollmentsAfterReply(supabase: any, enrollment: Record<string, any>, scope: SiblingStopScope = { kind: 'all' }): Promise<number> {
   const orgId = (enrollment.organization_id ?? enrollment.sequence?.organization_id ?? null) as string | null;
   const filter = siblingEnrollmentsFilter([enrollment.profile_id, enrollment.resolved_profile_id, enrollment.provider_id]);
-  if (!orgId || !filter) return 0;
+  if (!orgId || !filter || scope.kind === 'none') return 0;
   try {
-    const { data: siblings, error } = await supabase.from('sequence_enrollments').select('id')
+    let siblingQuery = supabase.from('sequence_enrollments').select('id')
       .eq('organization_id', orgId).in('status', ['active', 'paused']).neq('id', enrollment.id).or(filter);
+    // Contrat §8 : jamais une prise de contact démarrée après la fin de
+    // l'inscription marquée « répondu ».
+    if (scope.kind === 'created_before') siblingQuery = siblingQuery.lt('created_at', scope.before);
+    const { data: siblings, error } = await siblingQuery;
     if (error) {
       console.warn(`[closeAsReplied] autres inscriptions du candidat de ${enrollment.id} illisibles:`, error);
       return 0;
@@ -6828,16 +6868,35 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     // Sanitize output
     parsed.message = sanitizeSequenceMessage(parsed.message);
     parsed.subject = typeof parsed.subject === 'string' ? parsed.subject.trim() : undefined;
-    // InMail sans objet dans la réponse IA et sans objet de repli (modèle de
-    // l'étape, contenu déjà résolu) : l'envoi échouerait (inmail_subject_missing)
+    // InMail : objet qui partira réellement, testé APRÈS le remplacement des
+    // variables, comme handleProcess le fera (objet de l'IA, sinon objet déjà
+    // figé, sinon modèle de l'étape ; même expéditeur des variables). Un objet
+    // vide ou réduit à des variables sans valeur (« {{job_title}} » sur une
+    // mission sans intitulé) ferait échouer l'envoi (inmail_subject_missing)
     // avec un texte figé, donc sans nouvelle rédaction à l'essai suivant. On
     // renvoie null : l'appelant restaure le contenu d'avant le verrou et
     // l'essai suivant rédige à nouveau.
-    const fallbackSubject = String(step.subject_template ?? '').trim() || String(_exec.final_subject ?? '').trim();
-    if (isInMail && !parsed.subject && !fallbackSubject) {
-      console.warn('[generatePersonalizedMessage] InMail sans objet dans la réponse IA : étape reportée');
-      if (diag) diag.reason = "Objet de l'InMail manquant dans la réponse IA";
-      return null;
+    if (isInMail) {
+      const inmailSubjectRaw = parsed.subject
+        || (String(_exec.final_subject ?? '').trim() ? String(_exec.final_subject) : String(step.subject_template ?? ''));
+      let inmailSubjectResolved = inmailSubjectRaw.trim();
+      if (inmailSubjectResolved.includes('{{')) {
+        try {
+          const subjectCtx = await buildSequenceContext(supabase, {
+            enrollment,
+            senderUserId: (step.sender_id as string) || (enrollment.created_by as string) || null,
+          });
+          inmailSubjectResolved = interpolateAndStrip(inmailSubjectRaw, subjectCtx).result.trim();
+        } catch (e) {
+          // Même repli que handleProcess : variables non résolues, objet brut conservé.
+          console.warn('[generatePersonalizedMessage] Variables de l’objet non résolues (non bloquant):', e);
+        }
+      }
+      if (!inmailSubjectResolved) {
+        console.warn('[generatePersonalizedMessage] InMail sans objet exploitable après remplacement des variables : étape reportée');
+        if (diag) diag.reason = "Objet de l'InMail manquant dans la réponse IA";
+        return null;
+      }
     }
 
     // ⭐ Sanity-check anonymisation client : si outreach_config.anonymize_client est

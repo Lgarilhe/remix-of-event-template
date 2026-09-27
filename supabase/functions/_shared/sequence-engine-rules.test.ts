@@ -170,3 +170,19 @@ Deno.test('SEQ-212 : filtre des autres inscriptions du candidat, identifiants as
   // Ni virgule, ni parenthèse, ni guillemet : pas d'injection dans le filtre.
   strictEqual(siblingEnrollmentsFilter(['a),status.eq.(x', '"b"']), 'profile_id.in.(astatuseqx,b),resolved_profile_id.in.(astatuseqx,b),provider_id.in.(astatuseqx,b)');
 });
+
+// ─── Dernière passe (audit 2026-09-25, lot E1) ──────────────────────────────
+
+import { siblingStopScope } from './sequence-engine-rules.ts';
+
+Deno.test('§8 : « répondu » sur une inscription terminée n\'arrête que les inscriptions sœurs créées avant sa fin', () => {
+  // Active ou en pause : toutes les autres inscriptions du candidat (SEQ-212).
+  deepStrictEqual(siblingStopScope('active', null), { kind: 'all' });
+  deepStrictEqual(siblingStopScope('paused', '2026-03-01T10:00:00Z'), { kind: 'all' });
+  // Terminée : jamais une prise de contact démarrée après la clôture.
+  deepStrictEqual(siblingStopScope('completed', '2026-03-01T10:00:00Z'), { kind: 'created_before', before: '2026-03-01T10:00:00.000Z' });
+  deepStrictEqual(siblingStopScope('completed', '2026-03-01T10:00:00.123456+00:00'), { kind: 'created_before', before: '2026-03-01T10:00:00.123Z' });
+  // Date de fin inconnue ou illisible : aucune (côté sûr).
+  deepStrictEqual(siblingStopScope('completed', null), { kind: 'none' });
+  deepStrictEqual(siblingStopScope('completed', 'pas une date'), { kind: 'none' });
+});

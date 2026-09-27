@@ -146,12 +146,17 @@ test('SEQ-025 — désactiver : pause des inscriptions vérifiée avant l’inte
 test('SEQ-025 — interrupteur désactivé pendant l’appel, masqué hors de mon organisation', () => {
   const switches = [...list.matchAll(/<Switch[\s\S]*?\/>/g)].map((m) => m[0]);
   assert.equal(switches.length, 2);
-  // D3 (vague finale) : grisé aussi pour un collaborateur sur une séquence active.
-  for (const s of switches) assert.match(s, /disabled=\{togglingId === seq\.id \|\| deactivationLocked\(seq\)\}/);
+  // D3 (dernière passe, front-editor-list-3) : le verrou d'un collaborateur est
+  // signalé (aria-disabled) mais l'interrupteur reste cliquable pour dire pourquoi.
+  for (const s of switches) {
+    assert.match(s, /disabled=\{togglingId === seq\.id\}/);
+    assert.match(s, /aria-disabled=\{deactivationLocked\(seq\) \|\| undefined\}/);
+  }
   assert.match(list, /const canManage = \(seq: SequenceWithStats\) => !!organizationId && seq\.organization_id === organizationId;/);
-  assert.equal((list.match(/\{canManage\(seq\) \? \(\s*<Switch/g) || []).length, 2);
-  assert.equal((list.match(/\{canManage\(seq\) && \(\s*<>\s*<DropdownMenuSeparator \/>/g) || []).length, 2);
-  assert.equal((list.match(/\{canManage\(seq\) && \(\s*<DropdownMenuItem onClick=\{\(e\) => \{ e\.stopPropagation\(\); handleEdit\(seq\); \}\}>/g) || []).length, 2);
+  // Contrat §8 (front-editor-list-1) : interrupteur, « Modifier » et « Supprimer » sous canEdit.
+  assert.equal((list.match(/\{canEdit\(seq\) \? \(\s*<Switch/g) || []).length, 2);
+  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<>\s*<DropdownMenuSeparator \/>/g) || []).length, 2);
+  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<DropdownMenuItem onClick=\{\(e\) => \{ e\.stopPropagation\(\); handleEdit\(seq\); \}\}>/g) || []).length, 2);
 });
 
 test('SEQ-025 — supprimer : 0 ligne n’affiche jamais de succès', () => {

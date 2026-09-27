@@ -43,7 +43,7 @@ test('SEQ-024 — reprise par séquence de l\'assistant : bornée à l\'organisa
   assert.match(resumeHandler, /if \(!seq \|\| \(orgId && seq\.organization_id !== orgId\)\)/);
   assert.match(resumeHandler, /\.eq\('sequence_id', req\.sequenceId\)\.eq\('status', 'paused'\)\.in\('pause_reason', reasons\)/);
   assert.match(resumeHandler, /if \(!enr \|\| \(orgId && enrOrgId !== orgId\)\)/);
-  assert.match(resumeHandler, /json200\(\{ success: true, results, counts, remaining \}\)/);
+  assert.match(resumeHandler, /json200\(\{ success: true, results, counts, remaining, other_members: otherMembers \}\)/);
 
   // Budget serveur sous le délai d'attente de l'outil, avec au moins 5 s de marge.
   const serverDeadline = Number(engine.match(/const RESUME_DEADLINE_MS = ([\d_]+);/)?.[1].replace(/_/g, ''));

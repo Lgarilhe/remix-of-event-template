@@ -167,13 +167,87 @@ test('rotation : chaque cause renvoyée a un traitement distinct côté moteur (
 test('InMail IA sans objet ni objet de repli : pas de texte figé sans objet, nouvelle rédaction', () => {
   const generate = sliceBetween(sequences, 'async function generatePersonalizedMessage(');
   const normalizeAt = generate.indexOf("parsed.subject = typeof parsed.subject === 'string' ? parsed.subject.trim() : undefined;");
-  const guardAt = generate.indexOf('if (isInMail && !parsed.subject && !fallbackSubject) {');
+  const guardAt = generate.indexOf('const inmailSubjectRaw = parsed.subject');
   const returnAt = generate.indexOf('return { message: parsed.message, subject: parsed.subject };');
   assert.ok(normalizeAt > 0 && guardAt > normalizeAt && returnAt > guardAt, 'garde de l’objet InMail mal placée');
-  assert.match(generate, /const fallbackSubject = String\(step\.subject_template \?\? ''\)\.trim\(\) \|\| String\(_exec\.final_subject \?\? ''\)\.trim\(\);/);
-  const guard = generate.slice(guardAt, generate.indexOf('}', guardAt));
-  assert.match(guard, /diag\.reason = "Objet de l'InMail manquant dans la réponse IA"/);
-  assert.match(guard, /return null;/);
+  // Plus d'exception sur l'objet de repli brut, testé avant le remplacement des variables.
+  assert.doesNotMatch(generate, /!fallbackSubject/);
+});
+
+// Dernière passe, point 2 : l'objet qui partira est testé APRÈS le
+// remplacement des variables, comme handleProcess le fera.
+const templates = await importModule('supabase/functions/_shared/template-interpolation.ts');
+const loadInMailSubjectGuard = (ctxImpl) => {
+  const body = rawSlice(sequences, 'if (isInMail) {\n      const inmailSubjectRaw', '// ⭐ Sanity-check anonymisation client');
+  const js = transformSync(
+    `async function guard(parsed, _exec, step, enrollment, isInMail, supabase, diag) {\n${body}\nreturn 'send';\n}`,
+    { loader: 'ts' },
+  ).code;
+  const calls = [];
+  const buildSequenceContext = async (_sb, input) => { calls.push(input); return ctxImpl(input); };
+  const guard = new Function('buildSequenceContext', 'interpolateAndStrip', 'console', `${js}\nreturn guard;`)(
+    buildSequenceContext, templates.interpolateAndStrip, { warn() {}, log() {} },
+  );
+  return { guard, calls };
+};
+
+test('InMail IA : objet vide après remplacement des variables = nouvelle rédaction, jamais inmail_subject_missing figé', async () => {
+  const enrollment = { id: 'e1', created_by: 'u-author', profile_name: 'Julie Martin' };
+  const noJobTitle = () => ({});
+  const withJobTitle = () => ({ job_title: 'Directrice financière' });
+
+  // Scénario de la relecture : modèle réduit à une variable sans valeur, l'IA répond sans objet.
+  {
+    const { guard, calls } = loadInMailSubjectGuard(noJobTitle);
+    const diag = {};
+    const out = await guard({ subject: undefined }, { final_subject: null }, { subject_template: '{{job_title}}' }, enrollment, true, {}, diag);
+    assert.equal(out, null);
+    assert.equal(diag.reason, "Objet de l'InMail manquant dans la réponse IA");
+    // Même expéditeur des variables que handleProcess (step.sender_id, sinon auteur de l'inscription).
+    assert.deepEqual(calls, [{ enrollment, senderUserId: 'u-author' }]);
+  }
+  // Variable résolue : l'objet de repli part.
+  {
+    const { guard } = loadInMailSubjectGuard(withJobTitle);
+    assert.equal(await guard({ subject: undefined }, {}, { subject_template: '{{job_title}}', sender_id: 'u-sender' }, enrollment, true, {}, {}), 'send');
+  }
+  // Texte fixe autour de la variable vide : l'objet n'est pas vide, il part.
+  {
+    const { guard } = loadInMailSubjectGuard(noJobTitle);
+    assert.equal(await guard({ subject: undefined }, {}, { subject_template: 'Opportunité {{job_title}}' }, enrollment, true, {}, {}), 'send');
+  }
+  // Objet déjà figé (Journal) prioritaire sur le modèle, comme resolveStepContent.
+  {
+    const { guard, calls } = loadInMailSubjectGuard(noJobTitle);
+    assert.equal(await guard({ subject: undefined }, { final_subject: 'Votre parcours' }, { subject_template: '{{job_title}}' }, enrollment, true, {}, {}), 'send');
+    assert.equal(calls.length, 0, 'objet sans variable : aucune lecture de contexte');
+  }
+  // Objet de l'IA réduit à une variable sans valeur : même garde.
+  {
+    const { guard } = loadInMailSubjectGuard(noJobTitle);
+    assert.equal(await guard({ subject: '{{job_title}}' }, {}, { subject_template: 'Opportunité' }, enrollment, true, {}, {}), null);
+  }
+  // Objet de l'IA exploitable : il part, sans lecture de contexte.
+  {
+    const { guard, calls } = loadInMailSubjectGuard(noJobTitle);
+    assert.equal(await guard({ subject: 'Votre expertise' }, {}, { subject_template: '{{job_title}}' }, enrollment, true, {}, {}), 'send');
+    assert.equal(calls.length, 0);
+  }
+  // Aucun objet nulle part : nouvelle rédaction.
+  {
+    const { guard } = loadInMailSubjectGuard(noJobTitle);
+    assert.equal(await guard({ subject: undefined }, { final_subject: '  ' }, { subject_template: '' }, enrollment, true, {}, {}), null);
+  }
+  // Contexte illisible : même repli que handleProcess (objet brut conservé, non vide).
+  {
+    const { guard } = loadInMailSubjectGuard(() => { throw new Error('boom'); });
+    assert.equal(await guard({ subject: undefined }, {}, { subject_template: '{{job_title}}' }, enrollment, true, {}, {}), 'send');
+  }
+  // Message direct (pas un InMail) : aucune exigence d'objet.
+  {
+    const { guard } = loadInMailSubjectGuard(noJobTitle);
+    assert.equal(await guard({ subject: undefined }, {}, { subject_template: '{{job_title}}' }, enrollment, false, {}, {}), 'send');
+  }
 });
 
 // ---------------------------------------------------------------- 5. 503 de la file InMail
@@ -198,6 +272,23 @@ test('file InMail, action queue : compte d’un collègue refusé, codes d’err
   assert.doesNotMatch(queue, /error: "Compte LinkedIn non autorisé"/);
   // Le refus du collègue suit le contrôle d'organisation et précède toute écriture.
   assert.ok(queue.indexOf('ACCOUNT_NOT_ALLOWED') < queue.indexOf('ACCOUNT_OF_OTHER_MEMBER'));
+});
+
+// ---------------------------------------------------------------- Dernière passe, point 1
+test('file InMail, action queue : panne de lecture de l’organisation = 503 « réessayez », jamais ACCOUNT_NOT_ALLOWED', () => {
+  const queue = sliceBetween(inmailQueue, 'if (action === "queue")', '// Abonnement (SEQ-134)');
+  // resolveOrgIdFromUser avale les erreurs (null) : plus utilisé à la mise en file.
+  assert.doesNotMatch(queue, /resolveOrgIdFromUser/);
+  assert.match(queue, /\.from\("profiles"\)\s*\.select\("active_organization_id"\)\s*\.eq\("user_id", user\.id\)\s*\.maybeSingle\(\)/);
+  assert.match(queue, /if \(profileErr\) \{\s*orgLookupFailed = true;/);
+  assert.match(queue, /catch \(e\) \{\s*orgLookupFailed = true;/);
+  assert.match(queue, /error: "ORG_LOOKUP_FAILED",\s*message: "Vérification de votre organisation momentanément impossible : réessayez dans un instant\.",/);
+  assert.equal((queue.match(/status: 503/g) || []).length, 1);
+  // Le 503 part avant la lecture des comptes et avant tout refus ACCOUNT_NOT_ALLOWED.
+  const failAt = queue.indexOf('if (orgLookupFailed) {');
+  assert.ok(failAt > 0 && failAt < queue.indexOf('.from("member_linkedin_accounts")'));
+  assert.ok(failAt < queue.indexOf('ACCOUNT_NOT_ALLOWED'));
+  assert.match(queue.slice(failAt, queue.indexOf('.from("member_linkedin_accounts")')), /status: 503/);
 });
 
 // ---------------------------------------------------------------- 8. Libellé du contrôle de solde

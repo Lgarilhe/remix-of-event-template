@@ -11,6 +11,7 @@ import { LinkedInProfile } from '@/components/outreach/types';
 import { invokeWithCredits, estimateActionCredits } from '@/lib/invokeWithCredits';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { isClosedChannelStep } from '@/lib/sequenceCompatibility';
 
 export interface SequenceStepPreview {
   stepId: string;
@@ -161,8 +162,23 @@ interface UseEnrollmentPreviewOptions {
 // Steps that have sendable messages
 const MESSAGE_ACTION_TYPES = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
 
+/**
+ * Étape dont le message part : un canal fermé (e-mail, WhatsApp, D2) est sauté
+ * par le moteur, ni aperçu ni génération facturée pour lui.
+ */
 function hasMessage(step: SequenceStepPreview): boolean {
-  return MESSAGE_ACTION_TYPES.includes(step.actionType) && !!step.messageTemplate?.trim();
+  return MESSAGE_ACTION_TYPES.includes(step.actionType)
+    && !isClosedChannelStep(step.actionType)
+    && !!step.messageTemplate?.trim();
+}
+
+/**
+ * Étape comptée comme déjà envoyée dans l'historique simulé (prevSentSteps).
+ * Une étape d'un canal fermé n'est jamais partie : la compter ferait écrire à
+ * l'IA une relance d'un message que le candidat n'a pas reçu.
+ */
+function isSentReachStep(step: SequenceStepPreview): boolean {
+  return MESSAGE_ACTION_TYPES.includes(step.actionType) && !isClosedChannelStep(step.actionType);
 }
 
 /**
@@ -478,7 +494,6 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
       // - Cas InMail FALLBACK : SEULEMENT les steps avant le wait_connection
       //   (= profile_visit + connection_request) car les messages "if accepted"
       //   n'ont jamais été envoyés
-      const reachActionTypes = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
       const upperBound = isInmailFallback
         ? waitConnectionBefore!.stepOrder
         : step.stepOrder;
@@ -488,7 +503,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
       const prevSentSteps = steps
         .filter(s =>
           s.stepOrder < upperBound &&
-          reachActionTypes.includes(s.actionType) &&
+          isSentReachStep(s) &&
           !otherBranch.has(s.stepId)
         )
         .sort((a, b) => a.stepOrder - b.stepOrder)
@@ -738,8 +753,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
         const prevSentSteps = steps
           .filter(s =>
             s.stepOrder < upperBound &&
-            ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message']
-              .includes(s.actionType) &&
+            isSentReachStep(s) &&
             !otherBranch.has(s.stepId)
           )
           .sort((a, b) => a.stepOrder - b.stepOrder)

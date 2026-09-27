@@ -180,7 +180,8 @@ test('SEQ-109 / SEQ-195 — un envoi réussi n\'est plus affiché en erreur, can
 test('SEQ-187 — cadence par compte d\'envoi, e-mails hors plafond et hors espacement', () => {
   // Vague finale (famine entre organisations) : cadence par compte appliquée
   // au fil d'une sélection légère par pages, puis relecture des seules retenues.
-  assert.match(processFn, /cycleSelection = selectCycleBatch<DueExecution>\(dedupeByProfile\(dueCandidates\)\)/);
+  assert.match(processFn, /const selectionRead = await readCycleSelection<DueExecution>\(/);
+  assert.match(rules, /const deduped = dedupeByProfile\(due\);\s*selection = selectCycleBatch<T>\(deduped\);/);
   assert.doesNotMatch(processFn, /if \(visibleCount >= MAX_VISIBLE_PER_CYCLE\) return false;/, 'ancien plafond global');
   assert.match(loop, /if \(isLinkedInStyleSend && \(visibleSentByAccount\.get\(sendAccountKey\) \?\? 0\) > 0\)/, 'espacement par compte');
   assert.doesNotMatch(loop, /!INVISIBLE_ACTIONS\.has\(effectiveActionType\) && visibleActionsExecuted > 0/);

@@ -82,30 +82,51 @@ test('SEQ-121 — les pauses sans raison deviennent « manual » (jamais reprise
   );
 });
 
-// ---------------------------------------------------------------- D6 / SEQ-121 (vague finale, points 4 et 5)
-test('D6 — pauses héritées : auto-pause puis désactivation reclassées avant le repli « manual », jamais un arrêt manuel', () => {
+// ---------------------------------------------------------------- D6 / SEQ-121 (vague finale, points 4 et 5 ; D6 précisée, contrat §8)
+test('D6 — pauses héritées : seule l’auto-pause marquée devient auto_paused, le reste « manual », jamais sequence_inactive', () => {
   const constraint = b6.indexOf('ADD CONSTRAINT sequence_enrollments_pause_reason_check');
   const auto = b6.indexOf("SET pause_reason = 'auto_paused'");
-  const inactive = b6.indexOf("SET pause_reason = 'sequence_inactive'");
   const manual = b6.search(/UPDATE public\.sequence_enrollments\s+SET pause_reason = 'manual'\s+WHERE status = 'paused'\s+AND pause_reason IS NULL/);
-  assert.ok(constraint !== -1 && auto !== -1 && inactive !== -1 && manual !== -1, 'les trois reclassements sont présents');
-  // Après la nouvelle contrainte (l'ancienne refuse auto_paused et sequence_inactive).
+  assert.ok(constraint !== -1 && auto !== -1 && manual !== -1, 'les deux reclassements sont présents');
+  // Après la nouvelle contrainte (l'ancienne refuse auto_paused).
   assert.ok(constraint < auto, 'auto_paused posé après la nouvelle contrainte');
   // Ordre : sinon le repli « manual » avalerait les pauses NULL avant leur reclassement.
-  assert.ok(auto < inactive && inactive < manual, 'ordre auto_paused, sequence_inactive, manual');
+  assert.ok(auto < manual, 'ordre auto_paused, puis manual');
   // Un seul repli « manual » : plus de conversion NULL → manual avant les reclassements.
   assert.equal([...b6.matchAll(/SET pause_reason = 'manual'/g)].length, 1);
 
-  const autoBlock = b6.slice(auto, inactive);
+  // D6 précisée : aucune pause héritée ('manual' ou NULL) n'est reclassée en
+  // sequence_inactive. L'ancien front n'annulait que les étapes 'scheduled' :
+  // un arrêt posé pendant une attente ne laisse aucun marqueur, une
+  // réactivation l'aurait repris. Seul le moteur et le front posent cette raison.
+  assert.doesNotMatch(b6, /SET pause_reason = 'sequence_inactive'/, 'plus aucun reclassement hérité en sequence_inactive');
+
+  const autoBlock = b6.slice(auto, manual);
   assert.match(autoBlock, /e\.pause_reason IS NULL/);
   assert.match(autoBlock, /x\.skip_reason = 'Auto-paused: high failure rate'/);
-  const inactiveBlock = b6.slice(inactive, manual);
-  assert.match(inactiveBlock, /s\.is_active IS FALSE/);
-  assert.match(inactiveBlock, /\(e\.pause_reason IS NULL OR e\.pause_reason = 'manual'\)/);
-  // Une inscription arrêtée à la main par l'ancien front n'est jamais reprise par une réactivation.
-  for (const block of [autoBlock, inactiveBlock]) {
-    assert.match(block, /NOT EXISTS \([\s\S]*x\.skip_reason IN \('Arrêt manuel', 'Arrêt groupé', 'Stoppé depuis Inbox'\)/);
+  assert.doesNotMatch(autoBlock, /is_active/, 'l’auto-pause ne dépend pas de l’état de la séquence');
+  // Une inscription arrêtée par un recruteur, dissociée ou bloquée par le
+  // candidat n'est jamais reprise par une réactivation, même après une auto-pause.
+  const exclusion = autoBlock.match(/NOT EXISTS \([\s\S]*?x\.skip_reason IN \(([\s\S]*?)\)\s*\)/);
+  assert.ok(exclusion, 'exclusion par marqueurs absente du bloc auto_paused');
+  const markers = [...exclusion[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  for (const marker of [
+    'Arrêt manuel',
+    'Arrêt groupé',
+    'Stoppé depuis Inbox',
+    'Compte LinkedIn dissocié',
+    'Candidat a bloqué le compte LinkedIn — séquence stoppée',
+  ]) {
+    assert.ok(markers.includes(marker), `marqueur non exclu : ${marker}`);
   }
+  // Mêmes libellés que les motifs hérités connus du serveur (_shared/sequence-resume.ts).
+  const resumeShared = read('supabase/functions/_shared/sequence-resume.ts');
+  assert.match(resumeShared, /'Compte LinkedIn dissocié'/);
+
+  // En-tête : plus de promesse de reprise des pauses héritées à la réactivation.
+  const header = read(`supabase/migrations/${B6_FILES[0]}`).split('\n-- ---------')[0];
+  assert.match(header, /Aucune pause héritée \('manual' ou sans raison\) ne devient\s+--\s+sequence_inactive/);
+  assert.doesNotMatch(header, /pour que la réactivation les reprenne comme avant l'audit/);
 });
 
 // ---------------------------------------------------------------- SEQ-215 (vague finale, point 3)
@@ -340,8 +361,16 @@ test('D3 — anti-doublon du navigateur : RPC SECURITY DEFINER bornée à l’or
   assert.match(fn, /e\.status IN \('active', 'paused'\)/);
   assert.match(fn, /e\.status IN \('replied', 'completed'\)\s+AND e\.created_at >= COALESCE\(p_since/);
   assert.match(fn, /e\.resolved_profile_id = ANY/);
-  // Jokers du motif échappés (un « _ » du slug n'est pas un caractère quelconque).
-  assert.match(fn, /'_', '\\_'/);
+  // Slug comparé par égalité au slug extrait de profile_url (fin, '/', '?' ou
+  // '#'), jamais par motif : un préfixe fourni par un collaborateur
+  // n'énumère pas les candidats de ses collègues (fiche finale B6, point 2).
+  assert.doesNotMatch(fn, /ILIKE|LIKE/i, 'aucun motif sur profile_url');
+  assert.doesNotMatch(fn, /'%\/in\/'/, 'plus de motif « %/in/slug% »');
+  assert.match(fn, /substring\(lower\(e\.profile_url\) FROM '\/in\/\(\[\^\/\?#\]\+\)'\) = ANY \(v_slugs\)/);
+  assert.match(fn, /array_agg\(DISTINCT lower\(btrim\(s\)\)\)/);
+  assert.match(fn, /WHERE length\(btrim\(s\)\) >= 3/);
+  // Même extraction que le front (extractLinkedInSlug : /in/([^/?#]+), minuscules).
+  assert.match(read('src/lib/linkedinUtils.ts'), /\\\/in\\\/\(\[\^\/\?#\]\+\)/);
   assert.match(b6, /REVOKE ALL ON FUNCTION public\.find_recent_org_contacts\(uuid, text\[\], text\[\], timestamptz\) FROM PUBLIC, anon;/);
   assert.match(b6, /GRANT EXECUTE ON FUNCTION public\.find_recent_org_contacts\(uuid, text\[\], text\[\], timestamptz\) TO authenticated;/);
   // Après is_active_org_collaborator, avant les policies (bloc 4e).
@@ -351,6 +380,8 @@ test('D3 — anti-doublon du navigateur : RPC SECURITY DEFINER bornée à l’or
   const audit = stripSql(read('supabase/tests/rls_two_orgs_audit.sql'));
   assert.match(audit, /find_recent_org_contacts\(org_a, ARRAY\['prof-a'\], ARRAY\[\]::text\[\], now\(\) - interval '90 days'\)\s+WHERE created_by = u_a/);
   assert.match(audit, /\[D3 : B interroge les contacts de A/);
+  // Contrôle de préfixe rejoué en base : « audit-pro » ne renvoie rien.
+  assert.match(audit, /find_recent_org_contacts\(org_a, ARRAY\[\]::text\[\], ARRAY\['audit-pro'\], now\(\) - interval '90 days'\);\s+IF n <> 0 THEN/);
   assert.match(audit, /EXCEPTION WHEN insufficient_privilege THEN NULL;\s+WHEN OTHERS THEN failures := failures \|\| format\('\[D3 autre organisation/);
 
   // Types générés : la RPC et les compteurs par raison de pause.

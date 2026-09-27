@@ -38,7 +38,7 @@ const resumeHandler = slice(engine, 'async function handleResumeEnrollments', 'a
 const resumeOne = slice(engine, 'async function resumeOneEnrollment', 'async function handleMarkReplied');
 const markReplied = slice(engine, 'async function handleMarkReplied', 'async function acquireLock');
 const processFn = slice(engine, 'async function handleProcess(', 'async function handleCheckReplies');
-const selection = slice(processFn, 'const dueCandidates: DueExecution[] = [];', 'if (fetchError) throw fetchError;');
+const selection = slice(processFn, 'const selectionRead = await readCycleSelection<DueExecution>(', 'if (fetchError) throw fetchError;');
 const dormant = slice(processFn, 'Recovery: enrollments actifs SANS', 'Smart batching: fetch more candidates');
 const loop = slice(processFn, 'for (const exec of batchedExecutions)', '// Auto-pause: if >30% of batch actions failed definitively');
 const gate = slice(loop, '// === SUBSCRIPTION GATE', '// === AUTO-SKIP: channel unavailable ===');
@@ -132,9 +132,10 @@ test('n°6 / n°7 D3 — actions membres : un collaborateur n\'agit que sur ses 
 // ---------------------------------------------------------------- n°8
 test('n°8 — famine entre organisations : sélection légère par pages, cadence par compte au fil des pages', () => {
   assert.doesNotMatch(processFn, /const FETCH_LIMIT = 100;/);
-  assert.match(selection, /\.range\(from, from \+ SELECTION_PAGE_SIZE - 1\)/);
+  assert.match(selection, /\.range\(from, to\)/);
   assert.match(selection, /\.order\('scheduled_at', \{ ascending: true \}\)\s*\.order\('id', \{ ascending: true \}\)/);
-  assert.match(selection, /if \(!shouldReadNextSelectionPage\(page, pageList\.length, cycleSelection\.selected\.length\)\) break;/);
+  assert.match(cycleRules, /if \(!shouldReadNextSelectionPage\(page, pageList\.length, selection\.selected\.length, opts\)\) break;/);
+  assert.match(cycleRules, /selection = selectCycleBatch<T>\(deduped\);/);
   assert.match(selection, /\.in\('id', selectedIds\)/, 'relecture complète des seules exécutions retenues');
   // Inscriptions closes hors plafond par compte.
   assert.match(cycleRules, /if \(enrollmentStatus && enrollmentStatus !== 'active'\) \{\s*if \(closed >= maxClosed\) continue;/);
@@ -201,7 +202,7 @@ test('n°15 / n°20 — reprise par séquence : au-delà des 1 000 lus, le reste
 
 // ---------------------------------------------------------------- n°16
 test('n°16 — une réponse arrête aussi les autres inscriptions du candidat (tous les chemins de détection)', () => {
-  assert.match(closeReplied, /if \(changed\) await stopSiblingEnrollmentsAfterReply\(supabase, enrollment\);/);
+  assert.match(closeReplied, /const stoppedSiblings = changed \? await stopSiblingEnrollmentsAfterReply\(supabase, enrollment, siblingScope\) : 0;/);
   const siblings = slice(engine, 'async function stopSiblingEnrollmentsAfterReply', '/**');
   assert.match(siblings, /\.eq\('organization_id', orgId\)\.in\('status', \['active', 'paused'\]\)\.neq\('id', enrollment\.id\)\.or\(filter\)/);
   assert.match(siblings, /status: 'stopped'/);

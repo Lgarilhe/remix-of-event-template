@@ -223,6 +223,34 @@ test.describe('@critical process-sequences — nudge_sequences', () => {
   });
 });
 
+test.describe('@critical process-sequences — mark_replied', () => {
+  test("sur une inscription terminée, seules les séquences commencées avant sa fin s'arrêtent (contrat §8)", async () => {
+    const profileId = `e2e_profile_sib_${Date.now()}`;
+    const endedAt = new Date(Date.now() - 24 * 3600 * 1000);
+    await admin().from('sequence_enrollments')
+      .update({ profile_id: profileId, status: 'completed', completed_at: endedAt.toISOString() })
+      .eq('id', a.enrollmentId);
+    // Une séquence par inscription sœur : (sequence_id, profile_id) est unique.
+    const older = await seedSequence(a.org.orgId, a.org.owner.userId, [{ action_type: 'message' }]);
+    const newer = await seedSequence(a.org.orgId, a.org.owner.userId, [{ action_type: 'message' }]);
+    const olderId = await seedEnrollment(a.org.orgId, older.sequenceId, a.org.owner.userId, {
+      profile_id: profileId,
+      created_at: new Date(endedAt.getTime() - 24 * 3600 * 1000).toISOString(),
+    });
+    const newerId = await seedEnrollment(a.org.orgId, newer.sequenceId, a.org.owner.userId, { profile_id: profileId });
+
+    const res = await callEngine(a.token, { action: 'mark_replied', enrollment_id: a.enrollmentId, organization_id: a.org.orgId });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.changed).toBe(true);
+    expect(res.body.stopped_siblings, 'une seule autre séquence arrêtée').toBe(1);
+    const { data } = await admin().from('sequence_enrollments').select('id, status').in('id', [olderId, newerId]);
+    const statusOf = (id: string) => (data ?? []).find((r: { id: string; status: string }) => r.id === id)?.status;
+    expect(statusOf(olderId), 'séquence en cours avant la fin : arrêtée').toBe('stopped');
+    expect(statusOf(newerId), 'prise de contact démarrée après la fin : intacte').toBe('active');
+  });
+});
+
 test.describe('@critical process-sequences — actions réservées au cron', () => {
   for (const action of ['process', 'force_reschedule', 'check_replies', 'check_wait_events'] as const) {
     test(`${action} est refusée à un JWT de membre`, async () => {

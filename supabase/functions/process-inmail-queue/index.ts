@@ -182,11 +182,35 @@ Deno.serve(async (req: Request) => {
         if (requestedAccountIds.length === 0) {
           throw new Error("Missing account_id");
         }
+        // Lecture directe (resolveOrgIdFromUser avale les erreurs et renvoie
+        // null) : une panne passagère n'est jamais présentée comme un compte
+        // hors organisation, le recruteur est invité à réessayer.
+        let orgLookupFailed = false;
         try {
-          const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-          callerOrgId = await resolveOrgIdFromUser(user.id, supabase);
+          const { data: callerProfile, error: profileErr } = await supabase
+            .from("profiles")
+            .select("active_organization_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (profileErr) {
+            orgLookupFailed = true;
+            console.warn("[process-inmail-queue] org resolution failed at enqueue:", profileErr);
+          } else {
+            callerOrgId = (callerProfile as { active_organization_id?: string | null } | null)?.active_organization_id || null;
+          }
         } catch (e) {
+          orgLookupFailed = true;
           console.warn("[process-inmail-queue] org resolution failed at enqueue:", e);
+        }
+        if (orgLookupFailed) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "ORG_LOOKUP_FAILED",
+              message: "Vérification de votre organisation momentanément impossible : réessayez dans un instant.",
+            }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         }
         const { data: ownedAccounts, error: ownErr } = callerOrgId
           ? await supabase

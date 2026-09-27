@@ -73,14 +73,15 @@ test('SEQ-007 — check_replies : Notion seulement pour une organisation qui a r
 
 // ---------------------------------------------------------------- SEQ-027
 test('SEQ-027 — délais et attentes : inscriptions actives seulement, filtre dans la requête', () => {
-  assert.match(timeouts, /enrollment:sequence_enrollments!inner\(\*\)/);
+  // Inscription entière, séquence jointe pour le filtre D1 (seq-audit-e2-final2).
+  assert.match(timeouts, /enrollment:sequence_enrollments!inner\(\*, sequence:outreach_sequences!inner\(is_active\)\)/);
   assert.match(timeouts, /\.eq\('enrollment\.status', 'active'\)/);
   assert.match(timeouts, /\.order\('scheduled_at', \{ ascending: true \}\)/);
   // Attentes des inscriptions closes : annulées à part, jamais expirées.
   assert.match(timeouts, /\.in\('enrollment\.status', TERMINAL_ENROLLMENT_STATUSES\)/);
   assert.match(timeouts, /status: 'cancelled', skip_reason: closedEnrollmentWaitReason\(status\)/);
   assert.match(phase1, /\.eq\('enrollment\.status', 'active'\)/);
-  assert.match(phase2, /enrollment:sequence_enrollments!inner\(\*\)/);
+  assert.match(phase2, /enrollment:sequence_enrollments!inner\(\*, sequence:outreach_sequences!inner\(is_active\)\)/);
   assert.match(phase2, /\.eq\('enrollment\.status', 'active'\)/);
 });
 

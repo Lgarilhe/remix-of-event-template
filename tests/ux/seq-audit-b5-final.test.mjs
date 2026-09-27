@@ -1,6 +1,7 @@
 /**
  * Audit séquences 2026-09-25, lot B5, vague finale (relecture contradictoire
- * et décisions D1, D2, D4, D5 du contrat des lots, §7).
+ * et décisions D1, D2, D4, D5 du contrat des lots, §7), puis dernière passe
+ * (D3 appliquée par l'assistant, contrat §8).
  *
  * Invariants épinglés par lecture de source, dans le style de
  * tests/ux/seq-audit-b5.test.mjs (Deno absent de cette suite). Chaque test
@@ -177,4 +178,62 @@ test('unipile-accounts : arrêt des envois et dissociation jamais bloqués par l
     const block = accounts.slice(start, end);
     assert.doesNotMatch(block, /apiKey|baseUrl|fetchWithTimeout/, `${name} appelle le prestataire`);
   }
+});
+
+// ------------------------------------------- dernière passe, points 1 à 4 (D3, §8)
+test('D3 — assistant : rôle exact lu dans organization_members, échec fermé, « member » garde tous les droits', () => {
+  assert.match(mutations, /const FULL_SEQUENCE_ROLES = new Set\(\['owner', 'admin', 'member'\]\);/);
+  const helper = fnBody(mutations, 'async function readCallerOrgRole(ctx: ToolContext): Promise<string | null> {');
+  assert.match(helper, /\.from\('organization_members'\)\s*\.select\('role'\)\s*\.eq\('organization_id', ctx\.organizationId\)\s*\.eq\('user_id', ctx\.userId\)\s*\.maybeSingle\(\);/);
+  assert.match(helper, /if \(error \|\| !data \|\| typeof data\.role !== 'string'\) return null;/);
+  // Pas le resolveRole des lectures, qui range « member » parmi les collaborateurs.
+  assert.doesNotMatch(mutations, /resolveRole\s*\(|import[^;]*resolveRole/);
+});
+
+test('D3 — pause_sequence refusée à tout collaborateur, avant toute écriture en clé de service', () => {
+  const verify = sliceBetween(toolBlock('pause_sequence'), 'async verifyAccess(', 'async dryRun(');
+  const roleAt = verify.indexOf('const role = await readCallerOrgRole(ctx);');
+  const allowAt = verify.lastIndexOf('return { allowed: true };');
+  assert.ok(roleAt > 0 && roleAt < allowAt, 'rôle non lu avant l’autorisation');
+  assert.match(verify, /if \(!role\) return \{ allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE \};/);
+  // Même auteur de la séquence : aucune exception sur created_by.
+  assert.match(verify, /if \(!FULL_SEQUENCE_ROLES\.has\(role\)\) \{\s*return \{\s*allowed: false,/);
+  assert.doesNotMatch(verify, /created_by/);
+});
+
+test('D3 — resume_sequence : collaborateur limité à ses séquences, et jamais sans son JWT', () => {
+  const verify = sliceBetween(toolBlock('resume_sequence'), 'async verifyAccess(', 'async dryRun(');
+  assert.match(verify, /\.select\('id, organization_id, created_by'\)/);
+  assert.match(verify, /if \(!role\) return \{ allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE \};/);
+  assert.match(verify, /if \(!FULL_SEQUENCE_ROLES\.has\(role\)\) \{\s*if \(seq\.created_by !== ctx\.userId\) \{\s*return \{ allowed: false,/);
+  assert.match(verify, /if \(!ctx\.userBearer\) \{\s*return \{\s*allowed: false,/);
+  // Contrôle de rôle avant celui du plan (et donc avant l'autorisation).
+  assert.ok(verify.indexOf('readCallerOrgRole(ctx)') < verify.indexOf('getSubscriptionGate('));
+});
+
+test('D3 — resume_sequence : process-sequences appelé avec le JWT du collaborateur, clé de service pour les autres rôles', () => {
+  const execute = toolBlock('resume_sequence').slice(toolBlock('resume_sequence').indexOf('async execute('));
+  assert.match(execute, /const actsForWholeSequence = FULL_SEQUENCE_ROLES\.has\(role\);/);
+  assert.match(execute, /const callerToken = actsForWholeSequence \? serviceKey : ctx\.userBearer;/);
+  assert.match(execute, /headers: \{ Authorization: `Bearer \$\{callerToken\}`, 'Content-Type': 'application\/json' \}/);
+  assert.doesNotMatch(execute, /Bearer \$\{serviceKey\}/, 'clé de service envoyée quel que soit le rôle');
+  // Collaborateur sans JWT : refus AVANT la réactivation de la séquence.
+  const refuseAt = execute.search(/if \(!actsForWholeSequence && !ctx\.userBearer\) \{\s*return \{\s*success: false,/);
+  const updateAt = execute.indexOf('.update({ is_active: true })');
+  assert.ok(refuseAt > 0 && refuseAt < updateAt, 'séquence réactivée avant le contrôle du JWT');
+  // Inscriptions de collègues laissées en pause : annoncées (champ additif du §8).
+  assert.match(execute, /typeof body\.other_members === 'number' && body\.other_members > 0/);
+  // Aperçu : un collaborateur ne compte que ses inscriptions.
+  const dry = sliceBetween(toolBlock('resume_sequence'), 'async dryRun(', 'async execute(');
+  assert.match(dry, /if \(!role \|\| !FULL_SEQUENCE_ROLES\.has\(role\)\) toResumeQuery = toResumeQuery\.eq\('created_by', ctx\.userId\);/);
+});
+
+test('D3 — enroll_in_sequence : un collaborateur n’inscrit que dans une séquence qu’il voit (la sienne ou celle de son équipe de mission)', () => {
+  const verify = sliceBetween(toolBlock('enroll_in_sequence'), 'async verifyAccess(', 'async dryRun(');
+  assert.match(verify, /\.select\('id, organization_id, name, is_active, created_by, project_id'\)/);
+  const guard = sliceBetween(verify, 'if (seq.created_by !== ctx.userId) {', '// Job must also belong to org');
+  assert.match(guard, /if \(!FULL_SEQUENCE_ROLES\.has\(role\)\) \{/);
+  assert.match(guard, /\.from\('mission_team'\)\s*\.select\('id'\)\s*\.eq\('project_id', seq\.project_id\)\s*\.eq\('user_id', ctx\.userId\)/);
+  assert.match(guard, /if \(teamError\) return \{ allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE \};/);
+  assert.match(guard, /if \(!inMissionTeam\) \{\s*return \{\s*allowed: false,/);
 });

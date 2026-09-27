@@ -4,6 +4,7 @@ import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { hasPlanFeature } from '@/lib/featureGates';
 import { Button } from '@/components/ui/button';
@@ -74,6 +75,8 @@ interface SequenceWithStats {
   created_at: string;
   project_id: string | null;
   organization_id: string | null;
+  /** Auteur : seul lui modifie la séquence quand il est collaborateur (contrat §8). */
+  created_by: string | null;
   // Réglages d'en-tête lus par le moteur : à recharger à l'édition et à
   // recopier à la duplication, sinon ils sont effacés au premier enregistrement.
   stop_conditions: Partial<StopConditions> | null;
@@ -175,6 +178,11 @@ interface ResumeResponse {
   counts?: ResumeCounts;
   /** Candidats non traités faute de temps côté serveur (reprise par séquence). */
   remaining?: number;
+  /**
+   * Reprise par séquence d'un collaborateur (contrat §8) : candidats en pause
+   * laissés de côté parce qu'inscrits par d'autres membres. 0 sinon.
+   */
+  other_members?: number;
   message?: string;
   error?: string;
 }
@@ -220,6 +228,11 @@ const sequenceSaveError = (error: { message?: string; code?: string; hint?: stri
 // désactivation ne lui est pas proposée.
 const COLLABORATOR_DEACTIVATION_HINT = 'Désactiver une séquence met en pause tous ses candidats : réservé aux membres qui gèrent toutes les inscriptions. Mettez vos candidats en pause depuis la liste des inscrits.';
 
+// « Lecture seule » : séquence d'une autre organisation, ou (contrat §8) séquence
+// d'un collègue pour un collaborateur, qui ne modifie que celles qu'il a créées.
+const OTHER_ORG_READ_ONLY_HINT = 'Séquence d’une autre organisation : vous pouvez la consulter, pas la modifier.';
+const NOT_AUTHOR_READ_ONLY_HINT = 'Seul l’auteur de cette séquence peut la modifier : dupliquez-la pour l’adapter.';
+
 export const SequencesList: React.FC<SequencesListProps> = ({
   accounts,
   selectedAccount,
@@ -235,6 +248,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // (WITH CHECK organization_id = get_user_org_id(auth.uid())) : sans lui, la
   // création et la duplication étaient refusées par RLS.
   const { organizationId, isCollaborator } = useOrganization();
+  const { user } = useAuthReady();
+  const userId = user?.id ?? null;
   const navigate = useNavigate();
   // Gating par plan (lot P0-C) : l'activation d'une séquence est refusée sur le
   // plan gratuit. Tant que l'état d'abonnement charge, on ne refuse rien (le
@@ -249,7 +264,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [toggleConfirm, setToggleConfirm] = useState<{ id: string; nextActive: boolean; activeCount: number; shared: boolean } | null>(null);
   // Réactivation avec des candidats à reprendre : confirmation préalable.
-  const [activateConfirm, setActivateConfirm] = useState<{ id: string; resumable: number; otherPaused: number } | null>(null);
+  // `otherMembers` : candidats d'autres membres, que la reprise d'un collaborateur laisse en pause (D3).
+  const [activateConfirm, setActivateConfirm] = useState<{ id: string; resumable: number; otherPaused: number; otherMembers: number } | null>(null);
   // Séquence dont l'interrupteur est en cours d'écriture : désactivé pendant l'appel.
   const [togglingId, setTogglingId] = useState<string | null>(null);
   // Duplication en cours : « Dupliquer » grisé, un seul appel à la fois.
@@ -295,6 +311,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // d'une autre organisation, visibles par l'équipe de mission, sont en lecture
   // seule. Sans ce masquage, un refus silencieux affichait un faux succès.
   const canManage = (seq: SequenceWithStats) => !!organizationId && seq.organization_id === organizationId;
+  // Contrat §8 : un collaborateur ne modifie, ne supprime et n'active que les
+  // séquences qu'il a créées (policy org_members_update, save_sequence_steps
+  // SEQUENCE_NOT_OWNER). « Dupliquer » reste sous canManage : la copie lui appartient.
+  const canEdit = (seq: SequenceWithStats) =>
+    canManage(seq) && (!isCollaborator || (!!userId && seq.created_by === userId));
+  const readOnlyHint = (seq: SequenceWithStats) => (canManage(seq) ? NOT_AUTHOR_READ_ONLY_HINT : OTHER_ORG_READ_ONLY_HINT);
   // D3 : la désactivation (pause de tous les candidats) n'est pas proposée à un collaborateur.
   const deactivationLocked = (seq: SequenceWithStats) => seq.is_active && isCollaborator;
   // Bouton d'un toast qui ouvre la liste des inscrits : c'est là que l'on
@@ -709,7 +731,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
 
   // Réactivation : l'interrupteur d'abord (avec preuve d'écriture), puis la
   // reprise côté serveur des seuls candidats mis en pause par la séquence.
-  const activateSequence = async (sequenceId: string, resumable: number, otherPaused: number) => {
+  // `otherMembers` : pauses de séquence de candidats inscrits par d'autres membres,
+  // que le serveur ne reprend pas pour un collaborateur (D3), comptées au clic.
+  const activateSequence = async (sequenceId: string, resumable: number, otherPaused: number, otherMembers = 0) => {
     setTogglingId(sequenceId);
     try {
       const { data: updated, error: seqError } = await supabase
@@ -727,12 +751,26 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       }
       setSequences(prev => prev.map(s => s.id === sequenceId ? { ...s, is_active: true } : s));
 
+      // Raisons variées (pause manuelle, compte, limite, candidat injoignable) :
+      // toutes ne se reprennent pas depuis le panneau, qui dit quoi faire pour chacun.
       const stayPaused = otherPaused > 0
-        ? `${candidats(otherPaused)} mis en pause pour une autre raison ${otherPaused > 1 ? 'restent' : 'reste'} en pause : reprenez-les depuis la liste des inscrits.`
+        ? `${candidats(otherPaused)} ${otherPaused > 1 ? 'restent' : 'reste'} en pause pour une autre raison (pause manuelle, compte déconnecté, limite d’envoi…) : la liste des inscrits indique comment ${otherPaused > 1 ? 'les' : 'le'} reprendre.`
         : undefined;
+      // Contrat §8 : candidats d'autres membres laissés en pause (appelant collaborateur).
+      const otherMembersNotice = (n: number) => (n > 0
+        ? `${candidats(n)} ${n > 1 ? 'inscrits' : 'inscrit'} par d’autres membres ${n > 1 ? 'restent' : 'reste'} en pause : un administrateur ou le membre qui ${n > 1 ? 'les a inscrits peut les' : 'l’a inscrit peut le'} reprendre depuis la liste des inscrits.`
+        : null);
 
       if (resumable === 0) {
-        toast.success('Séquence réactivée', stayPaused ? { description: stayPaused, ...enrollmentsPanelAction(sequenceId) } : undefined);
+        const othersText = otherMembersNotice(otherMembers);
+        if (othersText) {
+          toast.warning('Séquence réactivée', {
+            description: [othersText, stayPaused].filter(Boolean).join(' '),
+            ...enrollmentsPanelAction(sequenceId),
+          });
+        } else {
+          toast.success('Séquence réactivée', stayPaused ? { description: stayPaused, ...enrollmentsPanelAction(sequenceId) } : undefined);
+        }
         return;
       }
 
@@ -748,6 +786,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       const outcomes = new Map<string, keyof ResumeCounts>();
       const countsWithoutResults: Required<ResumeCounts> = { resumed: 0, nothing_to_resume: 0, account_unlinked: 0, not_paused: 0, error: 0 };
       let remaining = 0;
+      // Compte du serveur (contrat §8) quand il le donne ; sinon celui fait au clic.
+      let serverOtherMembers: number | null = null;
       for (let round = 0; round < MAX_RESUME_ROUNDS; round += 1) {
         if (round > 0) {
           toast.loading(`Reprise en cours : ${candidats(remaining)} encore à reprendre…`, { id: `resume-${sequenceId}` });
@@ -767,6 +807,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             ...enrollmentsPanelAction(sequenceId),
           });
           return;
+        }
+        if (serverOtherMembers === null && typeof payload.other_members === 'number') {
+          serverOtherMembers = Math.max(0, payload.other_members);
         }
         if (Array.isArray(payload.results)) {
           for (const r of payload.results) outcomes.set(r.enrollment_id, r.outcome);
@@ -790,14 +833,32 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       const failed = tally.error;
       const unlinked = tally.account_unlinked;
       const nothing = tally.nothing_to_resume;
+      const othersLeft = serverOtherMembers ?? otherMembers;
+
+      // Filet, tous rôles : pauses de séquence encore en place après la reprise.
+      // Celles que le bilan n'explique pas (compte non relié, erreur, reste à
+      // traiter, autres membres) interdisent un succès : il n'y a pas de preuve.
+      const { count: stillPaused, error: recountError } = await supabase
+        .from('sequence_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('sequence_id', sequenceId)
+        .eq('status', 'paused')
+        .in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS);
+      if (recountError) console.error('Error recounting paused enrollments after resume:', recountError);
+      const unexplained = recountError ? 0 : Math.max(0, (stillPaused ?? 0) - (unlinked + failed + remaining + othersLeft));
+
       const details = [
         unlinked > 0 ? `${candidats(unlinked)} ${unlinked > 1 ? 'restent' : 'reste'} en pause : compte LinkedIn qui n’est plus relié.` : null,
         nothing > 0 ? `${candidats(nothing)} ${nothing > 1 ? 'n’avaient' : 'n’avait'} plus d’étape à envoyer.` : null,
         remaining > 0 ? `${candidats(remaining)} ${remaining > 1 ? 'n’ont' : 'n’a'} pas encore été ${remaining > 1 ? 'traités' : 'traité'} : reprenez-les depuis la liste des inscrits.` : null,
+        otherMembersNotice(othersLeft),
+        unexplained > 0 ? `${candidats(unexplained)} ${unexplained > 1 ? 'restent' : 'reste'} en pause sans avoir été repris : la liste des inscrits indique comment ${unexplained > 1 ? 'les' : 'le'} reprendre.` : null,
+        recountError ? 'Les candidats encore en pause n’ont pas pu être recomptés : vérifiez la liste des inscrits.' : null,
         stayPaused ?? null,
       ].filter((d): d is string => !!d).join(' ');
+      const notAllResumed = othersLeft > 0 || unexplained > 0 || !!recountError;
       // Candidats restés en pause : la liste des inscrits permet de les reprendre.
-      const panelAction = (remaining > 0 || failed > 0 || unlinked > 0 || stayPaused) ? enrollmentsPanelAction(sequenceId) : {};
+      const panelAction = (remaining > 0 || failed > 0 || unlinked > 0 || stayPaused || notAllResumed) ? enrollmentsPanelAction(sequenceId) : {};
 
       if (remaining > 0 && failed === 0) {
         toast.warning(`Séquence réactivée : ${candidats(resumed)} repris pour l’instant`, { description: details, ...panelAction });
@@ -806,6 +867,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           description: `${details} Reprenez les candidats en erreur depuis la liste des inscrits.`.trim(),
           ...panelAction,
         });
+      } else if (notAllResumed) {
+        toast.warning(`Séquence réactivée : ${candidats(resumed)} repris`, { description: details, ...panelAction });
       } else {
         toast.success(`Séquence réactivée. ${candidats(resumed)} repris.`, details ? { description: details, ...panelAction } : undefined);
       }
@@ -824,6 +887,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // candidats à reprendre.
   const requestToggle = async (seq: SequenceWithStats) => {
     if (togglingId) return;
+    // Défense : l'interrupteur n'est rendu que si canEdit.
+    if (!canEdit(seq)) {
+      toast.error('Modification impossible', { description: readOnlyHint(seq) });
+      return;
+    }
     if (deactivationLocked(seq)) {
       toast.error('Désactivation réservée', { description: COLLABORATOR_DEACTIVATION_HINT });
       return;
@@ -860,19 +928,32 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     setTogglingId(seq.id);
     let resumable = 0;
     let otherPaused = 0;
+    let otherMembers = 0;
     try {
-      const pausedCount = (withReason: boolean) => {
-        const q = supabase
+      const pausedCount = (withReason: boolean, createdBy: string | null = null) => {
+        let q = supabase
           .from('sequence_enrollments')
           .select('id', { count: 'exact', head: true })
           .eq('sequence_id', seq.id)
           .eq('status', 'paused');
-        return withReason ? q.in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS) : q;
+        if (withReason) q = q.in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS);
+        if (createdBy) q = q.eq('created_by', createdBy);
+        return q;
       };
-      const [resumableRes, pausedRes] = await Promise.all([pausedCount(true), pausedCount(false)]);
-      if (resumableRes.error || pausedRes.error) throw resumableRes.error || pausedRes.error;
-      resumable = resumableRes.count ?? 0;
-      otherPaused = Math.max(0, (pausedRes.count ?? 0) - resumable);
+      // D3 : pour un collaborateur, le serveur ne reprend que les candidats qu'il
+      // a inscrits. Ceux des autres membres (visibles sur sa séquence) restent
+      // en pause : comptés à part pour ne pas les annoncer comme repris.
+      const ownerFilter = isCollaborator ? userId : null;
+      const [resumableRes, pausedRes, ownRes] = await Promise.all([
+        pausedCount(true),
+        pausedCount(false),
+        ownerFilter ? pausedCount(true, ownerFilter) : Promise.resolve(null),
+      ]);
+      if (resumableRes.error || pausedRes.error || ownRes?.error) throw resumableRes.error || pausedRes.error || ownRes?.error;
+      const sequencePaused = resumableRes.count ?? 0;
+      resumable = ownRes ? Math.min(sequencePaused, ownRes.count ?? 0) : sequencePaused;
+      otherMembers = sequencePaused - resumable;
+      otherPaused = Math.max(0, (pausedRes.count ?? 0) - sequencePaused);
     } catch (err) {
       console.error('Error counting paused enrollments:', err);
       toast.error('La séquence n’a pas pu être réactivée. Réessayez.');
@@ -881,10 +962,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     }
     setTogglingId(null);
     if (resumable > 0) {
-      setActivateConfirm({ id: seq.id, resumable, otherPaused });
+      setActivateConfirm({ id: seq.id, resumable, otherPaused, otherMembers });
       return;
     }
-    await activateSequence(seq.id, 0, otherPaused);
+    await activateSequence(seq.id, 0, otherPaused, otherMembers);
   };
 
   const handleDelete = async (sequenceId: string) => {
@@ -1033,6 +1114,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   };
 
   const handleEdit = async (seq: SequenceWithStats) => {
+    // Contrat §8 : l'éditeur ne s'ouvre pas sur une séquence non modifiable. Un
+    // collaborateur y réécrivait les messages d'un collègue, puis tout était
+    // refusé à l'enregistrement (SEQUENCE_NOT_OWNER), sans brouillon gardé.
+    if (!canEdit(seq)) {
+      toast.error('Modification impossible', { description: readOnlyHint(seq) });
+      return;
+    }
     // Étapes relues en base à l'ouverture : la liste peut dater de l'arrivée
     // sur la page (étape ajoutée depuis par un collègue), ou ne pas avoir pu
     // les charger. Sans elles, l'éditeur ne s'ouvre pas : un enregistrement
@@ -1357,20 +1445,23 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 }}
               >
                 <div className="w-5" />
-                {canManage(seq) ? (
+                {/* D3 : interrupteur verrouillé d'un collaborateur laissé cliquable
+                    (aria-disabled) : requestToggle dit pourquoi, au clic comme au toucher. */}
+                {canEdit(seq) ? (
                   <Switch
                     checked={seq.is_active}
-                    disabled={togglingId === seq.id || deactivationLocked(seq)}
+                    disabled={togglingId === seq.id}
+                    aria-disabled={deactivationLocked(seq) || undefined}
                     title={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : undefined}
                     onCheckedChange={() => { void requestToggle(seq); }}
                     onClick={(e) => e.stopPropagation()}
-                    className="data-[state=checked]:bg-foreground"
+                    className={cn("data-[state=checked]:bg-foreground", deactivationLocked(seq) && "opacity-60")}
                     aria-label={seq.is_active ? `Mettre en pause la séquence ${seq.name}` : `Activer la séquence ${seq.name}`}
                   />
                 ) : (
                   <span
                     className="text-[10px] text-muted-foreground"
-                    title="Séquence d’une autre organisation : vous pouvez la consulter, pas la modifier."
+                    title={readOnlyHint(seq)}
                   >
                     Lecture seule
                   </span>
@@ -1486,7 +1577,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="bg-background border-border">
-                    {canManage(seq) && (
+                    {canEdit(seq) && (
                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
                         <Edit2 className="w-4 h-4 mr-2" aria-hidden="true" />
                         Modifier
@@ -1504,7 +1595,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                       <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
                       Enregistrer comme modèle
                     </DropdownMenuItem>
-                    {canManage(seq) && (
+                    {canEdit(seq) && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -1555,18 +1646,19 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   <div className="flex items-center gap-1.5 shrink-0">
                     {/* Même garde que le Switch desktop (requestToggle) : un tap
                         mobile passe par les mêmes confirmations. */}
-                    {canManage(seq) ? (
+                    {canEdit(seq) ? (
                       <Switch
                         checked={seq.is_active}
-                        disabled={togglingId === seq.id || deactivationLocked(seq)}
+                        disabled={togglingId === seq.id}
+                        aria-disabled={deactivationLocked(seq) || undefined}
                         title={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : undefined}
                         onCheckedChange={() => { void requestToggle(seq); }}
                         onClick={(e) => e.stopPropagation()}
-                        className="data-[state=checked]:bg-foreground"
+                        className={cn("data-[state=checked]:bg-foreground", deactivationLocked(seq) && "opacity-60")}
                         aria-label={seq.is_active ? `Mettre en pause la séquence ${seq.name}` : `Activer la séquence ${seq.name}`}
                       />
                     ) : (
-                      <span className="text-[10px] text-muted-foreground">Lecture seule</span>
+                      <span className="text-[10px] text-muted-foreground" title={readOnlyHint(seq)}>Lecture seule</span>
                     )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -1575,7 +1667,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="bg-background border-border">
-                        {canManage(seq) && (
+                        {canEdit(seq) && (
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(seq); }}>
                             <Edit2 className="w-4 h-4 mr-2" aria-hidden="true" />
                             Modifier
@@ -1595,7 +1687,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                           <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
                           Enregistrer comme modèle
                         </DropdownMenuItem>
-                        {canManage(seq) && (
+                        {canEdit(seq) && (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -1867,6 +1959,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                   {candidats(activateConfirm?.resumable ?? 0)} en pause {(activateConfirm?.resumable ?? 0) > 1 ? 'reprendront' : 'reprendra'}.
                   Chaque étape garde sa date prévue ; celles déjà passées partiront dans les prochaines heures.
                 </p>
+                {(activateConfirm?.otherMembers ?? 0) > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {candidats(activateConfirm?.otherMembers ?? 0)} {(activateConfirm?.otherMembers ?? 0) > 1 ? 'inscrits' : 'inscrit'} par
+                    d’autres membres {(activateConfirm?.otherMembers ?? 0) > 1 ? 'resteront' : 'restera'} en pause : un administrateur
+                    ou le membre qui {(activateConfirm?.otherMembers ?? 0) > 1 ? 'les a inscrits peut les' : 'l’a inscrit peut le'} reprendre
+                    depuis la liste des inscrits.
+                  </p>
+                )}
                 {(activateConfirm?.otherPaused ?? 0) > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {candidats(activateConfirm?.otherPaused ?? 0)} mis en pause pour une autre raison (un par un, compte
@@ -1881,7 +1981,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <AlertDialogAction
               onClick={() => {
                 if (activateConfirm) {
-                  void activateSequence(activateConfirm.id, activateConfirm.resumable, activateConfirm.otherPaused);
+                  void activateSequence(activateConfirm.id, activateConfirm.resumable, activateConfirm.otherPaused, activateConfirm.otherMembers);
                 }
                 setActivateConfirm(null);
               }}

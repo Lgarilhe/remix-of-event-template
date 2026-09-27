@@ -199,7 +199,10 @@ test('front-enroll-follow-4 — les fenêtres n’excluent plus une relation dir
   assert.match(compatible, /const excluded = new Set\(excludableCompat\.map\(r => r\.profile\.id\)\);/);
   assert.doesNotMatch(enrollModal, /compat\.compatible\.map\(c => c\.profile as LinkedInProfile\)/);
   assert.match(enrollModal, /Exclure les candidats incompatibles \(\{excludableCompat\.length\}\)/);
-  assert.doesNotMatch(enrollModal, /'Déjà en relation, exclu'/);
+  // « Déjà en relation, exclu » : réservé à une séquence qui ne contient que
+  // l'invitation (dernière passe, front-enroll-follow-1), jamais à une relation
+  // directe suivie de messages.
+  assert.match(slice(enrollModal, 'function compatExclusionLabel(', '\n}\n'), /if \(issue === 'connection_only_already_connected'\) return 'Déjà en relation, exclu';/);
   // Messagerie.
   assert.match(inbox, /"Relation LinkedIn non vérifiée : si vous êtes déjà en relation, l'invitation sera sautée\."/);
 });
@@ -271,7 +274,8 @@ test('front-enroll-follow-7 — fermer la préparation avec des messages prépar
   assert.match(dialog, /<AlertDialogTitle>Fermer sans inscrire \?<\/AlertDialogTitle>/);
   assert.match(dialog, /<AlertDialogDescription>Les messages préparés seront perdus\.<\/AlertDialogDescription>/);
   assert.match(dialog, /<AlertDialogCancel>Continuer la préparation<\/AlertDialogCancel>/);
-  assert.match(dialog, /setConfirmDiscardOpen\(false\);\s*onClose\(\);/);
+  // Même garde que handleClose (dernière passe, front-enroll-follow-3).
+  assert.match(dialog, /setConfirmDiscardOpen\(false\);[\s\S]*?if \(!isBusy\) onClose\(\);/);
   assert.match(dialog, /Fermer sans inscrire\s*<\/AlertDialogAction>/);
   assert.ok(previewModal.indexOf('</DialogPrimitive.Portal>') < previewModal.indexOf('<AlertDialog open={confirmDiscardOpen}'));
 });

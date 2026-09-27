@@ -19,8 +19,7 @@
 --                passées 'sent', pour qu'aucune reprise ne les renvoie. Les
 --                lignes « before send (last-call check) », jamais parties, restent.
 --   1b. (Pauses héritées : bloc 2b, après la nouvelle contrainte 2a, car
---                l'ancienne contrainte de la prod refuse sequence_inactive et
---                auto_paused.)
+--                l'ancienne contrainte de la prod refuse auto_paused.)
 --   1c. SEQ-013  assigned_sender_id passe de uuid à text (identifiant du compte
 --                d'envoi). Toute valeur actuelle est un user_id hérité de
 --                BUG-023, jamais un compte : remise à NULL avant le changement.
@@ -41,15 +40,21 @@
 --                auto_paused, send_failed, blocked_by_candidate.
 --   2b. SEQ-121 / D6  Pauses héritées reclassées, dans cet ordre :
 --                (1) sans raison, avec une étape annulée « Auto-paused: high
---                failure rate » (ancienne auto-pause du moteur) : auto_paused ;
---                (2) sans raison ou 'manual', dans une séquence désactivée
---                (l'ancienne désactivation écrivait 'manual') : sequence_inactive,
---                pour que la réactivation les reprenne comme avant l'audit ;
---                (3) le reste des pauses sans raison : 'manual'.
---                (1) et (2) excluent toute inscription arrêtée à la main par
---                l'ancien front (étape annulée « Arrêt manuel », « Arrêt
---                groupé » ou « Stoppé depuis Inbox ») : une réactivation ne
---                renvoie jamais un message qu'un recruteur avait arrêté.
+--                failure rate » (ancienne auto-pause du moteur) : auto_paused,
+--                sauf si une autre étape annulée montre un arrêt par un
+--                recruteur (« Arrêt manuel », « Arrêt groupé », « Stoppé depuis
+--                Inbox »), une ancienne dissociation (« Compte LinkedIn
+--                dissocié ») ou un blocage par le candidat (« Candidat a bloqué
+--                le compte LinkedIn — séquence stoppée ») ;
+--                (2) tout le reste des pauses sans raison : 'manual'.
+--                Aucune pause héritée ('manual' ou sans raison) ne devient
+--                sequence_inactive, même dans une séquence désactivée : l'ancien
+--                front n'annulait que les étapes 'scheduled', un arrêt posé
+--                pendant une attente (waiting_event) ne laisse aucun marqueur et
+--                ne se distingue pas d'une désactivation. La réactivation d'une
+--                séquence ne reprend donc aucune pause héritée hors auto-pause ;
+--                elles se reprennent par « Reprendre tous les candidats en
+--                pause » ou candidat par candidat (D6 précisée, contrat §8).
 --   2c. SEQ-215  Statuts hérités hors liste, avant la pose des CHECK :
 --                inscriptions 'booked' (ancien calendly-webhook) passées
 --                'completed' (tracking_data : completion_reason meeting_booked,
@@ -111,7 +116,9 @@
 --                par la RLS, bloc 5), refuse une autre organisation, et ne
 --                renvoie que les colonnes du rapprochement : inscriptions
 --                vivantes (active, paused) et closes (replied, completed)
---                depuis p_since.
+--                depuis p_since. Rapprochement exact seulement (identifiant,
+--                ou slug public égal au slug extrait de profile_url) : aucun
+--                préfixe ne permet d'énumérer les candidats de l'organisation.
 -- 5. Policies (SEQ-009, 011, 056, 057, 058, 119, 216) : sur les dix tables du
 --    module, toutes les policies sont retirées quel que soit leur nom (règle 7
 --    de CLAUDE.md) puis un seul jeu est recréé, aux noms de la prod. Contrôle
@@ -322,9 +329,9 @@ COMMENT ON COLUMN public.sequence_enrollments.pause_reason IS
 
 -- ---------------------------------------------------------------------
 -- 2b. SEQ-121 / D6 : pauses héritées (après 2a, qui autorise les valeurs)
---     Ordre : auto-pause identifiable, puis désactivation de séquence, puis
---     le reste des pauses sans raison en 'manual'. Jamais une inscription
---     arrêtée à la main par l'ancien front (motifs d'annulation ci-dessous).
+--     Ordre : auto-pause identifiable par son marqueur, puis le reste des
+--     pauses sans raison en 'manual'. Jamais sequence_inactive (D6 précisée) :
+--     un arrêt manuel posé pendant une attente ne laisse aucun marqueur.
 -- ---------------------------------------------------------------------
 UPDATE public.sequence_enrollments e
 SET pause_reason = 'auto_paused'
@@ -340,21 +347,13 @@ WHERE e.status = 'paused'
     SELECT 1 FROM public.sequence_step_executions x
     WHERE x.enrollment_id = e.id
       AND x.status = 'cancelled'
-      AND x.skip_reason IN ('Arrêt manuel', 'Arrêt groupé', 'Stoppé depuis Inbox')
-  );
-
-UPDATE public.sequence_enrollments e
-SET pause_reason = 'sequence_inactive'
-FROM public.outreach_sequences s
-WHERE s.id = e.sequence_id
-  AND s.is_active IS FALSE
-  AND e.status = 'paused'
-  AND (e.pause_reason IS NULL OR e.pause_reason = 'manual')
-  AND NOT EXISTS (
-    SELECT 1 FROM public.sequence_step_executions x
-    WHERE x.enrollment_id = e.id
-      AND x.status = 'cancelled'
-      AND x.skip_reason IN ('Arrêt manuel', 'Arrêt groupé', 'Stoppé depuis Inbox')
+      AND x.skip_reason IN (
+        'Arrêt manuel',
+        'Arrêt groupé',
+        'Stoppé depuis Inbox',
+        'Compte LinkedIn dissocié',
+        'Candidat a bloqué le compte LinkedIn — séquence stoppée'
+      )
   );
 
 UPDATE public.sequence_enrollments
@@ -953,10 +952,14 @@ GRANT EXECUTE ON FUNCTION public.is_active_org_collaborator(uuid) TO authenticat
 --     inscriptions de ses collègues, mais doit savoir qu'un candidat est déjà
 --     contacté par l'organisation. Refus si p_org n'est pas l'organisation
 --     active de l'appelant ; colonnes du rapprochement seulement.
---     Rapprochement : profile_id, provider_id ou resolved_profile_id dans
---     p_values, ou profile_url contenant /in/{slug} (slug de p_slugs, 3
---     caractères au moins, jokers échappés). Inscriptions vivantes (active,
---     paused) sans limite de date, closes (replied, completed) depuis p_since.
+--     Rapprochement exact : profile_id, provider_id ou resolved_profile_id
+--     dans p_values, ou slug exact : le slug de profile_url (texte après
+--     /in/ jusqu'à la fin, '/', '?' ou '#', en minuscules, comme
+--     extractLinkedInSlug du front) égal à l'un des slugs de p_slugs (3
+--     caractères au moins, casse ignorée). Jamais un préfixe ni un motif :
+--     la fonction voit les inscriptions des collègues d'un collaborateur.
+--     Inscriptions vivantes (active, paused) sans limite de date, closes
+--     (replied, completed) depuis p_since.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.find_recent_org_contacts(
   p_org uuid,
@@ -981,7 +984,7 @@ SET search_path = public
 AS $$
 #variable_conflict use_column
 DECLARE
-  v_patterns text[];
+  v_slugs text[];
 BEGIN
   IF auth.uid() IS NULL
      OR p_org IS NULL
@@ -990,10 +993,10 @@ BEGIN
       USING ERRCODE = '42501', HINT = 'NOT_ORG_MEMBER';
   END IF;
 
-  SELECT COALESCE(array_agg(
-           '%/in/' || replace(replace(replace(btrim(s), '\', '\\'), '%', '\%'), '_', '\_') || '%'
-         ), ARRAY[]::text[])
-    INTO v_patterns
+  -- Slugs comparés par égalité (jamais un motif) : un préfixe fourni ne
+  -- renvoie rien.
+  SELECT COALESCE(array_agg(DISTINCT lower(btrim(s))), ARRAY[]::text[])
+    INTO v_slugs
   FROM unnest(COALESCE(p_slugs, ARRAY[]::text[])) AS s
   WHERE length(btrim(s)) >= 3;
 
@@ -1012,7 +1015,8 @@ BEGIN
         e.profile_id = ANY (COALESCE(p_values, ARRAY[]::text[]))
         OR e.provider_id = ANY (COALESCE(p_values, ARRAY[]::text[]))
         OR e.resolved_profile_id = ANY (COALESCE(p_values, ARRAY[]::text[]))
-        OR (e.profile_url IS NOT NULL AND e.profile_url ILIKE ANY (v_patterns))
+        OR (e.profile_url IS NOT NULL
+            AND substring(lower(e.profile_url) FROM '/in/([^/?#]+)') = ANY (v_slugs))
       )
     ORDER BY e.created_at DESC;
 END;

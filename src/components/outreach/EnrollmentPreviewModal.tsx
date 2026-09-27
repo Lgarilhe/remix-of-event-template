@@ -45,7 +45,7 @@ import {
   RECENT_CONTACT_WINDOW_DAYS,
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
-import { checkProfilesCompat, pickFirstStep } from '@/lib/sequenceCompatibility';
+import { CLOSED_CHANNEL_ACTION_TYPES, checkProfilesCompat, isClosedChannelStep, pickFirstStep } from '@/lib/sequenceCompatibility';
 // Un seul nom par type d'étape, celui de l'éditeur de séquence.
 import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
@@ -163,6 +163,16 @@ function mapSteps(rawSteps: any[]): SequenceStepPreview[] {
 const MESSAGE_ACTIONS = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
 
 /**
+ * Étape dont le message est préparé ici. Un canal fermé (e-mail, WhatsApp, D2)
+ * est sauté par le moteur : pas de carte d'aperçu, l'arbre le montre compact.
+ */
+function isPreviewedMessageStep(step: SequenceStepPreview): boolean {
+  return MESSAGE_ACTIONS.includes(step.actionType)
+    && !isClosedChannelStep(step.actionType)
+    && !!step.messageTemplate?.trim();
+}
+
+/**
  * Affiche {{calendly_link}} (ou {{lien_calendly}}) comme une pastille : le
  * moteur y met le lien d'agenda de la mission à l'envoi. Le texte enregistré
  * dans les messages de l'inscription garde la variable telle quelle.
@@ -189,15 +199,18 @@ function enrollProgressLabel(progress: { done: number; total: number } | null): 
 
 /**
  * Titre du bandeau de compatibilité (candidats exclus ou inclus quand même).
- * Seul un candidat injoignable bloque ; un candidat déjà en relation est un
- * simple avertissement (invitation sautée, messages suivants envoyés).
+ * Bloquent : un candidat injoignable, et un candidat déjà en relation quand la
+ * séquence ne contient que l'invitation. Déjà en relation avec des messages
+ * après l'invitation : simple avertissement (invitation sautée, suite envoyée).
  */
 function compatHeadline(blockers: { issue: string | null }[], included: boolean): string {
   const n = blockers.length;
   const plural = n > 1;
   const reason = blockers.every(r => r.issue === 'too_far')
     ? ` : hors de votre réseau LinkedIn, seul un InMail peut ${plural ? 'les ' : "l'"}atteindre`
-    : '';
+    : blockers.every(r => r.issue === 'connection_only_already_connected')
+      ? " : déjà en relation, et la séquence ne contient qu'une invitation"
+      : '';
   const outcome = included
     ? (plural ? 'Ils seront inscrits quand même.' : 'Il sera inscrit quand même.')
     : (plural ? "Ils sont exclus de l'inscription." : "Il est exclu de l'inscription.");
@@ -231,10 +244,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const isBulk = profiles.length > 10;
   const candidateIds = useMemo(() => profiles.map(profile => profile.id), [profiles]);
   const firstProfileId = candidateIds[0] ?? '';
-  const hasSendableMessage = useMemo(
-    () => steps.some(s => MESSAGE_ACTIONS.includes(s.actionType) && !!s.messageTemplate?.trim()),
-    [steps],
-  );
+  const hasSendableMessage = useMemo(() => steps.some(isPreviewedMessageStep), [steps]);
   // Compte d'envoi affiché près du bouton ; déconnecté ou relié à un collègue,
   // il bloque l'inscription (liaison stricte).
   const sendingAccount = useSendingAccount(accountId);
@@ -362,8 +372,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
   // ── Compatibilité candidat / séquence ──
   // Même contrôle que l'inscription simple : un candidat hors réseau ne peut
-  // être joint que par InMail (exclu par défaut, « Inclure quand même ») ; un
-  // candidat déjà en relation est averti (invitation sautée par le moteur).
+  // être joint que par InMail, un candidat déjà en relation ne reçoit rien
+  // d'une séquence qui n'a que l'invitation (exclus par défaut, « Inclure
+  // quand même ») ; déjà en relation avec une suite : averti (invitation sautée).
   const compat = useMemo(() => checkProfilesCompat(profiles, sequence.steps), [profiles, sequence.steps]);
   const incompatibleIds = useMemo(() => new Set(compat.blockers.map(r => r.profile.id)), [compat.blockers]);
   const [includeIncompatible, setIncludeIncompatible] = useState(false);
@@ -954,7 +965,13 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         <DialogPrimitive.Content
           ref={contentRef}
           aria-describedby={undefined}
-          className="fixed inset-0 z-[9999] bg-background flex flex-col pointer-events-auto outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0"
+          // Confirmation « Fermer sans inscrire ? » ouverte : son voile passe
+          // sous cette couche plein écran, on neutralise donc la préparation
+          // (aucun clic sur « Inscrire » ni ailleurs) et on l'assombrit.
+          className={cn(
+            'fixed inset-0 z-[9999] bg-background flex flex-col pointer-events-auto outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0',
+            confirmDiscardOpen && 'pointer-events-none',
+          )}
           onOpenAutoFocus={(e) => {
             // Focus sur la liste des candidats (flèches actives) ou, sans liste,
             // sur la fenêtre elle-même ; jamais sur la croix : Entrée ne doit
@@ -968,6 +985,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           onInteractOutside={(e) => e.preventDefault()}
           onKeyDown={handleGenerateShortcut}
         >
+      {confirmDiscardOpen && <div aria-hidden="true" className="absolute inset-0 z-50 bg-black/80" />}
       {/* Header — refonte avec font-display + bouton X circular + eyebrow */}
       <motion.div
         className="border-b border-border shrink-0 bg-background"
@@ -1424,7 +1442,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                         getStepConfig={getStepConfig}
                         setStepConfig={setStepConfig}
                         renderStep={(step, idx) => {
-                          const isMessageStep = MESSAGE_ACTIONS.includes(step.actionType) && !!step.messageTemplate?.trim();
+                          const isMessageStep = isPreviewedMessageStep(step);
                           const Icon = ACTION_ICONS[step.actionType] || MessageSquare;
 
                           if (!isMessageStep) {
@@ -1538,7 +1556,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 setConfirmDiscardOpen(false);
-                onClose();
+                // Même garde que handleClose : jamais de fermeture pendant une
+                // inscription (la boucle continuerait, le bilan serait perdu).
+                if (!isBusy) onClose();
               }}
             >
               Fermer sans inscrire
@@ -1835,8 +1855,14 @@ function SummaryMode({
   onClose: () => void;
   jobId?: string;
 }) {
-  const emailSteps = steps.filter(s => s.actionType === 'email');
-  const whatsappSteps = steps.filter(s => s.actionType === 'whatsapp_message');
+  // Canaux fermés (D2) : leurs étapes sont sautées même avec une adresse ou
+  // un numéro, donc aucun appel à l'enrichissement payant, un seul avis. Les
+  // blocs d'enrichissement reviennent d'eux-mêmes à la réouverture du canal.
+  const emailSteps = steps.filter(s => s.actionType === 'email' && !isClosedChannelStep(s.actionType));
+  const whatsappSteps = steps.filter(s => s.actionType === 'whatsapp_message' && !isClosedChannelStep(s.actionType));
+  const closedChannels = CLOSED_CHANNEL_ACTION_TYPES
+    .filter(t => steps.some(s => s.actionType === t))
+    .map(t => (t === 'email' ? 'e-mail' : 'WhatsApp'));
 
   return (
     <div className="max-w-xl mx-auto p-6 sm:p-8 space-y-6">
@@ -1870,6 +1896,13 @@ function SummaryMode({
         <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-border bg-muted/20 text-[12.5px] text-foreground">
           <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true" />
           <span>{firstAction}</span>
+        </div>
+      )}
+
+      {closedChannels.length > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-warning/30 bg-warning/5 text-[12px] text-foreground" role="note">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-warning" aria-hidden="true" />
+          <span>Les étapes {closedChannels.join(' et ')} ne partent pas encore : elles seront sautées.</span>
         </div>
       )}
 

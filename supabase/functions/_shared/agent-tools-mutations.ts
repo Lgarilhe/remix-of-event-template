@@ -682,7 +682,7 @@ const enrollInSequence: AgentTool = {
     // Sequence must belong to the user's org
     const { data: seq } = await ctx.adminClient
       .from('outreach_sequences')
-      .select('id, organization_id, name, is_active')
+      .select('id, organization_id, name, is_active, created_by, project_id')
       .eq('id', sequenceId)
       .maybeSingle();
     if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
@@ -690,6 +690,33 @@ const enrollInSequence: AgentTool = {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
     }
     if (!seq.is_active) return { allowed: false, reason: `La séquence "${seq.name}" est désactivée` };
+
+    // D3 : un collaborateur n'inscrit que dans une séquence qu'il voit dans
+    // l'interface (RLS SELECT de B6 : la sienne, ou celle d'une mission dont
+    // il fait partie de l'équipe). Échec fermé si la lecture échoue.
+    if (seq.created_by !== ctx.userId) {
+      const role = await readCallerOrgRole(ctx);
+      if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+      if (!FULL_SEQUENCE_ROLES.has(role)) {
+        let inMissionTeam = false;
+        if (seq.project_id) {
+          const { data: teamRows, error: teamError } = await ctx.adminClient
+            .from('mission_team')
+            .select('id')
+            .eq('project_id', seq.project_id)
+            .eq('user_id', ctx.userId)
+            .limit(1);
+          if (teamError) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+          inMissionTeam = (teamRows ?? []).length > 0;
+        }
+        if (!inMissionTeam) {
+          return {
+            allowed: false,
+            reason: "Vous ne pouvez inscrire des candidats que dans vos propres séquences ou dans celles des missions dont vous faites partie de l'équipe.",
+          };
+        }
+      }
+    }
 
     // Job must also belong to org
     const { data: project } = await ctx.adminClient
@@ -2607,12 +2634,38 @@ type GateClient = Parameters<typeof getSubscriptionGate>[0];
 /** Raisons de pause reprises par la réactivation d'une séquence (contrat des lots, §2). */
 const SEQUENCE_LEVEL_PAUSE_REASONS = ['sequence_inactive', 'auto_paused'];
 
+// D3 (contrat §7 et §8) : un collaborateur n'agit que sur les inscriptions
+// qu'il a créées, comme la RLS de B6. Ces outils écrivent en clé de service :
+// sans ce contrôle, l'assistant rouvrait au collaborateur ce que l'interface
+// et process-sequences lui refusent. Seuls ces trois rôles agissent sur toute
+// la séquence ; tout autre rôle est traité comme un collaborateur.
+const FULL_SEQUENCE_ROLES = new Set(['owner', 'admin', 'member']);
+const RIGHTS_UNVERIFIED_MESSAGE = "Vos droits n'ont pas pu être vérifiés. Réessayez dans un instant.";
+
+/**
+ * Rôle exact de l'appelant dans l'organisation courante (organization_members).
+ * null si la lecture échoue ou s'il n'est pas membre : l'appelant refuse
+ * (échec fermé). Ne pas reprendre resolveRole de agent-tools-reads.ts, qui
+ * range le rôle 'member' parmi les collaborateurs.
+ */
+async function readCallerOrgRole(ctx: ToolContext): Promise<string | null> {
+  const { data, error } = await ctx.adminClient
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', ctx.organizationId)
+    .eq('user_id', ctx.userId)
+    .maybeSingle();
+  if (error || !data || typeof data.role !== 'string') return null;
+  return data.role;
+}
+
 const pauseSequence: AgentTool = {
   name: 'pause_sequence',
   description:
     "Pause an outreach sequence: every candidate currently in progress is paused (no message leaves until resume_sequence). " +
     "Use this when the user says 'mets en pause la séquence X', 'arrête temporairement Y'. " +
     "Reversible via `resume_sequence`. The enrolled candidates and their scheduled steps are preserved. " +
+    "Refused to users with the collaborator role (it would pause their teammates' candidates too). " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -2639,6 +2692,18 @@ const pauseSequence: AgentTool = {
     if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
     if (seq.organization_id !== ctx.organizationId) {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
+    }
+    // D3 (contrat §8) : refusé à tout collaborateur, même auteur de la
+    // séquence (la mise en pause gèlerait aussi les inscriptions de ses
+    // collègues), comme la désactivation depuis l'interface.
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+    if (!FULL_SEQUENCE_ROLES.has(role)) {
+      return {
+        allowed: false,
+        reason:
+          "En tant que collaborateur, vous ne pouvez pas mettre en pause une séquence entière : cela mettrait en pause les candidats de toute l'équipe. Mettez vos candidats en pause un par un depuis la liste des inscrits.",
+      };
     }
     return { allowed: true };
   },
@@ -2742,6 +2807,7 @@ const resumeSequence: AgentTool = {
     "Resume a paused outreach sequence — the candidates paused with the sequence start progressing again (each step keeps its planned date). " +
     "Candidates paused individually, for a disconnected account or for billing are NOT resumed. " +
     "Use this when the user says 'relance la séquence X', 'réactive Y'. " +
+    "A user with the collaborator role can only resume a sequence they created, and only their own candidates resume. " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -2761,12 +2827,30 @@ const resumeSequence: AgentTool = {
     if (!sequenceId) return { allowed: false, reason: 'sequence_id is required' };
     const { data: seq } = await ctx.adminClient
       .from('outreach_sequences')
-      .select('id, organization_id')
+      .select('id, organization_id, created_by')
       .eq('id', sequenceId)
       .maybeSingle();
     if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
     if (seq.organization_id !== ctx.organizationId) {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
+    }
+    // D3 (contrat §8) : un collaborateur ne réactive que ses propres
+    // séquences (même règle que la RLS org_members_update), et seulement avec
+    // son JWT, pour que process-sequences ne reprenne que ses inscriptions.
+    // Sans JWT (exécution programmée), refus plutôt que la clé de service.
+    // Rejoué juste avant execute (recheckAccess, SEC-002).
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+    if (!FULL_SEQUENCE_ROLES.has(role)) {
+      if (seq.created_by !== ctx.userId) {
+        return { allowed: false, reason: 'Vous ne pouvez réactiver que les séquences que vous avez créées.' };
+      }
+      if (!ctx.userBearer) {
+        return {
+          allowed: false,
+          reason: "La réactivation de votre séquence doit être validée depuis la conversation avec l'assistant : relancez-la depuis le chat.",
+        };
+      }
     }
     // Plan d'abord : sans envoi de séquences, le moteur remettrait aussitôt
     // les candidats en pause (abonnement requis).
@@ -2788,19 +2872,24 @@ const resumeSequence: AgentTool = {
 
   async dryRun(params, ctx) {
     const sequenceId = String(params.sequence_id);
+    // Un collaborateur ne reprend que ses inscriptions (D3) : l'aperçu ne
+    // compte que celles-là.
+    const role = await readCallerOrgRole(ctx);
+    let toResumeQuery = ctx.adminClient
+      .from('sequence_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('sequence_id', sequenceId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('status', 'paused')
+      .in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS);
+    if (!role || !FULL_SEQUENCE_ROLES.has(role)) toResumeQuery = toResumeQuery.eq('created_by', ctx.userId);
     const [{ data: seq }, { count: enrollments }] = await Promise.all([
       ctx.adminClient
         .from('outreach_sequences')
         .select('name, is_active')
         .eq('id', sequenceId)
         .maybeSingle(),
-      ctx.adminClient
-        .from('sequence_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('sequence_id', sequenceId)
-        .eq('organization_id', ctx.organizationId)
-        .eq('status', 'paused')
-        .in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS),
+      toResumeQuery,
     ]);
 
     const seqName = seq?.name || sequenceId;
@@ -2826,6 +2915,21 @@ const resumeSequence: AgentTool = {
   async execute(params, ctx) {
     const sequenceId = String(params.sequence_id);
 
+    // 0. Identité de l'appel à process-sequences, décidée AVANT de réactiver
+    //    la séquence : clé de service pour propriétaire, administrateur et
+    //    membre (reprise de toute la séquence), JWT de l'utilisateur pour un
+    //    collaborateur (process-sequences ne reprend alors que ses propres
+    //    inscriptions, D3). Collaborateur sans JWT : refus, jamais la clé de service.
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { success: false, error: RIGHTS_UNVERIFIED_MESSAGE };
+    const actsForWholeSequence = FULL_SEQUENCE_ROLES.has(role);
+    if (!actsForWholeSequence && !ctx.userBearer) {
+      return {
+        success: false,
+        error: "La réactivation de votre séquence doit être validée depuis la conversation avec l'assistant : relancez-la depuis le chat. Rien n'a changé.",
+      };
+    }
+
     // 1. La séquence d'abord : l'inverse ferait envoyer une séquence encore
     //    affichée « en pause ».
     const { data, error } = await ctx.adminClient
@@ -2842,19 +2946,22 @@ const resumeSequence: AgentTool = {
     // 2. Reprise des candidats par l'action serveur (règle unique de reprise).
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const callerToken = actsForWholeSequence ? serviceKey : ctx.userBearer;
     const partial = "La séquence est active, mais la reprise des candidats en pause a échoué : ils restent en pause. Réessayez depuis la liste des séquences.";
-    if (!supabaseUrl || !serviceKey) return { success: false, error: partial };
+    if (!supabaseUrl || !callerToken) return { success: false, error: partial };
     let body: {
       success?: boolean;
       message?: string;
       counts?: Partial<Record<'resumed' | 'nothing_to_resume' | 'account_unlinked' | 'not_paused' | 'error', number>>;
       /** Inscriptions non traitées dans le budget de temps de l'action serveur (un second appel les reprend). */
       remaining?: number;
+      /** Inscriptions en pause laissées de côté car créées par des collègues (appelant collaborateur, contrat §8). */
+      other_members?: number;
     } = {};
     try {
       const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/process-sequences`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${callerToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'resume_enrollments',
           organization_id: ctx.organizationId,
@@ -2879,6 +2986,8 @@ const resumeSequence: AgentTool = {
     if (unlinked > 0) notes.push(`${unlinked} restent en pause : leur compte LinkedIn d'envoi n'est plus relié`);
     if (failed > 0) notes.push(`${failed} n'ont pas pu être repris`);
     if (remaining > 0) notes.push(`${remaining} n'ont pas encore été traités faute de temps : relancez la réactivation pour les reprendre`);
+    const otherMembers = typeof body.other_members === 'number' && body.other_members > 0 ? body.other_members : 0;
+    if (otherMembers > 0) notes.push(`${otherMembers} inscrits par vos collègues restent en pause : leur recruteur ou un administrateur peut les reprendre`);
     return {
       success: true,
       data: {

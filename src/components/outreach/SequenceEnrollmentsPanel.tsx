@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import {
   formatSequenceError as formatErrorMessage,
   formatSkipReason,
@@ -115,6 +116,8 @@ interface Enrollment {
   pause_reason?: string | null;
   /** Suivi du moteur ; `pause_reason` y précise parfois une pause (texte en français). */
   tracking_data?: unknown;
+  /** Membre qui a inscrit le candidat : un collaborateur n'agit que sur les siens (D3). */
+  created_by?: string | null;
   executions?: StepExecution[];
 }
 
@@ -170,6 +173,11 @@ const isSequenceLevelPause = (reason: string | null | undefined): boolean =>
  * la séquence » serait fausse, le candidat se reprend un par un ou avec les autres.
  */
 const SEQUENCE_ACTIVE_AGAIN_HINT = 'La séquence est de nouveau active : reprenez ce candidat.';
+/**
+ * D3 : un collaborateur ne reprend que les candidats qu'il a inscrits (le
+ * serveur refuse les autres) : « Reprendre » lui est masqué et on dit qui peut.
+ */
+const OTHER_MEMBER_RESUME_HINT = 'Candidat inscrit par un autre membre : un administrateur ou ce membre peut reprendre sa séquence.';
 
 /**
  * Pauses reprises par « Reprendre tous les candidats en pause » : pauses une
@@ -300,6 +308,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   // D3 : un collaborateur ne met en pause ni ne reprend que ses propres
   // inscriptions (RLS, serveur) : les actions groupées ne lui sont pas proposées.
   const { isCollaborator } = useOrganization();
+  const { user } = useAuthReady();
+  const userId = user?.id ?? null;
   // Échec du dernier chargement complet : affiché avec « Réessayer » au lieu
   // de « Aucun candidat inscrit ».
   const [loadError, setLoadError] = useState(false);
@@ -744,15 +754,21 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         action: 'mark_replied',
         enrollment_id: enrollmentId,
       });
-      const payload = data as { success?: boolean; changed?: boolean; message?: string; warning?: string } | null;
+      const payload = data as { success?: boolean; changed?: boolean; message?: string; warning?: string; stopped_siblings?: number } | null;
       if (error || !payload?.success) {
         throw new Error(payload?.message || error?.message || 'Réessayez dans un instant.');
       }
+      // Contrat §8 : les autres inscriptions du candidat sont arrêtées comme
+      // pour une réponse détectée ; le bilan le dit.
+      const siblings = typeof payload.stopped_siblings === 'number' ? payload.stopped_siblings : 0;
+      const siblingsNotice = siblings > 0
+        ? ` ${siblings > 1 ? `Ses ${siblings} autres séquences en cours ou en pause ont été arrêtées.` : 'Son autre séquence en cours ou en pause a été arrêtée.'}`
+        : '';
       if (payload.changed && payload.warning) {
-        toast.warning(`Réponse enregistrée pour ${name}`, { description: payload.warning });
+        toast.warning(`Réponse enregistrée pour ${name}`, { description: `${payload.warning}${siblingsNotice}` });
       } else if (payload.changed) {
         toast.success(`Réponse enregistrée pour ${name}`, {
-          description: 'Les étapes restantes ont été annulées.',
+          description: `Les étapes restantes ont été annulées.${siblingsNotice}`,
         });
       } else {
         toast.info(`Rien n’a changé : la séquence de ${name} était déjà close.`);
@@ -954,14 +970,22 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   const sequencePauseResumable = enrollment.status === 'paused'
                     && isSequenceLevelPause(enrollment.pause_reason)
                     && sequenceActive === true;
-                  const canResume = enrollment.status === 'paused' && !gdprErased
+                  // D3 : même règle que le serveur (canActOnEnrollment), un
+                  // collaborateur n'agit que sur les candidats qu'il a inscrits.
+                  const ownRow = !isCollaborator || (!!userId && enrollment.created_by === userId);
+                  const canResume = enrollment.status === 'paused' && !gdprErased && ownRow
+                    && (!enrollment.pause_reason || RESUMABLE_PAUSE_REASONS.has(enrollment.pause_reason) || sequencePauseResumable);
+                  // Reprise possible, mais par un administrateur ou le membre qui l'a inscrit.
+                  const resumeReservedToOthers = !ownRow && enrollment.status === 'paused' && !gdprErased
                     && (!enrollment.pause_reason || RESUMABLE_PAUSE_REASONS.has(enrollment.pause_reason) || sequencePauseResumable);
                   const retriesFailedStep = resumeRetriesFailedStep(enrollment);
                   const pauseHint = gdprErased
                     ? GDPR_ERASED_NOTICE
-                    : enrollment.status === 'paused'
-                      ? (pauseDetail ?? (sequencePauseResumable ? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint(enrollment.pause_reason)))
-                      : null;
+                    : resumeReservedToOthers && !pauseDetail
+                      ? OTHER_MEMBER_RESUME_HINT
+                      : enrollment.status === 'paused'
+                        ? (pauseDetail ?? (sequencePauseResumable ? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint(enrollment.pause_reason)))
+                        : null;
                   
                   return (
                     <Collapsible
@@ -1383,7 +1407,11 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                 // la suivante est programmée selon son délai (parfois plusieurs jours).
                 ? 'Ces candidats, y compris ceux qui ne sont pas affichés, recevront de nouveau les messages de cette séquence. Une étape déjà programmée garde sa date (au plus tôt dans une minute) ; sinon, l’étape suivante est programmée selon son délai habituel, pendant vos heures d’envoi. Les candidats en pause pour une autre raison (compte déconnecté, abonnement, limite d’envoi, échec d’envoi, candidat injoignable) ne sont pas concernés.'
                 : confirmAction?.type === 'markReplied'
-                  ? `${confirmName} passera en « A répondu » et ses étapes restantes seront annulées. Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).`
+                  // Contrat §8 : ses autres inscriptions sont arrêtées ; pour une
+                  // séquence terminée, seulement celles commencées avant sa fin.
+                  ? `${confirmName} passera en « A répondu » et ses étapes restantes seront annulées. ${confirmEnrollment?.status === 'completed'
+                    ? 'Ses autres séquences encore en cours ou en pause, commencées avant la fin de celle-ci, seront aussi arrêtées.'
+                    : 'Ses autres séquences encore en cours ou en pause seront aussi arrêtées.'} Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).`
                   : confirmAction?.type === 'reEnroll'
                     // Pas de délai promis : le serveur programme l'étape suivante
                     // selon son délai, et les attentes intermédiaires sont masquées.

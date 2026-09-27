@@ -280,7 +280,8 @@ test('SEQ-048 — « Shortlister sans message » écrit organization_id et annon
 test('SEQ-050 — la préparation est un Dialog Radix plein écran, au-dessus de la fiche profil', () => {
   assert.doesNotMatch(previewModal, /createPortal\(/);
   assert.doesNotMatch(previewModal, /z-\[4000\]/);
-  assert.match(previewModal, /<DialogPrimitive\.Content[\s\S]*?className="fixed inset-0 z-\[9999\][^"]*pointer-events-auto/);
+  // Classe statique ou composée par cn() (neutralisation pendant la confirmation de fermeture).
+  assert.match(previewModal, /<DialogPrimitive\.Content[\s\S]*?className=(?:"|\{cn\(\s*')fixed inset-0 z-\[9999\][^"']*pointer-events-auto/);
   assert.match(previewModal, /<DialogPrimitive\.Title asChild>/);
 });
 

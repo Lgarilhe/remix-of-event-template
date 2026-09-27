@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
-import { pickFirstStep, type FirstStepCandidate } from '@/lib/sequenceCompatibility';
+import { isClosedChannelStep, pickFirstStep, type FirstStepCandidate } from '@/lib/sequenceCompatibility';
 import { actionTypeLabel } from '@/lib/sequenceErrorMessages';
 
 export const SEQUENCE_INACTIVE_MESSAGE =
@@ -182,7 +182,13 @@ export function firstActionSummary(
   const days = override?.delayDays ?? step.delay_days ?? step.delayDays ?? 0;
   const hours = override?.delayHours ?? step.delay_hours ?? step.delayHours ?? 0;
   const minutes = step.delay_minutes ?? step.delayMinutes ?? 0;
-  const label = actionTypeLabel(step.action_type || step.actionType);
+  const actionType = step.action_type || step.actionType;
+  const label = actionTypeLabel(actionType);
+  // Canal fermé (D2) : le moteur saute cette étape sans rien envoyer, elle
+  // n'est donc pas la première action du candidat.
+  if (isClosedChannelStep(actionType)) {
+    return `Première étape (${label}) sautée : ce canal n'est pas encore disponible. La séquence continue avec l'étape suivante.`;
+  }
   if (!days && !hours && !minutes) {
     return `Première action : ${label}, dès maintenant pendant vos heures d'envoi`;
   }

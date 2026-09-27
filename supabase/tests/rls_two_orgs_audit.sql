@@ -422,7 +422,8 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[SEQ-119 lecture : %s] ', SQLERRM);
   END;
   -- D3 : ... mais l'anti-doublon lui signale le candidat contacté par A
-  -- (identifiant ou slug public), sans joker (« _ » ne remplace pas « - »).
+  -- (identifiant ou slug public), sans joker (« _ » ne remplace pas « - ») ni
+  -- préfixe (un début de slug n'énumère pas les candidats de ses collègues).
   checks := checks + 1;
   BEGIN
     SELECT count(*) INTO n FROM public.find_recent_org_contacts(org_a, ARRAY['prof-a'], ARRAY[]::text[], now() - interval '90 days')
@@ -432,6 +433,8 @@ BEGIN
     IF n <> 1 THEN failures := failures || format('[D3 : rapprochement par slug (%s)] ', n); END IF;
     SELECT count(*) INTO n FROM public.find_recent_org_contacts(org_a, ARRAY[]::text[], ARRAY['audit_prof_a'], now() - interval '90 days');
     IF n <> 0 THEN failures := failures || '[D3 : « _ » du slug pris pour un joker] '; END IF;
+    SELECT count(*) INTO n FROM public.find_recent_org_contacts(org_a, ARRAY[]::text[], ARRAY['audit-pro'], now() - interval '90 days');
+    IF n <> 0 THEN failures := failures || format('[D3 : un préfixe de slug renvoie les contacts d''un collègue (%s)] ', n); END IF;
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[D3 collaborateur : %s] ', SQLERRM);
   END;
 

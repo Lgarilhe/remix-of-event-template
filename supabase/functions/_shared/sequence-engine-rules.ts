@@ -282,3 +282,23 @@ export function siblingEnrollmentsFilter(identifiers: Array<string | null | unde
   const list = ids.join(',');
   return `profile_id.in.(${list}),resolved_profile_id.in.(${list}),provider_id.in.(${list})`;
 }
+
+/** Portée de l'arrêt des autres inscriptions du candidat (contrat §8). */
+export type SiblingStopScope =
+  | { kind: 'all' }
+  | { kind: 'created_before'; before: string }
+  | { kind: 'none' };
+
+/**
+ * Autres inscriptions à arrêter quand une inscription est close comme
+ * « répondu », selon son statut AVANT la clôture. Active ou en pause : toutes
+ * (SEQ-212). Déjà terminée (« Marquer comme ayant répondu » après la dernière
+ * relance) : seulement celles créées avant sa fin, jamais une prise de contact
+ * démarrée ensuite par un collègue ; date de fin inconnue ou illisible : aucune.
+ */
+export function siblingStopScope(previousStatus: string | null | undefined, completedAt: string | null | undefined): SiblingStopScope {
+  if (previousStatus !== 'completed') return { kind: 'all' };
+  const endedAt = completedAt ? Date.parse(completedAt) : NaN;
+  if (!Number.isFinite(endedAt)) return { kind: 'none' };
+  return { kind: 'created_before', before: new Date(endedAt).toISOString() };
+}

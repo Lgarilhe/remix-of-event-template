@@ -16,7 +16,8 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { hasBranching, type SequenceStepPreview, type StepConfigOverride } from '@/hooks/useEnrollmentPreview';
 // Un seul nom par type d'étape, celui de l'éditeur de séquence.
-import { STEP_TYPE_LABELS, stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
+import { STEP_TYPE_LABELS, stepTypeLabel, unsupportedStepNotice } from '@/components/outreach/sequence/sequenceGraph';
+import { isClosedChannelStep } from '@/lib/sequenceCompatibility';
 import {
   Mail, MessageSquare, Eye, Clock, GitBranch,
   ArrowDown, CheckCheck, XCircle, Pencil, RotateCcw,
@@ -257,6 +258,10 @@ function ActionCard({
           <p className="text-2xs text-muted-foreground tabular-nums uppercase tracking-wider mt-0.5">
             Étape {step.stepOrder + 1}
           </p>
+          {/* Canal fermé (D2) : l'étape est sautée, rien ne part. */}
+          {isClosedChannelStep(step.actionType) && (
+            <p className="text-[11px] text-muted-foreground mt-1">{unsupportedStepNotice(step.actionType)}</p>
+          )}
         </div>
       </div>
     </motion.div>

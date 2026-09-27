@@ -89,10 +89,12 @@ interface EnrollResults {
 
 /**
  * Raison d'exclusion affichée sur un candidat grisé de la liste. Un candidat
- * déjà en relation avec une invitation prévue n'est jamais exclu : le moteur
- * saute l'invitation et envoie les messages suivants.
+ * déjà en relation avec une invitation prévue n'est exclu que si la séquence
+ * ne contient rien d'autre ; sinon le moteur saute l'invitation et envoie les
+ * messages suivants.
  */
 function compatExclusionLabel(issue: CompatIssue): string {
+  if (issue === 'connection_only_already_connected') return 'Déjà en relation, exclu';
   return issue === 'too_far' ? 'Hors réseau, exclu' : 'InMail inutile, exclu';
 }
 
@@ -145,8 +147,9 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     () => checkProfilesCompat(profiles, sequence.steps),
     [profiles, sequence.steps],
   );
-  // Candidats que « Exclure les incompatibles » écarte : hors réseau et InMail
-  // inutile. Déjà en relation (invitation sautée, suite envoyée) : averti, inscrit.
+  // Candidats que « Exclure les incompatibles » écarte : hors réseau, InMail
+  // inutile, et déjà en relation quand la séquence n'a que l'invitation.
+  // Déjà en relation avec une suite (invitation sautée, suite envoyée) : averti, inscrit.
   const excludableCompat = useMemo(
     () => [...compat.blockers, ...compat.warnings].filter(r => r.issue !== 'connection_already_connected'),
     [compat.blockers, compat.warnings],
