@@ -95,10 +95,10 @@ test.describe('Séquences', () => {
     // ce test valide le câblage du bouton (avant : 401 avalé silencieusement).
   });
 
-  test.fixme('@critical « Envoyer tout » avance les actions sans erreur pour un membre non admin (MQ-002)', async () => {
+  test.fixme('@critical « Avancer les envois » avance les actions sans erreur pour un membre non admin (MQ-002)', async () => {
     // À GÉNÉRER en live, avec le storageState d'un COLLABORATEUR (pas owner) :
-    //   1. liste des séquences → bouton « Envoyer tout »
-    //   2. attendre le toast « N action(s) avancée(s) » (et non une erreur)
+    //   1. liste des séquences → bouton « Avancer les envois » (ancien « Envoyer tout »)
+    //   2. attendre le toast « N étapes avancées » (et non une erreur)
     //   3. en base : les exécutions futures de MON org sont à maintenant,
     //      celles d'une autre org inchangées
     // Avant le correctif, l'UI appelait `force_reschedule` puis `process`,
