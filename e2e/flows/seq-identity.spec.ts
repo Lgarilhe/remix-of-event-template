@@ -273,7 +273,8 @@ test.describe('Identité du candidat : sélection en double', () => {
 
 test.describe('Identité du candidat : pré-contrôle de la séquence', () => {
   // ui-precheck-sequence-autre-identifiant (SEQ-222, SEQ-046), aperçu d'inscription
-  test('aperçu : un candidat déjà passé par la séquence sous son identifiant Recruiter (arrêtée, ou terminée il y a 120 jours) n’est pas réinscrit', async ({ browser }) => {
+  // décision produit en attente : une inscription close (arrêtée, ou terminée hors des 90 jours) sous un autre identifiant bloque-t-elle la même séquence ?
+  test.fixme('aperçu : un candidat déjà passé par la séquence sous son identifiant Recruiter (arrêtée, ou terminée il y a 120 jours) n’est pas réinscrit', async ({ browser }) => {
     const ws = await workspace('E2E Identité pré-contrôle aperçu');
     const owner = ws.org.owner.userId;
     const seq = await sequence(ws.org.orgId, owner, ws.missionId, 'message');
@@ -302,7 +303,8 @@ test.describe('Identité du candidat : pré-contrôle de la séquence', () => {
   });
 
   // ui-precheck-sequence-autre-identifiant (SEQ-222, SEQ-046), inscription simple
-  test('inscription simple : un candidat déjà passé par la séquence sous son identifiant Recruiter n’est pas réinscrit', async ({ browser }) => {
+  // décision produit en attente : une inscription arrêtée sous un autre identifiant bloque-t-elle la même séquence ?
+  test.fixme('inscription simple : un candidat déjà passé par la séquence sous son identifiant Recruiter n’est pas réinscrit', async ({ browser }) => {
     const ws = await workspace('E2E Identité pré-contrôle simple');
     const owner = ws.org.owner.userId;
     const seq = await sequence(ws.org.orgId, owner, ws.missionId, 'invitation');

@@ -428,9 +428,15 @@ test('SEQ-043 — on n’inscrit pas depuis le compte LinkedIn relié à un coll
   const front = read('src/components/outreach/enrollment-preview/useSendingAccount.ts');
   assert.ok(front.includes("Ce compte LinkedIn est relié à un autre membre de l'équipe. Inscrivez les candidats depuis votre propre compte."));
   assert.ok(fn.includes("Ce compte LinkedIn est relié à un autre membre de l''équipe. Inscrivez les candidats depuis votre propre compte."));
-  // À l'insertion seulement, et après le complément d'organisation (ordre alphabétique des déclencheurs).
+  // À l'insertion, et après le complément d'organisation (ordre alphabétique des déclencheurs).
   assert.match(b6, /CREATE TRIGGER sequence_enrollments_check_sender_owner\s+BEFORE INSERT ON public\.sequence_enrollments\s+FOR EACH ROW/);
   assert.ok('sequence_enrollments_check_org' < 'sequence_enrollments_check_sender_owner');
+  // Et au changement de compte ou d'auteur d'une inscription existante (seq-db-garde-compte-update) :
+  // même fonction, seulement si l'une des deux valeurs change.
+  const upd = latest(/CREATE TRIGGER sequence_enrollments_check_sender_owner_update/);
+  assert.ok(upd.file, 'garde du changement de compte absente');
+  assert.match(upd.sql, /CREATE TRIGGER sequence_enrollments_check_sender_owner_update\s+BEFORE UPDATE OF account_id, created_by ON public\.sequence_enrollments\s+FOR EACH ROW\s+WHEN \(OLD\.account_id IS DISTINCT FROM NEW\.account_id\s+OR OLD\.created_by IS DISTINCT FROM NEW\.created_by\)\s+EXECUTE FUNCTION public\.sequence_enrollments_check_sender_owner\(\);/);
+  assert.ok('sequence_enrollments_check_org' < 'sequence_enrollments_check_sender_owner_update');
   // Rejoué en base par l'audit (S19) : refus avec le HINT, compte sans liaison accepté.
   const audit = stripSql(read('supabase/tests/rls_two_orgs_audit.sql'));
   assert.match(audit, /VALUES \(seq_a, 'acc-li-a', 'prof-b-2', org_a, u_a, 'active'\)/, 'usurpation de created_by contrôlée');

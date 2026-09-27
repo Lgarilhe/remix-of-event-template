@@ -6,6 +6,8 @@ import {
 } from "../_shared/linkedin-quotas.ts";
 import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
 import { inmailQueueRetry } from "../_shared/sequence-send-rules.ts";
+import { siblingEnrollmentsFilter } from "../_shared/sequence-engine-rules.ts";
+import { isGdprErasedEnrollment } from "../_shared/sequence-resume.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,11 +39,17 @@ const PLAN_REQUIRED_MESSAGE = "L'envoi de séquences et d'InMails nécessite un 
 
 // Anti-doublon de la mise en file (SEQ-125) : un candidat déjà en file ou déjà
 // contacté par InMail par l'organisation ces 90 derniers jours n'est pas remis.
+// 'replied' : un InMail envoyé auquel le candidat a répondu reste un contact.
 const DUPLICATE_WINDOW_DAYS = 90;
-const DUPLICATE_STATUSES = ["pending", "scheduled", "sending", "sent"];
+const DUPLICATE_STATUSES = ["pending", "scheduled", "sending", "sent", "replied"];
 
 // Compte d'envoi absent de l'organisation de l'item (SEQ-011).
 const ACCOUNT_NOT_IN_ORG_MESSAGE = "Compte non rattaché à l'organisation";
+
+// Dernier contrôle avant l'envoi : motifs d'annulation affichés dans la file.
+// Même texte que l'annulation posée par l'effacement (recordGdprErasure).
+const GDPR_ERASED_INMAIL_MESSAGE = "Effacement des données demandé";
+const CANDIDATE_REPLIED_INMAIL_MESSAGE = "Le candidat a déjà répondu à votre organisation";
 
 // Clients `esm.sh` et `npm:` aux types internes incompatibles : même
 // convention permissive que loadUserQuotas ci-dessous.
@@ -66,6 +74,7 @@ interface InMailQueueItem {
   scheduled_at: string | null;
   user_timezone: string;
   created_by: string;
+  created_at?: string | null;
   organization_id?: string | null;
   error_message?: string | null;
   network_distance: number | null; // 1=1st degree, 2=2nd degree, 3=3rd degree
@@ -484,6 +493,68 @@ Deno.serve(async (req: Request) => {
         return resolved;
       };
 
+      // Dernier contrôle avant l'envoi, dans l'organisation de l'item (D5,
+      // SEQ-212) : rien ne part vers un candidat effacé (marqueur d'une de ses
+      // inscriptions), ni vers un candidat qui a répondu depuis la mise en file
+      // (inscription « répondu » après la création de la ligne), ni après une
+      // réponse à un autre InMail de l'organisation (fenêtre de l'anti-doublon,
+      // ou réponse postérieure à la mise en file). Une réponse en séquence
+      // antérieure à la mise en file n'annule rien : la dérogation « Contacter
+      // quand même » donnée par un administrateur reste valable.
+      const recipientStopReason = async (item: InMailQueueItem, orgId: string): Promise<
+        { state: "clear" } | { state: "stop"; message: string; code: string } | { state: "unreadable" }
+      > => {
+        const queuedAt = item.created_at ? Date.parse(item.created_at) : NaN;
+        const recipientIds = new Set<string>([item.recipient_profile_id]);
+        const filter = siblingEnrollmentsFilter([item.recipient_profile_id]);
+        if (filter) {
+          const { data: enrollments, error } = await supabase
+            .from("sequence_enrollments")
+            .select("profile_id, provider_id, resolved_profile_id, status, replied_at, tracking_data")
+            .eq("organization_id", orgId)
+            .or(filter);
+          if (error) {
+            console.warn(`[process-inmail-queue] enrollments unreadable for item ${item.id}:`, error.message);
+            return { state: "unreadable" };
+          }
+          const rows = (enrollments ?? []) as Array<{
+            profile_id: string | null; provider_id: string | null; resolved_profile_id: string | null;
+            status: string; replied_at: string | null; tracking_data: unknown;
+          }>;
+          if (rows.some((e) => isGdprErasedEnrollment(e.tracking_data, []))) {
+            return { state: "stop", message: GDPR_ERASED_INMAIL_MESSAGE, code: "candidate erased" };
+          }
+          const repliedSinceQueued = rows.some((e) => {
+            const repliedAt = e.replied_at ? Date.parse(e.replied_at) : NaN;
+            return e.status === "replied" && Number.isFinite(repliedAt) && Number.isFinite(queuedAt) && repliedAt >= queuedAt;
+          });
+          if (repliedSinceQueued) {
+            return { state: "stop", message: CANDIDATE_REPLIED_INMAIL_MESSAGE, code: "candidate replied" };
+          }
+          // Autres identifiants connus du candidat (Recruiter AE…, ACo…).
+          for (const e of rows) {
+            for (const v of [e.profile_id, e.provider_id, e.resolved_profile_id]) if (v) recipientIds.add(v);
+          }
+        }
+        const { data: repliedInMails, error: repliedErr } = await supabase
+          .from("inmail_queue")
+          .select("created_at, updated_at")
+          .eq("organization_id", orgId)
+          .eq("status", "replied")
+          .in("recipient_profile_id", [...recipientIds]);
+        if (repliedErr) {
+          console.warn(`[process-inmail-queue] replied InMails unreadable for item ${item.id}:`, repliedErr.message);
+          return { state: "unreadable" };
+        }
+        const windowStart = Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 3600 * 1000;
+        const repliedToInMail = ((repliedInMails ?? []) as Array<{ created_at: string; updated_at: string }>).some((r) =>
+          Date.parse(r.created_at) >= windowStart || (Number.isFinite(queuedAt) && Date.parse(r.updated_at) >= queuedAt));
+        if (repliedToInMail) {
+          return { state: "stop", message: CANDIDATE_REPLIED_INMAIL_MESSAGE, code: "candidate replied" };
+        }
+        return { state: "clear" };
+      };
+
       // Gate d'abonnement (lot P0-C), résolu une fois par organisation et par
       // run. Organisation de l'item : colonne organization_id, sinon
       // organisation active du créateur (comme les credentials). Si la lecture
@@ -616,6 +687,34 @@ Deno.serve(async (req: Request) => {
           results.push({ id: item.id, success: false, error: "account not in organization" });
           continue;
         }
+
+        // Candidat effacé ou qui a répondu à l'organisation : annulé sans
+        // appel au fournisseur. Lecture impossible : report de 30 min, jamais
+        // d'envoi à l'aveugle. itemOrgId est non nul ici (sinon not_linked).
+        const stop = await recipientStopReason(item, itemOrgId as string);
+        if (stop.state === "unreadable") {
+          await supabase
+            .from("inmail_queue")
+            .update({
+              scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+              error_message: "Vérification des réponses du candidat impossible, nouvel essai dans 30 min",
+            })
+            .eq("id", item.id)
+            .in("status", ["scheduled", "pending"]);
+          results.push({ id: item.id, success: false, error: "recipient check unreadable" });
+          continue;
+        }
+        if (stop.state === "stop") {
+          console.warn(`[process-inmail-queue] item ${item.id} cancelled: ${stop.code}`);
+          await supabase
+            .from("inmail_queue")
+            .update({ status: "cancelled", error_message: stop.message })
+            .eq("id", item.id)
+            .in("status", ["scheduled", "pending"]);
+          results.push({ id: item.id, success: false, error: stop.code });
+          continue;
+        }
+
         const quotaUserId = (await getAccountOwner(item.account_id, itemOrgId)) ?? item.created_by;
 
         // Check if we're within business hours (per-user configurable via member_quotas)

@@ -225,7 +225,7 @@ BEGIN
   INSERT INTO public.sequence_step_executions (id, enrollment_id, step_id, step_order, scheduled_at, status, executed_at, final_message)
   VALUES (exec_sent, enr_a, step_a1, 1, now() - interval '1 day', 'sent', now() - interval '1 day', 'Bonjour'),
          (exec_sched, enr_a, step_a2, 2, now() + interval '1 day', 'scheduled', NULL, NULL);
-  -- created_by : profiles.id (clé étrangère de la base neuve, NOT NULL en prod).
+  -- created_by : NOT NULL en prod, sans clé étrangère (retirée de la base neuve par 20260927194905).
   INSERT INTO public.sequence_templates (id, organization_id, name, steps_config, is_system, created_by)
   SELECT tpl_b, org_b, 'Modèle B', '[]'::jsonb, false, p.id FROM public.profiles p WHERE p.user_id = u_b;
   PERFORM public.increment_sequence_analytics(seq_a, 'messages_sent', 1);

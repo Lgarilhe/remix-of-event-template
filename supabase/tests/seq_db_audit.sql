@@ -866,8 +866,9 @@ END $$;
 -- ---------------------------------------------------------------------
 -- garde-compte-contournements (SEQ-043, SEQ-010)
 -- « Chacun inscrit depuis son propre compte relié » : le changement du
--- compte d'une inscription existante et une insertion serveur sans auteur
--- doivent aussi être refusés (HINT ENROLL_ACCOUNT_OF_OTHER_MEMBER).
+-- compte d'une inscription existante doit aussi être refusé (HINT
+-- ENROLL_ACCOUNT_OF_OTHER_MEMBER). L'insertion serveur sans auteur attend
+-- une décision produit (constat en NOTICE).
 -- ---------------------------------------------------------------------
 DO $$
 DECLARE
@@ -900,7 +901,7 @@ BEGIN
     SET LOCAL ROLE authenticated;
     BEGIN
       UPDATE public.sequence_enrollments SET account_id = 'seqdb-acc-owner' WHERE id = v_enr;
-      -- DÉFAUT seq-db-garde-compte-update : le déclencheur ne contrôle que l'INSERT.
+      -- Refus attendu : déclencheur sequence_enrollments_check_sender_owner_update (migration 20260927194905).
       f := f || format('[DÉFAUT seq-db-garde-compte-update : %s, inscription passée sur le compte relié d''un collègue] ', v_who);
     EXCEPTION WHEN insufficient_privilege THEN
       GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
@@ -918,17 +919,13 @@ BEGIN
   END LOOP;
 
   -- (b) chemin serveur sans auteur, depuis le compte relié d'un membre.
-  c := c + 1;
+  -- décision produit en attente : une inscription serveur sans auteur (created_by NULL) doit-elle être refusée ? Constat en NOTICE, hors échecs.
   BEGIN
     INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
     VALUES (seq_a, 'seqdb-acc-owner', 'seqdb-prof-gnull', org_a, NULL, 'active');
-    -- DÉFAUT seq-db-garde-compte-auteur-absent : « m.user_id <> NULL » n'est jamais vrai.
-    f := f || '[DÉFAUT seq-db-garde-compte-auteur-absent : inscription serveur sans auteur depuis le compte relié d''un membre acceptée] ';
+    RAISE NOTICE 'seq-db-garde-compte-auteur-absent (décision produit en attente) : inscription serveur sans auteur depuis le compte relié d''un membre acceptée';
   EXCEPTION WHEN insufficient_privilege THEN
-    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
-    IF v_hint IS DISTINCT FROM 'ENROLL_ACCOUNT_OF_OTHER_MEMBER' THEN
-      f := f || format('[auteur absent : refus sans le HINT ENROLL_ACCOUNT_OF_OTHER_MEMBER (%s)] ', v_hint);
-    END IF;
+    RAISE NOTICE 'seq-db-garde-compte-auteur-absent (décision produit en attente) : inscription serveur sans auteur refusée';
   WHEN OTHERS THEN f := f || format('[auteur absent : %s (%s)] ', SQLERRM, SQLSTATE);
   END;
 

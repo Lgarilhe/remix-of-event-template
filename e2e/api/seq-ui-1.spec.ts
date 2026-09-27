@@ -62,7 +62,11 @@ test.describe('Lot ui-1 : filet du moteur', () => {
     expect(seq?.is_active, 'la séquence reste telle quelle').toBe(true);
 
     const exec = (await executionsOf(enrollmentId)).find((e) => e.id === execId);
-    // DÉFAUT seq-subscription-pause-cancels-execution : la pause d'abonnement annule l'étape due (process-sequences/index.ts:1820) alors qu'« aucune pause n'annule d'exécution »
-    expect(exec?.status, 'la pause garde l\'étape en attente').toBe('scheduled');
+    // Rapport seq-subscription-pause-cancels-execution réfuté : « aucune pause n'annule d'exécution » vise les pauses
+    // posées par un recruteur. Un blocage détecté par le moteur à l'envoi (ici l'abonnement) annule la seule étape due
+    // avec un motif réarmable (RESUMABLE_SKIP_REASONS de _shared/sequence-resume.ts) ; la reprise ou le webhook Stripe
+    // la replanifient, rien n'est perdu. Même attente que seq-engine-1 et seq-inbound-2.
+    expect(exec?.status, 'étape due annulée avec un motif réarmable').toBe('cancelled');
+    expect(exec?.skip_reason).toBe("Abonnement requis pour l'envoi de séquences");
   });
 });

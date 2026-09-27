@@ -13,7 +13,8 @@
 --   dry_run_result, ni de params après approbation (trigger
 --   guard_agent_tool_execution_update, migration 20260903074500, § 8). Il ne
 --   touche jamais la ligne d'un collègue ni d'une autre organisation (RLS
---   org_members_update). anon n'a aucun accès.
+--   org_members_update). Il ne lit que ses propres lignes, sauf propriétaire
+--   et administrateur (RLS org_members_select, D3). anon n'a aucun accès.
 --   Contrôles témoins : les transitions utilisées par l'interface (rejet,
 --   annulation d'une programmation non réservée, remise en attente d'un échec,
 --   paramètres avant approbation) restent possibles.
@@ -36,6 +37,7 @@ DECLARE
   r_coll uuid := 'a5e00000-0000-4000-8000-000000000007';  -- C (collègue), approved, programmée
   r_b    uuid := 'a5e00000-0000-4000-8000-000000000008';  -- B (autre org), approved, programmée
   claims_a text := json_build_object('sub', u_a, 'role', 'authenticated', 'email', 'a@seq-scheduled-1.test')::text;
+  claims_c text := json_build_object('sub', u_c, 'role', 'authenticated', 'email', 'c@seq-scheduled-1.test')::text;
   claims_anon text := json_build_object('role', 'anon')::text;
   failures text := '';
   checks int := 0;
@@ -312,6 +314,28 @@ BEGIN
     IF n <> 1 THEN failures := failures || format('[22. témoin : rejet refusé (%s ligne)] ', n); END IF;
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[22. témoin rejet : %s] ', SQLERRM);
   END;
+
+  -- 28. Lecture (D3) : le propriétaire voit la ligne du collègue (portée « Toute l'organisation »).
+  checks := checks + 1;
+  SELECT count(*) INTO n FROM public.agent_tool_executions WHERE id = r_coll;
+  IF n <> 1 THEN failures := failures || format('[28. propriétaire : ligne du collègue invisible (%s)] ', n); END IF;
+
+  RESET ROLE;
+
+  -- ===== Contexte : collègue, membre de A (rôle authenticated) =====
+  PERFORM set_config('request.jwt.claims', claims_c, true);
+  PERFORM set_config('request.jwt.claim.sub', u_c::text, true);
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claim.email', 'c@seq-scheduled-1.test', true);
+  SET LOCAL ROLE authenticated;
+
+  -- 29. Lecture (D3) : hors propriétaire et administrateur, chacun ne lit que ses
+  --     propres lignes (params et résultats des actions d'un collègue non exposés).
+  checks := checks + 1;
+  SELECT count(*) INTO n FROM public.agent_tool_executions WHERE organization_id = org_a AND user_id <> u_c;
+  IF n <> 0 THEN failures := failures || format('[29. le collègue lit %s ligne(s) du propriétaire] ', n); END IF;
+  SELECT count(*) INTO n FROM public.agent_tool_executions WHERE id = r_coll;
+  IF n <> 1 THEN failures := failures || format('[29. le collègue ne lit pas sa propre ligne (%s)] ', n); END IF;
 
   RESET ROLE;
 

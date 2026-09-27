@@ -13,7 +13,7 @@ import {
   SENT_EXECUTION_STATUSES, EMAIL_CHANNEL_SKIP_REASON, LINKEDIN_CHANNEL_SKIP_REASON, WHATSAPP_CHANNEL_SKIP_REASON,
   MANUAL_SKIP_REASON, resolveStepContent, isMissingRequiredText, missionJobIds,
   closedChannelSkipReason, isEmailOutcomeUnknown, siblingEnrollmentsFilter, SIBLING_REPLY_SKIP_REASON,
-  siblingStopScope, type SiblingStopScope,
+  siblingStopScope, type SiblingStopScope, REPLY_PIPELINE_STATUSES, replyPipelinePatch, linkedinProfileSlug,
 } from "../_shared/sequence-engine-rules.ts";
 import {
   planResume, countOutcomes, ACCOUNT_NOT_IN_ORG_REASON, SUBSCRIPTION_REQUIRED_SKIP_REASON,
@@ -21,7 +21,7 @@ import {
   MAILBOX_DISCONNECTED_SKIP_REASON,
   type ResumeMode, type ResumeOutcome, type ResumeExecutionRow,
 } from "../_shared/sequence-resume.ts";
-import { isGdprBlocked } from "../_shared/get-or-fetch-contact.ts";
+import { isGdprBlocked, GDPR_ERASURE_SKIP_REASON } from "../_shared/get-or-fetch-contact.ts";
 import {
   CYCLE_BUDGET_MS, hasTimeToLock, readCycleSelection, sendingAccountKey, stepSendChannel, executionChannel,
   MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE,
@@ -1476,6 +1476,14 @@ async function handleProcess(supabase: any, force = false) {
             executed_at: string | null; created_at: string | null;
           }>;
 
+          // D5 : jamais de suite pour un candidat effacé (RGPD), même repassé
+          // « active » par une écriture directe hors de la reprise serveur.
+          if (isGdprErasedEnrollment(enr.tracking_data, history)) {
+            console.warn(`[process] ⛔ Dormant enrollment ${enr.id}: candidat effacé (RGPD) — inscription arrêtée, rien n'est planifié`);
+            await stopGdprErasedEnrollment(supabase, enr.id);
+            continue;
+          }
+
           const lastAttempt = [...history].sort((a, b) =>
             new Date(b.executed_at || b.created_at || 0).getTime() -
             new Date(a.executed_at || a.created_at || 0).getTime())[0];
@@ -1700,6 +1708,14 @@ async function handleProcess(supabase: any, force = false) {
           results.skipped++;
           continue;
         }
+        // D5 : candidat effacé (RGPD) repassé « active » hors de la reprise
+        // serveur (écriture directe) : rien ne part, l'inscription est arrêtée.
+        if (isGdprErasedEnrollment(enrollment.tracking_data, [])) {
+          console.warn(`[process] ⛔ Inscription ${enrollment.id} d'un candidat effacé (RGPD) : exécution ${exec.id} annulée, rien n'est envoyé`);
+          await stopGdprErasedEnrollment(supabase, enrollment.id);
+          results.skipped++;
+          continue;
+        }
 
         // SEQ-056 : défense en profondeur. Une exécution dont l'étape n'est pas
         // dans la séquence de l'inscription, ou dont l'organisation diffère de
@@ -1753,9 +1769,16 @@ async function handleProcess(supabase: any, force = false) {
           // les orgs (un Calendly d'une autre org avec le même email stoppait
           // l'enrollment). Scope org systématique + échappement des jokers.
           const meetingOrgId = enrollment.organization_id || enrollment.sequence?.organization_id || null;
-          const meetingBase = () => {
-            let q = supabase.from('qualification_sessions').select('id').limit(1);
+          // Inscription relancée (re_enroll) : seul un rendez-vous pris après la
+          // relance la reclôt, comme la vérification de réponse (SEQ-220).
+          // Avant, l'ancien rendez-vous la reclôturait au cycle suivant.
+          const meetingReEnrolledRaw = ((enrollment.tracking_data as Record<string, unknown> | null)?.re_enrolled_at ?? null) as string | null;
+          const meetingReEnrolledAt = meetingReEnrolledRaw && !Number.isNaN(new Date(meetingReEnrolledRaw).getTime())
+            ? new Date(meetingReEnrolledRaw).toISOString() : null;
+          const meetingBase = (columns = 'id', limit = 1) => {
+            let q = supabase.from('qualification_sessions').select(columns).limit(limit);
             if (meetingOrgId) q = q.eq('organization_id', meetingOrgId);
+            if (meetingReEnrolledAt) q = q.gt('created_at', meetingReEnrolledAt);
             return q;
           };
           let meetingFound = false;
@@ -1767,13 +1790,18 @@ async function handleProcess(supabase: any, force = false) {
             const { data } = await meetingBase().eq('candidate_profile_id', enrollment.profile_id);
             meetingFound = !!data?.length;
           }
-          if (!meetingFound && enrollment.profile_url) {
-            const slugMatch = (enrollment.profile_url as string).match(/linkedin\.com\/in\/([^/?#]+)/i);
-            if (slugMatch) {
-              const escapedSlug = slugMatch[1].replace(/([%_\\])/g, '\\$1');
-              const { data } = await meetingBase().ilike('candidate_linkedin_url', `%${escapedSlug}%`);
-              meetingFound = !!data?.length;
-            }
+          const enrollmentSlug = linkedinProfileSlug(enrollment.profile_url as string | null);
+          if (!meetingFound && enrollmentSlug) {
+            // SEQ-008 : même slug exact, jamais une sous-chaîne (« /in/camille »
+            // ne désigne ni « /in/camille-martin-4b2a1 », ni « /in/jean-camille »,
+            // ni « /company/camille »). Préfiltre en base sur
+            // « linkedin.com/in/<slug> », puis comparaison exacte du slug
+            // (« / » final, sous-domaine, majuscules, sans schéma, paramètres admis).
+            const escapedSlug = enrollmentSlug.replace(/([%_\\])/g, '\\$1');
+            const { data } = await meetingBase('candidate_linkedin_url', 50)
+              .ilike('candidate_linkedin_url', `%linkedin.com/in/${escapedSlug}%`);
+            meetingFound = ((data ?? []) as Array<{ candidate_linkedin_url: string | null }>)
+              .some((s) => linkedinProfileSlug(s.candidate_linkedin_url) === enrollmentSlug);
           }
           if (meetingFound) { shouldStop = true; stopReason = 'Stop condition: meeting booked (Calendly)'; }
         }
@@ -2235,6 +2263,21 @@ async function handleProcess(supabase: any, force = false) {
           : { data: null };
         const useTreeBranching = branchChildren && branchChildren.length > 0;
 
+        // « Si pas de réponse » fausse : le candidat a répondu (le doute est
+        // retenté plus haut). L'arrêt sur réponse est toujours actif (SEQ-089) :
+        // même clôture que les autres détections (réponse comptée une fois,
+        // autres inscriptions du candidat arrêtées, pipeline « Répondu »). Avant,
+        // l'étape sautée menait à la suite ou terminait l'inscription « completed ».
+        if (conditionResult === false && step.condition_type === 'if_no_response'
+          && !implicitWaitEvent({ wait_for_event: step.wait_for_event, action_type: step.action_type })) {
+          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Condition: ${step.condition_type}`, executed_at: new Date().toISOString(), error_message: null }).eq('id', exec.id);
+          console.log(`[process] ✅ ${enrollment.profile_name} a répondu (condition « Si pas de réponse », étape ${step.step_order}) — clôture de l'enrollment`);
+          const closed = await closeEnrollmentAsReplied(supabase, enrollment, null, 'Réponse détectée (condition « Si pas de réponse »)');
+          if (closed.changed) await markCandidateRepliedInPipeline(supabase, enrollment);
+          results.skipped++;
+          continue;
+        }
+
         if (!conditionResult) {
           await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: `Condition: ${step.condition_type}`, executed_at: new Date().toISOString(), error_message: null }).eq('id', exec.id);
           results.skipped++;
@@ -2282,7 +2325,9 @@ async function handleProcess(supabase: any, force = false) {
             // Le candidat a répondu : la séquence s'arrête là, sinon la
             // relance « sans réponse » partait après sa réponse.
             console.log(`[process] ✅ ${enrollment.profile_name} a répondu (étape ${step.step_order}) — clôture de l'enrollment`);
-            await closeEnrollmentAsReplied(supabase, enrollment, exec.id, 'Réponse détectée sur une étape d\'attente');
+            const closed = await closeEnrollmentAsReplied(supabase, enrollment, exec.id, 'Réponse détectée sur une étape d\'attente');
+            // Même report dans le pipeline que les autres détections (SEQ-006).
+            if (closed.changed) await markCandidateRepliedInPipeline(supabase, enrollment);
             results.processed++;
             continue;
           }
@@ -2521,11 +2566,52 @@ async function handleProcess(supabase: any, force = false) {
           continue;
         }
 
+        // SEQ-004 : une autre exécution de la même étape est-elle déjà partie
+        // chez ce candidat (reprise ou relance qui a réarmé une ligne à tort,
+        // ligne « annulée » héritée d'un envoi livré, repli de délai vers une
+        // étape déjà envoyée) ? Lu avant le gate quota, puis relu après le
+        // verrou (filet contre un envoi concurrent).
+        const isVisibleSendStep = VISIBLE_SEND_ACTIONS.includes(step.action_type)
+          || step.step_channel === 'email' || step.step_channel === 'whatsapp';
+        const stepAlreadySentElsewhere = async (): Promise<boolean> => {
+          const { data: sameStepRows, error: sameStepErr } = await supabase
+            .from('sequence_step_executions')
+            .select('id, status, skip_reason')
+            .eq('enrollment_id', enrollment.id)
+            .eq('step_id', step.id)
+            .neq('id', exec.id);
+          if (sameStepErr) console.warn(`[process] Contrôle « étape déjà envoyée » impossible pour ${exec.id} (non bloquant):`, sameStepErr);
+          // SEQ-080 (défense) : pour un e-mail, la preuve d'envoi
+          // (email_message_id) d'une autre exécution de la même étape compte
+          // aussi, même si cette exécution est restée en échec (appel coupé
+          // après l'envoi, puis reprise) : jamais de second e-mail.
+          const otherStepExecIds = ((sameStepRows ?? []) as Array<{ id: string }>).map((r) => r.id);
+          let emailProofOnOtherExec = false;
+          if (!sameStepErr && stepSendChannel(step) === 'email' && otherStepExecIds.length > 0) {
+            const { data: proofRows, error: proofErr } = await supabase.from('sequence_email_tracking')
+              .select('id').in('execution_id', otherStepExecIds).not('email_message_id', 'is', null).limit(1);
+            if (proofErr) console.warn(`[process] Preuve d'envoi des autres exécutions illisible pour ${exec.id} (non bloquant):`, proofErr);
+            emailProofOnOtherExec = !proofErr && (proofRows ?? []).length > 0;
+          }
+          if (emailProofOnOtherExec || (!sameStepErr && hasAlreadySentStep((sameStepRows ?? []) as Array<{ status: string; skip_reason?: string | null }>))) return true;
+          return false;
+        };
+        if (isVisibleSendStep && step.id && await stepAlreadySentElsewhere()) {
+          console.warn(`[process] ⛔ Étape ${step.id} déjà envoyée à ${enrollment.profile_name} : exécution ${exec.id} sautée sans envoi`);
+          const { data: skippedRows } = await supabase.from('sequence_step_executions').update({
+            status: 'skipped', skip_reason: 'Étape déjà envoyée', executed_at: new Date().toISOString(),
+          }).eq('id', exec.id).eq('status', 'scheduled').select('id');
+          if ((skippedRows ?? []).length > 0) await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
+          results.skipped++;
+          continue;
+        }
+
         // SEQ-076 : gate quota juste avant le verrou. Il journalise l'action
         // au plafond (écriture atomique contrôle + journal) : placé après la
         // santé du compte, la condition, les étapes d'attente, la garde
-        // « aucun message précédent » et la vérification de réponse, une étape
-        // reportée ou sautée ne consomme plus de place.
+        // « aucun message précédent », la vérification de réponse et le
+        // contrôle « étape déjà envoyée », une étape reportée ou sautée ne
+        // consomme plus de place.
         if (ledgerActionType) {
           const quotaCheck = await checkQuotaForAction(
             supabase,
@@ -2573,42 +2659,17 @@ async function handleProcess(supabase: any, force = false) {
 
         if (lockError || !lockResult) { results.skipped++; continue; }
 
-        // SEQ-004 : filet au moment de l'envoi. Si une autre exécution de la
-        // même étape est déjà partie chez ce candidat (reprise ou relance qui a
-        // réarmé une ligne à tort, ligne « annulée » héritée d'un envoi livré),
-        // celle-ci est sautée sans appel au fournisseur. Une boucle de branche
-        // ne renvoie donc jamais deux fois le même message au même candidat.
-        const isVisibleSendStep = VISIBLE_SEND_ACTIONS.includes(step.action_type)
-          || step.step_channel === 'email' || step.step_channel === 'whatsapp';
-        if (isVisibleSendStep && step.id) {
-          const { data: sameStepRows, error: sameStepErr } = await supabase
-            .from('sequence_step_executions')
-            .select('id, status, skip_reason')
-            .eq('enrollment_id', enrollment.id)
-            .eq('step_id', step.id)
-            .neq('id', exec.id);
-          if (sameStepErr) console.warn(`[process] Contrôle « étape déjà envoyée » impossible pour ${exec.id} (non bloquant):`, sameStepErr);
-          // SEQ-080 (défense) : pour un e-mail, la preuve d'envoi
-          // (email_message_id) d'une autre exécution de la même étape compte
-          // aussi, même si cette exécution est restée en échec (appel coupé
-          // après l'envoi, puis reprise) : jamais de second e-mail.
-          const otherStepExecIds = ((sameStepRows ?? []) as Array<{ id: string }>).map((r) => r.id);
-          let emailProofOnOtherExec = false;
-          if (!sameStepErr && stepSendChannel(step) === 'email' && otherStepExecIds.length > 0) {
-            const { data: proofRows, error: proofErr } = await supabase.from('sequence_email_tracking')
-              .select('id').in('execution_id', otherStepExecIds).not('email_message_id', 'is', null).limit(1);
-            if (proofErr) console.warn(`[process] Preuve d'envoi des autres exécutions illisible pour ${exec.id} (non bloquant):`, proofErr);
-            emailProofOnOtherExec = !proofErr && (proofRows ?? []).length > 0;
-          }
-          if (emailProofOnOtherExec || (!sameStepErr && hasAlreadySentStep((sameStepRows ?? []) as Array<{ status: string; skip_reason?: string | null }>))) {
-            console.warn(`[process] ⛔ Étape ${step.id} déjà envoyée à ${enrollment.profile_name} : exécution ${exec.id} sautée sans envoi`);
-            await supabase.from('sequence_step_executions').update({
-              status: 'skipped', skip_reason: 'Étape déjà envoyée', executed_at: new Date().toISOString(),
-            }).eq('id', exec.id).eq('status', 'sending');
-            await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
-            results.skipped++;
-            continue;
-          }
+        // SEQ-004 : filet au moment de l'envoi (même contrôle qu'avant le gate
+        // quota, relu sous verrou). Une boucle de branche ne renvoie donc
+        // jamais deux fois le même message au même candidat.
+        if (isVisibleSendStep && step.id && await stepAlreadySentElsewhere()) {
+          console.warn(`[process] ⛔ Étape ${step.id} déjà envoyée à ${enrollment.profile_name} : exécution ${exec.id} sautée sans envoi`);
+          await supabase.from('sequence_step_executions').update({
+            status: 'skipped', skip_reason: 'Étape déjà envoyée', executed_at: new Date().toISOString(),
+          }).eq('id', exec.id).eq('status', 'sending');
+          await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
+          results.skipped++;
+          continue;
         }
 
         let finalMessage = snapshotMessage;
@@ -5656,7 +5717,42 @@ async function closeEnrollmentAsReplied(supabase: any, enrollment: { id: string;
   // closaient que celle-ci. Portée bornée par l'appelant (contrat §8 :
   // inscription déjà terminée = sœurs créées avant sa fin seulement).
   const stoppedSiblings = changed ? await stopSiblingEnrollmentsAfterReply(supabase, enrollment, siblingScope) : 0;
+  // Même règle pour les InMails groupés de l'organisation vers ce candidat.
+  if (changed) await cancelQueuedInmailsAfterReply(supabase, enrollment, siblingScope);
   return { changed, failed: !cancelled, stoppedSiblings };
+}
+
+/**
+ * SEQ-212 étendu aux InMails groupés : aucun envoi après une réponse, quel que
+ * soit le compte. Les InMails de l'organisation vers ce candidat encore
+ * programmés ou en attente sont annulés, jamais 'sending' (en cours d'envoi)
+ * ni 'sent'. Même portée que l'arrêt des autres inscriptions (contrat §8).
+ * Non bloquant.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function cancelQueuedInmailsAfterReply(supabase: any, enrollment: Record<string, any>, scope: SiblingStopScope = { kind: 'all' }): Promise<number> {
+  const orgId = (enrollment.organization_id ?? enrollment.sequence?.organization_id ?? null) as string | null;
+  const recipientIds = [...new Set([enrollment.profile_id, enrollment.resolved_profile_id, enrollment.provider_id]
+    .filter((v): v is string => typeof v === 'string' && v.length > 0))];
+  if (!orgId || recipientIds.length === 0 || scope.kind === 'none') return 0;
+  try {
+    let inmailQuery = supabase.from('inmail_queue')
+      .update({ status: 'cancelled', error_message: 'Le candidat a répondu', updated_at: new Date().toISOString() })
+      .eq('organization_id', orgId).in('recipient_profile_id', recipientIds).in('status', ['pending', 'scheduled']);
+    if (scope.kind === 'created_before') inmailQuery = inmailQuery.lt('created_at', scope.before);
+    const { data: cancelledRows, error } = await inmailQuery.select('id');
+    if (error) {
+      console.warn(`[closeAsReplied] InMails programmés du candidat de ${enrollment.id} non annulés:`, error);
+      return 0;
+    }
+    const count = (cancelledRows ?? []).length;
+    if (count > 0) console.log(`[closeAsReplied] ${count} InMail(s) programmé(s) du candidat annulé(s) (org ${orgId})`);
+    return count;
+  } catch (e) {
+    console.warn(`[closeAsReplied] annulation des InMails de ${enrollment.id} échouée (non bloquant):`, e);
+    return 0;
+  }
 }
 
 /**
@@ -5729,10 +5825,29 @@ async function cancelPendingExecutions(supabase: any, enrollmentId: string, reas
 }
 
 /**
+ * D5 : inscription d'un candidat effacé (RGPD) retrouvée « active » (écriture
+ * directe hors de la reprise serveur) : elle repasse « stopped », comme à
+ * l'effacement, et ses exécutions en attente sont annulées avec le même motif.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function stopGdprErasedEnrollment(supabase: any, enrollmentId: string): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const { error } = await supabase.from('sequence_enrollments')
+    .update({ status: 'stopped', pause_reason: null, completed_at: nowIso, updated_at: nowIso })
+    .eq('id', enrollmentId).eq('status', 'active');
+  if (error) console.error(`[process] inscription effacée ${enrollmentId} non arrêtée:`, error);
+  await cancelPendingExecutions(supabase, enrollmentId, GDPR_ERASURE_SKIP_REASON);
+}
+
+/**
  * Réponse du candidat reportée dans le pipeline : job_candidate_status passe
  * « Répondu », borné à l'organisation de l'inscription (échec fermé si elle est
- * inconnue) et à sa mission (SEQ-006). Partagé par la vérification avant envoi
- * et « Marquer comme répondu » (SEQ-221).
+ * inconnue) et à sa mission (SEQ-006). Partagé par la vérification avant envoi,
+ * les étapes d'attente et « Si pas de réponse », la scrutation et « Marquer
+ * comme répondu » (SEQ-221). Mêmes statuts et même étape « Répondu » que le
+ * webhook : la ligne « messaged » écrite à l'inscription est comprise, et une
+ * étape vide, « Nouveau » ou « Contacté » passe « Répondu » au kanban.
  */
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
@@ -5744,19 +5859,20 @@ async function markCandidateRepliedInPipeline(supabase: any, enrollment: Record<
   if (enrollment.profile_id && jcsOrgId) {
     let jcsQuery = supabase
       .from('job_candidate_status')
-      .select('id')
+      .select('id, pipeline_stage')
       .eq('candidate_id', enrollment.profile_id)
-      .in('status', ['contacted', 'shortlisted', 'scored', 'new'])
+      .in('status', [...REPLY_PIPELINE_STATUSES])
       .eq('organization_id', jcsOrgId);
     const jcsJobIds = missionJobIds(enrollment.job_id as string | null | undefined);
     if (jcsJobIds) jcsQuery = jcsQuery.in('job_id', jcsJobIds);
     const { data: jcsRows, error: jcsErr } = await jcsQuery;
     if (jcsErr) console.warn(`[process] job_candidate_status illisible pour ${enrollment.id}:`, jcsErr);
-    if (jcsRows && jcsRows.length > 0) {
+    for (const row of (jcsRows ?? []) as Array<{ id: string; pipeline_stage: string | null }>) {
       const { error: updErr } = await supabase
         .from('job_candidate_status')
-        .update({ status: 'replied', updated_at: new Date().toISOString() })
-        .in('id', jcsRows.map((r: { id: string }) => r.id));
+        .update({ ...replyPipelinePatch(row.pipeline_stage), updated_at: new Date().toISOString() })
+        .eq('id', row.id)
+        .eq('organization_id', jcsOrgId);
       if (updErr) console.warn(`[process] job_candidate_status non mis à jour pour ${enrollment.id}:`, updErr);
     }
   }

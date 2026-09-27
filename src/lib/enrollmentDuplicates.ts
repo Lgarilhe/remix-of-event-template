@@ -10,8 +10,9 @@
  *    date : une séquence longue ou mise en pause peut encore écrire ;
  *  - les inscriptions closes par une réponse ou terminées (replied,
  *    completed) des 90 derniers jours ;
- *  - les InMails groupés programmés, en cours d'envoi ou envoyés
- *    (inmail_queue : scheduled, sending, sent) des 90 derniers jours.
+ *  - les InMails groupés en file, programmés, en cours d'envoi, envoyés ou
+ *    répondus (inmail_queue : pending, scheduled, sending, sent, replied) des
+ *    90 derniers jours.
  * La dérogation « Inscrire quand même » est réservée aux propriétaires et
  * administrateurs (useOrganization().isAdmin).
  *
@@ -41,8 +42,8 @@ export const RECENT_CONTACT_STATUSES = ['active', 'paused', 'replied', 'complete
 export const LIVE_CONTACT_STATUSES = ['active', 'paused'] as const;
 /** Inscriptions closes : signalées sur les 90 derniers jours seulement. */
 export const CLOSED_CONTACT_STATUSES = ['replied', 'completed'] as const;
-/** InMails groupés comptés comme un contact (en file, programmés, en cours, envoyés), comme l'anti-doublon du serveur (process-inmail-queue). */
-export const INMAIL_CONTACT_STATUSES = ['pending', 'scheduled', 'sending', 'sent'] as const;
+/** InMails groupés comptés comme un contact (en file, programmés, en cours, envoyés, répondus), comme l'anti-doublon du serveur (process-inmail-queue). */
+export const INMAIL_CONTACT_STATUSES = ['pending', 'scheduled', 'sending', 'sent', 'replied'] as const;
 
 /** Taille des lots de clés passées au filtre `in.()` (longueur d'URL bornée). */
 const QUERY_CHUNK_SIZE = 40;
@@ -255,7 +256,7 @@ export async function findRecentEnrollments(
       await fetchRows(patterns);
     }
   }
-  // InMails groupés de l'organisation (programmés, en cours ou envoyés) :
+  // InMails groupés de l'organisation (programmés, en cours, envoyés ou répondus) :
   // deux InMails groupés successifs, ou un InMail puis une séquence, se voient.
   for (let i = 0; i < values.length; i += QUERY_CHUNK_SIZE) {
     const { data, error } = await supabase

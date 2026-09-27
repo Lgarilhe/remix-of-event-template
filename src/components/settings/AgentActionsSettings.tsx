@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -196,6 +197,8 @@ interface PendingDialog {
 
 export const AgentActionsSettings = () => {
   const { organizationId, isAdmin, isOwner } = useOrganization();
+  const { user } = useAuthReady();
+  const currentUserId = user?.id ?? null;
   const isPrivileged = isAdmin || isOwner;
   const queryClient = useQueryClient();
   const [scope, setScope] = useState<'mine' | 'org'>('mine');
@@ -327,7 +330,9 @@ export const AgentActionsSettings = () => {
         // Reset failed → proposed so the AgentToolApprovalCard banner picks
         // it back up. We do NOT auto-execute — user must explicitly approve
         // again (with potentially new context).
-        const { error } = await supabase
+        // Écriture relue : la RLS ne laisse modifier que ses propres actions,
+        // et un refus répond « succès » sur 0 ligne sans .select().
+        const { data: updated, error } = await supabase
           .from('agent_tool_executions')
           .update({
             status: 'proposed',
@@ -338,9 +343,15 @@ export const AgentActionsSettings = () => {
             proposed_at: new Date().toISOString(),
           })
           .eq('id', row.id)
-          .eq('status', 'failed');
+          .eq('status', 'failed')
+          .select('id');
         if (error) {
           toast.error(`Relance échouée : ${error.message}`);
+          return;
+        }
+        if (!updated || updated.length === 0) {
+          toast.error("Cette action n'a pas été relancée : seul son auteur peut la relancer, ou elle a déjà changé d'état.");
+          queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
           return;
         }
         toast.success('Action remise en attente — approuve-la depuis le chat ou ici');
@@ -356,7 +367,9 @@ export const AgentActionsSettings = () => {
     async (row: AgentAction) => {
       setActionLoading((prev) => ({ ...prev, [row.id]: 'cancel' }));
       try {
-        const { error } = await supabase
+        // Écriture relue (même piège RLS que la relance) : sans ligne
+        // modifiée, l'envoi programmé partira, jamais de faux succès.
+        const { data: updated, error } = await supabase
           .from('agent_tool_executions')
           .update({
             status: 'rejected',
@@ -365,9 +378,15 @@ export const AgentActionsSettings = () => {
           })
           .eq('id', row.id)
           .eq('status', 'approved')
-          .is('executed_at', null);
+          .is('executed_at', null)
+          .select('id');
         if (error) {
           toast.error(`Annulation échouée : ${error.message}`);
+          return;
+        }
+        if (!updated || updated.length === 0) {
+          toast.error("La programmation n'a pas été annulée : seul l'auteur de l'action peut l'annuler, ou l'envoi a déjà commencé.");
+          queryClient.invalidateQueries({ queryKey: ['agent-actions', organizationId] });
           return;
         }
         toast.success('Programmation annulée');
@@ -511,6 +530,7 @@ export const AgentActionsSettings = () => {
               showAuthor={scope === 'org'}
               authorName={memberNames[action.user_id]}
               loadingAction={actionLoading[action.id] ?? null}
+              canAct={!currentUserId || action.user_id === currentUserId}
               onAction={handleActionClick}
             />
           ))}
@@ -566,10 +586,12 @@ interface ActionRowProps {
   showAuthor: boolean;
   authorName?: string;
   loadingAction: string | null;
+  /** Action de l'utilisateur : seul son auteur peut l'approuver, l'annuler ou la relancer. */
+  canAct: boolean;
   onAction: (row: AgentAction, action: 'approve' | 'reject' | 'requeue' | 'cancel') => void;
 }
 
-function ActionRow({ action, showAuthor, authorName, loadingAction, onAction }: ActionRowProps) {
+function ActionRow({ action, showAuthor, authorName, loadingAction, canAct, onAction }: ActionRowProps) {
   // Sub-status : 'approved' avec scheduled_for futur = en attente d'envoi
   const isQueued =
     action.status === 'approved' &&
@@ -650,7 +672,7 @@ function ActionRow({ action, showAuthor, authorName, loadingAction, onAction }: 
           )}
 
           {/* Action buttons inline — only for actionable states */}
-          {(action.status === 'proposed' || action.status === 'failed' || isQueued) && (
+          {canAct && (action.status === 'proposed' || action.status === 'failed' || isQueued) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {action.status === 'proposed' && (
                 <>

@@ -32,7 +32,9 @@ import {
   alreadyInSequenceLabel,
   alreadyPassedLabel,
   classifyExistingEnrollment,
+  dedupeProfilesByIdentity,
   DUPLICATE_CHECK_FAILED_MESSAGE,
+  findBlockingSequenceEnrollments,
   firstActionSummary,
   isOtherMemberAccountError,
   markCandidatesMessaged,
@@ -298,9 +300,11 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         setRecentEnrollments(recent);
         setDuplicateCheckFailed(false);
       }
-      const enrollSet = allowDuplicates
+      // Même personne sélectionnée sous deux identifiants : une seule
+      // inscription, les autres comptées « déjà dans cette séquence ».
+      const { unique: enrollSet, duplicates } = dedupeProfilesByIdentity(allowDuplicates
         ? compatibleProfiles
-        : compatibleProfiles.filter(p => !recent.has(p.id));
+        : compatibleProfiles.filter(p => !recent.has(p.id)));
 
       if (enrollSet.length === 0) {
         toast.error(
@@ -312,19 +316,16 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       }
 
       // 1. Pré-contrôle : qui a déjà une inscription dans cette séquence ? La
-      // contrainte DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle :
-      // on distingue ceux qui y sont encore (en cours, en pause) de ceux qui y
-      // sont déjà passés (terminée, réponse, arrêtée), à reprendre depuis le
-      // suivi. Le résultat exact viendra de l'upsert ci-dessous.
+      // contrainte DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle ;
+      // sous un autre identifiant du candidat, une inscription en cours ou en
+      // pause bloque aussi, dérogation comprise (SEQ-046). Ces candidats ne
+      // sont pas envoyés à l'upsert. On distingue ceux qui y sont encore (en
+      // cours, en pause) de ceux qui y sont déjà passés (terminée, réponse,
+      // arrêtée), à reprendre depuis le suivi. Le résultat exact viendra de
+      // l'upsert ci-dessous.
       const profileIds = enrollSet.map(p => p.id);
-      const { data: existingEnrollments, error: existingError } = await supabase
-        .from('sequence_enrollments')
-        .select('profile_id, status')
-        .eq('sequence_id', sequence.id)
-        .in('profile_id', profileIds);
-      if (existingError) throw existingError;
-
-      const existingStatus = new Map((existingEnrollments || []).map(e => [e.profile_id, e.status]));
+      const blocking = await findBlockingSequenceEnrollments(supabase, sequence.id, enrollSet);
+      const existingStatus = new Map(Array.from(blocking, ([id, e]) => [id, e.status]));
       const countExisting = (ids: Iterable<string>) => {
         let inSequence = 0;
         let passed = 0;
@@ -338,10 +339,10 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       if (existingStatus.size === enrollSet.length) {
         // Tous déjà inscrits → sortie avant tout INSERT
         const { inSequence, passed } = countExisting(profileIds);
-        enrollmentResults.skipped = inSequence;
+        enrollmentResults.skipped = inSequence + duplicates;
         enrollmentResults.alreadyPassed = passed;
         setResults(enrollmentResults);
-        toast.info(passed > 0 ? alreadyPassedLabel(passed) : alreadyInSequenceLabel(inSequence));
+        toast.info(passed > 0 ? alreadyPassedLabel(passed) : alreadyInSequenceLabel(enrollmentResults.skipped));
         return;
       }
 
@@ -355,7 +356,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       const normalizedJobId = job?.id?.startsWith('project:')
         ? job.id.slice('project:'.length)
         : job?.id;
-      const enrollmentRows = enrollSet.map(profile => {
+      const enrollmentRows = enrollSet.filter(p => !existingStatus.has(p.id)).map(profile => {
         const networkDist = profile.network_distance;
         const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
           ? 'FIRST_DEGREE'
@@ -401,7 +402,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       const { passed: passedCount } = countExisting(notInserted);
       enrollmentResults.success = insertedRows.length;
       enrollmentResults.alreadyPassed = passedCount;
-      enrollmentResults.skipped = notInserted.length - passedCount;
+      enrollmentResults.skipped = notInserted.length - passedCount + duplicates;
       if (insertedRows.length < enrollSet.length - existingStatus.size) {
         console.warn(`[SequenceEnrollModal] Race detected: ${enrollSet.length - existingStatus.size - insertedRows.length} enrollment(s) deduped at DB level (concurrent enroll from another session)`);
       }

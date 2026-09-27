@@ -15,7 +15,7 @@ import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
 import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
 import { getSubscriptionGate } from './subscription-gate.ts';
-import { getOrFetchContact } from './get-or-fetch-contact.ts';
+import { getOrFetchContact, isCandidateErasedForOrg } from './get-or-fetch-contact.ts';
 import { firstExecutionTime, pickFirstRootStep, validTimeZone } from './sequence-first-step.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
@@ -641,6 +641,60 @@ async function findRecentOrgContact(
   };
 }
 
+/**
+ * Inscription du candidat, quel que soit son statut, dans CETTE séquence
+ * (même rapprochement que findRecentOrgContact). Cherchée à part du contact
+ * le plus récent : un contact plus récent ailleurs (InMail, autre séquence)
+ * la masquait, et force: true inscrivait une seconde fois sous un autre
+ * identifiant, que UNIQUE(sequence_id, profile_id) ne voit pas. Lève une
+ * erreur si la lecture échoue.
+ */
+async function isAlreadyInSequence(params: Record<string, unknown>, ctx: ToolContext): Promise<boolean> {
+  const rawValues = [params.candidate_id, params.profile_url]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(v => v.trim());
+  if (rawValues.length === 0) return false;
+  const keys = new Set<string>();
+  const queryValues = new Set<string>(rawValues);
+  const slugs = new Set<string>();
+  for (const value of rawValues) {
+    const key = normalizeEnrollmentKey(value);
+    if (key) { keys.add(key); queryValues.add(key); }
+    const slug = linkedInSlugOf(value);
+    if (slug) { keys.add(slug); queryValues.add(slug); slugs.add(slug); }
+  }
+  const list = Array.from(queryValues).map(quoteFilterValue).join(',');
+  const identityFilter = [
+    `profile_id.in.(${list})`,
+    `provider_id.in.(${list})`,
+    `resolved_profile_id.in.(${list})`,
+    ...Array.from(slugs)
+      .filter((slug) => /^[a-z0-9\-_.%~]+$/i.test(slug))
+      .map((slug) => `profile_url.ilike.*/in/${slug}*`),
+  ].join(',');
+  const { data, error } = await ctx.adminClient
+    .from('sequence_enrollments')
+    .select('profile_id, provider_id, resolved_profile_id, profile_url')
+    .eq('organization_id', ctx.organizationId)
+    .eq('sequence_id', String(params.sequence_id))
+    .or(identityFilter)
+    .limit(20);
+  if (error) throw new Error(`Vérification des inscriptions de la séquence impossible : ${error.message}`);
+  return ((data ?? []) as Array<Record<string, unknown>>).some((row) => {
+    const byKey = [row.profile_id, row.provider_id, row.resolved_profile_id].some((value) => {
+      const key = normalizeEnrollmentKey(value);
+      if (key && keys.has(key)) return true;
+      const slug = linkedInSlugOf(value);
+      return !!slug && keys.has(slug);
+    });
+    const urlSlug = linkedInSlugOf(row.profile_url);
+    return byKey || (!!urlSlug && slugs.has(urlSlug));
+  });
+}
+
+const GDPR_ENROLL_MESSAGE = "Ce candidat a demandé l'effacement de ses données : inscription impossible.";
+const GDPR_UNVERIFIED_MESSAGE = "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié. Réessayez dans un instant.";
+
 const enrollInSequence: AgentTool = {
   name: 'enroll_in_sequence',
   description:
@@ -756,21 +810,22 @@ const enrollInSequence: AgentTool = {
     }
 
     // Anti-doublon organisation. Rejoué avant execute (SEC-002), donc la règle
-    // tient aussi à l'approbation.
+    // tient aussi à l'approbation. Déjà dans cette séquence (tout statut, tout
+    // identifiant) : refus que force: true ne lève jamais.
+    const candidate = String(params.profile_name ?? params.candidate_id);
     let recent: Awaited<ReturnType<typeof findRecentOrgContact>>;
     try {
-      recent = await findRecentOrgContact(params, ctx);
-    } catch (err) {
-      return { allowed: false, reason: err instanceof Error ? err.message : String(err) };
-    }
-    if (recent) {
-      const candidate = String(params.profile_name ?? params.candidate_id);
-      if ('sequenceId' in (recent as object) && String((recent as { sequenceId?: unknown }).sequenceId ?? '') === String(params.sequence_id)) {
+      if (await isAlreadyInSequence(params, ctx)) {
         return {
           allowed: false,
           reason: `${candidate} est déjà inscrit dans cette séquence : pas de double inscription.`,
         };
       }
+      recent = await findRecentOrgContact(params, ctx);
+    } catch (err) {
+      return { allowed: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+    if (recent) {
       if (params.force !== true) {
         return {
           allowed: false,
@@ -813,13 +868,8 @@ const enrollInSequence: AgentTool = {
       resolveSendingAccount(params, ctx),
     ]);
 
-    // Check if already enrolled
-    const { data: existing } = await ctx.adminClient
-      .from('sequence_enrollments')
-      .select('id, current_step_order')
-      .eq('sequence_id', String(params.sequence_id))
-      .eq('provider_id', String(params.candidate_id))
-      .maybeSingle();
+    // Déjà dans cette séquence, sous quelque identifiant que ce soit.
+    const existing = await isAlreadyInSequence(params, ctx).catch(() => false);
 
     const candidate = String(params.profile_name ?? params.candidate_id);
     const account = 'error' in sending ? null : sending;
@@ -876,6 +926,23 @@ const enrollInSequence: AgentTool = {
       return { success: false, error: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'inscrire des candidats." };
     }
 
+    // D5 : candidat effacé, même par un effacement limité à l'organisation
+    // (marqueur de l'une de ses inscriptions, rapprochée par identifiant
+    // LinkedIn même sans profile_url) ou au registre global. Relu à
+    // l'exécution : une action programmée voit l'effacement survenu depuis
+    // l'approbation. Échec fermé.
+    try {
+      const erased = await isCandidateErasedForOrg(ctx.adminClient, {
+        organizationId: ctx.organizationId,
+        linkedinIds: [typeof params.candidate_id === 'string' ? params.candidate_id : null],
+        linkedinUrl: typeof params.profile_url === 'string' ? params.profile_url : null,
+      });
+      if (erased) return { success: false, error: GDPR_ENROLL_MESSAGE };
+    } catch (err) {
+      console.error('[enroll_in_sequence] erasure check failed:', err);
+      return { success: false, error: GDPR_UNVERIFIED_MESSAGE };
+    }
+
     // Première étape (SEQ-044) : étape racine de plus petit step_order.
     const { data: steps, error: stepsError } = await ctx.adminClient
       .from('sequence_steps')
@@ -914,7 +981,7 @@ const enrollInSequence: AgentTool = {
           linkedinUrl: params.profile_url,
         });
         if (contact.gdprBlocked) {
-          return { success: false, error: "Ce candidat a demandé l'effacement de ses données : inscription impossible." };
+          return { success: false, error: GDPR_ENROLL_MESSAGE };
         }
         emailUsed = contact.email ? contact.email.trim().toLowerCase() : null;
         phoneUsed = contact.phone ? String(contact.phone).trim() || null : null;
@@ -2372,6 +2439,72 @@ async function resolveSendingAccount(
   return { account_id: chosen.linkedin_account_id, account_status: chosen.account_status, account_name: chosen.linkedin_account_name ?? null };
 }
 
+const CHAT_NOT_IN_ORG_MESSAGE = "Cette conversation n'appartient pas à un compte LinkedIn de votre organisation";
+
+/**
+ * Compte qui porte une conversation existante (GET /chats/{id}) : c'est lui
+ * qui envoie la réponse, quel que soit l'account_id transmis. Il doit être un
+ * compte relié de l'appelant dans l'organisation (SEQ-043, jamais celui d'un
+ * collègue) : unipile-search ne contrôle que l'organisation, et le quota était
+ * compté sur le compte de l'appelant alors que le message partait de celui du
+ * collègue. Renvoie aussi l'identifiant LinkedIn du destinataire quand le
+ * prestataire le donne (contrôle RGPD).
+ */
+async function resolveChatSendingAccount(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<{ account_id: string; account_status: string | null; attendee_provider_id: string | null } | { error: string }> {
+  const chatId = String(params.chat_id ?? '').trim();
+  if (!chatId || chatId.length > 512 || chatId.includes('..') || /[/\\?#]/.test(chatId)) {
+    return { error: 'chat_id invalide' };
+  }
+  let creds: { apiKey: string; dsn: string } | null = null;
+  try {
+    creds = await resolveUnipileCredentials(ctx.organizationId, ctx.adminClient);
+  } catch (e) {
+    console.error('[send_linkedin_message] credentials error:', e);
+  }
+  if (!creds) return { error: 'Connexion LinkedIn indisponible : réessayez dans un instant.' };
+  const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
+
+  let chat: Record<string, unknown> | null = null;
+  try {
+    const res = await fetchWithTimeout(`${baseDsn}/api/v1/chats/${encodeURIComponent(chatId)}`, {
+      headers: { 'X-API-KEY': creds.apiKey, 'Accept': 'application/json' },
+    });
+    if (!res.ok) return { error: 'Conversation LinkedIn introuvable.' };
+    chat = await res.json().catch(() => null);
+  } catch {
+    return { error: "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant." };
+  }
+  const ownerId = typeof chat?.account_id === 'string' ? chat.account_id.trim() : '';
+  if (!ownerId) return { error: CHAT_NOT_IN_ORG_MESSAGE };
+
+  const { data: links, error } = await ctx.adminClient
+    .from('member_linkedin_accounts')
+    .select('user_id, account_status')
+    .eq('organization_id', ctx.organizationId)
+    .eq('linkedin_account_id', ownerId)
+    .limit(5);
+  if (error) return { error: "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant." };
+  const rows = (links ?? []) as Array<{ user_id: string | null; account_status: string | null }>;
+  if (rows.length === 0) return { error: CHAT_NOT_IN_ORG_MESSAGE };
+  const own = rows.find((r) => r.user_id === ctx.userId);
+  if (!own) {
+    return {
+      error: "Cette conversation appartient au compte LinkedIn d'un autre membre de l'équipe : vous ne pouvez répondre que depuis votre propre compte.",
+    };
+  }
+  const requested = params.account_id ? String(params.account_id).trim() : '';
+  if (requested && requested !== ownerId) {
+    return { error: "Cette conversation n'appartient pas au compte LinkedIn indiqué." };
+  }
+  const attendee = typeof chat?.attendee_provider_id === 'string' ? chat.attendee_provider_id.trim() : '';
+  return { account_id: ownerId, account_status: own.account_status ?? null, attendee_provider_id: attendee || null };
+}
+
+const GDPR_MESSAGE_REFUSED = "Ce candidat a demandé l'effacement de ses données : message impossible.";
+
 const sendLinkedInMessage: AgentTool = {
   name: 'send_linkedin_message',
   description:
@@ -2448,6 +2581,38 @@ const sendLinkedInMessage: AgentTool = {
     if ('error' in resolved) return { allowed: false, reason: resolved.error };
     if (resolved.account_status && resolved.account_status !== 'OK') {
       return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
+    }
+
+    // Toujours membre de l'organisation : rejoué par le cron, une liaison
+    // LinkedIn restée en place après un retrait ne suffit pas. Échec fermé.
+    if (!(await readCallerOrgRole(ctx))) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+
+    // Réponse dans une conversation : elle doit être portée par un compte de
+    // l'appelant (jamais celui d'un collègue).
+    let recipient = recipientId;
+    if (chatId) {
+      const chat = await resolveChatSendingAccount(params, ctx);
+      if ('error' in chat) return { allowed: false, reason: chat.error };
+      if (chat.account_status && chat.account_status !== 'OK') {
+        return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
+      }
+      recipient = chat.attendee_provider_id ?? '';
+    }
+
+    // D5 : jamais de message à un candidat effacé (marqueur d'une inscription
+    // de l'organisation ou registre global). Rejoué avant l'envoi, y compris
+    // par le cron pour un message programmé. Échec fermé.
+    if (recipient) {
+      try {
+        const erased = await isCandidateErasedForOrg(ctx.adminClient, {
+          organizationId: ctx.organizationId,
+          linkedinIds: [recipient],
+        });
+        if (erased) return { allowed: false, reason: GDPR_MESSAGE_REFUSED };
+      } catch (err) {
+        console.error('[send_linkedin_message] erasure check failed:', err);
+        return { allowed: false, reason: GDPR_UNVERIFIED_MESSAGE };
+      }
     }
 
     return { allowed: true };
@@ -2554,9 +2719,16 @@ const sendLinkedInMessage: AgentTool = {
   async execute(params, ctx) {
     const resolved = await resolveSendingAccount(params, ctx);
     if ('error' in resolved) return { success: false, error: resolved.error };
-    const accountId = resolved.account_id;
+    let accountId = resolved.account_id;
     const text = String(params.text);
     const chatId = params.chat_id ? String(params.chat_id) : null;
+    // Réponse : le quota va au compte qui porte la conversation, celui qui
+    // envoie réellement (un compte de l'appelant, vérifié ici aussi).
+    if (chatId) {
+      const chat = await resolveChatSendingAccount(params, ctx);
+      if ('error' in chat) return { success: false, error: chat.error };
+      accountId = chat.account_id;
+    }
     const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : null;
     const isInmail = params.is_inmail === true;
     const subject = params.subject ? String(params.subject) : null;
@@ -2601,6 +2773,34 @@ const sendLinkedInMessage: AgentTool = {
         return { success: false, error: data.error || `LinkedIn send failed (HTTP ${response.status})` };
       }
 
+      // Suivi de l'envoi, comme le message direct de l'interface (SEQ-118) :
+      // ligne inmail_queue « sent », lue par l'anti-doublon d'inscription,
+      // get_candidate_outreach et le pipeline. Une réponse dans une
+      // conversation n'est pas suivie (pas plus que depuis la messagerie).
+      // Le message est parti : un échec du suivi est signalé, sans échec.
+      let trackingWarning: string | null = null;
+      if (recipientId) {
+        const { error: trackError } = await ctx.adminClient
+          .from('inmail_queue')
+          .insert({
+            organization_id: ctx.organizationId,
+            created_by: ctx.userId,
+            account_id: accountId,
+            recipient_profile_id: recipientId,
+            recipient_name: params.recipient_name ? String(params.recipient_name).trim() || null : null,
+            subject: subject || '(Message direct)',
+            message: text,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            network_distance: isInmail ? 2 : 1,
+          })
+          .select('id');
+        if (trackError) {
+          console.error('[send_linkedin_message] tracking insert failed:', trackError);
+          trackingWarning = "Le message est parti, mais son suivi n'a pas été enregistré : ce candidat n'apparaîtra pas dans le pipeline pour cet envoi.";
+        }
+      }
+
       return {
         success: true,
         data: {
@@ -2609,6 +2809,7 @@ const sendLinkedInMessage: AgentTool = {
             : isInmail
             ? 'InMail envoyé.'
             : 'Message LinkedIn envoyé (nouvelle conversation créée).',
+          ...(trackingWarning ? { tracking_warning: trackingWarning } : {}),
           quota_after: {
             count_today: quotaCheck.count_today + 1,
             max_per_day: quotaCheck.max_per_day,
@@ -4498,12 +4699,25 @@ const createSequence: AgentTool = {
     const parsed = parseSequenceSteps(params);
     if ('error' in parsed) return { success: false, error: parsed.error };
 
+    // SEQ-154, comme l'éditeur : créée active, sauf si l'offre n'autorise pas
+    // l'envoi de séquences (créée désactivée, avec un message). Offre
+    // illisible : désactivée aussi (échec fermé).
+    let inactiveReason: string | null = null;
+    try {
+      const gate = await getSubscriptionGate(ctx.adminClient as unknown as GateClient, ctx.organizationId);
+      if (!gate.canSendSequences) {
+        inactiveReason = "votre offre actuelle ne permet pas l'envoi de séquences. Choisissez une offre pour l'activer.";
+      }
+    } catch {
+      inactiveReason = "votre abonnement n'a pas pu être vérifié. Activez-la depuis vos séquences une fois l'offre confirmée.";
+    }
+
     const { data: seq, error: seqErr } = await ctx.adminClient
       .from('outreach_sequences')
       .insert({
         name: String(params.name).trim().slice(0, 200),
         description: String(params.description || '').trim().slice(0, 1000) || null,
-        is_active: true,
+        is_active: inactiveReason === null,
         created_by: ctx.userId,
         organization_id: ctx.organizationId,
         project_id: String(params.mission_id || '').trim() || null,
@@ -4546,7 +4760,10 @@ const createSequence: AgentTool = {
       data: {
         sequence_id: seq.id,
         steps_created: stepRows.length,
-        message: `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s). Les candidats s'inscrivent ensuite, avec une validation séparée.`,
+        is_active: inactiveReason === null,
+        message: inactiveReason
+          ? `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s), enregistrée désactivée : ${inactiveReason}`
+          : `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s). Les candidats s'inscrivent ensuite, avec une validation séparée.`,
       },
     };
   },

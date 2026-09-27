@@ -105,9 +105,15 @@ test('SEQ-004 — reprise et relance par actions serveur, filet « étape déjà
   assert.match(resume, /'Arrêt manuel'/);
   assert.match(resume, /Interrompu pendant l'envoi/);
 
+  // Contrôle lu avant le gate quota (SEQ-076 : une étape sautée « déjà
+  // envoyée » ne consomme pas de place), puis relu entre le verrou et l'envoi.
+  assert.match(loop, /hasAlreadySentStep\(/);
+  const quotaAt = loop.indexOf('await checkQuotaForAction(');
+  const preGuardAt = loop.indexOf('await stepAlreadySentElsewhere()');
   const lockAt = loop.indexOf("status: 'sending',");
-  const guardAt = loop.indexOf('hasAlreadySentStep(');
+  const guardAt = loop.indexOf('await stepAlreadySentElsewhere()', lockAt);
   const sendAt = loop.indexOf('await executeStepAction(');
+  assert.ok(preGuardAt !== -1 && preGuardAt < quotaAt, 'contrôle avant le gate quota');
   assert.ok(lockAt !== -1 && guardAt > lockAt && sendAt > guardAt, 'filet entre le verrou et l\'envoi');
   assert.match(loop, /skip_reason: 'Étape déjà envoyée'/);
 });

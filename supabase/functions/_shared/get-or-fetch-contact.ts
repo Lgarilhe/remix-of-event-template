@@ -540,3 +540,111 @@ export async function recordGdprErasure(
 
   return { ...result, success: true };
 }
+
+/**
+ * Effacement RGPD connu d'un candidat pour une organisation (D5), avant de
+ * lui écrire ou de l'inscrire :
+ *   - une inscription de l'organisation qui le désigne (profile_id,
+ *     provider_id ou resolved_profile_id parmi `linkedinIds`, ou même slug
+ *     d'URL de profil) porte le marqueur tracking_data.gdpr_erased_at, ou une
+ *     exécution annulée par l'effacement. C'est la seule trace d'un
+ *     effacement limité à l'organisation (SEQ-055 : aucune ligne au registre) ;
+ *   - ou une URL de profil du candidat (donnée, relevée sur ces inscriptions
+ *     ou sur sa fiche du pipeline) figure au registre global gdpr_erasures.
+ * Lève une erreur si une lecture échoue : l'appelant refuse (échec fermé,
+ * contrairement à isGdprBlocked).
+ */
+export async function isCandidateErasedForOrg(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    linkedinIds?: Array<string | null | undefined>;
+    linkedinUrl?: string | null;
+  },
+): Promise<boolean> {
+  const ids = [...new Set(
+    (input.linkedinIds ?? [])
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter((v) => v.length > 0 && v.length <= 512),
+  )];
+  const idSet = new Set(ids);
+  const givenUrl = normalizeLinkedInUrl(input.linkedinUrl);
+  const slug = linkedInProfileSlug(givenUrl);
+  const urls = new Set<string>(givenUrl ? [givenUrl] : []);
+
+  // 1. Inscriptions de l'organisation qui désignent ce candidat (tous statuts).
+  const quoted = ids.map((v) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',');
+  const filters = ids.length
+    ? [`profile_id.in.(${quoted})`, `provider_id.in.(${quoted})`, `resolved_profile_id.in.(${quoted})`]
+    : [];
+  if (slug && /^[a-z0-9\-_.%~]+$/i.test(slug)) filters.push(`profile_url.ilike.*/in/${slug}*`);
+  if (filters.length > 0) {
+    const { data, error } = await supabase
+      .from('sequence_enrollments')
+      .select('id, tracking_data, profile_url, profile_id, provider_id, resolved_profile_id')
+      .eq('organization_id', input.organizationId)
+      .or(filters.join(','))
+      .limit(200);
+    if (error) throw new Error(`lecture des inscriptions : ${error.message}`);
+    type Row = {
+      id: string;
+      tracking_data: unknown;
+      profile_url: string | null;
+      profile_id: string | null;
+      provider_id: string | null;
+      resolved_profile_id: string | null;
+    };
+    // Rapprochement exact ensuite : « marie-martin » ne désigne pas « marie-martin-4b2a1 ».
+    const matched = ((data ?? []) as Row[]).filter((row) =>
+      [row.profile_id, row.provider_id, row.resolved_profile_id].some((v) => typeof v === 'string' && idSet.has(v))
+      || (!!slug && linkedInProfileSlug(row.profile_url) === slug));
+    for (const row of matched) {
+      const tracking = row.tracking_data && typeof row.tracking_data === 'object' && !Array.isArray(row.tracking_data)
+        ? row.tracking_data as Record<string, unknown>
+        : null;
+      const marker = tracking?.[GDPR_ERASED_AT_KEY];
+      if (marker !== undefined && marker !== null && marker !== false && marker !== '') return true;
+      const url = normalizeLinkedInUrl(row.profile_url);
+      if (url) urls.add(url);
+    }
+    if (matched.length > 0) {
+      const { data: cancelled, error: execError } = await supabase
+        .from('sequence_step_executions')
+        .select('id')
+        .in('enrollment_id', matched.map((row) => row.id))
+        .eq('skip_reason', GDPR_ERASURE_SKIP_REASON)
+        .limit(1);
+      if (execError) throw new Error(`lecture des exécutions : ${execError.message}`);
+      if ((cancelled ?? []).length > 0) return true;
+    }
+  }
+
+  // 2. Fiche du pipeline : URL de profil connue pour ces identifiants
+  //    (un effacement ne supprime pas job_candidate_status).
+  if (ids.length > 0) {
+    const { data: rows, error } = await supabase
+      .from('job_candidate_status')
+      .select('linkedin_profile_url')
+      .eq('organization_id', input.organizationId)
+      .in('candidate_id', ids)
+      .limit(50);
+    if (error) throw new Error(`lecture du pipeline : ${error.message}`);
+    for (const row of (rows ?? []) as Array<{ linkedin_profile_url: string | null }>) {
+      const url = normalizeLinkedInUrl(row.linkedin_profile_url);
+      if (url) urls.add(url);
+    }
+  }
+
+  // 3. Registre global des effacements.
+  if (urls.size > 0) {
+    const hashes = await Promise.all([...urls].map((url) => sha256Hex(url)));
+    const { data: hits, error } = await supabase
+      .from('gdpr_erasures')
+      .select('id')
+      .in('linkedin_url_hash', hashes)
+      .limit(1);
+    if (error) throw new Error(`lecture du registre des effacements : ${error.message}`);
+    if ((hits ?? []).length > 0) return true;
+  }
+  return false;
+}

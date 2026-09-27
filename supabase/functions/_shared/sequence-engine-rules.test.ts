@@ -186,3 +186,41 @@ Deno.test('§8 : « répondu » sur une inscription terminée n\'arrête que les
   deepStrictEqual(siblingStopScope('completed', null), { kind: 'none' });
   deepStrictEqual(siblingStopScope('completed', 'pas une date'), { kind: 'none' });
 });
+
+// ─── Correctifs du lot moteur (tests e2e des 20 lots) ───────────────────────
+
+import { linkedinProfileSlug, replyPipelinePatch, REPLY_PIPELINE_STATUSES } from './sequence-engine-rules.ts';
+
+Deno.test('SEQ-221 : la réponse passe « replied » la ligne écrite à l\'inscription (« messaged »)', () => {
+  strictEqual(REPLY_PIPELINE_STATUSES.includes('messaged'), true);
+  for (const s of ['contacted', 'shortlisted', 'scored', 'new', 'discovered', 'untreated']) strictEqual(REPLY_PIPELINE_STATUSES.includes(s), true);
+  // Jamais une ligne déjà plus loin dans le processus.
+  for (const s of ['replied', 'interested', 'qualification', 'dismissed']) strictEqual(REPLY_PIPELINE_STATUSES.includes(s), false);
+});
+
+Deno.test('SEQ-221 : étape vide, « Nouveau » ou « Contacté » passe « Répondu », une étape plus avancée est gardée', () => {
+  deepStrictEqual(replyPipelinePatch(null), { status: 'replied', pipeline_stage: 'Répondu' });
+  deepStrictEqual(replyPipelinePatch(''), { status: 'replied', pipeline_stage: 'Répondu' });
+  deepStrictEqual(replyPipelinePatch('Nouveau'), { status: 'replied', pipeline_stage: 'Répondu' });
+  deepStrictEqual(replyPipelinePatch('Contacté'), { status: 'replied', pipeline_stage: 'Répondu' });
+  deepStrictEqual(replyPipelinePatch('Pré-qualif'), { status: 'replied' });
+  deepStrictEqual(replyPipelinePatch('Pressenti'), { status: 'replied' });
+});
+
+Deno.test('SEQ-008 : slug exact du profil, variantes d\'écriture admises', () => {
+  strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/camille'), 'camille');
+  strictEqual(linkedinProfileSlug('https://fr.linkedin.com/in/camille/'), 'camille');
+  strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/CAMILLE'), 'camille');
+  strictEqual(linkedinProfileSlug('linkedin.com/in/camille'), 'camille');
+  strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/camille?utm_source=share&utm_medium=ios_app'), 'camille');
+  strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/camille#experience'), 'camille');
+});
+
+Deno.test('SEQ-008 : ni préfixe, ni infixe, ni page entreprise ne désignent le même profil', () => {
+  const slug = linkedinProfileSlug('https://www.linkedin.com/in/camille');
+  strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/camille-martin-4b2a1') === slug, false);
+  strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/jean-camille-77') === slug, false);
+  strictEqual(linkedinProfileSlug('https://www.linkedin.com/company/camille'), null);
+  strictEqual(linkedinProfileSlug(null), null);
+  strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/ab'), null);
+});

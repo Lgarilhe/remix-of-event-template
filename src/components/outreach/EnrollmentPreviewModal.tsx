@@ -55,8 +55,10 @@ import {
   alreadyInSequenceLabel,
   alreadyPassedLabel,
   classifyExistingEnrollment,
+  dedupeProfilesByIdentity,
   DUPLICATE_CHECK_FAILED_MESSAGE,
   enrollFailureMessage,
+  findBlockingSequenceEnrollments,
   firstActionSummary,
   isOtherMemberAccountError,
   markCandidatesMessaged,
@@ -636,9 +638,12 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         setRecentEnrollments(recent);
         setDuplicateCheckFailed(false);
       }
-      const enrollSet = allowDuplicates
+      // Même personne sélectionnée sous deux identifiants : une seule
+      // inscription, les autres comptées « déjà dans cette séquence ».
+      const { unique: enrollSet, duplicates } = dedupeProfilesByIdentity(allowDuplicates
         ? activeProfiles
-        : activeProfiles.filter(p => !recent.has(p.id));
+        : activeProfiles.filter(p => !recent.has(p.id)));
+      results.skipped += duplicates;
       if (enrollSet.length === 0) {
         toast.error(
           activeProfiles.length === 0
@@ -653,18 +658,14 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         setEnrollProgress({ done: index + 1, total: enrollSet.length });
         try {
           // Pré-contrôle : la contrainte DB UNIQUE(sequence_id, profile_id)
-          // est inconditionnelle, toute ligne existante empêche l'inscription.
+          // est inconditionnelle, toute ligne existante empêche l'inscription ;
+          // sous un autre identifiant du candidat, une inscription en cours ou
+          // en pause l'empêche aussi, dérogation comprise (SEQ-046).
           // On distingue « déjà dans la séquence » (en cours, en pause) de
           // « déjà passé par la séquence » (terminée, réponse, arrêtée), à
           // reprendre depuis le suivi. La race fenêtre entre SELECT et INSERT
           // est gérée plus bas via UPSERT + ignoreDuplicates.
-          const { data: existing, error: existingError } = await supabase
-            .from('sequence_enrollments')
-            .select('id, status')
-            .eq('sequence_id', sequence.id)
-            .eq('profile_id', profile.id)
-            .maybeSingle();
-          if (existingError) throw existingError;
+          const existing = (await findBlockingSequenceEnrollments(supabase, sequence.id, [profile])).get(profile.id);
 
           if (existing) {
             if (classifyExistingEnrollment(existing.status) === 'in_sequence') results.skipped++;

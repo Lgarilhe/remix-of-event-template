@@ -302,3 +302,38 @@ export function siblingStopScope(previousStatus: string | null | undefined, comp
   if (!Number.isFinite(endedAt)) return { kind: 'none' };
   return { kind: 'created_before', before: new Date(endedAt).toISOString() };
 }
+
+// ─── SEQ-006 / SEQ-221 : réponse reportée dans le pipeline ──────────────────
+
+/**
+ * Statuts de job_candidate_status qu'une réponse passe « replied » (même liste
+ * que unipile-webhook). « messaged » est le statut écrit à l'inscription :
+ * sans lui, le pipeline d'un candidat inscrit ne bougeait jamais.
+ */
+export const REPLY_PIPELINE_STATUSES: readonly string[] = [
+  'contacted', 'shortlisted', 'scored', 'new', 'messaged', 'discovered', 'untreated',
+];
+
+/**
+ * Écriture d'une réponse sur une ligne de pipeline : statut « replied », et
+ * étape « Répondu » quand elle est vide, « Nouveau » ou « Contacté » (même
+ * règle que unipile-webhook). Une étape plus avancée reste celle du recruteur.
+ */
+export function replyPipelinePatch(pipelineStage: string | null | undefined): { status: 'replied'; pipeline_stage?: 'Répondu' } {
+  const promote = !pipelineStage || pipelineStage === 'Nouveau' || pipelineStage === 'Contacté';
+  return promote ? { status: 'replied', pipeline_stage: 'Répondu' } : { status: 'replied' };
+}
+
+// ─── SEQ-008 : rendez-vous rattaché par l'URL exacte du profil ──────────────
+
+/**
+ * Slug public d'une URL de profil LinkedIn (/in/{slug}), en minuscules, sans
+ * paramètres ni fragment (même règle que calendly-webhook). null sans profil
+ * /in/ ou pour un slug de moins de 3 caractères.
+ */
+export function linkedinProfileSlug(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const match = url.match(/linkedin\.com\/in\/([^/?#\s]+)/i);
+  const slug = match?.[1]?.trim().toLowerCase() ?? '';
+  return slug.length >= 3 ? slug : null;
+}

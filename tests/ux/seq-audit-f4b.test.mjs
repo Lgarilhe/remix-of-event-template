@@ -159,7 +159,8 @@ test('SEQ-125 — anti-doublon étendu aux InMails groupés (programmés, en cou
   assert.match(duplicates.formatRecentContactLabel(entry), /^Déjà contacté par Théo le 20\/09\/2026 par InMail$/);
   const inmailQuery = queries.find(q => q.table === 'inmail_queue');
   assert.deepEqual(inmailQuery.eq, [['organization_id', 'org-1']]);
-  assert.deepEqual(inmailQuery.in.find(([c]) => c === 'status')[1], ['pending', 'scheduled', 'sending', 'sent']);
+  // Un InMail « répondu » reste un contact (défaut inmail-replied-hors-antidoublon-client).
+  assert.deepEqual(inmailQuery.in.find(([c]) => c === 'status')[1], ['pending', 'scheduled', 'sending', 'sent', 'replied']);
   assert.equal(inmailQuery.gte[0]?.[0], 'created_at');
 });
 

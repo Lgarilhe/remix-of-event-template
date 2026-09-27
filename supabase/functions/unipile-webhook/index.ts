@@ -7,6 +7,14 @@ import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 import { stopLinkedInAccountSending } from "../_shared/linkedin-sending-stop.ts";
 import { resumeDate } from "../_shared/sequence-resume.ts";
 import { inReplyToCandidates } from "../_shared/sequence-email-policy.mjs";
+import { missionJobIds } from "../_shared/sequence-engine-rules.ts";
+import {
+  cancelScheduledInMails,
+  closeSiblingEnrollments,
+  linkedInSlugOf,
+  replySiblingScope,
+  type ReplyAnchor,
+} from "../_shared/candidate-reply-closure.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,6 +22,8 @@ const corsHeaders = {
 };
 
 const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
+/** webhook_event_log.event_type d'une clé dont le traitement a échoué et que la purge n'a pas pu retirer. */
+const FAILED_EVENT_MARKER = 'processing_failed';
 // Note : le handler est fail-closed (500 si secret absent, 401 si header
 // invalide) — ce warn signale juste une config incomplète au boot.
 if (!WEBHOOK_SECRET) console.warn('[unipile-webhook] ⚠️ UNIPILE_WEBHOOK_SECRET not set — all requests will be REJECTED until configured');
@@ -88,86 +98,42 @@ const PENDING_EXECUTION_STATUSES = ['scheduled', 'waiting_event', 'quota_blocked
 /** Une réponse, un rebond ou une acceptation concernent aussi une inscription en pause. */
 const OPEN_ENROLLMENT_STATUSES = ['active', 'paused'];
 
-/** Motif de clôture des inscriptions du même candidat sur un autre compte de l'organisation. */
-const SIBLING_REPLY_SKIP_REASON = "Le candidat a répondu sur un autre compte de l'organisation";
-
-/** Slug public d'une URL de profil LinkedIn (/in/{slug}), en minuscules. */
-function linkedInSlugOf(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const match = String(value).match(/linkedin\.com\/in\/([^/?#\s]+)/i);
-  return match ? match[1].toLowerCase() : null;
-}
-
 /**
- * Clôt les inscriptions actives ou en pause du même candidat dans la même
- * organisation, sur les autres comptes (SEQ-212 : aucune relance après une
- * réponse, quel que soit le compte qui l'a reçue). Statut 'stopped' (pas
- * 'replied' : la réponse est comptée sur la séquence qui l'a reçue), étapes
- * en attente annulées. Lève en cas d'erreur (rejeu du webhook).
+ * Inscriptions déjà closes auxquelles un message du candidat se rattache
+ * encore (terminée, ou déjà « répondu » par le moteur ou par un premier
+ * passage de ce webhook) : leur statut ne change pas, elles désignent
+ * l'organisation où tout s'arrête (SEQ-212, _shared/candidate-reply-closure.ts).
  */
-async function closeSiblingEnrollments(
-  supabase: SupabaseClient,
-  organizationId: string | null | undefined,
-  identifiers: Array<string | null | undefined>,
-  alreadyClosed: Set<string>,
-): Promise<number> {
-  if (!organizationId) return 0;
-  const ids = [...new Set(identifiers.filter((v): v is string => typeof v === 'string' && v.length > 0).map(sanitizeFilterId))]
-    .filter(Boolean);
-  if (ids.length === 0) return 0;
-  const list = ids.join(',');
-  const { data: siblings, error } = await supabase
-    .from('sequence_enrollments')
-    .select('id')
-    .eq('organization_id', organizationId)
-    .in('status', OPEN_ENROLLMENT_STATUSES)
-    .or(`profile_id.in.(${list}),resolved_profile_id.in.(${list}),provider_id.in.(${list})`);
-  if (error) throw error;
-  const targets = ((siblings ?? []) as Array<{ id: string }>).map((r) => r.id).filter((id) => !alreadyClosed.has(id));
-  if (targets.length === 0) return 0;
-  const nowIso = new Date().toISOString();
-  const { data: stopped, error: stopError } = await supabase
-    .from('sequence_enrollments')
-    .update({ status: 'stopped', pause_reason: null, completed_at: nowIso, updated_at: nowIso })
-    .in('id', targets)
-    .in('status', OPEN_ENROLLMENT_STATUSES)
-    .select('id');
-  if (stopError) throw stopError;
-  const stoppedIds = ((stopped ?? []) as Array<{ id: string }>).map((r) => r.id);
-  if (stoppedIds.length > 0) {
-    const { error: cancelError } = await supabase
-      .from('sequence_step_executions')
-      .update({ status: 'cancelled', skip_reason: SIBLING_REPLY_SKIP_REASON, updated_at: nowIso })
-      .in('enrollment_id', stoppedIds)
-      .in('status', PENDING_EXECUTION_STATUSES);
-    if (cancelError) throw cancelError;
-    console.log(`[unipile-webhook] ${stoppedIds.length} sibling enrollment(s) stopped in org ${organizationId}`);
-  }
-  return stoppedIds.length;
-}
+const REPLY_CLOSED_ENROLLMENT_STATUSES = ['replied', 'completed'];
 
 /**
- * Passe le candidat « Répondu » dans le pipeline de SON organisation. Échec
- * fermé (SEQ-006) : sans organisation connue, aucune mise à jour (l'ancien
- * repli sans filtre écrivait dans le pipeline de toutes les organisations
- * qui suivent ce profil). Non bloquant.
+ * Passe le candidat « Répondu » dans le pipeline de SON organisation et de la
+ * mission de l'inscription (SEQ-006, même borne que le moteur : les autres
+ * missions où il est suivi restent inchangées ; inscription sans mission :
+ * toute l'organisation). Échec fermé : sans organisation connue, aucune mise
+ * à jour (l'ancien repli sans filtre écrivait dans le pipeline de toutes les
+ * organisations qui suivent ce profil). Non bloquant.
  */
 async function markCandidateRepliedInPipeline(
   supabase: SupabaseClient,
   organizationId: string | null | undefined,
   candidateId: string | null | undefined,
+  jobId: string | null | undefined,
 ): Promise<void> {
   if (!candidateId) return;
   if (!organizationId) {
     console.warn('[unipile-webhook] job_candidate_status not updated: enrollment without organization');
     return;
   }
-  const { data: jcsRows, error } = await supabase
+  let jcsQuery = supabase
     .from('job_candidate_status')
     .select('id, pipeline_stage')
     .eq('candidate_id', candidateId)
     .eq('organization_id', organizationId)
     .in('status', ['contacted', 'shortlisted', 'scored', 'new', 'messaged', 'discovered', 'untreated']);
+  const jcsJobIds = missionJobIds(jobId);
+  if (jcsJobIds) jcsQuery = jcsQuery.in('job_id', jcsJobIds);
+  const { data: jcsRows, error } = await jcsQuery;
   if (error) {
     console.warn('[unipile-webhook] job_candidate_status lookup failed:', error);
     return;
@@ -537,6 +503,9 @@ interface SequenceEnrollment {
   provider_id?: string | null;
   resolved_profile_id?: string | null;
   created_by?: string | null;
+  job_id?: string | null;
+  replied_at?: string | null;
+  completed_at?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -680,11 +649,23 @@ Deno.serve(async (req) => {
         p_account_id: payload.account_id || null,
       });
       if (isNew === false) {
-        console.log('[unipile-webhook] Duplicate event ignored:', eventKey);
-        return new Response(JSON.stringify({ ok: true, deduplicated: true }), {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        // Clé laissée par un traitement en échec dont la purge a échoué aussi
+        // (marquée par le catch plus bas) : ce rejeu la reprend et traite
+        // l'événement, au lieu de l'ignorer comme doublon (SEQ-040).
+        const { data: reclaimed } = await supabase
+          .from('webhook_event_log')
+          .update({ event_type: payload.event, received_at: new Date().toISOString() })
+          .eq('event_key', eventKey)
+          .eq('event_type', FAILED_EVENT_MARKER)
+          .select('event_key');
+        if ((reclaimed ?? []).length === 0) {
+          console.log('[unipile-webhook] Duplicate event ignored:', eventKey);
+          return new Response(JSON.stringify({ ok: true, deduplicated: true }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        console.warn('[unipile-webhook] Retrying event whose dedup purge had failed:', eventKey);
       }
     } catch (e) {
       // Si la dédup échoue (table absente, RPC indisponible), on continue
@@ -1011,12 +992,28 @@ Deno.serve(async (req) => {
     // (audit 2026-07, Delivery M11 : un blip DB de 30s pendant un
     // mail_received = réponse du candidat jamais enregistrée → on continuait
     // de le relancer). On purge d'abord la ligne de dédup, sinon le retry
-    // serait ignoré comme doublon.
+    // serait ignoré comme doublon. Le client ne lève pas : un échec arrive
+    // dans { error } (il passait inaperçu, et le rejeu répondait
+    // « deduplicated »). Repli : la clé est marquée en échec, et le rejeu la
+    // reprend (voir la dédup plus haut).
     if (dedupKeyForCleanup && supabaseForCleanup) {
       try {
-        await supabaseForCleanup.from('webhook_event_log').delete().eq('event_key', dedupKeyForCleanup);
+        const { error: cleanupError } = await supabaseForCleanup
+          .from('webhook_event_log')
+          .delete()
+          .eq('event_key', dedupKeyForCleanup);
+        if (cleanupError) {
+          console.error('[unipile-webhook] Dedup cleanup failed:', cleanupError);
+          const { error: markError } = await supabaseForCleanup
+            .from('webhook_event_log')
+            .update({ event_type: FAILED_EVENT_MARKER })
+            .eq('event_key', dedupKeyForCleanup);
+          if (markError) {
+            console.error('[unipile-webhook] Dedup key kept: the provider retry will be ignored as a duplicate:', markError);
+          }
+        }
       } catch (cleanupErr) {
-        console.warn('[unipile-webhook] Dedup cleanup failed:', cleanupErr);
+        console.error('[unipile-webhook] Dedup cleanup failed:', cleanupErr);
       }
     }
     return new Response(JSON.stringify({
@@ -1367,8 +1364,9 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   }
 
   // Identifiants alternatifs du candidat (résolus une seule fois, réutilisés
-  // pour la file InMail plus bas). Best-effort : un échec n'empêche pas la
-  // suite, le contrôle avant envoi du moteur reste le filet.
+  // pour l'arrêt de ses autres inscriptions et la file InMail plus bas).
+  // Best-effort : un échec n'empêche pas la suite, le contrôle avant envoi du
+  // moteur reste le filet.
   let senderAltIds: string[] | null = null;
   let senderPublicIdentifier: string | null = null;
   const resolveSenderAltIds = async (): Promise<string[]> => {
@@ -1433,6 +1431,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
 
   // Inscriptions réellement closes par CE traitement (réponse comptée une fois).
   const closedEnrollments: SequenceEnrollment[] = [];
+  const failures: unknown[] = [];
   if (enrollments.length === 0) {
     console.log('[unipile-webhook] No open enrollments found for sender:', senderId);
   } else {
@@ -1440,7 +1439,6 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     console.log(`[unipile-webhook] Found ${enrollments.length} enrollment(s) - marking as replied:`, 
       enrollments.map(e => ({ id: e.id, profile_id: e.profile_id })));
 
-    const failures: unknown[] = [];
     for (const enrollment of enrollments) {
       const nowIso = new Date().toISOString();
       // Clôture conditionnée au statut (SEQ-191) : si le moteur l'a déjà close,
@@ -1469,6 +1467,10 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       // seulement 'scheduled' (audit 2026-07, Delivery M6). Fait aussi quand
       // l'inscription était déjà close (aucune ligne changée) : elle est alors
       // terminale et ne doit plus rien avoir en attente (rejeu idempotent).
+      // Un échec est remonté (500, rejeu) sans sauter le compte de la réponse
+      // ni le pipeline de la clôture effective : le rejeu ne retrouve plus
+      // l'inscription parmi les ouvertes, et les étapes restées en attente ne
+      // partent jamais (contrôle avant envoi du moteur, SEQ-189).
       const { error: cancelError } = await supabase
         .from('sequence_step_executions')
         .update({
@@ -1478,10 +1480,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         })
         .eq('enrollment_id', enrollment.id)
         .in('status', PENDING_EXECUTION_STATUSES);
-      if (cancelError) {
-        failures.push(cancelError);
-        continue;
-      }
+      if (cancelError) failures.push(cancelError);
 
       if (!changed || changed.length === 0) continue;
       closedEnrollments.push(enrollment);
@@ -1494,80 +1493,171 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
 
       console.log('[unipile-webhook] Enrollment', enrollment.id, 'marked as replied');
 
-      // Pipeline « Répondu » dans l'organisation de l'inscription seulement.
-      await markCandidateRepliedInPipeline(supabase, enrollment.organization_id, enrollment.profile_id);
+      // Pipeline « Répondu » dans l'organisation et la mission de l'inscription seulement.
+      await markCandidateRepliedInPipeline(supabase, enrollment.organization_id, enrollment.profile_id, enrollment.job_id);
     }
+  }
 
-    // Même candidat sur d'autres comptes de l'organisation (SEQ-212).
-    const handledIds = new Set(enrollments.map((e) => e.id));
-    const orgIds = [...new Set(enrollments.map((e) => e.organization_id).filter((o): o is string => !!o))];
-    for (const orgId of orgIds) {
-      const orgRows = enrollments.filter((e) => e.organization_id === orgId);
-      try {
-        await closeSiblingEnrollments(
-          supabase,
-          orgId,
-          [senderId, ...(senderAltIds ?? []), ...orgRows.flatMap((e) => [e.profile_id, e.provider_id, e.resolved_profile_id])],
-          handledIds,
-        );
-      } catch (siblingError) {
-        failures.push(siblingError);
-      }
-    }
+  // Identifiants alternatifs résolus aussi quand le rattachement exact a
+  // réussi : l'inscription du candidat sous son identifiant Recruiter, sur le
+  // compte d'un collègue, fait partie de celles à arrêter plus bas (SEQ-212).
+  const resolvedAltIds = await resolveSenderAltIds();
 
-    if (failures.length > 0) {
-      console.error(`[unipile-webhook] new_message: ${failures.length} write(s) failed:`, failures[0]);
-      throw failures[0];
+  // Aucune inscription ouverte : message reçu sur une inscription déjà close
+  // de ce compte (terminée ; déjà « répondu » par le moteur, ou par un premier
+  // passage dont l'arrêt des autres inscriptions a échoué, rejoué ici). Son
+  // statut ne change pas et la réponse n'est pas recomptée (SEQ-191) : elle
+  // rattache seulement le candidat à son organisation pour l'arrêt plus bas.
+  let closedAnchors: SequenceEnrollment[] = [];
+  if (enrollments.length === 0 && safeSenderId) {
+    const idList = [safeSenderId, ...resolvedAltIds.map(sanitizeFilterId)].filter(Boolean).join(',');
+    const byId = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+      (column) => supabase
+        .from('sequence_enrollments')
+        .select('*')
+        .eq(column, account_id)
+        .in('status', REPLY_CLOSED_ENROLLMENT_STATUSES)
+        .or(`profile_id.in.(${idList}),resolved_profile_id.in.(${idList}),provider_id.in.(${idList})`),
+    );
+    if (byId.error) throw byId.error;
+    closedAnchors = byId.rows;
+    if (closedAnchors.length === 0) {
+      const byUrl = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+        (column) => supabase
+          .from('sequence_enrollments')
+          .select('*')
+          .eq(column, account_id)
+          .in('status', REPLY_CLOSED_ENROLLMENT_STATUSES)
+          .like('profile_url', `%${safeSenderId}%`),
+      );
+      if (byUrl.error) throw byUrl.error;
+      closedAnchors = byUrl.rows;
     }
+    const slug = senderPublicIdentifier as string | null;
+    if (closedAnchors.length === 0 && slug) {
+      const bySlug = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+        (column) => supabase
+          .from('sequence_enrollments')
+          .select('*')
+          .eq(column, account_id)
+          .in('status', REPLY_CLOSED_ENROLLMENT_STATUSES)
+          .ilike('profile_url', `%/in/${slug.replace(/([%_\\])/g, '\\$1')}%`),
+      );
+      if (bySlug.error) throw bySlug.error;
+      closedAnchors = bySlug.rows.filter((e) => linkedInSlugOf(e.profile_url) === slug);
+    }
+    if (closedAnchors.length > 0) console.log(`[unipile-webhook] Message on ${closedAnchors.length} closed enrollment(s): status unchanged`);
   }
 
   // Also update inmail_queue entries for this sender (for ATS tracking).
   // Limité au compte qui reçoit la réponse (SEQ-111) : un InMail du même
   // candidat envoyé par un autre compte, ou une autre organisation, n'est pas
-  // une réponse à celui-là. Non bloquant.
-  let inmailMatches: { id: string; recipient_profile_id: string }[] | null = null;
+  // une réponse à celui-là. Les InMails déjà « répondu » sont relus aussi : ils
+  // rattachent le candidat à son organisation (rejeu). Lecture impossible :
+  // levée (500, rejeu) ; marquage non bloquant.
+  type InMailMatch = { id: string; recipient_profile_id: string; organization_id: string | null; status: string; updated_at: string };
+  let inmailMatches: InMailMatch[] | null = null;
   
   const { data: exactInmailMatch, error: exactInmailError } = await supabase
     .from('inmail_queue')
-    .select('id, recipient_profile_id')
+    .select('id, recipient_profile_id, organization_id, status, updated_at')
     .eq('account_id', account_id)
-    .eq('status', 'sent')
+    .in('status', ['sent', 'replied'])
     .eq('recipient_profile_id', senderId);
-  if (exactInmailError) console.warn('[unipile-webhook] inmail lookup failed:', exactInmailError);
+  if (exactInmailError) {
+    console.warn('[unipile-webhook] inmail lookup failed:', exactInmailError);
+    failures.push(exactInmailError);
+  }
 
-  inmailMatches = exactInmailMatch;
+  inmailMatches = exactInmailMatch as InMailMatch[] | null;
 
   // If no exact match, try the sender's alternative IDs
   // InMails are sent to AEM... IDs but replies come from ACo... IDs (or vice versa)
   if ((!inmailMatches || inmailMatches.length === 0) && senderId) {
-    const altIdArray = await resolveSenderAltIds();
-    if (altIdArray.length > 0) {
+    if (resolvedAltIds.length > 0) {
       const { data: altMatch, error: altInmailError } = await supabase
         .from('inmail_queue')
-        .select('id, recipient_profile_id')
+        .select('id, recipient_profile_id, organization_id, status, updated_at')
         .eq('account_id', account_id)
-        .eq('status', 'sent')
-        .in('recipient_profile_id', altIdArray);
-      if (altInmailError) console.warn('[unipile-webhook] inmail lookup (alt ids) failed:', altInmailError);
+        .in('status', ['sent', 'replied'])
+        .in('recipient_profile_id', resolvedAltIds);
+      if (altInmailError) {
+        console.warn('[unipile-webhook] inmail lookup (alt ids) failed:', altInmailError);
+        failures.push(altInmailError);
+      }
 
       if (altMatch && altMatch.length > 0) {
-        inmailMatches = altMatch;
+        inmailMatches = altMatch as InMailMatch[];
         console.log(`[unipile-webhook] InMail matched via resolved ID for ${altMatch.length} entries`);
       }
     }
   }
 
-  if (inmailMatches && inmailMatches.length > 0) {
-    console.log(`[unipile-webhook] Marking ${inmailMatches.length} inmail_queue entries as replied`);
-    const inmailIds = inmailMatches.map(m => m.id);
+  const sentInmails = (inmailMatches ?? []).filter((m) => m.status === 'sent');
+  if (sentInmails.length > 0) {
+    console.log(`[unipile-webhook] Marking ${sentInmails.length} inmail_queue entries as replied`);
+    const inmailIds = sentInmails.map(m => m.id);
     const { error: inmailUpdateError } = await supabase
       .from('inmail_queue')
       .update({
         status: 'replied',
         updated_at: new Date().toISOString(),
       })
-      .in('id', inmailIds);
+      .in('id', inmailIds)
+      .eq('status', 'sent');
     if (inmailUpdateError) console.warn('[unipile-webhook] inmail replied update failed:', inmailUpdateError);
+  }
+
+  // Même candidat ailleurs dans l'organisation (SEQ-212) : autres inscriptions
+  // arrêtées, InMails pas encore partis annulés. Organisations : celles des
+  // inscriptions et des InMails de ce compte auxquels le message se rattache,
+  // jamais une organisation sans contact avec lui (compte relié à plusieurs
+  // organisations, SEQ-006). Portée bornée quand le contact était déjà clos
+  // (replySiblingScope, contrat §8).
+  const anchorsByOrg = new Map<string, ReplyAnchor[]>();
+  const addAnchor = (orgId: string | null | undefined, anchor: ReplyAnchor) => {
+    if (orgId) anchorsByOrg.set(orgId, [...(anchorsByOrg.get(orgId) ?? []), anchor]);
+  };
+  for (const e of enrollments) addAnchor(e.organization_id, { live: true });
+  for (const e of closedAnchors) {
+    addAnchor(e.organization_id, { live: false, endedAt: e.status === 'completed' ? e.completed_at : (e.replied_at ?? e.completed_at) });
+  }
+  for (const m of inmailMatches ?? []) addAnchor(m.organization_id, m.status === 'sent' ? { live: true } : { live: false, endedAt: m.updated_at });
+
+  const anchorRows = [...enrollments, ...closedAnchors];
+  const candidate = {
+    ids: [
+      senderId, ...resolvedAltIds,
+      ...anchorRows.flatMap((e) => [e.profile_id, e.provider_id, e.resolved_profile_id]),
+      ...(inmailMatches ?? []).map((m) => m.recipient_profile_id),
+    ],
+    slugs: [senderPublicIdentifier, ...anchorRows.map((e) => e.profile_url)],
+  };
+  const handledIds = new Set(anchorRows.map((e) => e.id));
+  for (const [orgId, anchors] of anchorsByOrg) {
+    const scope = replySiblingScope(anchors);
+    try {
+      await closeSiblingEnrollments(supabase, orgId, candidate, handledIds, scope);
+    } catch (siblingError) {
+      failures.push(siblingError);
+    }
+    try {
+      await cancelScheduledInMails(supabase, { organizationId: orgId }, candidate.ids, scope);
+    } catch (inmailError) {
+      failures.push(inmailError);
+    }
+  }
+  // Le compte qui vient de recevoir le message du candidat ne lui envoie pas
+  // ensuite l'InMail qu'il avait programmé, même sans autre contact connu.
+  try {
+    await cancelScheduledInMails(supabase, { accountId: account_id }, candidate.ids);
+  } catch (inmailError) {
+    failures.push(inmailError);
+  }
+
+  if (failures.length > 0) {
+    console.error(`[unipile-webhook] new_message: ${failures.length} write(s) failed:`, failures[0]);
+    throw failures[0];
   }
 
   // ── Create notification for new message ──
@@ -1809,10 +1899,12 @@ interface MailEnrollment {
   created_by: string | null;
   profile_name: string | null;
   profile_headline: string | null;
+  profile_url: string | null;
+  job_id: string | null;
   status: string;
 }
 const MAIL_ENROLLMENT_COLUMNS =
-  'id, sequence_id, profile_id, provider_id, resolved_profile_id, account_id, email_used, organization_id, created_by, profile_name, profile_headline, status';
+  'id, sequence_id, profile_id, provider_id, resolved_profile_id, account_id, email_used, organization_id, created_by, profile_name, profile_headline, profile_url, job_id, status';
 
 /** Échappe les jokers SQL d'une adresse pour un ilike exact. */
 const escapeLike = (value: string) => value.replace(/([%_\\])/g, '\\$1');
@@ -2004,7 +2096,9 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
     }
 
     // Tous les statuts pendants, y compris quand l'inscription était déjà
-    // close entre-temps (elle est alors terminale).
+    // close entre-temps (elle est alors terminale). Un échec est remonté
+    // (500, rejeu) sans sauter le compte ni le pipeline de la clôture
+    // effective, comme sur le canal LinkedIn.
     const { error: cancelError } = await supabase
       .from('sequence_step_executions')
       .update({
@@ -2014,10 +2108,7 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
       })
       .eq('enrollment_id', enrollment.id)
       .in('status', PENDING_EXECUTION_STATUSES);
-    if (cancelError) {
-      failures.push(cancelError);
-      continue;
-    }
+    if (cancelError) failures.push(cancelError);
 
     // Réponse comptée une seule fois (SEQ-191) : seulement si CE traitement a clos l'inscription.
     if (!changed || changed.length === 0) continue;
@@ -2030,26 +2121,31 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload) 
     });
 
     // Pipeline « Répondu » (SEQ-211, comme le canal LinkedIn ; « Pré-qualif »
-    // est l'étape d'une prise de rendez-vous), organisation de l'inscription seulement.
-    await markCandidateRepliedInPipeline(supabase, enrollment.organization_id, enrollment.profile_id);
+    // est l'étape d'une prise de rendez-vous), organisation et mission de l'inscription seulement.
+    await markCandidateRepliedInPipeline(supabase, enrollment.organization_id, enrollment.profile_id, enrollment.job_id);
 
     console.log('[unipile-webhook][mail] Enrollment', enrollment.id, 'marked replied (email)');
   }
 
-  // 4. Même candidat sur d'autres comptes de l'organisation (SEQ-212).
+  // 4. Même candidat ailleurs dans l'organisation (SEQ-212) : autres
+  //    inscriptions arrêtées, InMails pas encore partis annulés.
   const handledIds = new Set(enrollments.map((e) => e.id));
   const orgIds = [...new Set(enrollments.map((e) => e.organization_id).filter((o): o is string => !!o))];
   for (const orgId of orgIds) {
     const orgRows = enrollments.filter((e) => e.organization_id === orgId);
+    const candidate = {
+      ids: orgRows.flatMap((e) => [e.profile_id, e.provider_id, e.resolved_profile_id]),
+      slugs: orgRows.map((e) => e.profile_url),
+    };
     try {
-      await closeSiblingEnrollments(
-        supabase,
-        orgId,
-        orgRows.flatMap((e) => [e.profile_id, e.provider_id, e.resolved_profile_id]),
-        handledIds,
-      );
+      await closeSiblingEnrollments(supabase, orgId, candidate, handledIds);
     } catch (siblingError) {
       failures.push(siblingError);
+    }
+    try {
+      await cancelScheduledInMails(supabase, { organizationId: orgId }, candidate.ids);
+    } catch (inmailError) {
+      failures.push(inmailError);
     }
   }
 

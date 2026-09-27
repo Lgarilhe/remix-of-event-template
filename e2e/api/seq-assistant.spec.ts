@@ -440,8 +440,11 @@ test.describe('@critical Assistant : send_linkedin_message', () => {
 
   test.describe('slm-refus-desinscrit', () => {
     test.describe.configure({ mode: 'serial' });
-    // slm-refus-desinscrit
-    test('refuse d’écrire à un candidat désinscrit (adresse de son inscription supprimée), écrit aux autres', async () => {
+    // slm-refus-desinscrit — attente alignée (réfutée par les deux relecteurs) : une désinscription
+    // e-mail (suppressed_emails) arrête les séquences et les e-mails (SEQ-089, SEQ-202, page
+    // /unsubscribe : « Vous ne recevrez plus d'e-mails »), pas un message LinkedIn ponctuel approuvé
+    // par le recruteur ; la messagerie n'applique pas non plus cette liste. Le message part donc.
+    test('désinscription e-mail (adresse de son inscription supprimée) : le message LinkedIn ponctuel part quand même, comme au témoin', async () => {
       test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
       const { org, accountId } = await sendingOrg('E2E Assistant désinscrit');
       track(org);
@@ -472,10 +475,10 @@ test.describe('@critical Assistant : send_linkedin_message', () => {
       });
       const res = await approve(token, id);
 
-      // DÉFAUT slm-desinscription-ignoree : send_linkedin_message ne consulte pas suppressed_emails (règle SEQ-089 du moteur absente).
-      expect.soft(await newChatsTo(accountId, unsubscribed), 'aucun envoi au candidat désinscrit').toHaveLength(0);
-      expect.soft(res.body.success, JSON.stringify(res.body)).toBe(false);
-      expect.soft((await execRow(id)).status).toBe('failed');
+      // Pas un refus : suppressed_emails est une liste d'envoi e-mail (voir l'en-tête du test).
+      expect(await newChatsTo(accountId, unsubscribed), 'message LinkedIn ponctuel envoyé').toHaveLength(1);
+      expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+      expect((await execRow(id)).status).toBe('executed');
     });
   });
 

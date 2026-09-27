@@ -63,14 +63,18 @@ const newMail = fnBody(webhook, 'async function handleNewMail(');
 const bounce = fnBody(webhook, 'async function handleBounce(');
 
 // ------------------------------------------------------------------ SEQ-006
-test('SEQ-006 — réponse : pipeline mis à jour dans l’organisation de l’inscription seulement, échec fermé', () => {
+test('SEQ-006 — réponse : pipeline mis à jour dans l’organisation et la mission de l’inscription seulement, échec fermé', () => {
   const mark = fnBody(webhook, 'async function markCandidateRepliedInPipeline(');
   assert.match(mark, /if \(!organizationId\) \{[\s\S]*?return;/, 'sans organisation : aucune mise à jour');
   assert.match(mark, /\.eq\('candidate_id', candidateId\)\s*\.eq\('organization_id', organizationId\)/);
+  // Mission de l'inscription (même borne que le moteur) : les autres missions
+  // du candidat restent inchangées. L'appel sans mission passait « Répondu »
+  // toutes les missions de l'organisation.
+  assert.match(mark, /const jcsJobIds = missionJobIds\(jobId\);\s*if \(jcsJobIds\) jcsQuery = jcsQuery\.in\('job_id', jcsJobIds\);/);
   // L'ancien repli ajoutait le filtre SEULEMENT si l'organisation était connue.
   assert.doesNotMatch(webhook, /if \([^)]*organization_id\)\s*jcsQuery = jcsQuery\.eq\('organization_id'/);
-  assert.match(newMessage, /markCandidateRepliedInPipeline\(supabase, enrollment\.organization_id, enrollment\.profile_id\)/);
-  assert.match(newMail, /markCandidateRepliedInPipeline\(supabase, enrollment\.organization_id, enrollment\.profile_id\)/);
+  assert.match(newMessage, /markCandidateRepliedInPipeline\(supabase, enrollment\.organization_id, enrollment\.profile_id, enrollment\.job_id\)/);
+  assert.match(newMail, /markCandidateRepliedInPipeline\(supabase, enrollment\.organization_id, enrollment\.profile_id, enrollment\.job_id\)/);
 });
 
 // ------------------------------------------------------------------ SEQ-008
