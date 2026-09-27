@@ -315,6 +315,19 @@ test.describe('@critical Scénarios moteur de séquences', () => {
     expect(await sentTexts(accountId)).toEqual([]);
   });
 
+  test('coupure brève : « CREDENTIALS » puis « OK » dans la même minute, le compte revient (format à plat)', async () => {
+    const { org, accountId } = await sendingOrg('E2E Coupure brève');
+    orgsToDelete.push({ org, extra: [] });
+    const readStatus = async () => (await admin().from('member_linkedin_accounts')
+      .select('account_status').eq('linkedin_account_id', accountId).single()).data?.account_status;
+
+    await webhook({ event: 'account_status_updated', account_id: accountId, account_type: 'LINKEDIN', status: 'CREDENTIALS' });
+    expect(await readStatus()).toBe('CREDENTIALS');
+    const back = await webhook({ event: 'account_status_updated', account_id: accountId, account_type: 'LINKEDIN', status: 'OK' });
+    expect(back.deduplicated, 'le retour à OK n’est pas un doublon de la coupure').toBeUndefined();
+    expect(await readStatus()).toBe('OK');
+  });
+
   test('scénario 7 : retirer un membre met ses inscriptions en pause, rien ne part ensuite', async () => {
     const { org } = await sendingOrg('E2E Scénario 7');
     const member = await addMember(org.orgId, 'member', 'retire');

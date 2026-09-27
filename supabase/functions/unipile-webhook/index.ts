@@ -657,13 +657,17 @@ Deno.serve(async (req) => {
     // 1. message_id / email_id pour les events de message
     // 2. account_id + event + timestamp pour les status changes
     // 3. SHA simplifié du payload sinon
+    // Le statut et l'identifiant du message imbriqué font partie de la clé : sans
+    // eux, « CREDENTIALS » puis « OK » dans la même minute (format à plat, API v2)
+    // ne comptaient qu'une fois et le compte restait noté déconnecté.
     const eventIdRaw =
       (payload as any).message_id
       || (payload as any).email_id
+      || (payload as any).data?.message?.id
       || ((payload as any).AccountStatus
           ? `${(payload as any).AccountStatus.account_id}:${(payload as any).AccountStatus.message}:${Math.floor(Date.now() / 60000)}`
           : null)
-      || `${payload.account_id || 'no-acc'}:${payload.event}:${(payload as any).chat_id || ''}:${(payload as any).user_provider_id || ''}:${Math.floor(Date.now() / 60000)}`;
+      || `${payload.account_id || 'no-acc'}:${payload.event}:${(payload as any).chat_id || ''}:${(payload as any).user_provider_id || ''}:${payload.status || (payload.data as any)?.status || ''}:${Math.floor(Date.now() / 60000)}`;
     const eventKey = `unipile:${payload.event}:${eventIdRaw}`.slice(0, 500);
     dedupKeyForCleanup = eventKey;
     supabaseForCleanup = supabase;

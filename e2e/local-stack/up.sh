@@ -99,8 +99,9 @@ ANON_KEY=${KEYS% *}; SERVICE_ROLE_KEY=${KEYS#* }
 stop_pid gateway; stop_pid vendor-mock; stop_pid functions
 nohup node "$HERE/gateway.mjs" > "$STATE/gateway.log" 2>&1 & echo $! > "$STATE/gateway.pid"
 nohup node "$HERE/vendor-mock.mjs" > "$STATE/vendor-mock.log" 2>&1 & echo $! > "$STATE/vendor-mock.pid"
-DENO_BIN=${DENO_BIN:-$(command -v deno || true)}
-[ -n "$DENO_BIN" ] || DENO_BIN="npx -y deno"
+# Chemin réel du binaire : lancé via npx, le pid enregistré serait celui de npx
+# et l'arrêt laisserait Deno tenir le port.
+DENO_BIN=${DENO_BIN:-$(command -v deno || npx -y deno eval 'console.log(Deno.execPath())' 2>/dev/null | tail -1)}
 CERT=${DENO_CERT:-${SSL_CERT_FILE:-${NODE_EXTRA_CA_CERTS:-}}}
 CERT_ENV=(); [ -n "$CERT" ] && CERT_ENV=(DENO_CERT="$CERT")
 env SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" \
