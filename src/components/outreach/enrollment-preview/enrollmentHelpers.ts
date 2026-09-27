@@ -132,16 +132,38 @@ export function classifyExistingEnrollment(status: string | null | undefined): '
   return status === 'active' || status === 'paused' ? 'in_sequence' : 'passed';
 }
 
-/** Clés d'identité d'un candidat, comme l'anti-doublon : identifiants LinkedIn, URL et slug public (/in/{slug}). */
-function identityKeys(profile: EnrollmentProfileRef): string[] {
+/** Clés normalisées de ces valeurs, comme l'anti-doublon : identifiant ou URL, plus le slug public (/in/{slug}). */
+function identityKeysOf(values: ReadonlyArray<string | null | undefined>): string[] {
   const keys = new Set<string>();
-  for (const value of [profile.id, profile.provider_id, profile.public_identifier, profile.profile_url, profile.public_profile_url]) {
+  for (const value of values) {
     const key = normalizeEnrollmentKey(value);
     if (key) keys.add(key);
     const slug = value ? extractLinkedInSlug(value) : null;
     if (slug) keys.add(slug);
   }
   return Array.from(keys);
+}
+
+/** Clés d'identité d'un candidat : identifiants LinkedIn, URL et slug public (public_identifier est ce slug nu). */
+function identityKeys(profile: EnrollmentProfileRef): string[] {
+  return identityKeysOf([profile.id, profile.provider_id, profile.public_identifier, profile.profile_url, profile.public_profile_url]);
+}
+
+/** Slugs publics d'un candidat, cherchés dans le profile_url des inscriptions. */
+function publicSlugs(profile: EnrollmentProfileRef): string[] {
+  const slugs = new Set<string>();
+  for (const value of [profile.id, profile.provider_id, profile.public_identifier, profile.profile_url, profile.public_profile_url]) {
+    const slug = value ? extractLinkedInSlug(value) : null;
+    if (slug) slugs.add(slug);
+  }
+  const bare = normalizeEnrollmentKey(profile.public_identifier);
+  if (bare && !bare.includes('/')) slugs.add(bare);
+  return Array.from(slugs);
+}
+
+/** Valeur sûre dans un filtre PostgREST `or` (motif entre guillemets). */
+function quoteFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 /**
@@ -165,44 +187,50 @@ export function dedupeProfilesByIdentity<T extends EnrollmentProfileRef>(profile
   return { unique, duplicates: profiles.length - unique.length };
 }
 
-/** Identifiants comparés par lecture (trois colonnes par identifiant : URL bornée). */
+/** Critères par lecture (un identifiant sur trois colonnes, ou un slug) : URL bornée. */
 const SEQUENCE_LOOKUP_CHUNK_SIZE = 20;
 
 /**
  * Inscriptions de la séquence qui empêchent d'inscrire ces candidats, par
- * `profile.id`. L'id et le provider_id du profil sont comparés à profile_id,
- * provider_id et resolved_profile_id (SEQ-046) :
+ * `profile.id`. Le candidat est reconnu comme par l'anti-doublon (SEQ-046) :
+ * son id et son provider_id comparés à profile_id, provider_id et
+ * resolved_profile_id, et son slug public (/in/{slug}) comparé à celui du
+ * profile_url, par égalité exacte (le motif ilike /in/jean* ramène aussi
+ * /in/jean-dupont, écarté ensuite).
  * - même profile_id : la contrainte UNIQUE(sequence_id, profile_id) refuse
  *   toute nouvelle ligne, quel que soit le statut ;
- * - autre identifiant : seule une inscription en cours ou en pause bloque,
- *   sinon le candidat recevrait deux fois les étapes. Une inscription close
- *   sous un autre identifiant relève de l'anti-doublon de l'organisation.
+ * - autre identifiant ou slug : seule une inscription en cours ou en pause
+ *   bloque, sinon le candidat recevrait deux fois les étapes. Une inscription
+ *   close sous un autre identifiant relève de l'anti-doublon de l'organisation.
  * Une inscription en cours l'emporte pour le bilan (« déjà dans cette séquence »).
  */
 export async function findBlockingSequenceEnrollments(
   supabase: Client,
   sequenceId: string,
-  profiles: ReadonlyArray<Pick<EnrollmentProfileRef, 'id' | 'provider_id'>>,
+  profiles: ReadonlyArray<EnrollmentProfileRef>,
 ): Promise<Map<string, { status: string }>> {
-  const identifiers = (profile: Pick<EnrollmentProfileRef, 'id' | 'provider_id'>) =>
-    Array.from(new Set([profile.id, profile.provider_id].map(v => v?.trim()).filter((v): v is string => !!v)));
-  const values = Array.from(new Set(profiles.flatMap(identifiers)));
-  const rows: Array<{ profile_id: string; provider_id: string | null; resolved_profile_id: string | null; status: string }> = [];
-  for (let i = 0; i < values.length; i += SEQUENCE_LOOKUP_CHUNK_SIZE) {
+  const ids = profiles.flatMap(p => [p.id, p.provider_id].map(v => v?.trim()).filter((v): v is string => !!v));
+  const clauses = [
+    ...Array.from(new Set(ids)).map(enrollmentProfileFilter),
+    ...Array.from(new Set(profiles.flatMap(publicSlugs))).map(slug => `profile_url.ilike.${quoteFilterValue(`*/in/${slug}*`)}`),
+  ];
+  const rows: Array<{ profile_id: string; provider_id: string | null; resolved_profile_id: string | null; profile_url: string | null; status: string }> = [];
+  for (let i = 0; i < clauses.length; i += SEQUENCE_LOOKUP_CHUNK_SIZE) {
     const { data, error } = await supabase
       .from('sequence_enrollments')
-      .select('profile_id, provider_id, resolved_profile_id, status')
+      .select('profile_id, provider_id, resolved_profile_id, profile_url, status')
       .eq('sequence_id', sequenceId)
-      .or(values.slice(i, i + SEQUENCE_LOOKUP_CHUNK_SIZE).map(enrollmentProfileFilter).join(','));
+      .or(clauses.slice(i, i + SEQUENCE_LOOKUP_CHUNK_SIZE).join(','));
     if (error) throw error;
     rows.push(...(data ?? []));
   }
+  const rowKeys = rows.map(row => identityKeysOf([row.profile_id, row.provider_id, row.resolved_profile_id, row.profile_url]));
   const result = new Map<string, { status: string }>();
   for (const profile of profiles) {
-    const ids = identifiers(profile);
+    const keys = new Set(identityKeys(profile));
     let blocking: { status: string } | undefined;
-    for (const row of rows) {
-      if (![row.profile_id, row.provider_id, row.resolved_profile_id].some(v => !!v && ids.includes(v.trim()))) continue;
+    for (const [index, row] of rows.entries()) {
+      if (!rowKeys[index].some(key => keys.has(key))) continue;
       if (classifyExistingEnrollment(row.status) === 'in_sequence') {
         blocking = { status: row.status };
         break;

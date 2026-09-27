@@ -317,11 +317,12 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
 
       // 1. Pré-contrôle : qui a déjà une inscription dans cette séquence ? La
       // contrainte DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle ;
-      // sous un autre identifiant du candidat, une inscription en cours ou en
-      // pause bloque aussi, dérogation comprise (SEQ-046). Ces candidats ne
-      // sont pas envoyés à l'upsert. On distingue ceux qui y sont encore (en
-      // cours, en pause) de ceux qui y sont déjà passés (terminée, réponse,
-      // arrêtée), à reprendre depuis le suivi. Le résultat exact viendra de
+      // sous un autre identifiant du candidat ou son slug public, une
+      // inscription en cours ou en pause bloque aussi, dérogation comprise
+      // (SEQ-046). Ces candidats ne sont pas envoyés à l'upsert. On
+      // distingue ceux qui y sont encore (en cours, en pause) de ceux qui y
+      // sont déjà passés (terminée, réponse, arrêtée), à reprendre depuis le
+      // suivi. Le résultat exact viendra de
       // l'upsert ci-dessous.
       const profileIds = enrollSet.map(p => p.id);
       const blocking = await findBlockingSequenceEnrollments(supabase, sequence.id, enrollSet);

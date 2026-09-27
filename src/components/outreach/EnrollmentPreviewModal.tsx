@@ -659,8 +659,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         try {
           // Pré-contrôle : la contrainte DB UNIQUE(sequence_id, profile_id)
           // est inconditionnelle, toute ligne existante empêche l'inscription ;
-          // sous un autre identifiant du candidat, une inscription en cours ou
-          // en pause l'empêche aussi, dérogation comprise (SEQ-046).
+          // sous un autre identifiant du candidat ou son slug public, une
+          // inscription en cours ou en pause l'empêche aussi, dérogation
+          // comprise (SEQ-046).
           // On distingue « déjà dans la séquence » (en cours, en pause) de
           // « déjà passé par la séquence » (terminée, réponse, arrêtée), à
           // reprendre depuis le suivi. La race fenêtre entre SELECT et INSERT

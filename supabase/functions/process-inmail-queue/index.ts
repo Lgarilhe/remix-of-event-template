@@ -6,7 +6,7 @@ import {
 } from "../_shared/linkedin-quotas.ts";
 import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
 import { inmailQueueRetry } from "../_shared/sequence-send-rules.ts";
-import { siblingEnrollmentsFilter } from "../_shared/sequence-engine-rules.ts";
+import { siblingEnrollmentsFilter, siblingStopScope } from "../_shared/sequence-engine-rules.ts";
 import { isGdprErasedEnrollment } from "../_shared/sequence-resume.ts";
 
 const corsHeaders = {
@@ -500,7 +500,9 @@ Deno.serve(async (req: Request) => {
       // réponse à un autre InMail de l'organisation (fenêtre de l'anti-doublon,
       // ou réponse postérieure à la mise en file). Une réponse en séquence
       // antérieure à la mise en file n'annule rien : la dérogation « Contacter
-      // quand même » donnée par un administrateur reste valable.
+      // quand même » donnée par un administrateur reste valable. Même portée
+      // que la clôture (contrat §8) : une inscription terminée puis marquée
+      // « répondu » n'arrête que les InMails mis en file avant sa fin.
       const recipientStopReason = async (item: InMailQueueItem, orgId: string): Promise<
         { state: "clear" } | { state: "stop"; message: string; code: string } | { state: "unreadable" }
       > => {
@@ -510,7 +512,7 @@ Deno.serve(async (req: Request) => {
         if (filter) {
           const { data: enrollments, error } = await supabase
             .from("sequence_enrollments")
-            .select("profile_id, provider_id, resolved_profile_id, status, replied_at, tracking_data")
+            .select("profile_id, provider_id, resolved_profile_id, status, replied_at, completed_at, tracking_data")
             .eq("organization_id", orgId)
             .or(filter);
           if (error) {
@@ -519,14 +521,19 @@ Deno.serve(async (req: Request) => {
           }
           const rows = (enrollments ?? []) as Array<{
             profile_id: string | null; provider_id: string | null; resolved_profile_id: string | null;
-            status: string; replied_at: string | null; tracking_data: unknown;
+            status: string; replied_at: string | null; completed_at: string | null; tracking_data: unknown;
           }>;
           if (rows.some((e) => isGdprErasedEnrollment(e.tracking_data, []))) {
             return { state: "stop", message: GDPR_ERASED_INMAIL_MESSAGE, code: "candidate erased" };
           }
           const repliedSinceQueued = rows.some((e) => {
             const repliedAt = e.replied_at ? Date.parse(e.replied_at) : NaN;
-            return e.status === "replied" && Number.isFinite(repliedAt) && Number.isFinite(queuedAt) && repliedAt >= queuedAt;
+            if (e.status !== "replied" || !Number.isFinite(repliedAt) || !Number.isFinite(queuedAt) || repliedAt < queuedAt) return false;
+            // completed_at n'est gardé que par « Marquer comme répondu » sur une
+            // inscription terminée : même portée que siblingStopScope.
+            if (!e.completed_at) return true;
+            const scope = siblingStopScope("completed", e.completed_at);
+            return scope.kind === "created_before" && queuedAt < Date.parse(scope.before);
           });
           if (repliedSinceQueued) {
             return { state: "stop", message: CANDIDATE_REPLIED_INMAIL_MESSAGE, code: "candidate replied" };

@@ -447,6 +447,65 @@ test.describe('InMail groupé et réponses du candidat', () => {
     expect(otherAfter.status, 'autre organisation intacte').toBe('scheduled');
     expect(otherAfter.updated_at).toBe(otherBefore.updated_at);
   });
+
+  // marquer-repondu-termine-epargne-inmail-posterieur (revue du lot inmail)
+  // Contrat §8 : sur une inscription déjà terminée, « Marquer comme répondu »
+  // n'arrête que les prises de contact créées avant sa fin. L'InMail mis en
+  // file ensuite par un collègue est gardé par la clôture et part au
+  // traitement : le dernier contrôle de process-inmail-queue a la même portée.
+  test('« Marquer comme répondu » sur une inscription terminée épargne, jusqu’à l’envoi, l’InMail mis en file ensuite par un collègue', async () => {
+    const tz = sendingTimezone();
+    const { org, accountId } = await newSendingOrg('E2E InMailX marquer répondu terminée');
+    const { user: member, accountId: memberAccount } = await memberWithAccount(org);
+    await openSendingHours(org.orgId, member.userId);
+    const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour']);
+    const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, {
+      status: 'completed', completed_at: minutesFromNow(-120),
+    });
+    const later = await queueRow(org, memberAccount, profileId, { created_by: member.userId, user_timezone: tz });
+
+    const res = await callFunction('process-sequences', await ownerToken(org), {
+      action: 'mark_replied', enrollment_id: enrollmentId, organization_id: org.orgId,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await enrollmentRow(enrollmentId)).status).toBe('replied');
+    expect((await inmailRow(later)).status, 'InMail postérieur à la fin gardé par la clôture').toBe('scheduled');
+
+    await makeDue(later);
+    await processUntilHandled([later]);
+
+    const row = await inmailRow(later);
+    expect(row.status, row.error_message ?? '').toBe('sent');
+    expect(await inmailSends(memberAccount), 'InMail du collègue envoyé').toHaveLength(1);
+  });
+
+  // envoi-portee-inscription-terminee-repondue (revue du lot inmail)
+  test('au traitement, une inscription terminée puis « répondu » n’annule que les InMails mis en file avant sa fin', async () => {
+    const tz = sendingTimezone();
+    const { org, accountId } = await newSendingOrg('E2E InMailX portée terminée');
+    await openSendingHours(org.orgId, org.owner.userId);
+    const { user: member, accountId: memberAccount } = await memberWithAccount(org);
+    await openSendingHours(org.orgId, member.userId);
+    const profileId = newProfileId();
+    const before = await queueRow(org, accountId, profileId, { user_timezone: tz, created_at: minutesFromNow(-180) });
+    const after = await queueRow(org, memberAccount, profileId, { created_by: member.userId, user_timezone: tz });
+    // Réponse marquée ensuite sur une inscription terminée il y a deux heures :
+    // « Marquer comme répondu » garde completed_at.
+    const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour']);
+    await enroll(org, sequenceId, org.owner.userId, accountId, {
+      profile_id: profileId, status: 'replied', completed_at: minutesFromNow(-120), replied_at: new Date().toISOString(),
+    });
+    await makeDue(before);
+    await makeDue(after);
+
+    await processUntilHandled([before, after]);
+
+    expect((await inmailRow(before)).status, 'InMail mis en file avant la fin : annulé').toBe('cancelled');
+    expect(await inmailSends(accountId), 'rien ne part du compte de l’inscription').toEqual([]);
+    const afterRow = await inmailRow(after);
+    expect(afterRow.status, afterRow.error_message ?? '').toBe('sent');
+    expect(await inmailSends(memberAccount), 'InMail mis en file après la fin : envoyé').toHaveLength(1);
+  });
 });
 
 test.describe('InMail groupé : mise en file et envoi', () => {
