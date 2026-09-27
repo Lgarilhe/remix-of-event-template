@@ -16,172 +16,27 @@
  */
 import { test, expect, request } from '@playwright/test';
 import { E2E } from '../helpers/env';
+import { addMember, admin, createOrg, deleteOrg, seedLinkedInAccount, signIn, type TestOrg, type TestUser } from '../helpers/supabase-admin';
 import {
-  addMember,
-  admin,
-  createOrg,
-  deleteOrg,
-  seedLinkedInAccount,
-  seedSequence,
-  signIn,
-  type SeededStep,
-  type TestOrg,
-  type TestUser,
-} from '../helpers/supabase-admin';
+  ENGINE_SKIP_REASON,
+  engineAvailable,
+  enroll,
+  enrollmentRow,
+  executionsOf,
+  messageSequence,
+  minutesFromNow,
+  postJson,
+  rand,
+  runCycle,
+  schedule,
+  sendingOrg,
+  sentTexts,
+  webhook,
+} from '../helpers/sequence-engine';
 
-const MOCK_URL = process.env.E2E_VENDOR_MOCK_URL ?? '';
-const CRON_SECRET = process.env.E2E_PROCESS_SEQUENCES_SECRET ?? '';
-const WEBHOOK_SECRET = process.env.E2E_UNIPILE_WEBHOOK_SECRET ?? '';
-
-test.skip(
-  process.env.E2E_EDGE_FUNCTIONS !== '1' || !MOCK_URL || !CRON_SECRET,
-  'moteur et faux prestataires absents (lancer e2e/local-stack/up.sh)',
-);
+test.skip(!engineAvailable, ENGINE_SKIP_REASON);
 test.describe.configure({ mode: 'serial' });
 test.setTimeout(180_000);
-
-const rand = () => Math.random().toString(36).slice(2, 10);
-const minutesFromNow = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
-
-interface MockCall {
-  method: string;
-  path: string;
-  account_id: string | null;
-  body: Record<string, unknown> | string;
-}
-
-async function mockCalls(accountId: string): Promise<MockCall[]> {
-  const res = await fetch(`${MOCK_URL}/__log?account_id=${encodeURIComponent(accountId)}`);
-  return (await res.json()) as MockCall[];
-}
-
-/** Messages LinkedIn réellement envoyés depuis ce compte (nouvelle conversation ou suite). */
-async function sentTexts(accountId: string): Promise<string[]> {
-  return (await mockCalls(accountId))
-    .filter((c) => c.method === 'POST' && (c.path === '/api/v1/chats' || /^\/api\/v1\/chats\/[^/]+\/messages$/.test(c.path)))
-    .map((c) => String((c.body as Record<string, unknown>).text ?? ''));
-}
-
-async function postJson(path: string, body: unknown, headers: Record<string, string>) {
-  const ctx = await request.newContext();
-  const res = await ctx.post(`${E2E.supabaseUrl}${path}`, {
-    headers: { apikey: E2E.anonKey, 'Content-Type': 'application/json', ...headers },
-    data: body,
-  });
-  const status = res.status();
-  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  await ctx.dispose();
-  return { status, body: json };
-}
-
-/** Un cycle du moteur, comme le cron. Réessaie si un autre cycle tient le verrou. */
-async function runCycle(): Promise<Record<string, unknown>> {
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const res = await postJson('/functions/v1/process-sequences', { action: 'process', force: true }, {
-      Authorization: `Bearer ${CRON_SECRET}`,
-    });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    if (res.body.skipped_reason !== 'lock_held') return res.body;
-    await new Promise((r) => setTimeout(r, 2_000));
-  }
-  throw new Error('verrou du moteur jamais libéré');
-}
-
-async function webhook(payload: Record<string, unknown>) {
-  const res = await postJson('/functions/v1/unipile-webhook', payload, { 'unipile-auth': WEBHOOK_SECRET });
-  expect(res.status, JSON.stringify(res.body)).toBe(200);
-  return res.body;
-}
-
-/** Organisation qui a le droit d'envoyer : offre payante active et compte LinkedIn relié au propriétaire. */
-async function sendingOrg(prefix: string): Promise<{ org: TestOrg; accountId: string }> {
-  const org = await createOrg('agency', prefix);
-  const { error } = await admin()
-    .from('organization_subscriptions')
-    .upsert({ organization_id: org.orgId, plan_id: 'cabinet', status: 'active' }, { onConflict: 'organization_id' });
-  if (error) throw new Error(`organization_subscriptions: ${error.message}`);
-  const accountId = await seedLinkedInAccount(org.orgId, org.owner.userId, `acc_${rand()}`, 'OK');
-  return { org, accountId };
-}
-
-async function messageSequence(org: TestOrg, createdBy: string, templates: string[], delayDays = 3) {
-  const seeded = await seedSequence(org.orgId, createdBy, templates.map((_, i) => ({
-    action_type: 'message', delay_days: i === 0 ? 0 : delayDays,
-  })));
-  for (const [i, step] of seeded.steps.entries()) {
-    await admin().from('sequence_steps').update({ message_template: templates[i] }).eq('id', step.id);
-  }
-  return seeded;
-}
-
-async function enroll(
-  org: TestOrg,
-  sequenceId: string,
-  createdBy: string,
-  accountId: string,
-  overrides: Record<string, unknown> = {},
-): Promise<{ enrollmentId: string; profileId: string }> {
-  const profileId = `ACoAAE2E${rand()}${rand()}`;
-  const { data, error } = await admin()
-    .from('sequence_enrollments')
-    .insert({
-      sequence_id: sequenceId,
-      organization_id: org.orgId,
-      created_by: createdBy,
-      profile_id: profileId,
-      profile_name: 'Camille Martin',
-      account_id: accountId,
-      status: 'active',
-      current_step_order: 0,
-      user_timezone: 'Europe/Paris',
-      ...overrides,
-    })
-    .select('id')
-    .single();
-  if (error || !data) throw new Error(`enroll: ${error?.message}`);
-  return { enrollmentId: data.id as string, profileId };
-}
-
-async function schedule(
-  org: TestOrg,
-  enrollmentId: string,
-  step: SeededStep,
-  overrides: Record<string, unknown> = {},
-): Promise<string> {
-  const { data, error } = await admin()
-    .from('sequence_step_executions')
-    .insert({
-      enrollment_id: enrollmentId,
-      organization_id: org.orgId,
-      step_id: step.id,
-      step_order: step.step_order,
-      status: 'scheduled',
-      scheduled_at: minutesFromNow(-1),
-      ...overrides,
-    })
-    .select('id')
-    .single();
-  if (error || !data) throw new Error(`schedule: ${error?.message}`);
-  return data.id as string;
-}
-
-async function executionsOf(enrollmentId: string) {
-  const { data } = await admin()
-    .from('sequence_step_executions')
-    .select('id, step_order, status, scheduled_at, final_message, skip_reason')
-    .eq('enrollment_id', enrollmentId)
-    .order('step_order');
-  return (data ?? []) as Array<{ id: string; step_order: number; status: string; scheduled_at: string; final_message: string | null; skip_reason: string | null }>;
-}
-
-async function enrollmentRow(id: string) {
-  const { data } = await admin()
-    .from('sequence_enrollments')
-    .select('status, pause_reason, current_step_order')
-    .eq('id', id)
-    .single();
-  return data as { status: string; pause_reason: string | null; current_step_order: number };
-}
 
 const orgsToDelete: Array<{ org: TestOrg; extra: TestUser[] }> = [];
 test.afterEach(async () => {
