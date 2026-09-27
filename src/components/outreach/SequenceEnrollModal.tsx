@@ -26,7 +26,7 @@ import { LinkedInProfile } from './types';
 import { EnrollmentPreviewModal } from './EnrollmentPreviewModal';
 import { checkProfilesCompat, pickFirstStep, type CompatIssue } from '@/lib/sequenceCompatibility';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
-import { useSendingAccount } from './enrollment-preview/useSendingAccount';
+import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount } from './enrollment-preview/useSendingAccount';
 import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
 import {
   alreadyInSequenceLabel,
@@ -34,6 +34,7 @@ import {
   classifyExistingEnrollment,
   DUPLICATE_CHECK_FAILED_MESSAGE,
   firstActionSummary,
+  isOtherMemberAccountError,
   markCandidatesMessaged,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
@@ -86,9 +87,13 @@ interface EnrollResults {
   errors: string[];
 }
 
-/** Raison d'exclusion affichée sur un candidat grisé de la liste. */
+/**
+ * Raison d'exclusion affichée sur un candidat grisé de la liste. Un candidat
+ * déjà en relation avec une invitation prévue n'est jamais exclu : le moteur
+ * saute l'invitation et envoie les messages suivants.
+ */
 function compatExclusionLabel(issue: CompatIssue): string {
-  return issue === 'too_far' ? 'Hors réseau, exclu' : 'Déjà en relation, exclu';
+  return issue === 'too_far' ? 'Hors réseau, exclu' : 'InMail inutile, exclu';
 }
 
 export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
@@ -140,12 +145,17 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     () => checkProfilesCompat(profiles, sequence.steps),
     [profiles, sequence.steps],
   );
-  const compatibleProfiles = useMemo(
-    () => excludeIncompatible
-      ? compat.compatible.map(c => c.profile as LinkedInProfile)
-      : profiles,
-    [compat.compatible, profiles, excludeIncompatible],
+  // Candidats que « Exclure les incompatibles » écarte : hors réseau et InMail
+  // inutile. Déjà en relation (invitation sautée, suite envoyée) : averti, inscrit.
+  const excludableCompat = useMemo(
+    () => [...compat.blockers, ...compat.warnings].filter(r => r.issue !== 'connection_already_connected'),
+    [compat.blockers, compat.warnings],
   );
+  const compatibleProfiles = useMemo(() => {
+    if (!excludeIncompatible) return profiles;
+    const excluded = new Set(excludableCompat.map(r => r.profile.id));
+    return profiles.filter(p => !excluded.has(p.id));
+  }, [excludableCompat, profiles, excludeIncompatible]);
 
   // Pré-contrôle organisation : candidats déjà contactés par un membre dans
   // les 90 derniers jours (toute séquence, tout compte). Chargé à l'ouverture
@@ -188,7 +198,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
   const exclusionReasons = useMemo(() => {
     const reasons = new Map<string, string>();
     const enrolled = new Set(profilesToEnroll.map(p => p.id));
-    const compatById = new Map([...compat.blockers, ...compat.warnings].map(r => [r.profile.id, r]));
+    const compatById = new Map(excludableCompat.map(r => [r.profile.id, r]));
     for (const profile of profiles) {
       if (enrolled.has(profile.id)) continue;
       const compatResult = compatById.get(profile.id);
@@ -197,7 +207,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       else if (recent) reasons.set(profile.id, `${formatRecentContactLabel(recent)}, exclu`);
     }
     return reasons;
-  }, [profiles, profilesToEnroll, compat.blockers, compat.warnings, recentEnrollments, excludeIncompatible]);
+  }, [profiles, profilesToEnroll, excludableCompat, recentEnrollments, excludeIncompatible]);
   const firstAction = useMemo(() => firstActionSummary(sequence.steps), [sequence.steps]);
 
   // Plan gratuit : la fenêtre explique pourquoi et renvoie vers les offres,
@@ -473,9 +483,16 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
     } catch (err) {
       // Détail technique en console seulement : jamais de message brut de la base.
       console.error('Enrollment error:', err);
-      enrollmentResults.errors.push("L'inscription n'a pas pu aboutir. Réessayez ou contactez le support.");
+      // Refus de la base (SEQ-043) : compte relié à un autre membre. Réessayer
+      // échouerait de la même façon : on dit pourquoi, sans proposer de réessayer.
+      const otherMemberAccount = isOtherMemberAccountError(err);
+      enrollmentResults.errors.push(otherMemberAccount
+        ? OTHER_MEMBER_ACCOUNT_MESSAGE
+        : "L'inscription n'a pas pu aboutir. Réessayez ou contactez le support.");
       setResults(enrollmentResults);
-      toast.error('Inscription impossible', { description: 'Réessayez ou contactez le support.' });
+      toast.error('Inscription impossible', {
+        description: otherMemberAccount ? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support.',
+      });
     } finally {
       setIsEnrolling(false);
     }
@@ -572,17 +589,19 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                       </li>
                     )}
                   </ul>
-                  <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={excludeIncompatible}
-                      onChange={(e) => setExcludeIncompatible(e.target.checked)}
-                      className="h-3 w-3 rounded border-border"
-                    />
-                    <span className="text-foreground">
-                      Exclure les candidats incompatibles ({compat.blockers.length + compat.warnings.length})
-                    </span>
-                  </label>
+                  {excludableCompat.length > 0 && (
+                    <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={excludeIncompatible}
+                        onChange={(e) => setExcludeIncompatible(e.target.checked)}
+                        className="h-3 w-3 rounded border-border"
+                      />
+                      <span className="text-foreground">
+                        Exclure les candidats incompatibles ({excludableCompat.length})
+                      </span>
+                    </label>
+                  )}
                 </div>
               </div>
             </div>

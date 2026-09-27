@@ -22,6 +22,12 @@
  * classique (ACo...) est ainsi reconnu dès que l'un de ces identifiants ou son
  * URL publique concorde. Le même rapprochement est appliqué côté serveur par
  * l'outil agent enroll_in_sequence (_shared/agent-tools-mutations.ts).
+ *
+ * Inscriptions (décision D3) : lues par la RPC SECURITY DEFINER
+ * find_recent_org_contacts (migration B6), qui voit toute l'organisation de
+ * l'appelant, alors qu'un collaborateur ne lit plus par la RLS les
+ * inscriptions de ses collègues. Tant que la fonction n'est pas déployée
+ * (PGRST202 / 42883), repli sur la lecture directe.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -54,6 +60,12 @@ export interface RecentEnrollment {
   status: string;
   /** Origine du contact : inscription en séquence ou InMail groupé. */
   source: 'sequence' | 'inmail';
+  /**
+   * Un InMail groupé des 90 derniers jours existe pour ce candidat, même si le
+   * dernier contact est une inscription : la file InMail le refusera
+   * (process-inmail-queue, sans dérogation possible).
+   */
+  hasRecentInMail: boolean;
 }
 
 export type EnrollmentProfileRef = Pick<
@@ -92,6 +104,22 @@ function profileKeys(profile: EnrollmentProfileRef): string[] {
 /** Valeur sûre pour une liste `in.(...)` d'un filtre PostgREST `or`. */
 function quoteFilterValue(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Filtre PostgREST `or` : inscriptions d'un candidat quel que soit
+ * l'identifiant enregistré (profile_id, provider_id ou resolved_profile_id).
+ * Un candidat inscrit depuis Recruiter (AE...) et écrit depuis la messagerie
+ * classique (ACo...) est ainsi retrouvé.
+ */
+export function enrollmentProfileFilter(profileId: string): string {
+  const value = quoteFilterValue(profileId.trim());
+  return `profile_id.eq.${value},provider_id.eq.${value},resolved_profile_id.eq.${value}`;
+}
+
+/** Fonction RPC absente (pas encore déployée) : PostgREST PGRST202, Postgres 42883. */
+function isMissingFunctionError(error: { code?: string } | null | undefined): boolean {
+  return error?.code === 'PGRST202' || error?.code === '42883';
 }
 
 function firstNameOf(displayName: string | null | undefined): string | null {
@@ -203,15 +231,29 @@ export async function findRecentEnrollments(
     if (closed.error) throw closed.error;
     pushEnrollments(closed.data as EnrollmentRow[] | null);
   };
-  for (let i = 0; i < values.length; i += QUERY_CHUNK_SIZE) {
-    const list = values.slice(i, i + QUERY_CHUNK_SIZE).map(quoteFilterValue).join(',');
-    await fetchRows(`profile_id.in.(${list}),provider_id.in.(${list}),resolved_profile_id.in.(${list})`);
-  }
-  for (let i = 0; i < slugs.length; i += SLUG_CHUNK_SIZE) {
-    const patterns = slugs.slice(i, i + SLUG_CHUNK_SIZE)
-      .map(slug => `profile_url.ilike.${quoteFilterValue(`*/in/${slug}*`)}`)
-      .join(',');
-    await fetchRows(patterns);
+  // D3 : la RPC voit toutes les inscriptions de l'organisation (vivantes sans
+  // limite de date, closes depuis `since`), mêmes clés de rapprochement.
+  const rpc = await supabase.rpc('find_recent_org_contacts', {
+    p_org: organizationId,
+    p_values: values,
+    p_slugs: slugs,
+    p_since: since,
+  });
+  if (!rpc.error) {
+    pushEnrollments(rpc.data as EnrollmentRow[] | null);
+  } else if (!isMissingFunctionError(rpc.error)) {
+    throw rpc.error;
+  } else {
+    for (let i = 0; i < values.length; i += QUERY_CHUNK_SIZE) {
+      const list = values.slice(i, i + QUERY_CHUNK_SIZE).map(quoteFilterValue).join(',');
+      await fetchRows(`profile_id.in.(${list}),provider_id.in.(${list}),resolved_profile_id.in.(${list})`);
+    }
+    for (let i = 0; i < slugs.length; i += SLUG_CHUNK_SIZE) {
+      const patterns = slugs.slice(i, i + SLUG_CHUNK_SIZE)
+        .map(slug => `profile_url.ilike.${quoteFilterValue(`*/in/${slug}*`)}`)
+        .join(',');
+      await fetchRows(patterns);
+    }
   }
   // InMails groupés de l'organisation (programmés, en cours ou envoyés) :
   // deux InMails groupés successifs, ou un InMail puis une séquence, se voient.
@@ -253,7 +295,11 @@ export async function findRecentEnrollments(
     }
     for (const key of rowKeys) {
       for (const profileId of keyIndex.get(key) ?? []) {
-        if (result.has(profileId)) continue;
+        const existing = result.get(profileId);
+        if (existing) {
+          if (row.source === 'inmail') existing.hasRecentInMail = true;
+          continue;
+        }
         result.set(profileId, {
           createdBy: row.createdBy,
           createdByFirstName: null,
@@ -261,6 +307,7 @@ export async function findRecentEnrollments(
           sequenceId: row.sequenceId,
           status: row.status,
           source: row.source,
+          hasRecentInMail: row.source === 'inmail',
         });
       }
     }

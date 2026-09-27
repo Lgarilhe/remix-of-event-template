@@ -412,7 +412,9 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     });
   }, []);
 
-  const generateForCandidate = useCallback(async (profile: LinkedInProfile) => {
+  // ignoreBulkAbort : génération d'un seul candidat (bouton, Ctrl+Entrée),
+  // jamais bloquée par l'arrêt d'une génération groupée précédente.
+  const generateForCandidate = useCallback(async (profile: LinkedInProfile, options?: { ignoreBulkAbort?: boolean }) => {
     // 🔧 Accumulator local pour résoudre un BUG de closure :
     // setPreview est async (passe par React state), donc dans la même
     // boucle, lire `previews.get(profile.id)?.get(s.stepId)` retourne
@@ -440,7 +442,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     }
 
     for (const step of messageSteps) {
-      if (abortRef.current) return;
+      if (abortRef.current && !options?.ignoreBulkAbort) return;
 
       // Jamais de régénération d'un message déjà généré ou modifié à la main
       // (« Générer tous les aperçus », touche Entrée) : seul le bouton
@@ -592,6 +594,9 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
             // cabinet → AI disait "j'accompagne une scale-up tech"
             // même quand la mission était config en INTERNE.
             outreachConfig: outreachConfig || undefined,
+            // Mission (préfixe « project: » accepté) : le serveur relit ses
+            // réglages d'approche quand outreachConfig est absent (SEQ-051).
+            missionId: job?.id || undefined,
           });
 
           if (error) throw error;
@@ -651,7 +656,10 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
   const generateForCandidateById = useCallback(async (candidateId: string) => {
     const profile = profiles.find(p => p.id === candidateId);
     if (!profile) return;
-    await generateForCandidate(profile);
+    // L'arrêt de « Générer tous les aperçus » ne bloque pas une génération
+    // demandée ensuite pour ce seul candidat (le drapeau reste levé pour les
+    // travailleurs de la génération groupée arrêtée).
+    await generateForCandidate(profile, { ignoreBulkAbort: true });
   }, [profiles, generateForCandidate]);
 
   const regenerateStep = useCallback(async (candidateId: string, stepId: string) => {
@@ -771,6 +779,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
             prevSentSteps,
           },
           outreachConfig: outreachConfig || undefined,
+          missionId: job?.id || undefined,
         });
 
         if (error) throw error;

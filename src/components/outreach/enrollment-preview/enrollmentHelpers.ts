@@ -20,6 +20,17 @@ export const DUPLICATE_CHECK_FAILED_MESSAGE =
 export const SEQUENCES_PLAN_REQUIRED_MESSAGE =
   "L'envoi de séquences et d'InMails nécessite un abonnement. Passez à un plan payant pour contacter ces candidats.";
 
+/** HINT du refus de la base (SEQ-043, 42501) : inscription depuis le compte relié à un autre membre. */
+export const ENROLL_ACCOUNT_OF_OTHER_MEMBER_HINT = 'ENROLL_ACCOUNT_OF_OTHER_MEMBER';
+
+/**
+ * Vrai si l'erreur Supabase est ce refus : réessayer échouerait de la même
+ * façon, l'appelant affiche OTHER_MEMBER_ACCOUNT_MESSAGE (useSendingAccount).
+ */
+export function isOtherMemberAccountError(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { hint?: unknown }).hint === ENROLL_ACCOUNT_OF_OTHER_MEMBER_HINT;
+}
+
 /** Message affiché pour un candidat dont l'inscription a échoué (détail technique en console). */
 export function enrollFailureMessage(name: string | null | undefined): string {
   return `Inscription impossible pour ${name || 'ce candidat'}. Réessayez ou contactez le support.`;
@@ -126,11 +137,15 @@ export function alreadyInSequenceLabel(count: number): string {
     : '1 candidat déjà dans cette séquence.';
 }
 
-/** « 1 candidat est déjà passé par cette séquence (arrêté). Reprenez-le depuis le suivi de la séquence. » */
+/**
+ * « 1 candidat est déjà passé par cette séquence (terminée, réponse ou arrêt).
+ * Relancez-le depuis le suivi de la séquence. » Le suivi propose « Relancer »
+ * (re_enroll) pour une inscription close ; « Reprendre » est réservé à la pause.
+ */
 export function alreadyPassedLabel(count: number): string {
   return count > 1
-    ? `${count} candidats sont déjà passés par cette séquence (arrêtés). Reprenez-les depuis le suivi de la séquence.`
-    : '1 candidat est déjà passé par cette séquence (arrêté). Reprenez-le depuis le suivi de la séquence.';
+    ? `${count} candidats sont déjà passés par cette séquence (terminée, réponse ou arrêt). Relancez-les depuis le suivi de la séquence.`
+    : '1 candidat est déjà passé par cette séquence (terminée, réponse ou arrêt). Relancez-le depuis le suivi de la séquence.';
 }
 
 type StepLike = FirstStepCandidate & {

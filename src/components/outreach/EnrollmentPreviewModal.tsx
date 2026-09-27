@@ -49,7 +49,7 @@ import { checkProfilesCompat, pickFirstStep } from '@/lib/sequenceCompatibility'
 // Un seul nom par type d'étape, celui de l'éditeur de séquence.
 import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
-import { useSendingAccount, type SendingAccountState } from './enrollment-preview/useSendingAccount';
+import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount, type SendingAccountState } from './enrollment-preview/useSendingAccount';
 import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
 import {
   alreadyInSequenceLabel,
@@ -58,6 +58,7 @@ import {
   DUPLICATE_CHECK_FAILED_MESSAGE,
   enrollFailureMessage,
   firstActionSummary,
+  isOtherMemberAccountError,
   markCandidatesMessaged,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
@@ -186,12 +187,16 @@ function enrollProgressLabel(progress: { done: number; total: number } | null): 
   return progress ? `Inscription ${progress.done} sur ${progress.total}…` : 'Inscription…';
 }
 
-/** Titre du bandeau de compatibilité (candidats exclus ou inclus quand même). */
+/**
+ * Titre du bandeau de compatibilité (candidats exclus ou inclus quand même).
+ * Seul un candidat injoignable bloque ; un candidat déjà en relation est un
+ * simple avertissement (invitation sautée, messages suivants envoyés).
+ */
 function compatHeadline(blockers: { issue: string | null }[], included: boolean): string {
   const n = blockers.length;
   const plural = n > 1;
-  const reason = blockers.every(r => r.issue === 'connection_already_connected')
-    ? " : vous êtes déjà en relation, l'invitation échouera"
+  const reason = blockers.every(r => r.issue === 'too_far')
+    ? ` : hors de votre réseau LinkedIn, seul un InMail peut ${plural ? 'les ' : "l'"}atteindre`
     : '';
   const outcome = included
     ? (plural ? 'Ils seront inscrits quand même.' : 'Il sera inscrit quand même.')
@@ -248,6 +253,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   // n'arrêterait pas les inscriptions et le bilan serait perdu.
   const isBusy = isEnrolling || isShortlisting;
   const [enrollResults, setEnrollResults] = useState<EnrollResults | null>(null);
+  // Fermeture avec des messages préparés : confirmation (croix, « Annuler »).
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [mobilePane, setMobilePane] = useState<'list' | 'preview'>('preview');
   const pageSize = 10;
@@ -354,9 +361,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     [profiles, recentEnrollments, getCandidateState]);
 
   // ── Compatibilité candidat / séquence ──
-  // Même contrôle que l'inscription simple : un candidat déjà en relation ne
-  // peut pas recevoir l'invitation de la séquence, un candidat hors réseau ne
-  // peut être joint que par InMail. Exclus par défaut, « Inclure quand même ».
+  // Même contrôle que l'inscription simple : un candidat hors réseau ne peut
+  // être joint que par InMail (exclu par défaut, « Inclure quand même ») ; un
+  // candidat déjà en relation est averti (invitation sautée par le moteur).
   const compat = useMemo(() => checkProfilesCompat(profiles, sequence.steps), [profiles, sequence.steps]);
   const incompatibleIds = useMemo(() => new Set(compat.blockers.map(r => r.profile.id)), [compat.blockers]);
   const [includeIncompatible, setIncludeIncompatible] = useState(false);
@@ -769,6 +776,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           results.success++;
           enrolledProfiles.push(profile);
         } catch (err) {
+          // Refus de la base (SEQ-043) : compte relié à un autre membre. Tous
+          // les candidats suivants échoueraient pareil : on arrête la boucle.
+          if (isOtherMemberAccountError(err)) throw err;
           // Détail technique en console seulement : jamais le message brut de
           // la base (« new row violates row-level security policy… »).
           console.error('[EnrollmentPreviewModal] enrollment failed for', profile.id, err);
@@ -804,7 +814,10 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       if (results.skipped > 0) toast.info(alreadyInSequenceLabel(results.skipped));
     } catch (err) {
       console.error('[EnrollmentPreviewModal] Bulk enrollment failed:', err);
-      toast.error('Inscription impossible', { description: 'Réessayez ou contactez le support.' });
+      // Compte relié à un autre membre : réessayer échouerait de la même façon.
+      toast.error('Inscription impossible', {
+        description: isOtherMemberAccountError(err) ? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support.',
+      });
     } finally {
       setIsEnrolling(false);
       setEnrollProgress(null);
@@ -908,8 +921,17 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
   const handleClose = () => {
     if (isBusy) return;
-    if (enrollResults?.success) onSuccess();
-    else onClose();
+    if (enrollResults?.success) {
+      onSuccess();
+      return;
+    }
+    // Messages générés ou modifiés (crédits dépensés) : rien n'est conservé à
+    // la fermeture, on demande confirmation (croix, « Annuler »).
+    if (!enrollResults && hasPreparedWork) {
+      setConfirmDiscardOpen(true);
+      return;
+    }
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -1100,8 +1122,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       )}
 
       {/* Compatibilité : candidats qui ne peuvent pas suivre cette séquence
-          (déjà en relation avec une invitation prévue, hors réseau sans
-          InMail). Exclus par défaut, « Inclure quand même » pour les garder. */}
+          (hors réseau sans InMail), exclus par défaut, « Inclure quand même »
+          pour les garder ; avertissements (déjà en relation : invitation
+          sautée, messages suivants envoyés) sans exclusion. */}
       {!enrollResults && (compat.blockers.length > 0 || compat.warnings.length > 0) && (
         <div className="px-4 sm:px-6 py-2.5 border-b border-warning/40 bg-warning/5 shrink-0">
           <div className="flex items-start gap-2">
@@ -1500,6 +1523,29 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
+      {/* Hors du contenu : ni Ctrl+Entrée ni les autres raccourcis de la
+          préparation ne reçoivent les touches de cette confirmation. Au-dessus
+          de la couche plein écran (z-[9999]). */}
+      <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
+        <AlertDialogContent className="z-[10000]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fermer sans inscrire ?</AlertDialogTitle>
+            <AlertDialogDescription>Les messages préparés seront perdus.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuer la préparation</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setConfirmDiscardOpen(false);
+                onClose();
+              }}
+            >
+              Fermer sans inscrire
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DialogPrimitive.Root>
   );
 };

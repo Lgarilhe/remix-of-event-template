@@ -146,8 +146,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
     } as unknown as LinkedInProfile;
   }, [inbox.selectedChat, candidateProfile]);
 
-  // Relation non vérifiée et séquence avec invitation : l'invitation échouera
-  // si le candidat est déjà en relation.
+  // Relation non vérifiée et séquence avec invitation : si le candidat est déjà
+  // en relation, le moteur saute l'invitation et envoie les messages suivants.
   const enrollNotice = useMemo(() => {
     if (!pendingSequence || !enrollProfile) return null;
     const distanceKnown = normalizeNetworkDistance(enrollProfile.network_distance) != null;
@@ -155,7 +155,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
       (s: { action_type?: string; actionType?: string }) => (s.action_type || s.actionType) === 'connection_request',
     );
     return !distanceKnown && hasInvitation
-      ? "Relation LinkedIn non vérifiée. Si vous êtes déjà en relation avec ce candidat, l'invitation échouera."
+      ? "Relation LinkedIn non vérifiée : si vous êtes déjà en relation, l'invitation sera sautée."
       : null;
   }, [pendingSequence, enrollProfile]);
 

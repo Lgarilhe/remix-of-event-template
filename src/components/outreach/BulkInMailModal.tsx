@@ -15,6 +15,13 @@ import {
 } from '@/lib/enrollmentDuplicates';
 import { SEQUENCES_PLAN_REQUIRED_MESSAGE } from './enrollment-preview/enrollmentHelpers';
 import {
+  DISCONNECTED_ACCOUNT_MESSAGE,
+  NO_ACCOUNT_MESSAGE,
+  OTHER_MEMBER_ACCOUNT_MESSAGE,
+  useSendingAccount,
+} from './enrollment-preview/useSendingAccount';
+import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -107,6 +114,15 @@ interface QueueStats {
 const SEND_PACE_TEXT = "Envoi pendant vos heures d'envoi, les jours ouvrés, 1 à 2 minutes entre chaque InMail.";
 const INMAIL_DUPLICATE_CHECK_FAILED_MESSAGE =
   'Impossible de vérifier les contacts récents de votre organisation. Réessayez avant de planifier.';
+/** Un InMail groupé récent n'admet pas de dérogation : la file le refuse (process-inmail-queue). */
+const RECENT_INMAIL_REFUSED_MESSAGE =
+  `Déjà un InMail groupé ces ${RECENT_CONTACT_WINDOW_DAYS} derniers jours : un nouvel InMail groupé sera refusé`;
+/** Refus du compte d'envoi (liaison stricte), formulés pour l'InMail groupé. */
+const INMAIL_ACCOUNT_BLOCK_MESSAGES: Record<string, string> = {
+  [NO_ACCOUNT_MESSAGE]: "Aucun compte LinkedIn n'est sélectionné. Connectez votre compte avant d'envoyer des InMails.",
+  [OTHER_MEMBER_ACCOUNT_MESSAGE]: "Ce compte LinkedIn est relié à un autre membre de l'équipe. Envoyez les InMails depuis votre propre compte.",
+  [DISCONNECTED_ACCOUNT_MESSAGE]: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'envoyer des InMails.",
+};
 
 /** Distance LinkedIn envoyée à la file : 1 = déjà en relation (message gratuit), 2, 3, sinon inconnue. */
 function queueNetworkDistance(r: Recipient): number | null {
@@ -137,6 +153,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 }) => {
   const { organizationId, isAdmin } = useOrganization();
   const { user } = useAuthReady();
+  // Compte d'envoi (liaison stricte, comme les inscriptions) : chacun envoie
+  // depuis son propre compte relié. Relié à un collègue, déconnecté ou absent,
+  // il bloque la génération et la planification.
+  const sendingAccount = useSendingAccount(accountId);
+  const accountBlockReason = sendingAccount.blockReason
+    ? INMAIL_ACCOUNT_BLOCK_MESSAGES[sendingAccount.blockReason] ?? sendingAccount.blockReason
+    : null;
+  const sendingAccountState = { ...sendingAccount, blockReason: accountBlockReason };
   // Abonnement : sans plan autorisant l'envoi, rien ne partirait. Tant que
   // l'état n'est pas lu, on ne bloque pas (le serveur refuse aussi la file).
   const { state: subscriptionState, effectivePlanId } = useSubscriptionState();
@@ -180,9 +204,20 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     () => (recentContacts ? allRecipients.filter(r => recentContacts.has(r.id)) : []),
     [allRecipients, recentContacts],
   );
+  // Dérogation « Contacter quand même » : contacts par séquence seulement. Un
+  // InMail groupé des 90 derniers jours est refusé par la file sans dérogation
+  // possible : ces candidats restent exclus (aucune génération payée pour rien).
+  const overridableDuplicates = useMemo(
+    () => duplicateRecipients.filter(r => !recentContacts?.get(r.id)?.hasRecentInMail),
+    [duplicateRecipients, recentContacts],
+  );
+  const recentInMailCount = duplicateRecipients.length - overridableDuplicates.length;
   // Destinataires réellement visés : génération, crédits, planification.
   const recipients = useMemo(
-    () => (allowDuplicates || !recentContacts ? allRecipients : allRecipients.filter(r => !recentContacts.has(r.id))),
+    () => (!recentContacts ? allRecipients : allRecipients.filter(r => {
+      const entry = recentContacts.get(r.id);
+      return !entry || (allowDuplicates && !entry.hasRecentInMail);
+    })),
     [allRecipients, recentContacts, allowDuplicates],
   );
   // La génération et la planification attendent la fin de la vérification.
@@ -237,8 +272,13 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // ne consomme pas de crédit. Les soldes Sales Navigator ou Premium ne sont
   // pas additionnés : l'envoi passe par l'API Recruiter.
   const recruiterCredits = getCredits('recruiter');
-  const freeMessageCount = recipients.filter(r => queueNetworkDistance(r) === 1).length;
-  const paidInMailCount = recipients.length - freeMessageCount;
+  // Avant la génération (et pendant) : estimation sur tous les destinataires
+  // visés. Une fois les messages générés : seuls ceux qui ont un message seront
+  // planifiés, les crédits requis portent sur eux.
+  const withMessage = recipients.filter(r => generatedMessages[r.id]);
+  const billedRecipients = withMessage.length > 0 && !isGenerating ? withMessage : recipients;
+  const freeMessageCount = billedRecipients.filter(r => queueNetworkDistance(r) === 1).length;
+  const paidInMailCount = billedRecipients.length - freeMessageCount;
   const creditsNeeded = paidInMailCount;
   const hasEnoughCredits = creditsNeeded === 0 || hasCredits('recruiter', creditsNeeded);
   const creditsBreakdown = `${paidInMailCount} InMail${paidInMailCount > 1 ? 's' : ''} payant${paidInMailCount > 1 ? 's' : ''}, ${freeMessageCount} message${freeMessageCount > 1 ? 's' : ''} gratuit${freeMessageCount > 1 ? 's' : ''} (déjà en relation)`;
@@ -412,6 +452,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         // Mode interne ou cabinet, rôle de l'expéditeur et anonymisation du
         // client, comme l'aperçu de séquence (useEnrollmentPreview).
         outreachConfig: outreachConfig || undefined,
+        // Mission (préfixe « project: » accepté) : le serveur relit ses
+        // réglages d'approche quand outreachConfig est absent (SEQ-051).
+        missionId: selectedJob.id || undefined,
       });
 
       if (error) throw error;
@@ -432,6 +475,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const handleGenerateAll = async () => {
     if (!canSendInMails) {
       toast.error(SEQUENCES_PLAN_REQUIRED_MESSAGE);
+      return;
+    }
+    if (accountBlockReason) {
+      toast.error(accountBlockReason);
       return;
     }
     if (duplicatesUnchecked) {
@@ -537,6 +584,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const handleQueueAll = async () => {
     if (!canSendInMails) {
       toast.error(SEQUENCES_PLAN_REQUIRED_MESSAGE);
+      return;
+    }
+    if (accountBlockReason) {
+      toast.error(accountBlockReason);
       return;
     }
     if (duplicatesUnchecked) {
@@ -788,7 +839,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 <p className="text-xs font-semibold text-warning flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   {duplicateRecipients.length} candidat{duplicateRecipients.length > 1 ? 's' : ''} déjà contacté{duplicateRecipients.length > 1 ? 's' : ''} par votre organisation
-                  {allowDuplicates ? ', inclus quand même' : ', exclu' + (duplicateRecipients.length > 1 ? 's' : '')}
+                  {allowDuplicates && overridableDuplicates.length > 0
+                    ? (recentInMailCount > 0 ? `, ${overridableDuplicates.length} inclus quand même` : ', inclus quand même')
+                    : ', exclu' + (duplicateRecipients.length > 1 ? 's' : '')}
                 </p>
                 <ul className="text-[11px] text-muted-foreground space-y-0.5 max-h-20 overflow-y-auto">
                   {duplicateRecipients.slice(0, 5).map(r => {
@@ -804,7 +857,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                     <li className="italic">et {duplicateRecipients.length - 5} autre{duplicateRecipients.length - 5 > 1 ? 's' : ''}</li>
                   )}
                 </ul>
-                {isAdmin ? (
+                {recentInMailCount > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {RECENT_INMAIL_REFUSED_MESSAGE} ({recentInMailCount} candidat{recentInMailCount > 1 ? 's' : ''}, toujours exclu{recentInMailCount > 1 ? 's' : ''}).
+                  </p>
+                )}
+                {overridableDuplicates.length > 0 && (isAdmin ? (
                   <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
                     <input
                       type="checkbox"
@@ -812,13 +870,13 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                       onChange={(e) => setIncludeDuplicates(e.target.checked)}
                       className="h-3 w-3 rounded border-border"
                     />
-                    <span className="text-foreground">Contacter quand même ({duplicateRecipients.length})</span>
+                    <span className="text-foreground">Contacter quand même ({overridableDuplicates.length})</span>
                   </label>
                 ) : (
                   <p className="text-[11px] text-muted-foreground">
                     Seuls les propriétaires et administrateurs peuvent les contacter quand même.
                   </p>
-                )}
+                ))}
               </div>
             )}
             {!selectedJob ? (
@@ -944,7 +1002,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 {/* Generate button - clean */}
                 <Button
                   onClick={handleGenerateAll}
-                  disabled={isGenerating || !hasEnoughCredits || !canSendInMails || duplicatesUnchecked || recipients.length === 0 || missionConfigStatus === 'loading' || missionConfigStatus === 'error'}
+                  disabled={isGenerating || !hasEnoughCredits || !canSendInMails || !!accountBlockReason || duplicatesUnchecked || recipients.length === 0 || missionConfigStatus === 'loading' || missionConfigStatus === 'error'}
                   className={cn(
                     "w-full h-11",
                     !hasEnoughCredits 
@@ -1225,7 +1283,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         {/* Footer — aligné avec le body : même bg-background, juste un
             border-t pour séparer. Avant : bg-muted créait une bande grise
             visuellement détachée du reste de la modal. */}
-        <div className="px-6 py-3 border-t border-border bg-background flex justify-end gap-2 shrink-0">
+        <div className="px-6 py-3 border-t border-border bg-background shrink-0 space-y-2">
+          {/* Compte d'envoi : les InMails partent de ce compte et consomment ses crédits. */}
+          {activeTab === 'compose' && <SendingAccountNotice state={sendingAccountState} />}
+          <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={requestClose} disabled={isQueueing}>
             Fermer
           </Button>
@@ -1233,7 +1294,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           {activeTab === 'compose' && hasGeneratedMessages && (
             <Button
               onClick={() => setConfirmQueueOpen(true)}
-              disabled={isQueueing || readyCount === 0 || !canSendInMails || duplicatesUnchecked}
+              disabled={isQueueing || readyCount === 0 || !canSendInMails || !!accountBlockReason || duplicatesUnchecked}
               className="bg-linkedin hover:bg-linkedin-hover text-white"
             >
               {isQueueing ? (
@@ -1249,6 +1310,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
               )}
             </Button>
           )}
+          </div>
         </div>
 
         {/* Fermeture avec une saisie non reportée */}
@@ -1275,6 +1337,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
             <AlertDialogHeader>
               <AlertDialogTitle>Planifier {readyCount} InMail{readyCount > 1 ? 's' : ''} ?</AlertDialogTitle>
               <AlertDialogDescription>
+                {sendingAccount.name
+                  ? `Envoyés depuis le compte LinkedIn de ${sendingAccount.name}. `
+                  : 'Envoyés depuis le compte LinkedIn sélectionné. '}
                 {SEND_PACE_TEXT} {creditsBreakdown} : chaque InMail payant consomme un crédit.{hasUnsavedEdit ? ' La modification en cours du message affiché sera prise en compte.' : ''}
               </AlertDialogDescription>
             </AlertDialogHeader>

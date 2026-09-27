@@ -1,12 +1,14 @@
 /**
  * Vérifie la compatibilité entre une séquence outreach et un profil LinkedIn.
  *
- * Pourquoi : on évite que l'user enrôle un profil qui va échouer
- * silencieusement à la 1ʳᵉ étape. Exemples :
- * - Séquence avec connection_request → profil 1st degree va échouer
- *   (déjà connectés, on ne peut pas re-inviter)
+ * Pourquoi : on prévient avant l'inscription d'un profil que la séquence ne
+ * traitera pas comme prévu. Exemples :
+ * - Séquence avec connection_request → profil 1st degree : le moteur saute
+ *   l'invitation (« Déjà en relation : invitation inutile ») et envoie les
+ *   messages suivants (SEQ-036). Avertissement, non bloquant.
  * - Séquence avec inmail uniquement → profil 1st degree pourrait recevoir
  *   un message direct au lieu d'un InMail (gaspillage crédits InMail)
+ * - Hors réseau sans InMail → injoignable : bloquant.
  */
 
 export type NetworkDistance =
@@ -48,7 +50,7 @@ export interface ProfileCompat {
 }
 
 export type CompatIssue =
-  | 'connection_already_connected'   // 1st degree → connection_request va échouer
+  | 'connection_already_connected'   // 1st degree → l'invitation sera sautée, la suite part
   | 'inmail_wasted'                  // 1st degree → InMail gaspille un crédit
   | 'too_far'                        // > 3rd degree → ne peut pas être contacté
   | null;
@@ -92,6 +94,10 @@ export function getSequenceActionTypes(steps: SequenceStep[]): Set<string> {
   return set;
 }
 
+/** Candidat déjà en relation et séquence avec invitation (avertissement non bloquant). */
+export const ALREADY_CONNECTED_COMPAT_MESSAGE =
+  "Déjà en relation : l'invitation sera sautée, les messages suivants partiront.";
+
 /**
  * Calcule la compatibilité d'un profil avec une séquence.
  * Retourne un objet avec issue=null si tout est OK.
@@ -104,24 +110,14 @@ export function checkProfileCompat(
   const actions = getSequenceActionTypes(steps);
   const firstReach = getSequenceFirstReachAction(steps);
 
-  // Cas 1 : 1st degree + séquence avec connection_request → échec garanti
+  // Cas 1 : 1st degree + séquence avec connection_request → le moteur saute
+  // l'invitation et planifie la suite (SEQ-036) : avertissement seulement.
   if (distance === 'FIRST_DEGREE' && actions.has('connection_request')) {
-    // Si la séquence commence direct par connection_request, c'est bloquant
-    if (firstReach === 'connection_request') {
-      return {
-        profile,
-        distance,
-        issue: 'connection_already_connected',
-        message: 'Vous êtes déjà en relation : l\'invitation LinkedIn échouera.',
-      };
-    }
-    // Si connection_request est plus tard dans la séquence, l'enrollment
-    // ira jusque-là puis échouera. Warning soft.
     return {
       profile,
       distance,
       issue: 'connection_already_connected',
-      message: 'Vous êtes déjà en relation : l\'invitation prévue plus loin dans la séquence échouera.',
+      message: ALREADY_CONNECTED_COMPAT_MESSAGE,
     };
   }
 
@@ -168,7 +164,9 @@ export function checkProfilesCompat(
     const result = checkProfileCompat(profile, steps);
     if (result.issue === null) {
       compatible.push(result);
-    } else if (result.issue === 'connection_already_connected' || result.issue === 'too_far') {
+    } else if (result.issue === 'too_far') {
+      // Seul un candidat injoignable bloque. Déjà en relation : l'invitation
+      // est sautée par le moteur, les messages suivants partent (avertissement).
       blockers.push(result);
     } else {
       warnings.push(result);
