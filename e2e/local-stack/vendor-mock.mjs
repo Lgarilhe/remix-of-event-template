@@ -80,7 +80,13 @@ http.createServer((req, res) => {
     }
     if (req.method === 'GET' && /^\/api\/v1\/chat_attendees\/[^/]+\/chats$/.test(p)) return send(res, 200, { object: 'ChatList', items: [], cursor: null });
     if (req.method === 'GET' && /^\/api\/v1\/chats\/[^/]+\/messages$/.test(p)) return send(res, 200, { object: 'MessageList', items: [], cursor: null });
-    if (req.method === 'GET' && /^\/api\/v1\/chats\/[^/]+\/attendees$/.test(p)) return send(res, 200, { object: 'ChatAttendeeList', items: [] });
+    // Participants d'une conversation : le compte lui-même (is_self) et le candidat.
+    if (req.method === 'GET' && /^\/api\/v1\/chats\/[^/]+\/attendees$/.test(p)) {
+      return send(res, 200, { object: 'ChatAttendeeList', items: [
+        { object: 'ChatAttendee', id: 'att_self', provider_id: 'ACoAAMOCKME', is_self: 1 },
+        { object: 'ChatAttendee', id: 'att_candidate', provider_id: mode.candidate_provider_id ?? 'ACoAAMOCKCANDIDATE', is_self: 0 },
+      ] });
+    }
     if (req.method === 'POST' && p === '/api/v1/chats') return send(res, 201, { object: 'ChatStarted', chat_id: `chat_mock_${n}`, message_id: `msg_mock_${n}` });
     if (req.method === 'POST' && /^\/api\/v1\/chats\/[^/]+\/messages$/.test(p)) return send(res, 201, { object: 'MessageSent', message_id: `msg_mock_${n}` });
     if (req.method === 'POST' && p === '/api/v1/users/invite') return send(res, 201, { object: 'UserInvitationSent', invitation_id: `inv_mock_${n}` });
