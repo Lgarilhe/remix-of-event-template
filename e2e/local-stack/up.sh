@@ -19,6 +19,12 @@ psql_admin() { psql -h 127.0.0.1 -p $DB_PORT -U supabase_admin -d postgres -v ON
 psql_pg() { psql -h 127.0.0.1 -p $DB_PORT -U postgres -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
 stop_pid() { [ -f "$STATE/$1.pid" ] && kill "$(cat "$STATE/$1.pid")" 2>/dev/null || true; rm -f "$STATE/$1.pid"; }
 
+# 0. Démon Docker (conteneurs de CI ou de session : pas de service système)
+if ! docker info >/dev/null 2>&1 && command -v dockerd >/dev/null; then
+  nohup dockerd > "$STATE/dockerd.log" 2>&1 &
+  for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
+fi
+
 # 1. Base
 if docker ps -a --format '{{.Names}}' | grep -qx konekt-e2e-db; then
   docker start konekt-e2e-db >/dev/null
