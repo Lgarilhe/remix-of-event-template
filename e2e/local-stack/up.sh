@@ -17,11 +17,14 @@ mkdir -p "$STATE"
 export PGPASSWORD=postgres
 psql_admin() { psql -h 127.0.0.1 -p $DB_PORT -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
 psql_pg() { psql -h 127.0.0.1 -p $DB_PORT -U postgres -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
+# Les démons ne doivent pas hériter des descripteurs de l'appelant : lancé sous
+# `flock verrou bash up.sh`, le verrou est sur le fd 3 et un démon qui en hérite
+# le garderait jusqu'à sa mort.
 stop_pid() { [ -f "$STATE/$1.pid" ] && kill "$(cat "$STATE/$1.pid")" 2>/dev/null || true; rm -f "$STATE/$1.pid"; }
 
 # 0. Démon Docker (conteneurs de CI ou de session : pas de service système)
 if ! docker info >/dev/null 2>&1 && command -v dockerd >/dev/null; then
-  nohup dockerd > "$STATE/dockerd.log" 2>&1 &
+  nohup dockerd > "$STATE/dockerd.log" 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
   for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
 fi
 
@@ -53,7 +56,7 @@ stop_pid auth
     GOTRUE_JWT_ISSUER=http://127.0.0.1:54321/auth/v1 GOTRUE_DISABLE_SIGNUP=false GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
     GOTRUE_MAILER_AUTOCONFIRM=true GOTRUE_EXTERNAL_PHONE_ENABLED=false GOTRUE_RATE_LIMIT_EMAIL_SENT=1000 \
     GOTRUE_RATE_LIMIT_VERIFY=10000 GOTRUE_RATE_LIMIT_TOKEN_REFRESH=10000 GOTRUE_RATE_LIMIT_SIGN_IN_SIGN_UPS=10000 \
-    GOTRUE_LOG_LEVEL=warn nohup ./auth > "$STATE/auth.log" 2>&1 &
+    GOTRUE_LOG_LEVEL=warn nohup ./auth > "$STATE/auth.log" 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
   echo $! > "$STATE/auth.pid"
 )
 for _ in $(seq 1 30); do curl -fs http://127.0.0.1:9999/health >/dev/null 2>&1 && break; sleep 1; done
@@ -103,8 +106,8 @@ const exp=Math.floor(Date.now()/1000)+10*365*86400;
 console.log(sign({iss:"supabase-demo",role:"anon",exp})+" "+sign({iss:"supabase-demo",role:"service_role",exp}));' "$JWT_SECRET")
 ANON_KEY=${KEYS% *}; SERVICE_ROLE_KEY=${KEYS#* }
 stop_pid gateway; stop_pid vendor-mock; stop_pid functions
-nohup node "$HERE/gateway.mjs" > "$STATE/gateway.log" 2>&1 & echo $! > "$STATE/gateway.pid"
-nohup node "$HERE/vendor-mock.mjs" > "$STATE/vendor-mock.log" 2>&1 & echo $! > "$STATE/vendor-mock.pid"
+nohup node "$HERE/gateway.mjs" > "$STATE/gateway.log" 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & echo $! > "$STATE/gateway.pid"
+nohup node "$HERE/vendor-mock.mjs" > "$STATE/vendor-mock.log" 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & echo $! > "$STATE/vendor-mock.pid"
 # Chemin réel du binaire : lancé via npx, le pid enregistré serait celui de npx
 # et l'arrêt laisserait Deno tenir le port.
 DENO_BIN=${DENO_BIN:-$(command -v deno || npx -y deno eval 'console.log(Deno.execPath())' 2>/dev/null | tail -1)}
@@ -119,7 +122,7 @@ env SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_S
   ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080 APP_URL=http://localhost:8080 \
   NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost "${CERT_ENV[@]}" \
   nohup $DENO_BIN run -A --no-check --import-map="$HERE/import_map.json" "$HERE/functions-server.ts" \
-  > "$STATE/functions.log" 2>&1 & echo $! > "$STATE/functions.pid"
+  > "$STATE/functions.log" 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & echo $! > "$STATE/functions.pid"
 for _ in $(seq 1 30); do curl -fs http://127.0.0.1:54321/auth/v1/health >/dev/null 2>&1 && break; sleep 1; done
 
 cat > "$STATE/env" <<ENV
