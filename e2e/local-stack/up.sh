@@ -98,11 +98,13 @@ docker run -d --name konekt-e2e-rest --network host \
   -e PGRST_DB_EXTRA_SEARCH_PATH=public,extensions -e PGRST_DB_MAX_ROWS=1000 \
   -e PGRST_SERVER_HOST=127.0.0.1 -e PGRST_SERVER_PORT=3000 "$REST_IMAGE" >/dev/null
 
-# 5. Clés, passerelle, faux prestataires, edge functions
+# 5. Clés (identiques d'un démarrage à l'autre : un test qui a lu le fichier
+# d'environnement avant un redémarrage garde des clés valides), passerelle,
+# faux prestataires, edge functions
 KEYS=$(node -e '
 const c=require("crypto"),s=process.argv[1],b=o=>Buffer.from(JSON.stringify(o)).toString("base64url");
 const sign=p=>{const h=b({alg:"HS256",typ:"JWT"}),q=b(p);return h+"."+q+"."+c.createHmac("sha256",s).update(h+"."+q).digest("base64url")};
-const exp=Math.floor(Date.now()/1000)+10*365*86400;
+const exp=4102444800; // échéance fixe (2100) : mêmes clés à chaque démarrage
 console.log(sign({iss:"supabase-demo",role:"anon",exp})+" "+sign({iss:"supabase-demo",role:"service_role",exp}));' "$JWT_SECRET")
 ANON_KEY=${KEYS% *}; SERVICE_ROLE_KEY=${KEYS#* }
 stop_pid gateway; stop_pid vendor-mock; stop_pid functions
