@@ -261,3 +261,24 @@ export function missionJobIds(jobId: string | null | undefined): string[] | null
   const base = String(jobId).replace(/^project:/, '').trim();
   return base ? [base, `project:${base}`] : null;
 }
+
+// ─── SEQ-212 : réponse = arrêt des autres inscriptions du candidat ──────────
+
+/** Motif des étapes annulées sur les autres inscriptions (même texte que unipile-webhook). */
+export const SIBLING_REPLY_SKIP_REASON = "Le candidat a répondu sur un autre compte de l'organisation";
+
+/**
+ * Filtre PostgREST (.or) des inscriptions du même candidat : profile_id,
+ * resolved_profile_id ou provider_id parmi ses identifiants LinkedIn,
+ * assainis comme dans unipile-webhook (ni virgule, ni parenthèse, ni
+ * guillemet : pas d'injection dans le filtre). null sans identifiant.
+ */
+export function siblingEnrollmentsFilter(identifiers: Array<string | null | undefined>): string | null {
+  const ids = [...new Set(identifiers
+    .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    .map((v) => v.replace(/[^a-zA-Z0-9_\-:]/g, ''))
+    .filter((v) => v.length > 0))];
+  if (ids.length === 0) return null;
+  const list = ids.join(',');
+  return `profile_id.in.(${list}),resolved_profile_id.in.(${list}),provider_id.in.(${list})`;
+}

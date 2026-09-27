@@ -60,7 +60,8 @@ test('SEQ-121 — chaque raison de pause propose l’action qui débloque', () =
   assert.match(panel, /Voir l'erreur/);
   assert.match(panel, /const RESUMABLE_PAUSE_REASONS = new Set<string>\(\['manual', 'send_failed'\]\)/);
   // « Reprendre » n'est plus proposé pour un compte déconnecté ou un abonnement manquant.
-  assert.match(panel, /\(!enrollment\.pause_reason \|\| RESUMABLE_PAUSE_REASONS\.has\(enrollment\.pause_reason\)\) && \(/);
+  assert.match(panel, /\(!enrollment\.pause_reason \|\| RESUMABLE_PAUSE_REASONS\.has\(enrollment\.pause_reason\) \|\| sequencePauseResumable\)/);
+  assert.match(panel, /\{canResume && \(/);
 });
 
 // ---------------------------------------------------------------- SEQ-122 / SEQ-232
@@ -157,7 +158,8 @@ test('SEQ-165 — compteurs exacts au-delà de 1 000 lignes, recompte au clic', 
   assert.match(list, /async function fetchAllPages</);
   const fetch = list.slice(list.indexOf('const fetchSequences = React.useCallback('), list.indexOf('}, [projectId]);'));
   assert.ok(fetch.length > 0, 'fetchSequences introuvable');
-  assert.match(fetch, /fetchAllPages\(\(from, to\) => supabase\s*\.from\('sequence_enrollments'\)[\s\S]*?\.range\(from, to\)\)/);
+  // SEQ-165 (B6, vague finale) : compteurs groupés en base, paginés eux aussi.
+  assert.match(fetch, /fetchAllPages\(\(from, to\) => supabase\s*\.rpc\('get_sequence_enrollment_counts', \{ p_sequence_ids: sequenceIds \}\)[\s\S]*?\.range\(from, to\)\)/);
   const toggle = body(list, 'requestToggle');
   assert.match(toggle, /\.select\('id', \{ count: 'exact', head: true \}\)\s*\.eq\('sequence_id', seq\.id\)\s*\.eq\('status', 'active'\)/);
   assert.doesNotMatch(toggle, /if \(seq\.enrollments\.active > 0\)/);
@@ -250,7 +252,8 @@ test('SEQ-178 — l’onglet Contact montre le chemin pour inscrire des candidat
 
 // ---------------------------------------------------------------- SEQ-179
 test('SEQ-179 — les envois bloqués sont signalés dans la liste, par cause', () => {
-  assert.match(list, /select\('sequence_id, status, pause_reason'\)/);
+  assert.match(list, /\.rpc\('get_sequence_enrollment_counts'/);
+  assert.match(list, /stats\.pausedByReason\[reason\] = \(stats\.pausedByReason\[reason\] \?\? 0\) \+ n;/);
   assert.match(list, /\{candidats\(disconnectedPaused\)\} en pause : compte LinkedIn déconnecté\./);
   assert.match(list, /Envois suspendus : abonnement requis\./);
   assert.match(list, /Séquence « \{seq\.name\} » arrêtée automatiquement après trop d’échecs\./);

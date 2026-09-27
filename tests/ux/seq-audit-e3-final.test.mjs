@@ -152,6 +152,17 @@ test('rotation : null accompagné de sa cause (plafond, groupe vide, sans organi
   assert.equal(await pickSenderForRotation(rotationClient({}), { id: 's', organization_id: 'org1', sender_accounts: [] }), null);
 });
 
+test('rotation : chaque cause renvoyée a un traitement distinct côté moteur (rotationUnavailablePlan, lot E1)', async () => {
+  const cycle = await importModule('supabase/functions/_shared/sequence-cycle-rules.ts');
+  const union = rawSlice(sequences, 'type RotationUnavailableCause =', ';');
+  const causes = [...union.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+  assert.deepEqual(causes, ['capped', 'empty_pool', 'lookup_failed', 'no_org']);
+  assert.equal(cycle.rotationUnavailablePlan('capped').kind, 'block_until_tomorrow');
+  assert.equal(cycle.rotationUnavailablePlan('lookup_failed').kind, 'retry_soon');
+  // Groupe vide ou séquence sans organisation : jamais « limite du jour » au lendemain.
+  for (const c of ['empty_pool', 'no_org']) assert.notEqual(cycle.rotationUnavailablePlan(c).kind, 'block_until_tomorrow', c);
+});
+
 // ---------------------------------------------------------------- 2. InMail rédigé par l'IA sans objet
 test('InMail IA sans objet ni objet de repli : pas de texte figé sans objet, nouvelle rédaction', () => {
   const generate = sliceBetween(sequences, 'async function generatePersonalizedMessage(');

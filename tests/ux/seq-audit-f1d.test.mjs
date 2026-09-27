@@ -30,12 +30,18 @@ const visual = read('src/components/outreach/sequence/VisualSequenceEditor.tsx')
 const canvas = read('src/components/outreach/sequence/WorkflowCanvas.tsx');
 const stepNode = read('src/components/outreach/sequence/nodes/WorkflowStepNode.tsx');
 
-/** Extrait le corps d'une fonction déclarée `const nom = ... => {` jusqu'à `};` au même niveau. */
-function body(src, start) {
+/**
+ * Extrait le corps d'une fonction déclarée `const nom = ... => {` jusqu'à `};`
+ * au même niveau. `opener` : texte qui précède l'accolade du corps, quand la
+ * signature contient elle-même des accolades (type de retour ou de paramètre).
+ */
+function body(src, start, opener = '{') {
   const i = src.indexOf(start);
   assert.ok(i !== -1, `introuvable : ${start}`);
+  const k = src.indexOf(opener, i);
+  assert.ok(k !== -1, `ouverture introuvable après : ${start}`);
   let depth = 0;
-  for (let j = src.indexOf('{', i); j < src.length; j++) {
+  for (let j = k + opener.length - 1; j < src.length; j++) {
     if (src[j] === '{') depth++;
     else if (src[j] === '}') {
       depth--;
@@ -117,7 +123,7 @@ test('front-editor-list-3 — une partie du pool n’est plus reliée : recomman
 });
 
 test('front-editor-list-3 — la liste des expéditeurs vérifie chaque compte contre l’équipe, libellé ou pas', () => {
-  const describe = body(multiSender, 'const describeSender');
+  const describe = body(multiSender, 'const describeSender', '=> {');
   // Le libellé ne suffit plus à déclarer l'expéditeur valide.
   assert.doesNotMatch(describe, /if \(sender\.label\) return \{ title: `LinkedIn · \$\{sender\.label\}`, kind: 'linkedin' \}/);
   const lookup = describe.indexOf('teamMembers.find(m => m.linkedInAccountId === sender.account_id)');
@@ -155,7 +161,7 @@ test('front-editor-list-3 — linkedSenderIdsOf ne garde que les comptes LinkedI
     mod = await import('../../src/components/outreach/sequence/useMultiSenderTeam.ts');
   } catch {
     // Le module importe le client Supabase (alias @/) : non chargeable sous Node.
-    const fn = body(teamHook, 'export function linkedSenderIdsOf');
+    const fn = body(teamHook, 'export function linkedSenderIdsOf', ': Set<string> {');
     assert.match(fn, /members\.map\(m => m\.linkedInAccountId\)\.filter\(\(id\): id is string => !!id\)/);
     return;
   }

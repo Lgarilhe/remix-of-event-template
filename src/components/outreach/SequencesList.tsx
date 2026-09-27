@@ -380,11 +380,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           .order('step_order', { ascending: true })
           .order('id', { ascending: true })
           .range(from, to)),
+        // Compteurs calculés en base, une ligne par séquence, statut et raison
+        // de pause (même résultat sous la RLS qu'une ligne par candidat).
         sequenceIds.length === 0 ? Promise.resolve([]) : fetchAllPages((from, to) => supabase
-          .from('sequence_enrollments')
-          .select('sequence_id, status, pause_reason')
-          .in('sequence_id', sequenceIds)
-          .order('id', { ascending: true })
+          .rpc('get_sequence_enrollment_counts', { p_sequence_ids: sequenceIds })
+          .order('sequence_id', { ascending: true })
+          .order('status', { ascending: true })
+          .order('pause_reason', { ascending: true })
           .range(from, to)),
       ]);
       if (stepsResult.status === 'rejected') console.error('Error fetching sequence steps:', stepsResult.reason);
@@ -393,18 +395,19 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       const enrollData = enrollResult.status === 'fulfilled' ? enrollResult.value : [];
 
       const statsBySequence = new Map<string, SequenceWithStats['enrollments']>();
-      for (const e of enrollData) {
-        const stats = statsBySequence.get(e.sequence_id) ?? emptyEnrollmentStats();
-        stats.total += 1;
-        if (e.status === 'active') stats.active += 1;
-        else if (e.status === 'completed') stats.completed += 1;
-        else if (e.status === 'replied') stats.replied += 1;
-        else if (e.status === 'paused') {
-          stats.paused += 1;
-          const reason = e.pause_reason || 'manual';
-          stats.pausedByReason[reason] = (stats.pausedByReason[reason] ?? 0) + 1;
+      for (const group of enrollData) {
+        const n = Number(group.count) || 0;
+        const stats = statsBySequence.get(group.sequence_id) ?? emptyEnrollmentStats();
+        stats.total += n;
+        if (group.status === 'active') stats.active += n;
+        else if (group.status === 'completed') stats.completed += n;
+        else if (group.status === 'replied') stats.replied += n;
+        else if (group.status === 'paused') {
+          stats.paused += n;
+          const reason = group.pause_reason || 'manual';
+          stats.pausedByReason[reason] = (stats.pausedByReason[reason] ?? 0) + n;
         }
-        statsBySequence.set(e.sequence_id, stats);
+        statsBySequence.set(group.sequence_id, stats);
       }
 
       const enriched: SequenceWithStats[] = (seqData || []).map((seq) => ({
@@ -667,6 +670,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       if (remainingActive > 0) {
         toast.error('La séquence reste active', {
           description: `${pausedPart}${candidats(remainingActive)} ${remainingActive > 1 ? 'restent' : 'reste'} en cours et ${remainingActive > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remainingActive > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remainingActive > 1 ? 'ils viennent' : 'il vient'} d’être ${remainingActive > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur de désactiver la séquence.`,
+          // Les candidats déjà mis en pause se reprennent depuis la liste des inscrits.
+          ...(pausedCount > 0 ? enrollmentsPanelAction(sequenceId) : {}),
         });
         return;
       }

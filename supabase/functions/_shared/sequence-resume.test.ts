@@ -97,3 +97,46 @@ Deno.test('compteurs : toutes les clés présentes', () => {
     resumed: 2, nothing_to_resume: 0, account_unlinked: 1, not_paused: 0, error: 0,
   });
 });
+
+// ─── Vague finale (audit 2026-09-25, lot E1) ────────────────────────────────
+
+import {
+  canActOnEnrollment, isGdprErasedEnrollment, trackingWithoutPauseReason,
+  MAILBOX_DISCONNECTED_SKIP_REASON, RESUMABLE_SKIP_REASONS,
+} from './sequence-resume.ts';
+import { GDPR_ERASED_AT_KEY, GDPR_ERASURE_SKIP_REASON } from './get-or-fetch-contact.ts';
+
+Deno.test('D5 : inscription effacée (marqueur durable ou étape annulée par l\'effacement)', () => {
+  strictEqual(isGdprErasedEnrollment({ [GDPR_ERASED_AT_KEY]: '2026-09-26T10:00:00Z' }, []), true);
+  strictEqual(isGdprErasedEnrollment({}, [{ skip_reason: GDPR_ERASURE_SKIP_REASON }]), true);
+  // Terminée avant l'effacement : seul le marqueur la signale.
+  strictEqual(isGdprErasedEnrollment({ [GDPR_ERASED_AT_KEY]: '2026-09-26T10:00:00Z', previous_replied_at: 'x' }, [{ skip_reason: null }]), true);
+  strictEqual(isGdprErasedEnrollment({ [GDPR_ERASED_AT_KEY]: '' }, [{ skip_reason: 'Arrêt manuel' }]), false);
+  strictEqual(isGdprErasedEnrollment(null, []), false);
+  strictEqual(isGdprErasedEnrollment(['x'], []), false);
+});
+
+Deno.test('D3 : un collaborateur n\'agit que sur les inscriptions qu\'il a créées', () => {
+  strictEqual(canActOnEnrollment({ userId: 'u1', role: 'collaborator' }, 'u2'), false);
+  strictEqual(canActOnEnrollment({ userId: 'u1', role: 'collaborator' }, null), false);
+  strictEqual(canActOnEnrollment({ userId: 'u1', role: 'collaborator' }, 'u1'), true);
+  strictEqual(canActOnEnrollment({ userId: 'u1', role: 'admin' }, 'u2'), true);
+  strictEqual(canActOnEnrollment({ userId: 'u1', role: 'owner' }, 'u2'), true);
+  // Clé de service (cron, assistant) : pas de restriction supplémentaire.
+  strictEqual(canActOnEnrollment({ userId: null, role: null }, 'u2'), true);
+});
+
+Deno.test('SEQ-082 : le texte de la pause précédente est retiré à la réactivation', () => {
+  deepStrictEqual(trackingWithoutPauseReason({ pause_reason: 'Relation inconnue', re_enrolled_at: 'x' }), { re_enrolled_at: 'x' });
+  strictEqual(trackingWithoutPauseReason({ re_enrolled_at: 'x' }), null);
+  strictEqual(trackingWithoutPauseReason(null), null);
+});
+
+Deno.test('boîte e-mail déconnectée avant l\'envoi : étape réarmable par la reprise', () => {
+  strictEqual(RESUMABLE_SKIP_REASONS.includes(MAILBOX_DISCONNECTED_SKIP_REASON), true);
+  const plan = planResume('resume', 'paused', 2, [
+    row({ id: 'a', status: 'sent', step_order: 0, created_at: inMinutes(-200) }),
+    row({ id: 'b', status: 'cancelled', step_order: 1, skip_reason: MAILBOX_DISCONNECTED_SKIP_REASON, created_at: inMinutes(-100) }),
+  ], NOW);
+  strictEqual(plan.kind, 'rearm');
+});

@@ -289,6 +289,10 @@ const FRENCH_SKIP_REASON_PREFIXES = [
   'Le candidat a répondu',
   'Rendez-vous pris',
   'Effacement des données demandé',
+  // D2 : canaux e-mail et WhatsApp fermés (sequence-engine-rules.ts).
+  'Étape e-mail pas encore disponible',
+  'Étape WhatsApp pas encore disponible',
+  "Boîte e-mail d'envoi déconnectée",
 ];
 
 export function formatSkipReason(reason: string | null | undefined): string {
@@ -348,6 +352,77 @@ export function executionDoneVerb(status: string | null | undefined): string | n
   if (status === 'cancelled') return 'Annulé';
   if (status === 'bounced') return 'Revenu en erreur';
   return null;
+}
+
+// ─── Étapes en attente qui ne partiront pas (contrat §1, D1) ───────────────
+
+/** Mêmes valeurs que PENDING_EXECUTION_STATUSES de sequenceLabels.ts (module sans import). */
+const HELD_PENDING_STATUSES = ['scheduled', 'waiting_event', 'quota_blocked'];
+
+export interface HeldExecutionNotice {
+  /** Libellé du badge, à la place du statut de l'étape. */
+  label: string;
+  /** Ce qui débloque l'étape, affiché sous la ligne. */
+  hint: string;
+}
+
+/**
+ * Une pause garde les étapes prévues à leur date (contrat §1) et une séquence
+ * désactivée n'envoie rien (D1) : le moteur ignore ces étapes. Le Journal ne
+ * doit ni les annoncer « Programmé » ou « En retard », ni les compter à venir,
+ * ni proposer de les sauter (le serveur refuse le saut d'un candidat non actif).
+ * null si l'étape suit son cours.
+ */
+export function heldExecutionNotice(
+  executionStatus: string | null | undefined,
+  enrollmentStatus: string | null | undefined,
+  sequenceActive: boolean | null | undefined,
+): HeldExecutionNotice | null {
+  if (!executionStatus || !HELD_PENDING_STATUSES.includes(executionStatus)) return null;
+  if (enrollmentStatus === 'paused') {
+    return { label: 'En pause', hint: "Ne partira pas tant que le candidat n'est pas repris." };
+  }
+  if (enrollmentStatus && enrollmentStatus !== 'active') {
+    return { label: 'Ne partira pas', hint: 'La séquence est terminée pour ce candidat.' };
+  }
+  if (sequenceActive === false) {
+    return { label: 'En pause', hint: "Séquence désactivée : ne partira pas tant qu'elle n'est pas réactivée." };
+  }
+  return null;
+}
+
+// ─── D5 : effacement RGPD définitif ────────────────────────────────────────
+
+/** Début du motif posé par recordGdprErasure sur les étapes annulées (_shared/get-or-fetch-contact.ts). */
+const GDPR_ERASURE_SKIP_PREFIX = 'Effacement des données demandé';
+
+/** Même phrase que le refus de resume_enrollments et re_enroll. */
+export const GDPR_ERASED_NOTICE = "Ce candidat a demandé l'effacement de ses données : il ne peut plus être relancé.";
+
+/**
+ * Inscription touchée par un effacement RGPD : marqueur durable
+ * tracking_data.gdpr_erased_at, ou une étape annulée par l'effacement.
+ * Ni « Reprendre » ni relance, quel que soit le statut.
+ */
+export function isGdprErasedEnrollment(
+  marker: unknown,
+  executions: ReadonlyArray<{ skip_reason?: string | null }> | null | undefined,
+): boolean {
+  if (marker !== undefined && marker !== null && marker !== false && marker !== '') return true;
+  return (executions ?? []).some((e) => !!e.skip_reason?.startsWith(GDPR_ERASURE_SKIP_PREFIX));
+}
+
+/** Motif lu par le serveur quand l'inscription n'est plus active (skip_execution, SEQ-027). */
+export const SKIP_NOT_ACTIVE_MESSAGE = "Ce candidat n'est plus actif dans la séquence : reprenez-le avant de sauter une étape.";
+
+/**
+ * Message d'un refus 409 de skip_execution. Candidat en pause ou sorti de la
+ * séquence : la phrase du serveur (reprendre d'abord). Sinon, étape déjà
+ * partie, en cours d'envoi ou traitée.
+ */
+export function skipConflictMessage(errorCode: string | null | undefined, serverMessage: string | null | undefined): string {
+  if (errorCode === 'enrollment_not_active') return serverMessage?.trim() || SKIP_NOT_ACTIVE_MESSAGE;
+  return "Cette étape est déjà en cours d'envoi ou déjà traitée.";
 }
 
 // ─── Types d'action ────────────────────────────────────────────────────────

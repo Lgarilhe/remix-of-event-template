@@ -135,3 +135,69 @@ Deno.test('battement de cœur, désinscription, fuseau, relance', () => {
     { a: 1, previous_replied_at: '2026-09-01T10:00:00Z', re_enrolled_at: '2026-09-25T10:00:00Z' });
   deepStrictEqual(reEnrollTracking({ previous_replied_at: 'x' }, null, 'n'), { previous_replied_at: 'x', re_enrolled_at: 'n' });
 });
+
+// ─── Vague finale (audit 2026-09-25, lot E1) ────────────────────────────────
+
+import {
+  dedupeByProfile, isInvalidTextRepresentation, rotationUnavailablePlan, shouldReadNextSelectionPage,
+  stepUsesLinkedInSender, ROTATION_LOOKUP_RETRY_MESSAGE,
+} from './sequence-cycle-rules.ts';
+
+Deno.test('SEQ-187 : les exécutions d\'inscriptions closes n\'occupent pas la place d\'envoi de leur compte', () => {
+  const msg = { action_type: 'message' };
+  const batch = selectCycleBatch([
+    { id: 'c1', step: msg, enrollment: { account_id: 'A', status: 'replied' } },
+    { id: 'c2', step: msg, enrollment: { account_id: 'A', status: 'completed' } },
+    { id: 'c3', step: msg, enrollment: { account_id: 'A', status: 'stopped' } },
+    { id: 'v1', step: msg, enrollment: { account_id: 'A', status: 'active' } },
+    { id: 'v2', step: msg, enrollment: { account_id: 'A', status: 'active' } },
+    { id: 'v3', step: msg, enrollment: { account_id: 'A', status: 'active' } },
+    { id: 'v4', step: msg, enrollment: { account_id: 'A', status: 'active' } },
+  ]);
+  deepStrictEqual(batch.selected.map((e) => e.id), ['c1', 'c2', 'c3', 'v1', 'v2', 'v3']);
+  strictEqual(batch.closed, 3);
+  strictEqual(batch.visible, 3);
+});
+
+Deno.test('SEQ-187 : sélection par pages tant que la page était pleine et le lot incomplet', () => {
+  strictEqual(shouldReadNextSelectionPage(0, 200, 3), true);
+  strictEqual(shouldReadNextSelectionPage(0, 150, 3), false, 'page incomplète : plus rien à lire');
+  strictEqual(shouldReadNextSelectionPage(0, 200, 100), false, 'lot complet');
+  strictEqual(shouldReadNextSelectionPage(4, 200, 3), false, 'plafond de pages');
+});
+
+Deno.test('SEQ-187 : une exécution par candidat et par cycle, jamais sans profil', () => {
+  const out = dedupeByProfile([
+    { id: 1, enrollment: { profile_id: 'p1' } },
+    { id: 2, enrollment: { profile_id: 'p1' } },
+    { id: 3, enrollment: { profile_id: null } },
+    { id: 4, enrollment: { profile_id: 'p2' } },
+  ]);
+  deepStrictEqual(out.map((e) => e.id), [1, 4]);
+});
+
+Deno.test('SEQ-155 : suite selon la cause quand la rotation ne propose personne', () => {
+  deepStrictEqual(rotationUnavailablePlan('capped'), { kind: 'block_until_tomorrow' });
+  deepStrictEqual(rotationUnavailablePlan(undefined), { kind: 'block_until_tomorrow' });
+  deepStrictEqual(rotationUnavailablePlan('lookup_failed'), { kind: 'retry_soon', delayMs: 15 * 60 * 1000, message: ROTATION_LOOKUP_RETRY_MESSAGE });
+  deepStrictEqual(rotationUnavailablePlan('empty_pool'), { kind: 'use_enrollment_account' });
+  deepStrictEqual(rotationUnavailablePlan('no_org'), { kind: 'use_enrollment_account' });
+});
+
+Deno.test('SEQ-155 : tirage seulement pour une étape qui passe par un compte LinkedIn', () => {
+  strictEqual(stepUsesLinkedInSender({ action_type: 'message' }), true);
+  strictEqual(stepUsesLinkedInSender({ action_type: 'inmail' }), true);
+  strictEqual(stepUsesLinkedInSender({ action_type: 'connection_request' }), true);
+  strictEqual(stepUsesLinkedInSender({ action_type: 'check_connection' }), true);
+  strictEqual(stepUsesLinkedInSender({ action_type: 'email' }), false);
+  strictEqual(stepUsesLinkedInSender({ action_type: 'message', step_channel: 'email' }), false);
+  strictEqual(stepUsesLinkedInSender({ action_type: 'wait_reply' }), false);
+  strictEqual(stepUsesLinkedInSender({ action_type: 'condition_branch' }), false);
+  strictEqual(stepUsesLinkedInSender(null), false);
+});
+
+Deno.test('rotation sans migration B6 : 22P02 reconnu', () => {
+  strictEqual(isInvalidTextRepresentation({ code: '22P02', message: 'invalid input syntax for type uuid' }), true);
+  strictEqual(isInvalidTextRepresentation({ code: '23514' }), false);
+  strictEqual(isInvalidTextRepresentation(null), false);
+});

@@ -735,14 +735,26 @@ DECLARE
   v_incoming uuid[] := ARRAY[]::uuid[];
   v_map jsonb := '{}'::jsonb;
   v_blocked_orders text;
+  v_owner uuid;
 BEGIN
-  SELECT organization_id INTO v_org
+  SELECT organization_id, created_by INTO v_org, v_owner
   FROM public.outreach_sequences
   WHERE id = p_sequence_id;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Sequence % not found or not accessible', p_sequence_id
       USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- SEQ-119 : un collaborateur voit la séquence d'un collègue (équipe de la
+  -- mission) mais n'en modifie pas les étapes (policies du bloc 5). Sans ce
+  -- refus, les UPDATE et DELETE filtrés par la RLS ne touchaient aucune ligne
+  -- et la sauvegarde était annoncée réussie.
+  IF auth.uid() IS NOT NULL
+     AND v_owner IS DISTINCT FROM auth.uid()
+     AND public.is_active_org_collaborator(auth.uid()) THEN
+    RAISE EXCEPTION 'Seul l''auteur de cette séquence peut modifier ses étapes.'
+      USING ERRCODE = '42501', HINT = 'SEQUENCE_NOT_OWNER';
   END IF;
 
   FOR v_elem IN SELECT * FROM jsonb_array_elements(p_steps)
@@ -936,6 +948,80 @@ REVOKE ALL ON FUNCTION public.is_active_org_collaborator(uuid) FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION public.is_active_org_collaborator(uuid) TO authenticated, service_role;
 
 -- ---------------------------------------------------------------------
+-- 4e. D3 / SEQ-128 : anti-doublon du navigateur (src/lib/enrollmentDuplicates.ts)
+--     SECURITY DEFINER : un collaborateur ne lit plus par la RLS (bloc 5) les
+--     inscriptions de ses collègues, mais doit savoir qu'un candidat est déjà
+--     contacté par l'organisation. Refus si p_org n'est pas l'organisation
+--     active de l'appelant ; colonnes du rapprochement seulement.
+--     Rapprochement : profile_id, provider_id ou resolved_profile_id dans
+--     p_values, ou profile_url contenant /in/{slug} (slug de p_slugs, 3
+--     caractères au moins, jokers échappés). Inscriptions vivantes (active,
+--     paused) sans limite de date, closes (replied, completed) depuis p_since.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.find_recent_org_contacts(
+  p_org uuid,
+  p_values text[],
+  p_slugs text[],
+  p_since timestamptz
+)
+RETURNS TABLE (
+  profile_id text,
+  provider_id text,
+  resolved_profile_id text,
+  profile_url text,
+  created_by uuid,
+  created_at timestamptz,
+  status text,
+  sequence_id uuid
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_patterns text[];
+BEGIN
+  IF auth.uid() IS NULL
+     OR p_org IS NULL
+     OR public.get_user_org_id(auth.uid()) IS DISTINCT FROM p_org THEN
+    RAISE EXCEPTION 'Vous n''avez pas accès aux candidats de cette organisation.'
+      USING ERRCODE = '42501', HINT = 'NOT_ORG_MEMBER';
+  END IF;
+
+  SELECT COALESCE(array_agg(
+           '%/in/' || replace(replace(replace(btrim(s), '\', '\\'), '%', '\%'), '_', '\_') || '%'
+         ), ARRAY[]::text[])
+    INTO v_patterns
+  FROM unnest(COALESCE(p_slugs, ARRAY[]::text[])) AS s
+  WHERE length(btrim(s)) >= 3;
+
+  RETURN QUERY
+    SELECT e.profile_id::text, e.provider_id::text, e.resolved_profile_id::text,
+           e.profile_url::text, e.created_by, e.created_at, e.status::text,
+           e.sequence_id
+    FROM public.sequence_enrollments e
+    WHERE e.organization_id = p_org
+      AND (
+        e.status IN ('active', 'paused')
+        OR (e.status IN ('replied', 'completed')
+            AND e.created_at >= COALESCE(p_since, now() - interval '90 days'))
+      )
+      AND (
+        e.profile_id = ANY (COALESCE(p_values, ARRAY[]::text[]))
+        OR e.provider_id = ANY (COALESCE(p_values, ARRAY[]::text[]))
+        OR e.resolved_profile_id = ANY (COALESCE(p_values, ARRAY[]::text[]))
+        OR (e.profile_url IS NOT NULL AND e.profile_url ILIKE ANY (v_patterns))
+      )
+    ORDER BY e.created_at DESC;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.find_recent_org_contacts(uuid, text[], text[], timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.find_recent_org_contacts(uuid, text[], text[], timestamptz) TO authenticated;
+
+-- ---------------------------------------------------------------------
 -- 5. Policies : un seul jeu par table
 -- ---------------------------------------------------------------------
 DO $$
@@ -980,13 +1066,24 @@ CREATE POLICY mission_team_select ON public.outreach_sequences
 CREATE POLICY org_members_insert ON public.outreach_sequences
   FOR INSERT TO authenticated
   WITH CHECK (organization_id = public.get_user_org_id(auth.uid()));
+-- Un collaborateur ne modifie ni ne supprime que ses propres séquences : la
+-- suppression efface en cascade les inscriptions et l'historique d'envoi.
 CREATE POLICY org_members_update ON public.outreach_sequences
   FOR UPDATE TO authenticated
-  USING (organization_id = public.get_user_org_id(auth.uid()))
-  WITH CHECK (organization_id = public.get_user_org_id(auth.uid()));
+  USING (
+    organization_id = public.get_user_org_id(auth.uid())
+    AND (created_by = auth.uid() OR NOT (SELECT public.is_active_org_collaborator(auth.uid())))
+  )
+  WITH CHECK (
+    organization_id = public.get_user_org_id(auth.uid())
+    AND (created_by = auth.uid() OR NOT (SELECT public.is_active_org_collaborator(auth.uid())))
+  );
 CREATE POLICY org_members_delete ON public.outreach_sequences
   FOR DELETE TO authenticated
-  USING (organization_id = public.get_user_org_id(auth.uid()));
+  USING (
+    organization_id = public.get_user_org_id(auth.uid())
+    AND (created_by = auth.uid() OR NOT (SELECT public.is_active_org_collaborator(auth.uid())))
+  );
 CREATE POLICY service_role_all ON public.outreach_sequences
   FOR ALL
   USING (auth.role() = 'service_role')
@@ -994,7 +1091,9 @@ CREATE POLICY service_role_all ON public.outreach_sequences
 
 -- sequence_steps : l'étape et sa séquence dans l'organisation de l'appelant.
 -- La sous-requête sur outreach_sequences passe par sa RLS : un collaborateur
--- n'atteint que les étapes des séquences qu'il voit.
+-- n'atteint que les étapes des séquences qu'il voit, et n'écrit (INSERT,
+-- UPDATE, DELETE) que celles des séquences qu'il a créées : le moteur envoie
+-- ce modèle depuis le compte des recruteurs qui ont inscrit les candidats.
 CREATE POLICY org_members_select ON public.sequence_steps
   FOR SELECT TO authenticated
   USING (
@@ -1013,6 +1112,7 @@ CREATE POLICY org_members_insert ON public.sequence_steps
       SELECT 1 FROM public.outreach_sequences s
       WHERE s.id = sequence_steps.sequence_id
         AND s.organization_id = public.get_user_org_id(auth.uid())
+        AND (s.created_by = auth.uid() OR NOT (SELECT public.is_active_org_collaborator(auth.uid())))
     )
   );
 CREATE POLICY org_members_update ON public.sequence_steps
@@ -1023,6 +1123,7 @@ CREATE POLICY org_members_update ON public.sequence_steps
       SELECT 1 FROM public.outreach_sequences s
       WHERE s.id = sequence_steps.sequence_id
         AND s.organization_id = public.get_user_org_id(auth.uid())
+        AND (s.created_by = auth.uid() OR NOT (SELECT public.is_active_org_collaborator(auth.uid())))
     )
   )
   WITH CHECK (
@@ -1031,6 +1132,7 @@ CREATE POLICY org_members_update ON public.sequence_steps
       SELECT 1 FROM public.outreach_sequences s
       WHERE s.id = sequence_steps.sequence_id
         AND s.organization_id = public.get_user_org_id(auth.uid())
+        AND (s.created_by = auth.uid() OR NOT (SELECT public.is_active_org_collaborator(auth.uid())))
     )
   );
 CREATE POLICY org_members_delete ON public.sequence_steps
@@ -1041,6 +1143,7 @@ CREATE POLICY org_members_delete ON public.sequence_steps
       SELECT 1 FROM public.outreach_sequences s
       WHERE s.id = sequence_steps.sequence_id
         AND s.organization_id = public.get_user_org_id(auth.uid())
+        AND (s.created_by = auth.uid() OR NOT (SELECT public.is_active_org_collaborator(auth.uid())))
     )
   );
 CREATE POLICY service_role_all ON public.sequence_steps

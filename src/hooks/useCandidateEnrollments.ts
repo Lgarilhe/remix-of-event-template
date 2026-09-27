@@ -17,7 +17,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { isSentExecutionStatus, summarizeResumeResponse, type ResumeResponse } from '@/lib/sequenceErrorMessages';
+import {
+  isGdprErasedEnrollment,
+  isSentExecutionStatus,
+  summarizeResumeResponse,
+  type ResumeResponse,
+} from '@/lib/sequenceErrorMessages';
 import { toast } from 'sonner';
 
 export interface CandidateEnrollmentStepExecution {
@@ -54,6 +59,8 @@ export interface CandidateEnrollment {
   sent_count: number;
   next_scheduled_at: string | null; // prochaine action prévue
   next_step_action_type: string | null;
+  /** D5 : effacement RGPD demandé, l'inscription ne peut plus être reprise ni relancée. */
+  gdpr_erased: boolean;
   executions: CandidateEnrollmentStepExecution[];
 }
 
@@ -77,6 +84,8 @@ interface EnrollmentRow {
   connection_status: string | null;
   job_id: string | null;
   job_title: string | null;
+  /** tracking_data.gdpr_erased_at seul (tracking_data peut être lourd). */
+  gdpr_erased_at: unknown;
   outreach_sequences: { id: string; name: string } | { id: string; name: string }[] | null;
   sequence_step_executions: Array<{
     id: string;
@@ -112,12 +121,15 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
     setError(null);
     try {
       // Fetch enrollments avec sequence info + executions imbriquées.
-      // On utilise un join Supabase via le shorthand FK.
+      // On utilise un join Supabase via le shorthand FK. Type de ligne donné
+      // explicitement : le chemin JSON (tracking_data->…) rend l'inférence
+      // de la requête trop profonde pour TypeScript.
       const { data, error } = await supabase
         .from('sequence_enrollments')
-        .select(`
+        .select<string, EnrollmentRow>(`
           id, sequence_id, status, pause_reason, current_step_order, created_at,
           replied_at, connection_status, job_id, job_title,
+          gdpr_erased_at:tracking_data->gdpr_erased_at,
           outreach_sequences (id, name),
           sequence_step_executions (
             id, step_id, step_order, status, scheduled_at, executed_at,
@@ -178,6 +190,7 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
           sent_count: normalizedExecs.filter(x => isSentExecutionStatus(x.status)).length,
           next_scheduled_at: nextExec?.scheduled_at || null,
           next_step_action_type: nextExec?.step?.action_type || null,
+          gdpr_erased: isGdprErasedEnrollment(e.gdpr_erased_at, normalizedExecs),
           executions: normalizedExecs,
         };
       });

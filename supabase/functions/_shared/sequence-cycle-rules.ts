@@ -178,6 +178,8 @@ export type RotationUnavailablePlan =
   | { kind: 'use_enrollment_account' };
 
 export const ROTATION_LOOKUP_RETRY_MESSAGE = 'Expéditeurs de la rotation momentanément illisibles : nouvel essai dans 15 min';
+/** Expéditeur tiré (ou compte d'une conversation engagée) non enregistré sur l'inscription : rien ne part ce cycle. */
+export const ROTATION_SENDER_NOT_SAVED_MESSAGE = 'Expéditeur de rotation non enregistré : envoi reporté';
 
 /**
  * Suite à donner quand la rotation ne propose aucun expéditeur, selon la

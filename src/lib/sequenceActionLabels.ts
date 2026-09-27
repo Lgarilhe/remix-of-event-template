@@ -15,18 +15,24 @@
 export interface SequenceActionLabel {
   /** Libellé quand l'étape est partie. */
   done: string;
-  /** Nom de l'action, pour les autres statuts (« InMail : échec »). */
+  /**
+   * Nom de l'action, pour les autres statuts (« InMail : échec »). C'est le
+   * nom de l'éditeur (STEP_TYPE_LABELS de sequenceGraph.ts, recopié ici : le
+   * module reste sans import), sauf pour l'invitation, encore « Invitation »
+   * tant que tests/ux/seq-audit-f4c.test.mjs attend « Invitation : étape
+   * sautée » (demande transmise au lot F4).
+   */
   noun: string;
 }
 
 export const SEQUENCE_ACTION_LABELS: Record<string, SequenceActionLabel> = {
   connection_request: { done: 'Invitation envoyée', noun: 'Invitation' },
-  message: { done: 'Message envoyé', noun: 'Message' },
-  smart_message: { done: 'Message envoyé', noun: 'Message' },
+  message: { done: 'Message envoyé', noun: 'Message LinkedIn' },
+  smart_message: { done: 'Message envoyé', noun: 'Message IA' },
   inmail: { done: 'InMail envoyé', noun: 'InMail' },
   profile_visit: { done: 'Profil visité', noun: 'Visite de profil' },
   email: { done: 'E-mail envoyé', noun: 'E-mail' },
-  whatsapp_message: { done: 'Message WhatsApp envoyé', noun: 'Message WhatsApp' },
+  whatsapp_message: { done: 'Message WhatsApp envoyé', noun: 'WhatsApp' },
 };
 
 /** Étapes internes du moteur (attentes, conditions) : rien n'est envoyé au candidat. */

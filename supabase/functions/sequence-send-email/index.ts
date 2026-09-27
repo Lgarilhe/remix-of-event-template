@@ -739,8 +739,7 @@ Deno.serve(async (req) => {
 
     // Copies (CC/BCC) : elles reçoivent le même corps que le candidat. Sans
     // instrumentation dans ce cas : pas de pixel ni de liens suivis (une
-    // ouverture ou un clic d'une copie serait attribué au candidat), pas de
-    // pied de désinscription au jeton du candidat.
+    // ouverture ou un clic d'une copie serait attribué au candidat).
     const cc = recipientList(step.cc_emails);
     const bcc = recipientList(step.bcc_emails);
     const hasCopies = cc.length > 0 || bcc.length > 0;
@@ -750,7 +749,11 @@ Deno.serve(async (req) => {
     // POST désinscrit + ajoute à suppressed_emails). L'ancien lien
     // `handle-email-unsubscribe?email=...` renvoyait 400 (le handler attend un
     // `token`, pas un `email`) → le candidat ne pouvait JAMAIS se désinscrire.
-    if (step.include_unsubscribe && !hasCopies) {
+    // Présent même avec des copies : l'option cochée promet au candidat un
+    // moyen de s'opposer (prospection). Une copie ne peut pas le désinscrire
+    // par simple ouverture ou préchargement : la page demande une
+    // confirmation explicite avant le POST.
+    if (step.include_unsubscribe) {
       const unsubToken = await getOrCreateUnsubscribeToken(supabase, recipientEmail);
       if (unsubToken) {
         const appUrl = (Deno.env.get('APP_URL') || 'https://konekt-app-navy.vercel.app').replace(/\/+$/, '');

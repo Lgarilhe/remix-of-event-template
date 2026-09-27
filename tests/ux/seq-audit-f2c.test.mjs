@@ -59,7 +59,7 @@ test('SEQ-059 — le refus STEP_HAS_HISTORY nomme les étapes, numérotées comm
   assert.equal(blockedStepsNotice(undefined), '');
   assert.equal(blockedStepsNotice(''), '');
   const save = body(list, 'handleSaveSequence');
-  assert.match(save, /Modifiez son contenu à la place\.\$\{blockedStepsNotice\(stepsError\.details\)\}/);
+  assert.match(save, /Modifiez son contenu à la place\.\$\{blockedStepsNotice\(stepsError\.details, baseStepLabels\)\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-219 (F5 / F2b)
@@ -146,9 +146,10 @@ test('SEQ-082 — la cause précise d’une pause « échec d’envoi » est aff
     executions: [{ status: 'sent' }, { status: 'skipped' }],
   }), detail);
 
-  assert.match(panel, /const pauseHint = enrollment\.status === 'paused'\s*\?\s*\(pauseDetail \?\? pauseReasonHint\(enrollment\.pause_reason\)\)/);
-  // Pas de « Voir l'erreur » ni de « Reprendre à l'étape suivante » quand aucune étape n'a échoué.
-  assert.match(panel, /enrollment\.pause_reason === 'send_failed' && !pauseDetail \? 'Reprendre à l’étape suivante' : 'Reprendre la séquence'/);
+  assert.match(panel, /: enrollment\.status === 'paused'\s*\?\s*\(pauseDetail \?\? \(sequencePauseResumable \? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint\(enrollment\.pause_reason\)\)\)/);
+  // « Reprendre à l'étape suivante » était faux (vague finale) : l'étape en échec est retentée.
+  assert.doesNotMatch(panel, /Reprendre à l’étape suivante/);
+  assert.match(panel, /\{retriesFailedStep \? 'Réessayer l’étape en échec' : 'Reprendre la séquence'\}/);
   assert.match(panel, /\{enrollment\.pause_reason === 'send_failed' && !pauseDetail && \(\s*<DropdownMenuItem onClick=\{\(\) => showEnrollmentDetail/);
 });
 

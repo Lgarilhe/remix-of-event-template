@@ -220,8 +220,8 @@ BEGIN
   VALUES (step_a1, seq_a, org_a, 1, 'message'),
          (step_a2, seq_a, org_a, 2, 'message'),
          (step_b1, seq_b, org_b, 1, 'message');
-  INSERT INTO public.sequence_enrollments (id, sequence_id, account_id, profile_id, organization_id, created_by, status)
-  VALUES (enr_a, seq_a, 'acc-a', 'prof-a', org_a, u_a, 'active');
+  INSERT INTO public.sequence_enrollments (id, sequence_id, account_id, profile_id, profile_url, organization_id, created_by, status)
+  VALUES (enr_a, seq_a, 'acc-a', 'prof-a', 'https://www.linkedin.com/in/audit-prof-a/', org_a, u_a, 'active');
   INSERT INTO public.sequence_step_executions (id, enrollment_id, step_id, step_order, scheduled_at, status, executed_at, final_message)
   VALUES (exec_sent, enr_a, step_a1, 1, now() - interval '1 day', 'sent', now() - interval '1 day', 'Bonjour'),
          (exec_sched, enr_a, step_a2, 2, now() + interval '1 day', 'scheduled', NULL, NULL);
@@ -302,6 +302,14 @@ BEGIN
     SELECT count(*) INTO n FROM public.get_sequence_enrollment_counts(ARRAY[seq_a]);
     IF n <> 0 THEN failures := failures || '[SEQ-165 : B compte les inscriptions de A] '; END IF;
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[SEQ-217 lecture : %s] ', SQLERRM);
+  END;
+  -- D3 : l'anti-doublon (SECURITY DEFINER) refuse l'organisation d'un autre.
+  checks := checks + 1;
+  BEGIN
+    SELECT count(*) INTO n FROM public.find_recent_org_contacts(org_a, ARRAY['prof-a'], ARRAY['audit-prof-a'], now() - interval '90 days');
+    failures := failures || format('[D3 : B interroge les contacts de A (%s ligne(s))] ', n);
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  WHEN OTHERS THEN failures := failures || format('[D3 autre organisation : %s] ', SQLERRM);
   END;
 
   -- S7. SEQ-009 : B ne peut pas glisser une étape dans la séquence de A.
@@ -413,6 +421,19 @@ BEGIN
     IF n <> 0 THEN failures := failures || '[SEQ-119 : le collaborateur lit les messages d''un collègue] '; END IF;
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[SEQ-119 lecture : %s] ', SQLERRM);
   END;
+  -- D3 : ... mais l'anti-doublon lui signale le candidat contacté par A
+  -- (identifiant ou slug public), sans joker (« _ » ne remplace pas « - »).
+  checks := checks + 1;
+  BEGIN
+    SELECT count(*) INTO n FROM public.find_recent_org_contacts(org_a, ARRAY['prof-a'], ARRAY[]::text[], now() - interval '90 days')
+    WHERE created_by = u_a AND sequence_id = seq_a AND status = 'active';
+    IF n <> 1 THEN failures := failures || format('[D3 : le collaborateur ne voit pas le contact d''un collègue (%s)] ', n); END IF;
+    SELECT count(*) INTO n FROM public.find_recent_org_contacts(org_a, ARRAY[]::text[], ARRAY['audit-prof-a'], now() - interval '90 days');
+    IF n <> 1 THEN failures := failures || format('[D3 : rapprochement par slug (%s)] ', n); END IF;
+    SELECT count(*) INTO n FROM public.find_recent_org_contacts(org_a, ARRAY[]::text[], ARRAY['audit_prof_a'], now() - interval '90 days');
+    IF n <> 0 THEN failures := failures || '[D3 : « _ » du slug pris pour un joker] '; END IF;
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[D3 collaborateur : %s] ', SQLERRM);
+  END;
 
   -- S14. Dans l'équipe de la mission, il lit les candidats mais ne modifie pas
   --      ceux d'un collègue.
@@ -431,6 +452,59 @@ BEGIN
     IF n <> 0 THEN failures := failures || '[SEQ-119 : le collaborateur modifie le message d''un collègue] '; END IF;
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   WHEN OTHERS THEN failures := failures || format('[SEQ-119 écriture : %s] ', SQLERRM);
+  END;
+  --      Ni le modèle d'étape (envoyé depuis le compte de A), ni la séquence
+  --      (dont la suppression effacerait en cascade candidats et historique).
+  checks := checks + 1;
+  BEGIN
+    SELECT count(*) INTO n FROM public.outreach_sequences WHERE id = seq_a;
+    IF n <> 1 THEN failures := failures || format('[SEQ-119 : le collaborateur ne voit pas la séquence de sa mission (%s)] ', n); END IF;
+    UPDATE public.sequence_steps SET message_template = 'Texte réécrit par B' WHERE id = step_a1;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    IF n <> 0 THEN failures := failures || '[SEQ-119 : le collaborateur réécrit l''étape d''un collègue] '; END IF;
+    DELETE FROM public.sequence_steps WHERE id = step_a2;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    IF n <> 0 THEN failures := failures || '[SEQ-119 : le collaborateur supprime l''étape d''un collègue] '; END IF;
+    UPDATE public.outreach_sequences SET name = 'Renommée par B' WHERE id = seq_a;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    IF n <> 0 THEN failures := failures || '[SEQ-119 : le collaborateur modifie la séquence d''un collègue] '; END IF;
+    DELETE FROM public.outreach_sequences WHERE id = seq_a;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    IF n <> 0 THEN failures := failures || '[SEQ-119 : le collaborateur supprime la séquence d''un collègue] '; END IF;
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[SEQ-119 séquence : %s] ', SQLERRM);
+  END;
+  BEGIN
+    INSERT INTO public.sequence_steps (sequence_id, organization_id, step_order, action_type, message_template)
+    VALUES (seq_a, org_a, 3, 'message', 'étape ajoutée par B');
+    failures := failures || '[SEQ-119 : le collaborateur ajoute une étape à la séquence d''un collègue] ';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  WHEN OTHERS THEN failures := failures || format('[SEQ-119 ajout d''étape : %s] ', SQLERRM);
+  END;
+  BEGIN
+    PERFORM * FROM public.save_sequence_steps(seq_a, jsonb_build_array(
+      jsonb_build_object('id', step_a1, 'step_order', 1, 'action_type', 'message', 'message_template', 'Texte réécrit par B'),
+      jsonb_build_object('id', step_a2, 'step_order', 2, 'action_type', 'message')));
+    failures := failures || '[SEQ-119 : sauvegarde des étapes d''un collègue acceptée] ';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'SEQUENCE_NOT_OWNER' THEN
+      failures := failures || format('[SEQ-119 : refus sans le HINT attendu (%s)] ', SQLERRM);
+    END IF;
+  END;
+  --      Régression : il garde l'édition de ses propres séquences.
+  BEGIN
+    INSERT INTO public.outreach_sequences (id, name, organization_id, created_by, is_active)
+    VALUES ('a5000000-0000-4000-8000-0000000000c1', 'Séquence du collaborateur', org_a, u_b, false);
+    PERFORM * FROM public.save_sequence_steps('a5000000-0000-4000-8000-0000000000c1', jsonb_build_array(
+      jsonb_build_object('id', 'n1', 'step_order', 1, 'action_type', 'message', 'message_template', 'Bonjour')));
+    UPDATE public.sequence_steps SET message_template = 'Bonjour à vous'
+    WHERE sequence_id = 'a5000000-0000-4000-8000-0000000000c1';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    IF n <> 1 THEN failures := failures || format('[Régression SEQ-119 : le collaborateur ne modifie pas sa propre étape (%s)] ', n); END IF;
+    DELETE FROM public.outreach_sequences WHERE id = 'a5000000-0000-4000-8000-0000000000c1';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    IF n <> 1 THEN failures := failures || '[Régression SEQ-119 : le collaborateur ne supprime pas sa propre séquence] '; END IF;
+  EXCEPTION WHEN OTHERS THEN failures := failures || format('[Régression SEQ-119 séquence propre : %s] ', SQLERRM);
   END;
 
   -- Remise en état : B redevient seulement membre de l'org B.

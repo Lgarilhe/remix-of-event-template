@@ -5,13 +5,18 @@
  * Complements the existing check_replies polling in process-sequences.
  *
  * Webhooks handled HERE :
- *   - mail_received (Email reply)
  *   - mail_opened / mail_link_clicked (Email tracking)
  *
  * Webhooks handled by `unipile-webhook` (NOT here, to avoid double processing —
  * audit Opus 2026-05-07) :
  *   - message_received (LinkedIn reply)
  *   - new_relation (LinkedIn invite accepted)
+ *   - mail_received (Email reply) — audit séquences 2026-09 : unipile-webhook
+ *     écarte les réponses automatiques et les rebonds et borne le
+ *     rattachement à l'organisation de la boîte ; ici, une absence du bureau
+ *     rattachée par in_reply_to passait l'inscription en « Répondu ».
+ *     scripts/setup-sequence-webhooks.ts abonne encore ce handler à
+ *     mail_received : l'événement est reçu, journalisé et ignoré.
  *
  * Si on reçoit ces events ici (legacy webhook setup), on les ignore avec un
  * warning. Ré-enregistrer les webhooks Unipile via scripts/setup-sequence-
@@ -283,6 +288,11 @@ async function handleNewRelation(
   console.log(`[webhooks] new_relation: updated ${enrollments.length} enrollment(s) for ${userProviderId}`);
 }
 
+/**
+ * Plus appelé (audit séquences 2026-09) : `mail_received` est traité par
+ * unipile-webhook. Ne pas le rebrancher sans filtrer d'abord les réponses
+ * automatiques et les rebonds.
+ */
 async function handleMailReceived(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -493,7 +503,10 @@ Deno.serve(async (req) => {
         break;
 
       case 'mail_received':
-        await handleMailReceived(supabase, payload);
+        // Réponses e-mail : traitées par `unipile-webhook` seul (abonné par
+        // unipile-manage-webhooks), qui écarte les réponses automatiques et
+        // les rebonds. Ici, aucun rattachement ni clôture : on journalise.
+        console.warn('[webhooks] Event "mail_received" ignored here: e-mail replies are handled by unipile-webhook (auto-replies and bounces filtered out).');
         break;
 
       case 'mail_opened':

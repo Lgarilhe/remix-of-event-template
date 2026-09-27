@@ -178,7 +178,9 @@ test('SEQ-109 / SEQ-195 — un envoi réussi n\'est plus affiché en erreur, can
 
 // ---------------------------------------------------------------- SEQ-187
 test('SEQ-187 — cadence par compte d\'envoi, e-mails hors plafond et hors espacement', () => {
-  assert.match(processFn, /selectCycleBatch<\(typeof dedupedExecutions\)\[number\]>\(dedupedExecutions\)/);
+  // Vague finale (famine entre organisations) : cadence par compte appliquée
+  // au fil d'une sélection légère par pages, puis relecture des seules retenues.
+  assert.match(processFn, /cycleSelection = selectCycleBatch<DueExecution>\(dedupeByProfile\(dueCandidates\)\)/);
   assert.doesNotMatch(processFn, /if \(visibleCount >= MAX_VISIBLE_PER_CYCLE\) return false;/, 'ancien plafond global');
   assert.match(loop, /if \(isLinkedInStyleSend && \(visibleSentByAccount\.get\(sendAccountKey\) \?\? 0\) > 0\)/, 'espacement par compte');
   assert.doesNotMatch(loop, /!INVISIBLE_ACTIONS\.has\(effectiveActionType\) && visibleActionsExecuted > 0/);
@@ -187,7 +189,8 @@ test('SEQ-187 — cadence par compte d\'envoi, e-mails hors plafond et hors espa
 // ---------------------------------------------------------------- SEQ-189
 test('SEQ-189 — dernier contrôle en échec fermé', () => {
   const lastCall = slice(loop, '// ⭐ LAST-CALL CHECK', 'const executeResult = await executeStepAction(');
-  assert.match(lastCall, /\.select\('status'\)\.eq\('id', enrollment\.id\)\.maybeSingle\(\)/);
+  // D1 (contrat §7) : la séquence est relue avec l'inscription.
+  assert.match(lastCall, /\.select\('status, sequence:outreach_sequences\(is_active\)'\)\.eq\('id', enrollment\.id\)\.maybeSingle\(\)/);
   assert.match(lastCall, /if \(lastCallErr\) \{[\s\S]*?15 \* 60 \* 1000[\s\S]*?\.eq\('status', 'sending'\)[\s\S]*?continue;/);
   assert.match(lastCall, /if \(!lastCall\) \{[\s\S]*?continue;/, 'inscription disparue : rien ne part');
 });

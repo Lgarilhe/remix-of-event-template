@@ -520,7 +520,11 @@ export const useOrganizationMembers = (orgId: string | null) => {
         .select('id');
 
       // Les envois sont déjà arrêtés : l'échec du retrait ne doit pas le faire oublier.
-      if (error) throw new Error(`Ses envois sont arrêtés, mais le membre n'a pas été retiré : ${error.message}`);
+      // Détail technique en console seulement : jamais le message brut de la base à l'écran.
+      if (error) {
+        console.error('[removeMember] organization_members delete failed:', error);
+        throw new Error("Ses envois sont arrêtés, mais le membre n'a pas été retiré. Réessayez.");
+      }
       if (!data?.length) throw new Error("Ses envois sont arrêtés, mais le membre n'a pas été retiré : droits insuffisants.");
       return stopped;
     },

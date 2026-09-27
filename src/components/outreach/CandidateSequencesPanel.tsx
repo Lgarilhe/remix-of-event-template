@@ -20,6 +20,7 @@ import {
   executionStatusLabel,
   formatSequenceError,
   formatSkipReason,
+  GDPR_ERASED_NOTICE,
   isHiddenActionType,
   isSentExecutionStatus,
   shouldShowExecutionError,
@@ -277,11 +278,15 @@ function EnrollmentCard({
   const isActive = enrollment.status === 'active';
   const isPaused = enrollment.status === 'paused';
   const statusLabel = isPaused ? pausedLabel(enrollment.pause_reason) : enrollmentStatusLabel(enrollment.status);
-  const pauseHint = isPaused ? pauseReasonHint(enrollment.pause_reason) : null;
+  // D5 : un effacement RGPD est définitif, ni reprise ni relance.
+  const gdprErased = enrollment.gdpr_erased;
+  const pauseHint = gdprErased
+    ? GDPR_ERASED_NOTICE
+    : isPaused ? pauseReasonHint(enrollment.pause_reason) : null;
   const pauseReason = enrollment.pause_reason;
   // Une pause sans raison est une pause posée avant l'introduction des raisons :
   // on la traite comme une pause manuelle.
-  const canResume = isPaused && (!pauseReason || RESUMABLE_PAUSE_REASONS.has(pauseReason));
+  const canResume = isPaused && !gdprErased && (!pauseReason || RESUMABLE_PAUSE_REASONS.has(pauseReason));
 
   const sentCount = enrollment.sent_count;
 

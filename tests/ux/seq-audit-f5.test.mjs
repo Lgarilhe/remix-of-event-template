@@ -67,13 +67,28 @@ test('SEQ-042 — retirer un membre arrête d’abord ses envois, côté serveur
   // Suppression vérifiée (refus RLS = 0 ligne).
   assert.match(remove, /\.select\('id'\)/);
   assert.match(remove, /if \(!data\?\.length\) throw/);
+  // Échec de la suppression après l'arrêt : phrase française, détail en console seulement.
+  const deleteError = block(remove, 'if (error) {', '}');
+  assert.match(deleteError, /console\.error\(/);
+  assert.match(deleteError, /throw new Error\("Ses envois sont arrêtés, mais le membre n'a pas été retiré\. Réessayez\."\)/);
+  assert.doesNotMatch(remove, /\$\{error\.message\}/, 'message brut de la base affiché');
 });
 
 test('SEQ-042 — la confirmation annonce l’arrêt des envois et attend le résultat', () => {
   assert.match(team, /onRemove: \(params: \{ memberId: string; userId: string \}\) => Promise<unknown>;/);
   assert.match(team, /await onRemove\(\{ memberId: removeConfirm\.id, userId: removeConfirm\.user_id \}\)/);
-  assert.match(team, /InMails programmés seront arrêtés/);
-  assert.match(team, /Vous pourrez réinscrire ses candidats depuis votre compte/);
+  // Le serveur met en pause (pause_reason manual), il n'arrête pas : « arrêter »
+  // est réservé à l'arrêt définitif (contrat §1).
+  assert.doesNotMatch(team, /seront arrêtés/);
+  assert.match(team, /\$\{n > 1 \? 's' : ''\}\) seront mises en pause et ses InMails programmés annulés\.\$\{reenroll\}`/);
+  assert.match(team, /const generic = `Ses séquences en cours seront mises en pause et ses InMails programmés annulés\.\$\{reenroll\}`;/);
+  // Promesse réalisable : « Reprendre » échoue (compte plus relié), la même
+  // séquence refuse un doublon ; seule une autre séquence avec la dérogation
+  // « Inscrire quand même » permet de recontacter ces candidats.
+  assert.doesNotMatch(team, /Vous pourrez réinscrire ses candidats depuis votre compte/);
+  assert.match(team, /Ses candidats resteront en pause : pour les recontacter, inscrivez-les dans une autre séquence depuis votre compte \(option « Inscrire quand même »\)\./);
+  assert.match(read('src/components/outreach/SequenceEnrollModal.tsx'), /Inscrire quand même \(\{duplicateProfiles\.length\}\)/);
+  assert.match(team, /\{' '\}Vous pourrez le réinviter plus tard\./);
   // Ancien comportement : fermeture immédiate, promesse rejetée non gérée.
   assert.doesNotMatch(team, /onRemove\(removeConfirm\.id\);\s*setRemoveConfirm\(null\);/);
   const dialog = block(team, '<AlertDialog open={!!removeConfirm}', '</AlertDialog>');
@@ -90,6 +105,17 @@ test('SEQ-104 — désinscription en échec : message distinct et nouvel essai',
   assert.match(errorBlock, /Une erreur est survenue, réessayez dans un instant\./);
   assert.match(errorBlock, /onClick=\{retry\}/);
   assert.doesNotMatch(errorBlock, /Lien invalide/);
+});
+
+test('désinscription : français sans anglicisme, un seul verbe, tournures neutres', () => {
+  assert.doesNotMatch(unsubscribe, /emails/);
+  assert.doesNotMatch(unsubscribe, /désabonn/i);
+  assert.doesNotMatch(unsubscribe, /désinscrit avec succès|Déjà désinscrit|déjà désinscrit de/);
+  assert.match(unsubscribe, />Se désinscrire</);
+  assert.match(unsubscribe, /Vous ne recevrez plus d'e-mails de notre part\./);
+  assert.match(unsubscribe, /Votre désinscription est enregistrée\./);
+  assert.match(unsubscribe, /Cette adresse est déjà désinscrite : vous ne recevez plus nos e-mails\./);
+  assert.match(unsubscribe, /Confirmer la désinscription/);
 });
 
 // ------------------------------------------------------------ SEQ-115
@@ -218,6 +244,22 @@ test('SEQ-184 — historique : libellés des vraies étapes, échecs et étapes 
   assert.equal(labels.isInternalSequenceAction('inmail'), false);
 });
 
+test('SEQ-245 — historique : le nom d’une étape non partie est celui de l’éditeur', async () => {
+  const graphSrc = read('src/components/outreach/sequence/sequenceGraph.ts');
+  const { STEP_TYPE_LABELS } = await load(block(graphSrc, 'export const STEP_TYPE_LABELS', '\n};') + '\n};');
+  for (const [key, { noun }] of Object.entries(labels.SEQUENCE_ACTION_LABELS)) {
+    // L'invitation garde « Invitation » tant que seq-audit-f4c (lot F4) attend
+    // « Invitation : étape sautée ».
+    if (key === 'connection_request') continue;
+    assert.equal(noun, STEP_TYPE_LABELS[key], key);
+  }
+  assert.equal(labels.sequenceExecutionTitle('message', 'failed'), 'Message LinkedIn : échec');
+  assert.equal(labels.sequenceExecutionTitle('smart_message', 'skipped'), 'Message IA : étape sautée');
+  assert.equal(labels.sequenceExecutionTitle('whatsapp_message', 'skipped'), 'WhatsApp : étape sautée');
+  // Le module reste pur, sans import (chargé tel quel par les tests).
+  assert.doesNotMatch(read('src/lib/sequenceActionLabels.ts'), /^import /m);
+});
+
 test('SEQ-184 — la frise de la fiche candidat utilise ces libellés', () => {
   for (const legacy of ['send_connection', 'send_message', 'send_inmail', 'visit_profile', 'Action : ']) {
     assert.ok(!candidateProfile.includes(legacy), `${legacy} encore présent`);
@@ -314,7 +356,8 @@ test('SEQ-165 — types générés : compteurs d’inscriptions et rôle collabo
   const functions = block(types, '    Functions: {', '    Enums: {');
   const counts = block(functions, '      get_sequence_enrollment_counts: {', '\n      }\n');
   assert.match(counts, /Args: \{ p_sequence_ids: string\[\] \}/);
-  assert.match(counts, /count: number\n\s+sequence_id: string\n\s+status: string\n\s+\}\[\]/);
+  // B6 : la RPC renvoie aussi pause_reason (RETURNS TABLE à quatre colonnes).
+  assert.match(counts, /count: number\n\s+pause_reason: string(?: \| null)?\n\s+sequence_id: string\n\s+status: string\n\s+\}\[\]/);
   const collaborator = block(functions, '      is_active_org_collaborator: {', '\n      }\n');
   assert.match(collaborator, /Args: \{ _user_id: string \}/);
   assert.match(collaborator, /Returns: boolean/);

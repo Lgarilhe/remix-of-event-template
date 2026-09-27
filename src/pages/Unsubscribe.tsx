@@ -71,8 +71,8 @@ const Unsubscribe = () => {
         {status === 'valid' && (
           <>
             <MailX className="w-12 h-12 mx-auto text-muted-foreground" />
-            <h1 className="text-xl font-semibold text-foreground">Se désabonner</h1>
-            <p className="text-muted-foreground">Vous ne recevrez plus d'emails de notre part.</p>
+            <h1 className="text-xl font-semibold text-foreground">Se désinscrire</h1>
+            <p className="text-muted-foreground">Vous ne recevrez plus d'e-mails de notre part.</p>
             <Button onClick={handleUnsubscribe} disabled={processing} className="gap-2">
               {processing && <Loader2 className="w-4 h-4 animate-spin" />}
               Confirmer la désinscription
@@ -83,14 +83,14 @@ const Unsubscribe = () => {
           <>
             <CheckCircle className="w-12 h-12 mx-auto text-emerald-500" />
             <h1 className="text-xl font-semibold text-foreground">Désinscription confirmée</h1>
-            <p className="text-muted-foreground">Vous avez été désinscrit avec succès.</p>
+            <p className="text-muted-foreground">Votre désinscription est enregistrée.</p>
           </>
         )}
         {status === 'already' && (
           <>
             <CheckCircle className="w-12 h-12 mx-auto text-muted-foreground" />
-            <h1 className="text-xl font-semibold text-foreground">Déjà désinscrit</h1>
-            <p className="text-muted-foreground">Vous êtes déjà désinscrit de nos emails.</p>
+            <h1 className="text-xl font-semibold text-foreground">Désinscription déjà enregistrée</h1>
+            <p className="text-muted-foreground">Cette adresse est déjà désinscrite : vous ne recevez plus nos e-mails.</p>
           </>
         )}
         {status === 'invalid' && (

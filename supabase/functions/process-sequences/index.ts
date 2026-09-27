@@ -12,7 +12,7 @@ import {
   isUncertainSendError, isEmailSentButNotRecorded, UNCERTAIN_SEND_MESSAGE, shouldCloseForNoPreviousMessage,
   SENT_EXECUTION_STATUSES, EMAIL_CHANNEL_SKIP_REASON, LINKEDIN_CHANNEL_SKIP_REASON, WHATSAPP_CHANNEL_SKIP_REASON,
   MANUAL_SKIP_REASON, resolveStepContent, isMissingRequiredText, missionJobIds,
-  closedChannelSkipReason, isEmailOutcomeUnknown,
+  closedChannelSkipReason, isEmailOutcomeUnknown, siblingEnrollmentsFilter, SIBLING_REPLY_SKIP_REASON,
 } from "../_shared/sequence-engine-rules.ts";
 import {
   planResume, countOutcomes, ACCOUNT_NOT_IN_ORG_REASON, SUBSCRIPTION_REQUIRED_SKIP_REASON,
@@ -20,10 +20,12 @@ import {
   MAILBOX_DISCONNECTED_SKIP_REASON,
   type ResumeMode, type ResumeOutcome, type ResumeExecutionRow,
 } from "../_shared/sequence-resume.ts";
+import { isGdprBlocked } from "../_shared/get-or-fetch-contact.ts";
 import {
   CYCLE_BUDGET_MS, hasTimeToLock, selectCycleBatch, sendingAccountKey, stepSendChannel, executionChannel,
   MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE, dedupeByProfile, shouldReadNextSelectionPage, SELECTION_PAGE_SIZE,
   SELECTION_TARGET, rotationUnavailablePlan, stepUsesLinkedInSender, isInvalidTextRepresentation,
+  ROTATION_SENDER_NOT_SAVED_MESSAGE,
   sequencesToAutoPause, quotaBlockedRetryAt, normalizeReplyCheck, isConditionRetry, dormantResumeRoute,
   heartbeatStatusFor, normalizeEmailForSuppression, pickSendingTimezone, reEnrollTracking,
   isStaleTemplateSnapshot, withContentOrigin, TEMPLATE_SNAPSHOT_ORIGIN, RESOLVED_CONTENT_ORIGIN,
@@ -43,6 +45,10 @@ import {
   TERMINAL_ENROLLMENT_STATUSES, CHECK_PASS_BUDGET_MS, MIN_REMAINING_FOR_PROVIDER_CHECK_MS,
   MIN_REMAINING_FOR_DB_WORK_MS, type ReplyCheckState,
 } from "../_shared/sequence-wait-rules.ts";
+import {
+  isConnectionWaitSatisfied, needsAttendeeResolution, nextWaitPageOffset, providerCallAllowed,
+  replyStateOfMessages, shouldReadNextWaitPage, unresolvedAttendees, WAIT_SCAN_PAGE_SIZE,
+} from "../_shared/sequence-wait-guards.ts";
 
 // No wildcard CORS — this function is called by cron (service role) and frontend (authenticated users)
 const corsHeaders = {
@@ -842,6 +848,7 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
 
   // ── Cible : liste d'inscriptions, ou séquence + raisons de pause.
   let targetIds: string[] = [];
+  let beyondReadLimit = 0;
   const bySequence = mode === 'resume' && req.enrollmentIds === null && !!req.sequenceId;
   if (req.rawEnrollmentIds !== undefined && !Array.isArray(req.rawEnrollmentIds)) {
     return memberError('invalid_request', 'La liste des candidats est invalide.', 400);
@@ -863,15 +870,22 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
     if (!seq || (orgId && seq.organization_id !== orgId)) {
       return memberError('not_found', 'Séquence introuvable dans votre organisation.', 404);
     }
-    const { data: rows, error: rowsErr } = await supabase
-      .from('sequence_enrollments').select('id')
-      .eq('sequence_id', req.sequenceId).eq('status', 'paused').in('pause_reason', reasons)
+    let pausedQuery = supabase
+      .from('sequence_enrollments').select('id', { count: 'exact' })
+      .eq('sequence_id', req.sequenceId).eq('status', 'paused').in('pause_reason', reasons);
+    // D3 (contrat §7) : un collaborateur ne reprend que les candidats qu'il a inscrits.
+    if (callerUserId && caller.role === 'collaborator') pausedQuery = pausedQuery.eq('created_by', callerUserId);
+    const { data: rows, error: rowsErr, count: pausedTotal } = await pausedQuery
       .order('created_at', { ascending: true }).limit(1000);
     if (rowsErr) {
       console.error(`[${mode}] paused enrollments lookup failed:`, rowsErr);
       return memberError('server_error', RESUME_MESSAGES.failed, 500);
     }
     targetIds = (rows ?? []).map((r: { id: string }) => r.id);
+    // SEQ-004 : au-delà des 1 000 lus, le reste compte dans `remaining` (total
+    // exact du même filtre). Avant, `remaining: 0` arrêtait la boucle de
+    // l'interface et les suivants restaient en pause dans une séquence active.
+    beyondReadLimit = Math.max(0, (typeof pausedTotal === 'number' ? pausedTotal : targetIds.length) - targetIds.length);
   } else {
     targetIds = [...new Set(req.enrollmentIds ?? [])];
     if (targetIds.length === 0) return memberError('invalid_request', 'Aucun candidat sélectionné.', 400);
@@ -895,7 +909,7 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
     const chunk = targetIds.slice(offset, offset + RESUME_BATCH_MAX);
     const { data: enrRows, error: enrErr } = await supabase
       .from('sequence_enrollments')
-      .select('id, status, pause_reason, organization_id, sequence_id, account_id, assigned_sender_id, current_step_order, tracking_data, connection_status, user_timezone, created_by, replied_at, completed_at, sequence:outreach_sequences(organization_id, is_active)')
+      .select('id, status, pause_reason, organization_id, sequence_id, account_id, assigned_sender_id, current_step_order, tracking_data, connection_status, user_timezone, created_by, replied_at, completed_at, profile_url, sequence:outreach_sequences(organization_id, is_active)')
       .in('id', chunk);
     if (enrErr) {
       console.error(`[${mode}] enrollments lookup failed:`, enrErr);
@@ -917,6 +931,16 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
         results.push({ enrollment_id: id, outcome: 'error', message: RESUME_MESSAGES.notFound });
         continue;
       }
+      // D3 (contrat §7) : même règle que la RLS de B6, un collaborateur
+      // n'agit que sur les inscriptions qu'il a créées (sinon les envois
+      // repartaient du compte d'un collègue qu'il ne peut pas mettre en pause).
+      if (!canActOnEnrollment({ userId: callerUserId, role: caller.role }, enr.created_by)) {
+        results.push({
+          enrollment_id: id, outcome: 'error',
+          message: mode === 're_enroll' ? COLLABORATOR_RE_ENROLL_MESSAGE : COLLABORATOR_RESUME_MESSAGE,
+        });
+        continue;
+      }
       try {
         results.push({ enrollment_id: id, ...await resumeOneEnrollment(supabase, mode, enr, enrOrgId, !bySequence, accountCache) });
       } catch (e) {
@@ -926,6 +950,7 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
     }
   }
 
+  remaining += beyondReadLimit;
   const counts = countOutcomes(results);
   console.log(`[${mode}] org=${orgId ?? 'service'} ${results.length} traité(s)`, counts, remaining ? `reste ${remaining}` : '');
   return json200({ success: true, results, counts, remaining });
@@ -946,6 +971,15 @@ async function resumeOneEnrollment(supabase: any, mode: ResumeMode, enr: ResumeE
     return { outcome: 'error', message: RESUME_MESSAGES.failed };
   }
   const executions = (execRows ?? []) as ResumeExecutionRow[];
+  // D5 (contrat §7) : effacement RGPD définitif, avant toute écriture et quel
+  // que soit le statut. Marqueur durable posé par recordGdprErasure (terminées
+  // comprises), exécution annulée par l'effacement, ou registre global des
+  // effacements (empreinte de l'URL du profil). Avant, « Relancer » renvoyait
+  // des messages LinkedIn au profil conservé d'une personne effacée.
+  if (isGdprErasedEnrollment(enr.tracking_data, executions)
+    || (enr.profile_url && await isGdprBlocked(supabase, { linkedinUrl: enr.profile_url }))) {
+    return { outcome: 'error', message: GDPR_ERASED_RESUME_MESSAGE };
+  }
   const plan = planResume(mode, enr.status, enr.current_step_order, executions, Date.now());
   if (plan.kind === 'not_eligible') return { outcome: plan.outcome, message: plan.message };
 
@@ -978,6 +1012,11 @@ async function resumeOneEnrollment(supabase: any, mode: ResumeMode, enr: ResumeE
     activatePatch.completed_at = null;
     activatePatch.tracking_data = reEnrollTracking(enr.tracking_data, enr.replied_at, nowIso);
   }
+  // SEQ-082 : le texte de la pause précédente (tracking_data.pause_reason) est
+  // retiré à la réactivation, sinon une pause ultérieure sans texte affichait
+  // un motif périmé.
+  const withoutPauseText = trackingWithoutPauseReason(activatePatch.tracking_data ?? enr.tracking_data);
+  if (withoutPauseText) activatePatch.tracking_data = withoutPauseText;
   const activate = async (): Promise<boolean> => {
     const { data, error } = await supabase.from('sequence_enrollments')
       .update(activatePatch).eq('id', enr.id).eq('status', enr.status).select('id');
@@ -1047,8 +1086,9 @@ async function resumeOneEnrollment(supabase: any, mode: ResumeMode, enr: ResumeE
   if (!pendingErr && (pendingNow ?? []).length > 0) return { outcome: 'resumed' };
 
   const { data: after } = await supabase.from('sequence_enrollments').select('status').eq('id', enr.id).maybeSingle();
-  if (mode === 'resume' && after?.status === 'completed') {
-    // Plus aucune étape : la séquence est finie pour ce candidat.
+  // Plus aucune étape : la séquence est finie pour ce candidat.
+  const sequenceFinished = after?.status === 'completed';
+  if (mode === 'resume' && sequenceFinished) {
     return { outcome: 'nothing_to_resume', message: RESUME_MESSAGES.nothing };
   }
   const { error: restoreErr } = await supabase.from('sequence_enrollments')
@@ -1058,7 +1098,14 @@ async function resumeOneEnrollment(supabase: any, mode: ResumeMode, enr: ResumeE
     })
     .eq('id', enr.id).in('status', ['active', 'completed']);
   if (restoreErr) console.error(`[${mode}] restore of ${enr.id} failed:`, restoreErr);
-  return { outcome: 'nothing_to_resume', message: RESUME_MESSAGES.nothing };
+  if (sequenceFinished) return { outcome: 'nothing_to_resume', message: RESUME_MESSAGES.nothing };
+  // Inscription restée active sans étape créée (étape suivante déjà faite,
+  // insertion refusée) : ce n'est pas une fin de séquence, l'état d'origine
+  // est remis et on le dit.
+  return {
+    outcome: 'error',
+    message: mode === 'resume' ? RESUME_MESSAGES.notScheduledResume : RESUME_MESSAGES.notScheduledReEnroll,
+  };
 }
 
 /**
@@ -1077,7 +1124,7 @@ async function handleMarkReplied(supabase: any, organizationId: string | null, e
 
   const { data: enr, error } = await supabase
     .from('sequence_enrollments')
-    .select('id, status, sequence_id, organization_id, profile_id, job_id, sequence:outreach_sequences(organization_id)')
+    .select('id, status, sequence_id, organization_id, profile_id, resolved_profile_id, provider_id, job_id, created_by, sequence:outreach_sequences(organization_id)')
     .eq('id', enrollmentId).maybeSingle();
   if (error) {
     console.error('[mark_replied] lookup failed:', error);
@@ -1087,15 +1134,30 @@ async function handleMarkReplied(supabase: any, organizationId: string | null, e
   if (!enr || (orgId && enrOrgId !== orgId)) {
     return memberError('not_found', 'Candidat introuvable dans vos séquences.', 404);
   }
+  // D3 (contrat §7) : un collaborateur n'agit que sur les candidats qu'il a inscrits.
+  if (!canActOnEnrollment({ userId: callerUserId, role: caller.role }, enr.created_by)) {
+    return memberError('forbidden', COLLABORATOR_ACTION_MESSAGE, 403);
+  }
   // Une séquence terminée peut aussi être marquée (réponse arrivée après la
   // dernière relance, par téléphone ou hors LinkedIn).
-  const closed = await closeEnrollmentAsReplied(supabase, enr, null, 'Réponse marquée manuellement', ['active', 'paused', 'completed']);
-  if (closed.failed) {
+  const target = { ...enr, organization_id: enrOrgId };
+  const closed = await closeEnrollmentAsReplied(supabase, target, null, 'Réponse marquée manuellement', ['active', 'paused', 'completed']);
+  // Échec seulement si l'inscription n'a pas été close. Close mais étapes en
+  // attente non annulées : la réponse est enregistrée (le moteur n'envoie
+  // rien pour une inscription close et annule ses étapes à leur échéance). Avant, un 500
+  // après une clôture effective, et le pipeline n'était jamais mis à jour.
+  const alreadyReplied = !closed.changed && enr.status === 'replied';
+  if (closed.failed && !closed.changed && !alreadyReplied) {
     return memberError('server_error', 'La réponse n\'a pas pu être enregistrée. Réessayez dans un instant.', 500);
   }
-  // SEQ-221 : pipeline de la mission passé « Répondu », comme une réponse détectée.
-  if (closed.changed) await markCandidateRepliedInPipeline(supabase, { ...enr, organization_id: enrOrgId });
-  return json200({ success: true, changed: closed.changed });
+  // SEQ-221 : pipeline de la mission passé « Répondu », comme une réponse
+  // détectée (aussi au second clic, s'il avait manqué au premier).
+  if (closed.changed || alreadyReplied) await markCandidateRepliedInPipeline(supabase, target);
+  return json200({
+    success: true,
+    changed: closed.changed,
+    ...(closed.failed ? { warning: 'Réponse enregistrée. Certaines étapes en attente n\'ont pas pu être annulées : elles ne partiront pas et seront annulées automatiquement.' } : {}),
+  });
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1722,17 +1784,20 @@ async function handleProcess(supabase: any, force = false) {
         }
         const subscriptionGate = gateOrgId ? await getSubscriptionGateFor(gateOrgId) : null;
         if (subscriptionGate && !subscriptionGate.canSendSequences) {
-          const gateNowIso = new Date().toISOString();
-          await supabase.from('sequence_step_executions').update({
-            status: 'cancelled', skip_reason: SUBSCRIPTION_REQUIRED_REASON, updated_at: gateNowIso,
-          }).eq('id', exec.id);
+          // Contrat §1 : pause d'une inscription ENCORE active seulement (le
+          // statut lu à la sélection est périmé : une réponse close pendant le
+          // cycle devenait une pause, reprise ensuite automatiquement). Étape
+          // annulée seulement si la pause a pris ; sinon rien n'est écrit, le
+          // cycle suivant la traite selon le statut réel.
           const gateTrackingData = (enrollment.tracking_data ?? null) as Record<string, unknown> | null;
-          await supabase.from('sequence_enrollments').update({
-            status: 'paused',
-            pause_reason: 'subscription_required',
+          const gatePaused = await pauseActiveEnrollments(supabase, { id: enrollment.id }, 'subscription_required', {
             tracking_data: { ...(gateTrackingData ?? {}), pause_reason: SUBSCRIPTION_REQUIRED_REASON },
-            updated_at: gateNowIso,
-          }).eq('id', enrollment.id);
+          });
+          if (gatePaused.count > 0) {
+            await supabase.from('sequence_step_executions').update({
+              status: 'cancelled', skip_reason: SUBSCRIPTION_REQUIRED_REASON, updated_at: new Date().toISOString(),
+            }).eq('id', exec.id).eq('status', 'scheduled');
+          }
           console.warn(`[process] ${enrollment.profile_name} : org=${gateOrgId} plan effectif '${subscriptionGate.effectivePlanId}' (${subscriptionGate.status}), ${SUBSCRIPTION_REQUIRED_REASON}`);
           results.subscription_blocked++;
           continue;
@@ -1832,7 +1897,13 @@ async function handleProcess(supabase: any, force = false) {
           console.warn(`[process] assigned_sender_id hérité (identifiant d'utilisateur) ignoré pour l'inscription ${enrollment.id}`);
           enrollment.assigned_sender_id = null;
         }
-        if (sequence?.multi_sender_enabled && sequence.sender_accounts?.length > 0 && !enrollment.assigned_sender_id) {
+        // SEQ-155 : tirage seulement pour une étape qui passe par un compte
+        // LinkedIn. Une étape e-mail, d'attente ou de condition garde
+        // l'inscription sans expéditeur (tirage à sa première étape LinkedIn) :
+        // avant, elle était bloquée jusqu'au lendemain quand le groupe était au
+        // plafond, ou chaque jour quand il était vide.
+        if (sequence?.multi_sender_enabled && sequence.sender_accounts?.length > 0 && !enrollment.assigned_sender_id
+          && stepUsesLinkedInSender(step)) {
           // SEQ-013 : conversation déjà engagée (une étape partie) sans
           // expéditeur attribué, par exemple rotation activée après les
           // premiers envois : figée sur le compte de l'inscription, jamais de
@@ -1854,24 +1925,36 @@ async function handleProcess(supabase: any, force = false) {
             if (enrollment.account_id) {
               const { error: freezeErr } = await supabase.from('sequence_enrollments')
                 .update({ assigned_sender_id: enrollment.account_id }).eq('id', enrollment.id);
-              if (freezeErr) {
-                console.error(`[process] Rotation: compte de la conversation engagée non figé pour ${enrollment.id}, envoi repoussé:`, freezeErr);
+              if (freezeErr && isInvalidTextRepresentation(freezeErr)) {
+                // Colonne encore au type uuid (migration B6 pas appliquée) :
+                // le compte à figer EST celui de l'inscription, l'envoi en part
+                // déjà sans écriture (sinon plus rien ne partait).
+                console.error(`[process] Rotation: assigned_sender_id refuse un identifiant de compte (code 22P02, migration B6 absente) : conversation engagée de ${enrollment.id} poursuivie depuis le compte de l'inscription`);
+              } else if (freezeErr) {
+                console.error(`[process] Rotation: compte de la conversation engagée non figé pour ${enrollment.id}, envoi repoussé (code ${(freezeErr as { code?: string }).code ?? 'inconnu'}):`, freezeErr);
                 await supabase.from('sequence_step_executions').update({
                   scheduled_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+                  error_message: ROTATION_SENDER_NOT_SAVED_MESSAGE,
                 }).eq('id', exec.id).eq('status', 'scheduled');
                 results.skipped++;
                 continue;
+              } else {
+                enrollment.assigned_sender_id = enrollment.account_id;
+                console.log(`[process] Rotation: conversation engagée, expéditeur figé sur le compte de l'inscription ${enrollment.account_id} (${enrollment.id})`);
               }
-              enrollment.assigned_sender_id = enrollment.account_id;
-              console.log(`[process] Rotation: conversation engagée, expéditeur figé sur le compte de l'inscription ${enrollment.account_id} (${enrollment.id})`);
             }
           } else {
-            const sender = await pickSenderForRotation(supabase, sequence);
-            if (!sender) {
-              // SEQ-155 : aucun expéditeur disponible (tous au plafond du jour,
-              // groupe vide ou illisible). Jamais de repli sur le compte de
-              // l'inscription (plafond du jour dépassé) : étape bloquée jusqu'au
-              // début de la plage d'envoi du lendemain.
+            const rotationDiag: { cause?: RotationUnavailableCause } = {};
+            const sender = await pickSenderForRotation(supabase, sequence, rotationDiag);
+            // SEQ-155 : suite selon la cause. Avant, toute absence d'expéditeur
+            // valait « tous au plafond » : un groupe sans compte LinkedIn relié
+            // (entrées e-mail héritées, collègues partis) bloquait chaque jour,
+            // sans fin et avec un motif faux ; une lecture en échec, une journée.
+            const unavailable = sender ? null : rotationUnavailablePlan(rotationDiag.cause);
+            if (unavailable?.kind === 'block_until_tomorrow') {
+              // Tous au plafond du jour. Jamais de repli sur le compte de
+              // l'inscription (plafond dépassé) : étape bloquée jusqu'au début
+              // de la plage d'envoi du lendemain.
               await supabase.from('sequence_step_executions').update({
                 status: 'quota_blocked',
                 skip_reason: ROTATION_SENDERS_EXHAUSTED_REASON,
@@ -1880,23 +1963,45 @@ async function handleProcess(supabase: any, force = false) {
               results.quota_blocked++;
               continue;
             }
-            // SEQ-013 : l'expéditeur choisi doit être ENREGISTRÉ avant d'envoyer.
-            // Une écriture refusée (colonne encore en uuid) laissait partir
-            // l'étape depuis un compte jamais persisté : relance suivante
-            // depuis un autre compte, réponse jamais rattachée. On n'envoie pas
-            // ce cycle et on repousse de 15 min.
-            const { error: rotationErr } = await supabase.from('sequence_enrollments')
-              .update({ assigned_sender_id: sender.account_id }).eq('id', enrollment.id);
-            if (rotationErr) {
-              console.error(`[process] Rotation: expéditeur ${sender.account_id} non enregistré pour ${enrollment.id}, envoi repoussé:`, rotationErr);
+            if (unavailable?.kind === 'retry_soon') {
               await supabase.from('sequence_step_executions').update({
-                scheduled_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+                scheduled_at: new Date(Date.now() + unavailable.delayMs).toISOString(),
+                error_message: unavailable.message,
               }).eq('id', exec.id).eq('status', 'scheduled');
               results.skipped++;
               continue;
             }
-            enrollment.assigned_sender_id = sender.account_id;
-            console.log(`[process] Rotation: assigned sender ${sender.account_id} to enrollment ${enrollment.id}`);
+            if (unavailable?.kind === 'use_enrollment_account') {
+              // Aucun compte LinkedIn relié dans le groupe : envoi depuis le
+              // compte de l'inscription, contrôlé plus bas (SEQ-010 : pause
+              // « compte non rattaché » s'il n'est plus relié non plus).
+              console.warn(`[process] Rotation: aucun compte LinkedIn relié dans le groupe de la séquence ${sequence?.id} (${rotationDiag.cause}) : envoi depuis le compte de l'inscription ${enrollment.id}`);
+            }
+            if (sender) {
+              // SEQ-013 : l'expéditeur choisi doit être ENREGISTRÉ avant d'envoyer
+              // (sinon la relance suivante partait d'un autre compte et la
+              // réponse n'était jamais rattachée).
+              const { error: rotationErr } = await supabase.from('sequence_enrollments')
+                .update({ assigned_sender_id: sender.account_id }).eq('id', enrollment.id);
+              if (rotationErr && isInvalidTextRepresentation(rotationErr)) {
+                // Colonne encore au type uuid (migration B6 pas appliquée) :
+                // chaque tirage échouerait et plus rien ne partirait. Envoi
+                // depuis le compte de l'inscription, sans rotation (comportement
+                // d'avant la rotation), contrôlé plus bas (SEQ-010).
+                console.error(`[process] Rotation: assigned_sender_id refuse un identifiant de compte (code 22P02, migration B6 absente) : envoi de ${enrollment.id} depuis le compte de l'inscription, sans rotation`);
+              } else if (rotationErr) {
+                console.error(`[process] Rotation: expéditeur ${sender.account_id} non enregistré pour ${enrollment.id}, envoi repoussé (code ${(rotationErr as { code?: string }).code ?? 'inconnu'}):`, rotationErr);
+                await supabase.from('sequence_step_executions').update({
+                  scheduled_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+                  error_message: ROTATION_SENDER_NOT_SAVED_MESSAGE,
+                }).eq('id', exec.id).eq('status', 'scheduled');
+                results.skipped++;
+                continue;
+              } else {
+                enrollment.assigned_sender_id = sender.account_id;
+                console.log(`[process] Rotation: assigned sender ${sender.account_id} to enrollment ${enrollment.id}`);
+              }
+            }
           }
         }
 
@@ -2021,21 +2126,24 @@ async function handleProcess(supabase: any, force = false) {
               // laissée 'scheduled', elle serait sautée « Enrollment inactive »
               // au cycle suivant, statut terminal, étape perdue. Le webhook la
               // re-planifie à la reconnexion.
-              const pauseNowIso = new Date().toISOString();
               // La pause est posée avant l'annulation : si elle échoue (colonne
               // absente, erreur transitoire), on retombe sur la reprogrammation
               // horaire ci-dessous au lieu de laisser une inscription active
               // sans exécution.
-              const { error: pauseErr } = await supabase.from('sequence_enrollments').update({
-                status: 'paused', pause_reason: ACCOUNT_DISCONNECTED_PAUSE_REASON, updated_at: pauseNowIso,
-              }).eq('id', enrollment.id);
-              if (pauseErr) {
-                console.warn(`[process] Pause enrollment ${enrollment.id} failed, fallback to hourly reschedule:`, pauseErr.message);
+              // Contrat §1 : pause d'une inscription ENCORE active seulement
+              // (une réponse close pendant le cycle ne devient plus une pause
+              // reprise à la reconnexion). Étape annulée seulement si la pause
+              // a pris ; inscription plus active : rien n'est écrit.
+              const accountPause = await pauseActiveEnrollments(supabase, { id: enrollment.id }, ACCOUNT_DISCONNECTED_PAUSE_REASON);
+              if (accountPause.error) {
+                console.warn(`[process] Pause enrollment ${enrollment.id} failed, fallback to hourly reschedule:`, accountPause.error);
               } else {
-                await supabase.from('sequence_step_executions').update({
-                  status: 'cancelled', skip_reason: ACCOUNT_DISCONNECTED_SKIP_REASON, updated_at: pauseNowIso,
-                }).eq('id', exec.id);
-                console.warn(`[process] Account ${effectiveAccountId} status is '${accountStatus.account_status}': enrollment ${enrollment.id} paused (${ACCOUNT_DISCONNECTED_PAUSE_REASON})`);
+                if (accountPause.count > 0) {
+                  await supabase.from('sequence_step_executions').update({
+                    status: 'cancelled', skip_reason: ACCOUNT_DISCONNECTED_SKIP_REASON, updated_at: new Date().toISOString(),
+                  }).eq('id', exec.id).eq('status', 'scheduled');
+                  console.warn(`[process] Account ${effectiveAccountId} status is '${accountStatus.account_status}': enrollment ${enrollment.id} paused (${ACCOUNT_DISCONNECTED_PAUSE_REASON})`);
+                }
                 results.skipped++;
                 continue;
               }
@@ -2457,7 +2565,19 @@ async function handleProcess(supabase: any, force = false) {
             .eq('step_id', step.id)
             .neq('id', exec.id);
           if (sameStepErr) console.warn(`[process] Contrôle « étape déjà envoyée » impossible pour ${exec.id} (non bloquant):`, sameStepErr);
-          if (!sameStepErr && hasAlreadySentStep((sameStepRows ?? []) as Array<{ status: string; skip_reason?: string | null }>)) {
+          // SEQ-080 (défense) : pour un e-mail, la preuve d'envoi
+          // (email_message_id) d'une autre exécution de la même étape compte
+          // aussi, même si cette exécution est restée en échec (appel coupé
+          // après l'envoi, puis reprise) : jamais de second e-mail.
+          const otherStepExecIds = ((sameStepRows ?? []) as Array<{ id: string }>).map((r) => r.id);
+          let emailProofOnOtherExec = false;
+          if (!sameStepErr && stepSendChannel(step) === 'email' && otherStepExecIds.length > 0) {
+            const { data: proofRows, error: proofErr } = await supabase.from('sequence_email_tracking')
+              .select('id').in('execution_id', otherStepExecIds).not('email_message_id', 'is', null).limit(1);
+            if (proofErr) console.warn(`[process] Preuve d'envoi des autres exécutions illisible pour ${exec.id} (non bloquant):`, proofErr);
+            emailProofOnOtherExec = !proofErr && (proofRows ?? []).length > 0;
+          }
+          if (emailProofOnOtherExec || (!sameStepErr && hasAlreadySentStep((sameStepRows ?? []) as Array<{ status: string; skip_reason?: string | null }>))) {
             console.warn(`[process] ⛔ Étape ${step.id} déjà envoyée à ${enrollment.profile_name} : exécution ${exec.id} sautée sans envoi`);
             await supabase.from('sequence_step_executions').update({
               status: 'skipped', skip_reason: 'Étape déjà envoyée', executed_at: new Date().toISOString(),
@@ -2546,10 +2666,19 @@ async function handleProcess(supabase: any, force = false) {
         // EN backward-compat (first_name, company, job_title...), custom user
         // variables (user_template_variables), filtres pipe (| upper, | fallback).
         try {
-          const senderUserId = (step.sender_id as string) || (enrollment.created_by as string) || null;
+          // SEQ-067 : pour une étape e-mail, {{mon_prenom}} et {{ma_signature}}
+          // sont ceux du titulaire de la boîte que sequence-send-email utilise
+          // (même règle que la signature IA), pas de l'auteur de l'inscription.
+          const isEmailSend = stepSendChannel(step) === 'email';
+          let senderUserId = (step.sender_id as string) || (enrollment.created_by as string) || null;
+          if (isEmailSend) {
+            const { resolveSequenceSenderUserId } = await import('../_shared/sequence-sender.ts');
+            senderUserId = await resolveSequenceSenderUserId(supabase, enrollment, step) ?? senderUserId;
+          }
           const ctx = await buildSequenceContext(supabase, {
             enrollment,
             senderUserId,
+            ...(isEmailSend ? { senderAccountId: (step.sender_id as string | null | undefined) ?? undefined } : {}),
           });
           const msgResolved = interpolateAndStrip(finalMessage, ctx);
           const subjResolved = interpolateAndStrip(finalSubject, ctx);
@@ -2836,6 +2965,16 @@ async function handleProcess(supabase: any, force = false) {
             await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
             results.processed++;
             visibleActionsExecuted++;
+          } else if (effectiveActionType === 'email' && isEmailOutcomeUnknown(errorStr)) {
+            // SEQ-005 / SEQ-080 : appel à sequence-send-email coupé (délai de
+            // 30 s, abandon, coupure) ou en 5xx : l'e-mail part peut-être en ce
+            // moment. Rien n'est écrit, l'exécution reste 'sending' : le
+            // rattrapage des envois bloqués tranche avec la preuve d'envoi
+            // (email_message_id) : 'sent' s'il la trouve, sinon échec « envoi
+            // incertain », jamais rejoué par la reprise. Avant, échec ordinaire :
+            // la reprise renvoyait l'e-mail (second message au candidat).
+            console.warn(`[process] ⏳ E-mail ${exec.id} : issue de l'envoi inconnue (${errorStr}), tranché par le rattrapage avec la preuve d'envoi`);
+            results.skipped++;
           } else if (isUncertainSendError(errorStr, effectiveActionType)) {
             // SEQ-005 : 5xx ou délai APRÈS le POST d'envoi d'une action
             // visible. Le message a pu partir : aucune relance automatique
@@ -2848,10 +2987,43 @@ async function handleProcess(supabase: any, force = false) {
               executed_at: new Date().toISOString(),
               final_message: finalMessage || null,
               final_subject: finalSubject || null,
-            }).eq('id', exec.id);
+              // Jamais par-dessus un statut écrit entre-temps (un 'sent' posé
+              // par l'envoi lui-même).
+            }).eq('id', exec.id).eq('status', 'sending');
             console.warn(`[process] ⚠️ Envoi incertain pour ${enrollment.id} (${effectiveActionType}) : pas de relance automatique — ${errorStr}`);
             results.failed++;
             noteSequenceFailure(enrollment.sequence_id);
+          } else if (isMailboxDisconnectedError(errorStr)) {
+            // Boîte e-mail d'envoi inutilisable avant l'envoi (rien n'est
+            // parti). Ce n'est pas le compte LinkedIn : ni pause
+            // 'account_disconnected' (libellée « compte LinkedIn déconnecté »,
+            // reprise seulement par la reconnexion LinkedIn, jamais levée à la
+            // main), ni son motif. Pause 'send_failed' avec le texte qui dit
+            // quoi faire (« Reprendre » proposé), étape annulée avec un motif
+            // réarmable par resume_enrollments, seulement si la pause a pris.
+            const mailboxLabel = accountDisconnectedLabel(step, errorStr);
+            const mailboxPause = await pauseActiveEnrollments(supabase, { id: enrollment.id }, 'send_failed', {
+              tracking_data: { ...((enrollment.tracking_data ?? {}) as Record<string, unknown>), pause_reason: mailboxLabel },
+            });
+            if (mailboxPause.count > 0) {
+              await supabase.from('sequence_step_executions').update({
+                status: 'cancelled', skip_reason: MAILBOX_DISCONNECTED_SKIP_REASON, error_message: mailboxLabel,
+                final_message: finalMessage || null, final_subject: finalSubject || null,
+                updated_at: new Date().toISOString(),
+              }).eq('id', exec.id).eq('status', 'sending');
+            } else {
+              // Inscription plus active (pause, réponse) ou pause en échec :
+              // l'étape redevient 'scheduled' (+1 h). Le moteur l'ignore tant que
+              // l'inscription n'est pas active, et l'annule si elle est close.
+              await supabase.from('sequence_step_executions').update({
+                status: 'scheduled', scheduled_at: new Date(Date.now() + 3600_000).toISOString(),
+                error_message: mailboxLabel,
+                final_message: finalMessage || null, final_subject: finalSubject || null,
+                ...(aiWillGenerate ? { tracking_data: withContentOrigin(exec.tracking_data, RESOLVED_CONTENT_ORIGIN) } : {}),
+              }).eq('id', exec.id).eq('status', 'sending');
+            }
+            console.warn(`[process] ⚠️ Boîte e-mail d'envoi déconnectée pour ${enrollment.id} : ${mailboxPause.count > 0 ? 'inscription en pause (send_failed)' : 'étape reportée d\'une heure'}`);
+            results.skipped++;
           } else if (isAccountDisconnectedError(errorStr)) {
             // SEQ-028 : compte déconnecté détecté à l'envoi (statut encore OK
             // en base). Même schéma que le contrôle préventif : pause
@@ -2930,7 +3102,8 @@ async function handleProcess(supabase: any, force = false) {
             console.log(`[process] Retryable error for ${enrollment.profile_id}, retry ${currentRetryCount + 1}/${MAX_RETRIES} scheduled at ${retryAt}`);
             results.retried++;
           } else {
-            await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: new Date().toISOString(), final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id);
+            // Seulement depuis 'sending' : jamais par-dessus un 'sent' écrit entre-temps.
+            await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: new Date().toISOString(), final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id).eq('status', 'sending');
             results.failed++;
             // Échec propre à ce candidat (profil introuvable) : hors auto-pause de la séquence.
             if (!executeResult.candidateError) noteSequenceFailure(enrollment.sequence_id);
@@ -3132,7 +3305,9 @@ async function handleCheckReplies(supabase: any) {
     const afterDate = replyReferenceDate(lastSentExec.executed_at, enrollment.tracking_data?.re_enrolled_at ?? null, Date.now());
 
     const rCreds = await resolveUnipileCreds(enrollment.organization_id, supabase);
-    const replyState = await checkForReplyAfterDate(senderAccountFor(enrollment), enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase, rCreds.apiKey, rCreds.dsn);
+    // Échéance transmise : chaque appel au fournisseur de la vérification est
+    // soumis au budget, pas seulement le premier (REV engine-conditions-channels-11).
+    const replyState = await checkForReplyAfterDate(senderAccountFor(enrollment), enrollment.resolved_profile_id || enrollment.profile_id, afterDate, enrollment.profile_url, enrollment.id, supabase, rCreds.apiKey, rCreds.dsn, deadline);
     if (replyState === 'unknown') {
       // Lecture impossible : rien n'est décidé. La vérification avant envoi de
       // la prochaine relance reste le garde-fou (SEQ-078).
@@ -3237,72 +3412,137 @@ async function handleCheckTimeouts(supabase: any) {
   // attente d'inscription en pause n'est ni expirée ni suivie d'une étape, et
   // n'occupe plus la fenêtre), les attentes les plus anciennes d'abord. Un
   // délai de 0 veut dire « aucun délai » (déjà ignoré) : exclu de la fenêtre.
+  // REV engine-conditions-channels-2 : lecture PAR PAGES (scheduled_at puis
+  // id) tant que le budget le permet. Avant : une seule fenêtre des 200 plus
+  // anciennes, toutes organisations confondues, l'expiration étant décidée
+  // ensuite en JS : 200 attentes d'acceptation non échues cachaient une
+  // attente de réponse déjà échue (branche « sans réponse » en retard de jours).
   const waitSelect = `*, enrollment:sequence_enrollments!inner(*), step:sequence_steps!inner(*)`;
-  const { data: waitingExecutions, error: waitingErr } = await supabase.from('sequence_step_executions')
-    .select(waitSelect)
-    .eq('status', 'waiting_event')
-    .eq('enrollment.status', 'active')
-    .gt('step.timeout_days', 0)
-    .order('scheduled_at', { ascending: true })
-    .limit(200);
-  if (waitingErr) throw new Error(`check_timeouts : attentes illisibles (${waitingErr.message ?? 'erreur inconnue'})`);
-  // SEQ-031 : attentes sans événement ni délai (anciennes étapes de
-  // l'assistant). Elles attendent maintenant vraiment : délai par défaut au
-  // lieu d'une attente à vie.
-  const { data: implicitWaits, error: implicitErr } = await supabase.from('sequence_step_executions')
-    .select(waitSelect)
-    .eq('status', 'waiting_event')
-    .eq('enrollment.status', 'active')
-    .is('step.timeout_days', null)
-    .is('step.wait_for_event', null)
-    .in('step.action_type', IMPLICIT_WAIT_ACTIONS)
-    .order('scheduled_at', { ascending: true })
-    .limit(50);
-  if (implicitErr) console.warn('[checkTimeouts] attentes sans délai illisibles:', implicitErr);
-  const waits = [...(waitingExecutions || []), ...(implicitWaits || [])];
+  const waitSources = [
+    {
+      label: 'attentes',
+      // Première page illisible : erreur visible (heartbeat), comme avant.
+      fatal: true,
+      query: () => supabase.from('sequence_step_executions')
+        .select(waitSelect)
+        .eq('status', 'waiting_event')
+        .eq('enrollment.status', 'active')
+        .gt('step.timeout_days', 0)
+        .order('scheduled_at', { ascending: true })
+        .order('id', { ascending: true }),
+    },
+    {
+      // SEQ-031 : attentes sans événement ni délai (anciennes étapes de
+      // l'assistant). Elles attendent maintenant vraiment : délai par défaut au
+      // lieu d'une attente à vie.
+      label: 'attentes sans délai',
+      fatal: false,
+      query: () => supabase.from('sequence_step_executions')
+        .select(waitSelect)
+        .eq('status', 'waiting_event')
+        .eq('enrollment.status', 'active')
+        .is('step.timeout_days', null)
+        .is('step.wait_for_event', null)
+        .in('step.action_type', IMPLICIT_WAIT_ACTIONS)
+        .order('scheduled_at', { ascending: true })
+        .order('id', { ascending: true }),
+    },
+  ];
 
+  let checked = 0;
   let branched = 0;
+  let rearmedConnected = 0;
   let notProcessed = 0;
-  for (let i = 0; i < waits.length; i++) {
-    if (!hasTimeLeft(deadline, Date.now(), MIN_REMAINING_FOR_DB_WORK_MS)) {
-      notProcessed = waits.length - i;
-      console.warn(`[checkTimeouts] Budget de temps atteint : ${notProcessed} attente(s) reportée(s) au prochain passage`);
-      break;
+  let budgetReached = false;
+  const seenWaitIds = new Set<string>();
+  for (const source of waitSources) {
+    let offset = 0;
+    for (let page = 0; ; page++) {
+      if (!hasTimeLeft(deadline, Date.now(), MIN_REMAINING_FOR_DB_WORK_MS)) {
+        budgetReached = true;
+        break;
+      }
+      const { data: pageRows, error: pageErr } = await source.query().range(offset, offset + WAIT_SCAN_PAGE_SIZE - 1);
+      if (pageErr) {
+        if (source.fatal && page === 0) throw new Error(`check_timeouts : attentes illisibles (${pageErr.message ?? 'erreur inconnue'})`);
+        console.warn(`[checkTimeouts] ${source.label} illisibles (page ${page + 1}):`, pageErr);
+        break;
+      }
+      const waits = pageRows || [];
+      // Attentes de la page qui ont quitté le filtre (expirées, réarmées ou
+      // traitées ailleurs entre-temps) : la page suivante est décalée d'autant moins.
+      let leftFilter = 0;
+      for (let i = 0; i < waits.length; i++) {
+        if (!hasTimeLeft(deadline, Date.now(), MIN_REMAINING_FOR_DB_WORK_MS)) {
+          notProcessed += waits.length - i;
+          budgetReached = true;
+          break;
+        }
+        const exec = waits[i];
+        if (seenWaitIds.has(exec.id)) continue;
+        seenWaitIds.add(exec.id);
+        checked++;
+        const step = exec.step, enrollment = exec.enrollment;
+        if (!step || !enrollment || enrollment.status !== 'active') continue;
+        // Per-enrollment override : si l'user a édité le timeout pour ce
+        // step dans la modal d'enrollment, on l'applique ici.
+        const trackingData = (enrollment.tracking_data ?? null) as Record<string, unknown> | null;
+        const stepConfigOverrides = (trackingData?.step_config_overrides ?? null) as Record<string, {
+          timeoutDays?: number;
+        }> | null;
+        const overrideTimeout = stepConfigOverrides?.[step.id]?.timeoutDays;
+        const effectiveTimeout = effectiveWaitTimeoutDays(step, overrideTimeout);
+        if (effectiveTimeout === null) continue;
+        // SEQ-083 : délai compté depuis le début de l'attente (scheduled_at), pas
+        // depuis la planification de l'étape (created_at, avant son propre délai).
+        if (!isWaitTimedOut(waitStartedAt(exec), effectiveTimeout, Date.now())) continue;
+        // REV integration-2 : candidat déjà en relation (acceptation reçue
+        // pendant une pause, que le webhook enregistre sans réarmer l'attente,
+        // ou pas encore vue par check_wait_events). L'attente est réarmée comme
+        // en phase 1 de check_wait_events, au lieu de partir dans la branche
+        // « non accepté » (InMail ou relance à quelqu'un déjà en relation).
+        if (isConnectionWaitSatisfied(step, enrollment)) {
+          const { data: rearmedRows, error: rearmErr } = await supabase.from('sequence_step_executions')
+            .update({ status: 'scheduled', scheduled_at: new Date().toISOString() })
+            .eq('id', exec.id).eq('status', 'waiting_event').select('id');
+          if (rearmErr) {
+            // Jamais d'expiration à la place : nouvel essai au prochain passage.
+            console.warn(`[checkTimeouts] attente de connexion ${exec.id} non réarmée:`, rearmErr);
+            continue;
+          }
+          leftFilter++;
+          if (rearmedRows && rearmedRows.length > 0) rearmedConnected++;
+          continue;
+        }
+        const overrideApplied = overrideTimeout != null && Number(overrideTimeout) === effectiveTimeout;
+        const reasonSuffix = overrideApplied
+          ? (step.timeout_days != null ? ` (override ${overrideTimeout}d, default ${step.timeout_days}d)` : ` (override ${overrideTimeout}d)`)
+          : '';
+        // SEQ-190 : l'attente n'expire que si elle est toujours en attente (une
+        // acceptation reçue par webhook a pu la réarmer entre-temps) ; sinon la
+        // branche de délai n'est pas planifiée.
+        const { data: timedOutRows, error: timeoutErr } = await supabase.from('sequence_step_executions')
+          .update({ status: 'skipped', skip_reason: `Timeout ${effectiveTimeout}d${reasonSuffix}`, executed_at: new Date().toISOString() })
+          .eq('id', exec.id).eq('status', 'waiting_event').select('id');
+        if (timeoutErr) {
+          console.warn(`[checkTimeouts] attente ${exec.id} non expirée:`, timeoutErr);
+          continue;
+        }
+        // Expirée ici, ou déjà sortie de l'attente : elle a quitté le filtre.
+        leftFilter++;
+        if (!timedOutRows || timedOutRows.length === 0) continue;
+        await scheduleNextStep(supabase, enrollment, step.step_order, step.timeout_branch_step_id, undefined, 0, step.id);
+        branched++;
+      }
+      if (budgetReached || !shouldReadNextWaitPage(page, waits.length)) break;
+      offset = nextWaitPageOffset(offset, waits.length, leftFilter);
     }
-    const exec = waits[i];
-    const step = exec.step, enrollment = exec.enrollment;
-    if (!step || !enrollment || enrollment.status !== 'active') continue;
-    // Per-enrollment override : si l'user a édité le timeout pour ce
-    // step dans la modal d'enrollment, on l'applique ici.
-    const trackingData = (enrollment.tracking_data ?? null) as Record<string, unknown> | null;
-    const stepConfigOverrides = (trackingData?.step_config_overrides ?? null) as Record<string, {
-      timeoutDays?: number;
-    }> | null;
-    const overrideTimeout = stepConfigOverrides?.[step.id]?.timeoutDays;
-    const effectiveTimeout = effectiveWaitTimeoutDays(step, overrideTimeout);
-    if (effectiveTimeout === null) continue;
-    // SEQ-083 : délai compté depuis le début de l'attente (scheduled_at), pas
-    // depuis la planification de l'étape (created_at, avant son propre délai).
-    if (!isWaitTimedOut(waitStartedAt(exec), effectiveTimeout, Date.now())) continue;
-    const overrideApplied = overrideTimeout != null && Number(overrideTimeout) === effectiveTimeout;
-    const reasonSuffix = overrideApplied
-      ? (step.timeout_days != null ? ` (override ${overrideTimeout}d, default ${step.timeout_days}d)` : ` (override ${overrideTimeout}d)`)
-      : '';
-    // SEQ-190 : l'attente n'expire que si elle est toujours en attente (une
-    // acceptation reçue par webhook a pu la réarmer entre-temps) ; sinon la
-    // branche de délai n'est pas planifiée.
-    const { data: timedOutRows, error: timeoutErr } = await supabase.from('sequence_step_executions')
-      .update({ status: 'skipped', skip_reason: `Timeout ${effectiveTimeout}d${reasonSuffix}`, executed_at: new Date().toISOString() })
-      .eq('id', exec.id).eq('status', 'waiting_event').select('id');
-    if (timeoutErr) {
-      console.warn(`[checkTimeouts] attente ${exec.id} non expirée:`, timeoutErr);
-      continue;
-    }
-    if (!timedOutRows || timedOutRows.length === 0) continue;
-    await scheduleNextStep(supabase, enrollment, step.step_order, step.timeout_branch_step_id, undefined, 0, step.id);
-    branched++;
+    if (budgetReached) break;
   }
-  return new Response(JSON.stringify({ success: true, checked: waits.length, branched, orphansCancelled, notProcessed }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  if (budgetReached) {
+    console.warn(`[checkTimeouts] Budget de temps atteint : ${notProcessed} attente(s) lue(s) non traitée(s), la suite au prochain passage`);
+  }
+  return new Response(JSON.stringify({ success: true, checked, branched, rearmedConnected, orphansCancelled, notProcessed, budgetReached }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } finally {
     await releaseLock(supabase, runId);
   }
@@ -3443,7 +3683,9 @@ async function handleCheckWaitEvents(supabase: any) {
       } else {
         // SEQ-084 : réponse postérieure au dernier envoi visible de l'inscription.
         const afterDate = await loadReplyReferenceDate(supabase, enrollment.id, enrollment);
-        eventOccurred = (await checkHasProspectReplied(senderAccountFor(enrollment, step), enrollment.profile_id, weCreds.apiKey, weCreds.dsn, afterDate)) === 'replied';
+        // Échéance transmise : chaque appel de la vérification est soumis au
+        // budget (REV engine-conditions-channels-11).
+        eventOccurred = (await checkHasProspectReplied(senderAccountFor(enrollment, step), enrollment.profile_id, weCreds.apiKey, weCreds.dsn, afterDate, deadline)) === 'replied';
       }
     }
 
@@ -3866,7 +4108,10 @@ async function getProfileInfo(accountId: string, profileId: string, enrollmentPr
   }
 }
 
-async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string): Promise<string> {
+// deadline : échéance du contrôle de fond appelant ; faute de temps pour le
+// second appel, l'identifiant d'origine est rendu (l'appelant reteste
+// l'échéance et rend 'unknown').
+async function resolveProfileIdForChat(accountId: string, profileId: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string, deadline?: number | null): Promise<string> {
   // If it's a recruiter ID (AEM/AE), resolve to a slug or classic ID for chat API
   if (!profileId.startsWith('AE')) return profileId;
 
@@ -3895,6 +4140,7 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
     }
 
     if (slug) {
+      if (!providerCallAllowed(deadline, Date.now())) return profileId;
       // Resolve slug to get the classic provider_id
       const slugRes = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/${encodeURIComponent(slug)}?account_id=${accountId}`, { headers: { 'X-API-KEY': effectiveApiKey } });
       if (slugRes.ok) {
@@ -3928,9 +4174,13 @@ async function resolveProfileIdForChat(accountId: string, profileId: string, pro
  * en pause 'blocked_by_candidate' (SEQ-121) ; ses étapes en attente sont
  * gardées (contrat §1 : une pause ne les touche pas) et l'issue est
  * 'unknown' : rien n'est envoyé.
+ * deadline : échéance du contrôle de fond appelant (check_replies,
+ * check_wait_events). La vérification enchaîne jusqu'à six appels au
+ * fournisseur ; aucun ne part sans le temps de le terminer, l'issue est alors
+ * 'unknown' (REV engine-conditions-channels-11). Sans échéance : inchangé.
  */
 // deno-lint-ignore no-explicit-any
-async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string): Promise<ReplyCheckState> {
+async function checkForReplyAfterDate(accountId: string, profileId: string, afterDate: string, profileUrl?: string | null, enrollmentId?: string, supabase?: any, apiKey?: string, dsn?: string, deadline?: number | null): Promise<ReplyCheckState> {
   const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
   const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   const afterTimestamp = new Date(afterDate).getTime();
@@ -3950,13 +4200,16 @@ async function checkForReplyAfterDate(accountId: string, profileId: string, afte
   };
   const stateOf = async (r: { status: number | null; chats: { id: string }[] }): Promise<ReplyCheckState> => {
     const outcome = chatLookupOutcome(r.status);
-    if (outcome === 'ok') return await checkMessagesForReply(r.chats, afterTimestamp, effectiveApiKey, effectiveDsn);
+    if (outcome === 'ok') return await checkMessagesForReply(r.chats, afterTimestamp, effectiveApiKey, effectiveDsn, deadline);
     return outcome === 'no_thread' ? 'no_reply' : 'unknown';
   };
+  const outOfTime = () => !providerCallAllowed(deadline, Date.now());
 
   try {
+    if (outOfTime()) return 'unknown';
     // Resolve recruiter IDs to a format the chat API understands
-    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase, effectiveApiKey, effectiveDsn);
+    const resolvedId = await resolveProfileIdForChat(accountId, profileId, profileUrl, enrollmentId, supabase, effectiveApiKey, effectiveDsn, deadline);
+    if (outOfTime()) return 'unknown';
     const primary = await lookup(resolvedId);
     if (primary.status === 403) {
       if (enrollmentId && supabase) {
@@ -3972,7 +4225,9 @@ async function checkForReplyAfterDate(accountId: string, profileId: string, afte
     }
     const primaryState = await stateOf(primary);
     if (chatLookupOutcome(primary.status) === 'ok' || resolvedId === profileId) return primaryState;
-    // Identifiant résolu sans conversation lisible : essai avec l'identifiant d'origine.
+    // Identifiant résolu sans conversation lisible : essai avec l'identifiant
+    // d'origine (primaryState n'est alors jamais 'replied').
+    if (outOfTime()) return 'unknown';
     return combineReplyStates([primaryState, await stateOf(await lookup(profileId))]);
   } catch (e) {
     console.warn('[checkForReplyAfterDate] vérification impossible:', e);
@@ -4036,16 +4291,16 @@ async function resolveAttendeeIds(chatId: string, apiKey?: string, dsn?: string)
   return result;
 }
 
-// 'unknown' quand une conversation n'a pas pu être lue (délai, 5xx) et
-// qu'aucune réponse n'a été trouvée ailleurs (SEQ-078).
-async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: number, apiKey?: string, dsn?: string): Promise<ReplyCheckState> {
+// 'unknown' quand une conversation n'a pas pu être lue (délai, 5xx), qu'un
+// message postérieur à la référence reste d'expéditeur indéterminé, ou que
+// l'échéance est atteinte, et qu'aucune réponse n'a été trouvée ailleurs
+// (SEQ-078, REV engine-conditions-channels-1 et -11).
+async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: number, apiKey?: string, dsn?: string, deadline?: number | null): Promise<ReplyCheckState> {
   const effectiveApiKey = apiKey || ENV_UNIPILE_API_KEY!;
   const effectiveDsn = dsn || ENV_UNIPILE_DSN;
   let unreadable = false;
   for (const chat of chats) {
-    // Resolve attendee identities for this chat
-    const attendeeInfo = await resolveAttendeeIds(chat.id, effectiveApiKey, effectiveDsn);
-
+    if (!providerCallAllowed(deadline, Date.now())) return 'unknown';
     // deno-lint-ignore no-explicit-any
     let messages: any[];
     try {
@@ -4061,40 +4316,32 @@ async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: nu
       unreadable = true;
       continue;
     }
-    // deno-lint-ignore no-explicit-any
-    const incomingReplies = messages.filter((m: any) => {
-      // Explicit self-detection — always trust this
-      if (m.is_sender_self === true) return false;
-      // If explicitly marked as not-self, it's a genuine reply
-      if (m.is_sender_self === false) {
-        const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
-        return msgTime > afterTimestamp;
-      }
-      // is_sender_self is undefined (InMail case) — use attendee resolution
-      const senderAtt = m.sender_attendee_id || '';
-      // If sender is in our known own IDs, skip
-      if (attendeeInfo.ownIds.has(senderAtt)) return false;
-      // If sender is in known other IDs (the prospect), it's a genuine reply
-      if (senderAtt && attendeeInfo.otherIds.has(senderAtt)) {
-        const msgTime = new Date(m.timestamp || m.date || m.created_at).getTime();
-        return msgTime > afterTimestamp;
-      }
-      // If we have otherIds resolved but sender is NOT in them, it's likely us → skip
-      if (attendeeInfo.resolved && attendeeInfo.otherIds.size > 0) {
-        console.log(`[checkReplies] Skipping message ${m.id} — sender ${senderAtt} not in otherIds, likely self`);
-        return false;
-      }
-      // No resolution at all — skip to be safe
-      console.log(`[checkReplies] Skipping ambiguous message ${m.id} (no attendee resolution)`);
-      return false;
-    });
-    if (incomingReplies.length > 0) {
+    // Expéditeur lu d'abord sur `is_sender` (champ du fournisseur, lu par tous
+    // les autres lecteurs de ce point d'accès), puis `is_sender_self`, puis les
+    // participants en repli. Avant, seul is_sender_self (absent de cette
+    // réponse) était lu : tout reposait sur les participants, et leur lecture
+    // en échec écartait chaque message, réponse du candidat comprise (« pas de
+    // réponse », la relance partait). Les participants ne sont plus lus que si
+    // un message postérieur à la référence n'a aucun indicateur.
+    let attendeeInfo: ChatAttendeeInfo = unresolvedAttendees();
+    if (needsAttendeeResolution(messages, afterTimestamp)) {
+      if (!providerCallAllowed(deadline, Date.now())) return 'unknown';
+      attendeeInfo = await resolveAttendeeIds(chat.id, effectiveApiKey, effectiveDsn);
+    }
+    const verdict = replyStateOfMessages(messages, afterTimestamp, attendeeInfo);
+    if (verdict.state === 'replied') {
       // deno-lint-ignore no-explicit-any
-      console.log(`[checkReplies] Found ${incomingReplies.length} genuine reply(ies) in chat ${chat.id}:`, incomingReplies.map((m: any) => ({ 
-        id: m.id, is_sender_self: m.is_sender_self, sender_attendee_id: m.sender_attendee_id, type: m.type,
+      console.log(`[checkReplies] Found ${verdict.replies.length} genuine reply(ies) in chat ${chat.id}:`, verdict.replies.map((m: any) => ({
+        id: m.id, is_sender: m.is_sender, is_sender_self: m.is_sender_self, sender_attendee_id: m.sender_attendee_id, type: m.type,
         timestamp: m.timestamp || m.date
       })));
       return 'replied';
+    }
+    if (verdict.state === 'unknown') {
+      // Expéditeur indéterminé (participants illisibles) : on ne conclut pas
+      // à l'absence de réponse.
+      console.warn(`[checkReplies] ${verdict.undetermined} message(s) d'expéditeur indéterminé dans la conversation ${chat.id} : issue inconnue`);
+      unreadable = true;
     }
   }
   return unreadable ? 'unknown' : 'no_reply';
@@ -4102,9 +4349,10 @@ async function checkMessagesForReply(chats: { id: string }[], afterTimestamp: nu
 
 // Réponse du candidat postérieure à `afterDate` (date de référence de
 // loadReplyReferenceDate : dernier envoi visible, SEQ-084 ; repli 72 h).
-async function checkHasProspectReplied(accountId: string, profileId: string, apiKey?: string, dsn?: string, afterDate?: string | null): Promise<ReplyCheckState> {
+// deadline : échéance du contrôle de fond appelant (voir checkForReplyAfterDate).
+async function checkHasProspectReplied(accountId: string, profileId: string, apiKey?: string, dsn?: string, afterDate?: string | null, deadline?: number | null): Promise<ReplyCheckState> {
   const since = afterDate || replyReferenceDate(null, null, Date.now());
-  return await checkForReplyAfterDate(accountId, profileId, since, undefined, undefined, undefined, apiKey, dsn);
+  return await checkForReplyAfterDate(accountId, profileId, since, undefined, undefined, undefined, apiKey, dsn, deadline);
 }
 
 /**
@@ -5367,7 +5615,57 @@ async function closeEnrollmentAsReplied(supabase: any, enrollment: { id: string;
   const cancelled = await cancelPendingExecutions(supabase, enrollment.id, reason, fulfilledExecutionId);
 
   if (changed && enrollment.sequence_id) await logAnalytics(supabase, enrollment.sequence_id, 'replies_received');
+  // SEQ-212 : aucune relance après une réponse, quel que soit le compte. Avant,
+  // seul le webhook arrêtait les autres inscriptions du candidat ; la
+  // vérification avant envoi, la scrutation et « Marquer comme répondu » ne
+  // closaient que celle-ci.
+  if (changed) await stopSiblingEnrollmentsAfterReply(supabase, enrollment);
   return { changed, failed: !cancelled };
+}
+
+/**
+ * SEQ-212 : arrête les autres inscriptions vivantes (active, en pause) du
+ * même candidat dans la même organisation, comme le webhook de réponse :
+ * statut 'stopped' (la réponse n'est comptée que sur l'inscription qui l'a
+ * reçue), étapes en attente annulées. Non bloquant : une erreur est
+ * journalisée, la clôture de l'inscription reste acquise.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function stopSiblingEnrollmentsAfterReply(supabase: any, enrollment: Record<string, any>): Promise<number> {
+  const orgId = (enrollment.organization_id ?? enrollment.sequence?.organization_id ?? null) as string | null;
+  const filter = siblingEnrollmentsFilter([enrollment.profile_id, enrollment.resolved_profile_id, enrollment.provider_id]);
+  if (!orgId || !filter) return 0;
+  try {
+    const { data: siblings, error } = await supabase.from('sequence_enrollments').select('id')
+      .eq('organization_id', orgId).in('status', ['active', 'paused']).neq('id', enrollment.id).or(filter);
+    if (error) {
+      console.warn(`[closeAsReplied] autres inscriptions du candidat de ${enrollment.id} illisibles:`, error);
+      return 0;
+    }
+    const targets = ((siblings ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (targets.length === 0) return 0;
+    const nowIso = new Date().toISOString();
+    const { data: stopped, error: stopError } = await supabase.from('sequence_enrollments')
+      .update({ status: 'stopped', pause_reason: null, completed_at: nowIso, updated_at: nowIso })
+      .in('id', targets).in('status', ['active', 'paused']).select('id');
+    if (stopError) {
+      console.warn(`[closeAsReplied] autres inscriptions du candidat de ${enrollment.id} non arrêtées:`, stopError);
+      return 0;
+    }
+    const stoppedIds = ((stopped ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (stoppedIds.length > 0) {
+      const { error: cancelError } = await supabase.from('sequence_step_executions')
+        .update({ status: 'cancelled', skip_reason: SIBLING_REPLY_SKIP_REASON, executed_at: nowIso })
+        .in('enrollment_id', stoppedIds).in('status', ['scheduled', 'waiting_event', 'quota_blocked']);
+      if (cancelError) console.warn(`[closeAsReplied] étapes des autres inscriptions de ${enrollment.id} non annulées:`, cancelError);
+      console.log(`[closeAsReplied] ${stoppedIds.length} autre(s) inscription(s) du candidat arrêtée(s) (org ${orgId})`);
+    }
+    return stoppedIds.length;
+  } catch (e) {
+    console.warn(`[closeAsReplied] arrêt des autres inscriptions de ${enrollment.id} échoué (non bloquant):`, e);
+    return 0;
+  }
 }
 
 /**

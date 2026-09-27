@@ -74,13 +74,16 @@ test('SEQ-010 — user_id hérité dans assigned_sender_id : ignoré, jamais une
 // ---------------------------------------------------------------- n°5 SEQ-013 (B6)
 test('SEQ-013 — rotation : une conversation engagée garde le compte de l\'inscription, pas de nouveau tirage', () => {
   const engagedAt = rotation.indexOf(".in('status', SENT_EXECUTION_STATUSES)");
-  const pickAt = rotation.indexOf('await pickSenderForRotation(supabase, sequence)');
+  const pickAt = rotation.indexOf('await pickSenderForRotation(supabase, sequence, rotationDiag)');
   assert.ok(engagedAt !== -1 && pickAt !== -1 && engagedAt < pickAt, 'historique d\'envoi lu avant tout tirage');
   const engagedBranch = slice(rotation, 'if ((engagedRows ?? []).length > 0) {', '} else {');
   assert.match(engagedBranch, /\.update\(\{ assigned_sender_id: enrollment\.account_id \}\)/);
   assert.doesNotMatch(engagedBranch, /pickSenderForRotation/);
   // Figé = enregistré avant d'envoyer, comme un tirage (sinon report de 15 min).
-  assert.match(engagedBranch, /if \(freezeErr\) \{[\s\S]*?15 \* 60 \* 1000[\s\S]*?continue;/);
+  // Vague finale : sauf colonne encore en uuid (22P02, migration B6 absente) :
+  // le compte à figer est celui de l'inscription, l'envoi en part sans écriture.
+  assert.match(engagedBranch, /\} else if \(freezeErr\) \{[\s\S]*?15 \* 60 \* 1000[\s\S]*?error_message: ROTATION_SENDER_NOT_SAVED_MESSAGE[\s\S]*?continue;/);
+  assert.match(engagedBranch, /if \(freezeErr && isInvalidTextRepresentation\(freezeErr\)\)/);
   // Historique illisible : pas de tirage à l'aveugle.
   assert.match(rotation, /if \(engagedErr\) \{[\s\S]*?\.eq\('status', 'scheduled'\);[\s\S]*?continue;/);
 });
@@ -88,13 +91,17 @@ test('SEQ-013 — rotation : une conversation engagée garde le compte de l\'ins
 // ---------------------------------------------------------------- n°12 SEQ-155 (E3)
 test('SEQ-155 — aucun expéditeur disponible : étape bloquée jusqu\'au lendemain, jamais de repli sur le compte de l\'inscription', () => {
   assert.match(engine, /const ROTATION_SENDERS_EXHAUSTED_REASON = 'Tous les expéditeurs ont atteint leur limite du jour';/);
-  const noSender = slice(rotation, 'if (!sender) {', 'continue;');
+  // Vague finale : « tous au plafond » (cause 'capped', ou inconnue) seulement.
+  const noSender = slice(rotation, "if (unavailable?.kind === 'block_until_tomorrow') {", 'continue;');
   assert.match(noSender, /status: 'quota_blocked'/);
   assert.match(noSender, /skip_reason: ROTATION_SENDERS_EXHAUSTED_REASON/);
   assert.match(noSender, /quotaBlockedRetryAt\('daily', new Date\(\), enrollment\.user_timezone, DEFAULT_USER_QUOTAS\.business_hours_start\)/);
   assert.match(noSender, /\.eq\('status', 'scheduled'\)/);
   assert.match(noSender, /results\.quota_blocked\+\+/);
-  assert.doesNotMatch(rotation, /if \(sender\) \{/, 'plus de chemin « sans expéditeur » qui continue vers l\'envoi');
+  // Repli sur le compte de l'inscription (contrôlé ensuite par SEQ-010) seulement
+  // quand le groupe n'a aucun compte LinkedIn relié : jamais au plafond.
+  assert.match(rotation, /const unavailable = sender \? null : rotationUnavailablePlan\(rotationDiag\.cause\);/);
+  assert.match(rotation, /if \(unavailable\?\.kind === 'use_enrollment_account'\) \{/);
 });
 
 // ---------------------------------------------------------------- n°6 SEQ-077 (E2)

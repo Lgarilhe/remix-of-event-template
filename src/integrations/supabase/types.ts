@@ -6320,6 +6320,24 @@ export type Database = {
         Args: { payload: Json; queue_name: string }
         Returns: number
       }
+      find_recent_org_contacts: {
+        Args: {
+          p_org: string
+          p_since: string
+          p_slugs: string[]
+          p_values: string[]
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          profile_id: string
+          profile_url: string | null
+          provider_id: string | null
+          resolved_profile_id: string | null
+          sequence_id: string
+          status: string
+        }[]
+      }
       get_base_konekt_state: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -6468,6 +6486,7 @@ export type Database = {
         Args: { p_sequence_ids: string[] }
         Returns: {
           count: number
+          pause_reason: string | null
           sequence_id: string
           status: string
         }[]

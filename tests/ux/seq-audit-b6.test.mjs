@@ -82,6 +82,49 @@ test('SEQ-121 — les pauses sans raison deviennent « manual » (jamais reprise
   );
 });
 
+// ---------------------------------------------------------------- D6 / SEQ-121 (vague finale, points 4 et 5)
+test('D6 — pauses héritées : auto-pause puis désactivation reclassées avant le repli « manual », jamais un arrêt manuel', () => {
+  const constraint = b6.indexOf('ADD CONSTRAINT sequence_enrollments_pause_reason_check');
+  const auto = b6.indexOf("SET pause_reason = 'auto_paused'");
+  const inactive = b6.indexOf("SET pause_reason = 'sequence_inactive'");
+  const manual = b6.search(/UPDATE public\.sequence_enrollments\s+SET pause_reason = 'manual'\s+WHERE status = 'paused'\s+AND pause_reason IS NULL/);
+  assert.ok(constraint !== -1 && auto !== -1 && inactive !== -1 && manual !== -1, 'les trois reclassements sont présents');
+  // Après la nouvelle contrainte (l'ancienne refuse auto_paused et sequence_inactive).
+  assert.ok(constraint < auto, 'auto_paused posé après la nouvelle contrainte');
+  // Ordre : sinon le repli « manual » avalerait les pauses NULL avant leur reclassement.
+  assert.ok(auto < inactive && inactive < manual, 'ordre auto_paused, sequence_inactive, manual');
+  // Un seul repli « manual » : plus de conversion NULL → manual avant les reclassements.
+  assert.equal([...b6.matchAll(/SET pause_reason = 'manual'/g)].length, 1);
+
+  const autoBlock = b6.slice(auto, inactive);
+  assert.match(autoBlock, /e\.pause_reason IS NULL/);
+  assert.match(autoBlock, /x\.skip_reason = 'Auto-paused: high failure rate'/);
+  const inactiveBlock = b6.slice(inactive, manual);
+  assert.match(inactiveBlock, /s\.is_active IS FALSE/);
+  assert.match(inactiveBlock, /\(e\.pause_reason IS NULL OR e\.pause_reason = 'manual'\)/);
+  // Une inscription arrêtée à la main par l'ancien front n'est jamais reprise par une réactivation.
+  for (const block of [autoBlock, inactiveBlock]) {
+    assert.match(block, /NOT EXISTS \([\s\S]*x\.skip_reason IN \('Arrêt manuel', 'Arrêt groupé', 'Stoppé depuis Inbox'\)/);
+  }
+});
+
+// ---------------------------------------------------------------- SEQ-215 (vague finale, point 3)
+test('SEQ-215 — statuts hérités convertis avant les CHECK : « booked » terminé, « pending » annulé', () => {
+  const repair = between(b6, "WHERE status = 'booked'", 'END $$;');
+  const booked = b6.slice(b6.lastIndexOf('UPDATE public.sequence_enrollments', b6.indexOf("WHERE status = 'booked'")), b6.indexOf("WHERE status = 'booked'"));
+  assert.match(booked, /SET status = 'completed'/);
+  assert.match(booked, /completed_at = COALESCE\(completed_at, updated_at\)/);
+  assert.match(booked, /jsonb_build_object\('completion_reason', 'meeting_booked', 'legacy_status', 'booked'\)/);
+  // L'ancien défaut 'pending' n'est jamais replanifié (aucun envoi réveillé).
+  const pending = between(repair, 'UPDATE public.sequence_step_executions', "WHERE status = 'pending'");
+  assert.match(pending, /SET status = 'cancelled'/);
+  assert.doesNotMatch(pending, /'scheduled'/);
+  assert.match(repair, /GET DIAGNOSTICS n_pending = ROW_COUNT/);
+  // Avant la pose (puis la validation) des CHECK de statut.
+  assert.ok(b6.indexOf("WHERE status = 'booked'") < b6.indexOf('sequence_enrollments_status_check'));
+  assert.ok(b6.indexOf("WHERE status = 'pending'") < b6.indexOf('sequence_step_executions_status_check'));
+});
+
 // ---------------------------------------------------------------- SEQ-003
 test('SEQ-003 — les messages partis marqués « annulés » (BUG-095) repassent envoyés', () => {
   const fix = between(b6, 'UPDATE public.sequence_step_executions\nSET status = \'sent\'', ';');
@@ -243,6 +286,83 @@ test('SEQ-119 — un collaborateur ne modifie que ses inscriptions et ne lit que
   assert.match(execUpd, /e\.created_by = auth\.uid\(\)/);
   const fn = between(b6, 'CREATE OR REPLACE FUNCTION public.is_active_org_collaborator', '$$;');
   assert.match(fn, /get_org_role\(_user_id, public\.get_user_org_id\(_user_id\)\) = 'collaborator'/);
+});
+
+test('SEQ-119 (vague finale, point 2) — un collaborateur ne modifie ni les étapes ni la séquence d’un collègue', () => {
+  const ownOrNotCollab = /created_by = auth\.uid\(\) OR NOT \(SELECT public\.is_active_org_collaborator\(auth\.uid\(\)\)\)/;
+  const upd = policy('org_members_update', 'outreach_sequences');
+  const [using, check] = upd.split('WITH CHECK');
+  assert.match(using, ownOrNotCollab, 'USING de la mise à jour');
+  assert.match(check ?? '', ownOrNotCollab, 'WITH CHECK de la mise à jour');
+  assert.match(policy('org_members_delete', 'outreach_sequences'), ownOrNotCollab, 'suppression (cascade sur l’historique)');
+  // Étapes : l'EXISTS sur la séquence exige l'auteur pour un collaborateur.
+  const stepOwner = /AND \(s\.created_by = auth\.uid\(\) OR NOT \(SELECT public\.is_active_org_collaborator\(auth\.uid\(\)\)\)\)/;
+  assert.match(policy('org_members_insert', 'sequence_steps'), stepOwner);
+  const stepUpd = policy('org_members_update', 'sequence_steps').split('WITH CHECK');
+  assert.match(stepUpd[0], stepOwner, 'USING de la mise à jour d’étape');
+  assert.match(stepUpd[1] ?? '', stepOwner, 'WITH CHECK de la mise à jour d’étape');
+  assert.match(policy('org_members_delete', 'sequence_steps'), stepOwner);
+  // La lecture reste ouverte à l'équipe de la mission.
+  assert.doesNotMatch(policy('org_members_select', 'sequence_steps'), stepOwner);
+
+  // save_sequence_steps (SECURITY INVOKER) : refus explicite avant toute écriture,
+  // au lieu d'une sauvegarde vide annoncée réussie.
+  const fn = between(b6, 'CREATE OR REPLACE FUNCTION public.save_sequence_steps', '\n$$;');
+  const refusal = fn.indexOf("HINT = 'SEQUENCE_NOT_OWNER'");
+  assert.ok(refusal !== -1, 'refus SEQUENCE_NOT_OWNER absent');
+  assert.ok(refusal < fn.indexOf('UPDATE public.sequence_steps') && refusal < fn.indexOf('INSERT INTO public.sequence_steps'), 'refus avant les écritures');
+  assert.match(fn, /v_owner IS DISTINCT FROM auth\.uid\(\)\s+AND public\.is_active_org_collaborator\(auth\.uid\(\)\)/);
+  assert.match(fn, /auth\.uid\(\) IS NOT NULL/, 'le chemin serveur (sans utilisateur) n’est pas concerné');
+
+  // Rejoué par l'audit (S14) : réécriture d'étape et suppression de séquence à 0 ligne.
+  const audit = stripSql(read('supabase/tests/rls_two_orgs_audit.sql'));
+  assert.match(audit, /UPDATE public\.sequence_steps SET message_template = 'Texte réécrit par B' WHERE id = step_a1;/);
+  assert.match(audit, /DELETE FROM public\.outreach_sequences WHERE id = seq_a;/);
+  assert.match(audit, /v_hint IS DISTINCT FROM 'SEQUENCE_NOT_OWNER'/);
+});
+
+// ---------------------------------------------------------------- D3 (vague finale, point 1)
+test('D3 — anti-doublon du navigateur : RPC SECURITY DEFINER bornée à l’organisation de l’appelant', () => {
+  const fn = between(b6, 'CREATE OR REPLACE FUNCTION public.find_recent_org_contacts(', '\n$$;');
+  assert.ok(fn, 'find_recent_org_contacts absente de la migration B6');
+  assert.match(fn, /p_org uuid,\s+p_values text\[\],\s+p_slugs text\[\],\s+p_since timestamptz/);
+  assert.match(fn, /SECURITY DEFINER/);
+  assert.match(fn, /SET search_path = public/);
+  // Refus hors de l'organisation active (même règle que la RLS : get_user_org_id).
+  assert.match(fn, /public\.get_user_org_id\(auth\.uid\(\)\) IS DISTINCT FROM p_org THEN\s+RAISE EXCEPTION/);
+  assert.match(fn, /auth\.uid\(\) IS NULL/);
+  assert.match(fn, /USING ERRCODE = '42501'/);
+  // Strict nécessaire : les colonnes du rapprochement, rien d'autre.
+  const cols = between(fn, 'RETURNS TABLE (', ')');
+  const names = [...cols.matchAll(/(\w+) (?:text|uuid|timestamptz)/g)].map((m) => m[1]);
+  assert.deepEqual(names, ['profile_id', 'provider_id', 'resolved_profile_id', 'profile_url', 'created_by', 'created_at', 'status', 'sequence_id']);
+  assert.match(fn, /WHERE e\.organization_id = p_org/);
+  assert.match(fn, /e\.status IN \('active', 'paused'\)/);
+  assert.match(fn, /e\.status IN \('replied', 'completed'\)\s+AND e\.created_at >= COALESCE\(p_since/);
+  assert.match(fn, /e\.resolved_profile_id = ANY/);
+  // Jokers du motif échappés (un « _ » du slug n'est pas un caractère quelconque).
+  assert.match(fn, /'_', '\\_'/);
+  assert.match(b6, /REVOKE ALL ON FUNCTION public\.find_recent_org_contacts\(uuid, text\[\], text\[\], timestamptz\) FROM PUBLIC, anon;/);
+  assert.match(b6, /GRANT EXECUTE ON FUNCTION public\.find_recent_org_contacts\(uuid, text\[\], text\[\], timestamptz\) TO authenticated;/);
+  // Après is_active_org_collaborator, avant les policies (bloc 4e).
+  assert.ok(b6.indexOf('FUNCTION public.find_recent_org_contacts(') > b6.indexOf('FUNCTION public.is_active_org_collaborator'));
+
+  // Audit : le collaborateur voit le contact d'un collègue, une autre organisation est refusée.
+  const audit = stripSql(read('supabase/tests/rls_two_orgs_audit.sql'));
+  assert.match(audit, /find_recent_org_contacts\(org_a, ARRAY\['prof-a'\], ARRAY\[\]::text\[\], now\(\) - interval '90 days'\)\s+WHERE created_by = u_a/);
+  assert.match(audit, /\[D3 : B interroge les contacts de A/);
+  assert.match(audit, /EXCEPTION WHEN insufficient_privilege THEN NULL;\s+WHEN OTHERS THEN failures := failures \|\| format\('\[D3 autre organisation/);
+
+  // Types générés : la RPC et les compteurs par raison de pause.
+  const types = read('src/integrations/supabase/types.ts');
+  const rpc = between(types, '      find_recent_org_contacts: {', '\n      }\n');
+  assert.match(rpc, /p_org: string/);
+  assert.match(rpc, /p_since: string/);
+  assert.match(rpc, /p_slugs: string\[\]/);
+  assert.match(rpc, /p_values: string\[\]/);
+  assert.match(rpc, /resolved_profile_id: string \| null/);
+  const counts = between(types, '      get_sequence_enrollment_counts: {', '\n      }\n');
+  assert.match(counts, /pause_reason: string \| null/);
 });
 
 // ---------------------------------------------------------------- SEQ-165

@@ -225,6 +225,31 @@ test('SEQ-039 — in_reply_to est lu sous toutes ses formes', () => {
   assert.match(webhooks, /\.in\('email_message_id', inReplyTo\)/);
 });
 
+// ---------------------------------------------------------------- REV email-inbound-5
+test('email-inbound-5 — mail_received ignoré ici : unipile-webhook, filtré, est seul juge', () => {
+  const main = webhooks.slice(webhooks.indexOf('Deno.serve('));
+  const start = main.indexOf("case 'mail_received':");
+  assert.ok(start > 0, 'le cas mail_received doit rester journalisé');
+  const branch = main.slice(start, main.indexOf('break;', start));
+  // Aucun rattachement ni clôture depuis ce handler (une absence du bureau
+  // portant In-Reply-To passait l'inscription en « Répondu »).
+  assert.doesNotMatch(branch, /handleMailReceived|handleReply/);
+  assert.match(branch, /console\.warn\([^)]*handled by unipile-webhook/);
+  assert.doesNotMatch(main, /await handleMailReceived\(/);
+  // Le suivi des ouvertures et des clics reste traité ici.
+  assert.match(main, /case 'mail_opened':\s*await handleMailTracking\(supabase, payload, 'open'\);/);
+  assert.match(main, /case 'mail_link_clicked':\s*await handleMailTracking\(supabase, payload, 'click'\);/);
+
+  // Côté unipile-webhook : rebonds et réponses automatiques écartés avant tout rattachement.
+  const unipile = read('supabase/functions/unipile-webhook/index.ts');
+  const newMail = unipile.slice(unipile.indexOf('async function handleNewMail('));
+  const bounce = newMail.indexOf('if (isBounce) {');
+  const autoReply = newMail.indexOf('if (isAutoReplyMail(payload, subjectLower, senderEmail)) {');
+  const threadMatch = newMail.indexOf('inReplyToCandidates(payload.in_reply_to)');
+  assert.ok(bounce > 0 && autoReply > bounce && threadMatch > autoReply, 'filtres avant le rattachement par in_reply_to');
+  assert.match(unipile, /case 'mail_received':[\s\S]{0,400}?await handleNewMail\(supabase, payload\);/);
+});
+
 // ---------------------------------------------------------------- SEQ-100
 test('SEQ-100 — un seul expéditeur : titulaire de la boîte, repli sur l’auteur de l’inscription', () => {
   assert.doesNotMatch(sendEmail, /sequence\?\.created_by/);
@@ -243,12 +268,28 @@ test('SEQ-104 — désinscription : liste de suppression d’abord, jeton ensuit
 });
 
 // ---------------------------------------------------------------- SEQ-105
-test('SEQ-105 — avec des copies, ni pixel, ni liens suivis, ni pied de désinscription', () => {
+test('SEQ-105 — avec des copies, ni pixel ni liens suivis', () => {
   assert.deepEqual(recipientList([' a@x.fr ', '', null, 'b@x.fr']), ['a@x.fr', 'b@x.fr']);
   assert.deepEqual(recipientList(undefined), []);
   assert.match(sendHandler, /const hasCopies = cc\.length > 0 \|\| bcc\.length > 0;/);
-  assert.match(sendHandler, /if \(step\.include_unsubscribe && !hasCopies\)/);
   assert.match(sendHandler, /if \(!hasCopies\) \{\s*\/\/[^\n]*\n\s*htmlBody = await wrapLinksForTracking/);
+});
+
+// ---------------------------------------------------------------- REV email-inbound-4
+test('email-inbound-4 — option cochée : pied de désinscription présent, même avec des copies', () => {
+  // Seul l'interrupteur de l'étape décide ; les copies ne le retirent plus.
+  assert.doesNotMatch(sendHandler, /include_unsubscribe && !hasCopies/);
+  const footerIf = sendHandler.indexOf('if (step.include_unsubscribe) {');
+  assert.ok(footerIf > 0, 'le pied doit dépendre du seul interrupteur de l’étape');
+  const footerBlock = sendHandler.slice(footerIf, sendHandler.indexOf('// 8. Email tracking', footerIf));
+  assert.match(footerBlock, /getOrCreateUnsubscribeToken\(supabase, recipientEmail\)/);
+  assert.match(footerBlock, /\/unsubscribe\?token=\$\{encodeURIComponent\(unsubToken\)\}/);
+  assert.doesNotMatch(footerBlock, /hasCopies/);
+  // Le pied est ajouté avant l'instrumentation et hors du bloc réservé aux e-mails sans copie.
+  const trackingIf = sendHandler.indexOf('if (!hasCopies) {');
+  assert.ok(trackingIf > footerIf, 'pied de désinscription avant le bloc de suivi');
+  // Le lien de désinscription n'est jamais réécrit en lien suivi.
+  assert.match(sendEmail, /url\.includes\('\/unsubscribe\?token='\)/);
 });
 
 // ---------------------------------------------------------------- SEQ-106

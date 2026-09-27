@@ -126,3 +126,47 @@ Deno.test('mission : les deux formes d\'identifiant', () => {
   strictEqual(missionJobIds(null), null);
   strictEqual(missionJobIds(''), null);
 });
+
+// ─── Vague finale (audit 2026-09-25, lot E1) ────────────────────────────────
+
+import {
+  closedChannelSkipReason, isEmailOutcomeUnknown, siblingEnrollmentsFilter,
+  EMAIL_CHANNEL_CLOSED_SKIP_REASON, WHATSAPP_CHANNEL_CLOSED_SKIP_REASON,
+} from './sequence-engine-rules.ts';
+
+Deno.test('D2 : étapes e-mail et WhatsApp sautées (canal fermé), LinkedIn non', () => {
+  strictEqual(closedChannelSkipReason({ action_type: 'email' }), EMAIL_CHANNEL_CLOSED_SKIP_REASON);
+  strictEqual(closedChannelSkipReason({ action_type: 'message', step_channel: 'email' }), EMAIL_CHANNEL_CLOSED_SKIP_REASON);
+  strictEqual(closedChannelSkipReason({ action_type: 'whatsapp_message' }), WHATSAPP_CHANNEL_CLOSED_SKIP_REASON);
+  strictEqual(closedChannelSkipReason({ action_type: 'message', step_channel: 'whatsapp' }), WHATSAPP_CHANNEL_CLOSED_SKIP_REASON);
+  strictEqual(closedChannelSkipReason({ action_type: 'message', step_channel: 'linkedin' }), null);
+  strictEqual(closedChannelSkipReason({ action_type: 'inmail' }), null);
+  strictEqual(closedChannelSkipReason(null), null);
+});
+
+Deno.test('D2 : un saut de canal fermé ne déclenche jamais la garde « aucun message précédent »', () => {
+  strictEqual(shouldCloseForNoPreviousMessage([{ status: 'skipped', skip_reason: EMAIL_CHANNEL_CLOSED_SKIP_REASON }]), false);
+  strictEqual(shouldCloseForNoPreviousMessage([{ status: 'skipped', skip_reason: WHATSAPP_CHANNEL_CLOSED_SKIP_REASON }]), false);
+  // Témoin : un vrai échec la déclenche toujours.
+  strictEqual(shouldCloseForNoPreviousMessage([{ status: 'failed', skip_reason: null }]), true);
+});
+
+Deno.test('SEQ-005 / SEQ-080 : appel e-mail coupé ou en 5xx = issue inconnue (jamais un échec ordinaire)', () => {
+  strictEqual(isEmailOutcomeUnknown('Email function error: The signal has been aborted'), true);
+  strictEqual(isEmailOutcomeUnknown('Email function error: error sending request'), true);
+  strictEqual(isEmailOutcomeUnknown('sequence-send-email 502: Bad Gateway'), true);
+  strictEqual(isEmailOutcomeUnknown('sequence-send-email 400: invalid'), false);
+  strictEqual(isEmailOutcomeUnknown('status_update_failed'), false);
+  strictEqual(isEmailOutcomeUnknown('Email send failed'), false);
+  strictEqual(isEmailOutcomeUnknown(null), false);
+});
+
+Deno.test('SEQ-212 : filtre des autres inscriptions du candidat, identifiants assainis', () => {
+  strictEqual(siblingEnrollmentsFilter([null, undefined, '']), null);
+  strictEqual(
+    siblingEnrollmentsFilter(['ACoAAB12', 'jean-dupont', 'ACoAAB12']),
+    'profile_id.in.(ACoAAB12,jean-dupont),resolved_profile_id.in.(ACoAAB12,jean-dupont),provider_id.in.(ACoAAB12,jean-dupont)',
+  );
+  // Ni virgule, ni parenthèse, ni guillemet : pas d'injection dans le filtre.
+  strictEqual(siblingEnrollmentsFilter(['a),status.eq.(x', '"b"']), 'profile_id.in.(astatuseqx,b),resolved_profile_id.in.(astatuseqx,b),provider_id.in.(astatuseqx,b)');
+});

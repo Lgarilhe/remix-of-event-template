@@ -6,10 +6,13 @@ import {
   executionStatusLabel,
   formatSequenceError,
   formatSkipReason,
+  heldExecutionNotice,
   HIDDEN_ACTION_TYPES,
   isSentExecutionStatus,
   missionEnrollmentJobIds,
   shouldShowExecutionError,
+  skipConflictMessage,
+  type HeldExecutionNotice,
 } from '@/lib/sequenceErrorMessages';
 import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { Button } from '@/components/ui/button';
@@ -100,11 +103,13 @@ interface StepExecution {
   error_message: string | null;
   skip_reason: string | null;
   enrollment?: {
+    status: string | null;
     profile_name: string | null;
     profile_headline: string | null;
     profile_url: string | null;
     sequence?: {
       name: string;
+      is_active: boolean | null;
     };
   };
   step?: {
@@ -113,6 +118,8 @@ interface StepExecution {
     subject_template: string | null;
   };
   preview: MessagePreview;
+  /** Étape en attente qui ne partira pas (candidat en pause ou sorti, séquence désactivée). */
+  held: HeldExecutionNotice | null;
 }
 
 interface SequenceActivityLogProps {
@@ -246,7 +253,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       let query = supabase
         .from('sequence_step_executions')
         .select(
-          'id, enrollment_id, step_id, step_order, status, scheduled_at, executed_at, final_subject, final_message, error_message, skip_reason, sequence_steps!inner(action_type, message_template, subject_template), sequence_enrollments!inner(profile_name, profile_headline, profile_url, job_id, outreach_sequences(name))',
+          'id, enrollment_id, step_id, step_order, status, scheduled_at, executed_at, final_subject, final_message, error_message, skip_reason, sequence_steps!inner(action_type, message_template, subject_template), sequence_enrollments!inner(status, profile_name, profile_headline, profile_url, job_id, outreach_sequences(name, is_active))',
         )
         .not('sequence_steps.action_type', 'in', `(${HIDDEN_ACTION_TYPES.join(',')})`)
         .order('scheduled_at', { ascending: false })
@@ -305,14 +312,18 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           skip_reason: exec.skip_reason,
           enrollment: enrollmentRel
             ? {
+                status: enrollmentRel.status,
                 profile_name: enrollmentRel.profile_name,
                 profile_headline: enrollmentRel.profile_headline,
                 profile_url: enrollmentRel.profile_url,
-                sequence: sequenceRel ? { name: sequenceRel.name } : undefined,
+                sequence: sequenceRel ? { name: sequenceRel.name, is_active: sequenceRel.is_active } : undefined,
               }
             : undefined,
           step,
           preview: computePreview(exec, step, overrides, exec.enrollment_id),
+          // Contrat §1 et D1 : une pause ou une séquence désactivée garde les
+          // étapes à leur date, sans les envoyer.
+          held: heldExecutionNotice(exec.status, enrollmentRel?.status, sequenceRel?.is_active),
         };
       });
 
@@ -358,7 +369,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       });
 
       if (error?.status === 409) {
-        toast.error("Cette étape est déjà en cours d'envoi ou déjà traitée.");
+        // Candidat en pause ou sorti de la séquence : la phrase du serveur dit
+        // de le reprendre d'abord. Sinon, étape déjà partie ou traitée.
+        toast.error(skipConflictMessage(error.code ?? data?.error_code, error.message));
         return;
       }
       if (error || !data?.success) {
@@ -441,12 +454,13 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
   }, [filteredExecutions]);
 
-  // Stats — actions visibles seulement (les étapes internes sont exclues par la requête)
+  // Stats — actions visibles seulement (les étapes internes sont exclues par la requête).
+  // Une étape retenue (candidat en pause, séquence désactivée) n'est ni à venir ni en retard.
   const stats = useMemo(() => {
     const now = new Date();
     return {
-      scheduled: executions.filter(e => (e.status === 'scheduled' || e.status === 'quota_blocked') && isAfter(new Date(e.scheduled_at), now)).length,
-      pending: executions.filter(e => e.status === 'scheduled' && isBefore(new Date(e.scheduled_at), now)).length,
+      scheduled: executions.filter(e => !e.held && (e.status === 'scheduled' || e.status === 'quota_blocked') && isAfter(new Date(e.scheduled_at), now)).length,
+      pending: executions.filter(e => !e.held && e.status === 'scheduled' && isBefore(new Date(e.scheduled_at), now)).length,
       sent: executions.filter(e => isSentExecutionStatus(e.status)).length,
       failed: executions.filter(e => e.status === 'failed').length,
     };
@@ -618,11 +632,15 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                     const hasMessage = !!preview.message || preview.source === 'ai';
                     const showError = !!exec.error_message && shouldShowExecutionError(exec.status);
                     const showReason = !!exec.skip_reason && !isSentExecutionStatus(exec.status);
+                    const held = exec.held;
                     const isPast = isBefore(new Date(exec.scheduled_at), new Date());
-                    const isOverdue = exec.status === 'scheduled' && isPast;
+                    const isOverdue = exec.status === 'scheduled' && isPast && !held;
                     const candidateName = exec.enrollment?.profile_name || 'Candidat';
                     const doneVerb = executionDoneVerb(exec.status);
-                    const canSkip = SKIPPABLE_STATUSES.has(exec.status);
+                    // Le serveur refuse de sauter l'étape d'un candidat non actif (409).
+                    const canSkip = SKIPPABLE_STATUSES.has(exec.status) && !held;
+                    // Le texte reste modifiable pendant la pause, avant la reprise.
+                    const canEdit = exec.status === 'scheduled' && !!preview.message;
 
                     return (
                       <Collapsible
@@ -660,10 +678,17 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                       <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                                     </a>
                                   )}
-                                  <Badge className={cn("text-xs border h-5", execStatus.className)}>
-                                    {execStatus.icon}
-                                    <span className="ml-1">{executionStatusLabel(exec.status)}</span>
-                                  </Badge>
+                                  {held ? (
+                                    <Badge className="text-xs border h-5 bg-muted text-muted-foreground border-border">
+                                      <Pause className="w-3.5 h-3.5" aria-hidden="true" />
+                                      <span className="ml-1">{held.label}</span>
+                                    </Badge>
+                                  ) : (
+                                    <Badge className={cn("text-xs border h-5", execStatus.className)}>
+                                      {execStatus.icon}
+                                      <span className="ml-1">{executionStatusLabel(exec.status)}</span>
+                                    </Badge>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
                                   <span className={cn("font-medium", actionStyle.color)}>{actionLabel}</span>
@@ -672,10 +697,13 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                   <span className="text-muted-foreground/50">·</span>
                                   <span className="tabular-nums">{format(new Date(exec.scheduled_at), 'HH:mm')}</span>
                                 </div>
+                                {held && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{held.hint}</p>
+                                )}
                               </div>
 
                               {/* Expand indicator */}
-                              {(hasMessage || showError || showReason || canSkip) && (
+                              {(hasMessage || showError || showReason || canSkip || canEdit) && (
                                 <div className="shrink-0 self-center">
                                   {isExpanded ? (
                                     <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
@@ -743,9 +771,9 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                               )}
 
                               {/* Actions for pending items */}
-                              {canSkip && (
+                              {(canEdit || canSkip) && (
                                 <div className="flex items-center gap-2 pt-2">
-                                  {exec.status === 'scheduled' && preview.message && (
+                                  {canEdit && (
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -759,21 +787,23 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                                       Modifier
                                     </Button>
                                   )}
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-7 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSkipConfirm({ id: exec.id, candidateName });
-                                    }}
-                                    disabled={skippingId === exec.id}
-                                  >
-                                    {skippingId === exec.id
-                                      ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" aria-hidden="true" />
-                                      : <Ban className="w-3 h-3 mr-1.5" aria-hidden="true" />}
-                                    Ne pas envoyer cette étape
-                                  </Button>
+                                  {canSkip && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSkipConfirm({ id: exec.id, candidateName });
+                                      }}
+                                      disabled={skippingId === exec.id}
+                                    >
+                                      {skippingId === exec.id
+                                        ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" aria-hidden="true" />
+                                        : <Ban className="w-3 h-3 mr-1.5" aria-hidden="true" />}
+                                      Ne pas envoyer cette étape
+                                    </Button>
+                                  )}
                                 </div>
                               )}
 

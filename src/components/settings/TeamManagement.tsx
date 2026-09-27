@@ -155,14 +155,20 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     staleTime: 0,
   });
 
+  // Le serveur met ses inscriptions en pause (jamais un arrêt définitif) et
+  // annule ses InMails programmés. « Reprendre » échouera ensuite (compte plus
+  // relié) : la seule voie pour recontacter ces candidats est une autre
+  // séquence, avec la dérogation « Inscrire quand même » (propriétaire ou
+  // administrateur, seuls à lire cette confirmation).
   const sendingStopSentence = (): string => {
-    const generic = 'Ses séquences en cours et ses InMails programmés seront arrêtés.';
+    const reenroll = ' Ses candidats resteront en pause : pour les recontacter, inscrivez-les dans une autre séquence depuis votre compte (option « Inscrire quand même »).';
+    const generic = `Ses séquences en cours seront mises en pause et ses InMails programmés annulés.${reenroll}`;
     if (mappingsError || !mappingsReady) return generic;
     if (!removeAccountId) return "Aucun compte LinkedIn n'est relié à ce membre : aucun envoi LinkedIn n'est à arrêter.";
     if (!activeEnrollments.isSuccess) return generic;
     const n = activeEnrollments.data;
     return n > 0
-      ? `Ses séquences en cours (${n} candidat${n > 1 ? 's' : ''}) et ses InMails programmés seront arrêtés.`
+      ? `Ses séquences en cours (${n} candidat${n > 1 ? 's' : ''}) seront mises en pause et ses InMails programmés annulés.${reenroll}`
       : "Aucune séquence n'est en cours depuis son compte LinkedIn ; ses InMails programmés seront annulés.";
   };
 
@@ -515,7 +521,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   <strong>{getDisplayName(removeConfirm.user_id)}</strong> sera retiré de l'équipe et perdra
                   l'accès aux missions, candidats et données de l'organisation.
                   {' '}{sendingStopSentence()}
-                  {' '}Vous pourrez réinscrire ses candidats depuis votre compte, et le réinviter plus tard.
+                  {' '}Vous pourrez le réinviter plus tard.
                 </>
               )}
             </AlertDialogDescription>
