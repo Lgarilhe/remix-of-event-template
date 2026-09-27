@@ -120,7 +120,8 @@ Six décisions finales, prises après la relecture contradictoire, priment sur l
 2. Secret facultatif `EMAIL_LINK_SIGNING_SECRET` pour signer les liens suivis des e-mails (repli sur la clé de service). Sans effet tant que le canal e-mail est fermé.
 3. Après déploiement, régénérer `src/integrations/supabase/types.ts` avec `supabase gen types typescript --linked`. Les fonctions nouvelles y ont été ajoutées à la main.
 4. Vérifier la ligne `organization_integrations` de l'organisation Konekt : la synchronisation Notion après envoi ne tourne plus que si `notion_connected` est vrai et que les identifiants correspondent à ceux de la plateforme.
-5. État de la production au 25 septembre : 2 séquences, 17 inscriptions, aucune active (15 en pause, 2 répondues). Le déploiement ne relance donc aucun envoi.
+5. Deux migrations issues des tests de bout en bout, à appliquer avec la première : `20260927194905` (garde du compte d'envoi à la modification, `assigned_sender_id` réservé au moteur, clés étrangères `created_by` des modèles et extraits alignées sur la production, `executed_at` des actions de l'assistant protégé, lecture du journal de l'assistant) et `20260927231417` (inscription d'un candidat effacé non réactivable). Toutes deux rejouent sur une base vide.
+6. État de la production au 25 septembre : 2 séquences, 17 inscriptions, aucune active (15 en pause, 2 répondues). Le déploiement ne relance donc aucun envoi.
 
 ## Tests de bout en bout (27 septembre)
 
@@ -155,11 +156,100 @@ Deux défauts trouvés par ces tests, corrigés :
 
 Reste à voir sur une préversion, avec un vrai compte LinkedIn : l'envoi réel (le faux LinkedIn répond toujours par un succès) et le format exact des webhooks reçus.
 
+## Seconde vague de tests (27 et 28 septembre)
+
+Question posée : a-t-on fait tous les tests possibles ? Non. Un inventaire lu dans le code a recensé 741 comportements testables du module (moteur, types d'étapes, événements entrants, actions des membres, base, interface, assistant, actions programmées, file InMail, identités LinkedIn). 59 seulement avaient un test de bout en bout ; 197 n'avaient qu'un test qui lit le code sans l'exécuter, 386 aucun test.
+
+Les 350 comportements critiques ou graves sans test de bout en bout ont été répartis en 20 lots. Chaque lot a écrit ses tests et les a joués contre la stack locale, avec un faux prestataire scriptable par compte (pannes, délais, réponses particulières). Chaque défaut signalé a été repris par deux relecteurs indépendants, l'un pour le reproduire, l'autre pour le confronter au contrat.
+
+- 453 tests écrits (fichiers `e2e/api/seq-*.spec.ts`, `e2e/flows/seq-*.spec.ts`, `supabase/tests/seq_*_audit.sql`, tests Deno `supabase/functions/_shared/seq-*.test.ts`).
+- 61 défauts signalés : 51 confirmés par les deux relecteurs (10 critiques, 33 graves, 7 moyens, 1 mineur), 6 incertains, 4 réfutés.
+- 47 questions de décision produit (voir plus bas).
+
+Les 51 défauts confirmés ont été corrigés en six lots de fichiers distincts, chacun relu par deux relecteurs puis repris une fois. Les relectures ont trouvé 6 problèmes dans les correctifs eux-mêmes, tous repris : une régression de la garde « aucun message précédent » après une relance, un contournement de la garde du compte d'envoi par `assigned_sender_id`, un identifiant alternatif perdu dans la recherche des InMails répondus, une dérogation encore possible par le slug du profil, la portée du contrat §8 oubliée par le dernier contrôle de la file InMail, et la garde en base manquante pour les candidats effacés.
+
+Défauts critiques corrigés :
+
+| Défaut | Correctif |
+|---|---|
+| Au rejeu d'une réponse dont le premier traitement avait échoué, les inscriptions du candidat sur les autres comptes n'étaient jamais arrêtées et leurs relances partaient | Le webhook refait l'arrêt des sœurs à partir des inscriptions déjà closes (`_shared/candidate-reply-closure.ts`) |
+| Un InMail programmé partait après une réponse du candidat, sur le même compte ou sur une séquence d'un autre compte | La réponse annule les InMails en attente de l'organisation, et la file refait le contrôle juste avant l'envoi |
+| L'outil d'envoi de l'assistant écrivait à un candidat effacé (RGPD), y compris pour un message programmé effacé entre l'approbation et l'échéance | Contrôle d'effacement (registre et marqueur de l'organisation) à l'approbation et à l'exécution |
+| L'assistant pouvait envoyer depuis le compte d'un collègue, dans une conversation de ce collègue | Refus : seules les conversations des comptes de l'appelant |
+| Une inscription programmée par l'assistant était créée pour un candidat effacé par l'organisation | Contrôle du marqueur de l'organisation, avec ou sans adresse de profil |
+| Un client pouvait effacer `executed_at` d'une action de l'assistant et la faire rejouer par le cron | Migration `20260927194905` : seule la remise en attente d'un échec l'efface |
+
+Parmi les défauts graves corrigés : garde du compte d'envoi contournable par une modification de l'inscription ; réponse reportée dans toutes les missions de l'organisation, ou jamais au pipeline selon le chemin de détection ; condition « Si pas de réponse » qui terminait l'inscription sans la clore ; rendez-vous rattaché par un morceau d'adresse de profil ; même personne inscrite deux fois dans une séquence sous deux identifiants ; lectures de l'assistant qui comptaient une autre organisation ou lisaient la boîte d'un collègue ; journal de l'assistant lisible par un collaborateur ; faux succès à l'annulation de l'action d'un collègue ; candidat effacé repassé « actif » par une écriture directe dans l'API (migration `20260927231417`).
+
+Résultat après corrections, sur la stack locale : 372 tests d'API sur 372 ; 116 tests d'interface verts, 6 mis de côté (décisions en attente), 1 échec hors séquences (carte « Extension Chrome », code identique à `main`) ; 10 fichiers d'audit SQL verts sur une base neuve où les 276 migrations rejouent ; tests UX 840, agent 40, Deno 150 ; tsc 24 ; build OK.
+
+### Décisions produit en attente
+
+Recommandation entre parenthèses.
+
+Envois et quotas :
+1. Un envoi incertain (erreur 5xx ou délai après l'appel) doit-il compter dans le taux d'échec qui désactive une séquence ? (Non : une panne passagère du prestataire ne doit pas arrêter une séquence.)
+2. Même question pour une lecture de profil impossible à l'étape « Vérifier la connexion ». (Non.)
+3. Une étape arrêtée après le verrou sans rien envoyer (déjà en relation, texte vide, IA indisponible) consomme-t-elle une place du plafond LinkedIn ? (Non.)
+4. Tous les expéditeurs de la rotation au plafond : report au lendemain dans le fuseau et à l'heure de début du titulaire ? (Oui.)
+5. Une boucle qui revient sur une étape déjà partie doit-elle clore l'inscription en « terminée » ? (Oui.)
+6. Une pause posée par le moteur (abonnement requis, compte non rattaché) annule l'étape courante puis la reprise la réarme, contrairement à la règle « aucune pause n'annule d'exécution ». (Garder ce fonctionnement et l'écrire dans le contrat.)
+7. Sur un refus 403 à la vérification de réponse, l'étape gardée doit-elle conserver sa date et son compteur d'essais ? (Oui.)
+
+Réponses :
+8. Une réponse reçue sur une inscription terminée (réponse à la dernière relance) doit-elle la passer « A répondu », compter une réponse et mettre à jour le pipeline ? (Oui.)
+9. La scrutation de secours doit-elle examiner les inscriptions terminées récemment ? (Oui, sur 14 jours.)
+10. En cas d'échec persistant de l'arrêt des sœurs, garder le 500 pour obtenir des rejeux, ou prévenir le recruteur ? (Les deux : 500 et notification.)
+11. Format `new_message` sans indication d'expéditeur, vérification impossible : clore quand même ou échouer et rejouer ? (Échouer et rejouer.)
+
+RGPD et droits :
+12. Bloquer une nouvelle inscription d'un profil effacé (registre global ou organisation) ? (Oui.)
+13. Registre d'effacement illisible : refuser l'inscription et l'envoi ? (Oui.)
+14. Refuser la mise en file InMail d'un candidat effacé dès la mise en file ? (Oui ; l'envoi est déjà bloqué.)
+15. Conversations et messages de l'assistant (`agent_conversations`, `agent_messages`) lisibles par toute l'organisation, y compris le résumé des inscriptions d'un collègue. (Limiter à ses lignes, propriétaire et administrateur voient tout.)
+16. Un membre (rôle `member`) a-t-il les mêmes droits dans les lectures et les actions de l'assistant ? (Oui, comme dans l'interface.)
+17. Refuser en base toute réactivation d'inscription hors du serveur, au-delà du cas RGPD ? (Oui.)
+18. Refuser en base qu'un utilisateur connecté réarme une étape annulée ou insère lui-même des étapes ? (Oui.)
+19. Retirer à `anon` et `authenticated` les droits TRUNCATE et d'écriture inutiles sur les tables du module ? (Oui.)
+20. Refuser une inscription écrite côté serveur sans auteur depuis le compte d'un membre ? (Oui.)
+
+Doublons et identités :
+21. Garde en base contre la même personne inscrite deux fois dans une séquence sous deux identifiants ? (L'interface et l'assistant le refusent désormais ; une garde en base en plus.)
+22. Un seul envoi par personne et par cycle, toutes identités confondues ? (Oui.)
+23. Réinscrire la même personne dans la même séquence sous un autre identifiant après une inscription arrêtée ou terminée depuis plus de 90 jours ? (Autoriser avec avertissement.)
+24. La file InMail doit-elle refuser côté serveur un candidat inscrit ou contacté depuis moins de 90 jours, et « arrêtée » compte-t-il ? (Oui aux deux.)
+
+Rendez-vous :
+25. Un rendez-vous pris avant le début d'une inscription doit-il l'arrêter ? (Non.)
+26. La clôture par rendez-vous côté moteur écrit-elle la raison `meeting_booked` et prévient-elle le recruteur, comme le webhook ? (Oui.)
+27. Un rendez-vous annule-t-il aussi les InMails en attente vers le candidat ? (Oui.)
+28. L'étape arrêtée par une condition d'arrêt doit-elle être « annulée » plutôt que « sautée » ? (Annulée.)
+
+Interface :
+29. Le pipeline d'une mission n'a pas de colonne « Répondu » : l'ajouter ? (Oui.)
+30. Reprise d'une inscription en pause dont toutes les étapes sont parties : la passer « terminée » ? (Oui.)
+31. La fiche candidat masque-t-elle à un collaborateur les actions sur les inscriptions d'un autre membre, comme le suivi des inscrits ? (Oui.)
+32. Bloquer l'activation d'une séquence tant que l'état de l'abonnement n'est pas chargé ? (Oui.)
+33. Second clic « Approuver » sur une action déjà exécutée : refuser « déjà traitée » ? (Oui.)
+34. Message programmé dont le compte d'envoi a changé avant l'échéance : échouer ou partir du nouveau compte ? (Échouer avec un message.)
+35. La reprise groupée par séquence refuse-t-elle une séquence désactivée, comme la reprise par candidat ? (Oui.)
+
+Les autres questions relevées par les lots sont tranchées par les correctifs (garde rendez-vous par slug exact, pipeline mis à jour par tous les chemins, clés étrangères des modèles alignées sur la production) ou de simple forme (code 403 ou 404 d'un refus, titre du menu sur l'offre gratuite).
+
+### Ce que cette vague ne couvre pas
+
+- 266 comportements de gravité moyenne et 71 mineurs, sans test de bout en bout.
+- 18 zones signalées par la relecture de l'inventaire et non détaillées : cycle de vie du candidat et de la mission, désinscription et liste de suppression e-mail, plafond LinkedIn partagé entre producteurs, fuseaux horaires et heure d'été, statistiques, missions partagées avec un partenaire, formes de `job_id`, écrans hors module qui lisent les séquences, notifications, changement de rôle en cours de parcours, débit avec la latence réelle du prestataire, entre autres.
+- Pannes de la base pendant un cycle (lecture ou écriture refusée) : non injectables dans la stack locale, couvertes seulement par les tests des règles pures.
+- Envoi réel sur LinkedIn.
+
 ## Ce qui reste ouvert
 
 - Réouvrir les canaux e-mail et WhatsApp, avec un test réel de bout en bout (envoi, suivi, désinscription, réponse dans le fil). SEQ-206 et SEQ-207 en dépendent.
 - Brancher la synchronisation Notion sur les identifiants propres de chaque organisation (SEQ-007).
-- Faire tourner les tests de bout en bout dans la CI : le workflow e2e n'y sert pas les edge functions, et ces tests s'ignorent d'eux-mêmes sans la stack locale (`e2e/local-stack/README.md`).
+- Faire tourner dans la CI les tests qui exigent le moteur : le workflow e2e n'y sert pas les edge functions, et ces tests s'ignorent d'eux-mêmes sans la stack locale (`e2e/local-stack/README.md`). Les audits SQL des séquences, eux, tournent désormais dans la CI.
+- Trancher les 35 décisions produit de la seconde vague, puis couvrir les comportements moyens et les 18 zones restantes.
+- Tester en préversion avec un vrai compte LinkedIn, sur quelques candidats internes, avant toute ouverture commerciale.
 - Nettoyage des tests : les organisations de test restent en base, le déclencheur `prevent_last_owner_removal` bloque la suppression de leur propriétaire (déjà le cas avant l'audit).
 - Libellé de l'onglet de mission « Outreach » : laissé tel quel, le renommer touche la navigation de toute l'application.
 
