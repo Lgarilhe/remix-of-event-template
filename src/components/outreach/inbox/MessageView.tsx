@@ -49,6 +49,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { enrollmentStatusLabel } from '@/lib/sequenceLabels';
+import { enrollmentProfileFilter } from '@/lib/enrollmentDuplicates';
 import { Chat, Message, SequenceEnrollmentInfo, JobData, ActiveMissionLite } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 import {
@@ -401,10 +402,13 @@ export const MessageView: React.FC<MessageViewProps> = ({
     }
     let cancelled = false;
     (async () => {
+      // Identifiant de la messagerie (ACo...) : une inscription faite depuis
+      // Recruiter porte un autre profile_id (AE...), retrouvée par provider_id
+      // ou resolved_profile_id.
       const { data, error } = await supabase
         .from('sequence_enrollments')
         .select('id, current_step_order')
-        .eq('profile_id', chatProfileId)
+        .or(enrollmentProfileFilter(chatProfileId))
         .eq('status', 'active')
         .order('created_at', { ascending: false });
       if (cancelled) return;
@@ -435,7 +439,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
       const { data: active, error: fetchErr } = await supabase
         .from('sequence_enrollments')
         .select('id')
-        .eq('profile_id', profileId)
+        .or(enrollmentProfileFilter(profileId))
         .eq('status', 'active')
         .order('created_at', { ascending: false });
       if (fetchErr) throw fetchErr;
