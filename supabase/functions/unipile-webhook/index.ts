@@ -1555,43 +1555,22 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   // une réponse à celui-là. Les InMails déjà « répondu » sont relus aussi : ils
   // rattachent le candidat à son organisation (rejeu). Lecture impossible :
   // levée (500, rejeu) ; marquage non bloquant.
+  // Identifiant exact et identifiants alternatifs lus ensemble : InMails
+  // envoyés sur un identifiant AEM…, réponses reçues d'un ACo… (ou l'inverse),
+  // et un ancien InMail « répondu » sur l'un ne masque pas un InMail « envoyé »
+  // sur l'autre (SEQ-110, SEQ-212).
   type InMailMatch = { id: string; recipient_profile_id: string; organization_id: string | null; status: string; updated_at: string };
-  let inmailMatches: InMailMatch[] | null = null;
-  
-  const { data: exactInmailMatch, error: exactInmailError } = await supabase
+  const { data: inmailRows, error: inmailLookupError } = await supabase
     .from('inmail_queue')
     .select('id, recipient_profile_id, organization_id, status, updated_at')
     .eq('account_id', account_id)
     .in('status', ['sent', 'replied'])
-    .eq('recipient_profile_id', senderId);
-  if (exactInmailError) {
-    console.warn('[unipile-webhook] inmail lookup failed:', exactInmailError);
-    failures.push(exactInmailError);
+    .in('recipient_profile_id', [senderId, ...resolvedAltIds]);
+  if (inmailLookupError) {
+    console.warn('[unipile-webhook] inmail lookup failed:', inmailLookupError);
+    failures.push(inmailLookupError);
   }
-
-  inmailMatches = exactInmailMatch as InMailMatch[] | null;
-
-  // If no exact match, try the sender's alternative IDs
-  // InMails are sent to AEM... IDs but replies come from ACo... IDs (or vice versa)
-  if ((!inmailMatches || inmailMatches.length === 0) && senderId) {
-    if (resolvedAltIds.length > 0) {
-      const { data: altMatch, error: altInmailError } = await supabase
-        .from('inmail_queue')
-        .select('id, recipient_profile_id, organization_id, status, updated_at')
-        .eq('account_id', account_id)
-        .in('status', ['sent', 'replied'])
-        .in('recipient_profile_id', resolvedAltIds);
-      if (altInmailError) {
-        console.warn('[unipile-webhook] inmail lookup (alt ids) failed:', altInmailError);
-        failures.push(altInmailError);
-      }
-
-      if (altMatch && altMatch.length > 0) {
-        inmailMatches = altMatch as InMailMatch[];
-        console.log(`[unipile-webhook] InMail matched via resolved ID for ${altMatch.length} entries`);
-      }
-    }
-  }
+  const inmailMatches = inmailRows as InMailMatch[] | null;
 
   const sentInmails = (inmailMatches ?? []).filter((m) => m.status === 'sent');
   if (sentInmails.length > 0) {

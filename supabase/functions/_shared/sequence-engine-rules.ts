@@ -217,19 +217,22 @@ export function shouldCloseForNoPreviousMessage(prior: Array<{ status: string; s
 }
 
 /**
- * Inscription relancée (re_enroll) : seules les exécutions postérieures à la
- * relance comptent pour la garde « aucun message précédent ». Le recruteur a
- * choisi de reprendre à l'étape suivante : un premier message jamais parti
- * (arrêté par un rendez-vous, en échec) ne reclôt pas aussitôt l'inscription
- * relancée. Date de relance absente ou illisible : tout l'historique compte ;
- * exécution sans date : gardée.
+ * Inscription relancée (re_enroll) : pour la garde « aucun message précédent »,
+ * un échec, une annulation ou un saut antérieur à la relance ne compte plus.
+ * Le recruteur a choisi de reprendre à l'étape suivante : un premier message
+ * jamais parti (arrêté par un rendez-vous, en échec) ne reclôt pas aussitôt
+ * l'inscription relancée. Un message réellement parti compte quelle que soit
+ * sa date (SEQ-029 : on ne clôt que si aucun message antérieur n'est parti).
+ * Date de relance absente ou illisible : tout l'historique compte ; exécution
+ * sans date : gardée.
  */
-export function executionsSinceReEnroll<T extends { executed_at?: string | null; created_at?: string | null }>(
+export function executionsSinceReEnroll<T extends { status: string; skip_reason?: string | null; executed_at?: string | null; created_at?: string | null }>(
   executions: T[], reEnrolledAt: string | null | undefined,
 ): T[] {
   const since = reEnrolledAt ? Date.parse(reEnrolledAt) : NaN;
   if (!Number.isFinite(since)) return executions;
   return executions.filter((e) => {
+    if (countsAsSent(e)) return true;
     const at = Date.parse(e.executed_at ?? e.created_at ?? '');
     return !Number.isFinite(at) || at > since;
   });

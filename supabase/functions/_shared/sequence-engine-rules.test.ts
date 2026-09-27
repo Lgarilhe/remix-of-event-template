@@ -241,3 +241,20 @@ Deno.test('SEQ-029 / SEQ-220 : après une relance, un premier message jamais par
   const undated = { status: 'cancelled', skip_reason: 'x', executed_at: null, created_at: null };
   deepStrictEqual(executionsSinceReEnroll([undated], '2026-09-22T10:00:00Z'), [undated]);
 });
+
+Deno.test('SEQ-029 / SEQ-220 : un message parti avant la relance compte toujours, la garde ne clôt pas', () => {
+  const reEnrolledAt = '2026-09-22T10:00:00Z';
+  const sentBefore = { status: 'sent', skip_reason: null, executed_at: '2026-09-19T10:00:00Z' };
+  const cancelledAtReply = { status: 'cancelled', skip_reason: 'Candidat a répondu', executed_at: '2026-09-20T10:00:00Z' };
+  const failedAfter = { status: 'failed', skip_reason: 'Envoi incertain', executed_at: '2026-09-23T10:00:00Z' };
+  const alreadySentAfter = { status: 'skipped', skip_reason: 'Étape déjà envoyée', executed_at: '2026-09-23T10:00:00Z' };
+  deepStrictEqual(executionsSinceReEnroll([sentBefore, failedAfter], reEnrolledAt), [sentBefore, failedAfter]);
+  strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([sentBefore, failedAfter], reEnrolledAt)), false);
+  strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([sentBefore, cancelledAtReply, failedAfter], reEnrolledAt)), false);
+  strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([sentBefore, alreadySentAfter], reEnrolledAt)), false);
+  // Ligne héritée de BUG-095 (partie malgré le statut 'cancelled') : envoi livré, gardée aussi.
+  const deliveredCancelled = { status: 'cancelled', skip_reason: 'Enrollment became replied during execution', executed_at: '2026-09-19T10:00:00Z' };
+  strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([deliveredCancelled, failedAfter], reEnrolledAt)), false);
+  // Sans aucun envoi avant la relance, l'échec postérieur clôt toujours.
+  strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([cancelledAtReply, failedAfter], reEnrolledAt)), true);
+});
