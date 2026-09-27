@@ -142,8 +142,6 @@ function buildLayout(
   let y = 0;
 
   mainSteps.forEach((step, idx) => {
-    const stepIndex = steps.findIndex(s => s.id === step.id);
-
     nodes.push({
       id: step.id,
       type: 'stepNode',
@@ -151,7 +149,7 @@ function buildLayout(
       // Sélection tenue par l'éditeur : clavier et souris passent par onSelectionChange.
       selected: selectedStepId === step.id,
       data: {
-        step, index: stepIndex, allSteps: steps,
+        step, allSteps: steps,
         isSelected: selectedStepId === step.id,
         // La dernière étape se supprime aussi : on repart alors d'une séquence vide.
         canRemove: true,
@@ -202,13 +200,12 @@ function buildLayout(
 
       let tY = branchStartY;
       trueBranch.forEach((bs, bi) => {
-        const bsi = steps.findIndex(s => s.id === bs.id);
         nodes.push({
           id: bs.id, type: 'stepNode',
           position: { x: trueX, y: tY },
           selected: selectedStepId === bs.id,
           data: {
-            step: bs, index: bsi, allSteps: steps,
+            step: bs, allSteps: steps,
             isSelected: selectedStepId === bs.id, canRemove: true,
             onRemove: () => onRemoveStep(bs.id), compact: true,
           },
@@ -260,13 +257,12 @@ function buildLayout(
 
       let fY = branchStartY;
       falseBranch.forEach((bs, bi) => {
-        const bsi = steps.findIndex(s => s.id === bs.id);
         nodes.push({
           id: bs.id, type: 'stepNode',
           position: { x: falseX, y: fY },
           selected: selectedStepId === bs.id,
           data: {
-            step: bs, index: bsi, allSteps: steps,
+            step: bs, allSteps: steps,
             isSelected: selectedStepId === bs.id, canRemove: true,
             onRemove: () => onRemoveStep(bs.id), compact: true,
           },

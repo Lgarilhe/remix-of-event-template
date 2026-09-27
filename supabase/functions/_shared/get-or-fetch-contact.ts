@@ -290,6 +290,12 @@ export function escapeLikePattern(value: string): string {
 
 const PENDING_EXECUTION_STATUSES = ['scheduled', 'waiting_event', 'quota_blocked'];
 export const GDPR_ERASURE_SKIP_REASON = 'Effacement des données demandé : séquence arrêtée';
+/**
+ * Clé de sequence_enrollments.tracking_data posée sur toute inscription
+ * touchée par un effacement (décision D5) : date ISO. Une inscription qui la
+ * porte ne peut plus être reprise ni relancée.
+ */
+export const GDPR_ERASED_AT_KEY = 'gdpr_erased_at';
 
 export interface GdprErasureResult {
   success: boolean;
@@ -315,6 +321,8 @@ export interface GdprErasureResult {
  *
  * Dans ce périmètre (SEQ-054) : les inscriptions actives ou en pause du
  * candidat passent en 'stopped' et leurs exécutions en attente sont annulées,
+ * toutes ses inscriptions trouvées (terminées comprises) reçoivent le marqueur
+ * durable tracking_data.gdpr_erased_at (D5 : ni reprise ni relance),
  * ses InMails programmés sont annulés, l'adresse rejoint suppressed_emails
  * (reason 'unsubscribe'), puis nom, titre, adresse, téléphone et textes
  * envoyés sont effacés des lignes de séquence. Le succès n'est renvoyé
@@ -352,19 +360,30 @@ export async function recordGdprErasure(
   }
 
   // 1. Blocage global des enrichissements : administrateurs plateforme seulement.
+  //    Posé en premier (le blocage tient même si une étape suivante échoue),
+  //    mais une seule ligne par couple d'empreintes : la table n'a pas de
+  //    contrainte d'unicité, et relancer après un échec partiel ajoutait une
+  //    ligne de plus au registre à chaque essai.
   if (orgId === null) {
     const emailHash = emailNorm ? await sha256Hex(emailNorm) : null;
     const urlHash = urlNorm ? await sha256Hex(urlNorm) : null;
-    const { error: insertError } = await supabase
-      .from('gdpr_erasures')
-      .insert({
-        email_hash: emailHash,
-        linkedin_url_hash: urlHash,
-        reason: input.reason || 'user_request',
-        source: input.source || null,
-        notes: input.notes || null,
-      });
-    if (insertError) return fail('gdpr_erasures', insertError);
+    let existingQuery = supabase.from('gdpr_erasures').select('id').limit(1);
+    existingQuery = emailHash ? existingQuery.eq('email_hash', emailHash) : existingQuery.is('email_hash', null);
+    existingQuery = urlHash ? existingQuery.eq('linkedin_url_hash', urlHash) : existingQuery.is('linkedin_url_hash', null);
+    const { data: existingErasure, error: existingError } = await existingQuery;
+    if (existingError) return fail('gdpr_erasures', existingError);
+    if (!existingErasure || existingErasure.length === 0) {
+      const { error: insertError } = await supabase
+        .from('gdpr_erasures')
+        .insert({
+          email_hash: emailHash,
+          linkedin_url_hash: urlHash,
+          reason: input.reason || 'user_request',
+          source: input.source || null,
+          notes: input.notes || null,
+        });
+      if (insertError) return fail('gdpr_erasures', insertError);
+    }
   }
 
   // 2. Inscriptions du candidat dans le périmètre : adresse exacte (jokers
@@ -417,6 +436,31 @@ export async function recordGdprErasure(
       .select('id');
     if (error) return fail('arrêt des inscriptions', error);
     result.stoppedEnrollments += (stopped ?? []).length;
+  }
+
+  // 3 bis. Marqueur durable sur TOUTES les inscriptions trouvées, terminées
+  //    comprises (décision D5) : tracking_data.gdpr_erased_at. La reprise et
+  //    la relance (resume_enrollments, re_enroll) le refusent, l'interface
+  //    masque « Reprendre » et « Relancer ». Fusion ligne par ligne (jsonb
+  //    relu juste avant l'écriture, après l'arrêt : le moteur n'écrit plus
+  //    sur une inscription arrêtée) ; une date déjà posée est gardée.
+  for (let i = 0; i < allIds.length; i += 100) {
+    const { data: rows, error: readError } = await supabase
+      .from('sequence_enrollments')
+      .select('id, tracking_data')
+      .in('id', allIds.slice(i, i + 100));
+    if (readError) return fail('marqueur d\'effacement', readError);
+    for (const row of (rows ?? []) as Array<{ id: string; tracking_data: Record<string, unknown> | null }>) {
+      const tracking = row.tracking_data && typeof row.tracking_data === 'object' && !Array.isArray(row.tracking_data)
+        ? row.tracking_data
+        : {};
+      if (typeof tracking[GDPR_ERASED_AT_KEY] === 'string') continue;
+      const { error: markError } = await supabase
+        .from('sequence_enrollments')
+        .update({ tracking_data: { ...tracking, [GDPR_ERASED_AT_KEY]: nowIso }, updated_at: nowIso })
+        .eq('id', row.id);
+      if (markError) return fail('marqueur d\'effacement', markError);
+    }
   }
 
   // 4. Exécutions : celles en attente sont annulées, et les textes envoyés

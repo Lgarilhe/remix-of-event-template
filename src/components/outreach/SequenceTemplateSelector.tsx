@@ -49,6 +49,8 @@ import {
 interface ExistingSequence {
   id: string;
   name: string;
+  /** Organisation propriétaire : la liste montre aussi les séquences d'une autre organisation (équipe de mission). */
+  organization_id?: string | null;
   description?: string | null;
   steps: SequenceStepRow[];
   stop_conditions?: unknown;
@@ -201,6 +203,10 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
   // copie perdait tout routage et chaque candidat recevait toutes les branches.
   const handleDuplicate = (seq: ExistingSequence) => {
     const steps: SequenceStep[] = renumberByOrderGroup((seq.steps || []).map(rowToSequenceStep));
+    // Les expéditeurs d'une autre organisation ne sont pas reliés à la nôtre :
+    // le moteur les écarte tous et la rotation n'aurait aucun compte. On ne
+    // recopie la rotation que depuis une séquence de notre organisation.
+    const sameOrganization = !!organizationId && seq.organization_id === organizationId;
 
     const sequence: Sequence = {
       name: `Copie de ${seq.name}`,
@@ -208,9 +214,9 @@ export const SequenceTemplateSelector: React.FC<SequenceTemplateSelectorProps> =
       steps,
       isActive: true,
       stopConditions: asStopConditions(seq.stop_conditions),
-      senderAccounts: asSenderAccounts(seq.sender_accounts),
+      senderAccounts: sameOrganization ? asSenderAccounts(seq.sender_accounts) : [],
       rotationMode: seq.rotation_mode || 'round_robin',
-      multiSenderEnabled: !!seq.multi_sender_enabled,
+      multiSenderEnabled: sameOrganization && !!seq.multi_sender_enabled,
     };
 
     onSelectTemplate(sequence);
@@ -383,7 +389,8 @@ interface SaveAsTemplateModalProps {
   onClose: () => void;
   sequenceId: string;
   sequenceName: string;
-  steps: any[];
+  /** Ignoré : les étapes sont relues en base à l'enregistrement (celles de la liste peuvent manquer ou dater). */
+  steps?: unknown[];
 }
 
 export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
@@ -391,7 +398,6 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
   onClose,
   sequenceId,
   sequenceName,
-  steps,
 }) => {
   const { organizationId } = useOrganization();
   const [name, setName] = useState(sequenceName);
@@ -414,6 +420,21 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
 
+      // Étapes relues en base, comme à l'ouverture de l'éditeur : celles de la
+      // liste valent [] quand leur lecture a échoué, ou datent de l'arrivée sur
+      // la page. Un modèle sans étape n'est jamais enregistré.
+      const { data: steps, error: stepsError } = await supabase
+        .from('sequence_steps')
+        .select('*')
+        .eq('sequence_id', sequenceId)
+        .order('step_order', { ascending: true })
+        .order('id', { ascending: true });
+      if (stepsError) throw stepsError;
+      if (!steps || steps.length === 0) {
+        toast.error('Le modèle n’a pas été enregistré', { description: 'Cette séquence n’a aucune étape à reprendre.' });
+        return;
+      }
+
       // Serialize steps to steps_config — inclut id + refs de branchement +
       // variantes + options email. Avant, un template créé depuis une séquence
       // branchée perdait toute sa structure (branches, A/B, condition_value)
@@ -422,7 +443,7 @@ export const SaveAsTemplateModal: React.FC<SaveAsTemplateModalProps> = ({
       // variantes A/B sur le même ordre ; ends_sequence garde « Fin de séquence ».
       // timeout_action n'est plus écrit : aucune colonne ne le porte, seule
       // l'étape de repli (timeout_branch_step_id) compte.
-      const stepsConfig = steps.map((s: any) => ({
+      const stepsConfig = steps.map((s) => ({
         id: s.id,
         step_order: s.step_order,
         action_type: s.action_type,

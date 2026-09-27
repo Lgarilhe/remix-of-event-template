@@ -107,7 +107,6 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
   const selectedStep = steps.find(s => s.id === selectedStepId);
-  const selectedStepIndex = steps.findIndex(s => s.id === selectedStepId);
 
   const handleAddStep = useCallback((actionType: string) => {
     // Plus grand ordre + 1 : le nombre de lignes compte aussi les variantes A/B.
@@ -315,7 +314,6 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
           >
             <StepEditor
               step={selectedStep}
-              stepIndex={selectedStepIndex}
               allSteps={steps}
               onUpdate={handleUpdateStep}
               allStepTypes={ALL_STEP_TYPES}

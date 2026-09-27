@@ -7,7 +7,7 @@ import {
 import { cn } from '@/lib/utils';
 import { SequenceStep } from '../../SequenceBuilder';
 import { getStepMessageType } from '../messageTypeUtils';
-import { STEP_TYPE_LABELS, formatStepDelay } from '../sequenceGraph';
+import { STEP_TYPE_LABELS, formatStepDelay, stepLabel } from '../sequenceGraph';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
 
 const STEP_ICONS: Record<string, React.ElementType | null> = {
@@ -34,7 +34,6 @@ const STEP_STYLES: Record<string, { bg: string; iconBg: string; border: string; 
 
 type StepNodeData = {
   step: SequenceStep;
-  index: number;
   allSteps: SequenceStep[];
   isSelected: boolean;
   canRemove: boolean;
@@ -43,7 +42,9 @@ type StepNodeData = {
 };
 
 export const WorkflowStepNode = memo(({ data }: NodeProps) => {
-  const { step, index, allSteps, isSelected, canRemove, onRemove, compact } = data as unknown as StepNodeData;
+  const { step, allSteps, isSelected, canRemove, onRemove, compact } = data as unknown as StepNodeData;
+  // Même numérotation que la liste et la vérification : ordre + 1 et lettre de variante.
+  const label = stepLabel(step);
   const Icon = STEP_ICONS[step.actionType];
   const isWhatsApp = step.actionType === 'whatsapp_message';
   const styles = STEP_STYLES[step.actionType] || { bg: 'bg-muted/40', iconBg: 'bg-muted text-muted-foreground', border: 'border-border', accent: '' };
@@ -84,7 +85,7 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
           <div className="flex-1 min-w-0">
             {!compact && (
               <div className="text-3xs text-muted-foreground/50 leading-none mb-0.5 font-medium uppercase tracking-wider">
-                Étape {index + 1}
+                {label}
               </div>
             )}
             <div className={cn(
@@ -112,7 +113,7 @@ export const WorkflowStepNode = memo(({ data }: NodeProps) => {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            aria-label={`Supprimer l'étape ${index + 1}`}
+            aria-label={`Supprimer l'étape ${step.order + 1}${step.variantGroup ? ` (${step.variantGroup})` : ''}`}
             title="Supprimer l'étape"
             className={cn(
               "nodrag absolute -top-2.5 -right-2.5 w-6 h-6 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-all duration-150 shadow-md hover:scale-110",

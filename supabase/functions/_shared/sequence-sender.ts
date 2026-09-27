@@ -92,11 +92,23 @@ export function isEmailStep(step?: { action_type?: unknown; step_channel?: unkno
   return !!step && (step.action_type === 'email' || step.step_channel === 'email');
 }
 
-/** États d'une boîte e-mail qui ne peut plus envoyer tant qu'elle n'est pas reconnectée. */
-export const MAILBOX_DISCONNECTED_STATUSES: readonly string[] = ['CREDENTIALS', 'ERROR', 'PERMISSIONS', 'DELETED'];
+/**
+ * Boîte en état d'envoyer : état vide ou absent (liaison sans état), OK ou
+ * CONNECTED, sans tenir compte de la casse. EXACTEMENT la règle de
+ * sequence-send-email (isUsableMailboxStatus) et de l'écran Connexions
+ * (isUsableEmailAccountStatus) : tout autre état (CREDENTIALS, ERROR, STOPPED,
+ * CONNECTING, PAUSED…) est à reconnecter. Avant, le moteur ne bloquait que
+ * quatre états et laissait sequence-send-email refuser les autres (SEQ-067).
+ */
+export function isUsableMailboxStatus(status: unknown): boolean {
+  if (typeof status !== 'string' || !status.trim()) return true;
+  const normalized = status.trim().toUpperCase();
+  return normalized === 'OK' || normalized === 'CONNECTED';
+}
 
+/** Boîte à reconnecter avant tout envoi : négation de isUsableMailboxStatus. */
 export function isMailboxDisconnected(status: unknown): boolean {
-  return typeof status === 'string' && MAILBOX_DISCONNECTED_STATUSES.includes(status.toUpperCase());
+  return !isUsableMailboxStatus(status);
 }
 
 export type EmailStepSender =

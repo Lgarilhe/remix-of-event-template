@@ -251,15 +251,20 @@ Deno.serve(async (req) => {
       throw new HttpError(403, 'Accès non autorisé à cette organisation');
     }
 
+    // Actions qui n'écrivent qu'en base (arrêt des envois, liaison retirée) :
+    // jamais bloquées par l'absence d'identifiants du prestataire, sinon
+    // « Dissocier » et le retrait d'un membre deviennent impossibles sur une
+    // organisation (ou un environnement) sans intégration LinkedIn.
+    const DATABASE_ONLY_ACTIONS = new Set(['unlink_linkedin_account', 'stop_member_linkedin']);
     const credentials = await resolveUnipileCredentials(organizationId);
-    if (!credentials) {
+    if (!credentials && !DATABASE_ONLY_ACTIONS.has(action)) {
       return new Response(
         JSON.stringify({ success: false, error: 'LinkedIn non configuré pour cette organisation' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { apiKey, dsn } = credentials;
+    const { apiKey, dsn } = credentials ?? { apiKey: '', dsn: '' };
     const baseUrl = `https://${dsn}/api/v1`;
 
     switch (action) {

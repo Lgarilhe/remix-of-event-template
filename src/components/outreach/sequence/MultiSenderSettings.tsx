@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,8 +10,7 @@ import { Plus, Trash2, Users, Mail, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
-import { useOrganization } from '@/hooks/useOrganization';
+import { useMultiSenderTeam } from './useMultiSenderTeam';
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 
 export interface SenderAccount {
@@ -49,66 +47,12 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   rotationMode,
   onRotationModeChange,
 }) => {
-  const { organizationId } = useOrganization();
   const [showPickerModal, setShowPickerModal] = useState(false);
 
-  // Fetch team members with their linked accounts
-  const { data: teamMembers = [], isLoading, isError } = useQuery({
-    queryKey: ['multi-sender-team', organizationId],
-    queryFn: async () => {
-      if (!organizationId) return [];
-
-      const [membersRes, linkedInRes, emailRes] = await Promise.all([
-        supabase
-          .from('organization_members')
-          .select('user_id, role')
-          .eq('organization_id', organizationId),
-        supabase
-          .from('member_linkedin_accounts')
-          .select('user_id, linkedin_account_id, linkedin_account_name')
-          .eq('organization_id', organizationId),
-        supabase
-          .from('member_email_accounts')
-          .select('user_id, email_account_id, email_address')
-          .eq('organization_id', organizationId),
-      ]);
-
-      if (membersRes.error) throw membersRes.error;
-      const members = membersRes.data || [];
-
-      const userIds = members.map(m => m.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, display_name')
-        .in('user_id', userIds);
-
-      const profileMap = new Map((profiles || []).map(p => [p.user_id, p as { user_id: string; display_name: string | null }]));
-      const linkedInMap = new Map((linkedInRes.data || []).map(l => [l.user_id, l]));
-      const emailMap = new Map((emailRes.data || []).map(e => [e.user_id, e]));
-
-      return members.map(m => {
-        const profile = profileMap.get(m.user_id);
-        const linkedin = linkedInMap.get(m.user_id);
-        const email = emailMap.get(m.user_id);
-        const displayName = profile?.display_name || 'Membre';
-        return {
-          userId: m.user_id,
-          role: m.role,
-          displayName,
-          email: email?.email_address || '',
-          avatarUrl: '',
-          hasLinkedIn: !!linkedin,
-          linkedInAccountId: linkedin?.linkedin_account_id || null,
-          linkedInAccountName: linkedin?.linkedin_account_name || null,
-          hasEmail: !!email,
-          emailAccountId: email?.email_account_id || null,
-        };
-      });
-    },
-    // Chargé aussi pour nommer les expéditeurs enregistrés sans libellé.
-    enabled: !!organizationId && (showPickerModal || (enabled && senderAccounts.some(s => !s.label))),
-    staleTime: 30_000,
-  });
+  // Équipe chargée dès que la rotation est active : chaque expéditeur, libellé
+  // ou pas, est comparé aux comptes reliés. Un libellé recopié d'une autre
+  // séquence ne prouve pas que le compte est encore relié à l'équipe.
+  const { data: teamMembers = [], isLoading, isSuccess } = useMultiSenderTeam(showPickerModal || enabled);
 
   const existingSenderUserIds = useMemo(() => {
     const ids = new Set<string>();
@@ -140,16 +84,18 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   };
 
   /**
-   * Ligne d'un expéditeur : libellé enregistré, sinon retrouvé dans l'équipe
-   * (expéditeurs ajoutés avant l'enregistrement du libellé).
+   * Ligne d'un expéditeur, d'après les comptes reliés de l'équipe. Le libellé
+   * enregistré ne sert qu'à l'affichage : un compte absent de l'équipe (copie
+   * d'une séquence d'une autre organisation, membre parti) est signalé.
    */
   const describeSender = (sender: SenderAccount): { title: string; kind: 'linkedin' | 'email' | 'unknown' | 'pending' } => {
-    if (sender.label) return { title: `LinkedIn · ${sender.label}`, kind: 'linkedin' };
     const viaLinkedIn = teamMembers.find(m => m.linkedInAccountId === sender.account_id);
-    if (viaLinkedIn) return { title: `LinkedIn · ${senderLabelFor(viaLinkedIn)}`, kind: 'linkedin' };
+    if (viaLinkedIn) return { title: `LinkedIn · ${sender.label || senderLabelFor(viaLinkedIn)}`, kind: 'linkedin' };
     const viaEmail = teamMembers.find(m => m.emailAccountId === sender.account_id);
     if (viaEmail) return { title: `E-mail · ${viaEmail.email || viaEmail.displayName}`, kind: 'email' };
-    if (isLoading || isError) return { title: sender.email ? sender.email : 'Expéditeur enregistré', kind: 'pending' };
+    // Équipe pas encore lue (ou lecture en échec) : aucun avertissement hasardeux.
+    if (!isSuccess) return { title: sender.label ? `LinkedIn · ${sender.label}` : sender.email || 'Expéditeur enregistré', kind: 'pending' };
+    if (sender.label) return { title: `LinkedIn · ${sender.label}`, kind: 'unknown' };
     return { title: sender.email ? `E-mail · ${sender.email}` : 'Compte introuvable dans l\'équipe', kind: sender.email ? 'email' : 'unknown' };
   };
 

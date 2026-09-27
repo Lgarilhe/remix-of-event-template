@@ -744,8 +744,16 @@ export const HIGH_SENDER_DAILY_LIMIT = 80;
  * Une seule vérification pour la liste de vérification, le fil du mode Guidé
  * et l'enregistrement : ce qui bloque l'enregistrement est affiché comme
  * bloquant, et rien d'autre.
+ *
+ * `linkedSenderIds` : comptes LinkedIn reliés à un membre de l'équipe (les
+ * seuls que le moteur garde dans la rotation), ou null tant qu'ils ne sont pas
+ * connus (lecture en cours ou en échec) : les expéditeurs ne sont alors pas
+ * contrôlés.
  */
-export function validateSequence(sequence: ValidatedSequence): SequenceValidation {
+export function validateSequence(
+  sequence: ValidatedSequence,
+  linkedSenderIds: ReadonlySet<string> | null = null,
+): SequenceValidation {
   const errors: SequenceIssue[] = [];
   const warnings: SequenceIssue[] = [];
   const err = (check: string, message: string, area: SequenceArea = 'steps') => errors.push({ check, area, message });
@@ -827,6 +835,16 @@ export function validateSequence(sequence: ValidatedSequence): SequenceValidatio
   const senders = sequence.senderAccounts ?? [];
   if (sequence.multiSenderEnabled && senders.length === 0) {
     warn('senders', 'Plusieurs expéditeurs est activé sans expéditeur : les envois partiront du compte de chaque inscription.', 'senders');
+  }
+  if (sequence.multiSenderEnabled && senders.length > 0 && linkedSenderIds) {
+    const unlinked = senders.filter((s) => !linkedSenderIds.has(s.account_id)).length;
+    if (unlinked === senders.length) {
+      err('sender_pool', "Aucun expéditeur n'est relié à un membre de votre équipe : la rotation ne peut en utiliser aucun. Retirez-les et ajoutez un membre de l'équipe, ou désactivez « Plusieurs expéditeurs ».", 'senders');
+    } else if (unlinked > 0) {
+      warn('senders', unlinked > 1
+        ? `${unlinked} expéditeurs ne sont plus reliés à un membre de l'équipe : la rotation ne les utilise pas. Retirez-les.`
+        : "1 expéditeur n'est plus relié à un membre de l'équipe : la rotation ne l'utilise pas. Retirez-le.", 'senders');
+    }
   }
   if (sequence.multiSenderEnabled) {
     const high = senders.filter((s) => s.daily_limit > HIGH_SENDER_DAILY_LIMIT);

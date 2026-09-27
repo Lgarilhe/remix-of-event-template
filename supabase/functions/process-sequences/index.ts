@@ -12,14 +12,18 @@ import {
   isUncertainSendError, isEmailSentButNotRecorded, UNCERTAIN_SEND_MESSAGE, shouldCloseForNoPreviousMessage,
   SENT_EXECUTION_STATUSES, EMAIL_CHANNEL_SKIP_REASON, LINKEDIN_CHANNEL_SKIP_REASON, WHATSAPP_CHANNEL_SKIP_REASON,
   MANUAL_SKIP_REASON, resolveStepContent, isMissingRequiredText, missionJobIds,
+  closedChannelSkipReason, isEmailOutcomeUnknown,
 } from "../_shared/sequence-engine-rules.ts";
 import {
   planResume, countOutcomes, ACCOUNT_NOT_IN_ORG_REASON, SUBSCRIPTION_REQUIRED_SKIP_REASON,
+  isGdprErasedEnrollment, canActOnEnrollment, trackingWithoutPauseReason, GDPR_ERASED_RESUME_MESSAGE,
+  MAILBOX_DISCONNECTED_SKIP_REASON,
   type ResumeMode, type ResumeOutcome, type ResumeExecutionRow,
 } from "../_shared/sequence-resume.ts";
 import {
   CYCLE_BUDGET_MS, hasTimeToLock, selectCycleBatch, sendingAccountKey, stepSendChannel, executionChannel,
-  MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE,
+  MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE, dedupeByProfile, shouldReadNextSelectionPage, SELECTION_PAGE_SIZE,
+  SELECTION_TARGET, rotationUnavailablePlan, stepUsesLinkedInSender, isInvalidTextRepresentation,
   sequencesToAutoPause, quotaBlockedRetryAt, normalizeReplyCheck, isConditionRetry, dormantResumeRoute,
   heartbeatStatusFor, normalizeEmailForSuppression, pickSendingTimezone, reEnrollTracking,
   isStaleTemplateSnapshot, withContentOrigin, TEMPLATE_SNAPSHOT_ORIGIN, RESOLVED_CONTENT_ORIGIN,
@@ -376,12 +380,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * Organisation de l'appelant pour une action membre : celle demandée, sinon
  * son organisation active, et l'appartenance est vérifiée. Appel en clé de
  * service ou administrateur plateforme (callerUserId null) : celle demandée,
- * éventuellement nulle.
+ * éventuellement nulle, sans rôle.
+ * D3 (contrat §7) : le rôle est renvoyé, un collaborateur n'agit ensuite que
+ * sur les inscriptions qu'il a créées (même règle que la RLS de B6 ; ces
+ * actions écrivent en clé de service et la contournaient).
  */
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
-async function resolveCallerOrganization(supabase: any, requestedOrgId: string | null, callerUserId: string | null): Promise<{ orgId: string | null } | { response: Response }> {
-  if (!callerUserId) return { orgId: requestedOrgId };
+async function resolveCallerOrganization(supabase: any, requestedOrgId: string | null, callerUserId: string | null): Promise<{ orgId: string | null; role: string | null } | { response: Response }> {
+  if (!callerUserId) return { orgId: requestedOrgId, role: null };
   let orgId = requestedOrgId;
   if (!orgId) {
     const { data: profile } = await supabase
@@ -390,15 +397,20 @@ async function resolveCallerOrganization(supabase: any, requestedOrgId: string |
   }
   if (!orgId) return { response: memberError('no_organization', 'Aucune organisation active sur votre compte.', 400) };
   const { data: membership, error } = await supabase
-    .from('organization_members').select('id')
+    .from('organization_members').select('id, role')
     .eq('organization_id', orgId).eq('user_id', callerUserId).maybeSingle();
   if (error) {
     console.error('[member-action] membership lookup failed:', error);
     return { response: memberError('server_error', 'Vos droits n\'ont pas pu être vérifiés. Réessayez dans un instant.', 500) };
   }
   if (!membership) return { response: memberError('forbidden', 'Accès refusé : cette organisation n\'est pas la vôtre.', 403) };
-  return { orgId };
+  return { orgId, role: typeof membership.role === 'string' ? membership.role : null };
 }
+
+// Refus D3 : candidat inscrit par un collègue (rôle collaborateur).
+const COLLABORATOR_RESUME_MESSAGE = 'Vous ne pouvez reprendre que les candidats que vous avez inscrits.';
+const COLLABORATOR_RE_ENROLL_MESSAGE = 'Vous ne pouvez relancer que les candidats que vous avez inscrits.';
+const COLLABORATOR_ACTION_MESSAGE = 'Vous ne pouvez agir que sur les candidats que vous avez inscrits.';
 
 /**
  * « Envoyer les actions du jour » (SEQ-001) : avance à maintenant les envois
@@ -455,7 +467,7 @@ async function handleNudgeSequences(supabase: any, organizationId: string | null
   const horizonIso = new Date(now.getTime() + 25 * 3600000).toISOString();
   let execQuery = supabase
     .from('sequence_step_executions')
-    .select('id, scheduled_at, step:sequence_steps!inner(action_type), enrollment:sequence_enrollments!inner(id, user_timezone, organization_id, status, sequence_id)')
+    .select('id, scheduled_at, step:sequence_steps!inner(action_type), enrollment:sequence_enrollments!inner(id, user_timezone, organization_id, status, sequence_id, created_by)')
     .eq('status', 'scheduled')
     .gt('scheduled_at', now.toISOString())
     .lte('scheduled_at', horizonIso)
@@ -465,6 +477,8 @@ async function handleNudgeSequences(supabase: any, organizationId: string | null
     .order('scheduled_at', { ascending: true })
     .limit(500);
   if (seqIds.length > 0) execQuery = execQuery.in('enrollment.sequence_id', seqIds);
+  // D3 : un collaborateur n'avance que les envois des candidats qu'il a inscrits.
+  if (callerUserId && caller.role === 'collaborator') execQuery = execQuery.eq('enrollment.created_by', callerUserId);
   const { data: execs, error: execErr } = await execQuery;
   if (execErr) {
     console.error('[nudge_sequences] execution lookup failed:', execErr);
@@ -534,15 +548,15 @@ async function handleSkipExecution(supabase: any, executionId: string, callerUse
   const orgId = enrollment.organization_id ?? exec.organization_id ?? null;
   if (callerUserId) {
     if (!orgId) return json({ success: false, error: 'Organisation introuvable pour cette étape' }, 403);
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('id')
-      .eq('organization_id', orgId)
-      .eq('user_id', callerUserId)
-      .maybeSingle();
-    if (!membership) {
+    // Même contrôle que les autres actions membres (appartenance, puis rôle).
+    const caller = await resolveCallerOrganization(supabase, orgId, callerUserId);
+    if ('response' in caller) {
       console.warn(`[skip_execution] user ${callerUserId} refusé sur l'organisation ${orgId}`);
-      return json({ success: false, error: 'Accès refusé' }, 403);
+      return caller.response;
+    }
+    // D3 : un collaborateur ne saute que les étapes des candidats qu'il a inscrits.
+    if (!canActOnEnrollment({ userId: callerUserId, role: caller.role }, enrollment.created_by)) {
+      return memberError('forbidden', COLLABORATOR_ACTION_MESSAGE, 403);
     }
   }
 
@@ -772,8 +786,13 @@ const RESUME_DEADLINE_MS = 35_000;
 const RESUME_MESSAGES = {
   notFound: 'Inscription introuvable dans votre organisation.',
   sequenceInactive: 'La séquence est désactivée : réactivez-la pour reprendre ce candidat.',
-  accountUnlinked: 'Ce compte LinkedIn n\'est plus relié. Reliez-le avant de reprendre la séquence.',
+  // Compte LinkedIn ou boîte e-mail : isSenderAccountLinked accepte les deux.
+  accountUnlinked: 'Le compte d\'envoi de ce candidat n\'est plus relié à votre organisation. Reliez-le avant de reprendre la séquence.',
   nothing: 'Rien à reprendre : cette séquence est terminée pour ce candidat.',
+  // scheduleNextStep n'a rien créé alors que la séquence n'est pas finie
+  // (étape suivante déjà faite, insertion refusée) : l'état d'origine est remis.
+  notScheduledResume: 'Aucune étape n\'a pu être planifiée : le candidat reste en pause.',
+  notScheduledReEnroll: 'Aucune étape n\'a pu être planifiée : la séquence n\'a pas été relancée pour ce candidat.',
   changed: 'Le statut de ce candidat a changé entre-temps. Actualisez la page puis réessayez.',
   failed: 'La reprise n\'a pas pu être enregistrée. Réessayez dans un instant.',
   timeout: 'Délai dépassé avant de traiter ce candidat : relancez la reprise.',
@@ -802,6 +821,7 @@ interface ResumeEnrollmentRow {
   created_by: string | null;
   replied_at: string | null;
   completed_at: string | null;
+  profile_url: string | null;
   sequence?: { organization_id?: string | null; is_active?: boolean | null } | null;
 }
 
@@ -1235,12 +1255,14 @@ async function handleProcess(supabase: any, force = false) {
     // SEQ-023 : seulement pour les inscriptions actives. Une exécution d'une
     // inscription en pause garde son statut et sa date jusqu'à la reprise
     // (un update PostgREST ne filtre pas sur une jointure : ids d'abord).
+    // D1 (contrat §7) : ni réarmement pour une séquence désactivée.
     const { data: dueBlocked, error: dueBlockedError } = await supabase
       .from('sequence_step_executions')
-      .select('id, enrollment:sequence_enrollments!inner(status)')
+      .select('id, enrollment:sequence_enrollments!inner(status, sequence:outreach_sequences!inner(is_active))')
       .eq('status', 'quota_blocked')
       .lte('scheduled_at', now)
       .eq('enrollment.status', 'active')
+      .eq('enrollment.sequence.is_active', true)
       .limit(500);
     const dueBlockedIds = (dueBlocked ?? []).map((e: { id: string }) => e.id);
     const { data: rearmed, error: rearmError } = dueBlockedError
@@ -1257,6 +1279,33 @@ async function handleProcess(supabase: any, force = false) {
       console.warn('[process] quota_blocked re-arm failed (non-blocking):', rearmError);
     } else if (rearmed?.length) {
       console.log(`[process] Re-armed ${rearmed.length} quota_blocked execution(s) → scheduled`);
+    }
+
+    // Contrat §1 : les 'quota_blocked' échus d'une inscription close (répondu,
+    // terminé, arrêté…) sont annulés. Ni le réarmement ci-dessus ni la
+    // sélection principale ne les voyaient : ils restaient « en attente » à vie,
+    // et une relance (re_enroll) repartait sur cette étape périmée.
+    const { data: closedBlocked, error: closedBlockedError } = await supabase
+      .from('sequence_step_executions')
+      .select('id, enrollment:sequence_enrollments!inner(status)')
+      .eq('status', 'quota_blocked')
+      .lte('scheduled_at', now)
+      .not('enrollment.status', 'in', '(active,paused)')
+      .limit(200);
+    if (closedBlockedError) {
+      console.warn('[process] quota_blocked des inscriptions closes illisibles (non bloquant):', closedBlockedError);
+    } else {
+      const idsByStatus = new Map<string, string[]>();
+      for (const row of (closedBlocked ?? []) as Array<{ id: string; enrollment?: { status?: string | null } | null }>) {
+        const closedStatus = row.enrollment?.status ?? 'inconnu';
+        idsByStatus.set(closedStatus, [...(idsByStatus.get(closedStatus) ?? []), row.id]);
+      }
+      for (const [closedStatus, ids] of idsByStatus) {
+        const { error: closeBlockedErr } = await supabase.from('sequence_step_executions').update({
+          status: 'cancelled', skip_reason: `Inscription close avant l'envoi (${closedStatus})`,
+        }).in('id', ids).eq('status', 'quota_blocked');
+        if (closeBlockedErr) console.warn(`[process] quota_blocked d'inscriptions ${closedStatus} non annulés:`, closeBlockedErr);
+      }
     }
 
     // Recovery: enrollments actifs SANS exécution pendante (audit 2026-07, M5).
@@ -1287,8 +1336,10 @@ async function handleProcess(supabase: any, force = false) {
       for (let page = 0; page < DORMANT_MAX_PAGES && dormant.length < DORMANT_MAX_PER_RUN; page++) {
         let pageQuery = supabase
           .from('sequence_enrollments')
-          .select('id, updated_at, sequence_id, current_step_order, organization_id, tracking_data, connection_status, user_timezone, created_by, account_id, assigned_sender_id')
+          // D1 (contrat §7) : rien n'est planifié pour une séquence désactivée.
+          .select('id, updated_at, sequence_id, current_step_order, organization_id, tracking_data, connection_status, user_timezone, created_by, account_id, assigned_sender_id, sequence:outreach_sequences!inner(is_active)')
           .eq('status', 'active')
+          .eq('sequence.is_active', true)
           .lt('updated_at', staleCutoff)
           .order('updated_at', { ascending: true })
           .limit(DORMANT_PAGE_SIZE);
@@ -1404,25 +1455,65 @@ async function handleProcess(supabase: any, force = false) {
     // (selectCycleBatch), plus au lot entier : une organisation qui inscrivait
     // 300 candidats d'un coup bloquait toutes les autres pendant des heures.
     // Les e-mails sortent du plafond et de l'espacement LinkedIn ; l'échéance
-    // du cycle (SEQ-074) borne le tout. Lot lu plus large pour que les autres
-    // comptes figurent dans la sélection.
-    const FETCH_LIMIT = 100; // Overfetch to compensate for dedup, skips, quota blocks, per-account caps
-
+    // du cycle (SEQ-074) borne le tout.
+    //
+    // Sélection en deux temps (famine entre organisations, SEQ-187) : lecture
+    // LÉGÈRE des exécutions dues, par pages triées par ancienneté, avec la
+    // cadence par compte appliquée au fil des pages, jusqu'à un lot complet ;
+    // puis relecture complète des seules exécutions retenues. Avant, une seule
+    // lecture des 100 plus anciennes : l'arriéré d'un compte (300 candidats
+    // inscrits d'un coup) occupait toute la fenêtre pendant des heures.
     // .order('scheduled_at') : sans tri explicite, la sélection sous backlog
-    // (> FETCH_LIMIT exécutions dues) était arbitraire — certaines exécutions
-    // anciennes pouvaient ne JAMAIS être prises (famine, audit 2026-07 M3).
-    const { data: executions, error: fetchError } = await supabase
-      .from('sequence_step_executions')
-      // SEQ-023 / contrat §1 : les exécutions d'une inscription en pause ne sont
-      // ni envoyées, ni sautées, ni annulées ; elles restent 'scheduled' avec
-      // leur date et repartent à la reprise. Avant, elles passaient 'skipped'
-      // « Enrollment inactive » (terminal) et l'étape était perdue.
-      .select(`*, enrollment:sequence_enrollments!inner(*, sequence:outreach_sequences(*)), step:sequence_steps(*)`)
-      .eq('status', 'scheduled')
-      .lte('scheduled_at', now)
-      .neq('enrollment.status', 'paused')
-      .order('scheduled_at', { ascending: true })
-      .limit(FETCH_LIMIT);
+    // était arbitraire (famine, audit 2026-07 M3) ; 'id' rend les pages stables.
+    // SEQ-023 / contrat §1 : les exécutions d'une inscription en pause ne sont
+    // ni envoyées, ni sautées, ni annulées ; elles restent 'scheduled' avec
+    // leur date et repartent à la reprise.
+    // D1 (contrat §7) : une séquence désactivée n'envoie jamais rien. Filtrée
+    // DANS la requête (jointures internes), ses exécutions n'occupent pas la
+    // fenêtre des autres séquences et restent en attente avec leur date.
+    type DueExecution = {
+      id: string;
+      step?: { action_type?: string | null; step_channel?: string | null; sender_id?: string | null } | null;
+      enrollment?: {
+        profile_id?: string | null; status?: string | null; assigned_sender_id?: string | null;
+        account_id?: string | null; sequence_id?: string | null;
+      } | null;
+    };
+    const dueCandidates: DueExecution[] = [];
+    let cycleSelection = selectCycleBatch<DueExecution>([]);
+    for (let page = 0; ; page++) {
+      const from = page * SELECTION_PAGE_SIZE;
+      const { data: pageRows, error: pageErr } = await supabase
+        .from('sequence_step_executions')
+        .select('id, step:sequence_steps(action_type, step_channel, sender_id), enrollment:sequence_enrollments!inner(profile_id, status, assigned_sender_id, account_id, sequence_id, sequence:outreach_sequences!inner(is_active))')
+        .eq('status', 'scheduled')
+        .lte('scheduled_at', now)
+        .neq('enrollment.status', 'paused')
+        .eq('enrollment.sequence.is_active', true)
+        .order('scheduled_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, from + SELECTION_PAGE_SIZE - 1);
+      if (pageErr) {
+        if (page === 0) throw pageErr;
+        console.warn(`[process] Page ${page + 1} de la sélection illisible : lot limité aux pages lues`, pageErr);
+        break;
+      }
+      const pageList = (pageRows ?? []) as DueExecution[];
+      dueCandidates.push(...pageList);
+      cycleSelection = selectCycleBatch<DueExecution>(dedupeByProfile(dueCandidates));
+      if (!shouldReadNextSelectionPage(page, pageList.length, cycleSelection.selected.length)) break;
+    }
+    const selectedIds = cycleSelection.selected.slice(0, SELECTION_TARGET).map((e) => e.id);
+
+    const { data: executions, error: fetchError } = selectedIds.length === 0
+      ? { data: [], error: null }
+      : await supabase
+        .from('sequence_step_executions')
+        .select(`*, enrollment:sequence_enrollments!inner(*, sequence:outreach_sequences!inner(*)), step:sequence_steps(*)`)
+        .in('id', selectedIds)
+        .eq('status', 'scheduled')
+        .neq('enrollment.status', 'paused')
+        .eq('enrollment.sequence.is_active', true);
 
     if (fetchError) throw fetchError;
 
@@ -1465,21 +1556,16 @@ async function handleProcess(supabase: any, force = false) {
       return subscriptionGates.get(orgId) ?? null;
     };
 
-    // Deduplicate: only process one execution per profile per batch to preserve natural spacing
-    const seenProfiles = new Set<string>();
-    const dedupedExecutions = (executions || []).filter((exec: { enrollment?: { profile_id?: string } }) => {
-      const profileId = exec.enrollment?.profile_id;
-      if (!profileId || seenProfiles.has(profileId)) return false;
-      seenProfiles.add(profileId);
-      return true;
-    });
+    // Lot du cycle, dans l'ordre de la sélection : une exécution par candidat
+    // (espacement naturel), invisibles plafonnées pour tout le cycle, envois
+    // LinkedIn et WhatsApp plafonnés par compte d'envoi, e-mails libres,
+    // exécutions d'inscriptions closes hors plafonds (SEQ-187, dedupeByProfile
+    // et selectCycleBatch appliqués à la sélection légère ci-dessus).
+    const selectionOrder = new Map(selectedIds.map((id, i) => [id, i]));
+    const batchedExecutions = [...(executions || [])].sort((a: { id: string }, b: { id: string }) =>
+      (selectionOrder.get(a.id) ?? 0) - (selectionOrder.get(b.id) ?? 0));
 
-    // Smart batching (SEQ-187) : invisibles plafonnées pour tout le cycle,
-    // envois LinkedIn et WhatsApp plafonnés par compte d'envoi, e-mails libres.
-    const batch = selectCycleBatch<(typeof dedupedExecutions)[number]>(dedupedExecutions);
-    const batchedExecutions = batch.selected;
-
-    console.log(`[process] Smart batch: ${batch.invisible} invisible + ${batch.visible} visible + ${batch.email} email actions (from ${dedupedExecutions.length} candidates)`);
+    console.log(`[process] Smart batch: ${cycleSelection.invisible} invisible + ${cycleSelection.visible} visible + ${cycleSelection.email} email + ${cycleSelection.closed} closed actions (from ${dueCandidates.length} due, ${batchedExecutions.length} loaded)`);
 
     // 2026-05-13 : on a retiré le wait global de 15-45s avant le batch.
     // Il créait une signature « burst » (N messages quasi-simultanés après une
@@ -1654,6 +1740,24 @@ async function handleProcess(supabase: any, force = false) {
 
         // === AUTO-SKIP: channel unavailable ===
         const effectiveChannel = step.step_channel || (step.action_type === 'email' ? 'email' : step.action_type === 'whatsapp_message' ? 'whatsapp' : 'linkedin');
+        // D2 (contrat §7) : canaux e-mail et WhatsApp fermés. L'étape est sautée
+        // AVANT toute recherche d'adresse, tout appel à sequence-send-email ou
+        // au fournisseur, puis la séquence continue (comme avant l'audit, où
+        // aucune inscription n'avait d'adresse). L'interface l'annonce : « elles
+        // seront sautées ». Le code d'envoi ci-dessous reste pour la réouverture.
+        const closedChannelReason = closedChannelSkipReason(step);
+        if (closedChannelReason) {
+          const { data: closedSkipped, error: closedSkipErr } = await supabase.from('sequence_step_executions')
+            .update({ status: 'skipped', skip_reason: closedChannelReason, executed_at: new Date().toISOString() })
+            .eq('id', exec.id).eq('status', 'scheduled').select('id');
+          if (closedSkipErr) console.error(`[process] Saut de l'étape ${exec.id} (canal fermé) non enregistré:`, closedSkipErr);
+          else if ((closedSkipped ?? []).length > 0) {
+            await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
+          }
+          console.log(`[process] ⏭️ ${enrollment.profile_name} — ${closedChannelReason}`);
+          results.skipped++;
+          continue;
+        }
         // SEQ-066 : aucune inscription ne renseignait email_used. Avant de
         // sauter, on cherche l'adresse du candidat dans les sources gratuites
         // de l'organisation (coordonnées enrichies, fiche pipeline), filtre RGPD
@@ -2502,8 +2606,10 @@ async function handleProcess(supabase: any, force = false) {
           // SEQ-189 : échec fermé. Une lecture en erreur ou une inscription
           // disparue (séquence supprimée entre le verrou et l'envoi) laissait
           // partir le message.
+          // D1 (contrat §7) : la séquence est relue aussi, une désactivation
+          // pendant le cycle vaut une pause (rien ne part, l'étape est gardée).
           const { data: lastCall, error: lastCallErr } = await supabase
-            .from('sequence_enrollments').select('status').eq('id', enrollment.id).maybeSingle();
+            .from('sequence_enrollments').select('status, sequence:outreach_sequences(is_active)').eq('id', enrollment.id).maybeSingle();
           if (lastCallErr) {
             // Statut illisible : on n'envoie pas sans savoir. Nouvel essai dans
             // 15 min avec le texte déjà résolu (ni nouvelle rédaction, ni modèle brut).
@@ -2526,10 +2632,13 @@ async function handleProcess(supabase: any, force = false) {
             results.skipped++;
             continue;
           }
-          if (lastCall.status === 'paused') {
+          const sequenceDeactivated = lastCall.status === 'active'
+            && (lastCall.sequence as { is_active?: boolean | null } | null)?.is_active === false;
+          if (lastCall.status === 'paused' || sequenceDeactivated) {
             // Contrat §1 : une pause ne consomme pas l'étape. Elle redevient
-            // 'scheduled' avec son contenu d'avant le verrou et repart à la reprise.
-            console.warn(`[process] ⏸️ LAST-CALL: enrollment ${enrollment.id} mis en pause avant l'envoi — étape ${exec.id} remise en attente`);
+            // 'scheduled' avec son contenu d'avant le verrou et repart à la reprise
+            // (ou à la réactivation de la séquence, D1).
+            console.warn(`[process] ⏸️ LAST-CALL: ${sequenceDeactivated ? 'séquence désactivée' : `enrollment ${enrollment.id} mis en pause`} avant l'envoi — étape ${exec.id} remise en attente`);
             await supabase.from('sequence_step_executions').update({
               status: 'scheduled', final_message: preLockMessage, final_subject: preLockSubject,
               ...(aiWillGenerate ? { tracking_data: preLockTracking } : {}),
@@ -3380,20 +3489,31 @@ async function handleCheckWaitEvents(supabase: any) {
 // Ne retient que les comptes LinkedIn rattachés à l'organisation de la
 // séquence (SEQ-156 : un compte e-mail du pool ne sert jamais aux étapes
 // LinkedIn). Compte les actions LinkedIn visibles du jour par expéditeur
-// (SEQ-155). null quand aucun expéditeur n'est disponible (tous au plafond du
-// jour, pool vide ou illisible) : l'appelant reporte au lieu d'envoyer depuis
-// un autre compte.
+// (SEQ-155). null quand aucun expéditeur n'est disponible : l'appelant
+// reporte au lieu d'envoyer depuis un autre compte. La cause du null est
+// écrite dans `diag.cause` (même convention que generatePersonalizedMessage) :
+//  - 'capped' : tous les expéditeurs au plafond du jour (report au lendemain) ;
+//  - 'empty_pool' : aucun compte LinkedIn relié de l'organisation dans le
+//    groupe (groupe vide, entrées e-mail héritées, membres partis ou comptes
+//    dissociés) : configuration à corriger, attendre ne débloque rien ;
+//  - 'no_org' : séquence sans organisation ;
+//  - 'lookup_failed' : lecture des comptes du groupe en échec (passager).
+type RotationUnavailableCause = 'capped' | 'empty_pool' | 'no_org' | 'lookup_failed';
 // deno-lint-ignore no-explicit-any
-async function pickSenderForRotation(supabase: any, sequence: any): Promise<{ account_id: string; email?: string; daily_limit?: number } | null> {
+async function pickSenderForRotation(supabase: any, sequence: any, diag?: { cause?: RotationUnavailableCause }): Promise<{ account_id: string; email?: string; daily_limit?: number } | null> {
   const rules = await import('../_shared/sequence-send-rules.ts');
   const rawPool = (Array.isArray(sequence?.sender_accounts) ? sequence.sender_accounts : []) as Array<{ account_id: string; email?: string; daily_limit?: number; channel?: string | null }>;
   const declared = rawPool.filter((a) => a && typeof a.account_id === 'string' && a.account_id
     && (!a.channel || a.channel === 'linkedin'));
-  if (declared.length === 0) return null;
+  if (declared.length === 0) {
+    if (diag) diag.cause = 'empty_pool';
+    return null;
+  }
 
   const orgId = (sequence?.organization_id as string | null | undefined) ?? null;
   if (!orgId) {
     console.warn(`[pickSender] séquence ${sequence?.id} sans organisation : rotation non appliquée`);
+    if (diag) diag.cause = 'no_org';
     return null;
   }
   const { data: linkedRows, error: linkedErr } = await supabase
@@ -3403,12 +3523,14 @@ async function pickSenderForRotation(supabase: any, sequence: any): Promise<{ ac
     .in('linkedin_account_id', declared.map((a) => a.account_id));
   if (linkedErr) {
     console.warn(`[pickSender] comptes du pool illisibles pour la séquence ${sequence?.id}:`, linkedErr.message);
+    if (diag) diag.cause = 'lookup_failed';
     return null;
   }
   const linkedIds = new Set(((linkedRows || []) as Array<{ linkedin_account_id: string }>).map((r) => r.linkedin_account_id));
   const pool = declared.filter((a) => linkedIds.has(a.account_id));
   if (pool.length === 0) {
     console.warn(`[pickSender] aucun compte LinkedIn de l'organisation dans le pool de la séquence ${sequence?.id}`);
+    if (diag) diag.cause = 'empty_pool';
     return null;
   }
 
@@ -3441,7 +3563,10 @@ async function pickSenderForRotation(supabase: any, sequence: any): Promise<{ ac
   }
 
   const chosen = rules.chooseRotationSender(pool, mode, sendCounts);
-  if (!chosen) console.warn(`[pickSender] tous les expéditeurs de la séquence ${sequence?.id} ont atteint leur limite du jour`);
+  if (!chosen) {
+    console.warn(`[pickSender] tous les expéditeurs de la séquence ${sequence?.id} ont atteint leur limite du jour`);
+    if (diag) diag.cause = 'capped';
+  }
   return chosen;
 }
 
@@ -3500,6 +3625,9 @@ function isRetryableError(error: string | undefined): boolean {
  */
 function isAccountDisconnectedError(error: string | undefined): boolean {
   if (!error) return false;
+  // Boîte e-mail d'envoi inutilisable (contrôle préalable de executeStepAction) :
+  // pas un compte LinkedIn déconnecté, voir isMailboxDisconnectedError.
+  if (isMailboxDisconnectedError(error)) return false;
   const e = error.toLowerCase();
   // Identifiants de la plateforme absents (secrets, organization_integrations
   // illisible) : ce n'est pas le compte de l'utilisateur, le reconnecter ne
@@ -3517,6 +3645,20 @@ function isAccountDisconnectedError(error: string | undefined): boolean {
 }
 
 /**
+ * Boîte e-mail d'envoi trouvée inutilisable avant l'envoi (executeStepAction,
+ * isMailboxDisconnected de _shared/sequence-sender.ts) : rien n'est parti.
+ * Ce n'est PAS le compte LinkedIn : ni pause 'account_disconnected' (libellée
+ * « compte LinkedIn déconnecté » et reprise par la reconnexion LinkedIn, pas
+ * par celle de la boîte), ni ACCOUNT_DISCONNECTED_SKIP_REASON. L'appelant la
+ * traite AVANT isAccountDisconnectedError, qui ne la reconnaît plus : pause
+ * 'send_failed' avec tracking_data.pause_reason = accountDisconnectedLabel(),
+ * reprise par resume_enrollments une fois la boîte reconnectée.
+ */
+function isMailboxDisconnectedError(error: string | undefined): boolean {
+  return !!error && error.startsWith('email_account_disconnected');
+}
+
+/**
  * Libellé persisté dans error_message quand un compte est déconnecté. Il est
  * affiché tel quel dans le journal de séquence : jamais le corps brut renvoyé
  * par le fournisseur, qui reste dans les logs console (règle branding CLAUDE.md).
@@ -3530,7 +3672,7 @@ function accountDisconnectedLabel(
     : 'LinkedIn';
   // Boîte e-mail trouvée déconnectée avant l'envoi (SEQ-067) : rien n'a été tenté.
   if (rawError.startsWith('email_account_disconnected')) {
-    return "Boîte e-mail d'envoi déconnectée : reconnectez-la dans Paramètres, Connexions, puis reprenez l'inscription.";
+    return "Boîte e-mail d'envoi déconnectée : reconnectez-la dans Paramètres, Connexions, puis reprenez le candidat.";
   }
   const codeMatch = rawError.match(/\b([45]\d{2})\b/);
   const code = codeMatch ? ` (code ${codeMatch[1]})` : '';
@@ -4720,8 +4862,9 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
     switch (actionType) {
       case 'email': {
         // Boîte d'envoi résolue comme sequence-send-email la résoudra (même
-        // règle partagée, SEQ-067). Déconnectée : rien ne part, l'appelant met
-        // l'inscription en pause « compte déconnecté » (isAccountDisconnectedError).
+        // règle partagée, SEQ-067 : utilisable = état vide, OK ou CONNECTED).
+        // Inutilisable : rien ne part, l'appelant met l'inscription en pause
+        // 'send_failed' (isMailboxDisconnectedError), pas « compte LinkedIn déconnecté ».
         // Résolution illisible ou sans boîte : sequence-send-email tranche.
         const { resolveEmailStepSender, isMailboxDisconnected } = await import('../_shared/sequence-sender.ts');
         const mailbox = await resolveEmailStepSender(supabase, enrollment, step as { sender_id?: string | null });
@@ -6387,6 +6530,17 @@ Réponds UNIQUEMENT en JSON valide: {"subject": "objet si InMail, sinon vide", "
     // Sanitize output
     parsed.message = sanitizeSequenceMessage(parsed.message);
     parsed.subject = typeof parsed.subject === 'string' ? parsed.subject.trim() : undefined;
+    // InMail sans objet dans la réponse IA et sans objet de repli (modèle de
+    // l'étape, contenu déjà résolu) : l'envoi échouerait (inmail_subject_missing)
+    // avec un texte figé, donc sans nouvelle rédaction à l'essai suivant. On
+    // renvoie null : l'appelant restaure le contenu d'avant le verrou et
+    // l'essai suivant rédige à nouveau.
+    const fallbackSubject = String(step.subject_template ?? '').trim() || String(_exec.final_subject ?? '').trim();
+    if (isInMail && !parsed.subject && !fallbackSubject) {
+      console.warn('[generatePersonalizedMessage] InMail sans objet dans la réponse IA : étape reportée');
+      if (diag) diag.reason = "Objet de l'InMail manquant dans la réponse IA";
+      return null;
+    }
 
     // ⭐ Sanity-check anonymisation client : si outreach_config.anonymize_client est
     // actif, on force-replace toute occurrence du clientName par l'alias dans le

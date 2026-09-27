@@ -136,6 +136,20 @@ export function isEmailSentButNotRecorded(error: string | null | undefined): boo
   return e.includes('status_update_failed') || e.includes('email sent but failed to update');
 }
 
+/**
+ * Issue inconnue de l'appel à sequence-send-email : délai de 30 s dépassé,
+ * appel abandonné, coupure réseau (« Email function error: … »), ou 5xx de la
+ * fonction. L'e-mail a pu partir (sequence-send-email tourne peut-être
+ * encore) : l'exécution reste 'sending' et le rattrapage tranche avec la
+ * preuve d'envoi (email_message_id). Jamais un échec ordinaire, que la reprise
+ * rejouerait (second e-mail).
+ */
+export function isEmailOutcomeUnknown(error: string | null | undefined): boolean {
+  if (!error) return false;
+  const e = error.trim();
+  return /^Email function error\b/i.test(e) || /^sequence-send-email 5\d\d\b/.test(e);
+}
+
 // ─── SEQ-029 / SEQ-066 : sauts et garde « no_previous_message » ─────────────
 
 export const EMAIL_CHANNEL_SKIP_REASON = 'Aucune adresse e-mail connue pour ce candidat : étape e-mail sautée';
@@ -145,9 +159,35 @@ export const WHATSAPP_CHANNEL_SKIP_REASON = 'No phone number — WhatsApp skippe
 export const MANUAL_SKIP_REASON = 'Manuellement sautée par le recruteur';
 export const CONDITION_SKIP_PREFIX = 'Condition:';
 
+// ─── Décision D2 (contrat §7) : canaux e-mail et WhatsApp fermés ────────────
+
+export const EMAIL_CHANNEL_CLOSED_SKIP_REASON = 'Étape e-mail pas encore disponible : étape sautée';
+export const WHATSAPP_CHANNEL_CLOSED_SKIP_REASON = 'Étape WhatsApp pas encore disponible : étape sautée';
+
+/**
+ * Canaux dont les étapes sont sautées sans aucun appel (ni recherche
+ * d'adresse, ni sequence-send-email, ni fournisseur), puis la séquence
+ * continue. Retirer un canal de cette liste le rouvre : le code d'envoi livré
+ * (résolution de la boîte, email_used) reste en place derrière.
+ */
+export const CLOSED_SEND_CHANNELS: readonly string[] = ['email', 'whatsapp'];
+
+/** Motif du saut si l'étape passe par un canal fermé, sinon null. */
+export function closedChannelSkipReason(step: { action_type?: string | null; step_channel?: string | null } | null | undefined): string | null {
+  const channel = step?.step_channel === 'email' || step?.action_type === 'email'
+    ? 'email'
+    : step?.step_channel === 'whatsapp' || step?.action_type === 'whatsapp_message'
+      ? 'whatsapp'
+      : null;
+  if (!channel || !CLOSED_SEND_CHANNELS.includes(channel)) return null;
+  return channel === 'email' ? EMAIL_CHANNEL_CLOSED_SKIP_REASON : WHATSAPP_CHANNEL_CLOSED_SKIP_REASON;
+}
+
 const CHANNEL_SKIP_REASONS = new Set([
   EMAIL_CHANNEL_SKIP_REASON, LEGACY_EMAIL_CHANNEL_SKIP_REASON,
   LINKEDIN_CHANNEL_SKIP_REASON, WHATSAPP_CHANNEL_SKIP_REASON,
+  // D2 : un saut de canal fermé ne déclenche jamais la garde no_previous_message.
+  EMAIL_CHANNEL_CLOSED_SKIP_REASON, WHATSAPP_CHANNEL_CLOSED_SKIP_REASON,
 ]);
 
 /**

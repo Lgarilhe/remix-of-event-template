@@ -196,8 +196,8 @@ test('SEQ-107 — « Si l’e-mail est revenu en erreur » retirée et signalée
 
 // ---------------------------------------------------------------- SEQ-146
 test('SEQ-146 — une seule vérification pour la liste, le mode Guidé et l’enregistrement', async (t) => {
-  assert.match(checklist, /const \{ errors, warnings \} = validateSequence\(sequence\);/);
-  assert.match(builder, /const errors: string\[\] = validateSequence\(sequence\)\.errors/);
+  assert.match(checklist, /const \{ errors, warnings \} = validateSequence\(sequence, linkedSenderIds\);/);
+  assert.match(builder, /const errors: string\[\] = validateSequence\(sequence, linkedSenderIds\)\.errors/);
   assert.match(builder, /for \(const issue of validation\.errors\)/, 'le fil du mode Guidé lit la même vérification');
   assert.doesNotMatch(builder, /setValidationErrors/, 'plus de liste d’erreurs figée entre deux enregistrements');
   assert.match(builder, /className="lg:hidden border border-border rounded-lg"/, 'vérification repliable sous 1024 px');
@@ -342,7 +342,8 @@ test('SEQ-158 — mode Liste : l’étape s’ouvre au clavier, sans boutons imb
 test('SEQ-159 — canevas : sélection au clavier, suppression visible, boutons nommés, plein écran sur téléphone', () => {
   assert.match(canvas, /onSelectionChange=\{handleSelectionChange\}/);
   assert.match(stepNode, /\[@media\(hover:none\)\]:opacity-100/);
-  assert.match(stepNode, /aria-label=\{`Supprimer l'étape \$\{index \+ 1\}`\}/);
+  // Numéroté comme la liste (ordre + 1, lettre de variante), voir seq-audit-f1d.
+  assert.match(stepNode, /aria-label=\{`Supprimer l'étape \$\{step\.order \+ 1\}\$\{step\.variantGroup \? ` \(\$\{step\.variantGroup\}\)` : ''\}`\}/);
   assert.match(addNode, /: 'Ajouter une étape'\}/);
   assert.match(visual, /<SheetContent side="bottom"/);
   assert.doesNotMatch(visual, /max-h-\[200px\]/);

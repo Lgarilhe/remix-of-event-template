@@ -4,6 +4,7 @@ import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { useOrganization } from '@/hooks/useOrganization';
 import {
   formatSequenceError as formatErrorMessage,
   formatSkipReason,
@@ -75,6 +76,7 @@ import { cn } from '@/lib/utils';
 import {
   DONE_EXECUTION_STATUSES,
   PENDING_EXECUTION_STATUSES,
+  SEQUENCE_LEVEL_PAUSE_REASONS,
   enrollmentStatusLabel,
   pausedLabel,
   pauseReasonHint,
@@ -159,6 +161,56 @@ const sendFailedDetail = (enrollment: Enrollment): string | null => {
 const isDoneStatus = (status: string) => (DONE_EXECUTION_STATUSES as readonly string[]).includes(status);
 const isPendingStatus = (status: string) => (PENDING_EXECUTION_STATUSES as readonly string[]).includes(status);
 
+/** Pause posée par la séquence (désactivation, auto-pause) : levée par la réactivation. */
+const isSequenceLevelPause = (reason: string | null | undefined): boolean =>
+  SEQUENCE_LEVEL_PAUSE_REASONS.some(r => r === reason);
+
+/**
+ * Pauses reprises par « Reprendre tous les candidats en pause » : pauses une
+ * par une (dont celles héritées de l'ancienne désactivation, D6) et pauses de
+ * séquence restées en place alors que la séquence est de nouveau active. Les
+ * autres raisons (compte, abonnement, limite, échec d'envoi, candidat
+ * injoignable) ont leur propre action.
+ */
+const BULK_RESUME_PAUSE_REASONS: string[] = ['manual', ...SEQUENCE_LEVEL_PAUSE_REASONS];
+/** Candidats par appel de reprise groupée (le serveur en traite 100 au plus, en 35 s). */
+const BULK_RESUME_CHUNK = 25;
+
+/** Motif des étapes annulées par un effacement RGPD (moteur, recordGdprErasure). */
+const GDPR_ERASURE_SKIP_PREFIX = 'Effacement des données demandé';
+const GDPR_ERASED_NOTICE = 'Ce candidat a demandé l’effacement de ses données : il ne peut plus être relancé.';
+
+/**
+ * D5 : effacement RGPD, définitif. Marqueur durable tracking_data.gdpr_erased_at,
+ * ou une étape annulée par l'effacement. Ni « Reprendre » ni « Relancer ».
+ */
+const isGdprErased = (enrollment: Pick<Enrollment, 'tracking_data' | 'executions'>): boolean => {
+  const tracking = enrollment.tracking_data;
+  if (tracking && typeof tracking === 'object' && !Array.isArray(tracking)
+    && (tracking as Record<string, unknown>).gdpr_erased_at) {
+    return true;
+  }
+  return (enrollment.executions || []).some(e => !!e.skip_reason?.startsWith(GDPR_ERASURE_SKIP_PREFIX));
+};
+
+/** Échec dont l'issue est inconnue (le message a pu partir) : la reprise repart après lui. */
+const UNCERTAIN_FAILURE_PREFIXES = ['Interrompu pendant l’envoi', "Interrompu pendant l'envoi", 'Envoi incertain'];
+
+/**
+ * Pause « échec d'envoi » dont la reprise rejoue l'étape en échec : sans étape
+ * en attente, le serveur planifie l'étape qui suit la dernière étape faite, et
+ * un échec n'en est pas une. « Reprendre à l'étape suivante » était donc faux.
+ */
+const resumeRetriesFailedStep = (enrollment: Pick<Enrollment, 'status' | 'pause_reason' | 'executions'>): boolean => {
+  if (enrollment.status !== 'paused' || enrollment.pause_reason !== 'send_failed') return false;
+  const executions = enrollment.executions || [];
+  if (executions.some(e => isPendingStatus(e.status) || e.status === 'sending')) return false;
+  const lastDoneOrder = Math.max(-1, ...executions.filter(e => isDoneStatus(e.status)).map(e => e.step_order));
+  return executions.some(e => e.status === 'failed'
+    && !UNCERTAIN_FAILURE_PREFIXES.some(prefix => (e.error_message || '').startsWith(prefix))
+    && e.step_order > lastDoneOrder);
+};
+
 // Icône et couleur par type d'étape réel. Libellés et étapes internes
 // (attentes, contrôles, conditions) : src/lib/sequenceErrorMessages.ts.
 const actionTypeStyle: Record<string, { icon: React.ReactNode; bgColor: string }> = {
@@ -228,10 +280,19 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [expandedEnrollments, setExpandedEnrollments] = useState<Set<string>>(new Set());
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'resume' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'bulkResume' | 'resume' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string } | null>(null);
   // Compteurs de la séquence entière, lus en base (la liste n'en charge que
-  // 200 à la fois). null tant qu'ils ne sont pas connus.
-  const [statusCounts, setStatusCounts] = useState<{ active: number; paused: number; done: number } | null>(null);
+  // 200 à la fois). null tant qu'ils ne sont pas connus. `resumable` : en
+  // pause pour une raison que « Reprendre tous les candidats en pause » lève.
+  const [statusCounts, setStatusCounts] = useState<{ active: number; paused: number; done: number; resumable: number } | null>(null);
+  // État de la séquence, relu à chaque chargement : une pause de séquence
+  // (désactivation, auto-pause) ne se reprend que si elle est de nouveau active.
+  // null tant qu'il n'est pas connu (aucune reprise de ce type proposée).
+  const [sequenceActive, setSequenceActive] = useState<boolean | null>(null);
+  const [bulkResuming, setBulkResuming] = useState(false);
+  // D3 : un collaborateur ne met en pause ni ne reprend que ses propres
+  // inscriptions (RLS, serveur) : les actions groupées ne lui sont pas proposées.
+  const { isCollaborator } = useOrganization();
   // Échec du dernier chargement complet : affiché avec « Réessayer » au lieu
   // de « Aucun candidat inscrit ».
   const [loadError, setLoadError] = useState(false);
@@ -242,17 +303,33 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       .select('id', { count: 'exact', head: true })
       .eq('sequence_id', sequenceId)
       .in('status', statuses);
-    const [activeRes, pausedRes, doneRes] = await Promise.all([
+    const [activeRes, pausedRes, doneRes, resumableRes] = await Promise.all([
       countFor(['active']),
       countFor(['paused']),
       countFor(['completed', 'replied']),
+      countFor(['paused']).in('pause_reason', BULK_RESUME_PAUSE_REASONS),
     ]);
-    if (activeRes.error || pausedRes.error || doneRes.error) {
-      console.error('Error counting enrollments:', activeRes.error || pausedRes.error || doneRes.error);
+    if (activeRes.error || pausedRes.error || doneRes.error || resumableRes.error) {
+      console.error('Error counting enrollments:', activeRes.error || pausedRes.error || doneRes.error || resumableRes.error);
       setStatusCounts(null);
       return;
     }
-    setStatusCounts({ active: activeRes.count ?? 0, paused: pausedRes.count ?? 0, done: doneRes.count ?? 0 });
+    setStatusCounts({
+      active: activeRes.count ?? 0,
+      paused: pausedRes.count ?? 0,
+      done: doneRes.count ?? 0,
+      resumable: resumableRes.count ?? 0,
+    });
+  };
+
+  const fetchSequenceActive = async () => {
+    const { data, error } = await supabase
+      .from('outreach_sequences')
+      .select('is_active')
+      .eq('id', sequenceId)
+      .maybeSingle();
+    if (error) console.error('Error reading sequence state:', error);
+    setSequenceActive(error || !data ? null : !!data.is_active);
   };
 
   // Exécutions des inscriptions affichées, par lots (voir EXECUTION_BATCH_SIZE)
@@ -300,13 +377,15 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         stepsLookup = stepsData || [];
         setAllSteps(stepsLookup);
 
-        // Nombre total d'inscrits (pagination) et compteurs par statut.
+        // Nombre total d'inscrits (pagination), compteurs par statut et état
+        // de la séquence.
         const [{ count }] = await Promise.all([
           supabase
             .from('sequence_enrollments')
             .select('id', { count: 'exact', head: true })
             .eq('sequence_id', sequenceId),
           fetchStatusCounts(),
+          fetchSequenceActive(),
         ]);
         setTotalCount(count || 0);
       }
@@ -464,12 +543,29 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
       if (enrollError) throw enrollError;
       const paused = count ?? data?.length ?? 0;
-      if (paused === 0) {
-        toast.error('Aucun candidat n’a été mis en pause', {
-          description: 'Plus aucun candidat n’était en cours, ou vous n’avez pas les droits sur cette séquence.',
+      const pausedText = `${paused} candidat${paused > 1 ? 's' : ''} mis en pause`;
+      // D3 : recompte systématique. La RLS peut n'en laisser mettre en pause
+      // qu'une partie (collaborateur : ses seules inscriptions), et d'autres
+      // ont pu être inscrits entre-temps : jamais de succès s'il en reste.
+      const { count: stillActive, error: countError } = await supabase
+        .from('sequence_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('sequence_id', sequenceId)
+        .eq('status', 'active');
+      const remaining = stillActive ?? 0;
+      if (countError) {
+        console.error('Error recounting active enrollments:', countError);
+        toast.warning(paused > 0 ? pausedText : 'Aucun candidat n’a été mis en pause', {
+          description: 'Impossible de vérifier s’il reste des candidats en cours : actualisez la liste.',
         });
+      } else if (remaining > 0) {
+        toast.error(paused > 0 ? `${pausedText}, ${remaining} encore en cours` : 'Aucun candidat n’a été mis en pause', {
+          description: `${remaining} candidat${remaining > 1 ? 's' : ''} en cours ${remaining > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remaining > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remaining > 1 ? 'ils viennent' : 'il vient'} d’être ${remaining > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur.`,
+        });
+      } else if (paused === 0) {
+        toast.info('Aucun candidat n’était en cours.');
       } else {
-        toast.success(`${paused} candidat${paused > 1 ? 's' : ''} mis en pause`, {
+        toast.success(pausedText, {
           description: 'Ils ne recevront plus de messages de cette séquence tant que vous ne les reprenez pas.',
         });
       }
@@ -480,13 +576,95 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     await fetchEnrollments();
   };
 
+  // D6 : « Reprendre tous les candidats en pause » (pauses une par une, dont
+  // celles de l'ancienne désactivation, et pauses de séquence restées alors que
+  // la séquence est active). Candidats lus en base (toute la séquence, pas la
+  // page chargée), puis reprise serveur par lots d'identifiants : le serveur
+  // refuse une séquence désactivée, un compte non relié ou un effacement RGPD,
+  // candidat par candidat.
+  const bulkResumePaused = async () => {
+    setBulkResuming(true);
+    const toastId = `bulk-resume-${sequenceId}`;
+    const counts = { resumed: 0, nothing_to_resume: 0, account_unlinked: 0, not_paused: 0, error: 0 };
+    let targets: string[] = [];
+    let unprocessed = 0;
+    let callError: string | null = null;
+    let firstErrorMessage: string | null = null;
+    try {
+      for (let from = 0; ; from += EXECUTION_PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from('sequence_enrollments')
+          .select('id')
+          .eq('sequence_id', sequenceId)
+          .eq('status', 'paused')
+          .in('pause_reason', BULK_RESUME_PAUSE_REASONS)
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, from + EXECUTION_PAGE_SIZE - 1);
+        if (error) throw error;
+        targets.push(...(data || []).map(e => e.id));
+        if (!data || data.length < EXECUTION_PAGE_SIZE) break;
+      }
+      targets = [...new Set(targets)];
+      if (targets.length === 0) {
+        toast.info('Aucun candidat à reprendre.');
+      } else {
+        for (let i = 0; i < targets.length; i += BULK_RESUME_CHUNK) {
+          if (targets.length > BULK_RESUME_CHUNK) {
+            toast.loading(`Reprise en cours : ${i} sur ${targets.length}…`, { id: toastId });
+          }
+          const { data, error } = await invokeEdgeFunction('process-sequences', {
+            action: 'resume_enrollments',
+            enrollment_ids: targets.slice(i, i + BULK_RESUME_CHUNK),
+          });
+          const payload = data as ResumeResponse | null;
+          if (error || !payload?.success) {
+            callError = payload?.message || error?.message || 'Réessayez dans un instant.';
+            unprocessed = targets.length - i;
+            break;
+          }
+          for (const key of Object.keys(counts) as Array<keyof typeof counts>) {
+            counts[key] += Number(payload.counts?.[key] ?? 0) || 0;
+          }
+          firstErrorMessage ??= payload.results?.find(r => r.outcome === 'error' && r.message)?.message ?? null;
+        }
+        toast.dismiss(toastId);
+        const n = (count: number, one: string, many: string) => `${count} ${count > 1 ? many : one}`;
+        const others = [
+          counts.account_unlinked > 0 ? `${n(counts.account_unlinked, 'reste', 'restent')} en pause : compte LinkedIn qui n’est plus relié` : null,
+          counts.nothing_to_resume > 0 ? `${n(counts.nothing_to_resume, 'n’avait', 'n’avaient')} plus d’étape à envoyer` : null,
+          counts.not_paused > 0 ? `${n(counts.not_paused, 'n’était', 'n’étaient')} plus en pause` : null,
+          counts.error > 0 ? `${n(counts.error, 'en erreur', 'en erreur')}${firstErrorMessage ? ` (${firstErrorMessage.replace(/\.$/, '')})` : ''}` : null,
+          unprocessed > 0 ? `${n(unprocessed, 'non traité', 'non traités')} : ${callError}` : null,
+        ].filter((d): d is string => !!d).join(' ; ');
+        const title = `${n(counts.resumed, 'candidat repris', 'candidats repris')}`;
+        if (!others && counts.resumed > 0) {
+          toast.success(title, { description: 'Une étape déjà programmée garde sa date ; sinon, la suivante suit son délai habituel, pendant vos heures d’envoi.' });
+        } else if (counts.resumed > 0) {
+          toast.warning(title, { description: `${others}.` });
+        } else {
+          toast.error('Aucun candidat n’a repris', others ? { description: `${others}.` } : undefined);
+        }
+      }
+    } catch (error) {
+      console.error('Error bulk resuming:', error);
+      toast.dismiss(toastId);
+      toast.error('La reprise groupée a échoué. Réessayez.');
+    } finally {
+      setBulkResuming(false);
+    }
+    await fetchEnrollments();
+  };
+
   const reEnroll = async (enrollmentId: string) => {
     const name = nameOf(enrollmentId);
     try {
       const { result } = await callResumeAction('re_enroll', enrollmentId);
       if (result.outcome === 'resumed') {
+        // Pas de délai promis : le serveur réarme une étape à sa date prévue ou
+        // programme la suivante selon son délai (parfois plusieurs jours).
         toast.success(`Séquence relancée pour ${name}`, {
-          description: 'La prochaine action partira dans les prochaines minutes, pendant vos heures d’envoi.',
+          description: 'La prochaine action est programmée selon les délais de la séquence, pendant vos heures d’envoi.',
         });
       } else if (result.outcome === 'nothing_to_resume') {
         toast.info(`Rien à relancer : cette séquence est terminée pour ${name}`);
@@ -504,24 +682,18 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     await fetchEnrollments();
   };
 
-  // Estimation de la prochaine action pour le dialogue « Relancer » : l'étape
-  // annulée la plus récente encore jamais faite, sinon l'étape visible qui suit
-  // la dernière étape terminée (même règle que le serveur). null si inconnue.
+  // Estimation de la prochaine action visible pour le dialogue « Relancer » :
+  // l'étape visible qui suit la dernière étape terminée (une étape annulée par
+  // la réponse n'est pas réarmée par le serveur, qui programme la suite). Les
+  // attentes intermédiaires sont masquées : c'est une estimation, sans date.
+  // null si aucune étape visible ne reste.
   const nextActionLabel = (enrollment: Enrollment | undefined): string | null => {
     if (!enrollment) return null;
     const executions = enrollment.executions || [];
-    const touched = new Set(executions.filter(e => isDoneStatus(e.status) || isPendingStatus(e.status)).map(e => e.step_id));
-    const rearmable = executions
-      .filter(e => e.status === 'cancelled' && !touched.has(e.step_id))
-      .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())[0];
-    let actionType = rearmable?.step?.action_type;
-    if (!actionType) {
-      const doneOrders = executions.filter(e => isDoneStatus(e.status)).map(e => e.step_order);
-      const lastDone = doneOrders.length > 0 ? Math.max(...doneOrders) : -1;
-      actionType = allSteps.find(s => s.step_order > lastDone && !isHiddenActionType(s.action_type))?.action_type;
-    }
-    if (!actionType || isHiddenActionType(actionType)) return null;
-    return actionTypeLabel(actionType);
+    const doneOrders = executions.filter(e => isDoneStatus(e.status)).map(e => e.step_order);
+    const lastDone = doneOrders.length > 0 ? Math.max(...doneOrders) : -1;
+    const actionType = allSteps.find(s => s.step_order > lastDone && !isHiddenActionType(s.action_type))?.action_type;
+    return actionType ? actionTypeLabel(actionType) : null;
   };
 
   const skipStep = async (executionId: string) => {
@@ -593,6 +765,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       await resumeEnrollment(confirmAction.id);
     } else if (confirmAction.type === 'bulkStop') {
       await bulkStopActive();
+    } else if (confirmAction.type === 'bulkResume') {
+      await bulkResumePaused();
     } else if (confirmAction.type === 'markReplied' && confirmAction.id) {
       await markReplied(confirmAction.id);
     } else if (confirmAction.type === 'reEnroll' && confirmAction.id) {

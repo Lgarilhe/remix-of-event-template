@@ -701,6 +701,21 @@ const enrollInSequence: AgentTool = {
       return { allowed: false, reason: 'Mission inaccessible' };
     }
 
+    // Plan : même garde que l'interface (sequences_send). Sans elle, le moteur
+    // passait l'inscription en pause « abonnement requis » au premier passage,
+    // alors que l'assistant avait annoncé la première action. Échec fermé.
+    try {
+      const gate = await getSubscriptionGate(ctx.adminClient as unknown as GateClient, ctx.organizationId);
+      if (!gate.canSendSequences) {
+        return {
+          allowed: false,
+          reason: "Votre offre actuelle ne permet pas l'envoi de séquences. Choisissez une offre pour inscrire des candidats.",
+        };
+      }
+    } catch {
+      return { allowed: false, reason: "Votre abonnement n'a pas pu être vérifié. Réessayez dans un instant." };
+    }
+
     // Compte d'envoi (SEQ-043) : le compte LinkedIn relié de l'utilisateur
     // dans cette organisation, en état OK. Jamais celui d'un collègue, même
     // si le modèle reprend un account_id vu ailleurs.
@@ -2405,7 +2420,7 @@ const sendLinkedInMessage: AgentTool = {
     const resolved = await resolveSendingAccount(params, ctx);
     if ('error' in resolved) return { allowed: false, reason: resolved.error };
     if (resolved.account_status && resolved.account_status !== 'OK') {
-      return { allowed: false, reason: `Compte LinkedIn ${resolved.account_id} en statut "${resolved.account_status}". Reconnecte-le avant d'envoyer.` };
+      return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
     }
 
     return { allowed: true };
@@ -4238,13 +4253,15 @@ const sendEmail: AgentTool = {
 // Crée une séquence outreach multi-étapes (outreach_sequences + sequence_steps).
 // Ne déclenche AUCUN envoi : les envois partent à l'enrollment (enroll_in_sequence,
 // lui-même sous approbation). Types d'étapes exposés au modèle = sous-ensemble
-// sûr du CHECK action_type.
+// sûr du CHECK action_type, aligné sur l'éditeur (isStepTypeOffered).
+// Décision D2 (contrat des lots, §7) : canaux e-mail et WhatsApp fermés, le
+// moteur saute ces étapes ; l'assistant ne les propose donc plus. Les remettre
+// ici en même temps que l'éditeur à la réouverture du canal.
 
 const SEQ_STEP_TYPES: Record<string, { action_type: string; channel: 'linkedin' | 'email' }> = {
   message: { action_type: 'message', channel: 'linkedin' },
   inmail: { action_type: 'inmail', channel: 'linkedin' },
   connection_request: { action_type: 'connection_request', channel: 'linkedin' },
-  email: { action_type: 'email', channel: 'email' },
   wait_reply: { action_type: 'wait_reply', channel: 'linkedin' },
 };
 
@@ -4285,12 +4302,13 @@ function parseSequenceSteps(params: Record<string, unknown>): { steps: SeqStepIn
 const createSequence: AgentTool = {
   name: 'create_sequence',
   description:
-    "Create a multi-step outreach sequence (LinkedIn messages / InMails / connection requests / emails / wait-for-reply). " +
+    "Create a multi-step LinkedIn outreach sequence (messages / InMails / connection requests / wait-for-reply). " +
     "Use when the user says 'crée une séquence de relance', 'monte-moi une séquence 3 touches pour la mission X'. " +
     "Creating a sequence sends NOTHING — candidates are added later via enroll_in_sequence (separate approval). " +
-    "steps: 1-8 items {type: message|inmail|connection_request|email|wait_reply, delay_days (0-30, since previous step ; " +
+    "steps: 1-8 items {type: message|inmail|connection_request|wait_reply, delay_days (0-30, since previous step ; " +
     "for wait_reply: how many days to wait for an answer, default 3 — without an answer the sequence moves on), " +
-    "subject (required for email/inmail), message (template text ; variables {{first_name}}, {{company}} supported)}. " +
+    "subject (required for inmail), message (template text ; variables {{first_name}}, {{company}} supported)}. " +
+    "Email and WhatsApp steps are not available yet: never propose them. " +
     "Optional mission_id links the sequence to a mission.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -4307,7 +4325,7 @@ const createSequence: AgentTool = {
           properties: {
             type: { type: 'string', enum: Object.keys(SEQ_STEP_TYPES) },
             delay_days: { type: 'number', description: 'Days to wait after the previous step (0-30, default 0).' },
-            subject: { type: 'string', description: 'Subject — required for email and inmail steps.' },
+            subject: { type: 'string', description: 'Subject — required for inmail steps.' },
             message: { type: 'string', description: 'Message template (plain text French). Not needed for wait_reply.' },
           },
           required: ['type'],

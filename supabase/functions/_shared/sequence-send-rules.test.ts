@@ -79,14 +79,16 @@ Deno.test("SEQ-096 : la note n'est jamais coupée sur un point interne", () => {
   assertEquals(smartTruncate("Court.", 300), "Court.");
 });
 
-Deno.test("SEQ-103 : file InMail, 429 et 503 relancés trois fois, 502/504/délai définitifs", () => {
-  const first = inmailQueueRetry(503, null);
+Deno.test("SEQ-103 : file InMail, 429 relancé trois fois, tout 5xx (503 compris) et délai définitifs", () => {
+  const first = inmailQueueRetry(429, null);
   assertEquals([first.retry, first.attempt], [true, 1]);
   const third = inmailQueueRetry(429, "Service LinkedIn momentanément indisponible, nouvel essai 2/3 dans 1 h");
   assertEquals([third.retry, third.attempt], [true, 3]);
-  const fourth = inmailQueueRetry(503, third.message);
+  const fourth = inmailQueueRetry(429, third.message);
   assertEquals(fourth.retry, false);
-  for (const s of [502, 504, null, 400, 422]) assertEquals(inmailQueueRetry(s, null).retry, false, `${s}`);
+  // 503 : même politique que le moteur (classifySendStatus = 'uncertain'), jamais renvoyé seul.
+  assertEquals(classifySendStatus(503), "uncertain");
+  for (const s of [503, 500, 502, 504, null, 400, 422]) assertEquals(inmailQueueRetry(s, null).retry, false, `${s}`);
 });
 
 Deno.test("SEQ-035 : message IA vide ou réduit à la signature refusé", () => {

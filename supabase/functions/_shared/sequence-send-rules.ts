@@ -148,16 +148,18 @@ export function smartTruncate(text: string, maxLen: number): string {
 export const INMAIL_QUEUE_MAX_ATTEMPTS = 3;
 
 /**
- * 429 et 503 = requête non traitée : nouvel essai dans une heure, trois fois
- * au plus. 502, 504, délai dépassé et refus 4xx restent définitifs (l'InMail
- * a pu partir, ou ne partira jamais). Le compteur vit dans error_message
- * (« essai n/3 »), la table n'a pas de colonne dédiée.
+ * 429 = requête refusée avant traitement : nouvel essai dans une heure, trois
+ * fois au plus. Tout 5xx (503 compris), délai dépassé et refus 4xx restent
+ * définitifs : même règle que le moteur (classifySendStatus, SEQ-005), un 5xx
+ * a pu livrer l'InMail, le renvoyer ferait un doublon et un second crédit.
+ * Le compteur vit dans error_message (« essai n/3 »), la table n'a pas de
+ * colonne dédiée.
  */
 export function inmailQueueRetry(
   status: number | null,
   previousError: string | null | undefined,
 ): { retry: boolean; attempt: number; message: string } {
-  if (status !== 429 && status !== 503) return { retry: false, attempt: 0, message: '' };
+  if (status !== 429) return { retry: false, attempt: 0, message: '' };
   const m = (previousError || '').match(/essai (\d+)\/\d+/);
   const attempt = (m ? parseInt(m[1], 10) : 0) + 1;
   const retry = attempt <= INMAIL_QUEUE_MAX_ATTEMPTS;

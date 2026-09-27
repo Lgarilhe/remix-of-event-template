@@ -49,8 +49,11 @@ export const INVISIBLE_STEP_ACTIONS: readonly string[] = [
   'wait_reply', 'wait_profile_visit', 'condition_branch',
 ];
 
+/** Exécutions d'inscriptions closes (à annuler) retenues au plus par cycle, hors plafonds par compte. */
+export const MAX_CLOSED_PER_CYCLE = 30;
+
 export interface BatchStep { action_type?: string | null; step_channel?: string | null; sender_id?: string | null }
-export interface BatchEnrollment { assigned_sender_id?: string | null; account_id?: string | null; sequence_id?: string | null }
+export interface BatchEnrollment { assigned_sender_id?: string | null; account_id?: string | null; sequence_id?: string | null; status?: string | null }
 
 /** Canal réel d'une étape (step_channel l'emporte sur le type d'action). */
 export function stepSendChannel(step: BatchStep | null | undefined): 'email' | 'whatsapp' | 'linkedin' {
@@ -80,16 +83,27 @@ export function sendingAccountKey(step: BatchStep | null | undefined, enrollment
  */
 export function selectCycleBatch<T extends { step?: BatchStep | null; enrollment?: BatchEnrollment | null }>(
   executions: T[],
-  opts: { maxVisiblePerAccount?: number; maxInvisible?: number } = {},
-): { selected: T[]; invisible: number; visible: number; email: number } {
+  opts: { maxVisiblePerAccount?: number; maxInvisible?: number; maxClosed?: number } = {},
+): { selected: T[]; invisible: number; visible: number; email: number; closed: number } {
   const maxVisiblePerAccount = opts.maxVisiblePerAccount ?? MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE;
   const maxInvisible = opts.maxInvisible ?? MAX_INVISIBLE_PER_CYCLE;
+  const maxClosed = opts.maxClosed ?? MAX_CLOSED_PER_CYCLE;
   const perAccount = new Map<string, number>();
   let invisible = 0;
   let visible = 0;
   let email = 0;
+  let closed = 0;
   const selected: T[] = [];
   for (const exec of executions) {
+    // Inscription close (répondu, terminé, arrêté…) : l'exécution sera
+    // seulement annulée, elle n'occupe pas une place d'envoi de son compte.
+    const enrollmentStatus = exec.enrollment?.status;
+    if (enrollmentStatus && enrollmentStatus !== 'active') {
+      if (closed >= maxClosed) continue;
+      closed++;
+      selected.push(exec);
+      continue;
+    }
     const actionType = exec.step?.action_type || '';
     if (INVISIBLE_STEP_ACTIONS.includes(actionType)) {
       if (invisible >= maxInvisible) continue;
@@ -109,7 +123,96 @@ export function selectCycleBatch<T extends { step?: BatchStep | null; enrollment
     visible++;
     selected.push(exec);
   }
-  return { selected, invisible, visible, email };
+  return { selected, invisible, visible, email, closed };
+}
+
+/**
+ * Une exécution par candidat (profile_id) et par cycle, la plus ancienne
+ * reçue : espacement naturel entre deux actions vers la même personne. Une
+ * exécution sans profile_id n'est jamais prise (comportement historique).
+ */
+export function dedupeByProfile<T extends { enrollment?: { profile_id?: string | null } | null }>(executions: T[]): T[] {
+  const seen = new Set<string>();
+  return executions.filter((exec) => {
+    const profileId = exec.enrollment?.profile_id;
+    if (!profileId || seen.has(profileId)) return false;
+    seen.add(profileId);
+    return true;
+  });
+}
+
+// ─── SEQ-187 (suite) : sélection du cycle par pages ─────────────────────────
+
+/** Lecture légère des exécutions dues : taille d'une page et nombre de pages au plus. */
+export const SELECTION_PAGE_SIZE = 200;
+export const SELECTION_MAX_PAGES = 5;
+/** Exécutions retenues au plus pour un cycle (relues ensuite en entier). */
+export const SELECTION_TARGET = 100;
+
+/**
+ * Faut-il lire la page suivante ? Oui tant que la page lue était pleine, que
+ * le lot retenu n'est pas complet et qu'il reste des pages permises. Avant,
+ * une seule lecture des 100 plus anciennes : l'arriéré d'un compte (300
+ * candidats inscrits d'un coup) occupait toute la fenêtre et les autres
+ * organisations n'entraient jamais dans le lot (famine de plusieurs heures).
+ */
+export function shouldReadNextSelectionPage(
+  pageIndex: number, pageRows: number, selectedCount: number,
+  opts: { pageSize?: number; maxPages?: number; target?: number } = {},
+): boolean {
+  const pageSize = opts.pageSize ?? SELECTION_PAGE_SIZE;
+  const maxPages = opts.maxPages ?? SELECTION_MAX_PAGES;
+  const target = opts.target ?? SELECTION_TARGET;
+  return pageRows >= pageSize && selectedCount < target && pageIndex + 1 < maxPages;
+}
+
+// ─── SEQ-155 (suite) : rotation sans expéditeur disponible ──────────────────
+
+export type RotationUnavailablePlan =
+  /** Tous les expéditeurs au plafond du jour : étape bloquée jusqu'au lendemain. */
+  | { kind: 'block_until_tomorrow' }
+  /** Lecture en échec (passagère) : nouvel essai dans 15 min. */
+  | { kind: 'retry_soon'; delayMs: number; message: string }
+  /** Aucun compte LinkedIn relié dans le groupe (ou séquence sans organisation) :
+   *  envoi depuis le compte de l'inscription, contrôlé ensuite (SEQ-010). */
+  | { kind: 'use_enrollment_account' };
+
+export const ROTATION_LOOKUP_RETRY_MESSAGE = 'Expéditeurs de la rotation momentanément illisibles : nouvel essai dans 15 min';
+
+/**
+ * Suite à donner quand la rotation ne propose aucun expéditeur, selon la
+ * cause. Avant, toute absence d'expéditeur valait « tous au plafond » : une
+ * séquence dont le groupe ne contient plus de compte LinkedIn relié (entrées
+ * e-mail héritées, collègues partis) était bloquée chaque jour, sans fin, avec
+ * un motif faux. Cause inconnue (ancienne fonction) : plafond, comme avant.
+ */
+export function rotationUnavailablePlan(cause: string | null | undefined): RotationUnavailablePlan {
+  if (cause === 'lookup_failed') return { kind: 'retry_soon', delayMs: 15 * 60 * 1000, message: ROTATION_LOOKUP_RETRY_MESSAGE };
+  if (cause === 'empty_pool' || cause === 'no_org') return { kind: 'use_enrollment_account' };
+  return { kind: 'block_until_tomorrow' };
+}
+
+// ─── Rotation et étapes sans compte LinkedIn ────────────────────────────────
+
+// Étapes qui passent par un compte LinkedIn d'envoi (envoi ou lecture de profil).
+const LINKEDIN_ACCOUNT_ACTIONS: readonly string[] = [
+  'message', 'smart_message', 'inmail', 'connection_request', 'profile_visit', 'check_connection',
+];
+
+/**
+ * Le tirage d'un expéditeur de rotation n'a lieu que pour une étape qui
+ * utilise un compte LinkedIn. Une étape e-mail, d'attente ou de condition
+ * garde l'inscription sans expéditeur : le tirage aura lieu à sa première
+ * étape LinkedIn (avant, une première étape e-mail était bloquée jusqu'au
+ * lendemain quand le groupe était au plafond, ou chaque jour quand il était vide).
+ */
+export function stepUsesLinkedInSender(step: BatchStep | null | undefined): boolean {
+  return stepSendChannel(step) === 'linkedin' && LINKEDIN_ACCOUNT_ACTIONS.includes(step?.action_type ?? '');
+}
+
+/** Colonne encore au type uuid (migration B6 pas appliquée) : 22P02 à l'écriture d'un identifiant de compte. */
+export function isInvalidTextRepresentation(error: unknown): boolean {
+  return !!error && typeof error === 'object' && (error as { code?: unknown }).code === '22P02';
 }
 
 // ─── SEQ-195 : canal enregistré sur l'exécution ─────────────────────────────

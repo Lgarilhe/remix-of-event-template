@@ -5,6 +5,7 @@ import { resolveV2WebhookToken } from "../_shared/unipile-v2.ts";
 import { ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON } from "../_shared/linkedin-quotas.ts";
 import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 import { stopLinkedInAccountSending } from "../_shared/linkedin-sending-stop.ts";
+import { resumeDate } from "../_shared/sequence-resume.ts";
 import { inReplyToCandidates } from "../_shared/sequence-email-policy.mjs";
 
 const corsHeaders = {
@@ -228,34 +229,90 @@ function linkedinDisconnectedNotification(
  * Reprise des inscriptions mises en pause par process-sequences quand ce
  * compte était en CREDENTIALS / ERROR (pause_reason = account_disconnected) :
  * l'inscription repasse 'active' (pause_reason NULL) et l'exécution annulée à
- * la mise en pause est re-planifiée tout de suite (le processeur applique
- * ensuite heures ouvrées et quotas). Compte d'enrôlement ou compte d'envoi en
+ * la mise en pause est re-planifiée à max(date prévue, maintenant + 1 min)
+ * (le processeur applique ensuite heures ouvrées et quotas). Compte d'enrôlement ou compte d'envoi en
  * rotation. Non bloquant : le rattachement du compte ne dépend pas de ce pas.
+ *
+ * Séquence désactivée (décision D1) : jamais de réactivation. L'inscription
+ * reste en pause avec pause_reason 'sequence_inactive' : la réactivation de la
+ * séquence la reprendra (resume_enrollments, qui contrôle le compte d'envoi
+ * et réarme l'exécution annulée). Un update PostgREST ne filtre pas sur une
+ * table jointe : lecture d'abord (avec la séquence), écritures par id ensuite.
  */
 async function resumeEnrollmentsAfterReconnect(supabase: SupabaseClient, accountId: string | undefined) {
   if (!accountId) return;
   try {
     const nowIso = new Date().toISOString();
-    const resumedIds = new Set<string>();
+    const activeSequenceIds = new Set<string>();
+    const inactiveSequenceIds = new Set<string>();
+    const PAGE = 1000;
     for (const column of ['account_id', 'assigned_sender_id'] as const) {
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('sequence_enrollments')
+          .select('id, sequence:outreach_sequences(is_active)')
+          .eq(column, accountId)
+          .eq('status', 'paused')
+          .eq('pause_reason', ACCOUNT_DISCONNECTED_PAUSE_REASON)
+          .order('id')
+          .range(from, from + PAGE - 1);
+        if (error) {
+          console.warn(`[unipile-webhook] account_connected: resume lookup by ${column} failed:`, error);
+          break;
+        }
+        const rows = (data ?? []) as Array<{ id: string; sequence: { is_active: boolean | null } | Array<{ is_active: boolean | null }> | null }>;
+        for (const row of rows) {
+          const seq = Array.isArray(row.sequence) ? row.sequence[0] : row.sequence;
+          // Séquence illisible : traitée comme désactivée (échec fermé).
+          if (seq?.is_active === true) activeSequenceIds.add(row.id);
+          else inactiveSequenceIds.add(row.id);
+        }
+        if (rows.length < PAGE) break;
+      }
+    }
+
+    const resumedIds = new Set<string>();
+    const activeIds = [...activeSequenceIds];
+    for (let i = 0; i < activeIds.length; i += 100) {
       const { data, error } = await supabase
         .from('sequence_enrollments')
         .update({ status: 'active', pause_reason: null, updated_at: nowIso })
-        .eq(column, accountId)
+        .in('id', activeIds.slice(i, i + 100))
         .eq('status', 'paused')
         .eq('pause_reason', ACCOUNT_DISCONNECTED_PAUSE_REASON)
         .select('id');
       if (error) {
-        console.warn(`[unipile-webhook] account_connected: resume by ${column} failed:`, error);
+        console.warn('[unipile-webhook] account_connected: resume failed:', error);
         continue;
       }
       for (const row of (data ?? []) as Array<{ id: string }>) resumedIds.add(row.id);
     }
 
+    let relabeled = 0;
+    const inactiveIds = [...inactiveSequenceIds];
+    for (let i = 0; i < inactiveIds.length; i += 100) {
+      const { data, error } = await supabase
+        .from('sequence_enrollments')
+        .update({ pause_reason: 'sequence_inactive', updated_at: nowIso })
+        .in('id', inactiveIds.slice(i, i + 100))
+        .eq('status', 'paused')
+        .eq('pause_reason', ACCOUNT_DISCONNECTED_PAUSE_REASON)
+        .select('id');
+      if (error) {
+        console.warn('[unipile-webhook] account_connected: relabel to sequence_inactive failed:', error);
+        continue;
+      }
+      relabeled += (data ?? []).length;
+    }
+
+    // Réarmement seulement pour les inscriptions réellement reprises, à
+    // max(date prévue, maintenant + 1 min) : une relance prévue jeudi ne part
+    // pas lundi à la reconnexion.
+    const nowMs = Date.now();
     for (const enrollmentId of resumedIds) {
       const { data: cancelled } = await supabase
         .from('sequence_step_executions')
-        .select('id')
+        .select('id, scheduled_at')
         .eq('enrollment_id', enrollmentId)
         .eq('status', 'cancelled')
         .eq('skip_reason', ACCOUNT_DISCONNECTED_SKIP_REASON)
@@ -265,13 +322,13 @@ async function resumeEnrollmentsAfterReconnect(supabase: SupabaseClient, account
       if (!cancelled?.id) continue;
       const { error: execError } = await supabase
         .from('sequence_step_executions')
-        .update({ status: 'scheduled', skip_reason: null, scheduled_at: nowIso, updated_at: nowIso })
+        .update({ status: 'scheduled', skip_reason: null, scheduled_at: resumeDate(cancelled.scheduled_at, nowMs), updated_at: nowIso })
         .eq('id', cancelled.id)
         .eq('status', 'cancelled');
       if (execError) console.warn(`[unipile-webhook] account_connected: execution ${cancelled.id} not rescheduled:`, execError);
     }
 
-    console.log(`[unipile-webhook] account_connected: ${resumedIds.size} enrollment(s) resumed after reconnect of ${accountId}`);
+    console.log(`[unipile-webhook] account_connected: ${resumedIds.size} enrollment(s) resumed, ${relabeled} left paused (sequence inactive) after reconnect of ${accountId}`);
   } catch (e) {
     console.warn('[unipile-webhook] account_connected: enrollment resume failed (non-blocking):', e);
   }
@@ -709,6 +766,25 @@ Deno.serve(async (req) => {
               // l'ancien compte cesse d'envoyer AVANT que la liaison ne soit
               // repointée (même arrêt que « Dissocier »). Échec = rattachement
               // refusé, le membre est prévenu par la notification ci-dessous.
+              //
+              // Propriété du nouveau compte vérifiée AVANT l'arrêt, comme
+              // claim_linkedin_account : un compte déjà relié à une autre
+              // organisation (trigger no_cross_tenant, 42501) ou à un autre
+              // membre (UNIQUE, 23505) ferait échouer le rattachement APRÈS
+              // avoir gelé les séquences de l'ancien compte, qui reste relié.
+              const { data: owners, error: ownersError } = await supabase
+                .from('member_linkedin_accounts')
+                .select('organization_id, user_id')
+                .eq('linkedin_account_id', payload.account_id);
+              if (ownersError) throw ownersError;
+              const ownerRows = (owners ?? []) as Array<{ organization_id: string; user_id: string | null }>;
+              if (ownerRows.some((r) => r.organization_id !== hostedState.organizationId)) {
+                throw Object.assign(new Error('LinkedIn account already linked to another organization'), { code: '42501' });
+              }
+              if (ownerRows.some((r) => r.user_id !== hostedState.userId)) {
+                throw Object.assign(new Error('LinkedIn account already linked to another member'), { code: '23505' });
+              }
+
               const { data: currentLink, error: currentLinkError } = await supabase
                 .from('member_linkedin_accounts')
                 .select('linkedin_account_id')
@@ -717,12 +793,14 @@ Deno.serve(async (req) => {
                 .maybeSingle();
               if (currentLinkError) throw currentLinkError;
               const previousAccountId = (currentLink as { linkedin_account_id?: string | null } | null)?.linkedin_account_id;
-              if (previousAccountId && previousAccountId !== payload.account_id) {
+              const accountChanged = !!previousAccountId && previousAccountId !== payload.account_id;
+              if (accountChanged && previousAccountId) {
                 await stopLinkedInAccountSending(supabase, {
                   organizationId: hostedState.organizationId,
                   accountId: previousAccountId,
                 });
               }
+              const nowIso = new Date().toISOString();
 
               const { error } = await supabase
                 .from('member_linkedin_accounts')
@@ -732,10 +810,14 @@ Deno.serve(async (req) => {
                   linkedin_account_id: payload.account_id,
                   linkedin_account_name: metadata.displayName || 'Compte LinkedIn',
                   account_status: 'OK',
-                  last_checked_at: new Date().toISOString(),
+                  last_checked_at: nowIso,
                   failure_reason: null,
                   // NOT NULL sans défaut : l'utilisateur qui a initié le flow hosted_auth.
                   linked_by: hostedState.userId,
+                  // Nouveau compte sur la liaison : la montée en charge repart de
+                  // zéro, comme claim_linkedin_account (une reconnexion du même
+                  // compte garde son ancienneté).
+                  ...(accountChanged ? { linked_at: nowIso } : {}),
                 }, {
                   onConflict: 'user_id,organization_id',
                 });

@@ -32,11 +32,11 @@ import {
   hasBackwardTimeoutTarget,
   delaySentence,
   SEND_WINDOW_HELP,
+  stepLabel,
 } from './sequenceGraph';
 
 interface StepEditorProps {
   step: SequenceStep;
-  stepIndex: number;
   allSteps: SequenceStep[];
   onUpdate: (updates: Partial<SequenceStep>) => void;
   allStepTypes: Array<{ value: string; label: string; icon: React.ElementType; color: string }>;
@@ -69,7 +69,6 @@ const needsSubject = stepNeedsSubject;
 
 export const StepEditor: React.FC<StepEditorProps> = ({
   step,
-  stepIndex,
   allSteps,
   onUpdate,
   allStepTypes,
@@ -114,7 +113,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
             <span className="text-xs font-semibold">{stepConfig?.label}</span>
           </div>
           <div className="text-3xs text-muted-foreground/60 mt-0.5">
-            Étape {stepIndex + 1}
+            {/* Même numérotation que la liste et la vérification (ordre, lettre de variante). */}
+            {stepLabel(step)}
             {msgType && (
               <> · <span className="font-medium">{msgType.label}</span></>
             )}
@@ -131,8 +131,8 @@ export const StepEditor: React.FC<StepEditorProps> = ({
         <p className="text-3xs text-muted-foreground">{SMART_MESSAGE_INMAIL_HELP}</p>
       )}
 
-      {/* Delay */}
-      {stepIndex > 0 && (
+      {/* Delay : aucun avant la première étape (ordre 0, variantes comprises). */}
+      {step.order > 0 && (
         <Section label="Délai">
           <div className="grid grid-cols-3 gap-2">
             <div>

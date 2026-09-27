@@ -51,6 +51,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { SEQUENCE_LEVEL_PAUSE_REASONS } from '@/lib/sequenceLabels';
+import { actionTypeLabel, sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
 import { SequenceBuilder, Sequence, SequenceStep } from './SequenceBuilder';
 import type { StopConditions, SenderAccountConfig } from './SequenceBuilder';
 import { rowToSequenceStep } from './sequence/sequenceGraph';
@@ -185,11 +186,39 @@ const MAX_RESUME_ROUNDS = 10;
 
 // DETAIL du refus STEP_HAS_HISTORY : « Étape(s) concernée(s) : 0, 2 », en
 // step_order (base 0, trié comme du texte). L'éditeur numérote à partir de 1.
-const blockedStepsNotice = (details: string | null | undefined): string => {
-  const numbers = [...new Set((details?.match(/\d+/g) ?? []).map(n => Number(n) + 1))].sort((a, b) => a - b);
-  if (numbers.length === 0) return '';
-  return numbers.length > 1 ? ` Étapes concernées : ${numbers.join(', ')}.` : ` Étape concernée : ${numbers[0]}.`;
+// Après une suppression, l'éditeur a renuméroté les étapes : chaque étape est
+// alors nommée par son type (labelsByOrder, lu en base avant l'enregistrement)
+// et son numéro d'avant les modifications.
+const blockedStepsNotice = (details: string | null | undefined, labelsByOrder?: Map<number, string>): string => {
+  const orders = [...new Set((details?.match(/\d+/g) ?? []).map(Number))].sort((a, b) => a - b);
+  if (orders.length === 0) return '';
+  const names = orders.map(order => {
+    const label = labelsByOrder?.get(order);
+    return label ? `« ${label} » (étape ${order + 1} avant vos modifications)` : String(order + 1);
+  });
+  return names.length > 1 ? ` Étapes concernées : ${names.join(', ')}.` : ` Étape concernée : ${names[0]}.`;
 };
+
+// Erreur de la base traduite pour l'éditeur, qui affiche err.message : jamais
+// le texte brut de PostgreSQL (« row-level security », « not accessible »).
+const sequenceSaveError = (error: { message?: string; code?: string; hint?: string } | null): Error => {
+  console.error('Sequence save error:', error);
+  const refusal = sequenceWriteRefusal(error);
+  if (refusal) return new Error(refusal);
+  const text = error?.message ?? '';
+  if (/not found or not accessible/i.test(text)) {
+    return new Error('Cette séquence n’existe plus ou vous n’y avez plus accès. Actualisez la liste des séquences.');
+  }
+  if (error?.code === '42501' || /row-level security/i.test(text)) {
+    return new Error('Vous n’avez pas les droits nécessaires pour enregistrer cette séquence.');
+  }
+  return new Error('La séquence n’a pas pu être enregistrée. Vérifiez votre connexion puis réessayez.');
+};
+
+// D3 : désactiver met en pause TOUS les candidats en cours. Un collaborateur
+// ne peut mettre en pause que les inscriptions qu'il a créées (RLS) : la
+// désactivation ne lui est pas proposée.
+const COLLABORATOR_DEACTIVATION_HINT = 'Désactiver une séquence met en pause tous ses candidats : réservé aux membres qui gèrent toutes les inscriptions. Mettez vos candidats en pause depuis la liste des inscrits.';
 
 export const SequencesList: React.FC<SequencesListProps> = ({
   accounts,
@@ -205,7 +234,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // organization_id est exigé par la policy INSERT d'outreach_sequences
   // (WITH CHECK organization_id = get_user_org_id(auth.uid())) : sans lui, la
   // création et la duplication étaient refusées par RLS.
-  const { organizationId } = useOrganization();
+  const { organizationId, isCollaborator } = useOrganization();
   const navigate = useNavigate();
   // Gating par plan (lot P0-C) : l'activation d'une séquence est refusée sur le
   // plan gratuit. Tant que l'état d'abonnement charge, on ne refuse rien (le
@@ -223,6 +252,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const [activateConfirm, setActivateConfirm] = useState<{ id: string; resumable: number; otherPaused: number } | null>(null);
   // Séquence dont l'interrupteur est en cours d'écriture : désactivé pendant l'appel.
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  // Duplication en cours : « Dupliquer » grisé, un seul appel à la fois.
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const duplicatingRef = React.useRef(false);
   const [enrollModalSequence, setEnrollModalSequence] = useState<SequenceWithStats | null>(null);
   const [enrollmentsPanelSequence, setEnrollmentsPanelSequence] = useState<SequenceWithStats | null>(null);
   const [showActivityLog, setShowActivityLog] = useState(false);
@@ -263,6 +295,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // d'une autre organisation, visibles par l'équipe de mission, sont en lecture
   // seule. Sans ce masquage, un refus silencieux affichait un faux succès.
   const canManage = (seq: SequenceWithStats) => !!organizationId && seq.organization_id === organizationId;
+  // D3 : la désactivation (pause de tous les candidats) n'est pas proposée à un collaborateur.
+  const deactivationLocked = (seq: SequenceWithStats) => seq.is_active && isCollaborator;
+  // Bouton d'un toast qui ouvre la liste des inscrits : c'est là que l'on
+  // reprend les candidats restés en pause (un par un ou tous ensemble).
+  const enrollmentsPanelAction = (sequenceId: string) => {
+    const seq = sequences.find(s => s.id === sequenceId);
+    return seq ? { action: { label: 'Voir les inscrits', onClick: () => setEnrollmentsPanelSequence(seq) } } : {};
+  };
 
   // Séquences de CETTE mission dans mon organisation : les seules que
   // « Envoyer les actions du jour » avance (les séquences globales servent à
@@ -458,6 +498,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       // En-tête créé par cet enregistrement : supprimé si les étapes échouent,
       // sinon une séquence vide restait et le nouvel essai en créait une seconde.
       let createdSequenceId: string | null = null;
+      // Type de chaque étape en base, par step_order : nomme une étape refusée
+      // (STEP_HAS_HISTORY) que l'éditeur a renumérotée.
+      const baseStepLabels = new Map<number, string>();
       // Sans droit d'envoi (plan gratuit), une nouvelle séquence est créée désactivée.
       const createInactiveForPlan = !sequence.id && sequence.isActive && !canSendSequences;
 
@@ -468,7 +511,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         const base = editorBaseStepIdsRef.current;
         const { data: currentSteps, error: currentStepsError } = await supabase
           .from('sequence_steps')
-          .select('id')
+          .select('id, step_order, action_type')
           .eq('sequence_id', sequence.id);
         if (currentStepsError) {
           throw new Error('La séquence n’a pas pu être vérifiée avant l’enregistrement. Réessayez.');
@@ -477,6 +520,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         if ((currentSteps || []).some(s => !knownIds.has(s.id))) {
           throw new Error(CONCURRENT_EDIT_MESSAGE);
         }
+        for (const s of currentSteps || []) baseStepLabels.set(s.step_order, actionTypeLabel(s.action_type));
 
         // UPDATE de l'entête de séquence uniquement (les steps passent par la RPC).
         // is_active n'est pas réécrit : seul l'interrupteur de la liste l'écrit,
@@ -495,7 +539,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           } as any)
           .eq('id', sequence.id);
 
-        if (updateError) throw updateError;
+        if (updateError) throw sequenceSaveError(updateError);
         targetSequenceId = sequence.id;
       } else {
         // CREATE de l'entête de séquence.
@@ -518,7 +562,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           .select()
           .single();
 
-        if (createError) throw createError;
+        if (createError) throw sequenceSaveError(createError);
         targetSequenceId = newSeq.id;
         createdSequenceId = newSeq.id;
       }
@@ -543,9 +587,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         // exécutions et son suivi e-mail disparaissaient, et une réponse à cet
         // e-mail n'était plus détectée).
         if (stepsError.hint === 'STEP_HAS_HISTORY' || stepsError.message?.includes('STEP_HAS_HISTORY')) {
-          throw new Error(`Cette étape a déjà été envoyée à des candidats : elle ne peut pas être supprimée. Modifiez son contenu à la place.${blockedStepsNotice(stepsError.details)}`);
+          throw new Error(`Cette étape a déjà été envoyée à des candidats : elle ne peut pas être supprimée. Modifiez son contenu à la place.${blockedStepsNotice(stepsError.details, baseStepLabels)}`);
         }
-        throw stepsError;
+        throw sequenceSaveError(stepsError);
       }
 
       if (sequence.id) {
@@ -583,7 +627,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // un interrupteur « désactivé » sur des inscriptions encore actives laissait
   // partir les messages. Les étapes prévues gardent leur date (le moteur ignore
   // celles d'une inscription en pause) et les attentes restent telles quelles.
-  const deactivateSequence = async (sequenceId: string, expectedActive: number) => {
+  const deactivateSequence = async (sequenceId: string) => {
     setTogglingId(sequenceId);
     const pauseFailed = 'La séquence n’a pas pu être mise en pause. Aucun envoi n’a été arrêté. Réessayez.';
     let pausedCount = 0;
@@ -601,18 +645,30 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         return;
       }
       pausedCount = count ?? paused?.length ?? 0;
-      if (pausedCount === 0 && expectedActive > 0) {
-        // 0 ligne alors que des candidats étaient en cours : refus d'accès ou
-        // liste périmée. On recompte avant de conclure.
-        const { count: stillActive, error: countError } = await supabase
-          .from('sequence_enrollments')
-          .select('id', { count: 'exact', head: true })
-          .eq('sequence_id', sequenceId)
-          .eq('status', 'active');
-        if (countError || (stillActive ?? 0) > 0) {
-          toast.error(pauseFailed);
-          return;
-        }
+      // D3 : recompte systématique. La RLS peut ne laisser mettre en pause
+      // qu'une partie des candidats (collaborateur : ses seules inscriptions),
+      // et d'autres ont pu être inscrits entre-temps. Tant qu'il en reste en
+      // cours, la séquence n'est pas affichée désactivée.
+      const { count: stillActive, error: countError } = await supabase
+        .from('sequence_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('sequence_id', sequenceId)
+        .eq('status', 'active');
+      const pausedPart = pausedCount > 0
+        ? `${candidats(pausedCount)} ${pausedCount > 1 ? 'sont' : 'est'} bien en pause. `
+        : 'Aucun candidat n’a été mis en pause. ';
+      if (countError) {
+        toast.error('La séquence reste active', {
+          description: `${pausedPart}Les candidats encore en cours n’ont pas pu être recomptés. Réessayez.`,
+        });
+        return;
+      }
+      const remainingActive = stillActive ?? 0;
+      if (remainingActive > 0) {
+        toast.error('La séquence reste active', {
+          description: `${pausedPart}${candidats(remainingActive)} ${remainingActive > 1 ? 'restent' : 'reste'} en cours et ${remainingActive > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remainingActive > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remainingActive > 1 ? 'ils viennent' : 'il vient'} d’être ${remainingActive > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur de désactiver la séquence.`,
+        });
+        return;
       }
 
       const { data: updated, error: seqError } = await supabase
@@ -671,7 +727,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         : undefined;
 
       if (resumable === 0) {
-        toast.success('Séquence réactivée', stayPaused ? { description: stayPaused } : undefined);
+        toast.success('Séquence réactivée', stayPaused ? { description: stayPaused, ...enrollmentsPanelAction(sequenceId) } : undefined);
         return;
       }
 
@@ -703,6 +759,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           // reçoivent rien, rien n'est envoyé à l'insu de l'utilisateur.
           toast.error('La séquence est réactivée, mais les candidats en pause n’ont pas pu reprendre', {
             description: `${payload?.message || error?.message || ''} Désactivez puis réactivez la séquence pour réessayer, ou reprenez-les depuis la liste des inscrits.`.trim(),
+            ...enrollmentsPanelAction(sequenceId),
           });
           return;
         }
@@ -731,18 +788,21 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       const details = [
         unlinked > 0 ? `${candidats(unlinked)} ${unlinked > 1 ? 'restent' : 'reste'} en pause : compte LinkedIn qui n’est plus relié.` : null,
         nothing > 0 ? `${candidats(nothing)} ${nothing > 1 ? 'n’avaient' : 'n’avait'} plus d’étape à envoyer.` : null,
-        remaining > 0 ? `${candidats(remaining)} ${remaining > 1 ? 'n’ont' : 'n’a'} pas encore été ${remaining > 1 ? 'traités' : 'traité'} : désactivez puis réactivez la séquence pour terminer la reprise.` : null,
+        remaining > 0 ? `${candidats(remaining)} ${remaining > 1 ? 'n’ont' : 'n’a'} pas encore été ${remaining > 1 ? 'traités' : 'traité'} : reprenez-les depuis la liste des inscrits.` : null,
         stayPaused ?? null,
       ].filter((d): d is string => !!d).join(' ');
+      // Candidats restés en pause : la liste des inscrits permet de les reprendre.
+      const panelAction = (remaining > 0 || failed > 0 || unlinked > 0 || stayPaused) ? enrollmentsPanelAction(sequenceId) : {};
 
       if (remaining > 0 && failed === 0) {
-        toast.warning(`Séquence réactivée : ${candidats(resumed)} repris pour l’instant`, { description: details });
+        toast.warning(`Séquence réactivée : ${candidats(resumed)} repris pour l’instant`, { description: details, ...panelAction });
       } else if (failed > 0) {
         toast.warning(`Séquence réactivée : ${candidats(resumed)} repris, ${failed} en erreur`, {
           description: `${details} Reprenez les candidats en erreur depuis la liste des inscrits.`.trim(),
+          ...panelAction,
         });
       } else {
-        toast.success(`Séquence réactivée. ${candidats(resumed)} repris.`, details ? { description: details } : undefined);
+        toast.success(`Séquence réactivée. ${candidats(resumed)} repris.`, details ? { description: details, ...panelAction } : undefined);
       }
     } catch (err) {
       console.error('Error activating sequence:', err);
@@ -759,6 +819,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   // candidats à reprendre.
   const requestToggle = async (seq: SequenceWithStats) => {
     if (togglingId) return;
+    if (deactivationLocked(seq)) {
+      toast.error('Désactivation réservée', { description: COLLABORATOR_DEACTIVATION_HINT });
+      return;
+    }
     if (seq.is_active) {
       // Candidats en cours recomptés en base au clic : le compteur affiché peut
       // être périmé ou indisponible, et un 0 faux désactivait sans confirmation.
@@ -778,7 +842,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         setToggleConfirm({ id: seq.id, nextActive: false, activeCount: activeNow ?? 0, shared: !seq.project_id });
         return;
       }
-      await deactivateSequence(seq.id, 0);
+      await deactivateSequence(seq.id);
       return;
     }
     // Activer (pas désactiver) exige un plan qui autorise l'envoi de séquences.
@@ -846,9 +910,18 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   };
 
   const handleDuplicate = async (seq: SequenceWithStats) => {
+    // Séquence d'une autre organisation : ses étapes sont illisibles (RLS) et
+    // ses expéditeurs ne sont pas les miens, la copie ne pourrait rien envoyer.
+    // Double clic : une seule copie.
+    if (!canManage(seq) || duplicatingRef.current) return;
+    duplicatingRef.current = true;
+    setDuplicatingId(seq.id);
+    // En-tête créé : supprimé si la copie des étapes échoue (sinon une
+    // séquence vide restait et un nouvel essai en créait une seconde).
+    let createdCopyId: string | null = null;
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user) throw new Error('Non authentifié');
       if (!organizationId) throw new Error('Organisation introuvable — rechargez la page');
 
       // 1. Charge les steps réelles depuis la DB
@@ -857,7 +930,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         .select('*')
         .eq('sequence_id', seq.id)
         .order('step_order', { ascending: true }) as any);
-      if (stepsErr) throw stepsErr;
+      if (stepsErr) throw sequenceSaveError(stepsErr);
 
       // 2. Crée la nouvelle séquence avec un nom suffixé "(copie)"
       const { data: newSeq, error: seqErr } = await (supabase
@@ -878,7 +951,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         } as any)
         .select()
         .single() as any);
-      if (seqErr || !newSeq) throw seqErr || new Error('Création échouée');
+      if (seqErr || !newSeq) throw sequenceSaveError(seqErr);
+      createdCopyId = newSeq.id;
 
       // 3. Re-crée les steps via la RPC transactionnelle. On passe les ANCIENS
       // ids comme ids « client » : n'appartenant pas à la nouvelle séquence,
@@ -902,7 +976,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           message_template: s.message_template ?? null,
           use_ai_personalization: s.use_ai_personalization ?? false,
           ai_tone: s.ai_tone ?? null,
-          timeout_days: s.timeout_days ?? null,
+          // Même délai par défaut qu'à l'ouverture dans l'éditeur : une attente
+          // sans délai attendait sans fin dans la copie (le moteur ne l'applique
+          // qu'aux attentes sans événement).
+          timeout_days: s.timeout_days ?? (TIMEOUT_REQUIRED_ACTIONS.includes(s.action_type) ? DEFAULT_WAIT_TIMEOUT_DAYS : null),
           wait_for_event: implicitWaitEvent(s.action_type, s.wait_for_event),
           variant_group: s.variant_group ?? null,
           variant_weight: s.variant_weight ?? 100,
@@ -923,8 +1000,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           p_sequence_id: newSeq.id,
           p_steps: payload,
         });
-        if (stepsCreateErr) throw stepsCreateErr;
+        if (stepsCreateErr) throw sequenceSaveError(stepsCreateErr);
       }
+      createdCopyId = null;
 
       toast.success(`Séquence dupliquée : "${newSeq.name}"`, {
         description: 'Inactive par défaut. Activez-la quand vous êtes prêt.',
@@ -933,9 +1011,19 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       await fetchSequences();
     } catch (err) {
       console.error('Error duplicating sequence:', err);
+      if (createdCopyId) {
+        const { error: cleanupError } = await supabase
+          .from('outreach_sequences')
+          .delete()
+          .eq('id', createdCopyId);
+        if (cleanupError) console.error('Error removing empty copy after failed steps copy:', cleanupError);
+      }
       toast.error('Erreur lors de la duplication', {
         description: err instanceof Error ? err.message : undefined,
       });
+    } finally {
+      duplicatingRef.current = false;
+      setDuplicatingId(null);
     }
   };
 
@@ -1267,7 +1355,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 {canManage(seq) ? (
                   <Switch
                     checked={seq.is_active}
-                    disabled={togglingId === seq.id}
+                    disabled={togglingId === seq.id || deactivationLocked(seq)}
+                    title={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : undefined}
                     onCheckedChange={() => { void requestToggle(seq); }}
                     onClick={(e) => e.stopPropagation()}
                     className="data-[state=checked]:bg-foreground"
@@ -1398,10 +1487,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                         Modifier
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDuplicate(seq); }}>
-                      <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
-                      Dupliquer
-                    </DropdownMenuItem>
+                    {/* Séquence d'une autre organisation : étapes illisibles et
+                        expéditeurs d'un autre compte, la copie ne pourrait rien envoyer. */}
+                    {canManage(seq) && (
+                      <DropdownMenuItem disabled={!!duplicatingId} onClick={(e) => { e.stopPropagation(); handleDuplicate(seq); }}>
+                        <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+                        {duplicatingId === seq.id ? 'Duplication…' : 'Dupliquer'}
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSaveTemplateSeq(seq); }}>
                       <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
                       Enregistrer comme modèle
@@ -1460,7 +1553,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                     {canManage(seq) ? (
                       <Switch
                         checked={seq.is_active}
-                        disabled={togglingId === seq.id}
+                        disabled={togglingId === seq.id || deactivationLocked(seq)}
+                        title={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : undefined}
                         onCheckedChange={() => { void requestToggle(seq); }}
                         onClick={(e) => e.stopPropagation()}
                         className="data-[state=checked]:bg-foreground"
@@ -1486,10 +1580,12 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                           <BarChart3 className="w-4 h-4 mr-2" aria-hidden="true" />
                           Statistiques
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDuplicate(seq); }}>
-                          <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
-                          Dupliquer
-                        </DropdownMenuItem>
+                        {canManage(seq) && (
+                          <DropdownMenuItem disabled={!!duplicatingId} onClick={(e) => { e.stopPropagation(); handleDuplicate(seq); }}>
+                            <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+                            {duplicatingId === seq.id ? 'Duplication…' : 'Dupliquer'}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSaveTemplateSeq(seq); }}>
                           <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
                           Enregistrer comme modèle
@@ -1745,7 +1841,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (toggleConfirm) void deactivateSequence(toggleConfirm.id, toggleConfirm.activeCount);
+                if (toggleConfirm) void deactivateSequence(toggleConfirm.id);
                 setToggleConfirm(null);
               }}
             >
@@ -1798,7 +1894,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             <AlertDialogTitle>Envoyer maintenant les actions du jour ?</AlertDialogTitle>
             <AlertDialogDescription>
               Les actions prévues aujourd'hui pour cette mission partiront progressivement pendant vos heures d'envoi.
-              Les relances des jours suivants gardent leur date.
+              Les relances des jours suivants gardent leur date. Hors invitations LinkedIn et hors séquences partagées
+              entre missions.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -73,7 +73,7 @@ test('SEQ-015 — « Terminer » au délai dépassé n’est plus proposé (list
 test('SEQ-015 — « Branchement » : plus proposé, plus de « Si faux », signalé', async (t) => {
   assert.doesNotMatch(stepEditor, />Si faux</, 'le « Si faux » n’était jamais enregistré');
   assert.match(visual, /TRIGGERS\.filter\(t => isStepTypeOffered\(t\.value\)\)/, 'le sélecteur du Visuel doit filtrer les types non pris en charge');
-  assert.match(checklist, /validateSequence\(sequence\)/, 'la liste de vérification lit la vérification unique');
+  assert.match(checklist, /validateSequence\(sequence, linkedSenderIds\)/, 'la liste de vérification lit la vérification unique');
   assert.match(verification, /'condition_branch'/, 'la vérification doit signaler les Branchements existants');
   const g = await graph(t);
   if (!g) return;
@@ -88,7 +88,7 @@ test('SEQ-015 — les modèles n’écrivent ni ne relisent plus timeout_action'
 
 // ---------------------------------------------------------------- SEQ-016
 test('SEQ-016 — l’enregistrement bloque une branche vide ou un renvoi mort', async (t) => {
-  assert.match(builder, /const errors: string\[\] = validateSequence\(sequence\)\.errors/);
+  assert.match(builder, /const errors: string\[\] = validateSequence\(sequence, linkedSenderIds\)\.errors/);
   assert.match(body(graphSrc, 'export function validateSequence'), /validateStepGraph\(steps\)/);
   const g = await graph(t);
   if (!g) return;

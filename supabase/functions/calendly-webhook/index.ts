@@ -211,19 +211,52 @@ Deno.serve(async (req) => {
     const candidateSlug = isValidLinkedinUrl ? linkedinSlugFromUrl(candidateLinkedinUrl) : null;
 
     if (candidateSlug) {
+      // Toutes les lignes qui suivent ce profil, toutes organisations : le
+      // secret Calendly est global et le webhook ne sait pas quelle
+      // organisation a reçu le rendez-vous. Choisir « la ligne la plus
+      // récente » écrivait chez une autre organisation qui suit le même
+      // profil (session avec l'e-mail de l'invité, séquences closes,
+      // notification). Décision D4 : on n'agit que si UNE SEULE organisation
+      // reliée à Calendly suit ce profil ; sinon rien, et on le journalise.
       const matches: CandidateMatch[] = [];
       for (const pattern of exactProfileUrlPatterns(candidateSlug)) {
         const { data, error } = await supabase
           .from('job_candidate_status')
           .select('candidate_id, candidate_name, candidate_headline, job_id, linkedin_profile_url, scoring_details, project_id, organization_id, created_by, updated_at')
           .ilike('linkedin_profile_url', pattern)
-          .order('updated_at', { ascending: false })
-          .limit(1);
+          .order('updated_at', { ascending: false });
         if (error) throw error;
-        if (data?.length) matches.push(data[0]);
+        matches.push(...((data ?? []) as CandidateMatch[]));
       }
-      matches.sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
-      candidateMatch = matches[0] ?? null;
+
+      if (matches.length > 0) {
+        const trackingOrgIds = [...new Set(matches.map((m) => m.organization_id).filter((id): id is string => !!id))];
+        let calendlyOrgIds: string[] = [];
+        if (trackingOrgIds.length > 0) {
+          const { data: integrations, error: integrationsError } = await supabase
+            .from('organization_integrations')
+            .select('organization_id')
+            .in('organization_id', trackingOrgIds)
+            .eq('calendly_connected', true);
+          if (integrationsError) throw integrationsError;
+          calendlyOrgIds = [...new Set(((integrations ?? []) as Array<{ organization_id: string }>).map((i) => i.organization_id))];
+        }
+        if (calendlyOrgIds.length !== 1) {
+          console.warn(`[calendly-webhook] Organization not identifiable (${trackingOrgIds.length} org(s) track this profile, ${calendlyOrgIds.length} with Calendly connected) — no session, no sequence stopped, no notification`);
+          return new Response(JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: 'ambiguous_org',
+            calendly_org_count: calendlyOrgIds.length,
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        const bookingOrgId = calendlyOrgIds[0];
+        const orgMatches = matches.filter((m) => m.organization_id === bookingOrgId);
+        orgMatches.sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
+        candidateMatch = orgMatches[0] ?? null;
+      }
     }
 
     // Get job title if we have a match
@@ -456,31 +489,24 @@ Deno.serve(async (req) => {
     }
 
     // Try to update Notion candidate & shortlist status
-    // Resolve Notion credentials from the org of the user who created the candidate entry
+    // Notion de l'organisation identifiée du rendez-vous (D4), jamais celle
+    // que le recruteur a ouverte en dernier (son organisation active peut en
+    // être une autre).
     let notionKey: string | null = null;
     let CANDIDATS_DATABASE_ID: string | null = null;
     let SHORTLIST_DATABASE_ID: string | null = null;
 
-    if (createdBy) {
-      // Find the org of the user who created the candidate entry
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('active_organization_id')
-        .eq('user_id', createdBy)
+    if (candidateOrgId) {
+      const { data: integrationData } = await supabase
+        .from('organization_integrations')
+        .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
+        .eq('organization_id', candidateOrgId)
         .single();
 
-      if (profile?.active_organization_id) {
-        const { data: integrationData } = await supabase
-          .from('organization_integrations')
-          .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
-          .eq('organization_id', profile.active_organization_id)
-          .single();
-
-        if (integrationData?.notion_connected && integrationData.notion_api_key) {
-          notionKey = integrationData.notion_api_key;
-          CANDIDATS_DATABASE_ID = integrationData.notion_candidats_db_id || null;
-          SHORTLIST_DATABASE_ID = integrationData.notion_shortlist_db_id || null;
-        }
+      if (integrationData?.notion_connected && integrationData.notion_api_key) {
+        notionKey = integrationData.notion_api_key;
+        CANDIDATS_DATABASE_ID = integrationData.notion_candidats_db_id || null;
+        SHORTLIST_DATABASE_ID = integrationData.notion_shortlist_db_id || null;
       }
     }
 

@@ -191,20 +191,40 @@ Deno.serve(async (req: Request) => {
         const { data: ownedAccounts, error: ownErr } = callerOrgId
           ? await supabase
               .from("member_linkedin_accounts")
-              .select("linkedin_account_id")
+              .select("linkedin_account_id, user_id")
               .eq("organization_id", callerOrgId)
               .in("linkedin_account_id", requestedAccountIds)
           : { data: [], error: null };
         if (ownErr) throw ownErr;
-        const ownedSet = new Set((ownedAccounts || []).map((a: any) => a.linkedin_account_id));
-        const unauthorized = requestedAccountIds.filter((id) => !ownedSet.has(id));
+        const linkRows = (ownedAccounts || []) as Array<{ linkedin_account_id: string; user_id: string | null }>;
+        const inOrgSet = new Set(linkRows.map((a) => a.linkedin_account_id));
+        const unauthorized = requestedAccountIds.filter((id) => !inOrgSet.has(id));
         if (unauthorized.length > 0) {
           console.warn(
             `[process-inmail-queue] user ${user.id} tried to enqueue with unauthorized account(s):`,
             unauthorized,
           );
           return new Response(
-            JSON.stringify({ success: false, error: "Compte LinkedIn non autorisé" }),
+            JSON.stringify({ success: false, error: "ACCOUNT_NOT_ALLOWED", message: "Ce compte LinkedIn n’appartient pas à votre organisation." }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        // Liaison stricte (même règle que les inscriptions, SEQ-043) : on
+        // n'envoie que depuis SON compte relié, jamais celui d'un collègue,
+        // administrateurs compris (identité et crédits InMail du collègue).
+        const callerAccountSet = new Set(linkRows.filter((a) => a.user_id === user.id).map((a) => a.linkedin_account_id));
+        const ofOtherMember = requestedAccountIds.filter((id) => !callerAccountSet.has(id));
+        if (ofOtherMember.length > 0) {
+          console.warn(
+            `[process-inmail-queue] user ${user.id} tried to enqueue from another member's account(s):`,
+            ofOtherMember,
+          );
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "ACCOUNT_OF_OTHER_MEMBER",
+              message: "Ce compte LinkedIn est relié à un autre membre de l'équipe. Envoyez les InMails depuis votre propre compte.",
+            }),
             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
@@ -326,7 +346,7 @@ Deno.serve(async (req: Request) => {
           user_timezone: timezone,
           created_by: user.id,
           // Organisation du compte, vérifiée plus haut (jamais null ici : sans
-          // organisation, ownedSet est vide et l'action a déjà répondu 403).
+          // organisation, inOrgSet est vide et l'action a déjà répondu 403).
           // Sans elle, « Dissocier » n'annulait pas la ligne, et plafond et
           // plages suivaient l'organisation active au moment de l'envoi.
           organization_id: callerOrgId,
@@ -708,7 +728,9 @@ Deno.serve(async (req: Request) => {
               .update({
                 status: "scheduled",
                 scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-                error_message: balErr instanceof Error ? balErr.message : "balance check failed",
+                // Libellé fixe affiché dans la file : l'erreur brute (code HTTP,
+                // URL du fournisseur) reste dans le console.error ci-dessus.
+                error_message: "Contrôle des crédits InMail momentanément indisponible, nouvel essai dans 30 min",
               })
               .eq("id", item.id);
             results.push({ id: item.id, success: false, error: "balance check failed" });
@@ -851,8 +873,9 @@ Deno.serve(async (req: Request) => {
             // Le corps brut du fournisseur reste dans les logs ; error_message
             // (affiché dans la file InMail) reçoit un libellé Konekt.
             console.error(`[process-inmail-queue] LinkedIn provider ${response.status} for item ${item.id}: ${errorText}`);
-            // 429 et 503 : requête non traitée, nouvel essai dans 1 h, trois
-            // fois au plus (SEQ-103). 502, 504 et refus 4xx restent définitifs.
+            // 429 : requête non traitée, nouvel essai dans 1 h, trois fois au
+            // plus (SEQ-103). Tout 5xx (503 compris) est incertain, comme dans
+            // le moteur (SEQ-005) : jamais renvoyé seul. Refus 4xx définitifs.
             const retry = inmailQueueRetry(response.status, item.error_message ?? null);
             if (retry.retry) {
               await supabase

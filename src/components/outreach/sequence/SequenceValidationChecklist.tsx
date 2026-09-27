@@ -16,6 +16,8 @@ interface ValidationItem {
 
 interface SequenceValidationChecklistProps {
   sequence: Sequence;
+  /** Comptes LinkedIn reliés à l'équipe (null tant qu'ils ne sont pas connus), voir validateSequence. */
+  linkedSenderIds?: ReadonlySet<string> | null;
   className?: string;
 }
 
@@ -33,6 +35,7 @@ const REQUIRED_CHECKS: Array<{ check: string; label: string; icon: typeof Check 
   { check: 'timeout_target', label: 'Étapes de repli', icon: AlertTriangle },
   { check: 'routing', label: 'Enchaînement des étapes', icon: AlertTriangle },
   { check: 'ab_weights', label: 'Tests A/B', icon: AlertTriangle },
+  { check: 'sender_pool', label: 'Expéditeurs reliés à l\'équipe', icon: Users },
 ];
 
 /** Recommandations, dans l'ordre d'affichage. */
@@ -54,10 +57,11 @@ const messagesOf = (issues: SequenceIssue[], check: string) => issues.filter(i =
  */
 export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistProps> = ({
   sequence,
+  linkedSenderIds = null,
   className,
 }) => {
   const items = useMemo((): ValidationItem[] => {
-    const { errors, warnings } = validateSequence(sequence);
+    const { errors, warnings } = validateSequence(sequence, linkedSenderIds);
     const result: ValidationItem[] = [];
     const stepCount = sequence.steps.length;
     const needsSubjects = sequence.steps.some(s => stepNeedsSubject(s.actionType));
@@ -110,6 +114,7 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
     sequence.steps,
     sequence.multiSenderEnabled,
     sequence.senderAccounts,
+    linkedSenderIds,
   ]);
 
   const requiredItems = items.filter(i => i.category === 'required');

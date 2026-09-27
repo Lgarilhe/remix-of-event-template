@@ -18,8 +18,9 @@
 --                (BUG-095, skip_reason « Enrollment became X during execution ») :
 --                passées 'sent', pour qu'aucune reprise ne les renvoie. Les
 --                lignes « before send (last-call check) », jamais parties, restent.
---   1b. SEQ-121  Pauses sans raison : 'manual'. Une réactivation de séquence
---                ne les reprend donc pas ; « Reprendre » reste possible.
+--   1b. (Pauses héritées : bloc 2b, après la nouvelle contrainte 2a, car
+--                l'ancienne contrainte de la prod refuse sequence_inactive et
+--                auto_paused.)
 --   1c. SEQ-013  assigned_sender_id passe de uuid à text (identifiant du compte
 --                d'envoi). Toute valeur actuelle est un user_id hérité de
 --                BUG-023, jamais un compte : remise à NULL avant le changement.
@@ -38,7 +39,27 @@
 -- 2. Contraintes
 --   2a. SEQ-002 / SEQ-121  pause_reason : ajout de sequence_inactive,
 --                auto_paused, send_failed, blocked_by_candidate.
---   2b. SEQ-215  CHECK de statut de la base neuve posés en prod (NOT VALID,
+--   2b. SEQ-121 / D6  Pauses héritées reclassées, dans cet ordre :
+--                (1) sans raison, avec une étape annulée « Auto-paused: high
+--                failure rate » (ancienne auto-pause du moteur) : auto_paused ;
+--                (2) sans raison ou 'manual', dans une séquence désactivée
+--                (l'ancienne désactivation écrivait 'manual') : sequence_inactive,
+--                pour que la réactivation les reprenne comme avant l'audit ;
+--                (3) le reste des pauses sans raison : 'manual'.
+--                (1) et (2) excluent toute inscription arrêtée à la main par
+--                l'ancien front (étape annulée « Arrêt manuel », « Arrêt
+--                groupé » ou « Stoppé depuis Inbox ») : une réactivation ne
+--                renvoie jamais un message qu'un recruteur avait arrêté.
+--   2c. SEQ-215  Statuts hérités hors liste, avant la pose des CHECK :
+--                inscriptions 'booked' (ancien calendly-webhook) passées
+--                'completed' (tracking_data : completion_reason meeting_booked,
+--                legacy_status booked) ; exécutions 'pending' (ancien défaut de
+--                la prod, jamais prises par le moteur) passées 'cancelled' avec
+--                un motif explicite, jamais 'scheduled' (aucun envoi réveillé).
+--                Le déclencheur updated_at rafraîchit ces lignes : la purge RGPD
+--                (24 mois) part de la migration pour les 'booked', jusqu'ici
+--                jamais purgées.
+--   2d. SEQ-215  CHECK de statut de la base neuve posés en prod (NOT VALID,
 --                puis validation tentée : un refus laisse un avertissement, pas
 --                un échec de déploiement). DEFAULT 'scheduled' sur le statut
 --                des exécutions (la prod avait 'pending', ignoré du moteur).
@@ -73,6 +94,9 @@
 --   4b. SEQ-059  save_sequence_steps refuse de supprimer une étape qui a un
 --                historique (HINT STEP_HAS_HISTORY) ; les exécutions en attente
 --                des étapes retirées disparaissent avec elles (rien n'était parti).
+--                SEQ-119 : un collaborateur ne modifie que ses propres
+--                séquences ; refus explicite (HINT SEQUENCE_NOT_OWNER) au lieu
+--                d'une sauvegarde vide annoncée réussie.
 --   4c. SEQ-165  get_sequence_enrollment_counts : compteurs par séquence,
 --                statut et raison de pause (pause_reason renseignée pour les
 --                inscriptions en pause seulement, NULL sinon), calculés en base
@@ -81,13 +105,22 @@
 --                fichier, et CREATE OR REPLACE ne sait pas le changer.
 --   4d. SEQ-119  is_active_org_collaborator : rôle collaborateur dans
 --                l'organisation active, pour les policies.
+--   4e. D3 / SEQ-128  find_recent_org_contacts : anti-doublon du navigateur.
+--                SECURITY DEFINER : voit toutes les inscriptions de
+--                l'organisation de l'appelant (un collaborateur ne les lit plus
+--                par la RLS, bloc 5), refuse une autre organisation, et ne
+--                renvoie que les colonnes du rapprochement : inscriptions
+--                vivantes (active, paused) et closes (replied, completed)
+--                depuis p_since.
 -- 5. Policies (SEQ-009, 011, 056, 057, 058, 119, 216) : sur les dix tables du
 --    module, toutes les policies sont retirées quel que soit leur nom (règle 7
 --    de CLAUDE.md) puis un seul jeu est recréé, aux noms de la prod. Contrôle
 --    final qui fait échouer la migration si l'état n'est pas le bon.
 --    Collaborateur (décision produit : moindre privilège) : lit ses propres
 --    séquences, celles des missions de son équipe et leurs candidats ; ne
---    modifie que les inscriptions qu'il a créées et leurs étapes.
+--    modifie que les inscriptions qu'il a créées et leurs étapes, et que les
+--    séquences qu'il a créées et leurs étapes (modèle d'étape, suppression de
+--    la séquence et de son historique en cascade).
 --    inmail_queue : lecture dans l'organisation, et seule écriture permise le
 --    suivi d'un message déjà envoyé (status 'sent') ; tout le reste passe par
 --    le serveur.
@@ -149,14 +182,6 @@ SET status = 'sent',
     executed_at = COALESCE(executed_at, updated_at)
 WHERE status = 'cancelled'
   AND skip_reason LIKE 'Enrollment became % during execution';
-
--- ---------------------------------------------------------------------
--- 1b. SEQ-121 : jamais de pause sans raison
--- ---------------------------------------------------------------------
-UPDATE public.sequence_enrollments
-SET pause_reason = 'manual'
-WHERE status = 'paused'
-  AND pause_reason IS NULL;
 
 -- ---------------------------------------------------------------------
 -- 1c. SEQ-013 : assigned_sender_id en text
@@ -296,7 +321,80 @@ COMMENT ON COLUMN public.sequence_enrollments.pause_reason IS
   'Raison de la mise en pause : manual | account_disconnected | quota_reached | subscription_required | sequence_inactive (séquence désactivée) | auto_paused (trop d''échecs) | send_failed | blocked_by_candidate. La réactivation d''une séquence ne reprend que sequence_inactive et auto_paused.';
 
 -- ---------------------------------------------------------------------
--- 2b. SEQ-215 : CHECK de statut (listes de la base neuve)
+-- 2b. SEQ-121 / D6 : pauses héritées (après 2a, qui autorise les valeurs)
+--     Ordre : auto-pause identifiable, puis désactivation de séquence, puis
+--     le reste des pauses sans raison en 'manual'. Jamais une inscription
+--     arrêtée à la main par l'ancien front (motifs d'annulation ci-dessous).
+-- ---------------------------------------------------------------------
+UPDATE public.sequence_enrollments e
+SET pause_reason = 'auto_paused'
+WHERE e.status = 'paused'
+  AND e.pause_reason IS NULL
+  AND EXISTS (
+    SELECT 1 FROM public.sequence_step_executions x
+    WHERE x.enrollment_id = e.id
+      AND x.status = 'cancelled'
+      AND x.skip_reason = 'Auto-paused: high failure rate'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM public.sequence_step_executions x
+    WHERE x.enrollment_id = e.id
+      AND x.status = 'cancelled'
+      AND x.skip_reason IN ('Arrêt manuel', 'Arrêt groupé', 'Stoppé depuis Inbox')
+  );
+
+UPDATE public.sequence_enrollments e
+SET pause_reason = 'sequence_inactive'
+FROM public.outreach_sequences s
+WHERE s.id = e.sequence_id
+  AND s.is_active IS FALSE
+  AND e.status = 'paused'
+  AND (e.pause_reason IS NULL OR e.pause_reason = 'manual')
+  AND NOT EXISTS (
+    SELECT 1 FROM public.sequence_step_executions x
+    WHERE x.enrollment_id = e.id
+      AND x.status = 'cancelled'
+      AND x.skip_reason IN ('Arrêt manuel', 'Arrêt groupé', 'Stoppé depuis Inbox')
+  );
+
+UPDATE public.sequence_enrollments
+SET pause_reason = 'manual'
+WHERE status = 'paused'
+  AND pause_reason IS NULL;
+
+-- ---------------------------------------------------------------------
+-- 2c. SEQ-215 : statuts hérités hors liste, avant la pose des CHECK (2d)
+-- ---------------------------------------------------------------------
+DO $$
+DECLARE
+  n_booked int;
+  n_pending int;
+BEGIN
+  -- Ancien calendly-webhook : rendez-vous pris écrit 'booked'. La séquence
+  -- est terminée ; legacy_status garde la trace (SEQ-008 a pu en clore à tort).
+  UPDATE public.sequence_enrollments
+  SET status = 'completed',
+      completed_at = COALESCE(completed_at, updated_at),
+      tracking_data = COALESCE(tracking_data, '{}'::jsonb)
+        || jsonb_build_object('completion_reason', 'meeting_booked', 'legacy_status', 'booked')
+  WHERE status = 'booked';
+  GET DIAGNOSTICS n_booked = ROW_COUNT;
+
+  -- Ancien défaut 'pending' de la prod : jamais pris par le moteur, rien n'est
+  -- parti. Annulée (pas replanifiée) : la reprise d'une inscription planifie
+  -- l'étape à partir de la dernière étape réellement terminée.
+  UPDATE public.sequence_step_executions
+  SET status = 'cancelled',
+      skip_reason = 'Étape incohérente : ancien statut jamais pris en charge par l''envoi, annulée'
+  WHERE status = 'pending';
+  GET DIAGNOSTICS n_pending = ROW_COUNT;
+
+  RAISE NOTICE 'Séquences, statuts hérités : inscriptions « booked » passées terminées = %, exécutions « pending » annulées = %',
+    n_booked, n_pending;
+END $$;
+
+-- ---------------------------------------------------------------------
+-- 2d. SEQ-215 : CHECK de statut (listes de la base neuve)
 -- ---------------------------------------------------------------------
 DO $$
 DECLARE

@@ -62,6 +62,7 @@ import { cn } from '@/lib/utils';
 import { VisualSequenceEditor } from './sequence/VisualSequenceEditor';
 import { StopConditionsSettings } from './sequence/StopConditionsSettings';
 import { MultiSenderSettings } from './sequence/MultiSenderSettings';
+import { useMultiSenderTeam, linkedSenderIdsOf } from './sequence/useMultiSenderTeam';
 import { SequenceWizardStepper, WizardStep, WIZARD_STEPS } from './sequence/SequenceWizardStepper';
 import { SequenceValidationChecklist } from './sequence/SequenceValidationChecklist';
 import type { StopConditions as StopConditionsType } from './sequence/StopConditionsSettings';
@@ -590,9 +591,17 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Comptes LinkedIn reliés à l'équipe, pour vérifier les expéditeurs de la
+  // rotation (null tant que l'équipe n'est pas lue : rien n'est alors signalé).
+  const senderTeam = useMultiSenderTeam(!!sequence.multiSenderEnabled && (sequence.senderAccounts?.length ?? 0) > 0);
+  const linkedSenderIds = useMemo(
+    () => (senderTeam.isSuccess ? linkedSenderIdsOf(senderTeam.data) : null),
+    [senderTeam.isSuccess, senderTeam.data],
+  );
+
   // Vérification unique : liste de vérification, fil du mode Guidé et
   // enregistrement lisent la même fonction.
-  const validation = useMemo(() => validateSequence(sequence), [sequence]);
+  const validation = useMemo(() => validateSequence(sequence, linkedSenderIds), [sequence, linkedSenderIds]);
 
   // Compute completed wizard steps
   const completedSteps = useMemo(() => {
@@ -780,7 +789,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
     // Mêmes règles que la liste de vérification et le fil du mode Guidé
     // (validateSequence) : délais, seuil de score, fenêtre d'envoi, poids des
     // tests A/B, enchaînement des étapes (validateStepGraph), étapes de repli.
-    const errors: string[] = validateSequence(sequence).errors.map(issue => issue.message);
+    const errors: string[] = validateSequence(sequence, linkedSenderIds).errors.map(issue => issue.message);
 
     if (errors.length > 0) {
       if (mode === 'wizard') setWizardStep('review');
@@ -1569,7 +1578,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
             </div>
 
             {/* Validation checklist : mêmes bloquants que l'enregistrement, recalculés à chaque modification. */}
-            <SequenceValidationChecklist sequence={sequence} />
+            <SequenceValidationChecklist sequence={sequence} linkedSenderIds={linkedSenderIds} />
           </div>
         );
     }
@@ -1658,7 +1667,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-3">
                   Vérification
                 </div>
-                <SequenceValidationChecklist sequence={sequence} />
+                <SequenceValidationChecklist sequence={sequence} linkedSenderIds={linkedSenderIds} />
               </>
             )}
           </div>
@@ -1693,7 +1702,7 @@ export const SequenceBuilder: React.FC<SequenceBuilderProps> = React.memo(({
                     <ChevronDown className={cn("w-4 h-4 shrink-0 transition-transform", mobileChecklistOpen && "rotate-180")} aria-hidden="true" />
                   </CollapsibleTrigger>
                   <CollapsibleContent className="px-3 pb-3">
-                    <SequenceValidationChecklist sequence={sequence} />
+                    <SequenceValidationChecklist sequence={sequence} linkedSenderIds={linkedSenderIds} />
                   </CollapsibleContent>
                 </Collapsible>
 

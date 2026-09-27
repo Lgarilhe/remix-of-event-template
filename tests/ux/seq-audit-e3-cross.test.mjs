@@ -185,7 +185,8 @@ test('SEQ-097 — aperçu et suggestions de réponse : l’expéditeur se prése
   assert.match(outreachFn, /\.from\('organization_members'\)\s*\.select\('id'\)\.eq\('user_id', userId\)\.eq\('organization_id', orgId\)\.maybeSingle\(\)/);
   assert.match(outreachFn, /buildOutreachContext\(\s*outreachConfig as any,\s*clientName,\s*senderName \|\| 'Recruteur',\s*organizationName \|\| null,\s*\)/);
   assert.match(replyFn, /\.from\('organization_members'\)\s*\.select\('id'\)\.eq\('user_id', userId\)\.eq\('organization_id', orgId\)\.maybeSingle\(\)/);
-  assert.match(replyFn, /buildOutreachContext\(\s*context\.outreachConfig as any,\s*context\.outreachClientName \|\| context\.jobData\?\.client\?\.name,\s*context\.candidateName \|\| 'le recruteur',\s*organizationName,\s*\)/);
+  // Vague finale (REV engine-conditions-channels-13) : l'expéditeur est l'appelant, jamais le candidat.
+  assert.match(replyFn, /buildOutreachContext\(\s*context\.outreachConfig as any,\s*context\.outreachClientName \|\| context\.jobData\?\.client\?\.name,\s*callerFirstName,\s*organizationName,\s*\)/);
 });
 
 // ---------------------------------------------------------------- 9. SEQ-051 (F4a)

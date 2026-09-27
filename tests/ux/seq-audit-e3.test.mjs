@@ -242,8 +242,10 @@ test('SEQ-096 — la note d’invitation ne s’arrête jamais sur « Node. »',
   assert.match(executeStep, /return \{ success: true, message: invitePayload\.message \};/);
 });
 
-test('SEQ-103/126 — file InMail : 429 et 503 relancés, annulation sans liste = toute la file en attente', () => {
-  assert.equal(rules.inmailQueueRetry(503, null).retry, true);
+test('SEQ-103/126 — file InMail : 429 relancé, 5xx incertain, annulation sans liste = toute la file en attente', () => {
+  assert.equal(rules.inmailQueueRetry(429, null).retry, true);
+  // Vague finale (REV engine-conditions-channels-8) : le 503 suit la règle du moteur, pas de renvoi.
+  assert.equal(rules.inmailQueueRetry(503, null).retry, false);
   assert.equal(rules.inmailQueueRetry(504, null).retry, false);
   const cancel = sliceBetween(inmailQueue, 'if (action === "cancel")', 'throw new Error(`Unknown action');
   assert.match(cancel, /if \(ids\) cancelQuery = cancelQuery\.in\("id", ids\);/);

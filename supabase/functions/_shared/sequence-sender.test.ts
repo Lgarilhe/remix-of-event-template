@@ -93,6 +93,9 @@ Deno.test("SEQ-067/100 : étape e-mail, même boîte et même titulaire que sequ
   assertEquals(isMailboxDisconnected("CREDENTIALS"), true);
   assertEquals(isMailboxDisconnected("OK"), false);
   assertEquals(isMailboxDisconnected(null), false);
+  // Même règle que sequence-send-email : utilisable = vide, OK ou CONNECTED (casse ignorée).
+  for (const s of ["STOPPED", "CONNECTING", "PAUSED", "ERROR", "DELETED"]) assertEquals(isMailboxDisconnected(s), true, s);
+  for (const s of ["", "  ", "ok", "Connected", undefined]) assertEquals(isMailboxDisconnected(s), false, String(s));
   // Signature d'une étape e-mail : titulaire de la boîte, pas l'auteur de l'inscription.
   assertEquals(await resolveSequenceSenderUserId(client, enrollment, { sender_id: "MAIL_THEO", action_type: "email" }), "u-theo");
   // Compte absent de l'organisation : rien n'est résolu.

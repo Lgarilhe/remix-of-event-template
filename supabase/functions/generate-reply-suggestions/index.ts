@@ -425,9 +425,14 @@ Deno.serve(async (req) => {
 
     // Fetch org_id for RAG
     let orgId: string | null = null;
+    // Prénom de l'appelant (celui qui répond), pour le rôle d'expéditeur du
+    // contexte d'approche : jamais le nom du candidat.
+    let callerFirstName: string | null = null;
     try {
-      const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      const { data: profileRow } = await svc.from('profiles').select('active_organization_id, display_name').eq('user_id', userId).maybeSingle();
       orgId = profileRow?.active_organization_id || null;
+      const displayName = String(profileRow?.display_name || '').trim();
+      callerFirstName = displayName ? (displayName.split(/\s+/)[0] || displayName) : null;
     } catch (e) {
       console.warn('[generate-reply-suggestions] Could not fetch org_id:', e);
     }
@@ -601,7 +606,9 @@ Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le conta
           // context.jobData : `jobData` seul n'existait pas dans ce bloc, l'erreur
           // levée supprimait tout le contexte d'approche sans nom de client.
           context.outreachClientName || context.jobData?.client?.name,
-          context.candidateName || 'le recruteur',
+          // Expéditeur = l'appelant qui répond (context.candidateName est le
+          // candidat : il devenait « RÔLE EXPÉDITEUR : Jean Dupont, CTO »).
+          callerFirstName,
           organizationName,
         );
       } catch (e) {

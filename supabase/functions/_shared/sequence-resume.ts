@@ -15,12 +15,66 @@
 
 import { ACCOUNT_DISCONNECTED_SKIP_REASON } from './linkedin-quotas.ts';
 import { isDeliveredCancelled } from './sequence-engine-rules.ts';
+import { GDPR_ERASED_AT_KEY, GDPR_ERASURE_SKIP_REASON } from './get-or-fetch-contact.ts';
 
 // Raison posée sur l'exécution quand l'organisation n'a ni abonnement ni essai
 // (même texte que process-sequences).
 export const SUBSCRIPTION_REQUIRED_SKIP_REASON = "Abonnement requis pour l'envoi de séquences";
 // Compte d'envoi absent des comptes reliés de l'organisation (SEQ-010).
 export const ACCOUNT_NOT_IN_ORG_REASON = "Compte d'envoi non rattaché à l'organisation";
+// Boîte e-mail d'envoi trouvée inutilisable avant l'envoi : rien n'est parti,
+// l'inscription est en pause 'send_failed' et la reprise réarme l'étape.
+export const MAILBOX_DISCONNECTED_SKIP_REASON = "Boîte e-mail d'envoi déconnectée : étape non envoyée";
+
+// ─── Décision D5 (contrat §7) : effacement RGPD définitif ───────────────────
+
+export const GDPR_ERASED_RESUME_MESSAGE = "Ce candidat a demandé l'effacement de ses données : il ne peut plus être relancé.";
+
+/**
+ * Inscription touchée par un effacement RGPD : marqueur durable
+ * tracking_data.gdpr_erased_at (posé sur toutes les inscriptions trouvées,
+ * terminées comprises), ou une exécution annulée par l'effacement. Ni reprise
+ * ni relance, quel que soit le statut.
+ */
+export function isGdprErasedEnrollment(
+  trackingData: unknown,
+  executions: Array<{ skip_reason?: string | null }>,
+): boolean {
+  const tracking = trackingData && typeof trackingData === 'object' && !Array.isArray(trackingData)
+    ? trackingData as Record<string, unknown>
+    : null;
+  const marker = tracking?.[GDPR_ERASED_AT_KEY];
+  if (marker !== undefined && marker !== null && marker !== false && marker !== '') return true;
+  return executions.some((e) => e.skip_reason === GDPR_ERASURE_SKIP_REASON);
+}
+
+// ─── Décision D3 (contrat §7) : rôle collaborateur ──────────────────────────
+
+/**
+ * Même règle que la RLS posée par B6 : un collaborateur n'agit que sur les
+ * inscriptions qu'il a créées. Appel en clé de service (pas d'utilisateur) ou
+ * autre rôle : pas de restriction supplémentaire.
+ */
+export function canActOnEnrollment(
+  caller: { userId: string | null; role: string | null | undefined },
+  enrollmentCreatedBy: string | null | undefined,
+): boolean {
+  if (!caller.userId || caller.role !== 'collaborator') return true;
+  return !!enrollmentCreatedBy && enrollmentCreatedBy === caller.userId;
+}
+
+/**
+ * tracking_data d'une inscription réactivée : le texte de la pause précédente
+ * (tracking_data.pause_reason) est retiré, pour qu'une pause ultérieure sans
+ * texte n'affiche pas un motif périmé (SEQ-082). null si rien ne change.
+ */
+export function trackingWithoutPauseReason(trackingData: unknown): Record<string, unknown> | null {
+  if (!trackingData || typeof trackingData !== 'object' || Array.isArray(trackingData)) return null;
+  if (!('pause_reason' in (trackingData as Record<string, unknown>))) return null;
+  const copy = { ...(trackingData as Record<string, unknown>) };
+  delete copy.pause_reason;
+  return copy;
+}
 
 // Motifs d'annulation posés par une MISE EN PAUSE (front historique, moteur,
 // dissociation de compte) : l'étape n'est jamais partie, elle est réarmable.
@@ -35,6 +89,7 @@ export const RESUMABLE_SKIP_REASONS: readonly string[] = [
   ACCOUNT_DISCONNECTED_SKIP_REASON,
   SUBSCRIPTION_REQUIRED_SKIP_REASON,
   ACCOUNT_NOT_IN_ORG_REASON,
+  MAILBOX_DISCONNECTED_SKIP_REASON,
 ];
 // Ancien moteur : exécution échue pendant une pause, passée 'skipped' sans
 // être partie (SEQ-023). Réarmable elle aussi.
