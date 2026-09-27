@@ -58,7 +58,7 @@ test('front-enroll-follow-3 / integration-7 — une étape en attente d’un can
 });
 
 test('front-enroll-follow-3 / integration-7 — le Journal lit le statut de l’inscription et de la séquence', () => {
-  assert.match(activityLog, /sequence_enrollments!inner\(status, profile_name, profile_headline, profile_url, job_id, outreach_sequences\(name, is_active\)\)/);
+  assert.match(activityLog, /sequence_enrollments!inner\(status, created_by, profile_name, profile_headline, profile_url, job_id, outreach_sequences\(name, is_active\)\)/);
   assert.match(activityLog, /held: heldExecutionNotice\(exec\.status, enrollmentRel\?\.status, sequenceRel\?\.is_active\)/);
 });
 
@@ -67,7 +67,8 @@ test('front-enroll-follow-3 / integration-7 — ni « À venir », ni « En reta
   assert.match(stats, /scheduled: executions\.filter\(e => !e\.held && /);
   assert.match(stats, /pending: executions\.filter\(e => !e\.held && /);
   assert.match(activityLog, /const isOverdue = exec\.status === 'scheduled' && isPast && !held;/);
-  assert.match(activityLog, /const canSkip = SKIPPABLE_STATUSES\.has\(exec\.status\) && !held;/);
+  // ownRow : règle D3 du collaborateur (tests/ux/seq-audit-f3-last.test.mjs).
+  assert.match(activityLog, /const canSkip = SKIPPABLE_STATUSES\.has\(exec\.status\) && !held && ownRow;/);
   // Le bouton « Ne pas envoyer » n'existe que si canSkip ; « Modifier » reste possible pendant la pause.
   assert.match(activityLog, /\{canSkip && \(\s*<Button[\s\S]*?Ne pas envoyer cette étape/);
   assert.match(activityLog, /const canEdit = exec\.status === 'scheduled' && !!preview\.message;/);

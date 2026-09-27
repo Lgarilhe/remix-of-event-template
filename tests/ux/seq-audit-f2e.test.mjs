@@ -348,3 +348,11 @@ test('§8 — « Marquer comme ayant répondu » annonce l’arrêt des autres s
   assert.match(panel, /Ses autres séquences encore en cours ou en pause, commencées avant la fin de celle-ci, seront aussi arrêtées\./);
   assert.match(panel, /: 'Ses autres séquences encore en cours ou en pause seront aussi arrêtées\.'/);
 });
+
+test('D3 — sur la ligne d’un autre membre, un collaborateur ne voit ni pause, ni réponse, ni relance, ni saut', () => {
+  const src = readFileSync(new URL('../../src/components/outreach/SequenceEnrollmentsPanel.tsx', import.meta.url), 'utf8');
+  assert.match(src, /\{enrollment\.status === 'active' && ownRow \? \(\s*<DropdownMenuItem\s*onClick=\{\(\) => setConfirmAction\(\{ type: 'stop'/);
+  assert.match(src, /\{ownRow && \(enrollment\.status === 'active' \|\| enrollment\.status === 'paused' \|\| enrollment\.status === 'completed'\) && \(\s*<DropdownMenuItem\s*onClick=\{\(\) => setConfirmAction\(\{ type: 'markReplied'/);
+  assert.match(src, /\{ownRow && !gdprErased && \(enrollment\.status === 'replied'/);
+  assert.match(src, /\{enrollment\.status === 'active' && ownRow && \(\s*<button[\s\S]{0,400}type: 'skipStep'/);
+});

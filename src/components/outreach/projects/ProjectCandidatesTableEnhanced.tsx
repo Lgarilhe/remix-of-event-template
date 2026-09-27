@@ -59,6 +59,7 @@ import { fr } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
+  isSequencePauseResumable,
   missionEnrollmentJobIds,
   summarizeResumeResponse,
   type ResumeResponse,
@@ -94,6 +95,8 @@ interface MissionEnrollment {
   status: string;
   pause_reason: string | null;
   sequence_name: string;
+  /** Séquence active (is_active) ; null si la lecture ne l'a pas donné. */
+  sequence_active: boolean | null;
   created_at: string;
 }
 
@@ -103,8 +106,13 @@ interface CandidateMissionEnrollments {
   paused: MissionEnrollment[];
 }
 
-/** Une pause manuelle (ou antérieure aux raisons de pause) se reprend depuis le pipeline. */
-const isResumableFromPipeline = (e: MissionEnrollment) => !e.pause_reason || e.pause_reason === 'manual';
+/**
+ * Se reprennent depuis le pipeline : une pause manuelle (ou antérieure aux
+ * raisons de pause), et une pause de séquence (désactivation, auto-pause)
+ * restée en place alors que la séquence est de nouveau active.
+ */
+const isResumableFromPipeline = (e: MissionEnrollment) => !e.pause_reason || e.pause_reason === 'manual'
+  || isSequencePauseResumable(e.status, e.pause_reason, e.sequence_active);
 
 const statusConfig = {
   untreated: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
@@ -164,7 +172,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
 
       const { data: enrollments, error } = await supabase
         .from('sequence_enrollments')
-        .select('id, profile_id, status, pause_reason, created_at, outreach_sequences(name)')
+        .select('id, profile_id, status, pause_reason, created_at, outreach_sequences(name, is_active)')
         .in('job_id', missionEnrollmentJobIds(projectId, project?.job_id))
         .in('status', ['active', 'paused'])
         .order('created_at', { ascending: false });
@@ -185,6 +193,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
           status: e.status,
           pause_reason: e.pause_reason ?? null,
           sequence_name: e.outreach_sequences?.name || 'Séquence',
+          sequence_active: typeof e.outreach_sequences?.is_active === 'boolean' ? e.outreach_sequences.is_active : null,
           created_at: e.created_at,
         };
         if (e.status === 'active') entry.active.push(item);

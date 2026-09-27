@@ -16,10 +16,10 @@ Les 410 constats confirmés ont été regroupés en 246 défauts distincts, puis
 
 - 246 défauts : 22 critiques, 48 graves, 117 moyens, 59 mineurs.
 - 233 corrigés, 1 neutralisé par la fermeture du canal e-mail, 10 corrigés en partie, 2 reportés (détail dans le registre).
-- Tests : 797 tests UX (298 avant l'audit), 40 tests agent, 113 tests Deno sur les règles pures du moteur, tous verts.
+- Tests : 840 tests UX (298 avant l'audit), 40 tests agent, 119 tests Deno sur les règles pures du moteur, tous verts.
 - tsc : 24 erreurs, contre 25 avant l'audit. Build de production OK.
-- Typage Deno des edge functions : 17 erreurs de moins qu'avant l'audit, aucune dans le code modifié.
-- Migration `20260925163421_sequences_audit_lot_b6.sql` rejouée localement sous PostgreSQL 16, sur une base neuve (274 migrations) et sur une base de type production (`MIGRATION_CLEAN.sql` puis 98 migrations). Audit RLS : 10 contrôles généraux et 22 contrôles séquences passent sur les deux bases.
+- Typage Deno des edge functions : 18 erreurs de moins qu'avant l'audit, aucune dans le code modifié (process-sequences en compte une de plus : trois erreurs anciennes de `_shared/credit-guard.ts`, désormais importé, contre deux erreurs de base corrigées).
+- Migration `20260925163421_sequences_audit_lot_b6.sql` rejouée localement sous PostgreSQL 16, sur une base neuve (274 migrations) et sur une base de type production (`MIGRATION_CLEAN.sql` puis 98 migrations). Audit RLS : 10 contrôles généraux et 22 contrôles séquences passent sur les deux bases. Les anciennes pauses de la production ont été simulées et reclassées comme prévu (D6).
 
 ## Les 22 défauts critiques trouvés
 

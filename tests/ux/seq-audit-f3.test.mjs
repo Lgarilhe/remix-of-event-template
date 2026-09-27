@@ -404,7 +404,8 @@ test('SEQ-004 — fiche candidat : mark_replied côté serveur, message selon le
   const mark = block(candidateHook, 'const markReplied = useCallback', 'return {\n    enrollments');
   assert.match(mark, /action: 'mark_replied'/);
   assert.match(mark, /enrollment_id: enrollmentId/);
-  assert.match(mark, /data\?\.changed === false/);
+  // changed: false (déjà close) : un message d'information, pas un succès.
+  assert.match(mark, /\} else if \(data\.changed\) \{[\s\S]*?\} else \{\s*toast\.info\(`Rien n’a changé/);
   assert.doesNotMatch(mark, /from\('sequence_(enrollments|step_executions)'\)/);
 });
 
@@ -429,7 +430,7 @@ test('SEQ-245 — noms des types d’étape : ceux de l’éditeur', async (t) =
 test('mark_replied — l’avertissement du serveur est affiché, pas un succès nu', () => {
   const hook = readFileSync(new URL('../../src/hooks/useCandidateEnrollments.ts', import.meta.url), 'utf8');
   const panel = readFileSync(new URL('../../src/components/outreach/SequenceEnrollmentsPanel.tsx', import.meta.url), 'utf8');
-  assert.match(hook, /data\?\.warning\)\s*\{\s*toast\.warning\(/);
+  assert.match(hook, /data\.changed && data\.warning\)\s*\{\s*toast\.warning\(/);
   assert.match(panel, /payload\.changed && payload\.warning\)\s*\{\s*toast\.warning\(/);
 });
 

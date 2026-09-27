@@ -1088,7 +1088,10 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="bg-background border-border rounded-lg">
-                                {enrollment.status === 'active' ? (
+                                {/* D3 : sur la ligne d'un candidat inscrit par un autre membre, un
+                                    collaborateur ne voit que les liens de consultation : le
+                                    serveur et la base refuseraient ces actions. */}
+                                {enrollment.status === 'active' && ownRow ? (
                                   <DropdownMenuItem
                                     onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id })}
                                     className="text-warning-foreground"
@@ -1138,7 +1141,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 {/* Marquer répondu manuellement (cas réponse hors-canal :
                                     téléphone, en personne, autre boîte mail). Évite de
                                     continuer à spammer le candidat. */}
-                                {(enrollment.status === 'active' || enrollment.status === 'paused' || enrollment.status === 'completed') && (
+                                {ownRow && (enrollment.status === 'active' || enrollment.status === 'paused' || enrollment.status === 'completed') && (
                                   <DropdownMenuItem
                                     onClick={() => setConfirmAction({ type: 'markReplied', id: enrollment.id })}
                                   >
@@ -1149,7 +1152,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 {/* Relancer : inscription close (réponse, fin, arrêt). Jamais
                                     pour un candidat en pause, qui a « Reprendre », ni après
                                     un effacement RGPD (D5). */}
-                                {!gdprErased && (enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'cancelled' || enrollment.status === 'stopped') && (
+                                {ownRow && !gdprErased && (enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'cancelled' || enrollment.status === 'stopped') && (
                                   <DropdownMenuItem
                                     onClick={() => setConfirmAction({ type: 'reEnroll', id: enrollment.id })}
                                   >
@@ -1273,7 +1276,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                                 </span>
                                                 {/* Le serveur refuse de sauter l'étape d'un candidat en
                                                     pause ou clos (enrollment_not_active) : bouton masqué. */}
-                                                {enrollment.status === 'active' && (
+                                                {enrollment.status === 'active' && ownRow && (
                                                   <button
                                                     onClick={(e) => {
                                                       e.stopPropagation();

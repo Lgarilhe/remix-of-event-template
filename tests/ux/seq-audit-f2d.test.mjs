@@ -366,7 +366,8 @@ test('D5 — effacement RGPD : ni « Reprendre » ni « Relancer »', () => {
   assert.equal(erased({ tracking_data: ['x'], executions: undefined }), false);
 
   assert.match(panel, /const canResume = enrollment\.status === 'paused' && !gdprErased/);
-  assert.match(panel, /\{!gdprErased && \(enrollment\.status === 'replied' \|\| enrollment\.status === 'completed' \|\| enrollment\.status === 'cancelled' \|\| enrollment\.status === 'stopped'\) && \(/);
+  // « Relancer » : ni après un effacement (D5), ni sur la ligne d'un autre membre pour un collaborateur (D3).
+  assert.match(panel, /\{ownRow && !gdprErased && \(enrollment\.status === 'replied' \|\| enrollment\.status === 'completed' \|\| enrollment\.status === 'cancelled' \|\| enrollment\.status === 'stopped'\) && \(/);
   assert.match(panel, /const pauseHint = gdprErased\s*\? GDPR_ERASED_NOTICE/);
   assert.match(panel, /const GDPR_ERASED_NOTICE = 'Ce candidat a demandé l’effacement de ses données : il ne peut plus être relancé\.';/);
 });

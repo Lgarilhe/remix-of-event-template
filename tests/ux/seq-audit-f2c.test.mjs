@@ -99,7 +99,8 @@ test('SEQ-004 — la réactivation rappelle la reprise tant qu’il reste des ca
 
 test('SEQ-004 — « Sauter » n’est proposé que pour un candidat en cours', () => {
   const skipButton = panel.slice(panel.indexOf('Prévu :'), panel.indexOf('Sauter\n'));
-  assert.match(skipButton, /\{enrollment\.status === 'active' && \(\s*<button/);
+  // Candidat en cours, et pour un collaborateur seulement sur ses propres inscriptions (D3).
+  assert.match(skipButton, /\{enrollment\.status === 'active' && ownRow && \(\s*<button/);
   assert.match(skipButton, /setConfirmAction\(\{ type: 'skipStep', stepId: exec\.id \}\)/);
 });
 
