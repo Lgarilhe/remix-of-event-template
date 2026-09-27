@@ -185,7 +185,7 @@ test.describe('@smoke Barre latérale à onglets', () => {
       await page.goto('/dashboard');
       await expect(page).not.toHaveURL(/\/auth/);
 
-      await page.getByRole('button', { name: 'Toggle Sidebar' }).click();
+      await page.getByRole('button', { name: 'Afficher ou masquer la navigation' }).click();
 
       const targets = [
         page.getByRole('tab', { name: 'Missions' }),
