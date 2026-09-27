@@ -495,33 +495,3 @@ test.describe('Séquences — inscriptions', () => {
     expect(links ?? [], 'liaison LinkedIn retirée').toHaveLength(0);
   });
 });
-
-test('TMP escape', async ({ browser, org }) => {
-  const owner = org.owner;
-  await setOrgPlan(org.orgId);
-  const missionId = await seedMission(org.orgId, owner.userId, { name: 'Mission Esc' });
-  const account = await seedLinkedInAccount(org.orgId, owner.userId, `acc_e2e_${rand()}`);
-  const seq = await seedMissionSequence(org.orgId, owner.userId, missionId, 'Esc e2e');
-  await seedEnrolled(org.orgId, seq.sequenceId, seq.steps[0], owner.userId, account, 'Alice Martin', new Date(Date.now() + 2 * HOUR));
-  await seedEnrolled(org.orgId, seq.sequenceId, seq.steps[0], owner.userId, account, 'Bruno Petit', new Date(Date.now() + 3 * HOUR));
-  const page = await openAs(browser, owner, [account]);
-  await openOutreach(page, missionId, seq.name);
-  const panel = await openEnrollmentsPanel(page, seq.name);
-  await panel.getByRole('button', { name: 'Actions pour Alice Martin' }).click();
-  await page.getByRole('menuitem', { name: 'Mettre en pause pour ce candidat' }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Mettre en pause' }).click();
-  await expect(toast(page, 'Alice Martin est en pause')).toBeVisible({ timeout: 15_000 });
-  await page.waitForTimeout(800);
-  console.log('XX focus:', await page.evaluate(() => (document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent || '').slice(0, 80) + ' / ' + document.activeElement?.tagName));
-  console.log('XX body style:', await page.evaluate(() => document.body.getAttribute('style')));
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(800);
-  console.log('XX B escape after pause hidden?', await panel.isHidden());
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(800);
-  console.log('XX C 2nd escape hidden?', await panel.isHidden());
-  await panel.getByRole('button', { name: 'Actualiser la liste des inscrits' }).focus().catch(() => undefined);
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(800);
-  console.log('XX D escape with focus inside hidden?', await panel.isHidden());
-});

@@ -17,6 +17,7 @@ Les 410 constats confirmés ont été regroupés en 246 défauts distincts, puis
 - 246 défauts : 22 critiques, 48 graves, 117 moyens, 59 mineurs.
 - 233 corrigés, 1 neutralisé par la fermeture du canal e-mail, 10 corrigés en partie, 2 reportés (détail dans le registre).
 - Tests : 840 tests UX (298 avant l'audit), 40 tests agent, 119 tests Deno sur les règles pures du moteur, tous verts.
+- Tests de bout en bout contre une stack locale : 32 tests d'API et 46 tests d'interface passent, voir la section dédiée.
 - tsc : 24 erreurs, contre 25 avant l'audit. Build de production OK.
 - Typage Deno des edge functions : 18 erreurs de moins qu'avant l'audit, aucune dans le code modifié (process-sequences en compte une de plus : trois erreurs anciennes de `_shared/credit-guard.ts`, désormais importé, contre deux erreurs de base corrigées).
 - Migration `20260925163421_sequences_audit_lot_b6.sql` rejouée localement sous PostgreSQL 16, sur une base neuve (274 migrations) et sur une base de type production (`MIGRATION_CLEAN.sql` puis 98 migrations). Audit RLS : 10 contrôles généraux et 22 contrôles séquences passent sur les deux bases. Les anciennes pauses de la production ont été simulées et reclassées comme prévu (D6).
@@ -121,23 +122,45 @@ Six décisions finales, prises après la relecture contradictoire, priment sur l
 4. Vérifier la ligne `organization_integrations` de l'organisation Konekt : la synchronisation Notion après envoi ne tourne plus que si `notion_connected` est vrai et que les identifiants correspondent à ceux de la plateforme.
 5. État de la production au 25 septembre : 2 séquences, 17 inscriptions, aucune active (15 en pause, 2 répondues). Le déploiement ne relance donc aucun envoi.
 
-## Vérifications à faire à la main avant la fusion
+## Tests de bout en bout (27 septembre)
 
-Aucun test n'a pu tourner contre un Supabase de test ni dans un navigateur connecté (pas d'environnement e2e dans la session). Le filtre de sélection du moteur qui écarte les comptes déjà au plafond (pages 2 et suivantes) n'a pas été essayé contre une vraie base : s'il échouait, seule la première page serait traitée et l'erreur serait journalisée. Les scénarios suivants sont à dérouler sur une préversion :
+L'application a été testée contre une copie locale de Supabase : la même base (image `supabase/postgres` 17, les 274 migrations rejouées avec le rôle de la CLI), l'authentification, l'API REST, les edge functions servies par Deno, et un faux LinkedIn qui enregistre chaque envoi au lieu de le faire. Montage et utilisation : `e2e/local-stack/README.md`. La production n'a jamais été touchée.
 
-1. Créer une séquence avec une vérification de connexion à deux branches, des conditions d'arrêt et deux expéditeurs ; la rouvrir : tout est conservé.
-2. Inscrire trois candidats avec un aperçu modifié à la main ; le message modifié est celui du Journal et celui qui part.
-3. Mettre en pause un candidat, désactiver puis réactiver la séquence : le candidat mis en pause à la main reste en pause, les autres reprennent sans rafale.
-4. Déconnecter puis reconnecter le compte LinkedIn pendant que la séquence est désactivée : rien ne part.
-5. Répondre depuis le compte du candidat pendant qu'une relance est programmée : l'inscription passe « A répondu », la relance est annulée.
-6. Se connecter en collaborateur : pas d'interrupteur de désactivation sur la séquence d'un autre, doublons de l'organisation signalés à l'inscription.
-7. Retirer un membre de l'équipe : ses inscriptions passent en pause avant le retrait.
+Résultats, deux passages de suite à chaque fois :
+
+- audits SQL de la CI : 5 fichiers, 74 contrôles, tous passent ;
+- tests d'API : 32 sur 32. Les 12 tests du moteur (`sequences-engine.spec.ts`), ignorés jusqu'ici faute de fonctions déployées, passent ;
+- tests d'interface (Chromium, 1280 px) : 46 passent, 1 échoue, la carte « Extension Chrome » des Paramètres (code identique à `main`, hors séquences).
+
+Les sept vérifications manuelles prévues avant la fusion sont maintenant des tests :
+
+| Scénario | Fichier | Résultat |
+|---|---|---|
+| 1. Éditeur : vérification de connexion à deux branches, conditions d'arrêt, deux expéditeurs, réouverture | `e2e/flows/sequences-builder.spec.ts` | Tout est conservé, en base et à l'écran, y compris après un second enregistrement |
+| 2. Aperçu modifié à l'inscription | `e2e/api/sequences-scenarios.spec.ts` | Le texte modifié, à l'inscription ou dans le Journal, est celui qui part et celui que le Journal affiche |
+| 3. Pause d'un candidat, désactivation puis réactivation | `e2e/flows/sequences-enrollments.spec.ts` | Le candidat mis en pause à la main reste en pause ; les autres reprennent à leur date prévue |
+| 4. Déconnexion et reconnexion du compte | `sequences-scenarios.spec.ts` | Reprise si la séquence est active ; rien ne part si elle a été désactivée entre-temps |
+| 5. Réponse pendant une relance programmée | `sequences-scenarios.spec.ts` | Inscription « A répondu », relance annulée, rien ne part |
+| 6. Collaborateur | `sequences-enrollments.spec.ts`, `sequences-scenarios.spec.ts` | Pas d'interrupteur ni d'action sur la séquence et les candidats d'un autre ; doublons de toute l'organisation signalés |
+| 7. Retrait d'un membre | `sequences-enrollments.spec.ts`, `sequences-scenarios.spec.ts` | Envois arrêtés avant la suppression, inscriptions en pause, rien ne part ensuite |
+
+Le filtre de sélection du moteur sur les pages 2 et suivantes a son test : un compte au plafond sur la première page n'empêche pas les envois des comptes suivants. Les quatre parcours laissés « à écrire » dans `e2e/flows/sequences.spec.ts` sont couverts : création depuis l'éditeur, duplication, saut d'étape, envoi des actions du jour par un membre non administrateur.
+
+Deux défauts trouvés par ces tests, corrigés :
+
+| Défaut | Correctif |
+|---|---|
+| La pastille « Partagée entre missions », ajoutée par l'audit, réduisait le nom de la séquence à une largeur nulle dans la liste | La pastille passe à la ligne (`SequencesList.tsx`) |
+| Webhook LinkedIn : « déconnecté » puis « OK » reçus dans la même minute au format à plat (API v2 comprise) comptaient pour un seul événement, le compte restait noté déconnecté et ses inscriptions en pause. Même collision pour deux messages au format `new_message` | La clé de dédoublonnage inclut le statut et l'identifiant du message (`unipile-webhook`) |
+
+Reste à voir sur une préversion, avec un vrai compte LinkedIn : l'envoi réel (le faux LinkedIn répond toujours par un succès) et le format exact des webhooks reçus.
 
 ## Ce qui reste ouvert
 
 - Réouvrir les canaux e-mail et WhatsApp, avec un test réel de bout en bout (envoi, suivi, désinscription, réponse dans le fil). SEQ-206 et SEQ-207 en dépendent.
 - Brancher la synchronisation Notion sur les identifiants propres de chaque organisation (SEQ-007).
-- Tests e2e navigateur des parcours ci-dessus, et exécution de `e2e/api/sequences-engine.spec.ts` contre un projet de test.
+- Faire tourner les tests de bout en bout dans la CI : le workflow e2e n'y sert pas les edge functions, et ces tests s'ignorent d'eux-mêmes sans la stack locale (`e2e/local-stack/README.md`).
+- Nettoyage des tests : les organisations de test restent en base, le déclencheur `prevent_last_owner_removal` bloque la suppression de leur propriétaire (déjà le cas avant l'audit).
 - Libellé de l'onglet de mission « Outreach » : laissé tel quel, le renommer touche la navigation de toute l'application.
 
 ## Registre des 246 défauts
