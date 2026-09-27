@@ -1365,7 +1365,11 @@ test.describe('Journal', () => {
     // Bruno passe à un collègue entre l'affichage et le clic : le serveur refuse (403).
     row = await journalRow(sheet, 'Bruno Mien');
     await expect(row.getByRole('button', { name: 'Ne pas envoyer cette étape' })).toBeVisible();
-    await admin().from('sequence_enrollments').update({ created_by: org.owner.userId }).eq('id', bruno.enrollmentId);
+    // Reprise complète par le propriétaire : auteur ET compte d'envoi (le sien). Changer l'auteur seul, en laissant
+    // le compte relié du collaborateur, est refusé par la garde SEQ-043 (migration 20260927194905).
+    const { error: handoverError } = await admin().from('sequence_enrollments')
+      .update({ created_by: org.owner.userId, account_id: accountId }).eq('id', bruno.enrollmentId);
+    expect(handoverError, handoverError?.message).toBeNull();
     await row.getByRole('button', { name: 'Ne pas envoyer cette étape' }).click();
     await page.getByRole('alertdialog', { name: 'Ne pas envoyer cette étape ?' }).getByRole('button', { name: 'Ne pas envoyer', exact: true }).click();
     const refusal = toast(page, 'Vous ne pouvez agir que sur les candidats que vous avez inscrits.');

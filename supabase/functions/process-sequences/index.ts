@@ -14,6 +14,7 @@ import {
   MANUAL_SKIP_REASON, resolveStepContent, isMissingRequiredText, missionJobIds,
   closedChannelSkipReason, isEmailOutcomeUnknown, siblingEnrollmentsFilter, SIBLING_REPLY_SKIP_REASON,
   siblingStopScope, type SiblingStopScope, REPLY_PIPELINE_STATUSES, replyPipelinePatch, linkedinProfileSlug,
+  executionsSinceReEnroll,
 } from "../_shared/sequence-engine-rules.ts";
 import {
   planResume, countOutcomes, ACCOUNT_NOT_IN_ORG_REASON, SUBSCRIPTION_REQUIRED_SKIP_REASON,
@@ -2368,11 +2369,17 @@ async function handleProcess(supabase: any, force = false) {
           // First: check if there are ANY earlier message-type steps in this enrollment's execution history
           const { data: priorMessageRows } = await supabase
             .from('sequence_step_executions')
-            .select('id, status, skip_reason, executed_at, step:sequence_steps!inner(action_type)')
+            .select('id, status, skip_reason, executed_at, created_at, step:sequence_steps!inner(action_type)')
             .eq('enrollment_id', enrollment.id)
             .lt('step_order', step.step_order)
             .in('step.action_type', ['message', 'inmail', 'smart_message', 'email', 'whatsapp_message']);
-          const priorMessageSteps = (priorMessageRows ?? []) as Array<{ status: string; skip_reason?: string | null; executed_at?: string | null }>;
+          // Inscription relancée (re_enroll) : seules les étapes postérieures à
+          // la relance comptent, l'ancienne clôture ne la reclôt pas aussitôt.
+          const reEnrolledAt = ((enrollment.tracking_data as Record<string, unknown> | null)?.re_enrolled_at ?? null) as string | null;
+          const priorMessageSteps = executionsSinceReEnroll(
+            (priorMessageRows ?? []) as Array<{ status: string; skip_reason?: string | null; executed_at?: string | null; created_at?: string | null }>,
+            reEnrolledAt,
+          );
 
           // SEQ-029 : clore seulement si aucun message antérieur n'est parti ET
           // qu'au moins un a échoué, été annulé ou sauté pour un autre motif
@@ -2415,7 +2422,6 @@ async function handleProcess(supabase: any, force = false) {
             // This catches replies missed by webhook or not yet picked up by the 4h polling
             // Candidat relancé après une réponse (re_enroll) : seule une réponse
             // postérieure à la relance l'arrête, sinon il serait reclos aussitôt.
-            const reEnrolledAt = ((enrollment.tracking_data as Record<string, unknown> | null)?.re_enrolled_at ?? null) as string | null;
             const windowCandidates = [lastVisibleSentAt, reEnrolledAt].filter((d): d is string => !!d && !Number.isNaN(new Date(d).getTime()));
             const lastSentDate = windowCandidates.length
               ? windowCandidates.reduce((a, b) => (new Date(a) > new Date(b) ? a : b))

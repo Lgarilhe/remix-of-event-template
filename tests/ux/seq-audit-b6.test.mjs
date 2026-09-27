@@ -432,10 +432,11 @@ test('SEQ-043 — on n’inscrit pas depuis le compte LinkedIn relié à un coll
   assert.match(b6, /CREATE TRIGGER sequence_enrollments_check_sender_owner\s+BEFORE INSERT ON public\.sequence_enrollments\s+FOR EACH ROW/);
   assert.ok('sequence_enrollments_check_org' < 'sequence_enrollments_check_sender_owner');
   // Et au changement de compte ou d'auteur d'une inscription existante (seq-db-garde-compte-update) :
-  // même fonction, seulement si l'une des deux valeurs change.
+  // même fonction, seulement si l'une des deux valeurs change (un auteur remis à NULL par la
+  // suppression de l'utilisateur n'est pas contrôlé).
   const upd = latest(/CREATE TRIGGER sequence_enrollments_check_sender_owner_update/);
   assert.ok(upd.file, 'garde du changement de compte absente');
-  assert.match(upd.sql, /CREATE TRIGGER sequence_enrollments_check_sender_owner_update\s+BEFORE UPDATE OF account_id, created_by ON public\.sequence_enrollments\s+FOR EACH ROW\s+WHEN \(OLD\.account_id IS DISTINCT FROM NEW\.account_id\s+OR OLD\.created_by IS DISTINCT FROM NEW\.created_by\)\s+EXECUTE FUNCTION public\.sequence_enrollments_check_sender_owner\(\);/);
+  assert.match(upd.sql, /CREATE TRIGGER sequence_enrollments_check_sender_owner_update\s+BEFORE UPDATE OF account_id, created_by ON public\.sequence_enrollments\s+FOR EACH ROW\s+WHEN \(OLD\.account_id IS DISTINCT FROM NEW\.account_id\s+OR \(OLD\.created_by IS DISTINCT FROM NEW\.created_by AND NEW\.created_by IS NOT NULL\)\)\s+EXECUTE FUNCTION public\.sequence_enrollments_check_sender_owner\(\);/);
   assert.ok('sequence_enrollments_check_org' < 'sequence_enrollments_check_sender_owner_update');
   // Rejoué en base par l'audit (S19) : refus avec le HINT, compte sans liaison accepté.
   const audit = stripSql(read('supabase/tests/rls_two_orgs_audit.sql'));

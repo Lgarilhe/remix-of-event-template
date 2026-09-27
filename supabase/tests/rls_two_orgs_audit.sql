@@ -670,6 +670,17 @@ BEGIN
     VALUES (seq_a, 'mail-b@audit.test', 'prof-b-3', org_a, u_b, 'active');
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[Régression SEQ-043 : compte sans liaison refusé (%s)] ', SQLERRM);
   END;
+  -- Même règle au changement de compte : B ne passe pas sa propre inscription sur le compte relié à A.
+  BEGIN
+    UPDATE public.sequence_enrollments SET account_id = 'acc-li-a' WHERE sequence_id = seq_a AND profile_id = 'prof-b-3';
+    failures := failures || '[SEQ-043 : B passe son inscription sur le compte relié à A] ';
+  EXCEPTION WHEN insufficient_privilege THEN
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'ENROLL_ACCOUNT_OF_OTHER_MEMBER' THEN
+      failures := failures || format('[SEQ-043 changement de compte : refus sans le HINT attendu (%s)] ', SQLERRM);
+    END IF;
+  WHEN OTHERS THEN failures := failures || format('[SEQ-043 changement de compte : %s] ', SQLERRM);
+  END;
   RESET ROLE;
   PERFORM set_config('request.jwt.claims', '', true);
   PERFORM set_config('request.jwt.claim.sub', '', true);

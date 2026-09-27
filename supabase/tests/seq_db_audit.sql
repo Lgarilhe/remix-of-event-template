@@ -884,6 +884,7 @@ DECLARE
   v_who text;
   v_hint text;
   v_acc text;
+  v_n int;
   f text := '';
   c int := 0;
 BEGIN
@@ -918,6 +919,32 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- (a2) témoins : une mise à jour ordinaire d'une inscription posée sur le compte
+  -- relié d'un autre membre (ici le propriétaire), account_id répété à l'identique
+  -- comme le fait une mise à jour complète de supabase-js, passe pour un membre ;
+  -- un auteur remis à NULL (suppression de l'utilisateur) aussi.
+  c := c + 1;
+  PERFORM pg_temp.seqdb_as(NULL);
+  INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
+  VALUES (seq_a, 'seqdb-acc-owner', 'seqdb-prof-gw', org_a, u_a, 'active') RETURNING id INTO v_enr;
+  PERFORM pg_temp.seqdb_as(u_m);
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    UPDATE public.sequence_enrollments
+    SET account_id = 'seqdb-acc-owner', tracking_data = COALESCE(tracking_data, '{}'::jsonb) || '{"seqdb_temoin": true}'::jsonb
+    WHERE id = v_enr;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    IF v_n <> 1 THEN f := f || format('[témoin : mise à jour ordinaire par un membre, %s ligne] ', v_n); END IF;
+  EXCEPTION WHEN OTHERS THEN f := f || format('[témoin : mise à jour ordinaire refusée : %s (%s)] ', SQLERRM, SQLSTATE);
+  END;
+  RESET ROLE;
+  PERFORM pg_temp.seqdb_as(NULL);
+  c := c + 1;
+  BEGIN
+    UPDATE public.sequence_enrollments SET created_by = NULL WHERE id = v_enr;
+  EXCEPTION WHEN OTHERS THEN f := f || format('[témoin : auteur remis à NULL refusé : %s (%s)] ', SQLERRM, SQLSTATE);
+  END;
+
   -- (b) chemin serveur sans auteur, depuis le compte relié d'un membre.
   -- décision produit en attente : une inscription serveur sans auteur (created_by NULL) doit-elle être refusée ? Constat en NOTICE, hors échecs.
   BEGIN
@@ -929,7 +956,7 @@ BEGIN
   WHEN OTHERS THEN f := f || format('[auteur absent : %s (%s)] ', SQLERRM, SQLSTATE);
   END;
 
-  DELETE FROM public.sequence_enrollments WHERE profile_id IN ('seqdb-prof-gm', 'seqdb-prof-gc', 'seqdb-prof-gnull');
+  DELETE FROM public.sequence_enrollments WHERE profile_id IN ('seqdb-prof-gm', 'seqdb-prof-gc', 'seqdb-prof-gw', 'seqdb-prof-gnull');
   INSERT INTO seq_db_results VALUES ('garde-compte-contournements', c, f);
 END $$;
 

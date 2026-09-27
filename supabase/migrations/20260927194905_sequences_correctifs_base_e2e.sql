@@ -13,6 +13,9 @@
 --             WHEN ne la déclenche que si l'une des deux valeurs change : une
 --             mise à jour ordinaire (statut, pause, suivi) d'une inscription
 --             héritée déjà posée sur le compte d'un collègue reste possible.
+--             Un auteur remis à NULL (clé étrangère ON DELETE SET NULL, compte
+--             utilisateur supprimé) n'est pas contrôlé : la suppression d'un
+--             utilisateur ne doit jamais échouer sur ce déclencheur.
 -- 2. sequence_templates, sequence_snippets : created_by référençait
 --             profiles(id) sur une base construite depuis les migrations, alors
 --             que le front écrit l'identifiant auth.users (« Enregistrer comme
@@ -42,7 +45,7 @@ CREATE TRIGGER sequence_enrollments_check_sender_owner_update
   BEFORE UPDATE OF account_id, created_by ON public.sequence_enrollments
   FOR EACH ROW
   WHEN (OLD.account_id IS DISTINCT FROM NEW.account_id
-        OR OLD.created_by IS DISTINCT FROM NEW.created_by)
+        OR (OLD.created_by IS DISTINCT FROM NEW.created_by AND NEW.created_by IS NOT NULL))
   EXECUTE FUNCTION public.sequence_enrollments_check_sender_owner();
 
 -- ---------------------------------------------------------------------

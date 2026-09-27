@@ -189,7 +189,7 @@ Deno.test('§8 : « répondu » sur une inscription terminée n\'arrête que les
 
 // ─── Correctifs du lot moteur (tests e2e des 20 lots) ───────────────────────
 
-import { linkedinProfileSlug, replyPipelinePatch, REPLY_PIPELINE_STATUSES } from './sequence-engine-rules.ts';
+import { executionsSinceReEnroll, linkedinProfileSlug, replyPipelinePatch, REPLY_PIPELINE_STATUSES } from './sequence-engine-rules.ts';
 
 Deno.test('SEQ-221 : la réponse passe « replied » la ligne écrite à l\'inscription (« messaged »)', () => {
   strictEqual(REPLY_PIPELINE_STATUSES.includes('messaged'), true);
@@ -223,4 +223,21 @@ Deno.test('SEQ-008 : ni préfixe, ni infixe, ni page entreprise ne désignent le
   strictEqual(linkedinProfileSlug('https://www.linkedin.com/company/camille'), null);
   strictEqual(linkedinProfileSlug(null), null);
   strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/ab'), null);
+});
+
+Deno.test('SEQ-029 / SEQ-220 : après une relance, un premier message jamais parti ne reclôt pas l\'inscription', () => {
+  const stopped = { status: 'skipped', skip_reason: 'Stop condition: meeting booked (Calendly)', executed_at: '2026-09-20T10:00:00Z' };
+  const failed = { status: 'failed', skip_reason: null, executed_at: '2026-09-21T10:00:00Z' };
+  // Sans relance : tout l'historique compte, la garde clôt.
+  deepStrictEqual(executionsSinceReEnroll([stopped, failed], null), [stopped, failed]);
+  strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([stopped], null)), true);
+  // Relance postérieure : l'ancienne clôture ne compte plus.
+  deepStrictEqual(executionsSinceReEnroll([stopped, failed], '2026-09-22T10:00:00Z'), []);
+  strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([stopped], '2026-09-22T10:00:00Z')), false);
+  // Échec après la relance : la garde s'applique de nouveau.
+  deepStrictEqual(executionsSinceReEnroll([stopped, failed], '2026-09-20T12:00:00Z'), [failed]);
+  // Date illisible : tout l'historique ; exécution sans date : gardée.
+  deepStrictEqual(executionsSinceReEnroll([stopped], 'pas une date'), [stopped]);
+  const undated = { status: 'cancelled', skip_reason: 'x', executed_at: null, created_at: null };
+  deepStrictEqual(executionsSinceReEnroll([undated], '2026-09-22T10:00:00Z'), [undated]);
 });
