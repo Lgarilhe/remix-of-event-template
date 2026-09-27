@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import {
   executionDoneVerb,
   executionStatusLabel,
@@ -104,6 +106,8 @@ interface StepExecution {
   skip_reason: string | null;
   enrollment?: {
     status: string | null;
+    /** Membre qui a inscrit le candidat (D3 : un collaborateur n'agit que sur les siens). */
+    created_by: string | null;
     profile_name: string | null;
     profile_headline: string | null;
     profile_url: string | null;
@@ -227,6 +231,11 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   const [editingExecution, setEditingExecution] = useState<StepExecution | null>(null);
   const [skippingId, setSkippingId] = useState<string | null>(null);
   const [skipConfirm, setSkipConfirm] = useState<{ id: string; candidateName: string } | null>(null);
+  // D3 : un collaborateur ne saute que les étapes des candidats qu'il a
+  // inscrits (le serveur refuse les autres, 403).
+  const { isCollaborator } = useOrganization();
+  const { user } = useAuthReady();
+  const userId = user?.id ?? null;
 
   const missionScoped = !!projectId && scope === 'mission';
 
@@ -253,7 +262,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       let query = supabase
         .from('sequence_step_executions')
         .select(
-          'id, enrollment_id, step_id, step_order, status, scheduled_at, executed_at, final_subject, final_message, error_message, skip_reason, sequence_steps!inner(action_type, message_template, subject_template), sequence_enrollments!inner(status, profile_name, profile_headline, profile_url, job_id, outreach_sequences(name, is_active))',
+          'id, enrollment_id, step_id, step_order, status, scheduled_at, executed_at, final_subject, final_message, error_message, skip_reason, sequence_steps!inner(action_type, message_template, subject_template), sequence_enrollments!inner(status, created_by, profile_name, profile_headline, profile_url, job_id, outreach_sequences(name, is_active))',
         )
         .not('sequence_steps.action_type', 'in', `(${HIDDEN_ACTION_TYPES.join(',')})`)
         .order('scheduled_at', { ascending: false })
@@ -313,6 +322,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           enrollment: enrollmentRel
             ? {
                 status: enrollmentRel.status,
+                created_by: enrollmentRel.created_by,
                 profile_name: enrollmentRel.profile_name,
                 profile_headline: enrollmentRel.profile_headline,
                 profile_url: enrollmentRel.profile_url,
@@ -363,7 +373,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   const handleSkipExecution = async (executionId: string, candidateName: string) => {
     setSkippingId(executionId);
     try {
-      const { data, error } = await invokeEdgeFunction<{ next_step_order?: number }>('process-sequences', {
+      const { data, error } = await invokeEdgeFunction<{ next_step_order?: number; message?: string }>('process-sequences', {
         action: 'skip_execution',
         execution_id: executionId,
       });
@@ -372,6 +382,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
         // Candidat en pause ou sorti de la séquence : la phrase du serveur dit
         // de le reprendre d'abord. Sinon, étape déjà partie ou traitée.
         toast.error(skipConflictMessage(error.code ?? data?.error_code, error.message));
+        return;
+      }
+      if (error?.status === 403) {
+        // Refus définitif (D3 : candidat inscrit par un collègue) : la phrase
+        // du serveur, portée par `message`, sans inviter à réessayer.
+        toast.error(data?.message || error.message);
         return;
       }
       if (error || !data?.success) {
@@ -637,8 +653,10 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                     const isOverdue = exec.status === 'scheduled' && isPast && !held;
                     const candidateName = exec.enrollment?.profile_name || 'Candidat';
                     const doneVerb = executionDoneVerb(exec.status);
-                    // Le serveur refuse de sauter l'étape d'un candidat non actif (409).
-                    const canSkip = SKIPPABLE_STATUSES.has(exec.status) && !held;
+                    // Le serveur refuse de sauter l'étape d'un candidat non actif (409)
+                    // et, pour un collaborateur, d'un candidat inscrit par un collègue (403).
+                    const ownRow = !isCollaborator || (!!userId && exec.enrollment?.created_by === userId);
+                    const canSkip = SKIPPABLE_STATUSES.has(exec.status) && !held && ownRow;
                     // Le texte reste modifiable pendant la pause, avant la reprise.
                     const canEdit = exec.status === 'scheduled' && !!preview.message;
 

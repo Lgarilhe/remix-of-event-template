@@ -392,6 +392,31 @@ export function heldExecutionNotice(
   return null;
 }
 
+// ─── Pause de séquence restée en place ─────────────────────────────────────
+
+/** Mêmes valeurs que SEQUENCE_LEVEL_PAUSE_REASONS de sequenceLabels.ts (module sans import). */
+const SEQUENCE_LEVEL_PAUSES = ['sequence_inactive', 'auto_paused'];
+
+/** Même phrase que le suivi des inscrits (SequenceEnrollmentsPanel). */
+export const SEQUENCE_ACTIVE_AGAIN_HINT = 'La séquence est de nouveau active : reprenez ce candidat.';
+
+/**
+ * Pause posée par la séquence (désactivation, auto-pause) restée en place alors
+ * que la séquence est de nouveau active (reprise en échec, compte non relié à
+ * la réactivation...) : « Réactivez la séquence » serait faux, et
+ * resume_enrollments accepte ce cas par identifiant. Séquence inactive ou état
+ * inconnu : rien ne partirait (D1), pas de reprise individuelle.
+ */
+export function isSequencePauseResumable(
+  enrollmentStatus: string | null | undefined,
+  pauseReason: string | null | undefined,
+  sequenceActive: boolean | null | undefined,
+): boolean {
+  return enrollmentStatus === 'paused'
+    && !!pauseReason && SEQUENCE_LEVEL_PAUSES.includes(pauseReason)
+    && sequenceActive === true;
+}
+
 // ─── D5 : effacement RGPD définitif ────────────────────────────────────────
 
 /** Début du motif posé par recordGdprErasure sur les étapes annulées (_shared/get-or-fetch-contact.ts). */

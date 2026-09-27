@@ -10,7 +10,7 @@ Le module séquences envoie des messages LinkedIn en votre nom, à des candidats
 
 Douze auditeurs ont lu le code en parallèle : sept sur le moteur et la base (cœur du moteur, conditions et attentes, canaux LinkedIn, e-mail, événements entrants, données et sécurité, état réel de la production en lecture seule), cinq sur l'interface (éditeur, inscription, pilotage, parcours du recruteur, fiabilité technique). Chaque constat devait citer le code. Un vérificateur a tenté de réfuter chaque constat, et un second avis indépendant a relu chaque constat critique ou grave.
 
-Les 410 constats confirmés ont été regroupés en 246 défauts distincts, puis répartis en quinze lots de correction, un par groupe de fichiers, avec un contrat commun qui fixe la sémantique de la pause et celle des nouvelles actions serveur ; ses règles sont reprises dans `CLAUDE.md` (section « Séquences : règles du moteur et de l'interface »). Une vague a ensuite raccordé les lots entre eux. Une relecture contradictoire a trouvé 77 problèmes dans les correctifs eux-mêmes, dont 5 critiques. Une vague finale les a corrigés, puis une relecture ciblée a vérifié cette vague.
+Les 410 constats confirmés ont été regroupés en 246 défauts distincts, puis répartis en quinze lots de correction, un par groupe de fichiers, avec un contrat commun qui fixe la sémantique de la pause et celle des nouvelles actions serveur ; ses règles sont reprises dans `CLAUDE.md` (section « Séquences : règles du moteur et de l'interface »). Une vague a ensuite raccordé les lots entre eux. Une relecture contradictoire a trouvé 77 problèmes dans les correctifs eux-mêmes, dont 5 critiques. Une vague finale les a corrigés. Une relecture ciblée de cette vague a trouvé 2 derniers problèmes graves (l'assistant IA ne respectait pas la règle des collaborateurs, et la migration reclassait des pauses manuelles), corrigés par une dernière passe.
 
 ## Chiffres
 
@@ -62,10 +62,10 @@ Six décisions finales, prises après la relecture contradictoire, priment sur l
 
 - D1. Une séquence désactivée n'envoie jamais rien. Le moteur le vérifie lui-même, et aucune reprise automatique ne réactive ses inscriptions.
 - D2. Les canaux e-mail et WhatsApp restent fermés. Le moteur saute ces étapes sans aucun appel. Le code de réparation (résolution de la boîte, adresse du candidat, liens signés) est en place pour une réouverture décidée et testée.
-- D3. Un collaborateur n'agit que sur les inscriptions qu'il a créées, côté base comme côté serveur. La désactivation d'une séquence et la pause groupée ne lui sont pas proposées. L'anti-doublon passe par une fonction serveur qui voit toute l'organisation.
+- D3. Un collaborateur n'agit que sur les inscriptions qu'il a créées, côté base, côté serveur et dans l'assistant IA. Il ne modifie que les séquences qu'il a créées. La désactivation d'une séquence et la pause groupée ne lui sont pas proposées. L'anti-doublon passe par une fonction serveur qui voit toute l'organisation, avec une comparaison exacte des identifiants LinkedIn.
 - D4. Un rendez-vous Calendly dont l'organisation n'est pas identifiable de façon unique n'arrête rien.
 - D5. Un candidat touché par un effacement RGPD ne peut plus être repris ni relancé.
-- D6. Les pauses sans raison de l'ancien code deviennent `manual` ou `sequence_inactive` selon leur origine. Rien ne redémarre seul au déploiement.
+- D6. Les pauses héritées de l'ancien code deviennent `manual`, sauf l'ancienne auto-pause identifiée par son marqueur, qui devient `auto_paused`. Aucune ne devient `sequence_inactive`. Rien ne redémarre seul au déploiement : la reprise passe par « Reprendre tous les candidats en pause » ou candidat par candidat.
 
 | Défaut | Question | Décision retenue |
 |---|---|---|
@@ -123,7 +123,7 @@ Six décisions finales, prises après la relecture contradictoire, priment sur l
 
 ## Vérifications à faire à la main avant la fusion
 
-Aucun test n'a pu tourner contre un Supabase de test ni dans un navigateur connecté (pas d'environnement e2e dans la session). Les scénarios suivants sont à dérouler sur une préversion :
+Aucun test n'a pu tourner contre un Supabase de test ni dans un navigateur connecté (pas d'environnement e2e dans la session). Le filtre de sélection du moteur qui écarte les comptes déjà au plafond (pages 2 et suivantes) n'a pas été essayé contre une vraie base : s'il échouait, seule la première page serait traitée et l'erreur serait journalisée. Les scénarios suivants sont à dérouler sur une préversion :
 
 1. Créer une séquence avec une vérification de connexion à deux branches, des conditions d'arrêt et deux expéditeurs ; la rouvrir : tout est conservé.
 2. Inscrire trois candidats avec un aperçu modifié à la main ; le message modifié est celui du Journal et celui qui part.

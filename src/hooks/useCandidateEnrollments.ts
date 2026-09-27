@@ -47,6 +47,10 @@ export interface CandidateEnrollment {
   id: string;
   sequence_id: string;
   sequence_name: string | null;
+  /** Séquence active (is_active) ; null si la lecture ne l'a pas donné. */
+  sequence_active: boolean | null;
+  /** Nom du candidat, pour les confirmations et les messages. */
+  profile_name: string | null;
   status: string; // 'active' | 'paused' | 'replied' | 'completed' | 'stopped'
   pause_reason: string | null;
   current_step_order: number;
@@ -72,11 +76,13 @@ interface UseCandidateEnrollmentsOptions {
 }
 
 type StepRelation = { action_type: string; message_template: string | null; subject_template: string | null };
+type SequenceRelation = { id: string; name: string; is_active: boolean | null };
 
 interface EnrollmentRow {
   id: string;
   sequence_id: string;
   status: string;
+  profile_name: string | null;
   pause_reason: string | null;
   current_step_order: number | null;
   created_at: string;
@@ -86,7 +92,7 @@ interface EnrollmentRow {
   job_title: string | null;
   /** tracking_data.gdpr_erased_at seul (tracking_data peut être lourd). */
   gdpr_erased_at: unknown;
-  outreach_sequences: { id: string; name: string } | { id: string; name: string }[] | null;
+  outreach_sequences: SequenceRelation | SequenceRelation[] | null;
   sequence_step_executions: Array<{
     id: string;
     step_id: string;
@@ -127,10 +133,10 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
       const { data, error } = await supabase
         .from('sequence_enrollments')
         .select<string, EnrollmentRow>(`
-          id, sequence_id, status, pause_reason, current_step_order, created_at,
+          id, sequence_id, status, profile_name, pause_reason, current_step_order, created_at,
           replied_at, connection_status, job_id, job_title,
           gdpr_erased_at:tracking_data->gdpr_erased_at,
-          outreach_sequences (id, name),
+          outreach_sequences (id, name, is_active),
           sequence_step_executions (
             id, step_id, step_order, status, scheduled_at, executed_at,
             final_subject, final_message, error_message, skip_reason,
@@ -175,10 +181,13 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
           .filter(x => x.status === 'scheduled')
           .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0];
 
+        const sequence = one(e.outreach_sequences);
         return {
           id: e.id,
           sequence_id: e.sequence_id,
-          sequence_name: one(e.outreach_sequences)?.name || null,
+          sequence_name: sequence?.name || null,
+          sequence_active: typeof sequence?.is_active === 'boolean' ? sequence.is_active : null,
+          profile_name: e.profile_name ?? null,
           status: e.status,
           pause_reason: e.pause_reason ?? null,
           current_step_order: e.current_step_order ?? 0,
@@ -284,33 +293,47 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
    * de réponses mis à jour.
    */
   const markReplied = useCallback(async (enrollmentId: string): Promise<boolean> => {
+    // Mêmes messages que le suivi des inscrits (SequenceEnrollmentsPanel).
+    const name = enrollments.find(e => e.id === enrollmentId)?.profile_name || 'ce candidat';
     setPendingId(enrollmentId);
     try {
-      const { data, error } = await invokeEdgeFunction<{ changed?: boolean; message?: string; warning?: string }>('process-sequences', {
+      const { data, error } = await invokeEdgeFunction<{ changed?: boolean; message?: string; warning?: string; stopped_siblings?: number }>('process-sequences', {
         action: 'mark_replied',
         enrollment_id: enrollmentId,
       });
-      if (error || data?.success === false) {
-        toast.error(data?.message || error?.message || 'Le marquage a échoué. Réessayez.');
+      if (error || !data?.success) {
+        toast.error(`La réponse n’a pas pu être enregistrée pour ${name}`, {
+          description: data?.message || error?.message || 'Réessayez dans un instant.',
+        });
         return false;
       }
-      if (data?.changed === false) {
-        toast.info('Cette séquence était déjà terminée pour ce candidat.');
-      } else if (data?.warning) {
-        toast.warning('Marqué comme ayant répondu : la séquence est arrêtée', { description: data.warning });
+      // Contrat §8 : les autres inscriptions du candidat sont arrêtées comme
+      // pour une réponse détectée ; le bilan le dit.
+      const siblings = typeof data.stopped_siblings === 'number' ? data.stopped_siblings : 0;
+      const siblingsNotice = siblings > 0
+        ? ` ${siblings > 1 ? `Ses ${siblings} autres séquences en cours ou en pause ont été arrêtées.` : 'Son autre séquence en cours ou en pause a été arrêtée.'}`
+        : '';
+      if (data.changed && data.warning) {
+        toast.warning(`Réponse enregistrée pour ${name}`, { description: `${data.warning}${siblingsNotice}` });
+      } else if (data.changed) {
+        toast.success(`Réponse enregistrée pour ${name}`, {
+          description: `Les étapes restantes ont été annulées.${siblingsNotice}`,
+        });
       } else {
-        toast.success('Marqué comme ayant répondu : la séquence est arrêtée');
+        toast.info(`Rien n’a changé : la séquence de ${name} était déjà close.`);
       }
       await fetchEnrollments();
-      return data?.changed !== false;
+      return !!data.changed;
     } catch (err) {
       console.error('[useCandidateEnrollments] markReplied error:', err);
-      toast.error('Le marquage a échoué. Réessayez.');
+      toast.error(`La réponse n’a pas pu être enregistrée pour ${name}`, {
+        description: err instanceof Error ? err.message : undefined,
+      });
       return false;
     } finally {
       setPendingId(null);
     }
-  }, [fetchEnrollments]);
+  }, [enrollments, fetchEnrollments]);
 
   return {
     enrollments,

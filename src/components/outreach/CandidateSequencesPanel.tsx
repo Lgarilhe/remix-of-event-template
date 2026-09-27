@@ -23,6 +23,8 @@ import {
   GDPR_ERASED_NOTICE,
   isHiddenActionType,
   isSentExecutionStatus,
+  isSequencePauseResumable,
+  SEQUENCE_ACTIVE_AGAIN_HINT,
   shouldShowExecutionError,
 } from '@/lib/sequenceErrorMessages';
 import { enrollmentStatusLabel, pausedLabel, pauseReasonHint } from '@/lib/sequenceLabels';
@@ -156,6 +158,9 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
   }
 
   const sequenceName = (e: CandidateEnrollment | null) => e?.sequence_name || 'cette séquence';
+  // Même dialogue que le suivi des inscrits (SequenceEnrollmentsPanel).
+  const replyName = confirmReply?.profile_name || 'ce candidat';
+  const replySubject = confirmReply?.profile_name || 'Ce candidat';
 
   return (
     <div className="space-y-3">
@@ -235,10 +240,13 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
       <AlertDialog open={!!confirmReply} onOpenChange={open => !open && setConfirmReply(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Marquer comme ayant répondu ?</AlertDialogTitle>
+            <AlertDialogTitle>Marquer {replyName} comme ayant répondu ?</AlertDialogTitle>
             <AlertDialogDescription>
-              La séquence « {sequenceName(confirmReply)} » s'arrête définitivement pour ce candidat, qui passe
-              en « A répondu ». Utile si vous reprenez la conversation vous-même ou si la réponse est venue hors LinkedIn.
+              {/* Contrat §8 : ses autres inscriptions sont arrêtées ; pour une
+                  séquence terminée, seulement celles commencées avant sa fin. */}
+              {`${replySubject} passera en « A répondu » et ses étapes restantes seront annulées. ${confirmReply?.status === 'completed'
+                ? 'Ses autres séquences encore en cours ou en pause, commencées avant la fin de celle-ci, seront aussi arrêtées.'
+                : 'Ses autres séquences encore en cours ou en pause seront aussi arrêtées.'} Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -280,13 +288,16 @@ function EnrollmentCard({
   const statusLabel = isPaused ? pausedLabel(enrollment.pause_reason) : enrollmentStatusLabel(enrollment.status);
   // D5 : un effacement RGPD est définitif, ni reprise ni relance.
   const gdprErased = enrollment.gdpr_erased;
+  // Pause de séquence (désactivation, auto-pause) restée alors que la séquence
+  // est de nouveau active : se reprend ici, comme dans le suivi des inscrits.
+  const sequencePauseResumable = isSequencePauseResumable(enrollment.status, enrollment.pause_reason, enrollment.sequence_active);
   const pauseHint = gdprErased
     ? GDPR_ERASED_NOTICE
-    : isPaused ? pauseReasonHint(enrollment.pause_reason) : null;
+    : isPaused ? (sequencePauseResumable ? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint(enrollment.pause_reason)) : null;
   const pauseReason = enrollment.pause_reason;
   // Une pause sans raison est une pause posée avant l'introduction des raisons :
   // on la traite comme une pause manuelle.
-  const canResume = isPaused && !gdprErased && (!pauseReason || RESUMABLE_PAUSE_REASONS.has(pauseReason));
+  const canResume = isPaused && !gdprErased && (!pauseReason || RESUMABLE_PAUSE_REASONS.has(pauseReason) || sequencePauseResumable);
 
   const sentCount = enrollment.sent_count;
 
