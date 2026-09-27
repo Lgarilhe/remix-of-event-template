@@ -61,7 +61,7 @@ jobs:
       #  B) LOCAL (défaut) : `supabase start` reconstruit la base à partir des
       #     seules migrations. Vérifié le 2026-09-07 sur PostgreSQL 16 vierge :
       #     les 266 fichiers de supabase/migrations/ s'appliquent sans erreur et
-      #     supabase/tests/rls_two_orgs_audit.sql passe ses 10 contrôles.
+      #     supabase/tests/rls_two_orgs_audit.sql passe ses deux blocs (10 contrôles généraux, 22 contrôles séquences).
       #     Une seule table de l'import Lovable n'est créée par aucune migration,
       #     notion_api_cache ; le rattrapage 20260903074500 la traite désormais
       #     sous condition d'existence.

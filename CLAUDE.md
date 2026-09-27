@@ -58,7 +58,7 @@ Deux sessions Claude en parallèle ont cassé le workflow de migrations 3 fois e
 4. **Jamais** `supabase migration repair --status reverted` sur une version dont le fichier existe dans le repo — ça recrée l'erreur out-of-order au push suivant (le DDL reste appliqué mais le tracking l'oublie).
 5. Diagnostic rapide d'une désynchro : comparer `select version from supabase_migrations.schema_migrations` avec `ls supabase/migrations/` — toute version présente d'un seul côté doit être réconciliée (fichier reconstruit depuis `statements`, ou tracking renommé), jamais ignorée.
 6. **Toute migration doit rejouer sur une base vide.** La prod a été créée depuis `MIGRATION_CLEAN.sql`, pas depuis les migrations : elle n'a pas les objets posés de janvier à avril 2026. Une migration écrite « contre les policies réelles de la prod » passe donc en prod et casse une reconstruction à neuf, seul mode de la CI e2e. Deux pièges vus le 2026-09-07 : un `DROP FUNCTION` retenu par des policies homonymes qui n'existent qu'en base neuve, et un `DELETE` sur `notion_api_cache`, table de l'import Lovable qu'aucune migration ne crée (à traiter sous `IF to_regclass(...) IS NOT NULL`).
-7. **Une policy permissive héritée annule le durcissement posé à côté d'elle.** Les policies permissives s'additionnent : dropper le nom de la prod ne suffit pas si le nom d'origine survit en base neuve. Après toute migration RLS, reconstruire une base depuis zéro et jouer `supabase/tests/rls_two_orgs_audit.sql` : ses 10 contrôles doivent passer.
+7. **Une policy permissive héritée annule le durcissement posé à côté d'elle.** Les policies permissives s'additionnent : dropper le nom de la prod ne suffit pas si le nom d'origine survit en base neuve. Après toute migration RLS, reconstruire une base depuis zéro et jouer `supabase/tests/rls_two_orgs_audit.sql` : le bloc général (10 contrôles) et le bloc séquences (22 contrôles) doivent passer.
 
 ---
 
@@ -202,7 +202,10 @@ mission_team               — team members per mission
 mission_invitations        — freelancer invites with tokens
 job_candidate_status       — candidate score/status per job
 outreach_sequences         — message sequences
-sequence_enrollments       — candidates in sequences (.pause_reason : account_disconnected, quota_reached, subscription_required, manual)
+sequence_enrollments       — candidates in sequences (.pause_reason : manual, account_disconnected, quota_reached, subscription_required,
+                             sequence_inactive, auto_paused, send_failed, blocked_by_candidate ; jamais NULL pour une pause ;
+                             .assigned_sender_id en text ; trigger sequence_enrollments_check_sender_owner : pas d'inscription
+                             depuis le compte LinkedIn relié à un autre membre, HINT ENROLL_ACCOUNT_OF_OTHER_MEMBER)
 organizations              — org + subscription
 organization_members       — member roles (admin/owner/collaborator)
 profiles                   — user profiles
@@ -216,6 +219,9 @@ RPC (SECURITY DEFINER, authenticated) : `get_subscription_state(org)` (plan effe
 expire un essai échu à la lecture), `get_org_contact_usage(org)` (contacts inclus utilisés / forfait),
 `get_linkedin_quota_status(account)` (compteurs jour/semaine, facteur de montée en charge via `linkedin_ramp_factor`).
 Cron : `expire-subscription-trials` (horaire) → `expire_subscription_trials()`.
+`get_sequence_enrollment_counts(p_sequence_ids)` (SECURITY INVOKER, compte par séquence, statut et raison de pause, borné par la RLS),
+`find_recent_org_contacts(p_org, p_values, p_slugs, p_since)` (SECURITY DEFINER, anti-doublon sur toute l'organisation de l'appelant, collaborateur compris, colonnes minimales),
+`save_sequence_steps` (refus HINT STEP_HAS_HISTORY pour une étape déjà envoyée, SEQUENCE_NOT_OWNER pour la séquence d'autrui côté collaborateur).
 `get_org_member_emails(org)` (e-mails de auth.users des membres ; appelant owner/admin/member de l'org, jamais collaborator ni anon) :
 `profiles` n'a pas de colonne `email` ni `avatar_url`, ne jamais les demander.
 
@@ -318,6 +324,7 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `APP_URL` | agent-daily-digest, create-checkout-session, create-portal-session, notion-mcp-oauth, send-transactional-email, sequence-email-track, sequence-send-email, `_shared/agent-tools-mutations.ts` (= https://konekt-app-navy.vercel.app) |
 | `EMAIL_SITE_NAME` + `EMAIL_SENDER_DOMAIN` + `EMAIL_FROM_DOMAIN` | send-transactional-email (défauts : « Konekt », `notify.konekt.fr`, `konekt.fr`) |
 | `RESEND_WEBHOOK_SECRET` | handle-email-suppression (Svix signature verif, format `whsec_...`) |
+| `EMAIL_LINK_SIGNING_SECRET` (+ `EMAIL_LINK_SIGNING_SECRET_PREVIOUS` pour une rotation) | sequence-send-email, sequence-email-track : signature des liens suivis et du pixel des e-mails de séquence. Repli sur la clé de service si absent |
 
 ### OPTIONAL — fallback/dev
 `DEEPGRAM_API_KEY` + `DEEPGRAM_PROJECT_ID` (deepgram-temp-key), `PERPLEXITY_API_KEY` (enrich-company), `FIRECRAWL_API_KEY` (enrich-company).
@@ -469,7 +476,15 @@ Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `sr
 Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
 
 ### État et liaison LinkedIn
-Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par `user_id` via `member_linkedin_accounts`, jamais le compte d'un collègue). Relier et dissocier passent par `unipile-accounts` (`claim_linkedin_account`, `unlink_linkedin_account`), pas par un upsert/delete du navigateur (RLS owner/admin). « Dissocier » ne ferme pas la session chez le prestataire : il retire la liaison et arrête les envois du compte (inscriptions en pause `manual`, étapes et InMails programmés annulés, compte retiré des rotations multi-expéditeurs).
+Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par `user_id` via `member_linkedin_accounts`, jamais le compte d'un collègue). Relier et dissocier passent par `unipile-accounts` (`claim_linkedin_account`, `unlink_linkedin_account`), pas par un upsert/delete du navigateur (RLS owner/admin). « Dissocier » ne ferme pas la session chez le prestataire : il retire la liaison et arrête les envois du compte (inscriptions en pause `manual`, étapes gardées en attente et ignorées par le moteur, InMails programmés annulés, compte retiré des rotations multi-expéditeurs ; helper `_shared/linkedin-sending-stop.ts`). Le même arrêt s'applique quand un membre change de compte et avant le retrait d'un membre (`unipile-accounts` action `stop_member_linkedin`, owner/admin).
+
+### Séquences : règles du moteur et de l'interface (audit 2026-09-25, `docs/audit-2026-09-25-sequences.md`)
+- **Pause** = `status 'paused'` + `pause_reason` ; les exécutions en attente (`scheduled`, `waiting_event`, `quota_blocked`) gardent leur date et le moteur les ignore. Aucune pause n'annule d'exécution. Une clôture (réponse, désinscription, rebond, RDV, effacement RGPD) annule toutes les exécutions en attente, jamais `sending`.
+- **Reprise** = toujours l'action serveur `resume_enrollments` (ou `re_enroll` pour une inscription close), jamais une réécriture d'exécution depuis le navigateur. La réactivation d'une séquence ne reprend que `sequence_inactive` et `auto_paused`.
+- **Séquence désactivée** (`is_active = false`) : le moteur n'envoie jamais rien (filtre dans la sélection et au dernier contrôle) ; aucune reprise automatique (reconnexion, abonnement) ne réactive ses inscriptions.
+- **Canaux e-mail et WhatsApp fermés** : le moteur saute ces étapes (« pas encore disponible ») sans appel, jusqu'à une réouverture décidée et testée.
+- **Actions membres de `process-sequences`** (JWT, organisation vérifiée) : `nudge_sequences` (actions du jour seulement, `sequence_ids`), `resume_enrollments`, `re_enroll`, `mark_replied`, `skip_execution`. Un collaborateur n'agit que sur ses propres inscriptions ; un candidat effacé (RGPD) n'est jamais repris.
+- Libellés communs : `src/lib/sequenceLabels.ts` (statuts, raisons de pause), `src/lib/sequenceErrorMessages.ts` (erreurs, `formatSkipReason`), `stepTypeLabel` de `src/components/outreach/sequence/sequenceGraph.ts` (types d'étape).
 
 ### Destructive actions — ALWAYS use AlertDialog
 ```typescript
