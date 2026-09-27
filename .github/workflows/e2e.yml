@@ -150,6 +150,19 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/job_favorites_audit.sql -c 'ROLLBACK;'
 
+      # Séquences, tests de bout en bout du 2026-09-27 : garde du compte
+      # d'envoi, protection des actions de l'assistant, enregistrement des
+      # étapes, verrou et plafonds du moteur, identités LinkedIn. Même forme :
+      # exception listant les contrôles en échec, écritures annulées.
+      - name: Audits séquences (local mode)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          for audit in seq_db_audit seq_scheduled_1_audit seq_steps_1_audit seq_engine_1_audit seq_identity_audit; do
+            psql "$DB_URL" -v ON_ERROR_STOP=1 \
+              -c 'BEGIN;' -f "supabase/tests/$audit.sql" -c 'ROLLBACK;'
+          done
+
       - name: Build front
         run: npm run build
         env:

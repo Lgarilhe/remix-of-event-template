@@ -475,8 +475,12 @@ const RECENT_CONTACT_WINDOW_DAYS = 90;
 const LIVE_CONTACT_STATUSES = ['active', 'paused'];
 /** Contact terminé : signalé sur RECENT_CONTACT_WINDOW_DAYS jours. */
 const RECENT_CONTACT_STATUSES = ['replied', 'completed'];
-/** InMails groupés comptés comme un contact, sur RECENT_CONTACT_WINDOW_DAYS jours. */
-const INMAIL_CONTACT_STATUSES = ['scheduled', 'sending', 'sent'];
+/**
+ * InMails groupés comptés comme un contact, sur RECENT_CONTACT_WINDOW_DAYS jours.
+ * Même liste que process-inmail-queue et src/lib/enrollmentDuplicates.ts : un
+ * InMail qui a reçu une réponse reste un contact.
+ */
+const INMAIL_CONTACT_STATUSES = ['pending', 'scheduled', 'sending', 'sent', 'replied'];
 
 interface RecentOrgContact {
   createdBy: string | null;

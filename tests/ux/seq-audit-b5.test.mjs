@@ -270,7 +270,7 @@ test('SEQ-046 / SEQ-128 — anti-doublon de l’assistant : autres identifiants,
 // ------------------------------------------------------------------ SEQ-125
 test('SEQ-125 — anti-doublon de l’assistant : un InMail groupé récent compte comme un contact', () => {
   const find = fnBody(mutations, 'async function findRecentOrgContact(');
-  assert.match(mutations, /const INMAIL_CONTACT_STATUSES = \['scheduled', 'sending', 'sent'\];/);
+  assert.match(mutations, /const INMAIL_CONTACT_STATUSES = \['pending', 'scheduled', 'sending', 'sent', 'replied'\];/);
   const inmail = sliceBetween(find, ".from('inmail_queue')", '.limit(20)');
   assert.match(inmail, /\.select\('recipient_profile_id, created_by, created_at, status'\)/);
   assert.match(inmail, /\.eq\('organization_id', ctx\.organizationId\)/);
