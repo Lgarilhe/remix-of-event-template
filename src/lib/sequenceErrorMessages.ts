@@ -40,6 +40,7 @@ export const SEQUENCE_WRITE_REFUSALS: Record<string, string> = {
   SEQUENCE_ORG_MISMATCH: FOREIGN_ELEMENT_REFUSAL,
   PROJECT_ORG_MISMATCH: FOREIGN_ELEMENT_REFUSAL,
   STEP_SEQUENCE_MISMATCH: FOREIGN_ELEMENT_REFUSAL,
+  SEQUENCE_NOT_OWNER: "Seul l'auteur de cette séquence peut modifier ses étapes.",
 };
 
 /**

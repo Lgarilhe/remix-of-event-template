@@ -424,3 +424,16 @@ test('SEQ-245 — noms des types d’étape : ceux de l’éditeur', async (t) =
     assert.doesNotMatch(src, /actionTypeLabel\(/, name);
   }
 });
+
+// ---------------------------------------------------------------- vague finale
+test('mark_replied — l’avertissement du serveur est affiché, pas un succès nu', () => {
+  const hook = readFileSync(new URL('../../src/hooks/useCandidateEnrollments.ts', import.meta.url), 'utf8');
+  const panel = readFileSync(new URL('../../src/components/outreach/SequenceEnrollmentsPanel.tsx', import.meta.url), 'utf8');
+  assert.match(hook, /data\?\.warning\)\s*\{\s*toast\.warning\(/);
+  assert.match(panel, /payload\.changed && payload\.warning\)\s*\{\s*toast\.warning\(/);
+});
+
+test('refus SEQUENCE_NOT_OWNER traduit en français', () => {
+  const msgs = readFileSync(new URL('../../src/lib/sequenceErrorMessages.ts', import.meta.url), 'utf8');
+  assert.match(msgs, /SEQUENCE_NOT_OWNER: "Seul l'auteur de cette séquence peut modifier ses étapes\."/);
+});

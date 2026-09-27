@@ -190,6 +190,9 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         },
         tone,
         senderName: senderName.trim() || undefined,
+        // Le serveur relit outreach_config de la mission (anonymisation du client)
+        // quand le front ne le transmet pas.
+        missionId: job.id || undefined,
         accountId: selectedAccount || undefined,
         profileId: candidateProviderId || undefined,
         candidateHistory: candidateHistory || undefined,

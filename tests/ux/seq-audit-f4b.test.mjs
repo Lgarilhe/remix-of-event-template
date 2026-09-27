@@ -96,9 +96,14 @@ const previewHook = await tryLoad('src/hooks/useEnrollmentPreview.ts', {
 });
 const duplicates = await tryLoad('src/lib/enrollmentDuplicates.ts');
 
-/** Client Supabase factice : enregistre chaque requête (table, filtres) et renvoie `rowsFor(table, query)`. */
+/**
+ * Client Supabase factice : enregistre chaque requête (table, filtres) et renvoie `rowsFor(table, query)`.
+ * La RPC find_recent_org_contacts répond « fonction absente » (PGRST202) : ces
+ * tests couvrent le repli sur la lecture directe (base pas encore migrée).
+ */
 function fakeSupabase(rowsFor) {
   const queries = [];
+  const rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
   const from = (table) => {
     const q = { table, eq: [], in: [], gte: [], or: [] };
     queries.push(q);
@@ -113,7 +118,7 @@ function fakeSupabase(rowsFor) {
     };
     return chain;
   };
-  return { supabase: { from }, queries };
+  return { supabase: { from, rpc }, queries };
 }
 
 // ---------------------------------------------------------------- SEQ-128
@@ -154,14 +159,15 @@ test('SEQ-125 — anti-doublon étendu aux InMails groupés (programmés, en cou
   assert.match(duplicates.formatRecentContactLabel(entry), /^Déjà contacté par Théo le 20\/09\/2026 par InMail$/);
   const inmailQuery = queries.find(q => q.table === 'inmail_queue');
   assert.deepEqual(inmailQuery.eq, [['organization_id', 'org-1']]);
-  assert.deepEqual(inmailQuery.in.find(([c]) => c === 'status')[1], ['scheduled', 'sending', 'sent']);
+  assert.deepEqual(inmailQuery.in.find(([c]) => c === 'status')[1], ['pending', 'scheduled', 'sending', 'sent']);
   assert.equal(inmailQuery.gte[0]?.[0], 'created_at');
 });
 
 test('SEQ-125 — l’InMail groupé vérifie les contacts récents et exclut par défaut (dérogation owner/admin)', () => {
   assert.match(bulkInMail, /findRecentEnrollments\(supabase, organizationId, allRecipients\.map\(/);
   assert.match(bulkInMail, /const allowDuplicates = isAdmin && includeDuplicates;/);
-  assert.match(bulkInMail, /allRecipients\.filter\(r => !recentContacts\.has\(r\.id\)\)/);
+  // Vague finale (front-enroll-follow-5) : la dérogation ne vaut que sans InMail groupé récent.
+  assert.match(bulkInMail, /return !entry \|\| \(allowDuplicates && !entry\.hasRecentInMail\);/);
   assert.match(bulkInMail, /formatRecentContactLabel\(entry\)/);
   // Rien n'est généré ni planifié tant que la vérification n'a pas abouti.
   const queue = slice(bulkInMail, 'const handleQueueAll = async () => {', '// Cancel pending items');
@@ -277,7 +283,7 @@ test('SEQ-132 — sans compte LinkedIn : bouton Séquence du bandeau Go désacti
 // ---------------------------------------------------------------- SEQ-133
 test('SEQ-133 — InMail groupé : seuls les destinataires hors relation consomment un crédit', () => {
   assert.doesNotMatch(bulkInMail, /const creditsNeeded = recipients\.length;/);
-  assert.match(bulkInMail, /const freeMessageCount = recipients\.filter\(r => queueNetworkDistance\(r\) === 1\)\.length;/);
+  assert.match(bulkInMail, /const freeMessageCount = billedRecipients\.filter\(r => queueNetworkDistance\(r\) === 1\)\.length;/);
   assert.match(bulkInMail, /const creditsNeeded = paidInMailCount;/);
   assert.match(bulkInMail, /InMail\$\{paidInMailCount > 1 \? 's' : ''\} payant/);
   assert.match(bulkInMail, /\(déjà en relation\)/);
@@ -383,7 +389,8 @@ test('SEQ-141 — depuis la messagerie, l’inscription est rattachée à une mi
 test('SEQ-142 — relation non vérifiée depuis la messagerie : avertissement si la séquence invite', () => {
   assert.match(inboxHook, /network_distance\?: string;/);
   assert.match(inbox, /attendee\?\.specifics\?\.network_distance \?\? attendee\?\.network_distance/);
-  assert.match(inbox, /Relation LinkedIn non vérifiée\. Si vous êtes déjà en relation avec ce candidat, l'invitation échouera\./);
+  // Vague finale (front-enroll-follow-4) : l'invitation d'une relation directe est sautée, plus d'échec.
+  assert.match(inbox, /Relation LinkedIn non vérifiée : si vous êtes déjà en relation, l'invitation sera sautée\./);
   assert.match(inbox, /notice=\{enrollNotice\}/);
   assert.match(enrollModal, /notice=\{notice\}/);
   assert.match(previewModal, /\{!enrollResults && notice && \(/);
@@ -435,7 +442,8 @@ test('SEQ-071 / SEQ-185 — messagerie : mise en pause simple (contrat), vérifi
   assert.match(pause, /if \(pausedCount === 0\) \{/);
   assert.match(pause, /onEnrollmentsChanged\?\.\(\);/);
   // Le bouton dépend des inscriptions actives lues à l'ouverture, pas du statut de mission.
-  assert.match(messageView, /\.eq\('profile_id', chatProfileId\)\s*\.eq\('status', 'active'\)/);
+  // Vague finale (front-enroll-follow-6) : profile_id, provider_id ou resolved_profile_id.
+  assert.match(messageView, /\.or\(enrollmentProfileFilter\(chatProfileId\)\)\s*\.eq\('status', 'active'\)/);
   assert.doesNotMatch(messageView, /displayContext\.status === 'active'/);
   assert.match(messageView, /\{hasActiveEnrollment && \(\s*<button/);
   assert.match(messageView, /Mettre en pause/);
@@ -467,7 +475,7 @@ test('SEQ-222 — « déjà dans la séquence » distinct de « déjà passé pa
   for (const status of ['completed', 'replied', 'cancelled', 'stopped', 'bounced']) {
     assert.equal(helpers.classifyExistingEnrollment(status), 'passed', status);
   }
-  assert.equal(helpers.alreadyPassedLabel(1), '1 candidat est déjà passé par cette séquence (arrêté). Reprenez-le depuis le suivi de la séquence.');
+  assert.equal(helpers.alreadyPassedLabel(1), '1 candidat est déjà passé par cette séquence (terminée, réponse ou arrêt). Relancez-le depuis le suivi de la séquence.');
   // L'aperçu lit toute ligne existante (plus seulement trois statuts).
   const enroll = slice(previewModal, 'const handleEnroll = async () => {', 'const handleShortlist = async () => {');
   assert.doesNotMatch(enroll, /\.in\('status', \['active', 'completed', 'replied'\]\)/);
@@ -478,7 +486,8 @@ test('SEQ-222 — « déjà dans la séquence » distinct de « déjà passé pa
 test('SEQ-223 — la modale simple grise les candidats exclus avec leur raison', () => {
   assert.match(enrollModal, /const exclusion = exclusionReasons\.get\(profile\.id\);/);
   assert.match(enrollModal, /exclusion && 'opacity-60'/);
-  assert.match(enrollModal, /Déjà en relation, exclu/);
+  // Vague finale : un candidat déjà en relation n'est plus exclu (invitation sautée).
+  assert.match(enrollModal, /issue === 'too_far' \? 'Hors réseau, exclu' : 'InMail inutile, exclu'/);
 });
 
 // ---------------------------------------------------------------- SEQ-224 / SEQ-225

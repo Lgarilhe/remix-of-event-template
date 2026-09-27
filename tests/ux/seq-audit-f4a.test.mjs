@@ -166,7 +166,7 @@ test('SEQ-043 — le compte d’envoi est affiché et bloque s’il est déconne
 });
 
 // ---------------------------------------------------------------- SEQ-045
-test('SEQ-045 — compatibilité : déjà en relation avec invitation = exclu, hors réseau joignable par InMail', () => {
+test('SEQ-045 — compatibilité : déjà en relation avec invitation = averti (invitation sautée), hors réseau joignable par InMail', () => {
   const { checkProfilesCompat } = compatModule;
   const invite = [{ action_type: 'connection_request', step_order: 0 }, { action_type: 'message', step_order: 1 }];
   const inmail = [{ action_type: 'inmail', step_order: 0 }];
@@ -174,8 +174,11 @@ test('SEQ-045 — compatibilité : déjà en relation avec invitation = exclu, h
     { id: 'relation', name: 'A', network_distance: 1 },
     { id: 'reseau', name: 'B', network_distance: 'DISTANCE_2' },
   ], invite);
-  assert.deepEqual(res.blockers.map(r => r.profile.id), ['relation']);
-  assert.match(res.blockers[0].message, /déjà en relation/);
+  // Vague finale (front-enroll-follow-4) : le moteur saute l'invitation d'une
+  // relation directe et envoie la suite (SEQ-036) : avertissement, non bloquant.
+  assert.deepEqual(res.blockers, []);
+  assert.deepEqual(res.warnings.map(r => r.profile.id), ['relation']);
+  assert.match(res.warnings[0].message, /^Déjà en relation : l'invitation sera sautée/);
   // Hors réseau : exclu d'une séquence sans InMail, compatible avec un InMail.
   assert.equal(checkProfilesCompat([{ id: 'loin', network_distance: 'OUT_OF_NETWORK' }], invite).blockers.length, 1);
   assert.equal(checkProfilesCompat([{ id: 'loin', network_distance: 'OUT_OF_NETWORK' }], inmail).compatible.length, 1);
@@ -210,7 +213,8 @@ test('SEQ-046 — anti-doublon : identifiant résolu et slug d’URL publique re
     };
     return q;
   };
-  const supabase = { from: builder };
+  // RPC find_recent_org_contacts pas encore déployée : repli sur la lecture directe.
+  const supabase = { from: builder, rpc: async () => ({ data: null, error: { code: 'PGRST202' } }) };
   const result = await findRecentEnrollments(supabase, 'org-1', [
     { id: 'ACoAAMarie' },
     { id: 'ACoAAPaul', profile_url: 'linkedin.com/in/Paul-Martin' },

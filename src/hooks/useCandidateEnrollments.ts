@@ -286,7 +286,7 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
   const markReplied = useCallback(async (enrollmentId: string): Promise<boolean> => {
     setPendingId(enrollmentId);
     try {
-      const { data, error } = await invokeEdgeFunction<{ changed?: boolean; message?: string }>('process-sequences', {
+      const { data, error } = await invokeEdgeFunction<{ changed?: boolean; message?: string; warning?: string }>('process-sequences', {
         action: 'mark_replied',
         enrollment_id: enrollmentId,
       });
@@ -296,6 +296,8 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
       }
       if (data?.changed === false) {
         toast.info('Cette séquence était déjà terminée pour ce candidat.');
+      } else if (data?.warning) {
+        toast.warning('Marqué comme ayant répondu : la séquence est arrêtée', { description: data.warning });
       } else {
         toast.success('Marqué comme ayant répondu : la séquence est arrêtée');
       }

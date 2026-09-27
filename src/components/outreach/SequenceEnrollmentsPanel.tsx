@@ -744,11 +744,13 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         action: 'mark_replied',
         enrollment_id: enrollmentId,
       });
-      const payload = data as { success?: boolean; changed?: boolean; message?: string } | null;
+      const payload = data as { success?: boolean; changed?: boolean; message?: string; warning?: string } | null;
       if (error || !payload?.success) {
         throw new Error(payload?.message || error?.message || 'Réessayez dans un instant.');
       }
-      if (payload.changed) {
+      if (payload.changed && payload.warning) {
+        toast.warning(`Réponse enregistrée pour ${name}`, { description: payload.warning });
+      } else if (payload.changed) {
         toast.success(`Réponse enregistrée pour ${name}`, {
           description: 'Les étapes restantes ont été annulées.',
         });

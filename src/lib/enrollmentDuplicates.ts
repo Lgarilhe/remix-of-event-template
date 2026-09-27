@@ -41,8 +41,8 @@ export const RECENT_CONTACT_STATUSES = ['active', 'paused', 'replied', 'complete
 export const LIVE_CONTACT_STATUSES = ['active', 'paused'] as const;
 /** Inscriptions closes : signalées sur les 90 derniers jours seulement. */
 export const CLOSED_CONTACT_STATUSES = ['replied', 'completed'] as const;
-/** InMails groupés comptés comme un contact (programmés, en cours, envoyés). */
-export const INMAIL_CONTACT_STATUSES = ['scheduled', 'sending', 'sent'] as const;
+/** InMails groupés comptés comme un contact (en file, programmés, en cours, envoyés), comme l'anti-doublon du serveur (process-inmail-queue). */
+export const INMAIL_CONTACT_STATUSES = ['pending', 'scheduled', 'sending', 'sent'] as const;
 
 /** Taille des lots de clés passées au filtre `in.()` (longueur d'URL bornée). */
 const QUERY_CHUNK_SIZE = 40;
