@@ -66,6 +66,9 @@ Peut attendre la fin du pilote : conditions générales publiques, factures gén
 
 ## 7. Questions au fondateur
 
+Réponse du fondateur, 28/09/2026 : les cinq choix par défaut sont retenus. Les questions restent ci-dessous pour mémoire.
+
+
 1. « 20 % du deal » veut-il dire 20 % de l'honoraire (4 points sur un honoraire de 20 %), et non 20 points du salaire ? Par défaut : 20 % de l'honoraire.
 2. Les 20 % valent-ils pour la Marketplace seulement ? Par défaut : oui ; sur les missions d'un cabinet pour son propre client, Konekt ne prend rien.
 3. Un recruteur que l'entreprise invite elle-même (déjà son fournisseur) paie-t-il aussi 20 % ? Pendant le pilote, la publication reste masquée : tous les partenaires seront invités par l'entreprise. Par défaut : 20 % quand Konekt apporte le recruteur ; à trancher cas par cas pour un fournisseur existant.
