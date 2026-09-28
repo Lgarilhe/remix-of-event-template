@@ -21,6 +21,7 @@
  * journalise chaque appel. Ignoré sans cette stack. `force: true` lève la
  * fenêtre d'envoi (jours ouvrés 8 h-19 h).
  */
+import { createHash } from 'node:crypto';
 import { test, expect, request } from '@playwright/test';
 import { E2E } from '../helpers/env';
 import {
@@ -578,6 +579,42 @@ async function checkRepliesUntilExamined(...enrollmentIds: string[]) {
   await admin().from('internal_config').delete().eq('key', 'last_check_replies');
 }
 
+/** check_replies jusqu'à ce que ces inscriptions aient été examinées après `since` (last_check_at déjà renseigné au départ). */
+async function checkRepliesUntilCheckedSince(since: string, ...enrollmentIds: string[]) {
+  for (let i = 0; i < 12; i++) {
+    await admin().from('internal_config').delete().eq('key', 'last_check_replies');
+    await engine({ action: 'check_replies' });
+    const { data } = await admin().from('sequence_enrollments').select('id, last_check_at').in('id', enrollmentIds);
+    if (((data ?? []) as Array<{ last_check_at: string | null }>).every((r) => ms(r.last_check_at) >= ms(since))) break;
+  }
+  await admin().from('internal_config').delete().eq('key', 'last_check_replies');
+}
+
+/** Inscription terminée il y a `completedDaysAgo` jours, ses deux messages partis, et réponse du candidat simulée sur le compte. */
+async function completedWithReply(
+  org: TestOrg, seq: { sequenceId: string; steps: SeededStep[] }, userId: string, account: string,
+  completedDaysAgo: number, extra: Record<string, unknown> = {},
+) {
+  const e = await enroll(org, seq.sequenceId, userId, account, {
+    status: 'completed', completed_at: daysAgo(completedDaysAgo), current_step_order: 2, created_at: daysAgo(completedDaysAgo + 5), ...extra,
+  });
+  await schedule(org, e.enrollmentId, seq.steps[0], { status: 'sent', scheduled_at: daysAgo(completedDaysAgo + 4), executed_at: daysAgo(completedDaysAgo + 4) });
+  await schedule(org, e.enrollmentId, seq.steps[1], { status: 'sent', scheduled_at: daysAgo(completedDaysAgo + 1), executed_at: daysAgo(completedDaysAgo + 1) });
+  const chat = scriptedChat(account);
+  await mock(account, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.path, daysAgo(1))] });
+  return e;
+}
+
+/** Lectures de conversations LinkedIn faites depuis ce compte. */
+async function chatReads(accountId: string): Promise<number> {
+  return (await mockCalls(accountId)).filter((c) => c.method === 'GET' && /\/chat/.test(c.path)).length;
+}
+
+async function repliesCounted(sequenceId: string): Promise<number> {
+  const { data } = await admin().from('sequence_analytics').select('replies_received').eq('sequence_id', sequenceId);
+  return ((data ?? []) as Array<{ replies_received: number | null }>).reduce((s, x) => s + (x.replies_received ?? 0), 0);
+}
+
 test.describe('Décision 9 : scrutation de secours des inscriptions terminées récemment', () => {
   test('terminée il y a 3 jours et réponse après la dernière relance : « répondu », réponse comptée, pipeline, sœur antérieure arrêtée ; au-delà de 14 jours ou close par un rendez-vous : non examinée', async () => {
     const { org, users, accounts } = await orgWithAccounts('E2E D9 Terminées', 4);
@@ -637,6 +674,104 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
     expect({ status: o.status, last_check_at: o.last_check_at }, 'terminée il y a 20 jours : non examinée').toEqual({ status: 'completed', last_check_at: null });
     const m = await enrollmentFull(meeting.enrollmentId);
     expect({ status: m.status, last_check_at: m.last_check_at }, 'close par un rendez-vous : non examinée').toEqual({ status: 'completed', last_check_at: null });
+  });
+
+  test('candidat effacé (RGPD) : terminée avec le marqueur d’effacement, ou adresse inscrite au registre seule, ni conversation lue ni « répondu » ; témoin non effacé clos', async () => {
+    const { org, users, accounts } = await orgWithAccounts('E2E D9 RGPD', 3);
+    const [accMarked, accRegistry, accWitness] = accounts;
+    const seq = await insertSequence(org, users[0].userId, [
+      { action_type: 'message', message_template: 'Bonjour' },
+      { action_type: 'message', message_template: 'Relance', delay_days: 2 },
+    ]);
+    // Effacement : l'inscription terminée garde son statut, son adresse et le marqueur (recordGdprErasure).
+    const marked = await completedWithReply(org, seq, users[0].userId, accMarked, 3, {
+      profile_name: null, profile_url: `https://www.linkedin.com/in/efface-${rand()}`, tracking_data: { gdpr_erased_at: daysAgo(1) },
+    });
+    // Effacement inscrit au registre global seulement (antérieur au marqueur, ou demandé par une autre organisation).
+    const registryUrl = `https://www.linkedin.com/in/registre-${rand()}`;
+    const registry = await completedWithReply(org, seq, users[1].userId, accRegistry, 3, { profile_url: registryUrl });
+    const { data: erasure, error: erasureErr } = await admin().from('gdpr_erasures')
+      .insert({ linkedin_url_hash: createHash('sha256').update(registryUrl.toLowerCase()).digest('hex'), source: 'e2e-seq-decisions-engine' })
+      .select('id').single();
+    expect(erasureErr).toBeNull();
+    cleanups.push(() => admin().from('gdpr_erasures').delete().eq('id', (erasure as { id: string }).id));
+    // Témoin déjà contrôlé il y a 30 jours : la rotation (jamais contrôlées d'abord) ne l'atteint qu'après toutes les
+    // inscriptions jamais contrôlées, l'inscription marquée comprise si elle était sélectionnable.
+    const witness = await completedWithReply(org, seq, users[2].userId, accWitness, 3, { last_check_at: daysAgo(30) });
+    const since = new Date().toISOString();
+
+    await checkRepliesUntilCheckedSince(since, witness.enrollmentId, registry.enrollmentId);
+
+    expect((await enrollmentFull(witness.enrollmentId)).status, 'témoin non effacé : « répondu »').toBe('replied');
+    const mk = await enrollmentFull(marked.enrollmentId);
+    expect({ status: mk.status, replied_at: mk.replied_at, last_check_at: mk.last_check_at }, 'marqueur d’effacement : jamais sélectionnée')
+      .toEqual({ status: 'completed', replied_at: null, last_check_at: null });
+    expect(await chatReads(accMarked), 'aucune lecture de la conversation d’un candidat effacé').toBe(0);
+    const rg = await enrollmentFull(registry.enrollmentId);
+    expect({ status: rg.status, replied_at: rg.replied_at }, 'registre : examinée, écartée').toEqual({ status: 'completed', replied_at: null });
+    expect(rg.last_check_at).not.toBeNull();
+    expect(await chatReads(accRegistry), 'registre : aucune lecture de conversation').toBe(0);
+    expect(await repliesCounted(seq.sequenceId), 'seule la réponse du témoin est comptée').toBe(1);
+  });
+
+  test('même candidat sur le même compte, inscription plus récente ou encore ouverte : l’ancienne terminée reste terminée, réponse comptée une fois, pipeline de sa mission intact', async () => {
+    const { org, users, accounts } = await orgWithAccounts('E2E D9 Dernier contact', 3);
+    const [accX, accY, accZ] = accounts;
+    const oldSeq = await insertSequence(org, users[0].userId, [
+      { action_type: 'message', message_template: 'Bonjour' },
+      { action_type: 'message', message_template: 'Relance', delay_days: 2 },
+    ]);
+    const newSeq = await insertSequence(org, users[0].userId, [
+      { action_type: 'message', message_template: 'Nouvelle approche' },
+      { action_type: 'message', message_template: 'Nouvelle relance', delay_days: 5 },
+    ]);
+    const jobOld = `job_dec_${rand()}`;
+    const jobNew = `job_dec_${rand()}`;
+
+    // Compte X : E1 (mission M1) terminée il y a 5 jours ; E2 (mission M2), même candidat reconnu par le slug exact
+    // de son adresse sous un identifiant Recruiter, créée ensuite et déjà « répondu » par le webhook.
+    const slugX = `camille-x-${rand()}`;
+    const e1 = await completedWithReply(org, oldSeq, users[0].userId, accX, 5, { profile_url: `https://www.linkedin.com/in/${slugX}`, job_id: jobOld });
+    const e2 = await enroll(org, newSeq.sequenceId, users[0].userId, accX, {
+      profile_id: `AEMAAX${rand()}`, profile_url: `https://fr.linkedin.com/in/${slugX}/`, job_id: jobNew,
+      status: 'replied', replied_at: daysAgo(1), created_at: daysAgo(4), current_step_order: 1,
+    });
+    await schedule(org, e2.enrollmentId, newSeq.steps[0], { status: 'sent', scheduled_at: daysAgo(3), executed_at: daysAgo(3) });
+    const { data: jcsRow, error: jcsErr } = await admin().from('job_candidate_status').insert({
+      job_id: jobOld, candidate_id: e1.profileId, created_by: users[0].userId, organization_id: org.orgId,
+      candidate_name: 'Camille Martin', status: 'contacted', pipeline_stage: 'Contacté',
+    }).select('id').single();
+    expect(jcsErr).toBeNull();
+
+    // Compte Y : E3 terminée ; E4 du même candidat (identifiant résolu) encore active, un message parti.
+    const e3 = await completedWithReply(org, oldSeq, users[1].userId, accY, 5);
+    const e4 = await enroll(org, newSeq.sequenceId, users[1].userId, accY, {
+      profile_id: `AEMAAY${rand()}`, resolved_profile_id: e3.profileId, created_at: daysAgo(4), current_step_order: 1,
+    });
+    await schedule(org, e4.enrollmentId, newSeq.steps[0], { status: 'sent', scheduled_at: daysAgo(3), executed_at: daysAgo(3) });
+    const e4Next = await schedule(org, e4.enrollmentId, newSeq.steps[1], { scheduled_at: minutesFromNow(2 * 24 * 60) });
+
+    // Compte Z : E6 terminée il y a 5 jours ; E5, plus ancienne, a reçu la réponse du candidat hier (après la fin d'E6).
+    const e6 = await completedWithReply(org, oldSeq, users[2].userId, accZ, 5);
+    await enroll(org, newSeq.sequenceId, users[2].userId, accZ, {
+      profile_id: e6.profileId, status: 'replied', replied_at: daysAgo(1), created_at: daysAgo(12), current_step_order: 1,
+    });
+
+    await checkRepliesUntilExamined(e1.enrollmentId, e3.enrollmentId, e4.enrollmentId, e6.enrollmentId);
+
+    for (const [label, id] of [['compte X', e1.enrollmentId], ['compte Y', e3.enrollmentId], ['compte Z', e6.enrollmentId]] as const) {
+      const row = await enrollmentFull(id);
+      expect({ status: row.status, replied_at: row.replied_at }, `${label} : l'ancienne inscription reste terminée`).toEqual({ status: 'completed', replied_at: null });
+      expect(row.last_check_at, `${label} : examinée`).not.toBeNull();
+    }
+    expect(await chatReads(accX), 'compte X : conversation jamais relue pour l’ancienne inscription').toBe(0);
+    expect(await chatReads(accZ), 'compte Z : conversation jamais relue pour l’ancienne inscription').toBe(0);
+    expect((await enrollmentFull(e4.enrollmentId)).status, 'compte Y : la réponse revient à l’inscription ouverte').toBe('replied');
+    expect((await execRow(e4Next)).status).toBe('cancelled');
+    expect(await repliesCounted(oldSeq.sequenceId), 'aucune réponse comptée sur l’ancienne séquence').toBe(0);
+    expect(await repliesCounted(newSeq.sequenceId), 'réponse comptée une fois, sur l’inscription ouverte').toBe(1);
+    const { data: jcsAfter } = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('id', (jcsRow as { id: string }).id).single();
+    expect(jcsAfter, 'mission M1 : pipeline intact').toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
   });
 });
 
