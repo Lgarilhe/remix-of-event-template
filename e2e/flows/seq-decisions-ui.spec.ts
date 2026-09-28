@@ -556,15 +556,22 @@ test.describe('Décision 31 : fiche candidat, inscriptions d’un autre membre',
       status: 'messaged', pipeline_stage: 'messaged', created_by: collab.userId, organization_id: ws.org.orgId,
     });
     expect(jcsErr, jcsErr?.message).toBeNull();
-    const ownerActive = await missionSequence(ws, 'Fiche propriétaire active');
-    const ownerPaused = await missionSequence(ws, 'Fiche propriétaire en pause');
+    // Inscriptions du propriétaire dans des séquences du collaborateur : il les
+    // voit (ses séquences), sans pouvoir agir dessus. Depuis le lot C1 (R7), il
+    // ne lit plus du tout une séquence du propriétaire, même dans l'équipe de la
+    // mission (ownerOnly).
+    const ownerActive = await missionSequence(ws, 'Fiche propriétaire active', { createdBy: collab.userId });
+    const ownerPaused = await missionSequence(ws, 'Fiche propriétaire en pause', { createdBy: collab.userId });
     const mine = await missionSequence(ws, 'Fiche collaborateur', { createdBy: collab.userId });
+    const ownerOnly = await missionSequence(ws, 'Fiche séquence du propriétaire');
     const e1 = await seedEnrollment(ws, ownerActive, { profile_id: profileId, profile_name: name });
     const e2 = await seedEnrollment(ws, ownerPaused, { profile_id: profileId, profile_name: name, status: 'paused', pause_reason: 'manual' });
     const e3 = await seedEnrollment(ws, mine, { profile_id: profileId, profile_name: name, created_by: collab.userId, account_id: collabAccount });
+    const e4 = await seedEnrollment(ws, ownerOnly, { profile_id: profileId, profile_name: name });
     await seedScheduled(ws, e1, ownerActive.stepIds[0]);
     await seedScheduled(ws, e2, ownerPaused.stepIds[0]);
     await seedScheduled(ws, e3, mine.stepIds[0]);
+    await seedScheduled(ws, e4, ownerOnly.stepIds[0]);
 
     const page = await openAs(browser, collab, [collabAccount]);
     await openMissionKanban(page, ws.missionId, name);
@@ -574,6 +581,7 @@ test.describe('Décision 31 : fiche candidat, inscriptions d’un autre membre',
     await expect(card(ownerActive.name)).toBeVisible({ timeout: 20_000 });
     await expect(card(ownerPaused.name)).toBeVisible();
     await expect(card(mine.name)).toBeVisible();
+    await expect(card(ownerOnly.name)).toHaveCount(0);
 
     // Inscription active d'un collègue : consultation seule.
     await expect(card(ownerActive.name).getByRole('button', { name: 'Mettre en pause', exact: true })).toHaveCount(0);

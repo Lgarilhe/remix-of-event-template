@@ -47,7 +47,6 @@ const HOUR = 3600 * 1000;
 const rand = () => Math.random().toString(36).slice(2, 8);
 
 // Textes d'aide de SequencesList.tsx (contrat §8 et D3).
-const NOT_AUTHOR_READ_ONLY_HINT = 'Seul l’auteur de cette séquence peut la modifier : dupliquez-la pour l’adapter.';
 const COLLABORATOR_DEACTIVATION_HINT = 'Désactiver une séquence met en pause tous ses candidats : réservé aux membres qui gèrent toutes les inscriptions. Mettez vos candidats en pause depuis la liste des inscrits.';
 
 // ─── Contextes navigateur ───────────────────────────────────────────────────
@@ -244,11 +243,13 @@ test.describe('Séquences — inscriptions', () => {
     const missionId = await seedMission(org.orgId, owner.userId, { name: 'Mission Actions du jour E2E' });
     const collab = await addMember(org.orgId, 'collaborator', 'collab');
     org.addExtraUser(collab);
-    // Un collaborateur ne voit que les séquences de ses missions (RLS outreach_sequences).
+    // L'équipe de la mission lui ouvre la mission ; il ne lit que ses propres
+    // séquences (RLS outreach_sequences, lot C1 : plus de lecture par l'équipe).
+    // Le propriétaire a inscrit un candidat dans la séquence du collaborateur.
     await admin().from('mission_team').insert({ project_id: missionId, user_id: collab.userId, role: 'sourcer' });
     const ownerAccount = await seedLinkedInAccount(org.orgId, owner.userId, `acc_e2e_${rand()}`);
     const collabAccount = await seedLinkedInAccount(org.orgId, collab.userId, `acc_e2e_${rand()}`);
-    const seq = await seedMissionSequence(org.orgId, owner.userId, missionId, 'Relances du jour e2e');
+    const seq = await seedMissionSequence(org.orgId, collab.userId, missionId, 'Relances du jour e2e');
     const mine = await seedEnrolled(org.orgId, seq.sequenceId, seq.steps[0], collab.userId, collabAccount, 'Bruno Petit', laterToday());
     // D3 : le candidat inscrit par un autre membre n'est pas avancé par un collaborateur.
     const colleague = await seedEnrolled(org.orgId, seq.sequenceId, seq.steps[0], owner.userId, ownerAccount, 'Alice Martin', laterToday());
@@ -354,7 +355,7 @@ test.describe('Séquences — inscriptions', () => {
     }
   });
 
-  test('audit scénario 6 : un collaborateur ne peut ni désactiver la séquence d\'un autre ni agir sur ses candidats', async ({ browser, org }) => {
+  test('audit scénario 6 : un collaborateur ne voit pas la séquence d\'un autre, ne désactive pas la sienne et n\'agit pas sur les candidats d\'un collègue', async ({ browser, org }) => {
     const owner = org.owner;
     await setOrgPlan(org.orgId);
     const missionId = await seedMission(org.orgId, owner.userId, { name: 'Mission Collaborateur E2E' });
@@ -364,30 +365,18 @@ test.describe('Séquences — inscriptions', () => {
     const ownerAccount = await seedLinkedInAccount(org.orgId, owner.userId, `acc_e2e_${rand()}`);
     const collabAccount = await seedLinkedInAccount(org.orgId, collab.userId, `acc_e2e_${rand()}`);
 
-    // Séquence d'un autre membre : un candidat du propriétaire, un du collaborateur.
+    // Séquence d'un autre membre : depuis le lot C1 (20260927233806, R7), le
+    // collaborateur ne la lit plus, même dans l'équipe de la mission.
     const ownerSeq = await seedMissionSequence(org.orgId, owner.userId, missionId, 'Séquence du propriétaire e2e');
-    const alice = await seedEnrolled(org.orgId, ownerSeq.sequenceId, ownerSeq.steps[0], owner.userId, ownerAccount, 'Alice Martin', new Date(Date.now() + 2 * HOUR));
-    const bruno = await seedEnrolled(org.orgId, ownerSeq.sequenceId, ownerSeq.steps[0], collab.userId, collabAccount, 'Bruno Petit', new Date(Date.now() + 3 * HOUR));
-    // Séquence du collaborateur lui-même, active.
+    const zoe = await seedEnrolled(org.orgId, ownerSeq.sequenceId, ownerSeq.steps[0], owner.userId, ownerAccount, 'Zoé Martin', new Date(Date.now() + 2 * HOUR));
+    // Séquence du collaborateur, active : un candidat inscrit par le propriétaire, un par lui-même.
     const collabSeq = await seedMissionSequence(org.orgId, collab.userId, missionId, 'Séquence du collaborateur e2e');
-    const chloe = await seedEnrolled(org.orgId, collabSeq.sequenceId, collabSeq.steps[0], collab.userId, collabAccount, 'Chloé Durand', new Date(Date.now() + 4 * HOUR));
+    const alice = await seedEnrolled(org.orgId, collabSeq.sequenceId, collabSeq.steps[0], owner.userId, ownerAccount, 'Alice Martin', new Date(Date.now() + 2 * HOUR));
+    const bruno = await seedEnrolled(org.orgId, collabSeq.sequenceId, collabSeq.steps[0], collab.userId, collabAccount, 'Bruno Petit', new Date(Date.now() + 3 * HOUR));
 
     const page = await openAs(browser, collab, [collabAccount]);
-    await openOutreach(page, missionId, ownerSeq.name);
-
-    // Séquence d'un autre : pas d'interrupteur, « Lecture seule » expliqué.
-    const ownerRow = sequenceRow(page, ownerSeq.name);
-    await expect(ownerRow.getByRole('switch')).toHaveCount(0);
-    const readOnly = ownerRow.getByText('Lecture seule', { exact: true });
-    await expect(readOnly).toBeVisible();
-    await expect(readOnly).toHaveAttribute('title', NOT_AUTHOR_READ_ONLY_HINT);
-
-    // Menu de la séquence : ni « Modifier » ni « Supprimer » ; « Dupliquer » reste (la copie lui appartient).
-    await ownerRow.getByRole('button', { name: `Actions de la séquence ${ownerSeq.name}` }).click();
-    await expect(page.getByRole('menuitem', { name: 'Dupliquer' })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: 'Modifier' })).toHaveCount(0);
-    await expect(page.getByRole('menuitem', { name: 'Supprimer' })).toHaveCount(0);
-    await page.keyboard.press('Escape');
+    await openOutreach(page, missionId, collabSeq.name);
+    await expect(page.getByText(ownerSeq.name, { exact: true }), 'séquence d\'un autre membre non affichée').toHaveCount(0);
 
     // Sa propre séquence active : interrupteur verrouillé avec l'explication (D3).
     const ownSwitch = page.getByRole('switch', { name: `Mettre en pause la séquence ${collabSeq.name}` });
@@ -400,10 +389,9 @@ test.describe('Séquences — inscriptions', () => {
     await expect(page.getByRole('alertdialog', { name: 'Désactiver cette séquence ?' })).toHaveCount(0);
     const { data: collabSeqRow } = await admin().from('outreach_sequences').select('is_active').eq('id', collabSeq.sequenceId).single();
     expect(collabSeqRow?.is_active, 'séquence toujours active').toBe(true);
-    expect((await enrollmentRow(chloe.enrollmentId)).status, 'candidat toujours en cours').toBe('active');
 
-    // Panneau de la séquence d'un autre : pas d'action groupée.
-    const panel = await openEnrollmentsPanel(page, ownerSeq.name);
+    // Panneau de sa séquence : pas de pause groupée (D3).
+    const panel = await openEnrollmentsPanel(page, collabSeq.name);
     await expect(panel.getByText('Bruno Petit', { exact: true })).toBeVisible();
     await expect(panel.getByRole('button', { name: /Mettre en pause tous les candidats actifs/ })).toHaveCount(0);
 
@@ -426,7 +414,7 @@ test.describe('Séquences — inscriptions', () => {
     await expect(panel.getByRole('button', { name: 'Sauter', exact: true })).toHaveCount(1);
 
     // Rien n'a bougé en base.
-    for (const e of [alice, bruno]) expect((await enrollmentRow(e.enrollmentId)).status).toBe('active');
+    for (const e of [alice, bruno, zoe]) expect((await enrollmentRow(e.enrollmentId)).status).toBe('active');
   });
 
   test("audit scénario 7 : retirer un membre met ses inscriptions en pause avant le retrait", async ({ browser, org }) => {

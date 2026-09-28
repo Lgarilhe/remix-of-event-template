@@ -656,7 +656,12 @@ test.describe('Modèles', () => {
   });
 
   // modeles-dupliquer-existante-et-enregistrer (séquence d'une autre organisation)
-  test('@critical « Dupliquer une existante » depuis la séquence d\'une autre organisation (équipe de mission) ne reprend ni ses expéditeurs ni la rotation', async ({ browser, org }) => {
+  // Avant le lot C1, un membre de l'équipe de la mission d'une autre
+  // organisation lisait ses séquences et pouvait les dupliquer ; ce test
+  // vérifiait que la copie ne reprenait ni expéditeurs ni rotation. Depuis C1
+  // (20260927233806, R7), aucune policy ne passe plus par l'équipe de mission :
+  // la séquence ne lui est ni affichée ni proposée.
+  test('@critical « Dupliquer une existante » ne propose pas la séquence d\'une autre organisation, même à un membre de l\'équipe de sa mission', async ({ browser, org }) => {
     // Organisation A (fixture) : l'utilisateur, avec son compte relié. Organisation B : la mission et sa séquence.
     await setOrgPlan(org.orgId);
     const ownAccount = await seedLinkedInAccount(org.orgId, org.owner.userId, `acc_ui1_${rand()}`);
@@ -678,14 +683,15 @@ test.describe('Modèles', () => {
     await admin().from('mission_team').insert({ project_id: otherMission, user_id: org.owner.userId, role: 'sourcer' });
 
     const { page } = await openAs(browser, org.owner, [{ id: ownAccount }]);
-    await openOutreach(page, otherMission, foreign.name);
-    await page.getByRole('button', { name: 'Créer une séquence', exact: true }).click();
+    await page.goto(`/missions/${otherMission}?tab=outreach`, { waitUntil: 'domcontentloaded' });
+    const create = page.getByRole('button', { name: 'Créer une séquence', exact: true }).first();
+    await expect(create).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(foreign.name, { exact: true }), 'séquence de l\'autre organisation non affichée').toHaveCount(0);
+    await create.click();
     await page.getByRole('dialog', { name: 'Nouvelle séquence' }).getByRole('button', { name: /Dupliquer une existante/ }).click();
-    await page.getByRole('dialog', { name: 'Dupliquer une séquence' }).getByRole('button', { name: new RegExp(foreign.name) }).click();
-    await expect(page.getByRole('textbox', { name: 'Nom de la séquence *' })).toHaveValue(`Copie de ${foreign.name}`);
-    await page.getByRole('button', { name: 'Expert', exact: true }).click();
-    await expect(page.getByRole('switch', { name: 'Plusieurs expéditeurs' }), 'rotation non reprise').not.toBeChecked();
-    await expect(page.getByText('LinkedIn · Zoé Autre Org')).toHaveCount(0);
+    const duplicate = page.getByRole('dialog', { name: 'Dupliquer une séquence' });
+    await expect(duplicate).toBeVisible();
+    await expect(duplicate.getByRole('button', { name: new RegExp(foreign.name) }), 'non proposée à la duplication').toHaveCount(0);
   });
 
   // modeles-dupliquer-existante-et-enregistrer (enregistrer comme modèle)
@@ -938,7 +944,9 @@ test.describe('Préparation d\'inscription', () => {
       profile_url: `https://www.linkedin.com/in/${slug}`,
       created_at: new Date(Date.now() - 200 * 24 * HOUR).toISOString(),
     });
-    const target = await seedSeq(org.orgId, org.owner.userId, { name: `Cible ui-1 ${rand()}`, projectId: missionId });
+    // Séquence cible du collaborateur : depuis le lot C1 (R7), il ne lit plus
+    // celle d'un collègue, même dans l'équipe de la mission.
+    const target = await seedSeq(org.orgId, collab.user.userId, { name: `Cible ui-1 ${rand()}`, projectId: missionId });
 
     // Même candidate vue depuis Recruiter (identifiant AE…, même provider_id), et une voisine au slug préfixé.
     const jeanne = makeProfile('Jeanne', 'Doublon', { id: `AEMAAUI1${rand()}${rand()}`, provider_id: providerId, public_identifier: slug });
