@@ -120,7 +120,7 @@ Six décisions finales, prises après la relecture contradictoire, priment sur l
 2. Secret facultatif `EMAIL_LINK_SIGNING_SECRET` pour signer les liens suivis des e-mails (repli sur la clé de service). Sans effet tant que le canal e-mail est fermé.
 3. Après déploiement, régénérer `src/integrations/supabase/types.ts` avec `supabase gen types typescript --linked`. Les fonctions nouvelles y ont été ajoutées à la main.
 4. Vérifier la ligne `organization_integrations` de l'organisation Konekt : la synchronisation Notion après envoi ne tourne plus que si `notion_connected` est vrai et que les identifiants correspondent à ceux de la plateforme.
-5. Deux migrations issues des tests de bout en bout, à appliquer avec la première : `20260927194905` (garde du compte d'envoi à la modification, `assigned_sender_id` réservé au moteur, clés étrangères `created_by` des modèles et extraits alignées sur la production, `executed_at` des actions de l'assistant protégé, lecture du journal de l'assistant) et `20260927231417` (inscription d'un candidat effacé non réactivable). Toutes deux rejouent sur une base vide.
+5. Deux migrations issues des tests de bout en bout, à appliquer avec la première : `20260927194905` (garde du compte d'envoi à la modification, `assigned_sender_id` réservé au moteur, clés étrangères `created_by` des modèles et extraits alignées sur la production, `executed_at` des actions de l'assistant protégé, lecture du journal de l'assistant) et `20260927231417` (inscription d'un candidat effacé non réactivable). Toutes deux rejouent sur une base vide. Puis `20260928055804` (décisions produit : gardes d'inscription et de reprise, étapes réservées au serveur, conversations de l'assistant, droits retirés).
 6. État de la production au 25 septembre : 2 séquences, 17 inscriptions, aucune active (15 en pause, 2 répondues). Le déploiement ne relance donc aucun envoi.
 
 ## Tests de bout en bout (27 septembre)
@@ -185,9 +185,9 @@ Le second passage de la suite complète a fait apparaître un défaut intermitte
 
 Résultat après corrections, sur la stack locale, deux passages de la suite complète : 372 tests d'API sur 372 ; 116 tests d'interface verts, 6 mis de côté (décisions en attente), 1 échec hors séquences (carte « Extension Chrome », code identique à `main`) ; 10 fichiers d'audit SQL verts sur une base neuve où les 276 migrations rejouent ; tests UX 840, agent 40, Deno 150 ; tsc 24 ; build OK.
 
-### Décisions produit en attente
+### Décisions produit (validées et appliquées le 28 septembre)
 
-Recommandation entre parenthèses.
+Les 35 recommandations ci-dessous, entre parenthèses, ont été retenues telles quelles et appliquées en six lots de fichiers, chacun relu par deux relecteurs puis repris si besoin, avec des tests dédiés (`e2e/api/seq-decisions-*.spec.ts`, `e2e/flows/seq-decisions-*.spec.ts`, `supabase/tests/seq_decisions_db_audit.sql`, tests Deno `seq-decisions-*.test.ts`) et la migration `20260928055804`.
 
 Envois et quotas :
 1. Un envoi incertain (erreur 5xx ou délai après l'appel) doit-il compter dans le taux d'échec qui désactive une séquence ? (Non : une panne passagère du prestataire ne doit pas arrêter une séquence.)
@@ -250,7 +250,7 @@ Les autres questions relevées par les lots sont tranchées par les correctifs (
 - Réouvrir les canaux e-mail et WhatsApp, avec un test réel de bout en bout (envoi, suivi, désinscription, réponse dans le fil). SEQ-206 et SEQ-207 en dépendent.
 - Brancher la synchronisation Notion sur les identifiants propres de chaque organisation (SEQ-007).
 - Faire tourner dans la CI les tests qui exigent le moteur : le workflow e2e n'y sert pas les edge functions, et ces tests s'ignorent d'eux-mêmes sans la stack locale (`e2e/local-stack/README.md`). Les audits SQL des séquences, eux, tournent désormais dans la CI.
-- Trancher les 35 décisions produit de la seconde vague, puis couvrir les comportements moyens et les 18 zones restantes.
+- Couvrir les comportements moyens et les 18 zones restantes.
 - Tester en préversion avec un vrai compte LinkedIn, sur quelques candidats internes, avant toute ouverture commerciale.
 - Nettoyage des tests : les organisations de test restent en base, le déclencheur `prevent_last_owner_removal` bloque la suppression de leur propriétaire (déjà le cas avant l'audit).
 - Libellé de l'onglet de mission « Outreach » : laissé tel quel, le renommer touche la navigation de toute l'application.

@@ -162,7 +162,7 @@ jobs:
         if: steps.target.outputs.mode == 'local'
         run: |
           DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
-          for audit in seq_db_audit seq_scheduled_1_audit seq_steps_1_audit seq_engine_1_audit seq_identity_audit; do
+          for audit in seq_db_audit seq_scheduled_1_audit seq_steps_1_audit seq_engine_1_audit seq_identity_audit seq_decisions_db_audit; do
             psql "$DB_URL" -v ON_ERROR_STOP=1 \
               -c 'BEGIN;' -f "supabase/tests/$audit.sql" -c 'ROLLBACK;'
           done

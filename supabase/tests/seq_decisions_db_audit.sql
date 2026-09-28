@@ -870,14 +870,14 @@ BEGIN
     END IF;
   EXCEPTION WHEN OTHERS THEN f := f || format('[régression : get_linkedin_quota_status refusé : %s (%s)] ', SQLERRM, SQLSTATE);
   END;
+  -- Droit lu plutôt qu'essayé : un refus réel sous un rôle restreint peut faire
+  -- tomber l'image Postgres locale (voir CLAUDE.md, audits SQL).
   FOREACH t IN ARRAY ARRAY['sequence_analytics', 'linkedin_action_log'] LOOP
     c := c + 1;
-    BEGIN
-      EXECUTE format('TRUNCATE public.%I', t);
-      f := f || format('[DÉFAUT d19 : TRUNCATE de %s accepté pour un utilisateur connecté] ', t);
-    EXCEPTION WHEN insufficient_privilege THEN NULL;
-    WHEN OTHERS THEN f := f || format('[TRUNCATE %s : %s (%s)] ', t, SQLERRM, SQLSTATE);
-    END;
+    IF has_table_privilege('authenticated', format('public.%I', t), 'TRUNCATE')
+       OR has_table_privilege('anon', format('public.%I', t), 'TRUNCATE') THEN
+      f := f || format('[DÉFAUT d19 : TRUNCATE de %s accordé à un rôle client] ', t);
+    END IF;
   END LOOP;
   c := c + 1;
   BEGIN
