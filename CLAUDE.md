@@ -200,7 +200,20 @@ sourcing_projects          — missions (name, job_details, filters_snapshot, st
 mission_process_steps      — interview steps per mission
 mission_team               — team members per mission
 mission_invitations        — freelancer invites with tokens
-job_candidate_status       — candidate score/status per job
+job_candidate_status       — un candidat dans une mission : note et étape. Modèle des étapes (refonte mission, lot 0a) :
+                             .general_stage (to_sort, retained, contacted, replied, interviewing, hired, rejected ;
+                             NOT NULL, défaut to_sort) ; .process_step_id (étape d'entretien, clé vers mission_process_steps,
+                             ON DELETE SET NULL ; seulement en interviewing, et alors égale à pipeline_stage) ;
+                             .stage_entered_at (NOT NULL, approchée pour les lignes reprises) ; .decision_source (ai, user,
+                             system ; NULL = aucune décision) ; jalons contacted_at, replied_at, first_interview_at,
+                             presented_at, hired_at (posés une fois, sur une date vraie), rejected_at et rejected_from_stage
+                             (dernier écart) ; .reply_summary (résumé d'une réponse, écrit à partir du lot 0b).
+                             .status (défaut 'new') et .pipeline_stage deviennent des colonnes de compatibilité. Le
+                             déclencheur stage_sync_from_legacy en dérive l'étape à chaque écriture du couple, et remet à leur
+                             ancienne valeur les nouvelles colonnes écrites en direct (hors set_candidate_stage) ; il ne
+                             modifie jamais status ni pipeline_stage.
+                             Compteurs stats_* de la mission : sur status, par project_id et organisation de la mission,
+                             jusqu'au lot 0c (passage à general_stage avec get_project_stats).
 outreach_sequences         — message sequences
 sequence_enrollments       — candidates in sequences (.pause_reason : manual, account_disconnected, quota_reached, subscription_required,
                              sequence_inactive, auto_paused, send_failed, blocked_by_candidate ; jamais NULL pour une pause ;
@@ -225,6 +238,21 @@ Cron : `expire-subscription-trials` (horaire) → `expire_subscription_trials()`
 `client_portal_candidates(token)` (lot C1 : seule lecture des candidats du portail client, retenus et au-delà de l'organisation du lien ; service_role seulement, appelée par client-portal-data). Tout lien de portail expire (90 jours par défaut, `expires_at` NOT NULL).
 `get_org_member_emails(org)` (e-mails de auth.users des membres ; appelant owner/admin/member de l'org, jamais collaborator ni anon) :
 `profiles` n'a pas de colonne `email` ni `avatar_url`, ne jamais les demander.
+`set_candidate_stage(p_id, p_stage, p_source, p_organization_id, p_process_step_id, p_legacy_stage)` (lot 0a, SECURITY INVOKER) :
+écriture de l'étape d'un candidat, qui tient aussi le couple status / pipeline_stage. Tous les écrivains y passent au lot 0b ;
+d'ici là, le déclencheur suit leurs écritures du couple. La RLS de l'appelant s'applique.
+Hors navigateur (clé de service), `p_organization_id` est obligatoire (HINT STAGE_ORG_REQUIRED) ; une ligne d'une autre
+organisation est introuvable (STAGE_ROW_NOT_FOUND). Trois origines :
+- `user` : la seule admise depuis le navigateur (sinon STAGE_SOURCE_FORBIDDEN). Vers interviewing, l'étape d'entretien est
+  obligatoire si la mission en a (STAGE_STEP_REQUIRED), sauf avec un libellé du /pipeline (`p_legacy_stage`, liste blanche
+  par étape, sinon STAGE_LEGACY_MISMATCH).
+- `ai` : seulement to_sort (sinon STAGE_AI_FORBIDDEN). Elle marque l'origine d'une ligne À trier sans origine, ne change ni
+  l'étape ni la date, et ne sort jamais une ligne d'Écarté.
+- `system` (événements : envoi, réponse, rendez-vous) : seulement contacted, replied ou interviewing. Jamais une ligne À trier
+  ou Retenue vers replied (résultat `not_contacted`), jamais de recul ni de reprise d'un écarté (résultat `kept`).
+Réponse jsonb : `changed`, `result` (updated, unchanged, kept, not_contacted), étape, étape d'entretien, date et origine.
+`candidate_stage_from_legacy(status, pipeline_stage, step_id)` : correspondance pure de l'ancien couple vers l'étape, commune
+au déclencheur, à la reprise et à `set_candidate_stage`.
 
 ### Key Hooks
 ```
@@ -474,7 +502,7 @@ Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `sr
 
 ### Écritures sur `organizations` — passer par `updateOrganization`
 `src/lib/organizationUpdate.ts` relit la ligne écrite : sans `.select()`, un refus RLS répond « succès » sur 0 ligne. Côté base (lot 1 des Paramètres, migration 20260923095813) : une seule policy UPDATE `admins_update` (owner/admin) et le trigger `organizations_update_guard`. L'admin modifie `name`, `logo_url`, `website`, `ai_context` ; tout le reste (`org_type`, `agency_permissions`, `ai_model_default`…) reste au propriétaire (HINT `ORG_OWNER_ONLY`). Passage en `freelance` refusé s'il reste un autre membre ou une invitation en attente (HINT `ORG_FREELANCE_NOT_SOLO`). Bucket `org-logos` : écriture owner/admin dans le dossier `{organization_id}/`, un nom de fichier unique par envoi.
-Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`, et pour les séquences `seq_db_audit.sql`, `seq_scheduled_1_audit.sql`, `seq_steps_1_audit.sql`, `seq_engine_1_audit.sql`, `seq_identity_audit.sql`, `seq_decisions_db_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
+Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`, et pour les séquences `seq_db_audit.sql`, `seq_scheduled_1_audit.sql`, `seq_steps_1_audit.sql`, `seq_engine_1_audit.sql`, `seq_identity_audit.sql`, `seq_decisions_db_audit.sql`, et pour le modèle des étapes candidat (refonte mission, lot 0a) `candidate_stage_model_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
 Dans un audit, ne jamais appeler sous `SET ROLE anon` ou `authenticated` une fonction refusée à ce rôle : dans l'image Postgres locale (17.6.1.106), supautils ajoute un indice au refus et le serveur tombe (signal 11, e2e du 24 au 26/09). Contrôler le droit avec `has_function_privilege`, et le refus réel par l'API (`curl …/rest/v1/rpc/<fonction>` avec la clé anon, voir `e2e.yml`).
 
 ### Règles posées par le lot C1 (réparations des fuites, 2026-09)

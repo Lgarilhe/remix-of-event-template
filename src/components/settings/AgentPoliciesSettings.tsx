@@ -6,9 +6,10 @@
  * Une ligne par action de l'agent : Automatique / Avec approbation / Désactivée.
  *
  * - Défaut (aucune row en base) : « Avec approbation ».
- * - Les actions sensibles (envois externes, destructives) ne peuvent PAS
- *   passer en automatique — le sélecteur est bridé ET le serveur clampe de
- *   toute façon (agent-tools.ts, resolveEffectivePolicy).
+ * - Les actions sensibles (envois externes, destructives, changements d'étape
+ *   d'un candidat) ne peuvent PAS passer en automatique — le sélecteur est
+ *   bridé ET le serveur clampe de toute façon (agent-tools.ts,
+ *   resolveEffectivePolicy).
  * - Ligne spéciale « Digest matinal » : pseudo-tool daily_digest (auto = activé).
  * - Écriture réservée owner/admin (RLS) — l'UI masque les contrôles sinon.
  */
@@ -42,8 +43,8 @@ interface PolicyTool {
 // Miroir de agent-tools.ts (NEVER_AUTO_TOOLS + catégorie mutation_external).
 // Le serveur reste la garantie : ce tableau ne fait que piloter l'UI.
 const POLICY_TOOLS: PolicyTool[] = [
-  { name: 'update_candidate_stage', label: 'Modifier le stade candidat', autoEligible: true },
-  { name: 'add_to_shortlist', label: 'Ajouter à la shortlist', autoEligible: true },
+  { name: 'update_candidate_stage', label: 'Modifier le stade candidat', autoEligible: false, description: "Change l'étape d'un candidat : approbation obligatoire" },
+  { name: 'add_to_shortlist', label: 'Ajouter à la shortlist', autoEligible: false, description: "Change l'étape d'un candidat : approbation obligatoire" },
   { name: 'add_candidate_note', label: 'Ajouter une note candidat', autoEligible: true },
   { name: 'assign_candidate_to_member', label: 'Assigner un candidat', autoEligible: true },
   { name: 'create_mission', label: 'Créer une mission', autoEligible: true },
@@ -57,7 +58,7 @@ const POLICY_TOOLS: PolicyTool[] = [
   { name: 'draft_outreach_message', label: "Rédiger un message d'approche", autoEligible: true },
   { name: 'enrich_candidate_contact', label: 'Enrichir un contact', autoEligible: true },
   { name: 'schedule_interview', label: 'Planifier un entretien', autoEligible: true },
-  { name: 'bulk_update_stage', label: 'Déplacer plusieurs candidats', autoEligible: true },
+  { name: 'bulk_update_stage', label: 'Déplacer plusieurs candidats', autoEligible: false, description: "Change l'étape de plusieurs candidats : approbation obligatoire" },
   { name: 'start_background_scoring', label: 'Scorer une mission en tâche de fond', autoEligible: true, description: 'Consomme des crédits (scoring en masse) — par défaut soumis à approbation' },
   // Approbation obligatoire (envois externes / destructif / équipe)
   { name: 'send_linkedin_message', label: 'Envoyer un message LinkedIn', autoEligible: false, description: 'Envoi externe — approbation obligatoire' },
@@ -131,8 +132,8 @@ export function AgentPoliciesSettings() {
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
             Pour chaque action, choisissez si l'assistant l'exécute directement
-            (visible dans le journal de l’assistant) ou attend votre approbation. Les envois externes et les actions
-            destructives exigent toujours une approbation.
+            (visible dans le journal de l’assistant) ou attend votre approbation. Les envois externes, les actions
+            destructives et les changements d'étape d'un candidat exigent toujours une approbation.
             {!isAdmin && ' Réservé aux administrateurs.'}
           </p>
         </div>
@@ -159,7 +160,10 @@ export function AgentPoliciesSettings() {
 
         <div className="divide-y divide-border rounded-lg border border-border">
           {POLICY_TOOLS.map((tool) => {
-            const current: ToolPolicy = policies.get(tool.name) ?? 'approve';
+            // Une valeur « auto » enregistrée pour un outil non éligible s'affiche
+            // comme le serveur l'applique (resolveEffectivePolicy) : « approve ».
+            const stored: ToolPolicy = policies.get(tool.name) ?? 'approve';
+            const current: ToolPolicy = !tool.autoEligible && stored === 'auto' ? 'approve' : stored;
             return (
               <div key={tool.name} className="flex items-center justify-between gap-3 px-3 py-2">
                 <div className="min-w-0">

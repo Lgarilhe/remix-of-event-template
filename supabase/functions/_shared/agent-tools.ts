@@ -124,7 +124,7 @@ export function getAnthropicToolDefinitions(): AnthropicToolDefinition[] {
 // ============================================================================
 // Table agent_tool_policies : une row (org, tool) → 'auto' | 'approve' | 'off'.
 // Défaut sans row : reads → auto, mutations → approve (comportement historique).
-// GARDE-FOU : les tools mutation_external et la liste destructive ci-dessous ne
+// GARDE-FOU : les tools mutation_external et la liste ci-dessous ne
 // peuvent JAMAIS être 'auto' — le clamp est appliqué ICI, côté serveur, quelle
 // que soit la valeur en base (le frontend propose, le serveur tranche).
 
@@ -136,6 +136,10 @@ const NEVER_AUTO_TOOLS = new Set([
   'invite_team_member',
   'update_member_quota',
   'update_mission_status',
+  // Lot 0a : l'assistant ne change une étape qu'avec un clic (conception 3.3).
+  'update_candidate_stage',
+  'add_to_shortlist',
+  'bulk_update_stage',
 ]);
 
 const policyCache = new Map<string, { at: number; policies: Map<string, ToolPolicy> }>();

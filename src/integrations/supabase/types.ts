@@ -3076,8 +3076,13 @@ export type Database = {
           candidate_headline: string | null
           candidate_id: string
           candidate_name: string | null
+          contacted_at: string | null
           created_at: string
           created_by: string
+          decision_source: string | null
+          first_interview_at: string | null
+          general_stage: string
+          hired_at: string | null
           id: string
           job_id: string
           linkedin_profile_data: Json | null
@@ -3087,11 +3092,18 @@ export type Database = {
           notion_synced_at: string | null
           organization_id: string | null
           pipeline_stage: string | null
+          presented_at: string | null
+          process_step_id: string | null
           project_id: string | null
           recommendation: string | null
+          rejected_at: string | null
+          rejected_from_stage: string | null
+          replied_at: string | null
+          reply_summary: string | null
           score: number | null
           scoring_details: Json | null
           skip_reason: string | null
+          stage_entered_at: string
           status: string
           tags: string[] | null
           updated_at: string
@@ -3100,8 +3112,13 @@ export type Database = {
           candidate_headline?: string | null
           candidate_id: string
           candidate_name?: string | null
+          contacted_at?: string | null
           created_at?: string
           created_by: string
+          decision_source?: string | null
+          first_interview_at?: string | null
+          general_stage?: string
+          hired_at?: string | null
           id?: string
           job_id: string
           linkedin_profile_data?: Json | null
@@ -3111,11 +3128,18 @@ export type Database = {
           notion_synced_at?: string | null
           organization_id?: string | null
           pipeline_stage?: string | null
+          presented_at?: string | null
+          process_step_id?: string | null
           project_id?: string | null
           recommendation?: string | null
+          rejected_at?: string | null
+          rejected_from_stage?: string | null
+          replied_at?: string | null
+          reply_summary?: string | null
           score?: number | null
           scoring_details?: Json | null
           skip_reason?: string | null
+          stage_entered_at?: string
           status?: string
           tags?: string[] | null
           updated_at?: string
@@ -3124,8 +3148,13 @@ export type Database = {
           candidate_headline?: string | null
           candidate_id?: string
           candidate_name?: string | null
+          contacted_at?: string | null
           created_at?: string
           created_by?: string
+          decision_source?: string | null
+          first_interview_at?: string | null
+          general_stage?: string
+          hired_at?: string | null
           id?: string
           job_id?: string
           linkedin_profile_data?: Json | null
@@ -3135,11 +3164,18 @@ export type Database = {
           notion_synced_at?: string | null
           organization_id?: string | null
           pipeline_stage?: string | null
+          presented_at?: string | null
+          process_step_id?: string | null
           project_id?: string | null
           recommendation?: string | null
+          rejected_at?: string | null
+          rejected_from_stage?: string | null
+          replied_at?: string | null
+          reply_summary?: string | null
           score?: number | null
           scoring_details?: Json | null
           skip_reason?: string | null
+          stage_entered_at?: string
           status?: string
           tags?: string[] | null
           updated_at?: string
@@ -3150,6 +3186,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_candidate_status_process_step_id_fkey"
+            columns: ["process_step_id"]
+            isOneToOne: false
+            referencedRelation: "mission_process_steps"
             referencedColumns: ["id"]
           },
           {
@@ -6229,6 +6272,27 @@ export type Database = {
       replace_process_steps: {
         Args: { p_project_id: string; p_steps: Json }
         Returns: number
+      }
+      candidate_stage_from_legacy: {
+        Args: { p_pipeline_stage: string; p_status: string; p_step_id: string }
+        Returns: {
+          general_stage: string
+          presented: boolean
+          process_step_id: string
+          rejected_from_stage: string
+        }[]
+      }
+      jcs_stage_backfill: { Args: { p_ids: string[] }; Returns: number }
+      set_candidate_stage: {
+        Args: {
+          p_id: string
+          p_legacy_stage?: string
+          p_organization_id?: string
+          p_process_step_id?: string
+          p_source: string
+          p_stage: string
+        }
+        Returns: Json
       }
       get_subscription_state: {
         Args: { p_organization_id: string }
