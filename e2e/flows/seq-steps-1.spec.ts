@@ -162,12 +162,11 @@ async function panelShowsStep(page: Page, order: number): Promise<boolean> {
 }
 
 /**
- * Ouvre les réglages d'une étape du canevas. Sous Chromium sans interface, le
- * panneau suit la sélection avec un clic de retard (la sortie animée du
- * panneau précédent ne se termine qu'au changement suivant) : si l'étape
- * cliquée n'est pas affichée, on clique une troisième étape (`other`, ni
- * l'étape affichée ni la cible), ce qui affiche la cible. Les assertions
- * portent ensuite sur la base, seule preuve de l'étape modifiée.
+ * Ouvre les réglages d'une étape du canevas. Le panneau suivait la sélection
+ * avec un clic de retard (sortie animée du panneau précédent, corrigée le
+ * 28/09 et couverte par seq-editor-canvas.spec.ts) : la boucle, qui clique une
+ * troisième étape (`other`) si la cible n'est pas affichée, reste en filet.
+ * Les assertions portent ensuite sur la base, seule preuve de l'étape modifiée.
  */
 async function openStepSettings(page: Page, order: number, other: number) {
   for (let attempt = 0; attempt < 4; attempt++) {

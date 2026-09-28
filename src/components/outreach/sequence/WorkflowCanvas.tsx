@@ -9,7 +9,6 @@ import {
   type Edge,
   type NodeTypes,
   type EdgeTypes,
-  type OnSelectionChangeParams,
   MarkerType,
   ConnectionLineType,
 } from '@xyflow/react';
@@ -146,7 +145,7 @@ function buildLayout(
       id: step.id,
       type: 'stepNode',
       position: { x: mainX, y },
-      // Sélection tenue par l'éditeur : clavier et souris passent par onSelectionChange.
+      // Sélection tenue par l'éditeur (clic : onNodeClick, clavier : handleKeyDown).
       selected: selectedStepId === step.id,
       data: {
         step, allSteps: steps,
@@ -345,30 +344,24 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     }
   }, [onStepClick]);
 
-  // Entrée ou Espace sur une étape focalisée la sélectionne sans passer par
-  // onNodeClick : la sélection ouvre donc aussi ses réglages. Le clic reste
-  // utile pour rouvrir l'étape déjà sélectionnée après le choix d'une étape.
-  // Seul un changement réel compte : la sélection posée par l'éditeur (au
-  // montage, après un ajout) ne rouvre rien.
-  // Deux étapes peuvent rester sélectionnées un instant (ancienne et nouvelle) :
-  // choisir la première des deux faisait basculer l'éditeur de l'une à l'autre
-  // sans fin. On ne suit qu'une sélection d'une seule étape.
-  const handleSelectionChange = useCallback(({ nodes: selected }: OnSelectionChangeParams) => {
-    const stepNodes = selected.filter(n => n.type === 'stepNode' && n.data?.step);
-    if (stepNodes.length !== 1) return;
-    const stepId = (stepNodes[0].data.step as SequenceStep).id;
-    if (stepId !== selectedStepId) onStepClick(stepId);
-  }, [onStepClick, selectedStepId]);
+  // Entrée ou Espace sur une étape focalisée ouvre ses réglages (onNodeClick ne
+  // part qu'à la souris). On écoute la touche et non onSelectionChange : la
+  // sélection posée par l'éditeur relançait onSelectionChange, et l'éditeur
+  // basculait sans fin entre deux étapes.
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const stepId = (event.target as HTMLElement).closest('.react-flow__node')?.getAttribute('data-id');
+    if (stepId && steps.some(s => s.id === stepId)) onStepClick(stepId);
+  }, [onStepClick, steps]);
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full" onKeyDown={handleKeyDown}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
-        onSelectionChange={handleSelectionChange}
         // Mise en page calculée : un nœud déplacé revenait à sa place.
         nodesDraggable={false}
         nodesConnectable={false}

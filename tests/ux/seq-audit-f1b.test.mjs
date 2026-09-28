@@ -340,7 +340,9 @@ test('SEQ-158 — mode Liste : l’étape s’ouvre au clavier, sans boutons imb
 
 // ---------------------------------------------------------------- SEQ-159
 test('SEQ-159 — canevas : sélection au clavier, suppression visible, boutons nommés, plein écran sur téléphone', () => {
-  assert.match(canvas, /onSelectionChange=\{handleSelectionChange\}/);
+  // Clavier : Entrée ou Espace sur une étape focalisée (pas onSelectionChange, qui bouclait).
+  assert.match(canvas, /onKeyDown=\{handleKeyDown\}/);
+  assert.doesNotMatch(canvas, /onSelectionChange=/);
   assert.match(stepNode, /\[@media\(hover:none\)\]:opacity-100/);
   // Numéroté comme la liste (ordre + 1, lettre de variante), voir seq-audit-f1d.
   assert.match(stepNode, /aria-label=\{`Supprimer l'étape \$\{step\.order \+ 1\}\$\{step\.variantGroup \? ` \(\$\{step\.variantGroup\}\)` : ''\}`\}/);

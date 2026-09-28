@@ -21,7 +21,7 @@ import { WorkflowCanvas } from './WorkflowCanvas';
 import { StepEditor } from './StepEditor';
 import { isStepTypeOffered, nextStepOrder, removeStepFromSequence, waitEventFor, STEP_TYPE_LABELS } from './sequenceGraph';
 import whatsappLogo from '@/assets/whatsapp-logo.svg';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 interface VisualSequenceEditorProps {
   steps: SequenceStep[];
@@ -225,7 +225,10 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
 
   const panelContent = (
     <div className="p-4">
-      <AnimatePresence mode="wait">
+      {/* Pas d'AnimatePresence en mode « wait » : le nouveau panneau attendait la
+          fin de la sortie de l'ancien, et un clic rapide sur une autre étape
+          laissait affichés les réglages de la précédente. */}
+      <>
         {showStepPicker ? (
           <motion.div
             key="picker"
@@ -332,7 +335,7 @@ export const VisualSequenceEditor: React.FC<VisualSequenceEditorProps> = ({
             <p className="text-xs text-muted-foreground/60">Sélectionnez une étape</p>
           </motion.div>
         )}
-      </AnimatePresence>
+      </>
     </div>
   );
 
