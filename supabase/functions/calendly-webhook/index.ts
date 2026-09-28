@@ -1,5 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
+import { cancelScheduledInMails, MEETING_INMAIL_CANCEL_REASON } from "../_shared/candidate-reply-closure.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,6 +18,29 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
 }
+
+/** Slug public d'une URL de profil LinkedIn (/in/{slug}), en minuscules, sans paramètres ni fragment. */
+function linkedinSlugFromUrl(url: string | null): string | null {
+  if (!url) return null;
+  const match = url.match(/linkedin\.com\/in\/([^/?#\s]+)/i);
+  const slug = match?.[1]?.trim().toLowerCase() ?? '';
+  return slug.length >= 3 ? slug : null;
+}
+
+/**
+ * Motifs ilike d'une URL de profil exacte : linkedin.com/in/{slug} avec et
+ * sans « / » final, jamais de joker après le slug (« /in/marie-martin » ne
+ * doit pas désigner « /in/marie-martin-4b2a1 »). Les jokers SQL du slug sont
+ * échappés.
+ */
+function exactProfileUrlPatterns(slug: string): string[] {
+  const escaped = slug.replace(/([%_\\])/g, '\\$1');
+  return [`%linkedin.com/in/${escaped}`, `%linkedin.com/in/${escaped}/`];
+}
+
+/** Au-delà, l'arrêt est refusé : un rendez-vous concerne un candidat, pas une liste. */
+const MAX_ENROLLMENTS_STOPPED_PER_BOOKING = 5;
+const PENDING_EXECUTION_STATUSES = ['scheduled', 'waiting_event', 'quota_blocked'];
 
 async function verifyCalendlySignature(req: Request, body: string): Promise<boolean> {
   const signingKey = Deno.env.get('CALENDLY_WEBHOOK_SIGNING_KEY');
@@ -63,7 +88,7 @@ async function verifyCalendlySignature(req: Request, body: string): Promise<bool
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
   const expectedSignature = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-  if (expectedSignature !== signature) {
+  if (!timingSafeEqual(expectedSignature, signature)) {
     console.warn('[calendly-webhook] Signature mismatch');
     return false;
   }
@@ -164,8 +189,10 @@ Deno.serve(async (req) => {
       eventStartAt,
     });
 
-    // Try to match candidate via LinkedIn URL in job_candidate_status
-    let candidateMatch: {
+    // Try to match candidate via LinkedIn URL in job_candidate_status.
+    // URL exacte (slug sans paramètres), jamais une sous-chaîne : '%/in/marie%'
+    // désignait aussi '/in/marie-martin-4b2a1' (SEQ-008).
+    type CandidateMatch = {
       candidate_id?: string;
       candidate_name?: string;
       candidate_headline?: string;
@@ -174,28 +201,62 @@ Deno.serve(async (req) => {
       project_id?: string;
       linkedin_profile_url?: string;
       scoring_details?: any;
-    } | null = null;
+      organization_id?: string | null;
+      created_by?: string | null;
+      updated_at?: string;
+    };
+    let candidateMatch: CandidateMatch | null = null;
 
     // Validate LinkedIn URL (must be a real profile URL, not just "LinkedIn")
     const isValidLinkedinUrl = candidateLinkedinUrl && /^https?:\/\/(www\.)?linkedin\.com\/in\/.+/i.test(candidateLinkedinUrl);
+    const candidateSlug = isValidLinkedinUrl ? linkedinSlugFromUrl(candidateLinkedinUrl) : null;
 
-    if (isValidLinkedinUrl) {
-      const normalizedUrl = candidateLinkedinUrl!
-        .replace(/\/$/, '')
-        .replace(/^https?:\/\/(www\.)?linkedin\.com/, 'https://www.linkedin.com');
-
-      const slug = normalizedUrl.split('linkedin.com')[1];
-      if (slug && slug.length > 4) {
-        const { data } = await supabase
+    if (candidateSlug) {
+      // Toutes les lignes qui suivent ce profil, toutes organisations : le
+      // secret Calendly est global et le webhook ne sait pas quelle
+      // organisation a reçu le rendez-vous. Choisir « la ligne la plus
+      // récente » écrivait chez une autre organisation qui suit le même
+      // profil (session avec l'e-mail de l'invité, séquences closes,
+      // notification). Décision D4 : on n'agit que si UNE SEULE organisation
+      // reliée à Calendly suit ce profil ; sinon rien, et on le journalise.
+      const matches: CandidateMatch[] = [];
+      for (const pattern of exactProfileUrlPatterns(candidateSlug)) {
+        const { data, error } = await supabase
           .from('job_candidate_status')
-          .select('candidate_id, candidate_name, candidate_headline, job_id, linkedin_profile_url, scoring_details, project_id')
-          .ilike('linkedin_profile_url', `%${slug}%`)
-          .order('updated_at', { ascending: false })
-          .limit(1);
+          .select('candidate_id, candidate_name, candidate_headline, job_id, linkedin_profile_url, scoring_details, project_id, organization_id, created_by, updated_at')
+          .ilike('linkedin_profile_url', pattern)
+          .order('updated_at', { ascending: false });
+        if (error) throw error;
+        matches.push(...((data ?? []) as CandidateMatch[]));
+      }
 
-        if (data?.length) {
-          candidateMatch = data[0];
+      if (matches.length > 0) {
+        const trackingOrgIds = [...new Set(matches.map((m) => m.organization_id).filter((id): id is string => !!id))];
+        let calendlyOrgIds: string[] = [];
+        if (trackingOrgIds.length > 0) {
+          const { data: integrations, error: integrationsError } = await supabase
+            .from('organization_integrations')
+            .select('organization_id')
+            .in('organization_id', trackingOrgIds)
+            .eq('calendly_connected', true);
+          if (integrationsError) throw integrationsError;
+          calendlyOrgIds = [...new Set(((integrations ?? []) as Array<{ organization_id: string }>).map((i) => i.organization_id))];
         }
+        if (calendlyOrgIds.length !== 1) {
+          console.warn(`[calendly-webhook] Organization not identifiable (${trackingOrgIds.length} org(s) track this profile, ${calendlyOrgIds.length} with Calendly connected) — no session, no sequence stopped, no notification`);
+          return new Response(JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: 'ambiguous_org',
+            calendly_org_count: calendlyOrgIds.length,
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        const bookingOrgId = calendlyOrgIds[0];
+        const orgMatches = matches.filter((m) => m.organization_id === bookingOrgId);
+        orgMatches.sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
+        candidateMatch = orgMatches[0] ?? null;
       }
     }
 
@@ -217,33 +278,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get the first authenticated user as created_by (since webhook has no auth context)
-    // We use the user who last interacted with this candidate if possible
-    let createdBy: string | null = null;
-    if (candidateMatch?.candidate_id) {
-      const { data: statusRow } = await supabase
-        .from('job_candidate_status')
-        .select('created_by')
-        .eq('candidate_id', candidateMatch.candidate_id)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
-      createdBy = statusRow?.created_by || null;
-    }
-
-    // Fallback: get any user from profiles
-    if (!createdBy) {
-      const { data: anyProfile } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .limit(1)
-        .single();
-      createdBy = anyProfile?.user_id || null;
-    }
+    // Session attribuée au recruteur qui suit le candidat, dans son
+    // organisation. Plus de repli sur « le premier profil venu » de toute la
+    // base : sans candidat reconnu, aucune session et aucun arrêt (SEQ-008).
+    const createdBy: string | null = candidateMatch?.created_by || null;
+    const candidateOrgId: string | null = candidateMatch?.organization_id || null;
 
     if (!createdBy) {
-      console.error('[calendly-webhook] No user found to assign session');
-      return new Response(JSON.stringify({ success: false, error: 'No user found' }), {
+      console.warn('[calendly-webhook] No matching candidate with an owner — no session created, no sequence stopped');
+      return new Response(JSON.stringify({ success: false, error: 'candidate_not_found' }), {
         status: 422,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -284,6 +327,7 @@ Deno.serve(async (req) => {
         scoring_summary: scoringSummary,
         status: 'scheduled',
         created_by: createdBy,
+        organization_id: candidateOrgId,
       })
       .select()
       .single();
@@ -296,7 +340,7 @@ Deno.serve(async (req) => {
     console.log('[calendly-webhook] Created qualification session:', session.id);
 
     // Update candidate status to 'qualification' + pipeline_stage if matched
-    if (candidateMatch?.candidate_id && candidateMatch?.job_id) {
+    if (candidateMatch?.candidate_id && candidateMatch?.job_id && candidateOrgId) {
       await supabase
         .from('job_candidate_status')
         .update({ 
@@ -305,68 +349,105 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq('candidate_id', candidateMatch.candidate_id)
-        .eq('job_id', candidateMatch.job_id);
+        .eq('job_id', candidateMatch.job_id)
+        .eq('organization_id', candidateOrgId);
       
       console.log('[calendly-webhook] Updated candidate status to qualification + Pré-qualif');
     }
 
-    // Stop active sequences for this candidate (booking = sequence goal achieved)
-    if (candidateMatch?.candidate_id || (isValidLinkedinUrl && candidateLinkedinUrl)) {
+    // Arrêt des séquences du candidat (rendez-vous = objectif atteint).
+    // SEQ-008 / SEQ-112 : jamais sans filtre de profil, toujours dans
+    // l'organisation du candidat reconnu, inscriptions actives ET en pause
+    // (une pause reprise plus tard relançait après le rendez-vous), statut
+    // 'completed' admis par la contrainte (l'ancien 'booked' était refusé en
+    // base neuve), exécutions annulées seulement pour les inscriptions
+    // réellement closes.
+    let sequencesStopped = 0;
+    let inmailsCancelled = 0;
+    let stopSkippedReason: string | null = null;
+    if (candidateMatch?.candidate_id && candidateOrgId) {
       try {
-        // Find active enrollments matching this candidate by profile_id or LinkedIn URL
-        let enrollmentsQuery = supabase
+        type EnrollmentToStop = {
+          id: string;
+          sequence_id: string;
+          created_by: string | null;
+          organization_id: string | null;
+          profile_name: string | null;
+          tracking_data: Record<string, unknown> | null;
+          profile_id: string | null;
+          provider_id: string | null;
+          resolved_profile_id: string | null;
+        };
+        const enrollmentColumns = 'id, sequence_id, created_by, organization_id, profile_name, tracking_data, profile_id, provider_id, resolved_profile_id';
+        const found = new Map<string, EnrollmentToStop>();
+
+        const { data: byProfile, error: byProfileError } = await supabase
           .from('sequence_enrollments')
-          .select('id, sequence_id')
-          .eq('status', 'active');
+          .select(enrollmentColumns)
+          .eq('organization_id', candidateOrgId)
+          .in('status', ['active', 'paused'])
+          .eq('profile_id', candidateMatch.candidate_id);
+        if (byProfileError) throw byProfileError;
+        for (const e of (byProfile ?? []) as EnrollmentToStop[]) found.set(e.id, e);
 
-        // Match by candidate_id (profile_id in enrollments) or by LinkedIn URL
-        if (candidateMatch?.candidate_id) {
-          enrollmentsQuery = enrollmentsQuery.eq('profile_id', candidateMatch.candidate_id);
-        }
-
-        const { data: activeEnrollments } = await enrollmentsQuery;
-
-        // Also try matching by LinkedIn URL if no match by profile_id
-        let urlEnrollments: any[] = [];
-        if ((!activeEnrollments?.length) && isValidLinkedinUrl && candidateLinkedinUrl) {
-          const slug = candidateLinkedinUrl!.replace(/\/$/, '').split('linkedin.com')[1];
-          if (slug && slug.length > 4) {
-            const { data } = await supabase
+        if (candidateSlug) {
+          for (const pattern of exactProfileUrlPatterns(candidateSlug)) {
+            const { data: byUrl, error: byUrlError } = await supabase
               .from('sequence_enrollments')
-              .select('id, sequence_id')
-              .eq('status', 'active')
-              .ilike('profile_url', `%${slug}%`);
-            urlEnrollments = data || [];
+              .select(enrollmentColumns)
+              .eq('organization_id', candidateOrgId)
+              .in('status', ['active', 'paused'])
+              .ilike('profile_url', pattern);
+            if (byUrlError) throw byUrlError;
+            for (const e of (byUrl ?? []) as EnrollmentToStop[]) found.set(e.id, e);
           }
         }
 
-        const allEnrollments = [...(activeEnrollments || []), ...urlEnrollments];
-        // Deduplicate by id
-        const uniqueEnrollments = Array.from(new Map(allEnrollments.map(e => [e.id, e])).values());
-
-        if (uniqueEnrollments.length > 0) {
-          const enrollmentIds = uniqueEnrollments.map(e => e.id);
+        const candidates = [...found.values()];
+        if (candidates.length > MAX_ENROLLMENTS_STOPPED_PER_BOOKING) {
+          stopSkippedReason = 'too_many_matches';
+          console.error(`[calendly-webhook] ${candidates.length} enrollments match one booking — stop refused (max ${MAX_ENROLLMENTS_STOPPED_PER_BOOKING})`);
+        } else if (candidates.length > 0) {
           const now = new Date().toISOString();
+          const stopped: EnrollmentToStop[] = [];
+          for (const enrollment of candidates) {
+            const { data: changed, error: updateError } = await supabase
+              .from('sequence_enrollments')
+              .update({
+                status: 'completed',
+                completed_at: now,
+                pause_reason: null,
+                updated_at: now,
+                tracking_data: {
+                  ...(enrollment.tracking_data ?? {}),
+                  completion_reason: 'meeting_booked',
+                  meeting_booked_at: now,
+                  ...(session?.id ? { qualification_session_id: session.id } : {}),
+                },
+              })
+              .eq('id', enrollment.id)
+              .in('status', ['active', 'paused'])
+              .select('id');
+            if (updateError) {
+              console.error(`[calendly-webhook] enrollment ${enrollment.id} not closed:`, updateError);
+              continue;
+            }
+            if (!changed || changed.length === 0) continue;
+            stopped.push(enrollment);
 
-          // Mark enrollments as 'booked' (distinct from 'completed' for analytics)
-          await supabase
-            .from('sequence_enrollments')
-            .update({ status: 'booked', completed_at: now })
-            .in('id', enrollmentIds);
-
-          // Cancel all scheduled step executions
-          for (const enrollmentId of enrollmentIds) {
-            await supabase
+            const { error: cancelError } = await supabase
               .from('sequence_step_executions')
-              .update({ status: 'cancelled', skip_reason: 'Calendly booking detected' })
-              .eq('enrollment_id', enrollmentId)
-              .in('status', ['scheduled', 'waiting_event']);
+              .update({ status: 'cancelled', skip_reason: 'Rendez-vous pris : séquence arrêtée', updated_at: now })
+              .eq('enrollment_id', enrollment.id)
+              .in('status', PENDING_EXECUTION_STATUSES);
+            if (cancelError) console.error(`[calendly-webhook] executions of ${enrollment.id} not cancelled:`, cancelError);
           }
+          sequencesStopped = stopped.length;
 
           // Log analytics for each affected sequence — incrément atomique.
           // (no calendly_booked column exists, so we track via
           // replies_received as a proxy — booking > reply)
-          const sequenceIds = [...new Set(uniqueEnrollments.map(e => e.sequence_id))];
+          const sequenceIds = [...new Set(stopped.map(e => e.sequence_id))];
           for (const seqId of sequenceIds) {
             await supabase.rpc('increment_sequence_analytics', {
               p_sequence_id: seqId,
@@ -374,41 +455,81 @@ Deno.serve(async (req) => {
             });
           }
 
-          console.log(`[calendly-webhook] ✅ Stopped ${uniqueEnrollments.length} active sequence(s) → status: booked`);
+          // Le recruteur de chaque inscription close est prévenu (SEQ-115).
+          const byOwner = new Map<string, EnrollmentToStop[]>();
+          for (const e of stopped) {
+            if (!e.created_by || !e.organization_id) continue;
+            const key = `${e.created_by}:${e.organization_id}`;
+            byOwner.set(key, [...(byOwner.get(key) ?? []), e]);
+          }
+          const candidateLabel = candidateMatch.candidate_name || inviteeName || 'Un candidat';
+          const notifications = [...byOwner.values()].map((rows) => ({
+            user_id: rows[0].created_by,
+            organization_id: rows[0].organization_id,
+            type: 'action',
+            title: 'RDV pris, séquence arrêtée',
+            body: `${rows[0].profile_name || candidateLabel} a réservé un rendez-vous : sa séquence est arrêtée, aucune relance ne partira.`,
+            link: session?.id ? `/qualification/${session.id}` : '/missions',
+            metadata: {
+              source: 'calendly',
+              enrollment_ids: rows.map(r => r.id),
+              sequence_id: rows[0].sequence_id,
+              profile_name: rows[0].profile_name ?? candidateLabel,
+              ...(session?.id ? { qualification_session_id: session.id } : {}),
+            },
+          }));
+          if (notifications.length > 0) {
+            const { error: notifError } = await supabase.from('notifications').insert(notifications);
+            if (notifError) console.warn('[calendly-webhook] notifications not created:', notifError);
+          }
+
+          console.log(`[calendly-webhook] ✅ Stopped ${sequencesStopped} sequence enrollment(s) → status: completed (meeting_booked)`);
         } else {
-          console.log('[calendly-webhook] No active sequence enrollments found for this candidate');
+          console.log('[calendly-webhook] No active or paused sequence enrollments found for this candidate');
+        }
+
+        // Décision 27 : le rendez-vous annule aussi les InMails pas encore
+        // partis vers le candidat dans l'organisation du rendez-vous, avec ou
+        // sans inscription (InMail groupé hors séquence) ; jamais quand
+        // l'arrêt est refusé (trop de correspondances). Non bloquant.
+        if (stopSkippedReason !== 'too_many_matches') {
+          try {
+            inmailsCancelled = await cancelScheduledInMails(
+              supabase,
+              { organizationId: candidateOrgId },
+              [candidateMatch.candidate_id, ...candidates.flatMap((e) => [e.profile_id, e.provider_id, e.resolved_profile_id])],
+              { kind: 'all' },
+              MEETING_INMAIL_CANCEL_REASON,
+            );
+          } catch (inmailErr) {
+            console.error('[calendly-webhook] scheduled InMails not cancelled:', inmailErr);
+          }
         }
       } catch (seqErr) {
         console.warn('[calendly-webhook] Sequence stop failed (non-blocking):', seqErr);
+        stopSkippedReason = 'error';
       }
     }
 
     // Try to update Notion candidate & shortlist status
-    // Resolve Notion credentials from the org of the user who created the candidate entry
+    // Notion de l'organisation identifiée du rendez-vous (D4), jamais celle
+    // que le recruteur a ouverte en dernier (son organisation active peut en
+    // être une autre).
     let notionKey: string | null = null;
     let CANDIDATS_DATABASE_ID: string | null = null;
     let SHORTLIST_DATABASE_ID: string | null = null;
 
-    if (createdBy) {
-      // Find the org of the user who created the candidate entry
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('active_organization_id')
-        .eq('user_id', createdBy)
+    if (candidateOrgId) {
+      const { data: integrationData } = await supabase
+        .from('organization_integrations')
+        .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
+        .eq('organization_id', candidateOrgId)
         .single();
 
-      if (profile?.active_organization_id) {
-        const { data: integrationData } = await supabase
-          .from('organization_integrations')
-          .select('notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_connected')
-          .eq('organization_id', profile.active_organization_id)
-          .single();
-
-        if (integrationData?.notion_connected && integrationData.notion_api_key) {
-          notionKey = integrationData.notion_api_key;
-          CANDIDATS_DATABASE_ID = integrationData.notion_candidats_db_id || null;
-          SHORTLIST_DATABASE_ID = integrationData.notion_shortlist_db_id || null;
-        }
+      if (integrationData?.notion_connected && integrationData.notion_api_key) {
+        notionKey = integrationData.notion_api_key;
+        CANDIDATS_DATABASE_ID = integrationData.notion_candidats_db_id || null;
+        SHORTLIST_DATABASE_ID = integrationData.notion_shortlist_db_id || null;
       }
     }
 
@@ -515,6 +636,9 @@ Deno.serve(async (req) => {
       success: true,
       session_id: session.id,
       candidate_matched: !!candidateMatch,
+      sequences_stopped: sequencesStopped,
+      inmails_cancelled: inmailsCancelled,
+      ...(stopSkippedReason ? { sequences_stop_skipped: stopSkippedReason } : {}),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

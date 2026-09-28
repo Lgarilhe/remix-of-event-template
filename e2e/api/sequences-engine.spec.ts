@@ -7,7 +7,9 @@
  *     clients, et l'étape sautée repartait une heure plus tard).
  *   - SEC-041 : `nudge_sequences` ne touche que les données de l'organisation
  *     appelante ; `process` et `force_reschedule`, qui balaient tous les
- *     tenants, restent réservés au cron.
+ *     tenants, restent réservés au cron. Réponse `{ success, advanced }`
+ *     (SEQ-001) : seules les actions prévues plus tard aujourd'hui, dans le
+ *     fuseau de l'inscription (repli Europe/Paris), sont avancées.
  *
  * Ces tests appellent l'edge function déployée. Ils sont donc ignorés tant que
  * `E2E_EDGE_FUNCTIONS=1` n'est pas positionné (la stack locale `supabase start`
@@ -71,6 +73,26 @@ async function callEngine(token: string, body: Record<string, unknown>) {
   const json = await res.json().catch(() => ({}));
   await ctx.dispose();
   return { status, body: json as Record<string, unknown> };
+}
+
+/**
+ * Millisecondes restantes avant minuit, heure de Paris : `nudge_sequences`
+ * n'avance que les actions prévues plus tard AUJOURD'HUI dans le fuseau de
+ * l'inscription (repli Europe/Paris), jamais celles du lendemain.
+ */
+function msUntilParisMidnight(now = new Date()): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const elapsedMs = ((get('hour') * 60 + get('minute')) * 60 + get('second')) * 1000 + now.getMilliseconds();
+  return 24 * 3600 * 1000 - elapsedMs;
+}
+
+/** Place l'exécution de A à `scheduledAt`, inscription au fuseau de Paris. */
+async function scheduleExecutionA(scheduledAt: Date) {
+  await admin().from('sequence_enrollments').update({ user_timezone: 'Europe/Paris' }).eq('id', a.enrollmentId);
+  await admin().from('sequence_step_executions').update({ scheduled_at: scheduledAt.toISOString() }).eq('id', a.executionId);
 }
 
 async function executionRow(id: string) {
@@ -142,6 +164,11 @@ test.describe('@critical process-sequences — skip_execution', () => {
 
 test.describe('@critical process-sequences — nudge_sequences', () => {
   test("avance les actions de mon organisation et laisse celles des autres (SEC-041)", async () => {
+    // Plus tard AUJOURD'HUI à Paris (au plus dans 1 h, avant minuit) : seules
+    // ces actions sont avancées.
+    const untilMidnight = msUntilParisMidnight();
+    test.skip(untilMidnight < 5 * 60_000, 'Trop près de minuit à Paris : l\'action tomberait le lendemain');
+    await scheduleExecutionA(new Date(Date.now() + Math.min(60 * 60_000, untilMidnight / 2)));
     const before = await executionRow(b.executionId);
 
     const res = await callEngine(a.token, {
@@ -151,13 +178,26 @@ test.describe('@critical process-sequences — nudge_sequences', () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.rescheduled, 'mon exécution future avancée').toBe(1);
+    expect(res.body.advanced, 'mon action du jour avancée').toBe(1);
 
     const mine = await executionRow(a.executionId);
     expect(new Date(mine.scheduled_at).getTime(), 'avancée à maintenant').toBeLessThanOrEqual(Date.now() + 5_000);
 
     const other = await executionRow(b.executionId);
     expect(other.scheduled_at, "l'autre organisation n'est pas touchée").toBe(before.scheduled_at);
+  });
+
+  test("une action prévue demain garde sa date (fin de journée dans le fuseau de l'inscription)", async () => {
+    // Demain 1 h, heure de Paris : dans la borne large de la requête, hors de la journée.
+    await scheduleExecutionA(new Date(Date.now() + msUntilParisMidnight() + 60 * 60_000));
+    const before = await executionRow(a.executionId);
+
+    const res = await callEngine(a.token, { action: 'nudge_sequences', organization_id: a.org.orgId });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.advanced, "rien à avancer aujourd'hui").toBe(0);
+    const after = await executionRow(a.executionId);
+    expect(after.scheduled_at, 'action de demain laissée à sa date').toBe(before.scheduled_at);
   });
 
   test("les invitations LinkedIn ne sont jamais avancées (quota hebdomadaire)", async () => {
@@ -180,6 +220,34 @@ test.describe('@critical process-sequences — nudge_sequences', () => {
 
     const other = await executionRow(b.executionId);
     expect(new Date(other.scheduled_at).getTime(), 'org B intacte').toBeGreaterThan(Date.now() + 60_000);
+  });
+});
+
+test.describe('@critical process-sequences — mark_replied', () => {
+  test("sur une inscription terminée, seules les séquences commencées avant sa fin s'arrêtent (contrat §8)", async () => {
+    const profileId = `e2e_profile_sib_${Date.now()}`;
+    const endedAt = new Date(Date.now() - 24 * 3600 * 1000);
+    await admin().from('sequence_enrollments')
+      .update({ profile_id: profileId, status: 'completed', completed_at: endedAt.toISOString() })
+      .eq('id', a.enrollmentId);
+    // Une séquence par inscription sœur : (sequence_id, profile_id) est unique.
+    const older = await seedSequence(a.org.orgId, a.org.owner.userId, [{ action_type: 'message' }]);
+    const newer = await seedSequence(a.org.orgId, a.org.owner.userId, [{ action_type: 'message' }]);
+    const olderId = await seedEnrollment(a.org.orgId, older.sequenceId, a.org.owner.userId, {
+      profile_id: profileId,
+      created_at: new Date(endedAt.getTime() - 24 * 3600 * 1000).toISOString(),
+    });
+    const newerId = await seedEnrollment(a.org.orgId, newer.sequenceId, a.org.owner.userId, { profile_id: profileId });
+
+    const res = await callEngine(a.token, { action: 'mark_replied', enrollment_id: a.enrollmentId, organization_id: a.org.orgId });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.changed).toBe(true);
+    expect(res.body.stopped_siblings, 'une seule autre séquence arrêtée').toBe(1);
+    const { data } = await admin().from('sequence_enrollments').select('id, status').in('id', [olderId, newerId]);
+    const statusOf = (id: string) => (data ?? []).find((r: { id: string; status: string }) => r.id === id)?.status;
+    expect(statusOf(olderId), 'séquence en cours avant la fin : arrêtée').toBe('stopped');
+    expect(statusOf(newerId), 'prise de contact démarrée après la fin : intacte').toBe('active');
   });
 });
 

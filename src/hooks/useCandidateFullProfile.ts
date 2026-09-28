@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { enrollmentStatusLabel } from '@/lib/sequenceLabels';
+import { isInternalSequenceAction, sequenceExecutionTitle, stepNumberLabel } from '@/lib/sequenceActionLabels';
 
 export interface CandidateActivity {
   type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added' | 'appointment' | 'shortlist_added' | 'aircall_call';
@@ -192,7 +194,11 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
           const stepMap = new Map((steps || []).map((s: any) => [s.id, s.action_type]));
           const enrollmentSeqMap = new Map(data.map((e: any) => [e.id, e.outreach_sequences?.name || 'Séquence']));
 
-          setSequenceSteps(executions.filter((ex: any) => ex.executed_at).map((ex: any) => ({
+          // Étapes internes (attentes, conditions) écartées : rien n'a été
+          // envoyé au candidat. Les échecs restent, avec leur statut.
+          setSequenceSteps(executions
+            .filter((ex: any) => ex.executed_at && !isInternalSequenceAction(stepMap.get(ex.step_id)))
+            .map((ex: any) => ({
             id: ex.id,
             actionType: stepMap.get(ex.step_id) || 'unknown',
             stepOrder: ex.step_order,
@@ -448,24 +454,22 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       type: 'sequence_enrolled',
       date: se.createdAt,
       title: `Inscrit à "${se.sequenceName}"`,
-      detail: se.status === 'completed' ? 'Séquence terminée' : se.repliedAt ? 'A répondu' : `Étape ${se.currentStep}`,
+      detail: se.status === 'completed' ? 'Séquence terminée'
+        : se.repliedAt || se.status === 'replied' ? 'A répondu'
+        : se.status === 'active' ? stepNumberLabel(se.currentStep)
+        : enrollmentStatusLabel(se.status),
     });
   });
 
-  // Detailed sequence steps
+  // Étapes exécutées : libellé selon l'action réelle et son statut
+  // (« InMail : échec » pour un InMail parti en erreur), numérotées à partir de 1.
   sequenceSteps.forEach(step => {
-    const actionLabels: Record<string, string> = {
-      send_connection: '🔗 Invitation envoyée',
-      send_message: '💬 Message envoyé',
-      send_inmail: '📧 InMail envoyé',
-      visit_profile: '👀 Visite de profil',
-      check_connection: '🔍 Vérification connexion',
-    };
+    const stepLabel = stepNumberLabel(step.stepOrder);
     timeline.push({
       type: 'sequence_step',
       date: step.executedAt || '',
-      title: actionLabels[step.actionType] || `Action : ${step.actionType}`,
-      detail: step.sequenceName ? `${step.sequenceName} • Étape ${step.stepOrder}` : `Étape ${step.stepOrder}`,
+      title: sequenceExecutionTitle(step.actionType, step.status),
+      detail: step.sequenceName ? `${step.sequenceName} • ${stepLabel}` : stepLabel,
     });
   });
 

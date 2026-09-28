@@ -7,6 +7,7 @@ import { LinkedInReconnectBanner } from './search/LinkedInReconnectBanner';
 import { SmartOverlays } from './search/SmartOverlays';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
+import { refreshProjectEnrollments } from '@/hooks/useProjectEnrollments';
 import { useLinkedInSearchActions, buildSearchParams } from '@/hooks/useLinkedInSearchActions';
 import { useClientCompetitors } from '@/hooks/useClientCompetitors';
 import { usePedigreeAugmentation } from '@/hooks/usePedigreeAugmentation';
@@ -728,12 +729,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });
   }, [queryClient]);
 
-  // Handle sequence enrollment success
+  // Handle sequence enrollment success. Pas de toast ici : la fenêtre
+  // d'inscription (ou « Ajouter à la shortlist sans message ») a déjà donné le
+  // bilan exact. On recharge les statuts (« Contacté ») et les badges « En
+  // séquence », dont les lectures ne passent pas par React Query.
   const handleSequenceEnrollSuccess = useCallback(() => {
     search.setSelectedProfiles(new Set());
     queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });
-    toast.success('Profils inscrits à la séquence');
-  }, [search.setSelectedProfiles, queryClient]);
+    void search.candidateStatus.refresh();
+    refreshProjectEnrollments();
+  }, [search.setSelectedProfiles, search.candidateStatus.refresh, queryClient]);
 
   // Refine search state and handler
   const [refineLoading, setRefineLoading] = useState(false);

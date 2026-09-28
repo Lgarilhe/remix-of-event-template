@@ -1,8 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/integrations/supabase/types';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { formatSequenceError as formatErrorMessage } from '@/lib/sequenceErrorMessages';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import {
+  formatSequenceError as formatErrorMessage,
+  formatSkipReason,
+  executionStatusLabel,
+  isSentExecutionStatus,
+  actionTypeLabel,
+  isHiddenActionType,
+  summarizeResumeResponse,
+  type ResumeResponse,
+} from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -55,14 +68,20 @@ import {
   Timer,
   SkipForward,
   RefreshCw,
-  Zap,
-  CalendarCheck,
   Search,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import {
+  DONE_EXECUTION_STATUSES,
+  PENDING_EXECUTION_STATUSES,
+  SEQUENCE_LEVEL_PAUSE_REASONS,
+  enrollmentStatusLabel,
+  pausedLabel,
+  pauseReasonHint,
+} from '@/lib/sequenceLabels';
 
 interface StepExecution {
   id: string;
@@ -93,8 +112,12 @@ interface Enrollment {
   created_at: string;
   replied_at: string | null;
   connection_status: string | null;
-  /** account_disconnected | quota_reached | subscription_required | manual. NULL hors pause. */
+  /** Raison de pause (liste dans src/lib/sequenceLabels.ts). NULL hors pause. */
   pause_reason?: string | null;
+  /** Suivi du moteur ; `pause_reason` y précise parfois une pause (texte en français). */
+  tracking_data?: unknown;
+  /** Membre qui a inscrit le candidat : un collaborateur n'agit que sur les siens (D3). */
+  created_by?: string | null;
   executions?: StepExecution[];
 }
 
@@ -105,72 +128,141 @@ interface SequenceEnrollmentsPanelProps {
   sequenceName: string;
 }
 
-const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  active: {
-    label: 'Active',
-    icon: <Clock className="w-3 h-3" />,
-    className: 'bg-info text-info-foreground border border-info'
-  },
-  paused: {
-    label: 'En pause',
-    icon: <StopCircle className="w-3 h-3" />,
-    className: 'bg-warning text-warning-foreground border border-warning'
-  },
-  completed: {
-    label: 'Terminée',
-    icon: <CheckCircle className="w-3 h-3" />,
-    className: 'bg-success text-success-foreground border border-success'
-  },
-  replied: {
-    label: 'Répondu',
-    icon: <MessageCircle className="w-3 h-3" />,
-    className: 'bg-purple-500 text-white border border-purple-600'
-  },
-  cancelled: {
-    label: 'Annulée',
-    icon: <XCircle className="w-3 h-3" />,
-    className: 'bg-muted text-muted-foreground border border-border'
-  },
-  booked: {
-    label: 'RDV pris',
-    icon: <CalendarCheck className="w-3 h-3" />,
-    className: 'bg-success text-success-foreground border border-success'
-  },
+// Apparence d'une inscription par statut. Les libellés viennent de
+// src/lib/sequenceLabels.ts (enrollmentStatusLabel, pausedLabel) : un statut
+// inconnu s'affiche « Statut inconnu », jamais « En cours ».
+const statusStyle: Record<string, { icon: React.ReactNode; className: string }> = {
+  active: { icon: <Clock className="w-3 h-3" aria-hidden="true" />, className: 'bg-info text-info-foreground border border-info' },
+  paused: { icon: <StopCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-warning text-warning-foreground border border-warning' },
+  completed: { icon: <CheckCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-success text-success-foreground border border-success' },
+  replied: { icon: <MessageCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-purple-500 text-white border border-purple-600' },
+  bounced: { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-destructive/10 text-destructive border border-destructive/30' },
+  stopped: { icon: <XCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-destructive/10 text-destructive border border-destructive/30' },
+  cancelled: { icon: <XCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border border-border' },
+};
+const NEUTRAL_STATUS_STYLE = { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border border-border' };
+
+/** Raisons de pause qu'un « Reprendre » individuel peut lever (les autres ont leur propre action). */
+const RESUMABLE_PAUSE_REASONS = new Set<string>(['manual', 'send_failed']);
+
+/**
+ * Pause « échec d'envoi » sans échec à montrer : le moteur en donne la cause
+ * dans tracking_data.pause_reason (ex. relation LinkedIn du candidat inconnue
+ * après « Vérifier la connexion » ; la reprise relance la vérification).
+ * Une étape en échec l'emporte : c'est elle qu'il faut consulter (le texte peut
+ * rester d'une pause précédente, la reprise ne l'efface pas).
+ */
+const sendFailedDetail = (enrollment: Enrollment): string | null => {
+  if (enrollment.status !== 'paused' || enrollment.pause_reason !== 'send_failed') return null;
+  if ((enrollment.executions || []).some(e => e.status === 'failed')) return null;
+  const tracking = enrollment.tracking_data;
+  if (!tracking || typeof tracking !== 'object' || Array.isArray(tracking)) return null;
+  const text = (tracking as Record<string, unknown>).pause_reason;
+  return typeof text === 'string' && text.trim() ? text.trim() : null;
 };
 
-// Libellé d'une inscription en pause selon sequence_enrollments.pause_reason.
-const PAUSE_REASON_LABELS: Record<string, string> = {
-  account_disconnected: 'En pause (compte déconnecté)',
-  quota_reached: 'En pause (limite atteinte)',
-  subscription_required: 'En pause (abonnement requis)',
-};
-const pausedLabel = (reason: string | null | undefined): string =>
-  PAUSE_REASON_LABELS[reason || ''] || 'En pause';
+const isDoneStatus = (status: string) => (DONE_EXECUTION_STATUSES as readonly string[]).includes(status);
+const isPendingStatus = (status: string) => (PENDING_EXECUTION_STATUSES as readonly string[]).includes(status);
 
-// Actions to hide from UI (internal/noise)
-const HIDDEN_ACTION_TYPES = new Set(['wait_connection', 'check_connection', 'wait_reply', 'wait_for_event']);
+/** Pause posée par la séquence (désactivation, auto-pause) : levée par la réactivation. */
+const isSequenceLevelPause = (reason: string | null | undefined): boolean =>
+  SEQUENCE_LEVEL_PAUSE_REASONS.some(r => r === reason);
+/**
+ * Pause de séquence restée en place alors que la séquence est de nouveau active
+ * (reprise en échec, compte non relié à la réactivation...) : l'aide « Réactivez
+ * la séquence » serait fausse, le candidat se reprend un par un ou avec les autres.
+ */
+const SEQUENCE_ACTIVE_AGAIN_HINT = 'La séquence est de nouveau active : reprenez ce candidat.';
+/**
+ * D3 : un collaborateur ne reprend que les candidats qu'il a inscrits (le
+ * serveur refuse les autres) : « Reprendre » lui est masqué et on dit qui peut.
+ */
+const OTHER_MEMBER_RESUME_HINT = 'Candidat inscrit par un autre membre : un administrateur ou ce membre peut reprendre sa séquence.';
 
-const actionTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
-  send_inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
-  send_message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
-  send_invitation: { label: 'Invitation', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
-  visit_profile: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
-  smart_message: { label: 'Message intelligent', icon: <MessageCircle className="w-3.5 h-3.5" />, color: 'text-indigo-700', bgColor: 'bg-indigo-500' },
-  profile_visit: { label: 'Visite du profil', icon: <Eye className="w-3.5 h-3.5" />, color: 'text-foreground', bgColor: 'bg-muted' },
-  connection_request: { label: 'Demande de connexion', icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-success-foreground', bgColor: 'bg-success' },
-  message: { label: 'Message', icon: <Send className="w-3.5 h-3.5" />, color: 'text-info-foreground', bgColor: 'bg-info' },
-  inmail: { label: 'InMail', icon: <Mail className="w-3.5 h-3.5" />, color: 'text-purple-700', bgColor: 'bg-purple-500' },
+/**
+ * Pauses reprises par « Reprendre tous les candidats en pause » : pauses une
+ * par une (dont celles héritées de l'ancienne désactivation, D6) et pauses de
+ * séquence restées en place alors que la séquence est de nouveau active. Les
+ * autres raisons (compte, abonnement, limite, échec d'envoi, candidat
+ * injoignable) ont leur propre action.
+ */
+const BULK_RESUME_PAUSE_REASONS: string[] = ['manual', ...SEQUENCE_LEVEL_PAUSE_REASONS];
+/** Candidats par appel de reprise groupée (le serveur en traite 100 au plus, en 35 s). */
+const BULK_RESUME_CHUNK = 25;
+
+/** Motif des étapes annulées par un effacement RGPD (moteur, recordGdprErasure). */
+const GDPR_ERASURE_SKIP_PREFIX = 'Effacement des données demandé';
+const GDPR_ERASED_NOTICE = 'Ce candidat a demandé l’effacement de ses données : il ne peut plus être relancé.';
+
+/**
+ * D5 : effacement RGPD, définitif. Marqueur durable tracking_data.gdpr_erased_at,
+ * ou une étape annulée par l'effacement. Ni « Reprendre » ni « Relancer ».
+ */
+const isGdprErased = (enrollment: Pick<Enrollment, 'tracking_data' | 'executions'>): boolean => {
+  const tracking = enrollment.tracking_data;
+  if (tracking && typeof tracking === 'object' && !Array.isArray(tracking)
+    && (tracking as Record<string, unknown>).gdpr_erased_at) {
+    return true;
+  }
+  return (enrollment.executions || []).some(e => !!e.skip_reason?.startsWith(GDPR_ERASURE_SKIP_PREFIX));
 };
 
-const executionStatusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  pending: { label: 'À venir', icon: <Clock className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border border-dashed' },
-  scheduled: { label: 'Planifié', icon: <Clock className="w-3 h-3" />, className: 'bg-info/10 text-info-foreground border-info/30' },
-  executed: { label: 'Exécuté', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  sent: { label: 'Envoyé', icon: <CheckCircle2 className="w-3 h-3" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  skipped: { label: 'Ignoré', icon: <SkipForward className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border' },
-  failed: { label: 'Échoué', icon: <AlertCircle className="w-3 h-3" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
-  cancelled: { label: 'Annulé', icon: <XCircle className="w-3 h-3" />, className: 'bg-muted text-muted-foreground border-border' },
+/** Échec dont l'issue est inconnue (le message a pu partir) : la reprise repart après lui. */
+const UNCERTAIN_FAILURE_PREFIXES = ['Interrompu pendant l’envoi', "Interrompu pendant l'envoi", 'Envoi incertain'];
+
+/**
+ * Pause « échec d'envoi » dont la reprise rejoue l'étape en échec : sans étape
+ * en attente, le serveur planifie l'étape qui suit la dernière étape faite, et
+ * un échec n'en est pas une. « Reprendre à l'étape suivante » était donc faux.
+ */
+const resumeRetriesFailedStep = (enrollment: Pick<Enrollment, 'status' | 'pause_reason' | 'executions'>): boolean => {
+  if (enrollment.status !== 'paused' || enrollment.pause_reason !== 'send_failed') return false;
+  const executions = enrollment.executions || [];
+  if (executions.some(e => isPendingStatus(e.status) || e.status === 'sending')) return false;
+  // Échec incertain : compté comme fait par le serveur (jamais rejoué).
+  const isUncertain = (e: Pick<StepExecution, 'status' | 'error_message'>) => e.status === 'failed'
+    && UNCERTAIN_FAILURE_PREFIXES.some(prefix => (e.error_message || '').startsWith(prefix));
+  const lastDoneOrder = Math.max(-1, ...executions.filter(e => isDoneStatus(e.status) || isUncertain(e)).map(e => e.step_order));
+  return executions.some(e => e.status === 'failed' && !isUncertain(e) && e.step_order > lastDoneOrder);
 };
+
+// Icône et couleur par type d'étape réel. Libellés et étapes internes
+// (attentes, contrôles, conditions) : src/lib/sequenceErrorMessages.ts.
+const actionTypeStyle: Record<string, { icon: React.ReactNode; bgColor: string }> = {
+  message: { icon: <Send className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-info' },
+  smart_message: { icon: <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-indigo-500' },
+  inmail: { icon: <Mail className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-purple-500' },
+  email: { icon: <Mail className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-info' },
+  whatsapp_message: { icon: <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-success' },
+  connection_request: { icon: <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-success' },
+  profile_visit: { icon: <Eye className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-muted' },
+};
+const DEFAULT_ACTION_STYLE = { icon: <Send className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-muted' };
+
+// Apparence d'une étape par statut d'exécution ('pending' = pas encore programmée).
+const executionStatusStyle: Record<string, { icon: React.ReactNode; className: string }> = {
+  pending: { icon: <Clock className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border border-dashed' },
+  scheduled: { icon: <Clock className="w-3 h-3" aria-hidden="true" />, className: 'bg-info/10 text-info-foreground border-info/30' },
+  sending: { icon: <Send className="w-3 h-3" aria-hidden="true" />, className: 'bg-info/10 text-info-foreground border-info/30' },
+  waiting_event: { icon: <Timer className="w-3 h-3" aria-hidden="true" />, className: 'bg-info/10 text-info-foreground border-info/30' },
+  quota_blocked: { icon: <Timer className="w-3 h-3" aria-hidden="true" />, className: 'bg-warning/10 text-warning-foreground border-warning/30' },
+  sent: { icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" />, className: 'bg-success/10 text-success-foreground border-success/30' },
+  opened: { icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" />, className: 'bg-success/10 text-success-foreground border-success/30' },
+  clicked: { icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" />, className: 'bg-success/10 text-success-foreground border-success/30' },
+  replied: { icon: <MessageCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-success/10 text-success-foreground border-success/30' },
+  bounced: { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
+  skipped: { icon: <SkipForward className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
+  failed: { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
+  cancelled: { icon: <XCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
+};
+const NEUTRAL_EXECUTION_STYLE = { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' };
+const executionLabel = (status: string) => (status === 'pending' ? 'À venir' : executionStatusLabel(status));
+
+// Exécutions chargées par lots d'inscriptions : une seule requête pour 200
+// inscriptions dépassait la limite de 1 000 lignes de l'API, et les étapes
+// les plus avancées disparaissaient (« À venir » sur une étape envoyée).
+const EXECUTION_BATCH_SIZE = 50;
+const EXECUTION_PAGE_SIZE = 1000;
 
 interface SequenceStep {
   id: string;
@@ -202,36 +294,120 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [totalCount, setTotalCount] = useState(0);
   const [expandedEnrollments, setExpandedEnrollments] = useState<Set<string>>(new Set());
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
-  const [processingSequences, setProcessingSequences] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'bulkResume' | 'resume' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string } | null>(null);
+  // Compteurs de la séquence entière, lus en base (la liste n'en charge que
+  // 200 à la fois). null tant qu'ils ne sont pas connus. `resumable` : en
+  // pause pour une raison que « Reprendre tous les candidats en pause » lève.
+  const [statusCounts, setStatusCounts] = useState<{ active: number; paused: number; done: number; resumable: number } | null>(null);
+  // État de la séquence, relu à chaque chargement : une pause de séquence
+  // (désactivation, auto-pause) ne se reprend que si elle est de nouveau active.
+  // null tant qu'il n'est pas connu (aucune reprise de ce type proposée).
+  const [sequenceActive, setSequenceActive] = useState<boolean | null>(null);
+  const [bulkResuming, setBulkResuming] = useState(false);
+  // D3 : un collaborateur ne met en pause ni ne reprend que ses propres
+  // inscriptions (RLS, serveur) : les actions groupées ne lui sont pas proposées.
+  const { isCollaborator } = useOrganization();
+  const { user } = useAuthReady();
+  const userId = user?.id ?? null;
+  // Échec du dernier chargement complet : affiché avec « Réessayer » au lieu
+  // de « Aucun candidat inscrit ».
+  const [loadError, setLoadError] = useState(false);
+
+  const fetchStatusCounts = async () => {
+    const countFor = (statuses: string[]) => supabase
+      .from('sequence_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('sequence_id', sequenceId)
+      .in('status', statuses);
+    const [activeRes, pausedRes, doneRes, resumableRes] = await Promise.all([
+      countFor(['active']),
+      countFor(['paused']),
+      countFor(['completed', 'replied']),
+      countFor(['paused']).in('pause_reason', BULK_RESUME_PAUSE_REASONS),
+    ]);
+    if (activeRes.error || pausedRes.error || doneRes.error || resumableRes.error) {
+      console.error('Error counting enrollments:', activeRes.error || pausedRes.error || doneRes.error || resumableRes.error);
+      setStatusCounts(null);
+      return;
+    }
+    setStatusCounts({
+      active: activeRes.count ?? 0,
+      paused: pausedRes.count ?? 0,
+      done: doneRes.count ?? 0,
+      resumable: resumableRes.count ?? 0,
+    });
+  };
+
+  const fetchSequenceActive = async () => {
+    const { data, error } = await supabase
+      .from('outreach_sequences')
+      .select('is_active')
+      .eq('id', sequenceId)
+      .maybeSingle();
+    if (error) console.error('Error reading sequence state:', error);
+    setSequenceActive(error || !data ? null : !!data.is_active);
+  };
+
+  // Exécutions des inscriptions affichées, par lots (voir EXECUTION_BATCH_SIZE)
+  // et paginées dans chaque lot : aucune étape n'est perdue au-delà de
+  // 1 000 lignes. Une erreur remonte au lieu d'afficher des étapes « À venir ».
+  const fetchExecutionsFor = async (enrollmentIds: string[]) => {
+    const batches: string[][] = [];
+    for (let i = 0; i < enrollmentIds.length; i += EXECUTION_BATCH_SIZE) {
+      batches.push(enrollmentIds.slice(i, i + EXECUTION_BATCH_SIZE));
+    }
+    const perBatch = await Promise.all(batches.map(async (batch) => {
+      const rows: Tables<'sequence_step_executions'>[] = [];
+      for (let from = 0; ; from += EXECUTION_PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from('sequence_step_executions')
+          .select('*')
+          .in('enrollment_id', batch)
+          .order('step_order', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, from + EXECUTION_PAGE_SIZE - 1);
+        if (error) throw error;
+        rows.push(...(data || []));
+        if (!data || data.length < EXECUTION_PAGE_SIZE) break;
+      }
+      return rows;
+    }));
+    return perBatch.flat();
+  };
 
   const fetchEnrollments = async (append = false) => {
     try {
       if (append) setLoadingMore(true);
       else setLoading(true);
 
-      // Fetch sequence steps FIRST to get the full workflow.
-      // Pour append on réutilise allSteps déjà en state.
+      // Étapes de la séquence d'abord (parcours complet). En « Charger plus »,
+      // on réutilise celles déjà chargées.
       let stepsLookup = allSteps;
       if (!append) {
-        const { data: stepsData } = await supabase
+        const { data: stepsData, error: stepsError } = await supabase
           .from('sequence_steps')
           .select('id, action_type, message_template, subject_template, step_order, delay_days, delay_hours, delay_minutes, timeout_days, timeout_branch_step_id, if_true_goto_step, if_false_goto_step, wait_for_event')
           .eq('sequence_id', sequenceId)
           .order('step_order', { ascending: true });
+        if (stepsError) throw stepsError;
         stepsLookup = stepsData || [];
         setAllSteps(stepsLookup);
 
-        // Count total enrollments for pagination UI
-        const { count } = await supabase
-          .from('sequence_enrollments')
-          .select('id', { count: 'exact', head: true })
-          .eq('sequence_id', sequenceId);
+        // Nombre total d'inscrits (pagination), compteurs par statut et état
+        // de la séquence.
+        const [{ count }] = await Promise.all([
+          supabase
+            .from('sequence_enrollments')
+            .select('id', { count: 'exact', head: true })
+            .eq('sequence_id', sequenceId),
+          fetchStatusCounts(),
+          fetchSequenceActive(),
+        ]);
         setTotalCount(count || 0);
       }
 
-      // Fetch enrollments paginés (200 par page)
+      // Inscriptions paginées (200 par page)
       const offset = append ? enrollments.length : 0;
       const { data: enrollData, error: enrollError } = await supabase
         .from('sequence_enrollments')
@@ -244,29 +420,25 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
       setHasMore((enrollData?.length || 0) === PAGE_SIZE);
 
-      // Fetch all step executions for these enrollments
-      const enrollmentIds = enrollData?.map(e => e.id) || [];
-      const { data: execData } = await supabase
-        .from('sequence_step_executions')
-        .select('*')
-        .in('enrollment_id', enrollmentIds)
-        .order('step_order', { ascending: true });
+      const execData = await fetchExecutionsFor(enrollData?.map(e => e.id) || []);
 
-      // Attach executions to enrollments (stepsLookup déjà résolu plus haut)
+      // Rattache les exécutions à leur inscription (étapes résolues plus haut)
       const enriched = (enrollData || []).map(enrollment => ({
         ...enrollment,
-        executions: (execData || [])
+        executions: execData
           .filter(e => e.enrollment_id === enrollment.id)
           .map(exec => ({
             ...exec,
-            step: stepsLookup.find((s: any) => s.id === exec.step_id),
+            step: stepsLookup.find(s => s.id === exec.step_id),
           })),
       }));
 
       setEnrollments(prev => append ? [...prev, ...enriched] : enriched);
+      setLoadError(false);
     } catch (err) {
       console.error('Error fetching enrollments:', err);
-      toast.error('Erreur lors du chargement');
+      if (!append) setLoadError(true);
+      toast.error('Impossible de charger les inscrits. Vérifiez votre connexion puis réessayez.');
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -291,153 +463,254 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     });
   };
 
+  // « Voir l'erreur » : déplie le parcours du candidat, où l'étape en échec
+  // affiche son erreur.
+  const showEnrollmentDetail = (enrollmentId: string) => {
+    setExpandedEnrollments(prev => new Set(prev).add(enrollmentId));
+  };
+
+  const nameOf = (enrollmentId: string) =>
+    enrollments.find(e => e.id === enrollmentId)?.profile_name || 'ce candidat';
+
+  // Mise en pause d'un candidat : on ne touche qu'à l'inscription. Les étapes
+  // prévues gardent leur date, le moteur les ignore tant que l'inscription
+  // n'est pas reprise, et « Reprendre » les retrouve telles quelles.
   const stopEnrollment = async (enrollmentId: string) => {
+    const name = nameOf(enrollmentId);
     try {
-      // Update enrollment status
-      const { error: enrollError } = await supabase
+      const { data, error: enrollError } = await supabase
         .from('sequence_enrollments')
         .update({ status: 'paused', pause_reason: 'manual' })
-        .eq('id', enrollmentId);
+        .eq('id', enrollmentId)
+        .eq('status', 'active')
+        .select('id');
 
       if (enrollError) throw enrollError;
-
-      // Cancel scheduled executions
-      await supabase
-        .from('sequence_step_executions')
-        .update({ status: 'cancelled', skip_reason: 'Arrêt manuel' })
-        .eq('enrollment_id', enrollmentId)
-        .eq('status', 'scheduled');
-
-      setEnrollments(prev => 
-        prev.map(e => e.id === enrollmentId ? { ...e, status: 'paused' } : e)
-      );
-      toast.success('Séquence arrêtée');
-    } catch (error) {
-      console.error('Error stopping enrollment:', error);
-      toast.error('Erreur lors de l\'arrêt');
-    }
-  };
-
-  const resumeEnrollment = async (enrollmentId: string) => {
-    try {
-      const { error } = await supabase
-        .from('sequence_enrollments')
-        .update({ status: 'active', pause_reason: null })
-        .eq('id', enrollmentId);
-
-      if (error) throw error;
-
-      // Re-schedule the next cancelled step so the backend picks it up
-      const enrollment = enrollments.find(e => e.id === enrollmentId);
-      if (enrollment) {
-        const cancelledExecs = (enrollment.executions || [])
-          .filter(e => e.status === 'cancelled')
-          .sort((a, b) => a.step_order - b.step_order);
-        
-        if (cancelledExecs.length > 0) {
-          const nextExec = cancelledExecs[0];
-          const scheduledAt = new Date();
-          scheduledAt.setMinutes(scheduledAt.getMinutes() + 1); // Schedule 1 min from now
-          
-          await supabase
-            .from('sequence_step_executions')
-            .update({ 
-              status: 'scheduled', 
-              skip_reason: null,
-              scheduled_at: scheduledAt.toISOString(),
-            })
-            .eq('id', nextExec.id);
-        }
-      }
-
-      setEnrollments(prev => 
-        prev.map(e => e.id === enrollmentId ? { ...e, status: 'active' } : e)
-      );
-      toast.success('Séquence reprise');
-      fetchEnrollments(); // Refresh to show updated executions
-    } catch (error) {
-      console.error('Error resuming enrollment:', error);
-      toast.error('Erreur lors de la reprise');
-    }
-  };
-
-  const bulkStopActive = async () => {
-    const activeEnrollments = enrollments.filter(e => e.status === 'active');
-    if (activeEnrollments.length === 0) return;
-
-    try {
-      const ids = activeEnrollments.map(e => e.id);
-      
-      const { error: enrollError } = await supabase
-        .from('sequence_enrollments')
-        .update({ status: 'paused', pause_reason: 'manual' })
-        .in('id', ids);
-
-      if (enrollError) throw enrollError;
-
-      await supabase
-        .from('sequence_step_executions')
-        .update({ status: 'cancelled', skip_reason: 'Arrêt groupé' })
-        .in('enrollment_id', ids)
-        .eq('status', 'scheduled');
-
-      setEnrollments(prev => 
-        prev.map(e => ids.includes(e.id) ? { ...e, status: 'paused' } : e)
-      );
-      toast.success(`${ids.length} séquence(s) arrêtée(s)`);
-    } catch (error) {
-      console.error('Error bulk stopping:', error);
-      toast.error('Erreur lors de l\'arrêt groupé');
-    }
-  };
-
-  const reEnroll = async (enrollmentId: string) => {
-    try {
-      // Re-enrôlement : remet active + reset retry_count + reschedule la prochaine
-      // étape à maintenant. Utile pour relancer un candidat qui s'était arrêté
-      // (replied/paused/stopped) après contact résolu hors-canal.
-      const { error: updErr } = await supabase
-        .from('sequence_enrollments')
-        .update({
-          status: 'active',
-          pause_reason: null,
-          replied_at: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', enrollmentId);
-      if (updErr) throw updErr;
-
-      // Trouve la prochaine étape pending (cancelled ou scheduled) et la reschedule
-      const { data: nextExec } = await (supabase
-        .from('sequence_step_executions')
-        .select('id')
-        .eq('enrollment_id', enrollmentId)
-        .in('status', ['cancelled', 'scheduled', 'failed', 'quota_blocked'])
-        .order('step_order', { ascending: true })
-        .limit(1) as any);
-      if (nextExec && nextExec.length > 0) {
-        await supabase
-          .from('sequence_step_executions')
-          .update({
-            status: 'scheduled',
-            scheduled_at: new Date().toISOString(),
-            retry_count: 0,
-            error_message: null,
-            skip_reason: null,
-          })
-          .eq('id', nextExec[0].id);
+      if (!data || data.length === 0) {
+        toast.error(`La séquence n’a pas pu être mise en pause pour ${name}`, {
+          description: 'Son statut a peut-être changé entre-temps : la liste a été actualisée.',
+        });
+        await fetchEnrollments();
+        return;
       }
 
       setEnrollments(prev =>
-        prev.map(e => e.id === enrollmentId ? { ...e, status: 'active', replied_at: null } : e)
+        prev.map(e => e.id === enrollmentId ? { ...e, status: 'paused', pause_reason: 'manual' } : e)
       );
-      toast.success('Candidat ré-enrôlé', {
-        description: 'La prochaine étape part dans les prochaines minutes.',
+      void fetchStatusCounts();
+      toast.success(`${name} est en pause`, {
+        description: 'Ses étapes prévues gardent leur date. Reprenez sa séquence quand vous le souhaitez.',
       });
+    } catch (error) {
+      console.error('Error pausing enrollment:', error);
+      toast.error(`La séquence n’a pas pu être mise en pause pour ${name}. Réessayez.`);
+    }
+  };
+
+  // Reprise et relance passent par le serveur : il retrouve l'étape à
+  // reprendre sans jamais rejouer une action déjà envoyée, garde la date des
+  // étapes en attente (au plus tôt dans une minute) et refuse un compte
+  // LinkedIn qui n'est plus relié. Avant, le navigateur réarmait à l'aveugle la
+  // première exécution annulée : renvoi d'un message déjà reçu, relance future
+  // envoyée tout de suite, ou reprise sans effet.
+  const callResumeAction = async (action: 'resume_enrollments' | 're_enroll', enrollmentId: string) => {
+    const { data, error } = await invokeEdgeFunction('process-sequences', {
+      action,
+      enrollment_ids: [enrollmentId],
+    });
+    const payload = data as ResumeResponse | null;
+    if (error || !payload?.success) {
+      throw new Error(payload?.message || error?.message || 'Réessayez dans un instant.');
+    }
+    const result = payload.results?.find(r => r.enrollment_id === enrollmentId);
+    if (!result) throw new Error('Le résultat n’a pas pu être lu. Actualisez la liste.');
+    return { result, payload };
+  };
+
+  const resumeEnrollment = async (enrollmentId: string) => {
+    const name = nameOf(enrollmentId);
+    try {
+      // Même bilan que la fiche candidat et la liste de la mission (message
+      // selon le résultat réel : reprise, rien à reprendre, compte non relié,
+      // séquence désactivée…).
+      const { payload } = await callResumeAction('resume_enrollments', enrollmentId);
+      const summary = summarizeResumeResponse(payload, name);
+      if (summary.tone === 'success') toast.success(summary.message);
+      else if (summary.tone === 'info') toast.info(summary.message);
+      else toast.error(summary.message);
+    } catch (error) {
+      console.error('Error resuming enrollment:', error);
+      toast.error(`La séquence n’a pas pu reprendre pour ${name}`, {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+    await fetchEnrollments();
+  };
+
+  // Mise en pause de TOUS les candidats en cours de la séquence, filtrée en
+  // base (pas sur les 200 lignes chargées). Les étapes gardent leur date.
+  const bulkStopActive = async () => {
+    try {
+      const { data, count, error: enrollError } = await supabase
+        .from('sequence_enrollments')
+        .update({ status: 'paused', pause_reason: 'manual' }, { count: 'exact' })
+        .eq('sequence_id', sequenceId)
+        .eq('status', 'active')
+        .select('id');
+
+      if (enrollError) throw enrollError;
+      const paused = count ?? data?.length ?? 0;
+      const pausedText = `${paused} candidat${paused > 1 ? 's' : ''} mis en pause`;
+      // D3 : recompte systématique. La RLS peut n'en laisser mettre en pause
+      // qu'une partie (collaborateur : ses seules inscriptions), et d'autres
+      // ont pu être inscrits entre-temps : jamais de succès s'il en reste.
+      const { count: stillActive, error: countError } = await supabase
+        .from('sequence_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('sequence_id', sequenceId)
+        .eq('status', 'active');
+      const remaining = stillActive ?? 0;
+      if (countError) {
+        console.error('Error recounting active enrollments:', countError);
+        toast.warning(paused > 0 ? pausedText : 'Aucun candidat n’a été mis en pause', {
+          description: 'Impossible de vérifier s’il reste des candidats en cours : actualisez la liste.',
+        });
+      } else if (remaining > 0) {
+        toast.error(paused > 0 ? `${pausedText}, ${remaining} encore en cours` : 'Aucun candidat n’a été mis en pause', {
+          description: `${remaining} candidat${remaining > 1 ? 's' : ''} en cours ${remaining > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remaining > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remaining > 1 ? 'ils viennent' : 'il vient'} d’être ${remaining > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur.`,
+        });
+      } else if (paused === 0) {
+        toast.info('Aucun candidat n’était en cours.');
+      } else {
+        toast.success(pausedText, {
+          description: 'Ils ne recevront plus de messages de cette séquence tant que vous ne les reprenez pas.',
+        });
+      }
+    } catch (error) {
+      console.error('Error bulk pausing:', error);
+      toast.error('La mise en pause groupée a échoué. Réessayez.');
+    }
+    await fetchEnrollments();
+  };
+
+  // D6 : « Reprendre tous les candidats en pause » (pauses une par une, dont
+  // celles de l'ancienne désactivation, et pauses de séquence restées alors que
+  // la séquence est active). Candidats lus en base (toute la séquence, pas la
+  // page chargée), puis reprise serveur par lots d'identifiants : le serveur
+  // refuse une séquence désactivée, un compte non relié ou un effacement RGPD,
+  // candidat par candidat.
+  const bulkResumePaused = async () => {
+    setBulkResuming(true);
+    const toastId = `bulk-resume-${sequenceId}`;
+    const counts = { resumed: 0, nothing_to_resume: 0, account_unlinked: 0, not_paused: 0, error: 0 };
+    let targets: string[] = [];
+    let unprocessed = 0;
+    let callError: string | null = null;
+    let firstErrorMessage: string | null = null;
+    try {
+      for (let from = 0; ; from += EXECUTION_PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from('sequence_enrollments')
+          .select('id')
+          .eq('sequence_id', sequenceId)
+          .eq('status', 'paused')
+          .in('pause_reason', BULK_RESUME_PAUSE_REASONS)
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, from + EXECUTION_PAGE_SIZE - 1);
+        if (error) throw error;
+        targets.push(...(data || []).map(e => e.id));
+        if (!data || data.length < EXECUTION_PAGE_SIZE) break;
+      }
+      targets = [...new Set(targets)];
+      if (targets.length === 0) {
+        toast.info('Aucun candidat à reprendre.');
+      } else {
+        for (let i = 0; i < targets.length; i += BULK_RESUME_CHUNK) {
+          if (targets.length > BULK_RESUME_CHUNK) {
+            toast.loading(`Reprise en cours : ${i} sur ${targets.length}…`, { id: toastId });
+          }
+          const { data, error } = await invokeEdgeFunction('process-sequences', {
+            action: 'resume_enrollments',
+            enrollment_ids: targets.slice(i, i + BULK_RESUME_CHUNK),
+          });
+          const payload = data as ResumeResponse | null;
+          if (error || !payload?.success) {
+            callError = payload?.message || error?.message || 'Réessayez dans un instant.';
+            unprocessed = targets.length - i;
+            break;
+          }
+          for (const key of Object.keys(counts) as Array<keyof typeof counts>) {
+            counts[key] += Number(payload.counts?.[key] ?? 0) || 0;
+          }
+          firstErrorMessage ??= payload.results?.find(r => r.outcome === 'error' && r.message)?.message ?? null;
+        }
+        toast.dismiss(toastId);
+        const n = (count: number, one: string, many: string) => `${count} ${count > 1 ? many : one}`;
+        const others = [
+          counts.account_unlinked > 0 ? `${n(counts.account_unlinked, 'reste', 'restent')} en pause : compte LinkedIn qui n’est plus relié` : null,
+          counts.nothing_to_resume > 0 ? `${n(counts.nothing_to_resume, 'n’avait', 'n’avaient')} plus d’étape à envoyer` : null,
+          counts.not_paused > 0 ? `${n(counts.not_paused, 'n’était', 'n’étaient')} plus en pause` : null,
+          counts.error > 0 ? `${n(counts.error, 'en erreur', 'en erreur')}${firstErrorMessage ? ` (${firstErrorMessage.replace(/\.$/, '')})` : ''}` : null,
+          unprocessed > 0 ? `${n(unprocessed, 'non traité', 'non traités')} : ${callError}` : null,
+        ].filter((d): d is string => !!d).join(' ; ');
+        const title = `${n(counts.resumed, 'candidat repris', 'candidats repris')}`;
+        if (!others && counts.resumed > 0) {
+          toast.success(title, { description: 'Une étape déjà programmée garde sa date ; sinon, la suivante suit son délai habituel, pendant vos heures d’envoi.' });
+        } else if (counts.resumed > 0) {
+          toast.warning(title, { description: `${others}.` });
+        } else {
+          toast.error('Aucun candidat n’a repris', others ? { description: `${others}.` } : undefined);
+        }
+      }
+    } catch (error) {
+      console.error('Error bulk resuming:', error);
+      toast.dismiss(toastId);
+      toast.error('La reprise groupée a échoué. Réessayez.');
+    } finally {
+      setBulkResuming(false);
+    }
+    await fetchEnrollments();
+  };
+
+  const reEnroll = async (enrollmentId: string) => {
+    const name = nameOf(enrollmentId);
+    try {
+      const { result } = await callResumeAction('re_enroll', enrollmentId);
+      if (result.outcome === 'resumed') {
+        // Pas de délai promis : le serveur réarme une étape à sa date prévue ou
+        // programme la suivante selon son délai (parfois plusieurs jours).
+        toast.success(`Séquence relancée pour ${name}`, {
+          description: 'La prochaine action est programmée selon les délais de la séquence, pendant vos heures d’envoi.',
+        });
+      } else if (result.outcome === 'nothing_to_resume') {
+        toast.info(`Rien à relancer : cette séquence est terminée pour ${name}`);
+      } else if (result.outcome === 'account_unlinked') {
+        toast.error('Ce compte LinkedIn n’est plus relié. Reliez-le avant de relancer la séquence.');
+      } else {
+        toast.error(`La séquence n’a pas pu être relancée pour ${name}`, { description: result.message });
+      }
     } catch (err) {
       console.error('[EnrollmentsPanel] reEnroll failed:', err);
-      toast.error('Erreur lors du ré-enrôlement');
+      toast.error(`La séquence n’a pas pu être relancée pour ${name}`, {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
+    await fetchEnrollments();
+  };
+
+  // Estimation de la prochaine action visible pour le dialogue « Relancer » :
+  // l'étape visible qui suit la dernière étape terminée (une étape annulée par
+  // la réponse n'est pas réarmée par le serveur, qui programme la suite). Les
+  // attentes intermédiaires sont masquées : c'est une estimation, sans date.
+  // null si aucune étape visible ne reste.
+  const nextActionLabel = (enrollment: Enrollment | undefined): string | null => {
+    if (!enrollment) return null;
+    const executions = enrollment.executions || [];
+    const doneOrders = executions.filter(e => isDoneStatus(e.status)).map(e => e.step_order);
+    const lastDone = doneOrders.length > 0 ? Math.max(...doneOrders) : -1;
+    const actionType = allSteps.find(s => s.step_order > lastDone && !isHiddenActionType(s.action_type))?.action_type;
+    return actionType ? actionTypeLabel(actionType) : null;
   };
 
   const skipStep = async (executionId: string) => {
@@ -451,59 +724,74 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         action: 'skip_execution',
         execution_id: executionId,
       });
-      if (error) throw error;
-      const payload = data as { success?: boolean; error?: string } | null;
-      if (!payload?.success) throw new Error(payload?.error || 'Échec du saut d\'étape');
+      const payload = data as { success?: boolean; error?: string; message?: string } | null;
+      if (error || !payload?.success) {
+        throw new Error(payload?.message || error?.message || 'Réessayez dans un instant.');
+      }
 
       toast.success('Étape sautée', {
         description: 'La séquence passe à l\'étape suivante.',
       });
-      await fetchEnrollments();
     } catch (err) {
       console.error('[EnrollmentsPanel] skipStep failed:', err);
-      toast.error('Erreur lors du saut d\'étape', {
+      toast.error('L\'étape n\'a pas pu être sautée', {
         description: err instanceof Error ? err.message : undefined,
       });
     }
+    // Liste relue dans tous les cas : sur un refus (étape déjà partie ou en
+    // cours d'envoi), l'écran montre l'état réel.
+    await fetchEnrollments();
   };
 
   const markReplied = async (enrollmentId: string) => {
+    const name = nameOf(enrollmentId);
     try {
-      // Marque l'enrollment 'replied' + cancel les executions pending
-      const { error } = await supabase
-        .from('sequence_enrollments')
-        .update({
-          status: 'replied',
-          replied_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', enrollmentId);
-      if (error) throw error;
-
-      await supabase
-        .from('sequence_step_executions')
-        .update({ status: 'cancelled', skip_reason: 'Réponse marquée manuellement' })
-        .eq('enrollment_id', enrollmentId)
-        .eq('status', 'scheduled');
-
-      setEnrollments(prev =>
-        prev.map(e => e.id === enrollmentId ? { ...e, status: 'replied', replied_at: new Date().toISOString() } : e)
-      );
-      toast.success('Marqué comme répondu', {
-        description: 'Les étapes restantes ont été annulées.',
+      // Clôture côté serveur, comme une réponse détectée : statut, annulation
+      // de TOUTES les étapes en attente (attentes et envois bloqués compris),
+      // réponse comptée une seule fois. Avant, deux écritures du navigateur
+      // sans preuve : un refus d'accès affichait quand même un succès.
+      const { data, error } = await invokeEdgeFunction('process-sequences', {
+        action: 'mark_replied',
+        enrollment_id: enrollmentId,
       });
+      const payload = data as { success?: boolean; changed?: boolean; message?: string; warning?: string; stopped_siblings?: number } | null;
+      if (error || !payload?.success) {
+        throw new Error(payload?.message || error?.message || 'Réessayez dans un instant.');
+      }
+      // Contrat §8 : les autres inscriptions du candidat sont arrêtées comme
+      // pour une réponse détectée ; le bilan le dit.
+      const siblings = typeof payload.stopped_siblings === 'number' ? payload.stopped_siblings : 0;
+      const siblingsNotice = siblings > 0
+        ? ` ${siblings > 1 ? `Ses ${siblings} autres séquences en cours ou en pause ont été arrêtées.` : 'Son autre séquence en cours ou en pause a été arrêtée.'}`
+        : '';
+      if (payload.changed && payload.warning) {
+        toast.warning(`Réponse enregistrée pour ${name}`, { description: `${payload.warning}${siblingsNotice}` });
+      } else if (payload.changed) {
+        toast.success(`Réponse enregistrée pour ${name}`, {
+          description: `Les étapes restantes ont été annulées.${siblingsNotice}`,
+        });
+      } else {
+        toast.info(`Rien n’a changé : la séquence de ${name} était déjà close.`);
+      }
     } catch (err) {
       console.error('[EnrollmentsPanel] markReplied failed:', err);
-      toast.error('Erreur lors du marquage');
+      toast.error(`La réponse n’a pas pu être enregistrée pour ${name}`, {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
+    await fetchEnrollments();
   };
 
   const handleConfirmedAction = async () => {
     if (!confirmAction) return;
     if (confirmAction.type === 'stop' && confirmAction.id) {
       await stopEnrollment(confirmAction.id);
+    } else if (confirmAction.type === 'resume' && confirmAction.id) {
+      await resumeEnrollment(confirmAction.id);
     } else if (confirmAction.type === 'bulkStop') {
       await bulkStopActive();
+    } else if (confirmAction.type === 'bulkResume') {
+      await bulkResumePaused();
     } else if (confirmAction.type === 'markReplied' && confirmAction.id) {
       await markReplied(confirmAction.id);
     } else if (confirmAction.type === 'reEnroll' && confirmAction.id) {
@@ -514,94 +802,67 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     setConfirmAction(null);
   };
 
-  const processSequencesNow = async () => {
-    try {
-      setProcessingSequences(true);
+  // Compteurs de la séquence entière quand ils sont connus, sinon ceux de la
+  // page chargée.
+  const activeCount = statusCounts?.active ?? enrollments.filter(e => e.status === 'active').length;
+  const pausedCount = statusCounts?.paused ?? enrollments.filter(e => e.status === 'paused').length;
+  const completedCount = statusCounts?.done ?? enrollments.filter(e => ['completed', 'replied'].includes(e.status)).length;
 
-      // Avance les actions de CETTE séquence ; le cron les envoie au cycle
-      // suivant avec ses garde-fous (heures ouvrées, quotas, santé du compte,
-      // vérification de réponse). Avant, l'UI déclenchait un cycle complet
-      // toutes organisations confondues, refusé à tout utilisateur sans rôle
-      // plateforme, et les deux vérifications globales qui suivaient
-      // (check_replies, check_wait_events) tournent de toute façon par cron.
-      const { data, error } = await invokeEdgeFunction('process-sequences', {
-        action: 'nudge_sequences',
-        sequence_id: sequenceId,
-      });
-
-      if (error) {
-        console.error('[processSequencesNow] error:', error);
-        toast.error(`Erreur : ${error.message || 'Échec du traitement'}`);
-        return;
-      }
-
-      const payload = data as { success?: boolean; rescheduled?: number; error?: string } | null;
-      if (!payload?.success) {
-        console.error('[processSequencesNow] Unexpected response:', payload);
-        toast.error(payload?.error || 'Erreur lors du traitement');
-        return;
-      }
-
-      const count = payload.rescheduled || 0;
-      toast.success(count > 0
-        ? `${count} action(s) avancée(s) — elles partent dans la minute qui vient.`
-        : 'Aucune action à avancer : tout est déjà en file ou terminé.');
-
-      await fetchEnrollments();
-    } catch (error) {
-      console.error('[processSequencesNow] Exception:', error);
-      toast.error('Erreur réseau lors du traitement');
-    } finally {
-      setProcessingSequences(false);
-    }
-  };
-
-  const activeCount = enrollments.filter(e => e.status === 'active').length;
-  const pausedCount = enrollments.filter(e => e.status === 'paused').length;
-  const completedCount = enrollments.filter(e => ['completed', 'replied'].includes(e.status)).length;
-
-  // Check if there are any pending executions that are past their scheduled time
-  const pendingExecutions = enrollments.flatMap(e => e.executions || [])
+  // Actions arrivées à échéance pour des candidats en cours : le moteur les
+  // prend au prochain passage (pas de bouton d'accélération ici). Celles d'un
+  // candidat en pause ne partent pas tant qu'il n'est pas repris.
+  const pendingExecutions = enrollments
+    .filter(e => e.status === 'active')
+    .flatMap(e => e.executions || [])
     .filter(exec => exec.status === 'scheduled' && new Date(exec.scheduled_at) < new Date());
+
+  // D3 : pause et reprise groupées pour les seuls membres qui gèrent toutes les inscriptions.
+  const canBulkManage = !isCollaborator;
+  const bulkResumableCount = statusCounts?.resumable ?? 0;
+
+  const confirmEnrollment = confirmAction?.id ? enrollments.find(e => e.id === confirmAction.id) : undefined;
+  const confirmName = confirmEnrollment?.profile_name || 'ce candidat';
+  const confirmNextAction = confirmAction?.type === 'reEnroll' ? nextActionLabel(confirmEnrollment) : null;
+  // « Reprendre » d'une pause pour échec d'envoi : c'est l'étape en échec qui repart.
+  const confirmRetriesFailedStep = confirmAction?.type === 'resume' && !!confirmEnrollment && resumeRetriesFailedStep(confirmEnrollment);
 
   return (
     <>
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-lg border-l border-border">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2 uppercase tracking-wide">
-            <div className="h-7 w-7 bg-foreground text-background flex items-center justify-center">
-              <Users className="w-4 h-4" />
-            </div>
-            {sequenceName}
-          </SheetTitle>
+          <div className="flex items-center justify-between gap-2 pr-8">
+            <SheetTitle className="flex items-center gap-2 uppercase tracking-wide min-w-0">
+              <div className="h-7 w-7 bg-foreground text-background flex items-center justify-center shrink-0">
+                <Users className="w-4 h-4" aria-hidden="true" />
+              </div>
+              <span className="truncate">{sequenceName}</span>
+            </SheetTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-2 text-xs shrink-0"
+              onClick={() => { void fetchEnrollments(); }}
+              disabled={loading || loadingMore}
+              aria-label="Actualiser la liste des inscrits"
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5 mr-1', loading && 'animate-spin')} aria-hidden="true" />
+              Actualiser
+            </Button>
+          </div>
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
-          {/* Process now button - always show if there are pending tasks */}
+          {/* Information : actions échues en attente du prochain passage */}
           {pendingExecutions.length > 0 && (
-            <div className="p-3 bg-background border border-border">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-foreground">
-                  <AlertCircle className="w-4 h-4" />
-                  <span className="text-sm font-medium">
-                    {pendingExecutions.length} action(s) en attente
-                  </span>
-                </div>
-                <button
-                  onClick={processSequencesNow}
-                  disabled={processingSequences}
-                  className="relative overflow-hidden h-8 px-4 bg-foreground text-background border border-border text-xs font-medium uppercase tracking-wider group disabled:opacity-50"
-                >
-                  <span className="relative z-10 flex items-center gap-1.5">
-                    {processingSequences ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Zap className="w-3.5 h-3.5" />
-                    )}
-                    Traiter maintenant
-                  </span>
-                </button>
+            <div className="p-3 bg-background border border-border" role="status">
+              <div className="flex items-start gap-2 text-foreground">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+                <span className="text-sm">
+                  {pendingExecutions.length > 1
+                    ? `${pendingExecutions.length} actions en attente d’envoi. Elles partiront au prochain passage, pendant vos heures d’envoi.`
+                    : '1 action en attente d’envoi. Elle partira au prochain passage, pendant vos heures d’envoi.'}
+                </span>
               </div>
             </div>
           )}
@@ -622,21 +883,41 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
             </div>
           </div>
 
-          {/* Bulk actions */}
-          {activeCount > 0 && (
+          {/* Actions groupées : réservées à ceux qui gèrent toutes les
+              inscriptions (D3, un collaborateur n'agit que sur les siennes). */}
+          {canBulkManage && activeCount > 0 && (
             <button
               onClick={() => setConfirmAction({ type: 'bulkStop' })}
               className="w-full relative overflow-hidden h-9 px-4 bg-background text-destructive border border-destructive text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
             >
-              <StopCircle className="w-3.5 h-3.5" />
-              <span>Arrêter toutes les séquences actives ({activeCount})</span>
+              <StopCircle className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>
+                {statusCounts
+                  ? `Mettre en pause tous les candidats actifs (${statusCounts.active})`
+                  : 'Mettre en pause tous les candidats actifs'}
+              </span>
+            </button>
+          )}
+          {/* D6 : reprise groupée, seulement quand la séquence est active (le
+              serveur refuse la reprise d'une séquence désactivée). */}
+          {canBulkManage && sequenceActive === true && bulkResumableCount > 0 && (
+            <button
+              onClick={() => setConfirmAction({ type: 'bulkResume' })}
+              disabled={bulkResuming}
+              className="w-full relative overflow-hidden h-9 px-4 bg-background text-foreground border border-border text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Play className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>
+                {bulkResuming ? 'Reprise en cours…' : `Reprendre tous les candidats en pause (${bulkResumableCount})`}
+              </span>
             </button>
           )}
 
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
             <Input
+              aria-label="Rechercher un candidat"
               placeholder="Rechercher un candidat…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -649,6 +930,16 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
             <div className="space-y-2">
               {loading ? (
                 <BrutalLoader compact messages={['Chargement des inscriptions…', 'Récupération des étapes…', 'Synchronisation…']} />
+              ) : loadError && enrollments.length === 0 ? (
+                <div className="text-center py-8 space-y-3" role="alert">
+                  <p className="text-sm text-foreground">
+                    Impossible de charger les inscrits. Vérifiez votre connexion puis réessayez.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => { void fetchEnrollments(); }}>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                    Réessayer
+                  </Button>
+                </div>
               ) : enrollments.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   Aucun candidat inscrit
@@ -666,9 +957,35 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                     Aucun résultat pour « {searchQuery} »
                   </div>
                 ) : filtered.map((enrollment) => {
-                  const status = statusConfig[enrollment.status] || statusConfig.active;
+                  const status = statusStyle[enrollment.status] || NEUTRAL_STATUS_STYLE;
+                  const statusLabel = enrollment.status === 'paused'
+                    ? pausedLabel(enrollment.pause_reason)
+                    : enrollmentStatusLabel(enrollment.status);
                   const isExpanded = expandedEnrollments.has(enrollment.id);
                   const executions = enrollment.executions || [];
+                  const pauseDetail = sendFailedDetail(enrollment);
+                  // D5 : effacement RGPD, ni reprise ni relance.
+                  const gdprErased = isGdprErased(enrollment);
+                  // Pause de séquence restée alors que la séquence est active : se reprend ici.
+                  const sequencePauseResumable = enrollment.status === 'paused'
+                    && isSequenceLevelPause(enrollment.pause_reason)
+                    && sequenceActive === true;
+                  // D3 : même règle que le serveur (canActOnEnrollment), un
+                  // collaborateur n'agit que sur les candidats qu'il a inscrits.
+                  const ownRow = !isCollaborator || (!!userId && enrollment.created_by === userId);
+                  const canResume = enrollment.status === 'paused' && !gdprErased && ownRow
+                    && (!enrollment.pause_reason || RESUMABLE_PAUSE_REASONS.has(enrollment.pause_reason) || sequencePauseResumable);
+                  // Reprise possible, mais par un administrateur ou le membre qui l'a inscrit.
+                  const resumeReservedToOthers = !ownRow && enrollment.status === 'paused' && !gdprErased
+                    && (!enrollment.pause_reason || RESUMABLE_PAUSE_REASONS.has(enrollment.pause_reason) || sequencePauseResumable);
+                  const retriesFailedStep = resumeRetriesFailedStep(enrollment);
+                  const pauseHint = gdprErased
+                    ? GDPR_ERASED_NOTICE
+                    : resumeReservedToOthers && !pauseDetail
+                      ? OTHER_MEMBER_RESUME_HINT
+                      : enrollment.status === 'paused'
+                        ? (pauseDetail ?? (sequencePauseResumable ? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint(enrollment.pause_reason)))
+                        : null;
                   
                   return (
                     <Collapsible
@@ -683,9 +1000,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             <CollapsibleTrigger className="flex items-start gap-2 flex-1 min-w-0 text-left">
                               <div className="mt-0.5 shrink-0">
                                 {isExpanded ? (
-                                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                  <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                                 ) : (
-                                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                  <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
@@ -700,8 +1017,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       rel="noopener noreferrer"
                                       className="text-muted-foreground hover:text-linkedin shrink-0"
                                       onClick={(e) => e.stopPropagation()}
+                                      aria-label={`Voir le profil LinkedIn de ${enrollment.profile_name || 'ce candidat'}`}
                                     >
-                                      <ExternalLink className="w-3.5 h-3.5" />
+                                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                                     </a>
                                   )}
                                 </div>
@@ -713,18 +1031,15 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                   <Badge className={`text-xs rounded-full ${status.className}`}>
                                     {status.icon}
-                                    <span className="ml-1">
-                                      {enrollment.status === 'paused' ? pausedLabel(enrollment.pause_reason) : status.label}
-                                    </span>
+                                    <span className="ml-1">{statusLabel}</span>
                                   </Badge>
                                   {(() => {
                                     // Find next scheduled or last executed action
                                     const scheduledExecs = executions
-                                      .filter(e => e.status === 'scheduled')
-                                      .filter(e => e.status === 'scheduled' && !HIDDEN_ACTION_TYPES.has(e.step?.action_type || ''))
+                                      .filter(e => e.status === 'scheduled' && !isHiddenActionType(e.step?.action_type))
                                       .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
                                     const executedExecs = executions
-                                      .filter(e => (e.status === 'executed' || e.status === 'sent') && e.executed_at && !HIDDEN_ACTION_TYPES.has(e.step?.action_type || ''))
+                                      .filter(e => isSentExecutionStatus(e.status) && e.executed_at && !isHiddenActionType(e.step?.action_type))
                                       .sort((a, b) => new Date(b.executed_at!).getTime() - new Date(a.executed_at!).getTime());
 
                                     const nextScheduled = scheduledExecs[0];
@@ -739,11 +1054,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                         )}
                                         {nextScheduled && (
                                           <span className="text-xs text-info-foreground font-medium">
-                                            → {(() => {
-                                              const actionType = nextScheduled.step?.action_type || '';
-                                              const label = actionTypeConfig[actionType]?.label || actionType;
-                                              return label;
-                                            })()} le {format(new Date(nextScheduled.scheduled_at), 'dd/MM à HH:mm', { locale: fr })}
+                                            → {actionTypeLabel(nextScheduled.step?.action_type)} le {format(new Date(nextScheduled.scheduled_at), 'dd/MM à HH:mm', { locale: fr })}
                                           </span>
                                         )}
                                         {!nextScheduled && !lastExecuted && (
@@ -755,6 +1066,11 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                     );
                                   })()}
                                 </div>
+                                {pauseHint && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {pauseHint}
+                                  </p>
+                                )}
                               </div>
                             </CollapsibleTrigger>
 
@@ -766,47 +1082,82 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                   size="icon"
                                   className="h-8 w-8 shrink-0 border-border rounded-lg"
                                   onClick={(e) => e.stopPropagation()}
-                                  aria-label="Actions de l'inscription"
+                                  aria-label={`Actions pour ${enrollment.profile_name || 'ce candidat'}`}
                                 >
                                   <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="bg-background border-border rounded-lg">
-                                {enrollment.status === 'active' ? (
+                                {/* D3 : sur la ligne d'un candidat inscrit par un autre membre, un
+                                    collaborateur ne voit que les liens de consultation : le
+                                    serveur et la base refuseraient ces actions. */}
+                                {enrollment.status === 'active' && ownRow ? (
                                   <DropdownMenuItem
                                     onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id })}
                                     className="text-warning-foreground"
                                   >
-                                    <StopCircle className="w-4 h-4 mr-2" />
-                                    Arrêter la séquence
+                                    <StopCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+                                    Mettre en pause pour ce candidat
                                   </DropdownMenuItem>
                                 ) : enrollment.status === 'paused' ? (
-                                  <DropdownMenuItem
-                                    onClick={() => resumeEnrollment(enrollment.id)}
-                                    className="text-success-foreground"
-                                  >
-                                    <Play className="w-4 h-4 mr-2" />
-                                    Reprendre la séquence
-                                  </DropdownMenuItem>
+                                  <>
+                                    {/* Chaque raison de pause propose l'action qui débloque :
+                                        « Reprendre » seul relançait le moteur, qui remettait
+                                        en pause au passage suivant. */}
+                                    {enrollment.pause_reason === 'account_disconnected' && (
+                                      <DropdownMenuItem asChild>
+                                        <Link to="/settings/account/connections">
+                                          <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
+                                          Reconnecter le compte
+                                        </Link>
+                                      </DropdownMenuItem>
+                                    )}
+                                    {enrollment.pause_reason === 'subscription_required' && (
+                                      <DropdownMenuItem asChild>
+                                        <Link to="/pricing">
+                                          <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
+                                          Voir les offres
+                                        </Link>
+                                      </DropdownMenuItem>
+                                    )}
+                                    {enrollment.pause_reason === 'send_failed' && !pauseDetail && (
+                                      <DropdownMenuItem onClick={() => showEnrollmentDetail(enrollment.id)}>
+                                        <AlertCircle className="w-4 h-4 mr-2" aria-hidden="true" />
+                                        Voir l'erreur
+                                      </DropdownMenuItem>
+                                    )}
+                                    {canResume && (
+                                      <DropdownMenuItem
+                                        onClick={() => setConfirmAction({ type: 'resume', id: enrollment.id })}
+                                        className="text-success-foreground"
+                                      >
+                                        <Play className="w-4 h-4 mr-2" aria-hidden="true" />
+                                        {/* Sans étape en attente, le serveur replanifie l'étape en échec elle-même. */}
+                                        {retriesFailedStep ? 'Réessayer l’étape en échec' : 'Reprendre la séquence'}
+                                      </DropdownMenuItem>
+                                    )}
+                                  </>
                                 ) : null}
                                 {/* Marquer répondu manuellement (cas réponse hors-canal :
                                     téléphone, en personne, autre boîte mail). Évite de
                                     continuer à spammer le candidat. */}
-                                {(enrollment.status === 'active' || enrollment.status === 'paused' || enrollment.status === 'completed') && (
+                                {ownRow && (enrollment.status === 'active' || enrollment.status === 'paused' || enrollment.status === 'completed') && (
                                   <DropdownMenuItem
                                     onClick={() => setConfirmAction({ type: 'markReplied', id: enrollment.id })}
                                   >
-                                    <CheckCircle2 className="w-4 h-4 mr-2 text-success" />
-                                    Marquer comme répondu
+                                    <CheckCircle2 className="w-4 h-4 mr-2 text-success" aria-hidden="true" />
+                                    Marquer comme ayant répondu
                                   </DropdownMenuItem>
                                 )}
-                                {/* Ré-enrôler : utile après un stop / replied résolu / completed */}
-                                {(enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'paused' || enrollment.status === 'cancelled' || enrollment.status === 'stopped') && (
+                                {/* Relancer : inscription close (réponse, fin, arrêt). Jamais
+                                    pour un candidat en pause, qui a « Reprendre », ni après
+                                    un effacement RGPD (D5). */}
+                                {ownRow && !gdprErased && (enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'cancelled' || enrollment.status === 'stopped') && (
                                   <DropdownMenuItem
                                     onClick={() => setConfirmAction({ type: 'reEnroll', id: enrollment.id })}
                                   >
-                                    <RefreshCw className="w-4 h-4 mr-2 text-foreground" />
-                                    Ré-enrôler
+                                    <RefreshCw className="w-4 h-4 mr-2 text-foreground" aria-hidden="true" />
+                                    Relancer depuis l’étape suivante
                                   </DropdownMenuItem>
                                 )}
                                 {enrollment.profile_url && (
@@ -816,7 +1167,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       target="_blank"
                                       rel="noopener noreferrer"
                                     >
-                                      <ExternalLink className="w-4 h-4 mr-2" />
+                                      <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
                                       Voir sur LinkedIn
                                     </a>
                                   </DropdownMenuItem>
@@ -824,6 +1175,25 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
+                          {/* Action qui débloque, visible sans ouvrir le menu */}
+                          {enrollment.status === 'paused' && ['account_disconnected', 'subscription_required', 'send_failed'].includes(enrollment.pause_reason || '') && !pauseDetail && (
+                            <div className="mt-2 pl-6">
+                              {enrollment.pause_reason === 'account_disconnected' ? (
+                                <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
+                                  <Link to="/settings/account/connections">Reconnecter le compte</Link>
+                                </Button>
+                              ) : enrollment.pause_reason === 'subscription_required' ? (
+                                <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
+                                  <Link to="/pricing">Voir les offres</Link>
+                                </Button>
+                              ) : (
+                                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => showEnrollmentDetail(enrollment.id)}>
+                                  <AlertCircle className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                                  Voir l'erreur
+                                </Button>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Expanded content - Full workflow timeline */}
@@ -836,24 +1206,20 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                             ) : (
                               <div className="space-y-2">
                                 <p className="text-xs font-medium text-foreground mb-2 uppercase tracking-wide">
-                                  Workflow :
+                                  Parcours
                                 </p>
-                                {allSteps.filter(s => !HIDDEN_ACTION_TYPES.has(s.action_type)).map((step, idx) => {
-                                  // Find execution for this step if it exists
+                                {allSteps.filter(s => !isHiddenActionType(s.action_type)).map((step) => {
+                                  // Exécution de cette étape, si elle existe
                                   const exec = executions.find(e => e.step_id === step.id);
-                                  const actionConfig = actionTypeConfig[step.action_type] || { 
-                                    label: step.action_type, 
-                                    icon: <Send className="w-3.5 h-3.5" />,
-                                    color: 'text-muted-foreground',
-                                    bgColor: 'bg-muted'
-                                  };
-                                  
-                                  // Determine status: from execution or 'pending' if no execution yet
+                                  const actionStyle = actionTypeStyle[step.action_type] || DEFAULT_ACTION_STYLE;
+
+                                  // Statut : celui de l'exécution, ou « À venir » tant qu'elle n'est pas programmée
                                   const status = exec?.status || 'pending';
-                                  const execStatus = executionStatusConfig[status] || executionStatusConfig.pending;
+                                  const execStatus = executionStatusStyle[status] || NEUTRAL_EXECUTION_STYLE;
                                   const isPending = status === 'pending';
                                   const isFailed = status === 'failed';
                                   const isSkipped = status === 'skipped';
+                                  const isSent = isSentExecutionStatus(status);
                                   const isChannelSkip = isSkipped && exec?.skip_reason?.toLowerCase().includes('channel');
 
                                   return (
@@ -867,40 +1233,40 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                         !isFailed && !isSkipped && execStatus.className
                                       )}
                                     >
-                                      {/* Step number with icon */}
+                                      {/* Icône du type d'étape */}
                                       <div className={cn(
                                         "flex-shrink-0 w-7 h-7 flex items-center justify-center",
-                                        isPending ? 'bg-muted text-muted-foreground' : `${actionConfig.bgColor} text-white`
+                                        isPending ? 'bg-muted text-muted-foreground' : `${actionStyle.bgColor} text-white`
                                       )}>
-                                        {actionConfig.icon}
+                                        {actionStyle.icon}
                                       </div>
 
-                                      {/* Step details */}
+                                      {/* Détail de l'étape */}
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
                                           <span className={cn(
                                             "text-sm font-medium", 
                                             isPending ? 'text-muted-foreground' : 'text-foreground'
                                           )}>
-                                            {actionConfig.label}
+                                            {actionTypeLabel(step.action_type)}
                                           </span>
                                           <Badge variant="outline" className={cn(
                                             "text-xs px-1.5 py-0 h-4",
                                             execStatus.className
                                           )}>
                                             {execStatus.icon}
-                                            <span className="ml-0.5">{execStatus.label}</span>
+                                            <span className="ml-0.5">{executionLabel(status)}</span>
                                           </Badge>
-                                          {/* Show delay for pending steps */}
-                                          {isPending && (step.delay_days > 0 || step.delay_hours > 0) && (
+                                          {/* Délai d'une étape pas encore programmée */}
+                                          {isPending && (step.delay_days > 0 || step.delay_hours > 0 || (step.delay_minutes ?? 0) > 0) && (
                                             <span className="text-xs text-muted-foreground">
-                                              +{step.delay_days > 0 ? `${step.delay_days}j` : ''}{step.delay_hours > 0 ? `${step.delay_hours}h` : ''}
+                                              +{step.delay_days > 0 ? `${step.delay_days} j` : ''}{step.delay_hours > 0 ? ` ${step.delay_hours} h` : ''}{(step.delay_minutes ?? 0) > 0 ? ` ${step.delay_minutes} min` : ''}
                                             </span>
                                           )}
                                         </div>
 
 
-                                        {/* Timing info from execution */}
+                                        {/* Dates et raisons, d'après l'exécution */}
                                         {exec && (
                                           <div className="text-xs mt-1">
                                             {exec.status === 'scheduled' && (
@@ -908,38 +1274,43 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                                 <span className="text-muted-foreground">
                                                   Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
                                                 </span>
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setConfirmAction({ type: 'skipStep', stepId: exec.id });
-                                                  }}
-                                                  className="text-[10px] text-muted-foreground hover:text-foreground underline"
-                                                  title="Sauter cette étape pour ce candidat"
-                                                >
-                                                  Sauter
-                                                </button>
+                                                {/* Le serveur refuse de sauter l'étape d'un candidat en
+                                                    pause ou clos (enrollment_not_active) : bouton masqué. */}
+                                                {enrollment.status === 'active' && ownRow && (
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setConfirmAction({ type: 'skipStep', stepId: exec.id });
+                                                    }}
+                                                    className="text-xs text-muted-foreground hover:text-foreground underline px-1 py-0.5"
+                                                    title="Sauter cette étape pour ce candidat"
+                                                  >
+                                                    Sauter
+                                                  </button>
+                                                )}
                                               </div>
                                             )}
-                                            {(exec.status === 'executed' || exec.status === 'sent') && exec.executed_at && (
+                                            {exec.status === 'quota_blocked' && (
+                                              <span className="text-muted-foreground">
+                                                Nouvel essai prévu le {format(new Date(exec.scheduled_at), 'dd/MM à HH:mm', { locale: fr })}
+                                              </span>
+                                            )}
+                                            {exec.status === 'scheduled' && exec.error_message && (
+                                              <p className="text-warning-foreground mt-1">
+                                                {formatErrorMessage(exec.error_message)}
+                                              </p>
+                                            )}
+                                            {isSent && exec.executed_at && (
                                               <span className="text-success-foreground">
                                                 ✓ {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
                                               </span>
                                             )}
-                                            {exec.status === 'skipped' && exec.skip_reason && (
+                                            {(exec.status === 'skipped' || exec.status === 'cancelled') && exec.skip_reason && (
                                               <span className={cn(
                                                 "text-muted-foreground flex items-center gap-1",
                                                 isChannelSkip && "italic"
                                               )}>
-                                                {isChannelSkip && <span>⏭️</span>}
-                                                {isChannelSkip 
-                                                  ? `Étape ${step.step_order + 1} skippée — canal indisponible`
-                                                  : exec.skip_reason
-                                                }
-                                              </span>
-                                            )}
-                                            {exec.status === 'cancelled' && exec.skip_reason && (
-                                              <span className="text-muted-foreground">
-                                                {exec.skip_reason}
+                                                {formatSkipReason(exec.skip_reason)}
                                               </span>
                                             )}
                                             {exec.status === 'failed' && exec.error_message && (
@@ -950,8 +1321,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                           </div>
                                         )}
 
-                                        {/* Message preview if executed/sent */}
-                                        {(exec?.status === 'executed' || exec?.status === 'sent') && exec.final_message && (
+                                        {/* Aperçu du message envoyé */}
+                                        {isSent && exec?.final_message && (
                                           <div className="mt-2 p-2 bg-background border border-border text-xs text-muted-foreground">
                                             {exec.final_subject && (
                                               <p className="font-medium text-foreground mb-1 pb-1 border-b text-xs">
@@ -1014,37 +1385,64 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         <AlertDialogHeader>
           <AlertDialogTitle>
             {confirmAction?.type === 'bulkStop'
-              ? `Arrêter toutes les séquences actives (${activeCount})`
-              : confirmAction?.type === 'markReplied'
-                ? 'Marquer comme répondu'
-                : confirmAction?.type === 'reEnroll'
-                  ? 'Ré-enrôler ce candidat'
-                  : confirmAction?.type === 'skipStep'
-                    ? 'Sauter cette étape ?'
-                    : 'Arrêter la séquence'}
+              ? (statusCounts
+                ? `Mettre en pause tous les candidats actifs (${statusCounts.active}) ?`
+                : 'Mettre en pause tous les candidats actifs ?')
+              : confirmAction?.type === 'bulkResume'
+                ? `Reprendre tous les candidats en pause (${bulkResumableCount}) ?`
+                : confirmAction?.type === 'markReplied'
+                  ? `Marquer ${confirmName} comme ayant répondu ?`
+                  : confirmAction?.type === 'reEnroll'
+                    ? `Relancer ${confirmName} ?`
+                    : confirmAction?.type === 'resume'
+                      ? (confirmRetriesFailedStep
+                        ? `Réessayer l’étape en échec pour ${confirmName} ?`
+                        : `Reprendre la séquence pour ${confirmName} ?`)
+                      : confirmAction?.type === 'skipStep'
+                        ? 'Sauter cette étape ?'
+                        : `Mettre en pause la séquence pour ${confirmName} ?`}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {confirmAction?.type === 'bulkStop'
-              ? `Les ${activeCount} candidat(s) actif(s) ne recevront plus de messages de cette séquence.`
-              : confirmAction?.type === 'markReplied'
-                ? 'L\'enrollment passera en "Répondu" et toutes les étapes restantes seront annulées. Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).'
-                : confirmAction?.type === 'reEnroll'
-                  ? 'Le candidat repassera en statut actif. La prochaine étape pending sera reschedulée à maintenant. Utile pour relancer un candidat après une réponse résolue.'
-                  : confirmAction?.type === 'skipStep'
-                    ? 'Cette étape ne sera pas envoyée pour ce candidat. La séquence passera directement à l\'étape suivante.'
-                    : 'Le candidat ne recevra plus de messages de cette séquence.'}
+              ? 'Tous les candidats en cours de cette séquence, y compris ceux qui ne sont pas affichés, ne recevront plus de messages tant que vous ne les reprenez pas. Leurs étapes prévues gardent leur date.'
+              : confirmAction?.type === 'bulkResume'
+                // Pas de délai promis : une étape en attente garde sa date, sinon
+                // la suivante est programmée selon son délai (parfois plusieurs jours).
+                ? 'Ces candidats, y compris ceux qui ne sont pas affichés, recevront de nouveau les messages de cette séquence. Une étape déjà programmée garde sa date (au plus tôt dans une minute) ; sinon, l’étape suivante est programmée selon son délai habituel, pendant vos heures d’envoi. Les candidats en pause pour une autre raison (compte déconnecté, abonnement, limite d’envoi, échec d’envoi, candidat injoignable) ne sont pas concernés.'
+                : confirmAction?.type === 'markReplied'
+                  // Contrat §8 : ses autres inscriptions sont arrêtées ; pour une
+                  // séquence terminée, seulement celles commencées avant sa fin.
+                  ? `${confirmName} passera en « A répondu » et ses étapes restantes seront annulées. ${confirmEnrollment?.status === 'completed'
+                    ? 'Ses autres séquences encore en cours ou en pause, commencées avant la fin de celle-ci, seront aussi arrêtées.'
+                    : 'Ses autres séquences encore en cours ou en pause seront aussi arrêtées.'} Utile si le candidat a répondu hors de Konekt (téléphone, en personne, etc.).`
+                  : confirmAction?.type === 'reEnroll'
+                    // Pas de délai promis : le serveur programme l'étape suivante
+                    // selon son délai, et les attentes intermédiaires sont masquées.
+                    ? `La séquence reprend à l’étape suivante, selon ses délais habituels${confirmNextAction ? ` (prochaine action estimée : ${confirmNextAction})` : ', s’il en reste une'}.${
+                      confirmEnrollment?.status === 'replied'
+                        ? ` ${confirmName} a répondu${confirmEnrollment.replied_at ? ` le ${format(new Date(confirmEnrollment.replied_at), 'd MMMM yyyy', { locale: fr })}` : ''} : vérifiez que la conversation est bien close.`
+                        : ''}`
+                    : confirmAction?.type === 'resume'
+                      ? (confirmRetriesFailedStep
+                        ? 'L’étape en échec sera retentée après son délai habituel, pendant vos heures d’envoi. Si la cause de l’échec n’est pas réglée, elle échouera de nouveau.'
+                        : 'Une étape déjà programmée garde sa date (au plus tôt dans une minute) ; sinon, l’étape suivante est programmée selon son délai habituel, pendant vos heures d’envoi.')
+                      : confirmAction?.type === 'skipStep'
+                        ? 'Cette étape ne sera pas envoyée pour ce candidat. La séquence passera directement à l\'étape suivante.'
+                        : `${confirmName} ne recevra plus de messages tant que vous ne reprenez pas sa séquence. Ses étapes prévues gardent leur date.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Annuler</AlertDialogCancel>
           <AlertDialogAction
-            className={['markReplied', 'reEnroll'].includes(confirmAction?.type || '') ? '' : 'bg-destructive hover:bg-destructive/90'}
+            className={['markReplied', 'reEnroll', 'resume', 'bulkResume'].includes(confirmAction?.type || '') ? '' : 'bg-destructive hover:bg-destructive/90'}
             onClick={handleConfirmedAction}
           >
-            {confirmAction?.type === 'markReplied' ? 'Marquer répondu'
-              : confirmAction?.type === 'reEnroll' ? 'Ré-enrôler'
+            {confirmAction?.type === 'markReplied' ? 'Marquer comme ayant répondu'
+              : confirmAction?.type === 'reEnroll' ? 'Relancer'
+              : confirmAction?.type === 'resume' ? (confirmRetriesFailedStep ? 'Réessayer' : 'Reprendre')
+              : confirmAction?.type === 'bulkResume' ? 'Reprendre'
               : confirmAction?.type === 'skipStep' ? 'Sauter l\'étape'
-              : 'Confirmer'}
+              : 'Mettre en pause'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -15,6 +15,8 @@ import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
 import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
 import { getSubscriptionGate } from './subscription-gate.ts';
+import { getOrFetchContact, isCandidateErasedForOrg, GdprRegistryUnavailableError } from './get-or-fetch-contact.ts';
+import { firstExecutionTime, pickFirstRootStep, validTimeZone } from './sequence-first-step.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -458,22 +460,36 @@ const createMission: AgentTool = {
 // (job_candidate_status row), et la séquence doit appartenir à l'org.
 //
 // Anti-doublon organisation (lot P0-D, docs/p0-plan-2026-09-06.md, section 2) :
-// un candidat contacté par un membre de l'org dans les 90 derniers jours
-// (toute séquence, tout compte, statuts active/paused/replied/completed) est
-// refusé, sauf `force: true` posé par un propriétaire ou administrateur. Même
-// clé de rapprochement que src/lib/enrollmentDuplicates.ts : profile_id
-// normalisé (identifiant LinkedIn ou URL en minuscules sans barre finale),
-// repli sur provider_id.
+// un candidat encore en séquence dans l'organisation (inscription active ou en
+// pause, quelle que soit sa date : SEQ-128) ou contacté dans les 90 derniers
+// jours (inscription répondue ou terminée, InMail groupé programmé, en cours
+// ou envoyé : SEQ-125), toute séquence et tout compte, est refusé, sauf
+// `force: true` posé par un propriétaire ou administrateur.
+// Rapprochement (SEQ-046) : profile_id, provider_id et resolved_profile_id
+// (identifiant Recruiter ou classique), plus le slug de profile_url, comparés
+// après normalisation (identifiant LinkedIn ou URL en minuscules sans barre
+// finale). Même règle que src/lib/enrollmentDuplicates.ts.
 
 const RECENT_CONTACT_WINDOW_DAYS = 90;
-const RECENT_CONTACT_STATUSES = ['active', 'paused', 'replied', 'completed'];
+/** Inscriptions qui peuvent encore envoyer : signalées sans limite de date. */
+const LIVE_CONTACT_STATUSES = ['active', 'paused'];
+/** Contact terminé : signalé sur RECENT_CONTACT_WINDOW_DAYS jours. */
+const RECENT_CONTACT_STATUSES = ['replied', 'completed'];
+/**
+ * InMails groupés comptés comme un contact, sur RECENT_CONTACT_WINDOW_DAYS jours.
+ * Même liste que process-inmail-queue et src/lib/enrollmentDuplicates.ts : un
+ * InMail qui a reçu une réponse reste un contact.
+ */
+const INMAIL_CONTACT_STATUSES = ['pending', 'scheduled', 'sending', 'sent', 'replied'];
 
 interface RecentOrgContact {
   createdBy: string | null;
   createdByFirstName: string | null;
   createdAt: string;
-  sequenceId: string;
+  /** Séquence de l'inscription, null pour un InMail groupé. */
+  sequenceId: string | null;
   sequenceName: string | null;
+  source: 'sequence' | 'inmail';
 }
 
 function normalizeEnrollmentKey(value: unknown): string | null {
@@ -497,11 +513,17 @@ function formatRecentContact(recent: RecentOrgContact): string {
   const date = new Date(recent.createdAt).toLocaleDateString('fr-FR', {
     day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Paris',
   });
+  const via = recent.source === 'inmail' ? ' par InMail' : '';
   const seq = recent.sequenceName ? ` (séquence « ${recent.sequenceName} »)` : '';
-  return `Déjà contacté par ${who} le ${date}${seq}`;
+  return `Déjà contacté par ${who} le ${date}${via}${seq}`;
 }
 
-/** Dernier contact de l'organisation avec ce candidat sur 90 jours, ou null. */
+/**
+ * Contact de l'organisation qui concerne déjà ce candidat : inscription en
+ * cours (active ou en pause, sans limite de date), inscription close depuis
+ * moins de 90 jours, ou InMail groupé (inmail_queue) programmé, en cours ou
+ * envoyé depuis moins de 90 jours. Le plus récent, ou null.
+ */
 async function findRecentOrgContact(
   params: Record<string, unknown>,
   ctx: ToolContext,
@@ -513,42 +535,103 @@ async function findRecentOrgContact(
 
   const keys = new Set<string>();
   const queryValues = new Set<string>(rawValues);
+  const slugs = new Set<string>();
   for (const value of rawValues) {
     const key = normalizeEnrollmentKey(value);
     if (key) { keys.add(key); queryValues.add(key); }
     const slug = linkedInSlugOf(value);
-    if (slug) { keys.add(slug); queryValues.add(slug); }
+    if (slug) { keys.add(slug); queryValues.add(slug); slugs.add(slug); }
   }
   const list = Array.from(queryValues).map(quoteFilterValue).join(',');
+  // Slug de profile_url : motif sans caractère réservé du filtre, comparaison
+  // exacte ensuite (« marie-martin » ne désigne pas « marie-martin-4b2a1 »).
+  const slugFilters = Array.from(slugs)
+    .filter((slug) => /^[a-z0-9\-_.%~]+$/i.test(slug))
+    .map((slug) => `profile_url.ilike.*/in/${slug}*`);
+  const identityFilter = [
+    `profile_id.in.(${list})`,
+    `provider_id.in.(${list})`,
+    `resolved_profile_id.in.(${list})`,
+    ...slugFilters,
+  ].join(',');
   const since = new Date(Date.now() - RECENT_CONTACT_WINDOW_DAYS * 86_400_000).toISOString();
+  const columns = 'profile_id, provider_id, resolved_profile_id, profile_url, created_by, created_at, status, sequence_id';
 
-  const { data: rows, error } = await ctx.adminClient
-    .from('sequence_enrollments')
-    .select('profile_id, provider_id, created_by, created_at, status, sequence_id')
-    .eq('organization_id', ctx.organizationId)
-    .gte('created_at', since)
-    .in('status', RECENT_CONTACT_STATUSES)
-    .or(`profile_id.in.(${list}),provider_id.in.(${list})`)
-    .order('created_at', { ascending: false })
-    .limit(20);
+  // Deux requêtes (un second .or() se combinerait en ET avec le filtre
+  // d'identité) : inscriptions vivantes sans date, closes sur 90 jours. Plus
+  // les InMails groupés de l'organisation sur 90 jours (SEQ-125), rapprochés
+  // par recipient_profile_id, comme dans src/lib/enrollmentDuplicates.ts.
+  const [live, recentClosed, inmails] = await Promise.all([
+    ctx.adminClient
+      .from('sequence_enrollments')
+      .select(columns)
+      .eq('organization_id', ctx.organizationId)
+      .in('status', LIVE_CONTACT_STATUSES)
+      .or(identityFilter)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    ctx.adminClient
+      .from('sequence_enrollments')
+      .select(columns)
+      .eq('organization_id', ctx.organizationId)
+      .gte('created_at', since)
+      .in('status', RECENT_CONTACT_STATUSES)
+      .or(identityFilter)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    ctx.adminClient
+      .from('inmail_queue')
+      .select('recipient_profile_id, created_by, created_at, status')
+      .eq('organization_id', ctx.organizationId)
+      .gte('created_at', since)
+      .in('status', INMAIL_CONTACT_STATUSES)
+      .in('recipient_profile_id', Array.from(queryValues))
+      .order('created_at', { ascending: false })
+      .limit(20),
+  ]);
+  const error = live.error ?? recentClosed.error ?? inmails.error;
   if (error) throw new Error(`Vérification des contacts récents impossible : ${error.message}`);
 
-  const match = (rows ?? []).find((row: Record<string, unknown>) => {
-    for (const value of [row.profile_id, row.provider_id]) {
-      const key = normalizeEnrollmentKey(value);
-      if (key && keys.has(key)) return true;
-      const slug = linkedInSlugOf(value);
-      if (slug && keys.has(slug)) return true;
-    }
-    return false;
-  });
+  const matchesKey = (value: unknown): boolean => {
+    const key = normalizeEnrollmentKey(value);
+    if (key && keys.has(key)) return true;
+    const slug = linkedInSlugOf(value);
+    return !!slug && keys.has(slug);
+  };
+  const enrollmentRows = [...(live.data ?? []), ...(recentClosed.data ?? [])] as Array<Record<string, unknown>>;
+  const contacts: Array<{ created_by: unknown; created_at: unknown; sequence_id: string | null; source: 'sequence' | 'inmail' }> = [
+    ...enrollmentRows
+      .filter((row) => {
+        if ([row.profile_id, row.provider_id, row.resolved_profile_id].some(matchesKey)) return true;
+        const urlSlug = linkedInSlugOf(row.profile_url);
+        return !!urlSlug && slugs.has(urlSlug);
+      })
+      .map((row) => ({
+        created_by: row.created_by,
+        created_at: row.created_at,
+        sequence_id: row.sequence_id ? String(row.sequence_id) : null,
+        source: 'sequence' as const,
+      })),
+    ...((inmails.data ?? []) as Array<Record<string, unknown>>)
+      .filter((row) => matchesKey(row.recipient_profile_id))
+      .map((row) => ({
+        created_by: row.created_by,
+        created_at: row.created_at,
+        sequence_id: null,
+        source: 'inmail' as const,
+      })),
+  ];
+  contacts.sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
+  const match = contacts[0];
   if (!match) return null;
 
   const [{ data: profile }, { data: seq }] = await Promise.all([
     match.created_by
       ? ctx.adminClient.from('profiles').select('display_name').eq('user_id', String(match.created_by)).maybeSingle()
       : Promise.resolve({ data: null }),
-    ctx.adminClient.from('outreach_sequences').select('name').eq('id', String(match.sequence_id)).maybeSingle(),
+    match.sequence_id
+      ? ctx.adminClient.from('outreach_sequences').select('name').eq('id', match.sequence_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
   const firstName = String(profile?.display_name ?? '').trim().split(/\s+/)[0] || null;
 
@@ -556,18 +639,75 @@ async function findRecentOrgContact(
     createdBy: match.created_by ? String(match.created_by) : null,
     createdByFirstName: firstName,
     createdAt: String(match.created_at),
-    sequenceId: String(match.sequence_id),
+    sequenceId: match.sequence_id,
     sequenceName: seq?.name ? String(seq.name) : null,
+    source: match.source,
   };
 }
+
+/**
+ * Inscription du candidat, quel que soit son statut, dans CETTE séquence
+ * (même rapprochement que findRecentOrgContact). Cherchée à part du contact
+ * le plus récent : un contact plus récent ailleurs (InMail, autre séquence)
+ * la masquait, et force: true inscrivait une seconde fois sous un autre
+ * identifiant, que UNIQUE(sequence_id, profile_id) ne voit pas. Lève une
+ * erreur si la lecture échoue.
+ */
+async function isAlreadyInSequence(params: Record<string, unknown>, ctx: ToolContext): Promise<boolean> {
+  const rawValues = [params.candidate_id, params.profile_url]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(v => v.trim());
+  if (rawValues.length === 0) return false;
+  const keys = new Set<string>();
+  const queryValues = new Set<string>(rawValues);
+  const slugs = new Set<string>();
+  for (const value of rawValues) {
+    const key = normalizeEnrollmentKey(value);
+    if (key) { keys.add(key); queryValues.add(key); }
+    const slug = linkedInSlugOf(value);
+    if (slug) { keys.add(slug); queryValues.add(slug); slugs.add(slug); }
+  }
+  const list = Array.from(queryValues).map(quoteFilterValue).join(',');
+  const identityFilter = [
+    `profile_id.in.(${list})`,
+    `provider_id.in.(${list})`,
+    `resolved_profile_id.in.(${list})`,
+    ...Array.from(slugs)
+      .filter((slug) => /^[a-z0-9\-_.%~]+$/i.test(slug))
+      .map((slug) => `profile_url.ilike.*/in/${slug}*`),
+  ].join(',');
+  const { data, error } = await ctx.adminClient
+    .from('sequence_enrollments')
+    .select('profile_id, provider_id, resolved_profile_id, profile_url')
+    .eq('organization_id', ctx.organizationId)
+    .eq('sequence_id', String(params.sequence_id))
+    .or(identityFilter)
+    .limit(20);
+  if (error) throw new Error(`Vérification des inscriptions de la séquence impossible : ${error.message}`);
+  return ((data ?? []) as Array<Record<string, unknown>>).some((row) => {
+    const byKey = [row.profile_id, row.provider_id, row.resolved_profile_id].some((value) => {
+      const key = normalizeEnrollmentKey(value);
+      if (key && keys.has(key)) return true;
+      const slug = linkedInSlugOf(value);
+      return !!slug && keys.has(slug);
+    });
+    const urlSlug = linkedInSlugOf(row.profile_url);
+    return byKey || (!!urlSlug && slugs.has(urlSlug));
+  });
+}
+
+const GDPR_ENROLL_MESSAGE = "Ce candidat a demandé l'effacement de ses données : inscription impossible.";
+const GDPR_UNVERIFIED_MESSAGE = "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié. Réessayez dans un instant.";
 
 const enrollInSequence: AgentTool = {
   name: 'enroll_in_sequence',
   description:
-    "Enroll a candidate into an outreach sequence. The sequence steps will start being processed by the cron. " +
-    "Use when the user says 'enrôle X dans ma séquence Y', 'lance la séquence sur ce candidat'. " +
+    "Enroll a candidate into an outreach sequence. The first step is scheduled right away (within the step's preferred hours), then the sequence engine takes over. " +
+    "Use when the user says 'inscris X dans ma séquence Y', 'lance la séquence sur ce candidat'. " +
     "Requires the candidate to already exist on the mission and the sequence to belong to the user's org. " +
-    "Refused when the organization already contacted the candidate in the last 90 days (any sequence, any account); " +
+    "Messages are always sent from the requesting user's OWN connected LinkedIn account (never a teammate's): " +
+    "omit account_id to use it; an account_id that is not linked to the user is refused. " +
+    "Refused when the organization is already in a sequence with the candidate, or contacted them in the last 90 days (any sequence, any account, or a bulk InMail); " +
     "only an owner or admin can override with force: true after explicit confirmation.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -578,7 +718,10 @@ const enrollInSequence: AgentTool = {
       candidate_id: { type: 'string', description: 'Provider/Unipile ID of the candidate (used as provider_id).' },
       profile_url: { type: 'string', description: 'LinkedIn URL of the candidate.' },
       profile_name: { type: 'string', description: 'Display name (e.g. "Marie Martin").' },
-      account_id: { type: 'string', description: 'Unipile LinkedIn account_id of the recruiter who will send.' },
+      account_id: {
+        type: 'string',
+        description: "Optional. The requesting user's own connected LinkedIn account_id. Omit it: the user's own account is used.",
+      },
       job_id: { type: 'string', description: 'Mission UUID this enrollment is tied to.' },
       force: {
         type: 'boolean',
@@ -586,7 +729,7 @@ const enrollInSequence: AgentTool = {
           'Set to true only when the user explicitly confirms enrolling a candidate already contacted by the organization in the last 90 days. Owners and admins only.',
       },
     },
-    required: ['sequence_id', 'candidate_id', 'account_id', 'job_id'],
+    required: ['sequence_id', 'candidate_id', 'job_id'],
   },
 
   async verifyAccess(params, ctx) {
@@ -597,7 +740,7 @@ const enrollInSequence: AgentTool = {
     // Sequence must belong to the user's org
     const { data: seq } = await ctx.adminClient
       .from('outreach_sequences')
-      .select('id, organization_id, name, is_active')
+      .select('id, organization_id, name, is_active, created_by, project_id')
       .eq('id', sequenceId)
       .maybeSingle();
     if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
@@ -605,6 +748,33 @@ const enrollInSequence: AgentTool = {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
     }
     if (!seq.is_active) return { allowed: false, reason: `La séquence "${seq.name}" est désactivée` };
+
+    // D3 : un collaborateur n'inscrit que dans une séquence qu'il voit dans
+    // l'interface (RLS SELECT de B6 : la sienne, ou celle d'une mission dont
+    // il fait partie de l'équipe). Échec fermé si la lecture échoue.
+    if (seq.created_by !== ctx.userId) {
+      const role = await readCallerOrgRole(ctx);
+      if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+      if (!FULL_SEQUENCE_ROLES.has(role)) {
+        let inMissionTeam = false;
+        if (seq.project_id) {
+          const { data: teamRows, error: teamError } = await ctx.adminClient
+            .from('mission_team')
+            .select('id')
+            .eq('project_id', seq.project_id)
+            .eq('user_id', ctx.userId)
+            .limit(1);
+          if (teamError) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+          inMissionTeam = (teamRows ?? []).length > 0;
+        }
+        if (!inMissionTeam) {
+          return {
+            allowed: false,
+            reason: "Vous ne pouvez inscrire des candidats que dans vos propres séquences ou dans celles des missions dont vous faites partie de l'équipe.",
+          };
+        }
+      }
+    }
 
     // Job must also belong to org
     const { data: project } = await ctx.adminClient
@@ -616,22 +786,50 @@ const enrollInSequence: AgentTool = {
       return { allowed: false, reason: 'Mission inaccessible' };
     }
 
-    // Anti-doublon organisation (90 jours). Rejoué avant execute (SEC-002),
-    // donc la règle tient aussi à l'approbation.
+    // Plan : même garde que l'interface (sequences_send). Sans elle, le moteur
+    // passait l'inscription en pause « abonnement requis » au premier passage,
+    // alors que l'assistant avait annoncé la première action. Échec fermé.
+    try {
+      const gate = await getSubscriptionGate(ctx.adminClient as unknown as GateClient, ctx.organizationId);
+      if (!gate.canSendSequences) {
+        return {
+          allowed: false,
+          reason: "Votre offre actuelle ne permet pas l'envoi de séquences. Choisissez une offre pour inscrire des candidats.",
+        };
+      }
+    } catch {
+      return { allowed: false, reason: "Votre abonnement n'a pas pu être vérifié. Réessayez dans un instant." };
+    }
+
+    // Compte d'envoi (SEQ-043) : le compte LinkedIn relié de l'utilisateur
+    // dans cette organisation, en état OK. Jamais celui d'un collègue, même
+    // si le modèle reprend un account_id vu ailleurs.
+    const sending = await resolveSendingAccount(params, ctx);
+    if ('error' in sending) return { allowed: false, reason: sending.error };
+    if (sending.account_status !== 'OK') {
+      return {
+        allowed: false,
+        reason: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'inscrire des candidats.",
+      };
+    }
+
+    // Anti-doublon organisation. Rejoué avant execute (SEC-002), donc la règle
+    // tient aussi à l'approbation. Déjà dans cette séquence (tout statut, tout
+    // identifiant) : refus que force: true ne lève jamais.
+    const candidate = String(params.profile_name ?? params.candidate_id);
     let recent: Awaited<ReturnType<typeof findRecentOrgContact>>;
     try {
-      recent = await findRecentOrgContact(params, ctx);
-    } catch (err) {
-      return { allowed: false, reason: err instanceof Error ? err.message : String(err) };
-    }
-    if (recent) {
-      const candidate = String(params.profile_name ?? params.candidate_id);
-      if ('sequenceId' in (recent as object) && String((recent as { sequenceId?: unknown }).sequenceId ?? '') === String(params.sequence_id)) {
+      if (await isAlreadyInSequence(params, ctx)) {
         return {
           allowed: false,
           reason: `${candidate} est déjà inscrit dans cette séquence : pas de double inscription.`,
         };
       }
+      recent = await findRecentOrgContact(params, ctx);
+    } catch (err) {
+      return { allowed: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+    if (recent) {
       if (params.force !== true) {
         return {
           allowed: false,
@@ -659,7 +857,7 @@ const enrollInSequence: AgentTool = {
   },
 
   async dryRun(params, ctx) {
-    const [{ data: seq }, { data: project }, recent] = await Promise.all([
+    const [{ data: seq }, { data: project }, recent, sending] = await Promise.all([
       ctx.adminClient
         .from('outreach_sequences')
         .select('name')
@@ -671,33 +869,35 @@ const enrollInSequence: AgentTool = {
         .eq('id', String(params.job_id))
         .maybeSingle(),
       findRecentOrgContact(params, ctx),
+      resolveSendingAccount(params, ctx),
     ]);
 
-    // Check if already enrolled
-    const { data: existing } = await ctx.adminClient
-      .from('sequence_enrollments')
-      .select('id, current_step_order')
-      .eq('sequence_id', String(params.sequence_id))
-      .eq('provider_id', String(params.candidate_id))
-      .maybeSingle();
+    // Déjà dans cette séquence, sous quelque identifiant que ce soit.
+    const existing = await isAlreadyInSequence(params, ctx).catch(() => false);
 
     const candidate = String(params.profile_name ?? params.candidate_id);
+    const account = 'error' in sending ? null : sending;
+    const accountLabel = account ? `« ${account.account_name ?? 'votre compte LinkedIn'} »` : null;
     const warning = existing
-      ? 'Ce candidat est déjà dans cette séquence, pas de double enrôlement.'
+      ? 'Ce candidat est déjà dans cette séquence : pas de double inscription.'
       : recent
         ? `${formatRecentContact(recent)}. Inscription forcée par dérogation (force: true).`
         : undefined;
 
     return {
       summary: existing
-        ? `${candidate} est déjà enrôlé dans « ${seq?.name ?? 'cette séquence'} »`
-        : `Enrôler ${candidate} dans « ${seq?.name ?? 'cette séquence'} » pour la mission ${project?.job_title ?? project?.name ?? params.job_id}` +
+        ? `${candidate} est déjà inscrit dans « ${seq?.name ?? 'cette séquence'} »`
+        : `Inscrire ${candidate} dans « ${seq?.name ?? 'cette séquence'} » pour la mission ${project?.job_title ?? project?.name ?? params.job_id}` +
+          (accountLabel ? `, envoi depuis votre compte LinkedIn ${accountLabel}` : '') +
           (recent ? ' malgré un contact récent de l\'organisation' : ''),
       details: {
         sequence_name: seq?.name ?? null,
         candidate,
         job: project?.job_title ?? project?.name ?? null,
         already_enrolled: !!existing,
+        sending_account: account
+          ? { account_id: account.account_id, name: account.account_name, status: account.account_status }
+          : null,
         recent_contact: recent
           ? {
               contacted_by: recent.createdBy,
@@ -723,6 +923,88 @@ const enrollInSequence: AgentTool = {
       recent = null;
     }
 
+    // Compte d'envoi relu à l'exécution (account_id peut être absent).
+    const sending = await resolveSendingAccount(params, ctx);
+    if ('error' in sending) return { success: false, error: sending.error };
+    if (sending.account_status !== 'OK') {
+      return { success: false, error: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'inscrire des candidats." };
+    }
+
+    // D5 : candidat effacé, même par un effacement limité à l'organisation
+    // (marqueur de l'une de ses inscriptions, rapprochée par identifiant
+    // LinkedIn même sans profile_url) ou au registre global. Relu à
+    // l'exécution : une action programmée voit l'effacement survenu depuis
+    // l'approbation. Échec fermé.
+    try {
+      const erased = await isCandidateErasedForOrg(ctx.adminClient, {
+        organizationId: ctx.organizationId,
+        linkedinIds: [typeof params.candidate_id === 'string' ? params.candidate_id : null],
+        linkedinUrl: typeof params.profile_url === 'string' ? params.profile_url : null,
+      });
+      if (erased) return { success: false, error: GDPR_ENROLL_MESSAGE };
+    } catch (err) {
+      console.error('[enroll_in_sequence] erasure check failed:', err);
+      return { success: false, error: GDPR_UNVERIFIED_MESSAGE };
+    }
+
+    // Première étape (SEQ-044) : étape racine de plus petit step_order.
+    const { data: steps, error: stepsError } = await ctx.adminClient
+      .from('sequence_steps')
+      .select('id, step_order, delay_days, delay_hours, delay_minutes, preferred_hour_start, preferred_hour_end, parent_step_id, branch, if_true_goto_step, if_false_goto_step, timeout_branch_step_id, next_step_id')
+      .eq('sequence_id', String(params.sequence_id));
+    if (stepsError) return { success: false, error: `Lecture des étapes impossible : ${stepsError.message}` };
+    const firstStep = pickFirstRootStep((steps ?? []) as Array<{
+      id: string;
+      step_order: number | null;
+      delay_days: number | null;
+      delay_hours: number | null;
+      delay_minutes: number | null;
+      preferred_hour_start: number | null;
+      preferred_hour_end: number | null;
+      parent_step_id: string | null;
+      branch: string | null;
+      if_true_goto_step: string | null;
+      if_false_goto_step: string | null;
+      timeout_branch_step_id: string | null;
+      next_step_id: string | null;
+    }>);
+    if (!firstStep) {
+      return { success: false, error: "Cette séquence n'a aucune étape : ajoutez-en une avant d'inscrire des candidats." };
+    }
+
+    // Coordonnées connues du candidat (SEQ-066), sources gratuites seulement
+    // (enrichissements de l'organisation, fiche du pipeline) : sans elles, le
+    // moteur saute toute étape e-mail ou WhatsApp. Candidat ayant demandé
+    // l'effacement de ses données : inscription refusée.
+    let emailUsed: string | null = null;
+    let phoneUsed: string | null = null;
+    if (typeof params.profile_url === 'string' && params.profile_url.trim()) {
+      try {
+        const contact = await getOrFetchContact(ctx.adminClient, {
+          organizationId: ctx.organizationId,
+          linkedinUrl: params.profile_url,
+        });
+        if (contact.gdprBlocked) {
+          return { success: false, error: GDPR_ENROLL_MESSAGE };
+        }
+        emailUsed = contact.email ? contact.email.trim().toLowerCase() : null;
+        phoneUsed = contact.phone ? String(contact.phone).trim() || null : null;
+      } catch (err) {
+        // Décision 13 : registre des effacements illisible, inscription refusée.
+        if (err instanceof GdprRegistryUnavailableError) return { success: false, error: GDPR_UNVERIFIED_MESSAGE };
+        console.warn('[enroll_in_sequence] contact lookup failed (non-blocking):', err);
+      }
+    }
+
+    // Fuseau de l'inscripteur (member_quotas de l'organisation), comme l'interface.
+    const { data: quotaRow } = await ctx.adminClient
+      .from('member_quotas')
+      .select('timezone')
+      .eq('user_id', ctx.userId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+    const userTimezone = validTimeZone(typeof quotaRow?.timezone === 'string' ? quotaRow.timezone : null);
+
     const { data, error } = await ctx.adminClient
       .from('sequence_enrollments')
       .insert({
@@ -731,11 +1013,15 @@ const enrollInSequence: AgentTool = {
         provider_id: String(params.candidate_id),
         profile_url: params.profile_url ? String(params.profile_url) : null,
         profile_name: params.profile_name ? String(params.profile_name) : null,
-        account_id: String(params.account_id),
+        account_id: sending.account_id,
         job_id: String(params.job_id),
         organization_id: ctx.organizationId,
         created_by: ctx.userId,
         current_step_order: 0,
+        status: 'active',
+        user_timezone: userTimezone,
+        email_used: emailUsed,
+        phone_used: phoneUsed,
       })
       .select('id, current_step_order')
       .single();
@@ -746,10 +1032,51 @@ const enrollInSequence: AgentTool = {
         error: error.code === '23505' ? 'Ce candidat est déjà inscrit dans cette séquence.' : error.message,
       };
     }
+
+    // Première exécution planifiée tout de suite, comme l'interface. Sans
+    // elle, l'inscription restait gelée (rattrapage horaire du moteur) ou était
+    // close sans envoi sur une séquence numérotée à partir de 1.
+    const scheduledAt = firstExecutionTime(
+      new Date(),
+      { days: firstStep.delay_days, hours: firstStep.delay_hours, minutes: firstStep.delay_minutes },
+      { start: firstStep.preferred_hour_start, end: firstStep.preferred_hour_end },
+      userTimezone,
+    );
+    const { error: execError } = await ctx.adminClient
+      .from('sequence_step_executions')
+      .insert({
+        enrollment_id: data.id,
+        step_id: firstStep.id,
+        step_order: firstStep.step_order ?? 0,
+        scheduled_at: scheduledAt.toISOString(),
+        status: 'scheduled',
+        organization_id: ctx.organizationId,
+      });
+    if (execError) {
+      const { error: cleanupError } = await ctx.adminClient
+        .from('sequence_enrollments')
+        .delete()
+        .eq('id', data.id)
+        .eq('organization_id', ctx.organizationId);
+      if (cleanupError) console.error('[enroll_in_sequence] enrollment cleanup failed:', cleanupError);
+      return {
+        success: false,
+        error: `La première étape n'a pas pu être planifiée : l'inscription est annulée. Réessayez. (${execError.message})`,
+      };
+    }
+
+    const when = scheduledAt.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: userTimezone });
+    const candidate = String(params.profile_name ?? params.candidate_id);
     return {
       success: true,
       data: {
         enrollment_id: data.id,
+        first_step_scheduled_at: scheduledAt.toISOString(),
+        sending_account: { account_id: sending.account_id, name: sending.account_name },
+        email_known: !!emailUsed,
+        message: recent
+          ? `${candidate} est inscrit par dérogation (${formatRecentContact(recent)}). Première action prévue le ${when}.`
+          : `${candidate} est inscrit. Première action prévue le ${when}.`,
         ...(recent
           ? {
               recent_contact: {
@@ -759,7 +1086,6 @@ const enrollInSequence: AgentTool = {
                 sequence_id: recent.sequenceId,
                 sequence_name: recent.sequenceName,
               },
-              message: `Inscrit par dérogation : ${formatRecentContact(recent)}.`,
             }
           : {}),
       },
@@ -2078,13 +2404,13 @@ const regenerateSearchFilters: AgentTool = {
 async function resolveSendingAccount(
   params: Record<string, unknown>,
   ctx: ToolContext,
-): Promise<{ account_id: string; account_status: string | null } | { error: string }> {
+): Promise<{ account_id: string; account_status: string | null; account_name: string | null } | { error: string }> {
   const requested = params.account_id ? String(params.account_id).trim() : '';
 
   if (requested) {
     const { data } = await ctx.adminClient
       .from('member_linkedin_accounts')
-      .select('linkedin_account_id, account_status')
+      .select('linkedin_account_id, account_status, linkedin_account_name')
       .eq('linkedin_account_id', requested)
       .eq('user_id', ctx.userId)
       .eq('organization_id', ctx.organizationId)
@@ -2095,28 +2421,97 @@ async function resolveSendingAccount(
     return {
       account_id: (data as Record<string, unknown>).linkedin_account_id as string,
       account_status: ((data as Record<string, unknown>).account_status as string | null) ?? null,
+      account_name: ((data as Record<string, unknown>).linkedin_account_name as string | null) ?? null,
     };
   }
 
   // Fallback : take the user's first LinkedIn account (status=OK first)
   const { data: accounts } = await ctx.adminClient
     .from('member_linkedin_accounts')
-    .select('linkedin_account_id, account_status, linked_at')
+    .select('linkedin_account_id, account_status, linkedin_account_name, linked_at')
     .eq('user_id', ctx.userId)
     .eq('organization_id', ctx.organizationId)
     .order('linked_at', { ascending: true });
 
-  const list = (accounts ?? []) as Array<{ linkedin_account_id: string; account_status: string | null; linked_at: string }>;
+  const list = (accounts ?? []) as Array<{ linkedin_account_id: string; account_status: string | null; linkedin_account_name: string | null; linked_at: string }>;
   if (list.length === 0) {
-    return { error: "Aucun compte LinkedIn n'est connecté à votre profil. Connecte-en un via Paramètres → Comptes connectés." };
+    return { error: "Aucun compte LinkedIn n'est relié à votre profil. Reliez-en un depuis Paramètres > Mon compte." };
   }
   // Prefer the first OK account ; otherwise return the first connected (the
   // status check below will reject CREDENTIALS / DISCONNECTED with a clearer
   // error than "no account").
   const okOne = list.find((a) => a.account_status === 'OK');
   const chosen = okOne ?? list[0];
-  return { account_id: chosen.linkedin_account_id, account_status: chosen.account_status };
+  return { account_id: chosen.linkedin_account_id, account_status: chosen.account_status, account_name: chosen.linkedin_account_name ?? null };
 }
+
+const CHAT_NOT_IN_ORG_MESSAGE = "Cette conversation n'appartient pas à un compte LinkedIn de votre organisation";
+
+/**
+ * Compte qui porte une conversation existante (GET /chats/{id}) : c'est lui
+ * qui envoie la réponse, quel que soit l'account_id transmis. Il doit être un
+ * compte relié de l'appelant dans l'organisation (SEQ-043, jamais celui d'un
+ * collègue) : unipile-search ne contrôle que l'organisation, et le quota était
+ * compté sur le compte de l'appelant alors que le message partait de celui du
+ * collègue. Renvoie aussi l'identifiant LinkedIn du destinataire quand le
+ * prestataire le donne (contrôle RGPD).
+ */
+async function resolveChatSendingAccount(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<{ account_id: string; account_status: string | null; attendee_provider_id: string | null } | { error: string }> {
+  const chatId = String(params.chat_id ?? '').trim();
+  if (!chatId || chatId.length > 512 || chatId.includes('..') || /[/\\?#]/.test(chatId)) {
+    return { error: 'chat_id invalide' };
+  }
+  let creds: { apiKey: string; dsn: string } | null = null;
+  try {
+    creds = await resolveUnipileCredentials(ctx.organizationId, ctx.adminClient);
+  } catch (e) {
+    console.error('[send_linkedin_message] credentials error:', e);
+  }
+  if (!creds) return { error: 'Connexion LinkedIn indisponible : réessayez dans un instant.' };
+  const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
+
+  let chat: Record<string, unknown> | null = null;
+  try {
+    const res = await fetchWithTimeout(`${baseDsn}/api/v1/chats/${encodeURIComponent(chatId)}`, {
+      headers: { 'X-API-KEY': creds.apiKey, 'Accept': 'application/json' },
+    });
+    if (!res.ok) return { error: 'Conversation LinkedIn introuvable.' };
+    chat = await res.json().catch(() => null);
+  } catch {
+    return { error: "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant." };
+  }
+  const ownerId = typeof chat?.account_id === 'string' ? chat.account_id.trim() : '';
+  if (!ownerId) return { error: CHAT_NOT_IN_ORG_MESSAGE };
+
+  const { data: links, error } = await ctx.adminClient
+    .from('member_linkedin_accounts')
+    .select('user_id, account_status')
+    .eq('organization_id', ctx.organizationId)
+    .eq('linkedin_account_id', ownerId)
+    .limit(5);
+  if (error) return { error: "La conversation LinkedIn n'a pas pu être vérifiée : réessayez dans un instant." };
+  const rows = (links ?? []) as Array<{ user_id: string | null; account_status: string | null }>;
+  if (rows.length === 0) return { error: CHAT_NOT_IN_ORG_MESSAGE };
+  const own = rows.find((r) => r.user_id === ctx.userId);
+  if (!own) {
+    return {
+      error: "Cette conversation appartient au compte LinkedIn d'un autre membre de l'équipe : vous ne pouvez répondre que depuis votre propre compte.",
+    };
+  }
+  const requested = params.account_id ? String(params.account_id).trim() : '';
+  if (requested && requested !== ownerId) {
+    return { error: "Cette conversation n'appartient pas au compte LinkedIn indiqué." };
+  }
+  const attendee = typeof chat?.attendee_provider_id === 'string' ? chat.attendee_provider_id.trim() : '';
+  return { account_id: ownerId, account_status: own.account_status ?? null, attendee_provider_id: attendee || null };
+}
+
+const GDPR_MESSAGE_REFUSED = "Ce candidat a demandé l'effacement de ses données : message impossible.";
+const SENDING_ACCOUNT_CHANGED_MESSAGE =
+  "Votre compte LinkedIn d'envoi a changé depuis l'approbation : le message n'est pas parti. Redemandez l'envoi pour qu'il parte de votre compte actuel.";
 
 const sendLinkedInMessage: AgentTool = {
   name: 'send_linkedin_message',
@@ -2193,7 +2588,39 @@ const sendLinkedInMessage: AgentTool = {
     const resolved = await resolveSendingAccount(params, ctx);
     if ('error' in resolved) return { allowed: false, reason: resolved.error };
     if (resolved.account_status && resolved.account_status !== 'OK') {
-      return { allowed: false, reason: `Compte LinkedIn ${resolved.account_id} en statut "${resolved.account_status}". Reconnecte-le avant d'envoyer.` };
+      return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
+    }
+
+    // Toujours membre de l'organisation : rejoué par le cron, une liaison
+    // LinkedIn restée en place après un retrait ne suffit pas. Échec fermé.
+    if (!(await readCallerOrgRole(ctx))) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+
+    // Réponse dans une conversation : elle doit être portée par un compte de
+    // l'appelant (jamais celui d'un collègue).
+    let recipient = recipientId;
+    if (chatId) {
+      const chat = await resolveChatSendingAccount(params, ctx);
+      if ('error' in chat) return { allowed: false, reason: chat.error };
+      if (chat.account_status && chat.account_status !== 'OK') {
+        return { allowed: false, reason: "Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer." };
+      }
+      recipient = chat.attendee_provider_id ?? '';
+    }
+
+    // D5 : jamais de message à un candidat effacé (marqueur d'une inscription
+    // de l'organisation ou registre global). Rejoué avant l'envoi, y compris
+    // par le cron pour un message programmé. Échec fermé.
+    if (recipient) {
+      try {
+        const erased = await isCandidateErasedForOrg(ctx.adminClient, {
+          organizationId: ctx.organizationId,
+          linkedinIds: [recipient],
+        });
+        if (erased) return { allowed: false, reason: GDPR_MESSAGE_REFUSED };
+      } catch (err) {
+        console.error('[send_linkedin_message] erasure check failed:', err);
+        return { allowed: false, reason: GDPR_UNVERIFIED_MESSAGE };
+      }
     }
 
     return { allowed: true };
@@ -2300,9 +2727,23 @@ const sendLinkedInMessage: AgentTool = {
   async execute(params, ctx) {
     const resolved = await resolveSendingAccount(params, ctx);
     if ('error' in resolved) return { success: false, error: resolved.error };
-    const accountId = resolved.account_id;
+    let accountId = resolved.account_id;
     const text = String(params.text);
     const chatId = params.chat_id ? String(params.chat_id) : null;
+    // Réponse : le quota va au compte qui porte la conversation, celui qui
+    // envoie réellement (un compte de l'appelant, vérifié ici aussi).
+    if (chatId) {
+      const chat = await resolveChatSendingAccount(params, ctx);
+      if ('error' in chat) return { success: false, error: chat.error };
+      accountId = chat.account_id;
+    }
+    // Décision 34 : message programmé dont le compte d'envoi n'est plus celui
+    // affiché à l'approbation (liaison remplacée avant l'échéance) : échec,
+    // rien ne part du nouveau compte.
+    const approvedAccount = typeof ctx.approvedDetails?.account_id === 'string' ? ctx.approvedDetails.account_id.trim() : '';
+    if (approvedAccount && approvedAccount !== accountId) {
+      return { success: false, error: SENDING_ACCOUNT_CHANGED_MESSAGE };
+    }
     const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : null;
     const isInmail = params.is_inmail === true;
     const subject = params.subject ? String(params.subject) : null;
@@ -2347,6 +2788,34 @@ const sendLinkedInMessage: AgentTool = {
         return { success: false, error: data.error || `LinkedIn send failed (HTTP ${response.status})` };
       }
 
+      // Suivi de l'envoi, comme le message direct de l'interface (SEQ-118) :
+      // ligne inmail_queue « sent », lue par l'anti-doublon d'inscription,
+      // get_candidate_outreach et le pipeline. Une réponse dans une
+      // conversation n'est pas suivie (pas plus que depuis la messagerie).
+      // Le message est parti : un échec du suivi est signalé, sans échec.
+      let trackingWarning: string | null = null;
+      if (recipientId) {
+        const { error: trackError } = await ctx.adminClient
+          .from('inmail_queue')
+          .insert({
+            organization_id: ctx.organizationId,
+            created_by: ctx.userId,
+            account_id: accountId,
+            recipient_profile_id: recipientId,
+            recipient_name: params.recipient_name ? String(params.recipient_name).trim() || null : null,
+            subject: subject || '(Message direct)',
+            message: text,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            network_distance: isInmail ? 2 : 1,
+          })
+          .select('id');
+        if (trackError) {
+          console.error('[send_linkedin_message] tracking insert failed:', trackError);
+          trackingWarning = "Le message est parti, mais son suivi n'a pas été enregistré : ce candidat n'apparaîtra pas dans le pipeline pour cet envoi.";
+        }
+      }
+
       return {
         success: true,
         data: {
@@ -2355,6 +2824,7 @@ const sendLinkedInMessage: AgentTool = {
             : isInmail
             ? 'InMail envoyé.'
             : 'Message LinkedIn envoyé (nouvelle conversation créée).',
+          ...(trackingWarning ? { tracking_warning: trackingWarning } : {}),
           quota_after: {
             count_today: quotaCheck.count_today + 1,
             max_per_day: quotaCheck.max_per_day,
@@ -2369,16 +2839,49 @@ const sendLinkedInMessage: AgentTool = {
 };
 
 // ─── Tool 14 — pause_sequence ───────────────────────────────────────────────
-// Met en pause une séquence outreach (is_active=false). Les steps en attente
-// restent dans sequence_step_executions mais le cron skip les enrollments
-// quand is_active=false.
+// Met en pause une séquence outreach. Le moteur ne lit PAS is_active (SEQ-024) :
+// mettre la séquence en pause, c'est mettre ses inscriptions actives en pause
+// (status 'paused', pause_reason 'sequence_inactive'), comme la désactivation
+// depuis l'interface. Les étapes planifiées gardent leur date (le moteur ignore
+// celles d'une inscription en pause) et repartent à la reprise.
+
+type GateClient = Parameters<typeof getSubscriptionGate>[0];
+
+/** Raisons de pause reprises par la réactivation d'une séquence (contrat des lots, §2). */
+const SEQUENCE_LEVEL_PAUSE_REASONS = ['sequence_inactive', 'auto_paused'];
+
+// D3 (contrat §7 et §8) : un collaborateur n'agit que sur les inscriptions
+// qu'il a créées, comme la RLS de B6. Ces outils écrivent en clé de service :
+// sans ce contrôle, l'assistant rouvrait au collaborateur ce que l'interface
+// et process-sequences lui refusent. Seuls ces trois rôles agissent sur toute
+// la séquence ; tout autre rôle est traité comme un collaborateur.
+const FULL_SEQUENCE_ROLES = new Set(['owner', 'admin', 'member']);
+const RIGHTS_UNVERIFIED_MESSAGE = "Vos droits n'ont pas pu être vérifiés. Réessayez dans un instant.";
+
+/**
+ * Rôle exact de l'appelant dans l'organisation courante (organization_members).
+ * null si la lecture échoue ou s'il n'est pas membre : l'appelant refuse
+ * (échec fermé). Ne pas reprendre resolveRole de agent-tools-reads.ts, qui
+ * ne distingue pas un échec de lecture d'un collaborateur.
+ */
+async function readCallerOrgRole(ctx: ToolContext): Promise<string | null> {
+  const { data, error } = await ctx.adminClient
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', ctx.organizationId)
+    .eq('user_id', ctx.userId)
+    .maybeSingle();
+  if (error || !data || typeof data.role !== 'string') return null;
+  return data.role;
+}
 
 const pauseSequence: AgentTool = {
   name: 'pause_sequence',
   description:
-    "Pause an outreach sequence (stops all enrolled candidates from progressing). " +
+    "Pause an outreach sequence: every candidate currently in progress is paused (no message leaves until resume_sequence). " +
     "Use this when the user says 'mets en pause la séquence X', 'arrête temporairement Y'. " +
-    "Reversible via `resume_sequence`. The enrolled candidates and their progress are preserved. " +
+    "Reversible via `resume_sequence`. The enrolled candidates and their scheduled steps are preserved. " +
+    "Refused to users with the collaborator role (it would pause their teammates' candidates too). " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -2406,6 +2909,18 @@ const pauseSequence: AgentTool = {
     if (seq.organization_id !== ctx.organizationId) {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
     }
+    // D3 (contrat §8) : refusé à tout collaborateur, même auteur de la
+    // séquence (la mise en pause gèlerait aussi les inscriptions de ses
+    // collègues), comme la désactivation depuis l'interface.
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+    if (!FULL_SEQUENCE_ROLES.has(role)) {
+      return {
+        allowed: false,
+        reason:
+          "En tant que collaborateur, vous ne pouvez pas mettre en pause une séquence entière : cela mettrait en pause les candidats de toute l'équipe. Mettez vos candidats en pause un par un depuis la liste des inscrits.",
+      };
+    }
     return { allowed: true };
   },
 
@@ -2421,22 +2936,24 @@ const pauseSequence: AgentTool = {
         .from('sequence_enrollments')
         .select('id', { count: 'exact', head: true })
         .eq('sequence_id', sequenceId)
-        .in('status', ['active', 'pending']),
+        .eq('organization_id', ctx.organizationId)
+        .eq('status', 'active'),
     ]);
 
     const seqName = seq?.name || sequenceId;
-    const isNoOp = seq?.is_active === false;
+    const active = activeEnrollments ?? 0;
+    const isNoOp = seq?.is_active === false && active === 0;
 
     return {
       summary: isNoOp
         ? `La séquence "${seqName}" est déjà en pause`
-        : `Mettre en pause la séquence "${seqName}" (${activeEnrollments ?? 0} candidats actifs gelés)`,
+        : `Mettre en pause la séquence "${seqName}" : ${active} candidat(s) en cours mis en pause, aucun message ne partira avant la reprise`,
       details: {
         sequence_id: sequenceId,
         sequence_name: seqName,
         from_is_active: seq?.is_active ?? null,
         to_is_active: false,
-        active_enrollments: activeEnrollments ?? 0,
+        active_enrollments: active,
         is_no_op: isNoOp,
       },
       warning: isNoOp ? 'Aucun changement.' : undefined,
@@ -2445,34 +2962,68 @@ const pauseSequence: AgentTool = {
 
   async execute(params, ctx) {
     const sequenceId = String(params.sequence_id);
+    const nowIso = new Date().toISOString();
+
+    // 1. Inscriptions actives en pause d'abord : si la suite échoue, aucun
+    //    message ne part (l'inverse laissait une séquence « en pause » qui
+    //    envoyait encore).
+    const { data: paused, error: pauseError } = await ctx.adminClient
+      .from('sequence_enrollments')
+      .update({ status: 'paused', pause_reason: 'sequence_inactive', updated_at: nowIso })
+      .eq('sequence_id', sequenceId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('status', 'active')
+      .select('id');
+    if (pauseError) {
+      return {
+        success: false,
+        error: `Les candidats de la séquence n'ont pas pu être mis en pause : rien n'a changé, les envois continuent. (${pauseError.message})`,
+      };
+    }
+    const pausedCount = (paused ?? []).length;
+
+    // 2. La séquence elle-même.
     const { data, error } = await ctx.adminClient
       .from('outreach_sequences')
       .update({ is_active: false })
       .eq('id', sequenceId)
       .eq('organization_id', ctx.organizationId)
-      .select('id, is_active, updated_at')
-      .single();
-    if (error) return { success: false, error: error.message };
+      .select('id, is_active, updated_at');
+    const row = ((data ?? []) as Array<{ id: string; is_active: boolean; updated_at: string }>)[0];
+    if (error || !row) {
+      return {
+        success: false,
+        error: `${pausedCount} candidat(s) mis en pause, mais la séquence n'a pas pu être marquée en pause. Aucun message ne partira ; relancez la mise en pause pour terminer.`,
+      };
+    }
     return {
       success: true,
       data: {
-        sequence_id: data.id,
-        is_active: data.is_active,
-        updated_at: data.updated_at,
-        message: 'Séquence en pause. Les candidats inscrits ne progresseront plus jusqu\'à la reprise.',
+        sequence_id: row.id,
+        is_active: row.is_active,
+        updated_at: row.updated_at,
+        paused_enrollments: pausedCount,
+        message: `Séquence en pause : ${pausedCount} candidat(s) mis en pause. Aucun message ne partira avant la reprise.`,
       },
     };
   },
 };
 
 // ─── Tool 15 — resume_sequence ──────────────────────────────────────────────
-// Réactive une séquence pausée (is_active=true).
+// Réactive une séquence en pause : is_active true, puis reprise côté serveur
+// des inscriptions mises en pause avec la séquence (pause_reason
+// 'sequence_inactive' ou 'auto_paused'), par l'action resume_enrollments de
+// process-sequences (étape en attente gardée à sa date, compte d'envoi
+// vérifié). Les pauses manuelles, abonnement, compte déconnecté ne reprennent
+// pas.
 
 const resumeSequence: AgentTool = {
   name: 'resume_sequence',
   description:
-    "Resume a paused outreach sequence — enrolled candidates start progressing again on the next cron tick. " +
+    "Resume a paused outreach sequence — the candidates paused with the sequence start progressing again (each step keeps its planned date). " +
+    "Candidates paused individually, for a disconnected account or for billing are NOT resumed. " +
     "Use this when the user says 'relance la séquence X', 'réactive Y'. " +
+    "A user with the collaborator role can only resume a sequence they created, and only their own candidates resume. " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -2492,44 +3043,85 @@ const resumeSequence: AgentTool = {
     if (!sequenceId) return { allowed: false, reason: 'sequence_id is required' };
     const { data: seq } = await ctx.adminClient
       .from('outreach_sequences')
-      .select('id, organization_id')
+      .select('id, organization_id, created_by')
       .eq('id', sequenceId)
       .maybeSingle();
     if (!seq) return { allowed: false, reason: `Séquence ${sequenceId} introuvable` };
     if (seq.organization_id !== ctx.organizationId) {
       return { allowed: false, reason: 'Cette séquence appartient à une autre organisation' };
     }
+    // D3 (contrat §8) : un collaborateur ne réactive que ses propres
+    // séquences (même règle que la RLS org_members_update), et seulement avec
+    // son JWT, pour que process-sequences ne reprenne que ses inscriptions.
+    // Sans JWT (exécution programmée), refus plutôt que la clé de service.
+    // Rejoué juste avant execute (recheckAccess, SEC-002).
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { allowed: false, reason: RIGHTS_UNVERIFIED_MESSAGE };
+    if (!FULL_SEQUENCE_ROLES.has(role)) {
+      if (seq.created_by !== ctx.userId) {
+        return { allowed: false, reason: 'Vous ne pouvez réactiver que les séquences que vous avez créées.' };
+      }
+      if (!ctx.userBearer) {
+        return {
+          allowed: false,
+          reason: "La réactivation de votre séquence doit être validée depuis la conversation avec l'assistant : relancez-la depuis le chat.",
+        };
+      }
+    }
+    // Plan d'abord : sans envoi de séquences, le moteur remettrait aussitôt
+    // les candidats en pause (abonnement requis).
+    try {
+      // Client typé comme l'attend le helper (son type « no-check » diffère de
+      // celui de ToolContext ; même objet à l'exécution).
+      const gate = await getSubscriptionGate(ctx.adminClient as unknown as GateClient, ctx.organizationId);
+      if (!gate.canSendSequences) {
+        return {
+          allowed: false,
+          reason: "Votre offre actuelle ne permet pas l'envoi de séquences. Choisissez une offre pour réactiver cette séquence.",
+        };
+      }
+    } catch {
+      return { allowed: false, reason: "Votre abonnement n'a pas pu être vérifié. Réessayez dans un instant." };
+    }
     return { allowed: true };
   },
 
   async dryRun(params, ctx) {
     const sequenceId = String(params.sequence_id);
+    // Un collaborateur ne reprend que ses inscriptions (D3) : l'aperçu ne
+    // compte que celles-là.
+    const role = await readCallerOrgRole(ctx);
+    let toResumeQuery = ctx.adminClient
+      .from('sequence_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('sequence_id', sequenceId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('status', 'paused')
+      .in('pause_reason', SEQUENCE_LEVEL_PAUSE_REASONS);
+    if (!role || !FULL_SEQUENCE_ROLES.has(role)) toResumeQuery = toResumeQuery.eq('created_by', ctx.userId);
     const [{ data: seq }, { count: enrollments }] = await Promise.all([
       ctx.adminClient
         .from('outreach_sequences')
         .select('name, is_active')
         .eq('id', sequenceId)
         .maybeSingle(),
-      ctx.adminClient
-        .from('sequence_enrollments')
-        .select('id', { count: 'exact', head: true })
-        .eq('sequence_id', sequenceId)
-        .in('status', ['active', 'pending']),
+      toResumeQuery,
     ]);
 
     const seqName = seq?.name || sequenceId;
-    const isNoOp = seq?.is_active === true;
+    const toResume = enrollments ?? 0;
+    const isNoOp = seq?.is_active === true && toResume === 0;
 
     return {
       summary: isNoOp
         ? `La séquence "${seqName}" est déjà active`
-        : `Réactiver la séquence "${seqName}" (${enrollments ?? 0} candidats reprendront leur progression)`,
+        : `Réactiver la séquence "${seqName}" : ${toResume} candidat(s) en pause reprendront, chaque étape garde sa date prévue`,
       details: {
         sequence_id: sequenceId,
         sequence_name: seqName,
         from_is_active: seq?.is_active ?? null,
         to_is_active: true,
-        enrollments_to_resume: enrollments ?? 0,
+        enrollments_to_resume: toResume,
         is_no_op: isNoOp,
       },
       warning: isNoOp ? 'Aucun changement.' : undefined,
@@ -2538,21 +3130,90 @@ const resumeSequence: AgentTool = {
 
   async execute(params, ctx) {
     const sequenceId = String(params.sequence_id);
+
+    // 0. Identité de l'appel à process-sequences, décidée AVANT de réactiver
+    //    la séquence : clé de service pour propriétaire, administrateur et
+    //    membre (reprise de toute la séquence), JWT de l'utilisateur pour un
+    //    collaborateur (process-sequences ne reprend alors que ses propres
+    //    inscriptions, D3). Collaborateur sans JWT : refus, jamais la clé de service.
+    const role = await readCallerOrgRole(ctx);
+    if (!role) return { success: false, error: RIGHTS_UNVERIFIED_MESSAGE };
+    const actsForWholeSequence = FULL_SEQUENCE_ROLES.has(role);
+    if (!actsForWholeSequence && !ctx.userBearer) {
+      return {
+        success: false,
+        error: "La réactivation de votre séquence doit être validée depuis la conversation avec l'assistant : relancez-la depuis le chat. Rien n'a changé.",
+      };
+    }
+
+    // 1. La séquence d'abord : l'inverse ferait envoyer une séquence encore
+    //    affichée « en pause ».
     const { data, error } = await ctx.adminClient
       .from('outreach_sequences')
       .update({ is_active: true })
       .eq('id', sequenceId)
       .eq('organization_id', ctx.organizationId)
-      .select('id, is_active, updated_at')
-      .single();
-    if (error) return { success: false, error: error.message };
+      .select('id, is_active, updated_at');
+    const row = ((data ?? []) as Array<{ id: string; is_active: boolean; updated_at: string }>)[0];
+    if (error || !row) {
+      return { success: false, error: `La séquence n'a pas pu être réactivée${error ? ` (${error.message})` : ''}.` };
+    }
+
+    // 2. Reprise des candidats par l'action serveur (règle unique de reprise).
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const callerToken = actsForWholeSequence ? serviceKey : ctx.userBearer;
+    const partial = "La séquence est active, mais la reprise des candidats en pause a échoué : ils restent en pause. Réessayez depuis la liste des séquences.";
+    if (!supabaseUrl || !callerToken) return { success: false, error: partial };
+    let body: {
+      success?: boolean;
+      message?: string;
+      counts?: Partial<Record<'resumed' | 'nothing_to_resume' | 'account_unlinked' | 'not_paused' | 'error', number>>;
+      /** Inscriptions non traitées dans le budget de temps de l'action serveur (un second appel les reprend). */
+      remaining?: number;
+      /** Inscriptions en pause laissées de côté car créées par des collègues (appelant collaborateur, contrat §8). */
+      other_members?: number;
+    } = {};
+    try {
+      const res = await fetchWithTimeout(`${supabaseUrl}/functions/v1/process-sequences`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${callerToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'resume_enrollments',
+          organization_id: ctx.organizationId,
+          sequence_id: sequenceId,
+          pause_reasons: SEQUENCE_LEVEL_PAUSE_REASONS,
+        }),
+      }, 45_000);
+      body = await res.json().catch(() => ({}));
+      if (!res.ok || body.success !== true) {
+        return { success: false, error: body.message ? `${partial} (${body.message})` : partial };
+      }
+    } catch {
+      return { success: false, error: partial };
+    }
+
+    const counts = body.counts ?? {};
+    const resumed = counts.resumed ?? 0;
+    const unlinked = counts.account_unlinked ?? 0;
+    const failed = counts.error ?? 0;
+    const remaining = typeof body.remaining === 'number' && body.remaining > 0 ? body.remaining : 0;
+    const notes: string[] = [];
+    if (unlinked > 0) notes.push(`${unlinked} restent en pause : leur compte LinkedIn d'envoi n'est plus relié`);
+    if (failed > 0) notes.push(`${failed} n'ont pas pu être repris`);
+    if (remaining > 0) notes.push(`${remaining} n'ont pas encore été traités faute de temps : relancez la réactivation pour les reprendre`);
+    const otherMembers = typeof body.other_members === 'number' && body.other_members > 0 ? body.other_members : 0;
+    if (otherMembers > 0) notes.push(`${otherMembers} inscrits par vos collègues restent en pause : leur recruteur ou un administrateur peut les reprendre`);
     return {
       success: true,
       data: {
-        sequence_id: data.id,
-        is_active: data.is_active,
-        updated_at: data.updated_at,
-        message: 'Séquence réactivée. La progression reprendra au prochain tick du cron (toutes les minutes en business hours).',
+        sequence_id: row.id,
+        is_active: row.is_active,
+        updated_at: row.updated_at,
+        counts,
+        remaining,
+        message: `Séquence réactivée : ${resumed} candidat(s) repris, chaque étape garde sa date prévue.` +
+          (notes.length > 0 ? ` ${notes.join(' ; ')}.` : ''),
       },
     };
   },
@@ -3919,15 +4580,20 @@ const sendEmail: AgentTool = {
 // Crée une séquence outreach multi-étapes (outreach_sequences + sequence_steps).
 // Ne déclenche AUCUN envoi : les envois partent à l'enrollment (enroll_in_sequence,
 // lui-même sous approbation). Types d'étapes exposés au modèle = sous-ensemble
-// sûr du CHECK action_type.
+// sûr du CHECK action_type, aligné sur l'éditeur (isStepTypeOffered).
+// Décision D2 (contrat des lots, §7) : canaux e-mail et WhatsApp fermés, le
+// moteur saute ces étapes ; l'assistant ne les propose donc plus. Les remettre
+// ici en même temps que l'éditeur à la réouverture du canal.
 
 const SEQ_STEP_TYPES: Record<string, { action_type: string; channel: 'linkedin' | 'email' }> = {
   message: { action_type: 'message', channel: 'linkedin' },
   inmail: { action_type: 'inmail', channel: 'linkedin' },
   connection_request: { action_type: 'connection_request', channel: 'linkedin' },
-  email: { action_type: 'email', channel: 'email' },
   wait_reply: { action_type: 'wait_reply', channel: 'linkedin' },
 };
+
+/** Délai d'attente d'une réponse quand le modèle n'en donne pas (même défaut que l'éditeur). */
+const WAIT_REPLY_DEFAULT_TIMEOUT_DAYS = 3;
 
 interface SeqStepInput {
   type: string;
@@ -3963,11 +4629,13 @@ function parseSequenceSteps(params: Record<string, unknown>): { steps: SeqStepIn
 const createSequence: AgentTool = {
   name: 'create_sequence',
   description:
-    "Create a multi-step outreach sequence (LinkedIn messages / InMails / connection requests / emails / wait-for-reply). " +
+    "Create a multi-step LinkedIn outreach sequence (messages / InMails / connection requests / wait-for-reply). " +
     "Use when the user says 'crée une séquence de relance', 'monte-moi une séquence 3 touches pour la mission X'. " +
     "Creating a sequence sends NOTHING — candidates are added later via enroll_in_sequence (separate approval). " +
-    "steps: 1-8 items {type: message|inmail|connection_request|email|wait_reply, delay_days (0-30, since previous step), " +
-    "subject (required for email/inmail), message (template text ; variables {{first_name}}, {{company}} supported)}. " +
+    "steps: 1-8 items {type: message|inmail|connection_request|wait_reply, delay_days (0-30, since previous step ; " +
+    "for wait_reply: how many days to wait for an answer, default 3 — without an answer the sequence moves on), " +
+    "subject (required for inmail), message (template text ; variables {{first_name}}, {{company}} supported)}. " +
+    "Email and WhatsApp steps are not available yet: never propose them. " +
     "Optional mission_id links the sequence to a mission.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -3984,7 +4652,7 @@ const createSequence: AgentTool = {
           properties: {
             type: { type: 'string', enum: Object.keys(SEQ_STEP_TYPES) },
             delay_days: { type: 'number', description: 'Days to wait after the previous step (0-30, default 0).' },
-            subject: { type: 'string', description: 'Subject — required for email and inmail steps.' },
+            subject: { type: 'string', description: 'Subject — required for inmail steps.' },
             message: { type: 'string', description: 'Message template (plain text French). Not needed for wait_reply.' },
           },
           required: ['type'],
@@ -4033,12 +4701,14 @@ const createSequence: AgentTool = {
         steps: steps.map((s, i) => ({
           order: i + 1,
           type: STEP_LABEL[s.type] ?? s.type,
-          delay: s.delay_days > 0 ? `J+${s.delay_days}` : 'immédiat',
+          delay: s.type === 'wait_reply'
+            ? `attente de ${s.delay_days > 0 ? s.delay_days : WAIT_REPLY_DEFAULT_TIMEOUT_DAYS} jour(s)`
+            : s.delay_days > 0 ? `J+${s.delay_days}` : 'immédiat',
           subject: s.subject,
           message_preview: s.message ? (s.message.length > 120 ? s.message.slice(0, 117) + '…' : s.message) : null,
         })),
       },
-      warning: "Aucun envoi ne part à la création : les candidats sont ajoutés ensuite via l'enrollment (validation séparée).",
+      warning: "Aucun envoi ne part à la création : les candidats sont inscrits ensuite (validation séparée).",
     };
   },
 
@@ -4046,12 +4716,25 @@ const createSequence: AgentTool = {
     const parsed = parseSequenceSteps(params);
     if ('error' in parsed) return { success: false, error: parsed.error };
 
+    // SEQ-154, comme l'éditeur : créée active, sauf si l'offre n'autorise pas
+    // l'envoi de séquences (créée désactivée, avec un message). Offre
+    // illisible : désactivée aussi (échec fermé).
+    let inactiveReason: string | null = null;
+    try {
+      const gate = await getSubscriptionGate(ctx.adminClient as unknown as GateClient, ctx.organizationId);
+      if (!gate.canSendSequences) {
+        inactiveReason = "votre offre actuelle ne permet pas l'envoi de séquences. Choisissez une offre pour l'activer.";
+      }
+    } catch {
+      inactiveReason = "votre abonnement n'a pas pu être vérifié. Activez-la depuis vos séquences une fois l'offre confirmée.";
+    }
+
     const { data: seq, error: seqErr } = await ctx.adminClient
       .from('outreach_sequences')
       .insert({
         name: String(params.name).trim().slice(0, 200),
         description: String(params.description || '').trim().slice(0, 1000) || null,
-        is_active: true,
+        is_active: inactiveReason === null,
         created_by: ctx.userId,
         organization_id: ctx.organizationId,
         project_id: String(params.mission_id || '').trim() || null,
@@ -4060,18 +4743,28 @@ const createSequence: AgentTool = {
       .single();
     if (seqErr || !seq) return { success: false, error: seqErr?.message || 'sequence insert failed' };
 
-    const stepRows = parsed.steps.map((s, i) => ({
-      sequence_id: seq.id,
-      step_order: i + 1,
-      action_type: SEQ_STEP_TYPES[s.type].action_type,
-      step_channel: SEQ_STEP_TYPES[s.type].channel,
-      condition_type: 'always',
-      delay_days: s.delay_days,
-      delay_hours: 0,
-      subject_template: s.subject,
-      message_template: s.message,
-      use_ai_personalization: false,
-    }));
+    // Numérotation à partir de 0, comme l'éditeur (SEQ-044 : le rattrapage du
+    // moteur cherche l'étape 0). Attente de réponse (SEQ-031) : événement
+    // attendu explicite et délai d'attente, sinon le moteur franchissait
+    // l'étape aussitôt en clôturant l'inscription comme « a répondu ».
+    const stepRows = parsed.steps.map((s, i) => {
+      const isWaitReply = s.type === 'wait_reply';
+      return {
+        sequence_id: seq.id,
+        step_order: i,
+        action_type: SEQ_STEP_TYPES[s.type].action_type,
+        step_channel: SEQ_STEP_TYPES[s.type].channel,
+        condition_type: 'always',
+        delay_days: isWaitReply ? 0 : s.delay_days,
+        delay_hours: 0,
+        subject_template: s.subject,
+        message_template: s.message,
+        use_ai_personalization: false,
+        ...(isWaitReply
+          ? { wait_for_event: 'reply_received', timeout_days: s.delay_days > 0 ? s.delay_days : WAIT_REPLY_DEFAULT_TIMEOUT_DAYS }
+          : {}),
+      };
+    });
     const { error: stepsErr } = await ctx.adminClient.from('sequence_steps').insert(stepRows);
     if (stepsErr) {
       // Cleanup best-effort : pas de séquence orpheline sans étapes
@@ -4084,7 +4777,10 @@ const createSequence: AgentTool = {
       data: {
         sequence_id: seq.id,
         steps_created: stepRows.length,
-        message: `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s). Pour y ajouter des candidats : enroll_in_sequence (validation séparée).`,
+        is_active: inactiveReason === null,
+        message: inactiveReason
+          ? `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s), enregistrée désactivée : ${inactiveReason}`
+          : `Séquence « ${String(params.name)} » créée avec ${stepRows.length} étape(s). Les candidats s'inscrivent ensuite, avec une validation séparée.`,
       },
     };
   },

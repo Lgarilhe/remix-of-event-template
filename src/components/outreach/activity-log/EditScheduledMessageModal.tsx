@@ -15,6 +15,7 @@ import { Save, Loader2, Calendar, Clock as ClockIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
 
 interface EditScheduledMessageModalProps {
   isOpen: boolean;
@@ -32,6 +33,11 @@ interface EditScheduledMessageModalProps {
     enrollment?: {
       profile_name: string | null;
     };
+    /** Texte affiché dans le Journal (modification, aperçu validé à l'inscription ou modèle). */
+    preview?: {
+      message: string | null;
+      subject: string | null;
+    };
   } | null;
   onSaved: () => void;
 }
@@ -47,12 +53,20 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
   const [saving, setSaving] = useState(false);
 
   const actionType = execution?.step?.action_type;
-  const needsSubject = actionType === 'inmail';
+  // Un e-mail a un objet comme un InMail : sans ce champ, l'enregistrement
+  // écrivait final_subject = null et l'objet personnalisé était perdu.
+  const needsSubject = actionType === 'inmail' || actionType === 'email';
 
   useEffect(() => {
     if (execution) {
-      setSubject(execution.final_subject || execution.step?.subject_template || '');
-      setMessage(execution.final_message || execution.step?.message_template || '');
+      // Même valeur que celle affichée dans le Journal : on corrige le message
+      // qui partira, pas le modèle de l'étape.
+      setSubject(
+        execution.final_subject || execution.preview?.subject || execution.step?.subject_template || '',
+      );
+      setMessage(
+        execution.final_message || execution.preview?.message || execution.step?.message_template || '',
+      );
     }
   }, [execution]);
 
@@ -65,7 +79,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
     }
 
     if (needsSubject && !subject.trim()) {
-      toast.error("L'objet ne peut pas être vide pour un InMail");
+      toast.error("L'objet ne peut pas être vide pour un InMail ou un e-mail");
       return;
     }
 
@@ -88,7 +102,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       if (error) throw error;
 
       if (!updated || updated.length === 0) {
-        toast.error("Ce message est déjà en cours d'envoi ou envoyé — modification impossible.");
+        toast.error("Ce message est déjà en cours d'envoi ou envoyé : modification impossible.");
         onSaved();
         onClose();
         return;
@@ -99,7 +113,9 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       onClose();
     } catch (err) {
       console.error('Error updating message:', err);
-      toast.error('Erreur lors de la mise à jour');
+      // Refus de la base (étape déjà partie, plus programmée…) : sa raison en
+      // français plutôt qu'un « réessayez » qui échouerait encore.
+      toast.error(sequenceWriteRefusal(err) ?? "La modification n'a pas été enregistrée. Réessayez.");
     } finally {
       setSaving(false);
     }
@@ -135,7 +151,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
             </div>
           </div>
 
-          {/* Subject (for InMail) */}
+          {/* Objet (InMail et e-mail) */}
           {needsSubject && (
             <div className="space-y-2">
               <Label htmlFor="subject">Objet</Label>
@@ -143,7 +159,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
                 id="subject"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="Objet de l'InMail..."
+                placeholder="Objet du message…"
               />
             </div>
           )}
@@ -155,12 +171,12 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
               id="message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Contenu du message..."
+              placeholder="Contenu du message…"
               rows={8}
               className="resize-none"
             />
             <p className="text-xs text-muted-foreground">
-              Les variables comme {'{firstName}'} seront remplacées automatiquement.
+              Les variables comme {'{{prenom}}'} seront remplacées au moment de l'envoi.
             </p>
           </div>
         </div>

@@ -36,6 +36,41 @@ test('UX05 — la messagerie utilise la même préparation que le sourcing', () 
   assert.match(modal, /findRecentEnrollments/);
 });
 
+// Dès qu'une étape a un modèle de message, SequenceEnrollModal rend
+// EnrollmentPreviewModal : c'est ce parcours-là qui doit porter les contrôles
+// (SEQ-230). Le test précédent restait vert alors qu'il était contourné.
+test('UX05 — le parcours réel (aperçu des messages) porte les avertissements de compatibilité', () => {
+  const preview = read('src/components/outreach/EnrollmentPreviewModal.tsx');
+  assert.match(preview, /checkProfilesCompat\(/, 'l’aperçu d’inscription doit contrôler la compatibilité');
+});
+
+test('UX05 — depuis la messagerie, les modèles de message sont chargés', () => {
+  // Sans message_template, la modale ne détecte aucune étape à message et
+  // l’aperçu promis (« Vous verrez les messages… ») n’est jamais ouvert.
+  const inboxHook = read('src/hooks/useMessagesInbox.ts');
+  const start = inboxHook.indexOf('const fetchSequences');
+  assert.ok(start !== -1, 'fetchSequences introuvable dans useMessagesInbox');
+  const fetchSequences = inboxHook.slice(start, inboxHook.indexOf('}, [', start));
+  const steps = fetchSequences.slice(fetchSequences.indexOf('sequence_steps'));
+  assert.match(
+    steps.slice(0, steps.indexOf(')') + 1),
+    /message_template|\*/,
+    'la sélection des étapes doit charger message_template',
+  );
+});
+
+test('UX05 — les lignes d’inscription posent email_used (étapes e-mail non sautées)', () => {
+  const rowFields = read('src/components/outreach/enrollment-preview/enrollmentRowFields.ts');
+  assert.match(rowFields, /email_used:/);
+  for (const rel of ['src/components/outreach/EnrollmentPreviewModal.tsx', 'src/components/outreach/SequenceEnrollModal.tsx']) {
+    const src = read(rel);
+    assert.ok(
+      /email_used/.test(src) || /\.\.\.enrollmentRowFields\(/.test(src),
+      `${rel} : les lignes d’inscription doivent poser email_used`,
+    );
+  }
+});
+
 // ---------------------------------------------------------------- UX07
 test('UX07 — le choix de séquence passe par le dialogue partagé', () => {
   // Le composant portait sa propre fenêtre en z-50, dans le même fichier que la
@@ -65,8 +100,10 @@ test('UX06 — la création de mission conserve la saisie à la fermeture', () =
 });
 
 test('UX06 — l’éditeur de séquence conserve le travail non enregistré', () => {
-  assert.match(sequenceBuilder, /saveEditorDraft\(SEQUENCE_DRAFT_KEY/);
-  assert.match(sequenceBuilder, /loadEditorDraft<Sequence>\(SEQUENCE_DRAFT_KEY\)/);
+  // Clé propre à l'utilisateur et à l'organisation depuis l'audit séquences
+  // (lot F1b, SEQ-231) : l'ancienne constante était commune au navigateur.
+  assert.match(sequenceBuilder, /saveEditorDraft\(key, /);
+  assert.match(sequenceBuilder, /loadEditorDraft<Sequence>\(draftKey\)/);
   assert.match(
     sequenceBuilder,
     /if \(enregistreeRef\.current\) return;/,

@@ -19,6 +19,7 @@ import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
 import { useProjectEnrollments } from '@/hooks/useProjectEnrollments';
+import { missionEnrollmentJobIds } from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -27,7 +28,7 @@ import {
   Search, Loader2, Users, Mail, Archive,
   Eye, FolderPlus, Target, Sparkles, Maximize2, Minimize2,
   ChevronRight, CheckCircle2, Database, ArrowUpDown, ArrowDown, ArrowUp, Clock,
-  Rows3, Layers,
+  Rows3, Layers, GitBranch,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -342,8 +343,12 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   // Enrollments existants pour cette mission → permet d'afficher un badge
   // "En séquence X · Étape N" sur les cards. L'user voit immédiatement
   // qu'un candidat est déjà en séquence avant d'agir dessus.
-  const enrollmentJobId = activeProject?.job_id || activeProject?.id || null;
-  const { enrollments: projectEnrollments } = useProjectEnrollments(enrollmentJobId);
+  // Toutes les valeurs possibles de job_id : une mission rattachée à un job
+  // garde aussi les inscriptions faites depuis le sourcing (job_id = id de la
+  // mission, id synthétique normalisé).
+  const { enrollments: projectEnrollments } = useProjectEnrollments(
+    missionEnrollmentJobIds(activeProject?.id, activeProject?.job_id),
+  );
   // Count by status for filter badges.
   // Statuts DB (scorés/contactés/shortlist/archivés) : comptés sur TOUS les
   // candidats connus du job rehydratables — les pills correspondantes
@@ -933,19 +938,42 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                     <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
                     <p className="text-xs text-foreground flex-1 min-w-0 truncate">
                       <span className="font-semibold">{goCount} candidat{goCount > 1 ? 's' : ''} scoré{goCount > 1 ? 's' : ''} Go</span>
-                      <span className="text-muted-foreground"> — prêts pour une séquence d'outreach.</span>
+                      <span className="text-muted-foreground"> : prêts pour une séquence.</span>
                     </p>
-                    <SequenceEnrollButton
-                      // 🐛 BUG FIX (Opus audit) : jobScores est indexé par `profile.id`
-                      // (voir useLinkedInScoring.ts:478 `setJobScores(prev => ({ ...prev, [profile.id]: mapped }))`),
-                      // pas par `public_identifier` ni `provider_id`. Avant, ce filter
-                      // retournait 0 profils silencieusement → le bouton envoyait une
-                      // séquence vide en croyant avoir N candidats "Go".
-                      selectedProfiles={filteredResults.filter(p => jobScores[p.id]?.recommendation === 'go')}
-                      accountId={selectedAccount}
-                      selectedJob={selectedJob}
-                      onSuccess={onSequenceEnrollSuccess}
-                    />
+                    {selectedAccount ? (
+                      <SequenceEnrollButton
+                        // 🐛 BUG FIX (Opus audit) : jobScores est indexé par `profile.id`
+                        // (voir useLinkedInScoring.ts:478 `setJobScores(prev => ({ ...prev, [profile.id]: mapped }))`),
+                        // pas par `public_identifier` ni `provider_id`. Avant, ce filter
+                        // retournait 0 profils silencieusement → le bouton envoyait une
+                        // séquence vide en croyant avoir N candidats "Go".
+                        selectedProfiles={filteredResults.filter(p => jobScores[p.id]?.recommendation === 'go')}
+                        accountId={selectedAccount}
+                        selectedJob={selectedJob}
+                        onSuccess={onSequenceEnrollSuccess}
+                      />
+                    ) : (
+                      // Sans compte LinkedIn (recherche en base), aucune étape
+                      // LinkedIn ne pourrait partir : le bouton est désactivé
+                      // et dit pourquoi.
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span tabIndex={0} className="inline-flex shrink-0 rounded-lg" aria-label="Connectez votre compte LinkedIn pour lancer une séquence">
+                              <button
+                                type="button"
+                                disabled
+                                className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-semibold rounded-lg border-2 border-border text-muted-foreground bg-muted/40 cursor-not-allowed"
+                              >
+                                <GitBranch className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                                Séquence
+                              </button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Connectez votre compte LinkedIn pour lancer une séquence</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 );
               }

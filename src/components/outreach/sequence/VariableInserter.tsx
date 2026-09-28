@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Braces } from 'lucide-react';
+import { findUnknownTemplateVariables } from './sequenceGraph';
 
 interface Variable {
   code: string;
@@ -22,25 +23,19 @@ interface VariableGroup {
   variables: Variable[];
 }
 
+// Uniquement des variables que le moteur remplit à l'envoi (liste des clés dans
+// sequenceGraph.ts). Ville, passage IA et signature n'y sont pas : elles étaient
+// retirées du message envoyé. La signature d'un e-mail se choisit sur l'étape.
 const CANDIDATE_VARIABLES: Variable[] = [
   { code: '{{first_name}}', label: 'Prénom', example: 'Marie' },
   { code: '{{last_name}}', label: 'Nom', example: 'Dupont' },
   { code: '{{company}}', label: 'Entreprise', example: 'Acme Corp' },
   { code: '{{job_title}}', label: 'Poste', example: 'CTO' },
-  { code: '{{city}}', label: 'Ville', example: 'Paris' },
 ];
 
 const RECRUITER_VARIABLES: Variable[] = [
-  { code: '{{sender_name}}', label: 'Votre nom', example: 'Jean Martin' },
-  { code: '{{calendly_link}}', label: 'Lien Calendly', example: 'https://cal.com/...' },
-];
-
-const EMAIL_ONLY_VARIABLES: Variable[] = [
-  { code: '{{signature}}', label: 'Signature email', example: '— Jean Martin, Recruiter' },
-];
-
-const AI_VARIABLES: Variable[] = [
-  { code: '{{ai_snippet}}', label: 'Passage IA', example: '(personnalisé à l\'envoi)' },
+  { code: '{{sender_name}}', label: 'Votre prénom', example: 'Jean' },
+  { code: '{{calendly_link}}', label: 'Lien d\'agenda', example: 'https://cal.com/...' },
 ];
 
 interface VariableInserterProps {
@@ -50,8 +45,6 @@ interface VariableInserterProps {
   onInsert: (newValue: string) => void;
   /** Current value of the field */
   currentValue: string;
-  /** Show email-only variables */
-  showEmailVariables?: boolean;
   className?: string;
 }
 
@@ -59,7 +52,6 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
   targetRef,
   onInsert,
   currentValue,
-  showEmailVariables = false,
   className,
 }) => {
   const handleInsert = (code: string) => {
@@ -85,8 +77,6 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
   const groups: VariableGroup[] = [
     { label: 'Candidat', variables: CANDIDATE_VARIABLES },
     { label: 'Recruteur', variables: RECRUITER_VARIABLES },
-    ...(showEmailVariables ? [{ label: 'Email', variables: EMAIL_ONLY_VARIABLES }] : []),
-    { label: 'IA', variables: AI_VARIABLES },
   ];
 
   return (
@@ -128,5 +118,21 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+};
+
+/**
+ * Variables que le moteur ne sait pas remplir : elles seraient retirées du
+ * message envoyé. Affiché sous le champ, avant l'enregistrement.
+ */
+export const UnknownVariablesNotice: React.FC<{ text: string; customKeys?: string[] }> = ({ text, customKeys = [] }) => {
+  const unknown = findUnknownTemplateVariables(text, customKeys);
+  if (unknown.length === 0) return null;
+  return (
+    <p className="text-xs text-warning mt-1">
+      {unknown.length > 1
+        ? `${unknown.join(', ')} ne seront pas remplacées à l'envoi : elles seront supprimées du message.`
+        : `${unknown[0]} ne sera pas remplacée à l'envoi : elle sera supprimée du message.`}
+    </p>
   );
 };

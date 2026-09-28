@@ -23,6 +23,8 @@ interface Props {
   allGenerated: boolean;
   hasEdits: boolean;
   state: CandidateState;
+  /** Candidat affiché mais exclu de l'inscription (déjà contacté, incompatible) : pastille et raison. */
+  exclusion?: { label: string; title: string } | null;
   score: number | null | undefined;
   onSelect: () => void;
   onRemove: () => void;
@@ -32,7 +34,7 @@ interface Props {
 }
 
 export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
-  profile, isSelected, allGenerated, hasEdits, state, score,
+  profile, isSelected, allGenerated, hasEdits, state, exclusion, score,
   onSelect, onRemove, onSkip, onViewScoring, onViewHistory,
 }: Props) {
   const yearsXP = useMemo(() => computeYearsOfExperience(profile), [profile]);
@@ -42,12 +44,30 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
 
   const linkedinUrl = profile.profile_url || profile.public_profile_url;
 
+  // Clavier : Entrée sélectionne la carte. Espace la sélectionne si elle ne
+  // l'est pas encore ; sur la carte déjà sélectionnée, Espace remonte à la
+  // liste (raccourci « passer »), sans double action.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || (e.key === ' ' && !isSelected)) {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect();
+    }
+  };
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      aria-label={exclusion ? `${profile.name}, ${exclusion.label}` : profile.name}
+      data-candidate-id={profile.id}
       onClick={onSelect}
+      onKeyDown={handleKeyDown}
       className={cn(
-        "group w-full max-w-full flex flex-col gap-2 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer relative border overflow-hidden",
-        state.skipped && "opacity-50",
+        "group w-full max-w-full flex flex-col gap-2 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer relative border overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-foreground/20",
+        (state.skipped || exclusion) && "opacity-50",
         isSelected
           ? "bg-foreground/[0.04] border-foreground/20 shadow-sm"
           : "bg-transparent border-transparent hover:bg-muted/40 hover:border-border"
@@ -93,6 +113,15 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
                 Passé
               </Badge>
             )}
+            {!state.skipped && exclusion && (
+              <Badge
+                variant="outline"
+                className="text-3xs h-4 px-1.5 border-border bg-muted text-muted-foreground shrink-0"
+                title={exclusion.title}
+              >
+                {exclusion.label}
+              </Badge>
+            )}
             {hasEdits && (
               <span title="Édité manuellement" className="shrink-0">
                 <Pencil className="w-2.5 h-2.5 text-warning" />
@@ -119,10 +148,12 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
+              type="button"
               onClick={e => e.stopPropagation()}
-              className="h-6 w-6 grid place-items-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-muted transition-all shrink-0"
+              aria-label={`Actions pour ${profile.name || 'ce candidat'}`}
+              className="h-6 w-6 grid place-items-center rounded-md opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-muted transition-all shrink-0"
             >
-              <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
+              <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">

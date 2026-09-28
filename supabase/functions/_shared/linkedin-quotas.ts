@@ -467,6 +467,35 @@ export async function recordUsageSignal(
 }
 
 /**
+ * Journalise une lecture LinkedIn (profil, publications) au ledger, SANS
+ * plafond : elle compte dans l'usage du compte (et donc dans le plafond des
+ * étapes qui, elles, passent par le gate) mais ne bloque jamais l'envoi
+ * qu'elle prépare. Non bloquant en cas d'erreur (audit séquences, SEQ-102).
+ */
+interface LedgerInsertClient {
+  from(table: string): { insert(row: Record<string, unknown>): PromiseLike<{ error: { message: string } | null }> };
+}
+
+export async function logLinkedInRead(
+  admin: LedgerInsertClient,
+  opts: { accountId: string | null; organizationId?: string | null; userId?: string | null; source: string; actionType?: LinkedInActionType },
+): Promise<void> {
+  if (!opts.accountId) return;
+  try {
+    const { error } = await admin.from('linkedin_action_log').insert({
+      account_id: opts.accountId,
+      action_type: opts.actionType ?? 'profile_view',
+      organization_id: opts.organizationId ?? null,
+      user_id: opts.userId ?? null,
+      source: opts.source,
+    });
+    if (error) console.warn('[linkedin-quotas] logLinkedInRead failed (non-fatal):', error.message);
+  } catch (e) {
+    console.warn('[linkedin-quotas] logLinkedInRead failed (non-fatal):', e);
+  }
+}
+
+/**
  * The unified gate. Checks (atomically, via the check_linkedin_action_quota
  * RPC): provider pause, weekly invite cap, per-type daily caps, and the
  * cumulative visible daily cap — then optimistically logs the action.

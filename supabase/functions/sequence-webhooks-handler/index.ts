@@ -5,19 +5,25 @@
  * Complements the existing check_replies polling in process-sequences.
  *
  * Webhooks handled HERE :
- *   - mail_received (Email reply)
  *   - mail_opened / mail_link_clicked (Email tracking)
  *
  * Webhooks handled by `unipile-webhook` (NOT here, to avoid double processing —
  * audit Opus 2026-05-07) :
  *   - message_received (LinkedIn reply)
  *   - new_relation (LinkedIn invite accepted)
+ *   - mail_received (Email reply) — audit séquences 2026-09 : unipile-webhook
+ *     écarte les réponses automatiques et les rebonds et borne le
+ *     rattachement à l'organisation de la boîte ; ici, une absence du bureau
+ *     rattachée par in_reply_to passait l'inscription en « Répondu ».
+ *     scripts/setup-sequence-webhooks.ts abonne encore ce handler à
+ *     mail_received : l'événement est reçu, journalisé et ignoré.
  *
  * Si on reçoit ces events ici (legacy webhook setup), on les ignore avec un
  * warning. Ré-enregistrer les webhooks Unipile via scripts/setup-sequence-
  * webhooks.ts pour ne plus les recevoir.
  */
 import { createClient } from "npm:@supabase/supabase-js@2.75.1";
+import { inReplyToCandidates } from "../_shared/sequence-email-policy.mjs";
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
@@ -114,19 +120,31 @@ async function handleReply(
     .single();
 
   if (!enrollment) return;
-  if (enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'stopped') {
+  // Une réponse clôt une inscription en cours OU en pause : sans cela, la
+  // reprise (abonnement, compte reconnecté, reprise manuelle) relançait un
+  // candidat qui avait déjà répondu. Les autres statuts sont déjà clos.
+  if (enrollment.status !== 'active' && enrollment.status !== 'paused') {
     console.log(`[webhooks] Enrollment ${enrollmentId} already in terminal state: ${enrollment.status}`);
     return;
   }
 
-  // Mark enrollment as replied
-  await supabase
+  // Mark enrollment as replied (garde de statut : idempotent face à un
+  // traitement concurrent de la même réponse)
+  const { data: closedRows, error: closeError } = await supabase
     .from('sequence_enrollments')
     .update({
       status: 'replied',
       replied_at: timestamp,
+      pause_reason: null,
     })
-    .eq('id', enrollmentId);
+    .eq('id', enrollmentId)
+    .in('status', ['active', 'paused'])
+    .select('id');
+  if (closeError) throw closeError;
+  if (!closedRows?.length) {
+    console.log(`[webhooks] Enrollment ${enrollmentId} closed concurrently — nothing to do`);
+    return;
+  }
 
   // Update the latest execution's tracking_data
   const { data: latestExec } = await supabase
@@ -270,24 +288,31 @@ async function handleNewRelation(
   console.log(`[webhooks] new_relation: updated ${enrollments.length} enrollment(s) for ${userProviderId}`);
 }
 
+/**
+ * Plus appelé (audit séquences 2026-09) : `mail_received` est traité par
+ * unipile-webhook. Ne pas le rebrancher sans filtrer d'abord les réponses
+ * automatiques et les rebonds.
+ */
 async function handleMailReceived(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   payload: Record<string, unknown>,
 ) {
-  const inReplyTo = payload.in_reply_to as string;
+  // in_reply_to est un objet { message_id, id } (ou une chaîne selon la
+  // version du fournisseur) : on essaie chaque identifiant.
+  const inReplyTo = inReplyToCandidates(payload.in_reply_to);
   const trackingIdFromBody = payload.tracking_id as string;
 
   // Try to match via email_message_id (In-Reply-To header)
   let executionId: string | null = null;
 
-  if (inReplyTo) {
-    const { data: tracking } = await supabase
+  if (inReplyTo.length > 0) {
+    const { data: trackingRows } = await supabase
       .from('sequence_email_tracking')
       .select('execution_id')
-      .eq('email_message_id', inReplyTo)
-      .single();
-    if (tracking) executionId = tracking.execution_id;
+      .in('email_message_id', inReplyTo)
+      .limit(1);
+    if (trackingRows?.length) executionId = trackingRows[0].execution_id;
   }
 
   // Fallback: try tracking_id if found in body
@@ -296,7 +321,7 @@ async function handleMailReceived(
       .from('sequence_email_tracking')
       .select('execution_id')
       .eq('tracking_id', trackingIdFromBody)
-      .single();
+      .maybeSingle();
     if (tracking) executionId = tracking.execution_id;
   }
 
@@ -311,11 +336,13 @@ async function handleMailReceived(
     const accountId = payload.account_id as string;
 
     if (fromEmail) {
+      // Inscriptions en cours ou en pause : une réponse reçue pendant une
+      // pause doit aussi clore l'inscription.
       let query = supabase
         .from('sequence_enrollments')
         .select('id')
         .eq('email_used', fromEmail)
-        .eq('status', 'active');
+        .in('status', ['active', 'paused']);
       if (accountId) {
         query = query.eq('account_id', accountId);
       } else {
@@ -476,7 +503,10 @@ Deno.serve(async (req) => {
         break;
 
       case 'mail_received':
-        await handleMailReceived(supabase, payload);
+        // Réponses e-mail : traitées par `unipile-webhook` seul (abonné par
+        // unipile-manage-webhooks), qui écarte les réponses automatiques et
+        // les rebonds. Ici, aucun rattachement ni clôture : on journalise.
+        console.warn('[webhooks] Event "mail_received" ignored here: e-mail replies are handled by unipile-webhook (auto-replies and bounces filtered out).');
         break;
 
       case 'mail_opened':

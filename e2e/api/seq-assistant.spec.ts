@@ -1,0 +1,1080 @@
+/**
+ * Lot « assistant » du module séquences : outils de l'assistant IA qui lisent
+ * la prospection (get_sequences_status, get_candidate_outreach), créent une
+ * séquence (create_sequence), inscrivent (enroll_in_sequence) ou écrivent un
+ * message LinkedIn ponctuel (send_linkedin_message).
+ *
+ * Harnais, faute d'IA scriptable (search-agent-chat lit un flux SSE que le
+ * faux prestataire ne produit pas) :
+ * - approbation : ligne agent_tool_executions « proposed » insérée en clé de
+ *   service, puis POST agent-tool-action { approve } avec le JWT du membre,
+ *   comme le bouton « Approuver » du bandeau ;
+ * - lecture : ligne « approved » échue, puis POST process-scheduled-actions
+ *   avec le secret du cron (ce chemin enregistre aussi les outils de lecture et
+ *   rejoue verifyAccess avant l'exécution).
+ *
+ * Dimanche : checkLinkedInQuota refuse tout envoi le samedi et le dimanche
+ * dans le fuseau du membre, sans option de forçage. Les tests d'envoi posent
+ * donc une plage 0 h-24 h dans un fuseau où l'on est un jour ouvré
+ * (Pacific/Kiritimati le dimanche après-midi UTC) ; sans fuseau possible ils
+ * s'ignorent. Le moteur, lui, tourne avec force: true.
+ *
+ * Ignoré sans la stack locale (e2e/local-stack/up.sh).
+ */
+import { createHash } from 'node:crypto';
+import { test, expect, request } from '@playwright/test';
+import { E2E } from '../helpers/env';
+import {
+  addMember,
+  admin,
+  createOrg,
+  deleteOrg,
+  seedLinkedInAccount,
+  seedMission,
+  seedSequence,
+  signIn,
+  type TestOrg,
+  type TestUser,
+} from '../helpers/supabase-admin';
+import {
+  CRON_SECRET,
+  ENGINE_SKIP_REASON,
+  callFunction,
+  engineAvailable,
+  enrollmentRow,
+  executionsOf,
+  messageSequence,
+  minutesFromNow,
+  mockCalls,
+  postJson,
+  rand,
+  runCycle,
+  runEngine,
+  sendingOrg,
+  setMockMode,
+  webhook,
+  type MockCall,
+} from '../helpers/sequence-engine';
+
+test.skip(!engineAvailable, ENGINE_SKIP_REASON);
+test.setTimeout(240_000);
+
+// ─── Nettoyage ──────────────────────────────────────────────────────────────
+
+const orgsToDelete: Array<{ org: TestOrg; extra: TestUser[] }> = [];
+const cleanups: Array<() => PromiseLike<unknown>> = [];
+
+test.afterEach(async () => {
+  while (cleanups.length) {
+    try {
+      await cleanups.pop()!();
+    } catch {
+      // best-effort
+    }
+  }
+  while (orgsToDelete.length) {
+    const { org, extra } = orgsToDelete.pop()!;
+    // Tables sans cascade utile (l'organisation elle-même survit, voir deleteOrg).
+    for (const table of [
+      'agent_tool_executions',
+      'job_candidate_status',
+      'inmail_queue',
+      'message_analysis_cache',
+      'member_quotas',
+      'organization_integrations',
+    ]) {
+      await admin().from(table).delete().eq('organization_id', org.orgId);
+    }
+    await deleteOrg(org, extra);
+  }
+});
+
+function track(org: TestOrg, ...extra: TestUser[]) {
+  orgsToDelete.push({ org, extra });
+}
+
+// ─── Aides ──────────────────────────────────────────────────────────────────
+
+type ToolResult = { success?: boolean; error?: string; data?: Record<string, any> };
+
+async function tokenOf(user: TestUser): Promise<string> {
+  return (await signIn(user.email, user.password)).access_token;
+}
+
+const newProfileId = () => `ACoAAE2E${rand()}${rand()}`;
+
+/** Ligne « proposée » par l'assistant, telle que search-agent-chat l'écrit. */
+async function propose(
+  orgId: string,
+  userId: string,
+  tool: string,
+  params: Record<string, unknown>,
+  details: Record<string, unknown> = {},
+): Promise<string> {
+  const { data, error } = await admin()
+    .from('agent_tool_executions')
+    .insert({
+      user_id: userId,
+      organization_id: orgId,
+      tool_name: tool,
+      params,
+      status: 'proposed',
+      dry_run_result: { summary: `Test e2e ${tool}`, details },
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`propose: ${error?.message}`);
+  return data.id as string;
+}
+
+/** Clic « Approuver » du bandeau. */
+function approve(token: string, executionId: string) {
+  return callFunction('agent-tool-action', token, { execution_id: executionId, action: 'approve' });
+}
+
+interface ExecRow {
+  status: string;
+  real_result: ToolResult | null;
+  scheduled_for: string | null;
+  approved_at: string | null;
+  executed_at: string | null;
+}
+
+async function execRow(id: string): Promise<ExecRow> {
+  const { data } = await admin()
+    .from('agent_tool_executions')
+    .select('status, real_result, scheduled_for, approved_at, executed_at')
+    .eq('id', id)
+    .single();
+  return data as ExecRow;
+}
+
+function cronScheduled() {
+  return postJson('/functions/v1/process-scheduled-actions', {}, { Authorization: `Bearer ${CRON_SECRET}` });
+}
+
+/** Passages du cron jusqu'à ce que ces lignes ne soient plus « approved ». */
+async function runScheduledUntilDone(ids: string[]) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const res = await cronScheduled();
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const { data } = await admin().from('agent_tool_executions').select('id, status').in('id', ids);
+    if ((data ?? []).every((r) => r.status !== 'approved')) return;
+  }
+  throw new Error('actions programmées jamais traitées par process-scheduled-actions');
+}
+
+/** Outil de lecture exécuté pour ce membre (harnais lecture). */
+async function readTool(orgId: string, userId: string, tool: string, params: Record<string, unknown>) {
+  const { data, error } = await admin()
+    .from('agent_tool_executions')
+    .insert({
+      user_id: userId,
+      organization_id: orgId,
+      tool_name: tool,
+      params,
+      status: 'approved',
+      approved_at: new Date().toISOString(),
+      scheduled_for: minutesFromNow(-1),
+      dry_run_result: { summary: `Lecture e2e ${tool}`, details: {} },
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`readTool: ${error?.message}`);
+  await runScheduledUntilDone([data.id as string]);
+  const row = await execRow(data.id as string);
+  return { id: data.id as string, status: row.status, result: (row.real_result ?? {}) as ToolResult };
+}
+
+const WEEKDAY_ZONES = [
+  'Europe/Paris', 'Pacific/Kiritimati', 'Pacific/Apia', 'Pacific/Auckland', 'Asia/Tokyo',
+  'America/New_York', 'America/Los_Angeles', 'Pacific/Honolulu', 'Pacific/Pago_Pago',
+];
+
+/** Fuseau où l'on est un jour ouvré, loin de minuit. */
+function weekdayZone(): string | null {
+  for (const tz of WEEKDAY_ZONES) {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', hourCycle: 'h23' })
+      .formatToParts(new Date());
+    const weekday = parts.find((p) => p.type === 'weekday')?.value;
+    const hour = Number(parts.find((p) => p.type === 'hour')?.value);
+    if (weekday !== 'Sat' && weekday !== 'Sun' && hour >= 1 && hour <= 22) return tz;
+  }
+  return null;
+}
+const SEND_ZONE = weekdayZone();
+const NO_WEEKDAY_REASON = 'aucun fuseau en jour ouvré : checkLinkedInQuota refuse tout envoi le week-end, sans forçage';
+
+/** Plage horaire 0 h-24 h du membre, dans un fuseau où l'on est un jour ouvré. */
+async function openBusinessHours(orgId: string, userId: string) {
+  const { error } = await admin().from('member_quotas').upsert(
+    { organization_id: orgId, user_id: userId, business_hours_start: 0, business_hours_end: 24, timezone: SEND_ZONE },
+    { onConflict: 'organization_id,user_id' },
+  );
+  if (error) throw new Error(`member_quotas: ${error.message}`);
+}
+
+async function seedCandidate(
+  orgId: string,
+  createdBy: string,
+  o: { id?: string; name?: string; url?: string | null; projectId?: string | null } = {},
+): Promise<string> {
+  const candidateId = o.id ?? newProfileId();
+  const { error } = await admin().from('job_candidate_status').insert({
+    organization_id: orgId,
+    created_by: createdBy,
+    candidate_id: candidateId,
+    candidate_name: o.name ?? 'Camille Martin',
+    linkedin_profile_url: o.url ?? null,
+    job_id: o.projectId ? `project:${o.projectId}` : `job_${rand()}`,
+    project_id: o.projectId ?? null,
+    status: 'new',
+    pipeline_stage: 'Nouveau',
+  });
+  if (error) throw new Error(`seedCandidate: ${error.message}`);
+  return candidateId;
+}
+
+/** Inscription (dans sa propre séquence) : la clé (séquence, profil) reste unique. */
+async function seedEnrollmentRow(orgId: string, createdBy: string, overrides: Record<string, unknown> = {}) {
+  const { sequenceId } = await seedSequence(orgId, createdBy, [{ action_type: 'message' }]);
+  const profileId = (overrides.profile_id as string | undefined) ?? newProfileId();
+  const { data, error } = await admin()
+    .from('sequence_enrollments')
+    .insert({
+      sequence_id: sequenceId,
+      organization_id: orgId,
+      created_by: createdBy,
+      profile_id: profileId,
+      provider_id: profileId,
+      profile_name: 'Camille Martin',
+      account_id: `acc_${rand()}`,
+      status: 'active',
+      current_step_order: 0,
+      ...overrides,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`seedEnrollmentRow: ${error?.message}`);
+  return { enrollmentId: data.id as string, sequenceId, profileId };
+}
+
+/** Empreinte du registre gdpr_erasures (même normalisation que get-or-fetch-contact). */
+function linkedinUrlHash(url: string): string {
+  const normalized = url.toLowerCase().replace(/[?#].*$/, '').replace(/\/$/, '').trim();
+  return createHash('sha256').update(normalized).digest('hex');
+}
+
+async function eraseLinkedInUrl(url: string) {
+  const { data, error } = await admin()
+    .from('gdpr_erasures')
+    .insert({ linkedin_url_hash: linkedinUrlHash(url), reason: 'user_request', source: 'e2e-seq-assistant' })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`gdpr_erasures: ${error?.message}`);
+  cleanups.push(() => admin().from('gdpr_erasures').delete().eq('id', data.id));
+}
+
+/** Nouvelles conversations ouvertes depuis ce compte vers ce destinataire. */
+async function newChatsTo(accountId: string, recipient: string): Promise<MockCall[]> {
+  return (await mockCalls(accountId)).filter((c) => c.method === 'POST' && c.path === '/api/v1/chats'
+    && (c.body as Record<string, unknown>)?.attendees_ids === recipient);
+}
+
+async function postsFrom(accountId: string): Promise<MockCall[]> {
+  return (await mockCalls(accountId)).filter((c) => c.method === 'POST');
+}
+
+/**
+ * Propriétaire d'une conversation scripté sur un compte du test. Le faux
+ * prestataire range un appel sous un compte d'après account_id de la requête ;
+ * GET /chats/{id} n'en porte pas et la clé '*' est interdite sur la stack
+ * partagée. Des identifiants LinkedIn propres à l'organisation
+ * (organization_integrations, lus par unipile-search) dont l'adresse finit par
+ * « /api/v1/chats/<chat>?account_id=<compte>&suite= » amènent tous les appels
+ * de cette organisation sur ce chemin, sous ce compte : GET /chats/<chat>
+ * répond alors { account_id: <compte> }, et un envoi éventuel est journalisé
+ * sous ce même compte (POST sur ce chemin).
+ */
+async function scriptChatOwner(orgId: string, chatId: string, ownerAccountId: string) {
+  const { error } = await admin().from('organization_integrations').upsert({
+    organization_id: orgId,
+    unipile_connected: true,
+    unipile_api_key: `e2e-${rand()}`,
+    unipile_dsn: `e2e-${rand()}.mock.test/api/v1/chats/${chatId}?account_id=${ownerAccountId}&suite=`,
+  }, { onConflict: 'organization_id' });
+  if (error) throw new Error(`organization_integrations: ${error.message}`);
+  await setMockMode(ownerAccountId, {
+    routes: [{ method: 'GET', path: `^/api/v1/chats/${chatId}$`, status: 200, body: { object: 'Chat', id: chatId, account_id: ownerAccountId } }],
+  });
+}
+
+async function actionLogCount(accountId: string): Promise<number> {
+  const { count } = await admin().from('linkedin_action_log').select('id', { count: 'exact', head: true }).eq('account_id', accountId);
+  return count ?? 0;
+}
+
+async function pullDue(enrollmentIds: string[]) {
+  await admin().from('sequence_step_executions').update({ scheduled_at: minutesFromNow(-1) })
+    .in('enrollment_id', enrollmentIds).eq('status', 'scheduled');
+}
+
+async function stepsOf(sequenceId: string) {
+  const { data } = await admin()
+    .from('sequence_steps')
+    .select('step_order, action_type, wait_for_event, timeout_days, delay_days, message_template')
+    .eq('sequence_id', sequenceId)
+    .order('step_order');
+  return (data ?? []) as Array<{ step_order: number; action_type: string; wait_for_event: string | null; timeout_days: number | null; delay_days: number | null; message_template: string | null }>;
+}
+
+// ═══ send_linkedin_message ═══════════════════════════════════════════════════
+
+test.describe('@critical Assistant : send_linkedin_message', () => {
+  test.describe('slm-refus-rgpd', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-refus-rgpd (cas A registre global, cas B marqueur d'inscription)
+    test('@critical refuse d’écrire à un candidat effacé (registre RGPD ou marqueur d’inscription), écrit aux autres', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant RGPD');
+      track(org);
+      await openBusinessHours(org.orgId, org.owner.userId);
+      const token = await tokenOf(org.owner);
+
+      // Témoin : même montage sans effacement, le message part.
+      const control = await seedCandidate(org.orgId, org.owner.userId, { url: `https://www.linkedin.com/in/temoin-${rand()}/` });
+      const controlRes = await approve(token, await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: control, text: 'Bonjour, seriez-vous disponible cette semaine ?',
+      }));
+      expect(controlRes.body.success, JSON.stringify(controlRes.body)).toBe(true);
+      expect(await newChatsTo(accountId, control)).toHaveLength(1);
+
+      // Cas A : l'adresse LinkedIn du candidat est au registre global des effacements.
+      const erasedUrl = `https://www.linkedin.com/in/efface-${rand()}/`;
+      const erased = await seedCandidate(org.orgId, org.owner.userId, { url: erasedUrl });
+      await eraseLinkedInUrl(erasedUrl);
+      const aId = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: erased, text: 'Bonjour, seriez-vous disponible cette semaine ?',
+      });
+      const aRes = await approve(token, aId);
+
+      // Cas B : une inscription de l'organisation porte le marqueur durable D5.
+      const marked = newProfileId();
+      await seedEnrollmentRow(org.orgId, org.owner.userId, {
+        profile_id: marked, provider_id: marked, status: 'stopped',
+        tracking_data: { gdpr_erased_at: new Date().toISOString() },
+      });
+      const bId = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: marked, text: 'Bonjour, seriez-vous disponible cette semaine ?',
+      });
+      const bRes = await approve(token, bId);
+
+      // DÉFAUT slm-rgpd-non-controle : send_linkedin_message ne consulte ni gdpr_erasures ni tracking_data.gdpr_erased_at.
+      expect.soft(aRes.body.success, `cas A (registre) : ${JSON.stringify(aRes.body)}`).toBe(false);
+      expect.soft(String(aRes.body.error ?? ''), 'cas A : motif effacement').toMatch(/effac|supprim|RGPD/i);
+      expect.soft(await newChatsTo(accountId, erased), 'cas A : aucun envoi').toHaveLength(0);
+      expect.soft(bRes.body.success, `cas B (marqueur) : ${JSON.stringify(bRes.body)}`).toBe(false);
+      expect.soft(String(bRes.body.error ?? ''), 'cas B : motif effacement').toMatch(/effac|supprim|RGPD/i);
+      expect.soft(await newChatsTo(accountId, marked), 'cas B : aucun envoi').toHaveLength(0);
+    });
+  });
+
+  test.describe('slm-refus-rgpd (programmé)', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-refus-rgpd (cas C : envoi programmé, effacement avant l'heure)
+    test('@critical message programmé : un effacement survenu avant l’heure bloque l’envoi au recontrôle du cron', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant RGPD programmé');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const url = `https://www.linkedin.com/in/efface-plus-tard-${rand()}/`;
+      const recipient = await seedCandidate(org.orgId, org.owner.userId, { url });
+
+      const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: recipient, text: 'Bonjour, je reviens vers vous.',
+      }, { scheduled_for: minutesFromNow(120) });
+      const res = await approve(token, id);
+      expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+      expect((await execRow(id)).status).toBe('approved');
+
+      // Effacement après l'approbation, puis l'heure d'envoi arrive.
+      await eraseLinkedInUrl(url);
+      await openBusinessHours(org.orgId, org.owner.userId);
+      await admin().from('agent_tool_executions').update({ scheduled_for: minutesFromNow(-1) }).eq('id', id);
+      await runScheduledUntilDone([id]);
+
+      const row = await execRow(id);
+      // DÉFAUT slm-rgpd-programme-non-recontrole : le recontrôle du cron (verifyAccess rejoué) ignore l'effacement.
+      expect.soft(await newChatsTo(accountId, recipient), 'aucun envoi après effacement').toHaveLength(0);
+      expect.soft(row.status).toBe('failed');
+      expect.soft(String(row.real_result?.error ?? '')).toMatch(/effac|supprim|RGPD/i);
+    });
+  });
+
+  test.describe('slm-conversation-collegue-refusee', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-conversation-collegue-refusee
+    test('@critical refuse une conversation portée par le compte LinkedIn d’un collègue : rien ne part de son compte, aucun quota compté', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant conversation collègue');
+      const colleague = await addMember(org.orgId, 'member', 'collegue');
+      track(org, colleague);
+      const colleagueAccount = await seedLinkedInAccount(org.orgId, colleague.userId, `acc_${rand()}`, 'OK');
+      const chatId = `chat_col_${rand()}`;
+      await scriptChatOwner(org.orgId, chatId, colleagueAccount);
+      await openBusinessHours(org.orgId, org.owner.userId);
+
+      const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        chat_id: chatId, recipient_name: 'Candidat du collègue', text: 'Bonjour, je prends le relais.',
+      });
+      const res = await approve(await tokenOf(org.owner), id);
+
+      // DÉFAUT slm-envoi-depuis-compte-collegue : unipile-search envoie depuis le compte propriétaire du chat (gateAccountId), sans le comparer au compte de l'appelant.
+      expect.soft(await postsFrom(colleagueAccount), 'aucun envoi depuis le compte du collègue').toEqual([]);
+      expect.soft(res.body.success, JSON.stringify(res.body)).toBe(false);
+      expect.soft((await execRow(id)).status).toBe('failed');
+      expect.soft(await actionLogCount(colleagueAccount), 'aucun quota compté sur le compte du collègue').toBe(0);
+      expect.soft(await actionLogCount(accountId), 'rien n’est parti : aucun quota compté sur le compte de l’appelant').toBe(0);
+    });
+  });
+
+  test.describe('slm-refus-desinscrit', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-refus-desinscrit — attente alignée (réfutée par les deux relecteurs) : une désinscription
+    // e-mail (suppressed_emails) arrête les séquences et les e-mails (SEQ-089, SEQ-202, page
+    // /unsubscribe : « Vous ne recevrez plus d'e-mails »), pas un message LinkedIn ponctuel approuvé
+    // par le recruteur ; la messagerie n'applique pas non plus cette liste. Le message part donc.
+    test('désinscription e-mail (adresse de son inscription supprimée) : le message LinkedIn ponctuel part quand même, comme au témoin', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant désinscrit');
+      track(org);
+      await openBusinessHours(org.orgId, org.owner.userId);
+      const token = await tokenOf(org.owner);
+
+      // Témoin : inscription arrêtée avec une adresse non supprimée, le message part.
+      const control = newProfileId();
+      await seedEnrollmentRow(org.orgId, org.owner.userId, {
+        profile_id: control, provider_id: control, status: 'stopped', email_used: `temoin-${rand()}@ex.test`,
+      });
+      const controlRes = await approve(token, await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: control, text: 'Bonjour, un poste pourrait vous intéresser.',
+      }));
+      expect(controlRes.body.success, JSON.stringify(controlRes.body)).toBe(true);
+      expect(await newChatsTo(accountId, control)).toHaveLength(1);
+
+      const email = `desinscrit-${rand()}@ex.test`;
+      const { error } = await admin().from('suppressed_emails').insert({ email, reason: 'unsubscribe' });
+      if (error) throw new Error(`suppressed_emails: ${error.message}`);
+      cleanups.push(() => admin().from('suppressed_emails').delete().eq('email', email));
+      const unsubscribed = newProfileId();
+      await seedEnrollmentRow(org.orgId, org.owner.userId, {
+        profile_id: unsubscribed, provider_id: unsubscribed, status: 'stopped', email_used: email,
+      });
+      const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: unsubscribed, text: 'Bonjour, un poste pourrait vous intéresser.',
+      });
+      const res = await approve(token, id);
+
+      // Pas un refus : suppressed_emails est une liste d'envoi e-mail (voir l'en-tête du test).
+      expect(await newChatsTo(accountId, unsubscribed), 'message LinkedIn ponctuel envoyé').toHaveLength(1);
+      expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+      expect((await execRow(id)).status).toBe('executed');
+    });
+  });
+
+  test.describe('slm-conversation-autre-organisation', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-conversation-autre-organisation
+    test('conversation d’un compte d’une autre organisation : échec sans envoi, message en français', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant conversation autre org');
+      track(org);
+      const other = await createOrg('agency', 'E2E Assistant autre org');
+      track(other);
+      const otherAccount = await seedLinkedInAccount(other.orgId, other.owner.userId, `acc_${rand()}`, 'OK');
+      const chatId = `chat_b_${rand()}`;
+      await scriptChatOwner(org.orgId, chatId, otherAccount);
+      await openBusinessHours(org.orgId, org.owner.userId);
+
+      const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        chat_id: chatId, text: 'Bonjour, je reviens vers vous.',
+      });
+      const res = await approve(await tokenOf(org.owner), id);
+
+      expect(res.body.success, JSON.stringify(res.body)).toBe(false);
+      const row = await execRow(id);
+      expect(row.status).toBe('failed');
+      expect(String(row.real_result?.error ?? '')).toContain("n'appartient pas à un compte LinkedIn de votre organisation");
+      expect(await postsFrom(otherAccount), 'aucun envoi depuis le compte de l’autre organisation').toEqual([]);
+      expect(await postsFrom(accountId), 'aucun envoi depuis le compte de l’appelant').toEqual([]);
+    });
+  });
+
+  test.describe('slm-compte-parametre-autre-membre', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-compte-parametre-autre-membre
+    test('refuse un account_id qui n’est pas relié à l’appelant (collègue, autre organisation)', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant compte paramètre');
+      const colleague = await addMember(org.orgId, 'member', 'collegue');
+      track(org, colleague);
+      const colleagueAccount = await seedLinkedInAccount(org.orgId, colleague.userId, `acc_${rand()}`, 'OK');
+      const other = await createOrg('agency', 'E2E Assistant compte autre org');
+      track(other);
+      const otherAccount = await seedLinkedInAccount(other.orgId, other.owner.userId, `acc_${rand()}`, 'OK');
+      await openBusinessHours(org.orgId, org.owner.userId);
+      const token = await tokenOf(org.owner);
+
+      for (const foreign of [colleagueAccount, otherAccount]) {
+        const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+          account_id: foreign, recipient_provider_id: newProfileId(), text: 'Bonjour, un échange cette semaine ?',
+        });
+        const res = await approve(token, id);
+        expect(res.body.success, JSON.stringify(res.body)).toBe(false);
+        expect(String(res.body.error ?? '')).toContain("n'est pas rattaché à votre profil dans cette organisation");
+        expect((await execRow(id)).status).toBe('failed');
+      }
+      expect(await postsFrom(colleagueAccount)).toEqual([]);
+      expect(await postsFrom(otherAccount)).toEqual([]);
+      expect(await postsFrom(accountId)).toEqual([]);
+    });
+  });
+
+  test.describe('slm-hors-plage-programme', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-hors-plage-programme
+    // L'aperçu (dryRun, nextBusinessHoursStart) n'est joignable que par search-agent-chat : la
+    // ligne proposée porte details.scheduled_for comme l'aperçu l'écrirait hors plage.
+    test('hors plage : l’approbation programme sans envoyer, le cron envoie une fois à l’heure dite, une annulation avant l’heure n’envoie rien', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant hors plage');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const recipient = newProfileId();
+      const cancelledRecipient = newProfileId();
+      const scheduledFor = minutesFromNow(120);
+
+      const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: recipient, text: 'Bonjour, je vous écris de la part du cabinet.',
+      }, { scheduled_for: scheduledFor });
+      const res = await approve(token, id);
+      expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+      expect((res.body.data as Record<string, unknown>)?.scheduled).toBe(true);
+      let row = await execRow(id);
+      expect(row.status).toBe('approved');
+      expect(row.approved_at).not.toBeNull();
+      expect(row.executed_at).toBeNull();
+      expect(Math.abs(new Date(row.scheduled_for!).getTime() - new Date(scheduledFor).getTime())).toBeLessThan(2_000);
+      expect(await postsFrom(accountId), 'rien ne part à l’approbation').toEqual([]);
+
+      // Un passage du cron avant l'heure n'envoie rien.
+      expect((await cronScheduled()).status).toBe(200);
+      expect((await execRow(id)).executed_at).toBeNull();
+      expect(await postsFrom(accountId)).toEqual([]);
+
+      // Seconde action programmée, annulée par le membre avant l'heure (bandeau).
+      const cancelledId = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: cancelledRecipient, text: 'Bonjour, message annulé.',
+      }, { scheduled_for: scheduledFor });
+      expect((await approve(token, cancelledId)).body.success).toBe(true);
+      const ctx = await request.newContext();
+      const patch = await ctx.patch(`${E2E.supabaseUrl}/rest/v1/agent_tool_executions?id=eq.${cancelledId}`, {
+        headers: { apikey: E2E.anonKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        data: { status: 'rejected' },
+      });
+      expect(patch.status(), await patch.text()).toBe(200);
+      await ctx.dispose();
+
+      // L'heure arrive (plage 0 h-24 h en jour ouvré).
+      await openBusinessHours(org.orgId, org.owner.userId);
+      await admin().from('agent_tool_executions').update({ scheduled_for: minutesFromNow(-1) }).in('id', [id, cancelledId]);
+      await runScheduledUntilDone([id]);
+      row = await execRow(id);
+      expect(row.status, JSON.stringify(row.real_result)).toBe('executed');
+      expect(await newChatsTo(accountId, recipient)).toHaveLength(1);
+
+      // Un second passage n'envoie rien de plus ; l'action annulée ne part jamais.
+      expect((await cronScheduled()).status).toBe(200);
+      expect(await newChatsTo(accountId, recipient)).toHaveLength(1);
+      expect(await newChatsTo(accountId, cancelledRecipient)).toHaveLength(0);
+      expect((await execRow(cancelledId)).status).toBe('rejected');
+    });
+  });
+
+  test.describe('slm-envoi-unique', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-envoi-unique
+    test('un message n’est envoyé qu’une fois : deux approbations simultanées, puis deux passages simultanés du cron', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant envoi unique');
+      track(org);
+      await openBusinessHours(org.orgId, org.owner.userId);
+      const token = await tokenOf(org.owner);
+
+      const first = newProfileId();
+      const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: first, text: 'Bonjour, double clic.',
+      });
+      const both = await Promise.all([approve(token, id), approve(token, id)]);
+      const ok = both.filter((r) => r.body.success === true);
+      const refused = both.filter((r) => r.body.success !== true);
+      // Décision 33 : un seul succès, l'autre approbation est refusée (« déjà en cours » ou « déjà traitée »).
+      expect(ok.length, JSON.stringify(both.map((r) => r.body))).toBe(1);
+      for (const r of refused) expect(String(r.body.error)).toMatch(/^Action déjà (en cours ou déjà )?traitée$/);
+      expect(await newChatsTo(accountId, first), 'un seul envoi pour deux approbations').toHaveLength(1);
+      expect((await execRow(id)).status).toBe('executed');
+
+      const second = newProfileId();
+      const scheduledId = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: second, text: 'Bonjour, deux passages du cron.',
+      }, { scheduled_for: minutesFromNow(120) });
+      expect((await approve(token, scheduledId)).body.success).toBe(true);
+      await admin().from('agent_tool_executions').update({ scheduled_for: minutesFromNow(-1) }).eq('id', scheduledId);
+      const crons = await Promise.all([cronScheduled(), cronScheduled()]);
+      for (const c of crons) expect(c.status).toBe(200);
+      await runScheduledUntilDone([scheduledId]);
+      expect(await newChatsTo(accountId, second), 'un seul envoi pour deux passages du cron').toHaveLength(1);
+      expect((await execRow(scheduledId)).status).toBe('executed');
+    });
+  });
+
+  test.describe('slm-envoi-trace', () => {
+    test.describe.configure({ mode: 'serial' });
+    // slm-envoi-trace
+    test('un message envoyé est tracé comme le message direct de l’interface (inmail_queue « sent ») : anti-doublon et historique le voient', async () => {
+      test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
+      const { org, accountId } = await sendingOrg('E2E Assistant trace');
+      track(org);
+      await openBusinessHours(org.orgId, org.owner.userId);
+      const token = await tokenOf(org.owner);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour {{first_name}}']);
+      const recipient = await seedCandidate(org.orgId, org.owner.userId, { name: 'Julie Morel', projectId: mission });
+
+      const res = await approve(token, await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
+        recipient_provider_id: recipient, recipient_name: 'Julie Morel', text: 'Bonjour Julie, un poste pourrait vous intéresser.',
+      }));
+      expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+      expect(await newChatsTo(accountId, recipient)).toHaveLength(1);
+
+      const { data: traces } = await admin().from('inmail_queue')
+        .select('organization_id, created_by, recipient_profile_id, status')
+        .eq('recipient_profile_id', recipient);
+      // Historique lu avant la tentative d'inscription (qui, acceptée à tort, fausserait « contacté »).
+      const outreach = await readTool(org.orgId, org.owner.userId, 'get_candidate_outreach', { candidate_id: recipient });
+      const enroll = await approve(token, await propose(org.orgId, org.owner.userId, 'enroll_in_sequence', {
+        sequence_id: sequenceId, candidate_id: recipient, profile_name: 'Julie Morel', job_id: mission,
+      }));
+
+      // DÉFAUT slm-envoi-non-trace : send_linkedin_message n'écrit aucune ligne inmail_queue ; ni l'anti-doublon ni get_candidate_outreach ne voient l'envoi.
+      expect.soft(traces ?? [], 'trace inmail_queue du message direct').toEqual([
+        { organization_id: org.orgId, created_by: org.owner.userId, recipient_profile_id: recipient, status: 'sent' },
+      ]);
+      expect.soft(outreach.result.data?.contacted, `get_candidate_outreach : ${JSON.stringify(outreach.result)}`).toBe(true);
+      expect.soft(enroll.body.success, `inscription sans force : ${JSON.stringify(enroll.body)}`).toBe(false);
+      expect.soft(String(enroll.body.error ?? '')).toContain('Déjà contacté');
+    });
+  });
+});
+
+// ═══ get_sequences_status ════════════════════════════════════════════════════
+
+test.describe('Assistant : get_sequences_status', () => {
+  test.describe('gss-scope-organisation', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gss-scope-organisation
+    test('ne compte que les inscriptions de l’organisation de l’appelant (pas celles d’un partenaire sur le même job_id)', async () => {
+      const a = await createOrg('agency', 'E2E GSS A');
+      track(a);
+      const b = await createOrg('agency', 'E2E GSS B');
+      track(b);
+      const mission = await seedMission(a.orgId, a.owner.userId);
+      for (let i = 0; i < 2; i++) await seedEnrollmentRow(a.orgId, a.owner.userId, { job_id: mission });
+      for (let i = 0; i < 3; i++) await seedEnrollmentRow(b.orgId, b.owner.userId, { job_id: mission });
+
+      const r = await readTool(a.orgId, a.owner.userId, 'get_sequences_status', { mission_id: mission });
+      expect(r.status, JSON.stringify(r.result)).toBe('executed');
+      const byStatus = (r.result.data?.by_status ?? {}) as Record<string, number>;
+      // DÉFAUT gss-autres-organisations-comptees : la requête filtre sur job_id seul, en clé de service, sans organization_id.
+      expect.soft(r.result.data?.total_enrolled, JSON.stringify(r.result.data)).toBe(2);
+      expect.soft(Object.values(byStatus).reduce((s, n) => s + n, 0)).toBe(2);
+    });
+  });
+
+  test.describe('gss-acces-collaborateur', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gss-acces-collaborateur
+    test('collaborateur : refus sur une mission qu’il n’a ni créée ni rejointe, réponse sur les siennes', async () => {
+      const org = await createOrg('agency', 'E2E GSS collaborateur');
+      const collab = await addMember(org.orgId, 'collaborator', 'collab');
+      track(org, collab);
+      const foreign = await seedMission(org.orgId, org.owner.userId);
+      const joined = await seedMission(org.orgId, org.owner.userId);
+      const own = await seedMission(org.orgId, collab.userId);
+      const { error } = await admin().from('mission_team').insert({ project_id: joined, user_id: collab.userId, role: 'sourcer' });
+      if (error) throw new Error(`mission_team: ${error.message}`);
+      for (const m of [foreign, joined, own]) await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: m });
+
+      const refused = await readTool(org.orgId, collab.userId, 'get_sequences_status', { mission_id: foreign });
+      expect(refused.status).toBe('failed');
+      expect(refused.result.success).toBe(false);
+      expect(String(refused.result.error)).toContain("Tu n'as pas accès à cette mission");
+      expect(refused.result.data).toBeUndefined();
+
+      for (const m of [joined, own]) {
+        const r = await readTool(org.orgId, collab.userId, 'get_sequences_status', { mission_id: m });
+        expect(r.status, JSON.stringify(r.result)).toBe('executed');
+        expect(r.result.success).toBe(true);
+        expect(r.result.data?.total_enrolled).toBe(1);
+      }
+    });
+  });
+
+  test.describe('gss-mission-autre-organisation', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gss-mission-autre-organisation
+    test('mission d’une autre organisation : rien, ni par UUID ni par nom', async () => {
+      const a = await createOrg('agency', 'E2E GSS mission A');
+      track(a);
+      const b = await createOrg('agency', 'E2E GSS mission B');
+      track(b);
+      const name = `Mission confidentielle ${rand()}`;
+      const mission = await seedMission(a.orgId, a.owner.userId, { name });
+      for (let i = 0; i < 3; i++) await seedEnrollmentRow(a.orgId, a.owner.userId, { job_id: mission });
+
+      const byId = await readTool(b.orgId, b.owner.userId, 'get_sequences_status', { mission_id: mission });
+      expect(byId.status).toBe('failed');
+      expect(String(byId.result.error)).toContain("Tu n'as pas accès");
+      expect(byId.result.data).toBeUndefined();
+
+      const byName = await readTool(b.orgId, b.owner.userId, 'get_sequences_status', { mission_name: name });
+      expect(byName.status).toBe('failed');
+      expect(String(byName.result.error)).toMatch(/introuvable/);
+      expect(byName.result.data).toBeUndefined();
+    });
+  });
+});
+
+// ═══ get_candidate_outreach ══════════════════════════════════════════════════
+
+test.describe('Assistant : get_candidate_outreach', () => {
+  test.describe('gco-scope-organisation', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gco-scope-organisation
+    test('ne montre ni inscription, ni InMail, ni analyse d’une autre organisation pour le même identifiant LinkedIn', async () => {
+      const a = await createOrg('agency', 'E2E GCO A');
+      track(a);
+      const b = await createOrg('agency', 'E2E GCO B');
+      track(b);
+      const name = `Lucie Bernard ${rand()}`;
+      const candidate = await seedCandidate(a.orgId, a.owner.userId, { name });
+      await seedEnrollmentRow(b.orgId, b.owner.userId, {
+        profile_id: candidate, provider_id: candidate, profile_name: name, status: 'replied', replied_at: new Date().toISOString(),
+      });
+      const { error: inmailErr } = await admin().from('inmail_queue').insert({
+        organization_id: b.orgId, created_by: b.owner.userId, account_id: `acc_${rand()}`, recipient_profile_id: candidate,
+        recipient_name: name, subject: 'Poste', message: 'Bonjour', status: 'sent', sent_at: new Date().toISOString(),
+      });
+      if (inmailErr) throw new Error(`inmail_queue: ${inmailErr.message}`);
+      const { error: analysisErr } = await admin().from('message_analysis_cache').insert({
+        organization_id: b.orgId, chat_id: `chat_${rand()}`, account_id: `acc_${rand()}`, recipient_name: name,
+        analysis: { intent: 'interested', sentiment: 'positive', summary: 'Analyse de l’organisation B' },
+      });
+      if (analysisErr) throw new Error(`message_analysis_cache: ${analysisErr.message}`);
+
+      const r = await readTool(a.orgId, a.owner.userId, 'get_candidate_outreach', { candidate_id: candidate });
+      expect(r.status, JSON.stringify(r.result)).toBe('executed');
+      expect(r.result.data?.enrollments).toEqual([]);
+      expect(r.result.data?.inmails).toEqual([]);
+      expect(r.result.data?.message_analyses).toEqual([]);
+      expect(r.result.data?.contacted).toBe(false);
+      expect(r.result.data?.replied).toBe(false);
+    });
+  });
+
+  test.describe('gco-portee-collaborateur', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gco-portee-collaborateur
+    test('collaborateur : candidat hors de ses missions introuvable ; sur ses missions, ses inscriptions et celles de ses missions (toutes formes de job_id), pas les InMails des autres', async () => {
+      const org = await createOrg('agency', 'E2E GCO collaborateur');
+      const collab = await addMember(org.orgId, 'collaborator', 'collab');
+      const member = await addMember(org.orgId, 'member', 'membre');
+      track(org, collab, member);
+      const own = await seedMission(org.orgId, collab.userId);
+      const others = await seedMission(org.orgId, org.owner.userId);
+      const tag = rand();
+      const hiddenName = `Yann Perrin ${tag}`;
+      const hidden = await seedCandidate(org.orgId, org.owner.userId, { name: hiddenName, projectId: others });
+      const visible = await seedCandidate(org.orgId, collab.userId, { name: `Xavier Perrin ${tag}`, projectId: own });
+
+      await seedEnrollmentRow(org.orgId, collab.userId, { profile_id: visible, provider_id: visible, job_id: null, job_title: 'inscription du collaborateur' });
+      await seedEnrollmentRow(org.orgId, member.userId, { profile_id: visible, provider_id: visible, job_id: own, job_title: 'mission du collaborateur (uuid)' });
+      await seedEnrollmentRow(org.orgId, member.userId, { profile_id: visible, provider_id: visible, job_id: `project:${own}`, job_title: 'mission du collaborateur (project:)' });
+      await seedEnrollmentRow(org.orgId, member.userId, { profile_id: visible, provider_id: visible, job_id: others, job_title: 'mission d’un autre' });
+      const { error } = await admin().from('inmail_queue').insert({
+        organization_id: org.orgId, created_by: member.userId, account_id: `acc_${rand()}`, recipient_profile_id: visible,
+        subject: 'Poste', message: 'Bonjour', status: 'sent', sent_at: new Date().toISOString(),
+      });
+      if (error) throw new Error(`inmail_queue: ${error.message}`);
+
+      const byId = await readTool(org.orgId, collab.userId, 'get_candidate_outreach', { candidate_id: hidden });
+      expect(byId.status).toBe('failed');
+      expect(String(byId.result.error)).toContain('Candidat introuvable');
+      expect(JSON.stringify(byId.result)).not.toContain(hiddenName);
+
+      const byName = await readTool(org.orgId, collab.userId, 'get_candidate_outreach', { candidate_name: `Perrin ${tag}` });
+      expect(JSON.stringify(byName.result), 'aucune liste d’ambiguïté ne révèle le candidat caché').not.toContain(hidden);
+      expect(JSON.stringify(byName.result)).not.toContain(hiddenName);
+
+      const r = await readTool(org.orgId, collab.userId, 'get_candidate_outreach', { candidate_id: visible });
+      expect(r.status, JSON.stringify(r.result)).toBe('executed');
+      expect(r.result.data?.inmails, 'InMail d’un autre membre').toEqual([]);
+      const missions = ((r.result.data?.enrollments ?? []) as Array<{ mission: string }>).map((e) => e.mission).sort();
+      // DÉFAUT gco-job-id-project-ecarte : le filtre collaborateur compare job_id aux UUID de ses missions, la forme « project:<uuid> » est écartée.
+      expect(missions).toEqual([
+        'inscription du collaborateur',
+        'mission du collaborateur (project:)',
+        'mission du collaborateur (uuid)',
+      ]);
+    });
+  });
+
+  test.describe('gco-fil-comptes-appelant', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gco-fil-comptes-appelant
+    test('ne lit le fil LinkedIn que dans les comptes de l’appelant, jamais dans la boîte d’un collègue', async () => {
+      const org = await createOrg('agency', 'E2E GCO fil');
+      const collab = await addMember(org.orgId, 'collaborator', 'collab');
+      const member = await addMember(org.orgId, 'member', 'membre');
+      track(org, collab, member);
+      await seedLinkedInAccount(org.orgId, collab.userId, `acc_${rand()}`, 'OK');
+      const memberAccount = await seedLinkedInAccount(org.orgId, member.userId, `acc_${rand()}`, 'OK');
+      const mission = await seedMission(org.orgId, collab.userId);
+      const candidate = await seedCandidate(org.orgId, collab.userId, { projectId: mission });
+      const chatId = `chat_m_${rand()}`;
+      await setMockMode(memberAccount, {
+        routes: [
+          { method: 'GET', path: `^/api/v1/chat_attendees/${candidate}/chats$`, body: { object: 'ChatList', items: [{ id: chatId, account_id: memberAccount }], cursor: null } },
+          { method: 'GET', path: `^/api/v1/chats/${chatId}/messages$`, body: { object: 'MessageList', items: [
+            { id: 'm1', text: 'Conversation privée du collègue', is_sender: 1, timestamp: minutesFromNow(-60) },
+            { id: 'm2', text: 'Réponse du candidat au collègue', is_sender: 0, timestamp: minutesFromNow(-30) },
+          ], cursor: null } },
+        ],
+      });
+
+      const r = await readTool(org.orgId, collab.userId, 'get_candidate_outreach', { candidate_id: candidate });
+      expect(r.status, JSON.stringify(r.result)).toBe('executed');
+      expect(r.result.data?.linkedin_thread).toBeNull();
+      // DÉFAUT gco-boite-collegue-lue : resolveOrgLinkedInAccounts ajoute les comptes des collègues, get_chats part sur le compte du membre.
+      expect(await mockCalls(memberAccount), 'aucun appel sur le compte LinkedIn du collègue').toEqual([]);
+    });
+  });
+
+  test.describe('gco-analyses-par-identite', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gco-analyses-par-identite
+    test('ne rattache pas l’analyse d’un homonyme approchant ; « répondu » n’est pas déduit d’une telle analyse', async () => {
+      const org = await createOrg('agency', 'E2E GCO analyses');
+      track(org);
+      const candidate = await seedCandidate(org.orgId, org.owner.userId, { name: 'Marie Martin' });
+      const { error } = await admin().from('message_analysis_cache').insert({
+        organization_id: org.orgId, chat_id: `chat_${rand()}`, account_id: `acc_${rand()}`, recipient_name: 'Marie Martinez',
+        analysis: { intent: 'interested', sentiment: 'positive', summary: 'Marie Martinez est intéressée' },
+      });
+      if (error) throw new Error(`message_analysis_cache: ${error.message}`);
+
+      const r = await readTool(org.orgId, org.owner.userId, 'get_candidate_outreach', { candidate_id: candidate });
+      expect(r.status, JSON.stringify(r.result)).toBe('executed');
+      // DÉFAUT gco-analyse-par-nom : message_analysis_cache est rapproché par ilike '%Marie Martin%', l'homonyme est rattaché et replied passe à vrai.
+      expect.soft(r.result.data?.message_analyses).toEqual([]);
+      expect.soft(r.result.data?.replied).toBe(false);
+    });
+  });
+
+  test.describe('gco-resultat-audit-non-expose', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gco-resultat-audit-non-expose
+    // Harnais : le résultat est écrit par executeScheduledAction (cron), qui n'applique jamais
+    // redactResultInAudit ; en production une lecture passe par handleProposedToolCall (exécution
+    // directe), seul chemin qui masque. Un correctif limité à ce drapeau ne serait pas vu ici.
+    test('le résultat (inscriptions d’un collègue) n’est pas lisible en clair par un collaborateur dans agent_tool_executions', async () => {
+      const org = await createOrg('agency', 'E2E GCO audit');
+      const collab = await addMember(org.orgId, 'collaborator', 'collab');
+      track(org, collab);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      const candidate = await seedCandidate(org.orgId, org.owner.userId, { name: 'Paul Lambert', projectId: mission });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, {
+        profile_id: candidate, provider_id: candidate, job_id: mission, job_title: 'Mission confidentielle',
+        status: 'replied', replied_at: new Date().toISOString(),
+      });
+      const r = await readTool(org.orgId, org.owner.userId, 'get_candidate_outreach', { candidate_id: candidate });
+      expect(r.status).toBe('executed');
+      expect(r.result.data?.enrollments, 'le propriétaire voit l’inscription (précondition)').toHaveLength(1);
+
+      const ctx = await request.newContext();
+      const res = await ctx.get(`${E2E.supabaseUrl}/rest/v1/agent_tool_executions?id=eq.${r.id}&select=real_result`, {
+        headers: { apikey: E2E.anonKey, Authorization: `Bearer ${await tokenOf(collab)}` },
+      });
+      expect(res.status()).toBe(200);
+      const rows = (await res.json()) as Array<{ real_result: ToolResult | null }>;
+      await ctx.dispose();
+      const exposed = rows.filter((row) => {
+        const d = row.real_result?.data ?? {};
+        return (d.enrollments?.length ?? 0) > 0 || (d.message_analyses?.length ?? 0) > 0 || !!d.linkedin_thread;
+      });
+      // DÉFAUT gco-audit-lisible-organisation : policy org_members_select sur toute l'organisation et aucun masquage du résultat de cet outil.
+      expect(exposed, JSON.stringify(rows)).toEqual([]);
+    });
+  });
+});
+
+// ═══ create_sequence + enroll_in_sequence ════════════════════════════════════
+
+test.describe('Assistant : create_sequence', () => {
+  test.describe('cs-offre-gratuite-desactivee', () => {
+    test.describe.configure({ mode: 'serial' });
+    // cs-offre-gratuite-desactivee
+    test('crée la séquence désactivée, avec un message, quand l’offre n’autorise pas l’envoi ; active sur une offre payante', async () => {
+      const free = await createOrg('agency', 'E2E CS gratuit');
+      track(free);
+      const { error } = await admin().from('organization_subscriptions')
+        .upsert({ organization_id: free.orgId, plan_id: 'free', status: 'active' }, { onConflict: 'organization_id' });
+      if (error) throw new Error(`organization_subscriptions: ${error.message}`);
+      const { org: paid } = await sendingOrg('E2E CS payant');
+      track(paid);
+      const params = () => ({ name: `Séquence e2e ${rand()}`, steps: [{ type: 'message', message: 'Bonjour {{first_name}}' }] });
+
+      const paidRes = await approve(await tokenOf(paid.owner), await propose(paid.orgId, paid.owner.userId, 'create_sequence', params()));
+      expect(paidRes.body.success, JSON.stringify(paidRes.body)).toBe(true);
+      const paidSeq = await admin().from('outreach_sequences').select('is_active').eq('id', (paidRes.body.data as Record<string, unknown>).sequence_id).single();
+      expect(paidSeq.data?.is_active, 'offre payante : séquence active').toBe(true);
+
+      const freeRes = await approve(await tokenOf(free.owner), await propose(free.orgId, free.owner.userId, 'create_sequence', params()));
+      expect(freeRes.body.success, JSON.stringify(freeRes.body)).toBe(true);
+      const freeData = freeRes.body.data as Record<string, unknown>;
+      const freeSeq = await admin().from('outreach_sequences').select('is_active').eq('id', freeData.sequence_id).single();
+      // DÉFAUT cs-active-offre-gratuite : create_sequence insère is_active: true en dur, sans consulter l'offre (SEQ-154).
+      expect.soft(freeSeq.data?.is_active, 'offre gratuite : séquence créée désactivée').toBe(false);
+      expect.soft(String(freeData.message ?? '')).toMatch(/offre|abonnement|désactivée/i);
+    });
+  });
+
+  test.describe('cs-premiere-etape-envoyee', () => {
+    test.describe.configure({ mode: 'serial' });
+    // cs-premiere-etape-envoyee
+    test('séquence créée puis inscription par l’assistant : l’étape 0 est planifiée et part au cycle où elle est due, sans variable brute', async () => {
+      const { org, accountId } = await sendingOrg('E2E CS première étape');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      const created = await approve(token, await propose(org.orgId, org.owner.userId, 'create_sequence', {
+        name: `Relance e2e ${rand()}`, mission_id: mission,
+        steps: [
+          { type: 'message', message: 'Bonjour {{first_name}}' },
+          { type: 'wait_reply', delay_days: 2 },
+          { type: 'message', message: 'Relance {{first_name}}' },
+        ],
+      }));
+      expect(created.body.success, JSON.stringify(created.body)).toBe(true);
+      const sequenceId = (created.body.data as Record<string, unknown>).sequence_id as string;
+      expect((await stepsOf(sequenceId)).map((s) => s.step_order)).toEqual([0, 1, 2]);
+
+      const candidate = newProfileId();
+      const enrolled = await approve(token, await propose(org.orgId, org.owner.userId, 'enroll_in_sequence', {
+        sequence_id: sequenceId, candidate_id: candidate, profile_name: 'Marie Martin', job_id: mission,
+        profile_url: `https://www.linkedin.com/in/marie-martin-${rand()}`,
+      }));
+      expect(enrolled.body.success, JSON.stringify(enrolled.body)).toBe(true);
+      const enrollmentId = (enrolled.body.data as Record<string, unknown>).enrollment_id as string;
+
+      const planned = await executionsOf(enrollmentId);
+      expect(planned.map((e) => [e.step_order, e.status])).toEqual([[0, 'scheduled']]);
+      // Première plage préférée du fuseau (9 h-18 h en jour ouvré) : au plus tard sous 4 jours.
+      expect(new Date(planned[0].scheduled_at).getTime()).toBeLessThan(Date.now() + 4 * 24 * 3600_000);
+
+      // Le temps passe jusqu'à l'échéance, un cycle du moteur.
+      await pullDue([enrollmentId]);
+      await runCycle();
+      expect((await executionsOf(enrollmentId))[0].status).toBe('sent');
+      const sent = await newChatsTo(accountId, candidate);
+      expect(sent).toHaveLength(1);
+      const text = String((sent[0].body as Record<string, unknown>).text);
+      expect(text.startsWith('Bonjour')).toBe(true);
+      expect(text).not.toMatch(/[{}]/);
+    });
+  });
+
+  test.describe('cs-attente-reponse', () => {
+    test.describe.configure({ mode: 'serial' });
+    // cs-attente-reponse
+    test('l’étape « attendre une réponse » attend vraiment : délai réglé (3 jours par défaut), sans réponse la relance part, avec réponse l’inscription se clôt et rien ne part', async () => {
+      const { org, accountId } = await sendingOrg('E2E CS attente');
+      track(org);
+      const token = await tokenOf(org.owner);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      const create = async (wait: Record<string, unknown>) => {
+        const res = await approve(token, await propose(org.orgId, org.owner.userId, 'create_sequence', {
+          name: `Attente e2e ${rand()}`, mission_id: mission,
+          steps: [{ type: 'message', message: 'Bonjour {{first_name}}' }, { type: 'wait_reply', ...wait }, { type: 'message', message: 'Relance {{first_name}}' }],
+        }));
+        expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+        return (res.body.data as Record<string, unknown>).sequence_id as string;
+      };
+
+      // Délai par défaut.
+      const defaultSteps = await stepsOf(await create({}));
+      expect(defaultSteps[1]).toMatchObject({ action_type: 'wait_reply', wait_for_event: 'reply_received', timeout_days: 3, delay_days: 0 });
+
+      const sequenceId = await create({ delay_days: 2 });
+      expect((await stepsOf(sequenceId))[1]).toMatchObject({ wait_for_event: 'reply_received', timeout_days: 2, delay_days: 0 });
+
+      const enrollOne = async () => {
+        const candidate = newProfileId();
+        const res = await approve(token, await propose(org.orgId, org.owner.userId, 'enroll_in_sequence', {
+          sequence_id: sequenceId, candidate_id: candidate, profile_name: 'Marie Martin', job_id: mission,
+        }));
+        expect(res.body.success, JSON.stringify(res.body)).toBe(true);
+        return { candidate, enrollmentId: (res.body.data as Record<string, unknown>).enrollment_id as string };
+      };
+      const silent = await enrollOne();
+      const answering = await enrollOne();
+      const ids = [silent.enrollmentId, answering.enrollmentId];
+
+      // Étape 0 envoyée, puis l'étape d'attente commence.
+      await pullDue(ids);
+      await runCycle();
+      for (const id of ids) expect((await executionsOf(id))[0].status).toBe('sent');
+      await pullDue(ids);
+      await runCycle();
+      for (const id of ids) {
+        const wait = (await executionsOf(id)).find((e) => e.step_order === 1);
+        expect(wait?.status, `attente de ${id}`).toBe('waiting_event');
+      }
+
+      // Le candidat répond : inscription « répondue », plus rien en attente.
+      await webhook({
+        event: 'message_received', account_id: accountId, account_type: 'LINKEDIN',
+        chat_id: `chat_${rand()}`, message_id: `msg_${rand()}`, message: 'Bonjour, oui avec plaisir',
+        sender: { attendee_provider_id: answering.candidate, attendee_id: 'att_candidate', attendee_name: 'Marie Martin' },
+      });
+      expect((await enrollmentRow(answering.enrollmentId)).status).toBe('replied');
+      const answeringPending = (await executionsOf(answering.enrollmentId))
+        .filter((e) => ['scheduled', 'waiting_event', 'quota_blocked'].includes(e.status));
+      expect(answeringPending, 'attente et relance annulées').toEqual([]);
+
+      // Sans réponse : le délai de 2 jours passe, la relance part.
+      await admin().from('sequence_step_executions').update({ scheduled_at: minutesFromNow(-3 * 24 * 60) })
+        .eq('enrollment_id', silent.enrollmentId).eq('status', 'waiting_event');
+      await runEngine({ action: 'check_timeouts' });
+      const afterTimeout = await executionsOf(silent.enrollmentId);
+      expect(afterTimeout.find((e) => e.step_order === 1)?.status).toBe('skipped');
+      expect(afterTimeout.find((e) => e.step_order === 2)?.status).toBe('scheduled');
+      await pullDue(ids);
+      await runCycle();
+      const silentTexts = (await newChatsTo(accountId, silent.candidate)).map((c) => String((c.body as Record<string, unknown>).text));
+      expect(silentTexts).toHaveLength(2);
+      expect(silentTexts[1].startsWith('Relance')).toBe(true);
+      expect(await newChatsTo(accountId, answering.candidate), 'aucune relance après la réponse').toHaveLength(1);
+    });
+  });
+});

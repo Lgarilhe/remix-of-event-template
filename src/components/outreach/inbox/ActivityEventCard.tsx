@@ -19,19 +19,44 @@ import {
   Phone,
 } from 'lucide-react';
 import { formatMessageTime } from '@/hooks/useMessagesInboxHelpers';
+import { formatSequenceError, formatSkipReason } from '@/lib/sequenceErrorMessages';
+import {
+  isInternalSequenceAction,
+  sequenceExecutionStatusMention,
+  sequenceExecutionTitle,
+} from '@/lib/sequenceActionLabels';
+import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import aircallLogo from '@/assets/aircall-logo.webp';
 
-const ACTION_CONFIG: Record<string, { icon: React.ElementType; label: string; color: string }> = {
-  profile_visit: { icon: Eye, label: 'Visite de profil', color: 'text-blue-500' },
-  send_connection: { icon: UserPlus, label: 'Invitation envoyée', color: 'text-green-500' },
-  send_message: { icon: MessageSquare, label: 'Message séquence', color: 'text-primary' },
-  send_inmail: { icon: Mail, label: 'InMail séquence', color: 'text-purple-500' },
-  send_smart_message: { icon: MessageSquare, label: 'Smart message', color: 'text-primary' },
-  wait_connection: { icon: Hourglass, label: 'Attente connexion', color: 'text-amber-500' },
-  check_connection: { icon: GitBranch, label: 'Vérification connexion', color: 'text-muted-foreground' },
-  calendly_booking: { icon: CalendarCheck, label: '📅 RDV planifié', color: 'text-emerald-500' },
-  aircall_call: { icon: Phone, label: 'Appel Aircall', color: 'text-green-600' },
+// Icônes par type d'étape réel (sequence_steps.action_type, mêmes clés que
+// SEQUENCE_ACTION_LABELS). Les libellés viennent du dictionnaire partagé
+// (src/lib/sequenceActionLabels.ts), comme la frise de la fiche candidat.
+const ACTION_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
+  profile_visit: { icon: Eye, color: 'text-blue-500' },
+  connection_request: { icon: UserPlus, color: 'text-green-500' },
+  message: { icon: MessageSquare, color: 'text-primary' },
+  smart_message: { icon: MessageSquare, color: 'text-primary' },
+  inmail: { icon: Mail, color: 'text-purple-500' },
+  email: { icon: Mail, color: 'text-primary' },
+  whatsapp_message: { icon: MessageSquare, color: 'text-green-600' },
+  wait_connection: { icon: Hourglass, color: 'text-amber-500' },
+  wait_reply: { icon: Hourglass, color: 'text-amber-500' },
+  check_connection: { icon: GitBranch, color: 'text-muted-foreground' },
+  calendly_booking: { icon: CalendarCheck, color: 'text-emerald-500' },
+  aircall_call: { icon: Phone, color: 'text-green-600' },
 };
+
+/**
+ * Titre d'une étape de séquence exécutée, identique à la fiche candidat :
+ * « InMail envoyé », « InMail : échec », « Invitation : étape sautée ». Une
+ * étape interne (attente, vérification) prend le nom de son type dans
+ * l'éditeur de séquence, suivi de son statut s'il n'est pas « faite ».
+ */
+function sequenceStepTitle(actionType: string, status: string): string {
+  if (!isInternalSequenceAction(actionType)) return sequenceExecutionTitle(actionType, status);
+  const mention = sequenceExecutionStatusMention(status);
+  return mention ? `${stepTypeLabel(actionType)} : ${mention.toLowerCase()}` : stepTypeLabel(actionType);
+}
 
 const STATUS_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
   sent: { icon: CheckCircle2, color: 'text-green-500' },
@@ -42,7 +67,12 @@ const STATUS_ICONS: Record<string, { icon: React.ElementType; color: string }> =
 
 export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event }) => {
   const navigate = useNavigate();
-  const config = ACTION_CONFIG[event.actionType] || { icon: GitBranch, label: event.actionType, color: 'text-muted-foreground' };
+  const isSequenceStep = event.type === 'sequence_step';
+  const config = ACTION_ICONS[event.actionType] || { icon: GitBranch, color: 'text-muted-foreground' };
+  // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
+  // jamais présentée comme envoyée.
+  const label = isSequenceStep ? sequenceStepTitle(event.actionType, event.status) : '📅 RDV planifié';
+  const stepFailed = isSequenceStep && (event.status === 'failed' || event.status === 'bounced');
   const statusConfig = STATUS_ICONS[event.status];
   const Icon = config.icon;
   const StatusIcon = statusConfig?.icon;
@@ -76,10 +106,10 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
           <Icon className={cn("w-3.5 h-3.5 shrink-0", config.color)} />
         )}
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-xs font-medium text-foreground truncate">
+          <span className={cn('text-xs font-medium truncate', stepFailed ? 'text-destructive' : 'text-foreground')}>
             {isAircall 
               ? `${event.callDirection === 'inbound' ? '📞 Appel entrant' : '📞 Appel sortant'}`
-              : config.label
+              : label
             }
           </span>
           {isAircall && event.callDuration != null && event.callDuration > 0 && (
@@ -99,12 +129,12 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
           )}
           {event.status === 'skipped' && event.skipReason && (
             <span className="text-xs text-muted-foreground truncate">
-              ({event.skipReason})
+              ({formatSkipReason(event.skipReason)})
             </span>
           )}
           {event.status === 'failed' && event.errorMessage && (
             <span className="text-xs text-destructive truncate">
-              ({event.errorMessage.slice(0, 40)})
+              ({formatSequenceError(event.errorMessage)})
             </span>
           )}
           {StatusIcon && !isBooking && !isAircall && (

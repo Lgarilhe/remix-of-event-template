@@ -47,7 +47,7 @@ const TOOL_CHIP_LABELS: Record<string, string> = {
   send_linkedin_message: 'Message LinkedIn',
   pause_sequence: 'Pause de séquence',
   resume_sequence: 'Reprise de séquence',
-  enroll_in_sequence: 'Enrôlement en séquence',
+  enroll_in_sequence: 'Inscription en séquence',
   draft_outreach_message: "Rédaction d'approche",
   invite_team_member: "Invitation d'un membre",
   update_member_quota: 'Modification de quotas',

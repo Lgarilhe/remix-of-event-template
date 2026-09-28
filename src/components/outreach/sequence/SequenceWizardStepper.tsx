@@ -29,7 +29,7 @@ export const SequenceWizardStepper: React.FC<SequenceWizardStepperProps> = ({
   const currentIndex = WIZARD_STEPS.findIndex(s => s.id === currentStep);
 
   return (
-    <nav className="relative flex flex-col" role="navigation" aria-label="Étapes du wizard">
+    <nav className="relative flex flex-col" aria-label="Étapes de création de la séquence">
       {/* Vertical progress line */}
       <div className="absolute left-[19px] top-5 bottom-5 w-px bg-border" />
       <motion.div
@@ -50,8 +50,10 @@ export const SequenceWizardStepper: React.FC<SequenceWizardStepperProps> = ({
 
         return (
           <button
+            type="button"
             key={step.id}
             onClick={() => onStepChange(step.id)}
+            aria-current={isCurrent ? 'step' : undefined}
             className={cn(
               "relative flex items-start gap-3.5 px-2 py-3 text-left transition-colors group",
               isCurrent
@@ -98,7 +100,7 @@ export const SequenceWizardStepper: React.FC<SequenceWizardStepperProps> = ({
                 "text-[10px] mt-0.5 leading-tight",
                 hasErrors ? "text-destructive" : "text-muted-foreground/70"
               )}>
-                {hasErrors ? `${errors.length} problème${errors.length > 1 ? 's' : ''}` : step.description}
+                {hasErrors ? `${errors.length} point${errors.length > 1 ? 's' : ''} à corriger` : step.description}
               </div>
             </div>
           </button>
