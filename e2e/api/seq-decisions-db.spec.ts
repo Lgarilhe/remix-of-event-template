@@ -346,7 +346,7 @@ test.describe('Décisions produit, lot base de données', () => {
   });
 
   // décision 19
-  test('droits retirés : la clé anonyme n’écrit rien, un utilisateur connecté n’écrit ni les statistiques, ni le suivi e-mail, ni la file InMail hors suivi d’envoi', async () => {
+  test('droits retirés : la clé anonyme n’écrit rien, un utilisateur connecté n’écrit ni les statistiques, ni le suivi e-mail, ni les compteurs des plafonds LinkedIn, ni la file InMail hors suivi d’envoi', async () => {
     const { org, accountId } = await sendingOrg('E2E Déc DB Droits');
     track(org);
     const token = await tokenOf(org.owner);
@@ -375,5 +375,22 @@ test.describe('Décisions produit, lot base de données', () => {
     expect(codeOf(requeue.body)).toBe('42501');
     const { data: after } = await admin().from('inmail_queue').select('status').eq('id', rows(sent.body)[0].id as string).single();
     expect(after?.status).toBe('sent');
+
+    // Compteurs des plafonds LinkedIn : plus effaçables par un utilisateur connecté,
+    // toujours lus par get_linkedin_quota_status.
+    const { error: logErr } = await admin().from('linkedin_action_log').insert({
+      organization_id: org.orgId, user_id: org.owner.userId, account_id: accountId, action_type: 'message', source: 'sequence',
+    });
+    expect(logErr).toBeNull();
+    const wipe = await rest('DELETE', `linkedin_action_log?account_id=eq.${accountId}`, token);
+    expect(wipe.status, JSON.stringify(wipe.body)).toBe(403);
+    expect(codeOf(wipe.body)).toBe('42501');
+    const forged = await rest('POST', 'linkedin_action_log', token, { account_id: accountId, action_type: 'message' });
+    expect(forged.status, JSON.stringify(forged.body)).toBe(403);
+    const quota = await rest('POST', 'rpc/get_linkedin_quota_status', token, { p_account_id: accountId });
+    expect(quota.status, JSON.stringify(quota.body)).toBe(200);
+    expect(((quota.body as Json).today as Json).visible_actions).toBe(1);
+    const { count: logCount } = await admin().from('linkedin_action_log').select('id', { count: 'exact', head: true }).eq('account_id', accountId);
+    expect(logCount).toBe(1);
   });
 });

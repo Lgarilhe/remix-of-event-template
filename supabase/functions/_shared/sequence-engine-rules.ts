@@ -325,6 +325,45 @@ export function siblingStopScope(previousStatus: string | null | undefined, comp
   return { kind: 'created_before', before: new Date(endedAt).toISOString() };
 }
 
+// ─── Décision 9 : réponse tardive, dernière prise de contact seulement ──────
+
+/** Autre inscription du même candidat, sur le même compte et dans la même organisation. */
+export interface SameAccountContact {
+  status: string;
+  created_at?: string | null;
+  completed_at?: string | null;
+  replied_at?: string | null;
+}
+
+/** Fin d'un contact clos : la plus ancienne de sa date de fin et de sa date de réponse (NaN sans date). */
+function contactEnd(e: { completed_at?: string | null; replied_at?: string | null }): number {
+  const dates = [e.completed_at, e.replied_at].map((d) => (d ? Date.parse(d) : NaN)).filter((t) => Number.isFinite(t));
+  return dates.length > 0 ? Math.min(...dates) : NaN;
+}
+
+/**
+ * Décision 9 : la scrutation de secours ne passe « répondu » une inscription
+ * terminée que si elle reste la dernière prise de contact avec le candidat sur
+ * ce compte, comme le webhook (lateReplyEnrollments,
+ * _shared/candidate-reply-closure.ts) : aucune autre inscription ouverte
+ * (active, en pause), aucune créée après elle, aucune close après elle. Sinon
+ * le message, qui répond à la plus récente, est compté deux fois et reporté
+ * dans la mission de l'ancienne. Date de création ou de fin illisible : écartée.
+ */
+export function isLastContactOnAccount(
+  enrollment: { created_at?: string | null; completed_at?: string | null; replied_at?: string | null },
+  others: SameAccountContact[],
+): boolean {
+  const created = enrollment.created_at ? Date.parse(enrollment.created_at) : NaN;
+  const ended = contactEnd(enrollment);
+  if (!Number.isFinite(created) || !Number.isFinite(ended)) return false;
+  return others.every((o) => {
+    if (o.status === 'active' || o.status === 'paused') return false;
+    if (o.created_at && Date.parse(o.created_at) > created) return false;
+    return !(contactEnd(o) > ended);
+  });
+}
+
 // ─── SEQ-006 / SEQ-221 : réponse reportée dans le pipeline ──────────────────
 
 /**

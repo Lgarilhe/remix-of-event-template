@@ -14,7 +14,7 @@ import {
   MANUAL_SKIP_REASON, resolveStepContent, isMissingRequiredText, missionJobIds,
   closedChannelSkipReason, isEmailOutcomeUnknown, siblingEnrollmentsFilter, SIBLING_REPLY_SKIP_REASON,
   siblingStopScope, type SiblingStopScope, REPLY_PIPELINE_STATUSES, replyPipelinePatch, linkedinProfileSlug,
-  executionsSinceReEnroll,
+  executionsSinceReEnroll, isLastContactOnAccount, type SameAccountContact,
 } from "../_shared/sequence-engine-rules.ts";
 import {
   planResume, countOutcomes, ACCOUNT_NOT_IN_ORG_REASON, SUBSCRIPTION_REQUIRED_SKIP_REASON,
@@ -22,7 +22,7 @@ import {
   MAILBOX_DISCONNECTED_SKIP_REASON,
   type ResumeMode, type ResumeOutcome, type ResumeExecutionRow,
 } from "../_shared/sequence-resume.ts";
-import { isGdprBlocked, GDPR_ERASURE_SKIP_REASON } from "../_shared/get-or-fetch-contact.ts";
+import { isGdprBlocked, GDPR_ERASURE_SKIP_REASON, GDPR_ERASED_AT_KEY } from "../_shared/get-or-fetch-contact.ts";
 import {
   CYCLE_BUDGET_MS, hasTimeToLock, readCycleSelection, sendingAccountKey, stepSendChannel, executionChannel,
   MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE,
@@ -3448,11 +3448,13 @@ async function handleCheckReplies(supabase: any) {
   // 20 lignes arbitraires, toujours les mêmes, dont des inscriptions sans envoi.
   // La séquence jointe sert de repli pour l'organisation (SEQ-006, SEQ-007).
   // Décision 9 : aussi les inscriptions terminées depuis moins de 14 jours
-  // (réponse à la dernière relance), sauf celles closes par un rendez-vous.
+  // (réponse à la dernière relance), sauf celles closes par un rendez-vous ou
+  // touchées par un effacement RGPD (D5 : l'effacement laisse une inscription
+  // terminée « completed », avec son marqueur et son adresse de profil).
   const recentlyCompletedSince = new Date(Date.now() - RECENTLY_COMPLETED_REPLY_WINDOW_MS).toISOString();
   const { data: activeEnrollments, error: enrollmentsErr } = await supabase.from('sequence_enrollments')
     .select('*, sequence:outreach_sequences(organization_id), sent_steps:sequence_step_executions!inner(id)')
-    .or(`status.eq.active,and(status.eq.completed,completed_at.gte.${recentlyCompletedSince},or(tracking_data->>completion_reason.is.null,tracking_data->>completion_reason.neq.meeting_booked))`)
+    .or(`status.eq.active,and(status.eq.completed,completed_at.gte.${recentlyCompletedSince},tracking_data->>${GDPR_ERASED_AT_KEY}.is.null,or(tracking_data->>completion_reason.is.null,tracking_data->>completion_reason.neq.meeting_booked))`)
     .in('sent_steps.status', SENT_EXECUTION_STATUSES)
     .order('last_check_at', { ascending: true, nullsFirst: true })
     .limit(20);
@@ -3474,6 +3476,34 @@ async function handleCheckReplies(supabase: any) {
       break;
     }
     examinedIds.push(enrollment.id);
+
+    // D5 : la conversation d'un candidat effacé (RGPD) n'est jamais relue ni
+    // son inscription reprise. Inscription terminée : aussi le registre global
+    // (effacement antérieur au marqueur, ou demandé par une autre
+    // organisation) ; registre illisible = inscription écartée.
+    if (isGdprErasedEnrollment(enrollment.tracking_data, [])) continue;
+    if (enrollment.status === 'completed' && enrollment.profile_url) {
+      let erased: boolean;
+      try {
+        erased = await isGdprBlocked(supabase, { linkedinUrl: enrollment.profile_url });
+      } catch (e) {
+        console.warn(`[checkReplies] registre RGPD illisible, ${enrollment.id} écartée:`, e);
+        checkFailed++;
+        continue;
+      }
+      if (erased) continue;
+    }
+    // Décision 9 : une inscription terminée n'est examinée que si elle reste
+    // la dernière prise de contact avec le candidat sur ce compte (même règle
+    // que le webhook). Lecture impossible : rien n'est décidé.
+    if (enrollment.status === 'completed') {
+      const lastContact = await isLastContactForLateReply(supabase, enrollment);
+      if (lastContact === null) {
+        checkFailed++;
+        continue;
+      }
+      if (!lastContact) continue;
+    }
 
     // Last visible send of the sequence for this enrollment (invitation included)
     const { data: lastSentExec } = await supabase
@@ -3568,6 +3598,50 @@ async function handleCheckReplies(supabase: any) {
   } finally {
     await releaseLock(supabase, runId);
   }
+}
+
+/**
+ * Décision 9 : l'inscription terminée est-elle la dernière prise de contact
+ * avec le candidat sur son compte d'envoi, dans son organisation
+ * (isLastContactOnAccount) ? Même candidat : identifiants LinkedIn
+ * (profile_id, resolved_profile_id, provider_id) ou slug exact de
+ * profile_url. null si une lecture échoue ou si l'organisation ou le compte
+ * sont inconnus.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function isLastContactForLateReply(supabase: any, enrollment: Record<string, any>): Promise<boolean | null> {
+  const orgId = (enrollment.organization_id || enrollment.sequence?.organization_id || null) as string | null;
+  const account = senderAccountFor(enrollment);
+  if (!orgId || !account) return null;
+  type Row = SameAccountContact & { id: string; account_id: string | null; assigned_sender_id: string | null; profile_url: string | null };
+  const others = () => supabase.from('sequence_enrollments')
+    .select('id, status, created_at, completed_at, replied_at, account_id, assigned_sender_id, profile_url')
+    .eq('organization_id', orgId).neq('id', enrollment.id);
+  const rows = new Map<string, Row>();
+  const filter = siblingEnrollmentsFilter([enrollment.profile_id, enrollment.resolved_profile_id, enrollment.provider_id]);
+  if (filter) {
+    const { data, error } = await others().or(filter);
+    if (error) {
+      console.warn(`[checkReplies] autres inscriptions du candidat de ${enrollment.id} illisibles:`, error);
+      return null;
+    }
+    for (const row of (data ?? []) as Row[]) rows.set(row.id, row);
+  }
+  const slug = linkedinProfileSlug(enrollment.profile_url as string | null);
+  if (slug) {
+    const { data, error } = await others().ilike('profile_url', `%linkedin.com/in/${slug.replace(/([%_\\])/g, '\\$1')}%`);
+    if (error) {
+      console.warn(`[checkReplies] autres inscriptions du candidat de ${enrollment.id} illisibles:`, error);
+      return null;
+    }
+    // Slug exact (le motif accepte « marie-martin-4b2a1 » pour « marie-martin »).
+    for (const row of (data ?? []) as Row[]) {
+      if (linkedinProfileSlug(row.profile_url) === slug) rows.set(row.id, row);
+    }
+  }
+  const sameAccount = [...rows.values()].filter((r) => r.account_id === account || r.assigned_sender_id === account);
+  return isLastContactOnAccount(enrollment, sameAccount);
 }
 
 // deno-lint-ignore no-explicit-any

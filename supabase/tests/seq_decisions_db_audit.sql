@@ -788,9 +788,10 @@ END $$;
 
 -- ---------------------------------------------------------------------
 -- @critical d19-droits-inutiles-retires (décision 19)
--- Tables du module : anon n'a plus aucun droit ; authenticated n'a plus
--- TRUNCATE, REFERENCES ni TRIGGER, ni les écritures sans policy. Les droits
--- utilisés par l'interface restent (témoins).
+-- Tables du module (onze, compteurs des plafonds LinkedIn compris) : anon
+-- n'a plus aucun droit ; authenticated n'a plus TRUNCATE, REFERENCES ni
+-- TRIGGER, ni les écritures sans policy. Les droits utilisés par l'interface
+-- restent (témoins).
 -- ---------------------------------------------------------------------
 DO $$
 DECLARE
@@ -803,7 +804,7 @@ DECLARE
   all_tables text[] := ARRAY['outreach_sequences', 'sequence_steps', 'sequence_enrollments',
                              'sequence_step_executions', 'sequence_templates', 'sequence_snippets',
                              'sequence_analytics', 'inmail_queue', 'sequence_email_tracking',
-                             'sequence_processing_lock'];
+                             'sequence_processing_lock', 'linkedin_action_log'];
   f text := '';
   c int := 0;
 BEGIN
@@ -822,7 +823,8 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  FOREACH t IN ARRAY ARRAY['sequence_analytics', 'sequence_email_tracking', 'sequence_processing_lock'] LOOP
+  FOREACH t IN ARRAY ARRAY['sequence_analytics', 'sequence_email_tracking', 'sequence_processing_lock',
+                           'linkedin_action_log'] LOOP
     FOREACH p IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE'] LOOP
       c := c + 1;
       IF has_table_privilege('authenticated', 'public.' || t, p) THEN
@@ -853,17 +855,30 @@ BEGIN
     f := f || '[régression : lecture de la file InMail ou des statistiques, ou suivi d''envoi, retirés] ';
   END IF;
 
-  -- Comportement : TRUNCATE refusé à un utilisateur connecté ; le suivi d'un
-  -- message déjà parti s'écrit toujours.
-  c := c + 1;
+  -- Comportement : les compteurs des plafonds LinkedIn restent lisibles par
+  -- get_linkedin_quota_status ; TRUNCATE refusé à un utilisateur connecté,
+  -- compteurs compris (TRUNCATE ignore la RLS) ; le suivi d'un message déjà
+  -- parti s'écrit toujours.
+  INSERT INTO public.linkedin_action_log (organization_id, user_id, account_id, action_type, source)
+  VALUES (org_a, u_a, 'sdec-acc-owner', 'message', 'sequence');
   PERFORM pg_temp.sdec_as(u_a);
   SET LOCAL ROLE authenticated;
+  c := c + 1;
   BEGIN
-    TRUNCATE public.sequence_analytics;
-    f := f || '[DÉFAUT d19 : TRUNCATE accepté pour un utilisateur connecté] ';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
-  WHEN OTHERS THEN f := f || format('[TRUNCATE : %s (%s)] ', SQLERRM, SQLSTATE);
+    IF coalesce((public.get_linkedin_quota_status('sdec-acc-owner') -> 'today' ->> 'visible_actions')::int, 0) < 1 THEN
+      f := f || '[régression : get_linkedin_quota_status ne compte plus les actions du jour] ';
+    END IF;
+  EXCEPTION WHEN OTHERS THEN f := f || format('[régression : get_linkedin_quota_status refusé : %s (%s)] ', SQLERRM, SQLSTATE);
   END;
+  FOREACH t IN ARRAY ARRAY['sequence_analytics', 'linkedin_action_log'] LOOP
+    c := c + 1;
+    BEGIN
+      EXECUTE format('TRUNCATE public.%I', t);
+      f := f || format('[DÉFAUT d19 : TRUNCATE de %s accepté pour un utilisateur connecté] ', t);
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    WHEN OTHERS THEN f := f || format('[TRUNCATE %s : %s (%s)] ', t, SQLERRM, SQLSTATE);
+    END;
+  END LOOP;
   c := c + 1;
   BEGIN
     INSERT INTO public.inmail_queue (account_id, recipient_profile_id, subject, message, status, sent_at, organization_id, created_by)

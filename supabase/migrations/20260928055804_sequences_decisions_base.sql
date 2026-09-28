@@ -56,9 +56,9 @@
 -- 7. D19  Tables du module : anon perd tous ses droits (aucune policy ne le
 --         vise) ; authenticated perd TRUNCATE, REFERENCES et TRIGGER partout,
 --         et les écritures sans policy : sequence_analytics,
---         sequence_email_tracking, sequence_processing_lock (lecture seule ou
---         serveur seul), UPDATE et DELETE sur inmail_queue (le navigateur n'y
---         insère que le suivi d'un message parti).
+--         sequence_email_tracking, sequence_processing_lock, linkedin_action_log
+--         (lecture seule ou serveur seul), UPDATE et DELETE sur inmail_queue
+--         (le navigateur n'y insère que le suivi d'un message parti).
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -442,18 +442,21 @@ REVOKE ALL ON TABLE
   public.outreach_sequences, public.sequence_steps, public.sequence_enrollments,
   public.sequence_step_executions, public.sequence_templates, public.sequence_snippets,
   public.sequence_analytics, public.inmail_queue, public.sequence_email_tracking,
-  public.sequence_processing_lock
+  public.sequence_processing_lock, public.linkedin_action_log
 FROM PUBLIC, anon;
 
 REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE
   public.outreach_sequences, public.sequence_steps, public.sequence_enrollments,
   public.sequence_step_executions, public.sequence_templates, public.sequence_snippets,
   public.sequence_analytics, public.inmail_queue, public.sequence_email_tracking,
-  public.sequence_processing_lock
+  public.sequence_processing_lock, public.linkedin_action_log
 FROM authenticated;
 
+-- linkedin_action_log (compteurs des plafonds LinkedIn) : écrite par la clé
+-- de service et des fonctions SECURITY DEFINER, lue par get_linkedin_quota_status.
 REVOKE INSERT, UPDATE, DELETE ON TABLE
-  public.sequence_analytics, public.sequence_email_tracking, public.sequence_processing_lock
+  public.sequence_analytics, public.sequence_email_tracking, public.sequence_processing_lock,
+  public.linkedin_action_log
 FROM authenticated;
 
 REVOKE UPDATE, DELETE ON TABLE public.inmail_queue FROM authenticated;

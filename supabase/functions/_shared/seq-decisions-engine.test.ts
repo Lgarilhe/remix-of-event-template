@@ -8,6 +8,8 @@
 // n'est pas noté en échec ; l'auto-pause ne lit que les échecs notés.
 // Décision 4 : report au lendemain dans le fuseau et à l'heure de début du
 // titulaire (quotaBlockedRetryAt, fuseau et heure passés par le moteur).
+// Décision 9 : la scrutation de secours ne passe « répondu » une inscription
+// terminée que si elle reste la dernière prise de contact sur son compte.
 //
 //   deno test --no-check supabase/functions/_shared/seq-decisions-engine.test.ts
 
@@ -15,6 +17,7 @@ import { deepStrictEqual, strictEqual } from 'node:assert';
 import {
   candidateIdentityKeys, dedupeByProfile, quotaBlockedRetryAt, readCycleSelection, sequencesToAutoPause,
 } from './sequence-cycle-rules.ts';
+import { isLastContactOnAccount } from './sequence-engine-rules.ts';
 
 type Row = { id: string; step?: { action_type: string } | null; enrollment?: Record<string, string | null> | null };
 
@@ -73,4 +76,26 @@ Deno.test('décision 4 : plafond du jour, report au lendemain à l\'heure de dé
   strictEqual(ny.toISOString(), '2026-09-29T14:00:00.000Z', 'mardi 10 h à New York');
   const paris = quotaBlockedRetryAt('daily', now, 'Europe/Paris', 8);
   strictEqual(paris.toISOString(), '2026-09-29T06:00:00.000Z', 'mardi 8 h à Paris');
+});
+
+// ─── Décision 9 ─────────────────────────────────────────────────────────────
+
+Deno.test('décision 9 : inscription terminée, dernière prise de contact sur le compte seulement', () => {
+  const e1 = { created_at: '2026-09-10T08:00:00Z', completed_at: '2026-09-20T08:00:00Z', replied_at: null };
+  strictEqual(isLastContactOnAccount(e1, []), true, 'seule inscription du candidat sur le compte');
+  strictEqual(isLastContactOnAccount(e1, [
+    { status: 'stopped', created_at: '2026-09-01T08:00:00Z', completed_at: '2026-09-05T08:00:00Z' },
+    { status: 'replied', created_at: '2026-08-01T08:00:00Z', completed_at: null, replied_at: '2026-08-10T08:00:00Z' },
+  ]), true, 'contacts plus anciens, clos avant elle');
+  for (const status of ['active', 'paused']) {
+    strictEqual(isLastContactOnAccount(e1, [{ status, created_at: '2026-09-01T08:00:00Z' }]), false, `autre inscription ${status}`);
+  }
+  strictEqual(isLastContactOnAccount(e1, [
+    { status: 'replied', created_at: '2026-09-22T08:00:00Z', replied_at: '2026-09-26T08:00:00Z' },
+  ]), false, 'inscription créée après sa fin, déjà « répondu » par le webhook');
+  strictEqual(isLastContactOnAccount(e1, [{ status: 'stopped', created_at: '2026-09-15T08:00:00Z', completed_at: null }]), false, 'créée après elle');
+  strictEqual(isLastContactOnAccount(e1, [
+    { status: 'replied', created_at: '2026-09-01T08:00:00Z', completed_at: null, replied_at: '2026-09-25T08:00:00Z' },
+  ]), false, 'plus ancienne mais close (réponse) après sa fin');
+  strictEqual(isLastContactOnAccount({ created_at: '2026-09-10T08:00:00Z', completed_at: null }, []), false, 'date de fin illisible : écartée');
 });
