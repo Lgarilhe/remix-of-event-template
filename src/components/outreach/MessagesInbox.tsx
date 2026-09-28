@@ -14,7 +14,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, GitBranch, Link2, RefreshCw } from 'lucide-react';
+import { ChevronRight, GitBranch, RefreshCw } from 'lucide-react';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { useMessagesInbox, type InboxSequenceOption } from '@/hooks/useMessagesInbox';
 import { useMessageActions } from '@/hooks/useMessageActions';
@@ -68,7 +68,7 @@ export const MessagesInbox: React.FC<MessagesInboxProps> = (props) => {
           <Spinner label="Chargement de votre compte LinkedIn" size="lg" />
         ) : (
           <EmptyState
-            icon={Link2}
+            illustration="connexion"
             title="Aucun compte LinkedIn relié"
             description="Reliez votre compte LinkedIn pour lire vos conversations et répondre aux candidats depuis Konekt."
             action={

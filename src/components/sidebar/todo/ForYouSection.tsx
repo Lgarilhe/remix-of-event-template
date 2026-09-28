@@ -9,17 +9,21 @@
 import type React from 'react';
 import { AlertTriangle, AtSign, Bell, Briefcase, CreditCard, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useSidebarNotifications } from '@/hooks/sidebar/useSidebarNotifications';
 import { useCloseMobileSidebar } from '@/hooks/sidebar/useCloseMobileSidebar';
 import { notificationSub } from '@/lib/sidebarSignals';
 import type { Notification } from '@/lib/notificationKinds';
 import { SidebarSection } from '../SidebarSection';
 import { SidebarRow } from '../SidebarRow';
+import { SIDEBAR_GHOST_CLASS } from '../sidebarButtonClass';
 
-const HEADER_BUTTON_CLASS =
-  'inline-flex items-center justify-center rounded-md px-2 min-h-11 md:min-h-7 text-[12px] font-medium ' +
-  'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60 ' +
-  'outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring';
+/** Classes ajoutées au Button du kit (taille xs) : 44 px sur téléphone, 28 px sur ordinateur. */
+const HEADER_BUTTON_CLASS = cn(
+  SIDEBAR_GHOST_CLASS,
+  'rounded-md px-2 min-h-11 md:min-h-7 text-xs font-medium text-muted-foreground',
+);
 
 const sourceOf = (metadata: unknown): string | null => {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || !('source' in metadata)) return null;
@@ -55,9 +59,9 @@ export function ForYouSection() {
 
   const headerAction =
     actions.length > 0 ? (
-      <button type="button" onClick={() => void markAllForYouRead()} className={HEADER_BUTTON_CLASS}>
+      <Button type="button" variant="ghost" size="xs" onClick={() => void markAllForYouRead()} className={HEADER_BUTTON_CLASS}>
         Tout marquer comme lu
-      </button>
+      </Button>
     ) : undefined;
 
   return (

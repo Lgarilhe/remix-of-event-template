@@ -13,7 +13,7 @@ Les rapports entiers sont en annexe, dans `docs/design/audit/`. Ce document en g
 | C. Sourcing et recherche | `audit/C-sourcing-recherche.md` | 70 | 15 | 48 | 7 | refonte mission |
 | D. Outreach et messagerie | `audit/D-outreach-messagerie.md` | 72 | 12 | 45 | 15 | chantier design (onglet Outreach de mission : refonte mission) |
 | E. Pipeline, candidats, IA | `audit/E-pipeline-candidats-ia.md` | 53 | 14 | 36 | 3 | chantier design (pipeline de mission et fiche candidat : refonte mission) |
-| F. Paramètres, marketplace, pages publiques | `audit/F-parametres-marketplace-public.md` | 66 | 5 | 39 | 22 | chantier design (Paramètres : session « Audit complet du dépôt ») |
+| F. Paramètres, marketplace, pages publiques | `audit/F-parametres-marketplace-public.md` | 66 | 5 | 39 | 22 | chantier design (Paramètres : lot 12) |
 | G. Design system | `audit/G-design-system.md` | 21 | 5 | 13 | 3 | chantier design |
 | **Total** | | **429** | **69** | **272** | **88** | |
 
@@ -36,7 +36,7 @@ Les 429 constats se ramènent à dix causes. Les traiter à la source règle des
 
 ## Les constats P1
 
-Statut tenu à jour à chaque lot (derniers : lots 8, 9 et l'assistant du lot 7). « Lot n » renvoie à `03-lots.md`.
+Statut tenu à jour à chaque lot (derniers : lots 8, 9, 12 et l'assistant du lot 7). « Lot n » renvoie à `03-lots.md`.
 
 ### A. Coquille, tableau de bord, tâches, agenda
 
@@ -126,7 +126,7 @@ Statut tenu à jour à chaque lot (derniers : lots 8, 9 et l'assistant du lot 7)
 
 | ID | Constat | Statut |
 |---|---|---|
-| F-10 | Installation de l'extension : commandes de développeur (`npm run build`) demandées au client | remis à la session Paramètres, décision produit |
+| F-10 | Installation de l'extension : commandes de développeur (`npm run build`) demandées au client | corrigé (lot 12 : dialogue retiré, la carte annonce l'extension à sa publication et garde les jetons) ; le lien du Chrome Web Store reste à fournir |
 | F-33 | Accueil : les quatre « Réserver une démo » ouvrent un agenda générique (`calendly.com/demo`) | partiel (lot 8 : « Demander une démo » mène au formulaire de contact ; l'adresse de prise de rendez-vous reste à fournir) |
 | F-34 | Logo bleu marine peu lisible sur fond sombre (/auth, /pricing) | corrigé (lot 8 : logo qui suit le thème sur toutes les pages publiques) |
 | F-53 | Portail client : étapes brutes (« 📋 dismissed », identifiant) | partiel (lot 8 : libellé français pour chaque clé connue, repli « En cours » ; attend la table d'étapes unique) |
@@ -166,14 +166,14 @@ Tous les constats G sont listés : ils portent sur le socle et conditionnent les
 - **Un seul barème de score** : décidé le 25 septembre 2026, les seuils du moteur de scoring (fort à partir de 65, moyen de 50 à 64, faible sous 50, en gris). `src/lib/scoreScale.ts` et `ScoreBadge` ; appliqué écran par écran au lot 7 et, pour ses écrans, par la refonte mission.
 - **La confidentialité des notes** (E-03) : notes personnelles réellement privées, ou libellé « Notes de l'équipe ».
 - **L'adresse de prise de rendez-vous** de la page d'accueil (F-33).
-- **La distribution de l'extension Chrome** (F-10) : lien du Chrome Web Store, ou retrait du dialogue.
+- **La distribution de l'extension Chrome** (F-10) : le dialogue pour développeurs est retiré (lot 12) ; reste le lien du Chrome Web Store à la publication.
 
 ## Remis à la session « Audit complet du dépôt »
 
-Cette session mène la refonte de l'expérience mission, de la barre latérale et des Paramètres, sur du code pas encore fusionné. Le chantier design ne modifie pas ces écrans et lui remet :
+Cette session mène la refonte de l'expérience mission, sur du code pas encore fusionné. Le chantier design ne modifie pas ces écrans et lui remet :
 
 - **Refonte mission** : les constats B sur la liste des missions, la création et l'espace mission ; tout C ; D-21, D-28, D-52, D-61, D-63 ; E-01 à E-03, E-05 (fiche), E-06 à E-08, E-29 à E-31, E-41, E-42, E-49, E-52 ; G-11 pour `FilterWizard` et `CreateProjectModal`. Les annexes B, C et E donnent pour chaque écran les changements à viser.
-- **Paramètres** : les 26 constats de `/settings` de l'annexe F, dont F-10 ; D-64 (webhooks).
-- **Barre latérale et en-tête** : A-01, A-03, A-15 et A-18 à A-21 (bande d'en-tête vide, cibles tactiles, aide contextuelle, textes de 9 et 9,5 px, couleur en dur, couleur des compteurs).
+
+Les Paramètres (les 26 constats de `/settings` de l'annexe F, D-64) et la barre latérale avec l'en-tête (A-01, A-03, A-15, A-18 à A-21) lui étaient remis aussi. Le chantier design les a repris au lot 12, le 28 septembre, avec l'accord du propriétaire : tous corrigés, sauf F-23 (partiel, proposition dans `03-lots.md`).
 
 Les lots 1 à 3 profitent déjà à ces zones : jetons, contrastes, variantes `dark:`, primitives, classes décoratives à plat.

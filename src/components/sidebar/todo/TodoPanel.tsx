@@ -8,7 +8,9 @@
  * « Rien à traiter pour le moment. » (sous Réponses) seulement si la panne et
  * les sections 2 à 6 sont toutes chargées et vides, et les Premiers pas
  * absents (masqués ou finis). Une source en chargement, hors ligne ou en
- * erreur l'empêche toujours (D9).
+ * erreur l'empêche toujours (D9). Pas d'illustration : la barre est présente
+ * sur chaque écran, où l'état vide de la page porte déjà la sienne
+ * (docs/design/01-direction.md, § Illustrations, une par écran).
  */
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
@@ -57,7 +59,7 @@ export function TodoPanel() {
       <InterviewsSections />
       <RepliesSection />
       {nothingToDo && (
-        <p className="px-3 py-2 text-[12px] text-muted-foreground">Rien à traiter pour le moment.</p>
+        <p className="px-3 py-2 text-xs text-muted-foreground">Rien à traiter pour le moment.</p>
       )}
       <ApprovalsSection variant="todo" />
       <ForYouSection />

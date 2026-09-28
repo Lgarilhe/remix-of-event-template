@@ -6,15 +6,17 @@
  */
 import { useEffect, useState } from 'react';
 import { CalendarClock, FileText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useTodoInterviews, type InterviewRow } from '@/hooks/sidebar/useTodoInterviews';
 import { useMissionNames } from '@/hooks/sidebar/useMyMissions';
 import { canJoin, formatShortTime } from '@/lib/sidebarSignals';
 import { SidebarSection } from '../SidebarSection';
 import { SidebarRow } from '../SidebarRow';
+import { SIDEBAR_GHOST_CLASS } from '../sidebarButtonClass';
 
-const JOIN_BUTTON_CLASS =
-  'inline-flex items-center justify-center rounded-md px-2 text-[12px] font-medium ' +
-  'text-sidebar-foreground hover:bg-sidebar-accent/60 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring';
+/** Classes ajoutées au Button du kit (taille xs) ; SidebarRow pose les 44 px sur téléphone. */
+const JOIN_BUTTON_CLASS = cn(SIDEBAR_GHOST_CLASS, 'rounded-md px-2 text-xs font-medium text-sidebar-foreground');
 
 /** Heure courante, rafraîchie toutes les `intervalMs` tant que la section est montée. */
 function useNow(intervalMs: number): number {
@@ -49,13 +51,15 @@ export function InterviewsSections() {
         to={`/qualification/${row.id}`}
         action={
           canJoin(row, now) ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
               onClick={() => window.open(location, '_blank', 'noopener,noreferrer')}
               className={JOIN_BUTTON_CLASS}
             >
               Rejoindre
-            </button>
+            </Button>
           ) : undefined
         }
       />

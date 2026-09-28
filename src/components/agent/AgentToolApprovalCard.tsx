@@ -129,7 +129,7 @@ function targetLabelForTool(toolName: string, details: Record<string, unknown> |
 }
 
 const TOOL_LABEL: Record<string, string> = {
-  update_candidate_stage: 'Modifier le stade candidat',
+  update_candidate_stage: 'Modifier l’étape du candidat',
   add_to_shortlist: 'Ajouter à la shortlist',
   draft_outreach_message: 'Rédiger un message d\'approche',
   create_mission: 'Créer une mission',
@@ -137,12 +137,12 @@ const TOOL_LABEL: Record<string, string> = {
   schedule_interview: 'Planifier un entretien',
   enrich_candidate_contact: 'Enrichir un contact',
   // Phase A.1 — Pipeline candidat
-  add_candidate_note: 'Ajouter une note candidat',
+  add_candidate_note: 'Ajouter une note au candidat',
   dismiss_candidate: 'Écarter un candidat',
   assign_candidate_to_member: 'Assigner un candidat',
   // Phase A.2 — Mission management
-  update_mission_status: 'Modifier le statut mission',
-  update_mission_brief: 'Modifier le brief mission',
+  update_mission_status: 'Modifier le statut de la mission',
+  update_mission_brief: 'Modifier le brief de la mission',
   regenerate_search_filters: 'Régénérer les filtres LinkedIn',
   // Phase A.3 — Outreach quota-gated
   send_linkedin_message: 'Envoyer un message LinkedIn',
@@ -156,8 +156,9 @@ const TOOL_LABEL: Record<string, string> = {
   launch_search: 'Lancer la recherche autonome',
   bulk_update_stage: 'Déplacer plusieurs candidats',
   bulk_dismiss: 'Écarter plusieurs candidats',
-  send_email: 'Envoyer un email',
+  send_email: 'Envoyer un e-mail',
   create_sequence: 'Créer une séquence',
+  start_background_scoring: 'Évaluer les candidats d’une mission en arrière-plan',
 };
 
 // ─── Editable fields configuration ─────────────────────────────────────────

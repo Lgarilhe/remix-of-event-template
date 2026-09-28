@@ -332,7 +332,7 @@ export default function CalendarPage() {
         />
       ) : rawEvents.length === 0 ? (
         <EmptyState
-          icon={CalendarDays}
+          illustration="cafe"
           title={`Rien de prévu ${periodNoun}`}
           description="Les entretiens, les InMails programmés et les étapes de séquence s'afficheront ici. Les rendez-vous pris via Calendly arrivent d'eux-mêmes."
           action={

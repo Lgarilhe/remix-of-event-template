@@ -8,6 +8,11 @@
  *
  * Signaux (D8) : `strong` (gras) est réservé à ce qui compte dans le chiffre
  * d'À traiter ; `dotLabel` pose un point neutre, lu par le lecteur d'écran.
+ *
+ * Revue design (lot 12, A-18) : paliers nommés (13 px le titre, 11 px le
+ * sous-titre et l'heure), trois niveaux de texte sans opacité. La cible reste
+ * un bouton natif : c'est la ligne primitive de la barre (lien ou bouton,
+ * pleine largeur, action sœur).
  */
 import type React from 'react';
 import { Link } from 'react-router-dom';
@@ -71,15 +76,15 @@ export function SidebarRow({
         <span
           className={cn(
             // Deux lignes au plus : une panne ou une action à valider reste lisible.
-            'line-clamp-2 break-words text-[13px] leading-5',
+            'line-clamp-2 break-words text-sm',
             strong ? 'font-semibold text-sidebar-foreground' : 'font-normal',
-            !strong && (muted ? 'text-muted-foreground' : 'text-sidebar-foreground/90'),
+            !strong && (muted ? 'text-muted-foreground' : 'text-foreground-secondary'),
           )}
         >
           {title}
         </span>
         {sub && (
-          <span className="truncate text-[11.5px] leading-4 text-muted-foreground">{sub}</span>
+          <span className="truncate text-2xs leading-4 text-muted-foreground">{sub}</span>
         )}
       </span>
       {dotLabel && (
@@ -89,7 +94,7 @@ export function SidebarRow({
         </>
       )}
       {right && (
-        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{right}</span>
+        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{right}</span>
       )}
     </>
   );

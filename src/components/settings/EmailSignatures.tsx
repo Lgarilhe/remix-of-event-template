@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,13 +14,22 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/layout/EmptyState';
 import { useEmailSignatures, EmailSignature } from '@/hooks/useEmailSignatures';
 import { Mail, Plus, Pencil, Trash2 } from 'lucide-react';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { ErrorBox } from '@/components/marketplace/ErrorBox';
 import { sanitizeSignatureHtml } from '@/lib/signatureHtml';
 
+/**
+ * Signatures e-mail (Paramètres › Rédaction, #signatures).
+ *
+ * Lot 12 du chantier design : titre de carte commun et action à droite (F-01),
+ * un seul verbe « Enregistrer » (F-09), actions de ligne toujours visibles (F-12),
+ * libellés reliés à leur champ (F-15), lignes arrondies (F-18), squelette (F-66).
+ */
 export const EmailSignatures: React.FC = () => {
   const { signatures, isLoading, isError, refetch, createSignature, updateSignature, deleteSignature } = useEmailSignatures();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -29,6 +38,9 @@ export const EmailSignatures: React.FC = () => {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   // Aperçu assaini : tout membre peut écrire une signature, les autres l'ouvrent ici.
   const previewHtml = useMemo(() => sanitizeSignatureHtml(form.content), [form.content]);
+  const uid = useId();
+  const ids = { name: `${uid}-nom`, content: `${uid}-contenu`, preview: `${uid}-apercu` };
+  const saving = createSignature.isPending || updateSignature.isPending;
 
   const openCreate = () => {
     setEditing(null);
@@ -44,12 +56,16 @@ export const EmailSignatures: React.FC = () => {
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.content.trim()) return;
-    if (editing) {
-      await updateSignature.mutateAsync({ id: editing.id, ...form });
-    } else {
-      await createSignature.mutateAsync(form);
+    try {
+      if (editing) {
+        await updateSignature.mutateAsync({ id: editing.id, ...form });
+      } else {
+        await createSignature.mutateAsync(form);
+      }
+      setDialogOpen(false);
+    } catch {
+      // Échec déjà annoncé par le hook : la fenêtre reste ouverte pour réessayer.
     }
-    setDialogOpen(false);
   };
 
   const handleDelete = (id: string) => {
@@ -58,64 +74,77 @@ export const EmailSignatures: React.FC = () => {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between text-sm font-bold uppercase tracking-wider">
-          <div className="flex items-center gap-2">
-            <Mail className="w-4 h-4" />
-            Signatures email
-          </div>
-          <Button size="sm" onClick={openCreate} disabled={isLoading || isError} className="gap-1">
-            <Plus className="w-3.5 h-3.5" />
-            Nouvelle
-          </Button>
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <Mail className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          Signatures e-mail
         </CardTitle>
+        <Button size="sm" variant="outline" onClick={openCreate} disabled={isLoading || isError} className="max-md:h-11">
+          <Plus aria-hidden="true" />
+          Nouvelle signature
+        </Button>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex justify-center py-6">
-            <BrutalLoader compact />
+          <div role="status" className="space-y-2">
+            <Skeleton className="h-16 w-full rounded-lg" aria-hidden="true" />
+            <Skeleton className="h-16 w-full rounded-lg" aria-hidden="true" />
+            <span className="sr-only">Chargement des signatures…</span>
           </div>
         ) : isError ? (
           // Lecture ratée : pas de faux « Aucune signature », ni création à l'aveugle
-          <ErrorBox title="Impossible de charger les signatures email." onRetry={() => { void refetch(); }} />
+          <ErrorBox title="Impossible de charger les signatures e-mail." onRetry={() => { void refetch(); }} />
         ) : signatures.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            Aucune signature. Créez-en une pour l'utiliser dans vos séquences email.
-          </p>
+          <EmptyState
+            variant="compact"
+            icon={Mail}
+            title="Aucune signature"
+            description="Créez-en une pour l’utiliser dans vos séquences e-mail."
+          />
         ) : (
-          <div className="space-y-3">
+          <ul className="space-y-2">
             {signatures.map((sig) => (
-              <div
-                key={sig.id}
-                className="group border border-border p-3 hover:border-border transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{sig.name}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                      {sig.content.replace(/<[^>]*>/g, '').slice(0, 120)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(sig)} aria-label="Modifier la signature">
-                      <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(sig.id)}
-                      aria-label="Supprimer la signature"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
+              <li key={sig.id} className="flex items-start justify-between gap-2 rounded-lg border border-border p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">{sig.name}</p>
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    {sig.content.replace(/<[^>]*>/g, '').slice(0, 120)}
+                  </p>
                 </div>
-              </div>
+                {/* Toujours visibles : au doigt et au clavier, pas seulement au survol (F-12). */}
+                <div className="flex shrink-0 items-center gap-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                        onClick={() => openEdit(sig)}
+                        aria-label={`Modifier la signature ${sig.name}`}
+                      >
+                        <Pencil aria-hidden="true" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Modifier</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                        onClick={() => handleDelete(sig.id)}
+                        aria-label={`Supprimer la signature ${sig.name}`}
+                      >
+                        <Trash2 aria-hidden="true" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Supprimer</TooltipContent>
+                  </Tooltip>
+                </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </CardContent>
 
@@ -130,9 +159,13 @@ export const EmailSignatures: React.FC = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
+              className="bg-destructive"
               onClick={async () => {
-                if (deleteTargetId) await deleteSignature.mutateAsync(deleteTargetId);
+                try {
+                  if (deleteTargetId) await deleteSignature.mutateAsync(deleteTargetId);
+                } catch {
+                  // Échec déjà annoncé par le hook.
+                }
                 setDeleteTargetId(null);
               }}
             >
@@ -148,45 +181,57 @@ export const EmailSignatures: React.FC = () => {
             <DialogTitle>{editing ? 'Modifier la signature' : 'Nouvelle signature'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>Nom *</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor={ids.name}>
+                Nom <span className="text-danger" aria-hidden="true">*</span>
+              </Label>
               <Input
+                id={ids.name}
                 value={form.name}
                 onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="Ex: Signature principale"
-                className="mt-1"
+                placeholder="Ex. : Signature principale"
+                required
               />
             </div>
-            <div>
-              <Label>Contenu HTML *</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor={ids.content}>
+                Contenu HTML <span className="text-danger" aria-hidden="true">*</span>
+              </Label>
+              {/* Police à chasse fixe : on écrit du code HTML. */}
               <Textarea
+                id={ids.content}
                 value={form.content}
                 onChange={(e) => setForm(f => ({ ...f, content: e.target.value }))}
                 placeholder="<p>Cordialement,<br/>Jean Martin</p>"
                 rows={5}
-                className="mt-1 font-mono text-xs"
+                required
+                className="font-mono text-xs"
               />
             </div>
             {form.content && (
-              <div>
-                <Label className="text-xs text-muted-foreground">Aperçu</Label>
+              <div className="space-y-1.5">
+                <p id={ids.preview} className="text-xs font-medium text-muted-foreground">Aperçu</p>
                 <div
                   data-testid="signature-preview"
-                  className="mt-1 p-3 border border-border bg-muted/30 rounded text-sm max-h-64 overflow-auto [&_img]:max-w-full [&_img]:h-auto"
+                  role="region"
+                  aria-labelledby={ids.preview}
+                  className="rounded-lg border border-border bg-muted/40 p-3 text-sm max-h-64 overflow-auto [&_img]:max-w-full [&_img]:h-auto"
                   dangerouslySetInnerHTML={{ __html: previewHtml }}
                 />
               </div>
             )}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-              <Button
-                onClick={handleSave}
-                disabled={!form.name.trim() || !form.content.trim() || createSignature.isPending || updateSignature.isPending}
-              >
-                {(createSignature.isPending || updateSignature.isPending) ? 'Enregistrement...' : 'Sauvegarder'}
-              </Button>
-            </div>
           </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDialogOpen(false)} disabled={saving}>Annuler</Button>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              loading={saving}
+              disabled={!form.name.trim() || !form.content.trim()}
+            >
+              Enregistrer
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>

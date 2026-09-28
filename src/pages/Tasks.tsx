@@ -255,7 +255,7 @@ export default function TasksPage() {
         />
       ) : isEmpty ? (
         <EmptyState
-          icon={CheckSquare}
+          illustration="taches"
           title="Aucune tâche en cours"
           description="Créez une tâche ici, depuis la fiche d'un candidat ou depuis un entretien de l'agenda."
           action={

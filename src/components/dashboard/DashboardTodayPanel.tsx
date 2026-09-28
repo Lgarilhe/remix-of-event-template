@@ -14,7 +14,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format, parseISO, isToday, differenceInMinutes, startOfDay } from 'date-fns';
-import { ArrowRight, CalendarDays, Plus } from 'lucide-react';
+import { ArrowRight, Plus } from 'lucide-react';
 import { Section, EmptyState, ErrorState } from '@/components/layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -200,7 +200,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
           todayEventsError ? null : <EmptyState
             variant="compact"
             className="border-0"
-            icon={CalendarDays}
+            illustration="cafe"
             title="Rien de prévu aujourd'hui"
             description="Aucun entretien, envoi ni tâche pour aujourd'hui."
             action={

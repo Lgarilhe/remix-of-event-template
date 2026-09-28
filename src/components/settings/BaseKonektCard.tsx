@@ -14,6 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorBox } from '@/components/marketplace/ErrorBox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +35,7 @@ export const BaseKonektCard = () => {
     isLoading,
     isError,
     errorText,
+    refetch,
     isEnabled,
     planAllows,
     canActivate,
@@ -68,29 +71,28 @@ export const BaseKonektCard = () => {
     }
   };
 
+  // Revue design (F-66) : squelette pendant la lecture, erreur avec « Réessayer ».
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="py-4 text-xs text-muted-foreground">Chargement de la Base Konekt.</CardContent>
+      <Card className="space-y-3 p-6">
+        <p role="status" className="sr-only">Chargement de la Base Konekt…</p>
+        <Skeleton className="h-4 w-32" aria-hidden="true" />
+        <Skeleton className="h-10 w-full rounded-lg" aria-hidden="true" />
       </Card>
     );
   }
 
   if (isError) {
     return (
-      <Card>
-        <CardContent className="py-4 text-xs text-muted-foreground">
-          {errorText || 'Impossible de charger la Base Konekt.'}
-        </CardContent>
-      </Card>
+      <ErrorBox title="Impossible de charger la Base Konekt." detail={errorText} onRetry={refetch} />
     );
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-          <Database className="w-4 h-4" />
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           Base Konekt
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
@@ -140,7 +142,7 @@ export const BaseKonektCard = () => {
                   </span>
                   {resetLabel && (
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
+                      <Clock className="h-3 w-3" aria-hidden="true" />
                       Remise à zéro le {resetLabel}
                     </span>
                   )}
@@ -170,9 +172,9 @@ export const BaseKonektCard = () => {
             <p className="text-xs text-muted-foreground">
               La Base Konekt est disponible à partir de la formule Solo. Votre espace est sur la formule gratuite.
             </p>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate('/pricing')}>
+            <Button type="button" size="sm" variant="outline" className="max-md:h-11" onClick={() => navigate('/pricing')}>
               Voir les plans
-              <ArrowUpRight className="w-3.5 h-3.5" />
+              <ArrowUpRight aria-hidden="true" />
             </Button>
           </div>
         )}
@@ -190,7 +192,7 @@ export const BaseKonektCard = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive"
               onClick={() => { void applyEnabled(false); }}
             >
               Désactiver

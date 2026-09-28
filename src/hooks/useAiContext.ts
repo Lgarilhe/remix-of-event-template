@@ -114,10 +114,10 @@ export function useUserAiContext() {
     },
     onSuccess: (next) => {
       queryClient.setQueryData(queryKey, next);
-      toast.success("Contexte IA enregistré");
+      toast.success("Consignes de rédaction enregistrées");
     },
     onError: (err: Error) => {
-      toast.error("Erreur enregistrement", { description: err.message });
+      toast.error("Les consignes n’ont pas été enregistrées", { description: err.message });
     },
   });
 
@@ -157,10 +157,10 @@ export function useOrgAiContext() {
     },
     onSuccess: (next) => {
       queryClient.setQueryData(queryKey, next);
-      toast.success("Contexte IA agence enregistré");
+      toast.success("Consignes de l’organisation enregistrées");
     },
     onError: (err: Error) => {
-      toast.error("Erreur enregistrement", { description: err.message });
+      toast.error("Les consignes n’ont pas été enregistrées", { description: err.message });
     },
   });
 

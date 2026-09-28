@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { SEOHead } from '@/components/SEOHead';
 import { KonektLogo } from '@/components/KonektLogo';
 import { Button } from '@/components/ui/button';
+import { Illustration } from '@/components/ui/illustration';
 import { withPreviewAccessToken } from '@/lib/previewToken';
 
 const NotFound = () => {
@@ -20,6 +21,7 @@ const NotFound = () => {
       />
       <div className="w-full max-w-sm text-center">
         <KonektLogo variant="full" theme="auto" size={28} className="mx-auto mb-8" />
+        <Illustration name="orientation" size="lg" className="mx-auto mb-6" />
         <p className="eyebrow">Erreur 404</p>
         <h1 className="mt-2 text-xl font-semibold text-foreground">Cette page n'existe pas</h1>
         <p className="mt-2 text-sm text-muted-foreground">

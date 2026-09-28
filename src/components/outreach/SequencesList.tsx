@@ -31,7 +31,6 @@ import {
   FileText,
   Lock,
   AlertTriangle,
-  Workflow,
   ScrollText,
 } from 'lucide-react';
 import {
@@ -1474,7 +1473,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           />
         ) : sequences.length === 0 ? (
           <EmptyState
-            icon={Workflow}
+            illustration="envoi"
             title="Aucune séquence pour cette mission"
             description={
               <>

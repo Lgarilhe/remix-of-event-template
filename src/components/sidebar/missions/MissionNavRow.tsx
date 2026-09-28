@@ -10,6 +10,9 @@
  *   téléphone ; au plafond, reste focalisable (aria-disabled) et explique.
  *
  * Cibles de 44 px sur téléphone (min-h-11, min-w-11), compactes à partir de md.
+ * Revue design (lot 12, présentation seulement) : paliers nommés (A-18), texte
+ * sans opacité, épingle et chevron en Button du kit (A-53). Une vue verrouillée
+ * reste une ligne native (aria-disabled, message au clic).
  */
 import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -30,6 +33,8 @@ import {
   type MissionNavItem,
 } from '@/lib/sidebarMissions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { SIDEBAR_GHOST_CLASS } from '../sidebarButtonClass';
 
 export interface MissionNavRowProps {
   item: MissionNavItem;
@@ -48,9 +53,9 @@ export interface MissionNavRowProps {
   onTogglePin: (item: MissionNavItem, pinned: boolean) => void;
 }
 
+/** Classes ajoutées au Button du kit (taille icon-xs) : 44 px sur téléphone, 28 px sur ordinateur. */
 const ICON_BUTTON_CLASS =
-  'inline-flex shrink-0 items-center justify-center rounded-md text-muted-foreground min-h-11 min-w-11 md:min-h-7 md:min-w-7 ' +
-  'hover:bg-sidebar-accent/60 hover:text-sidebar-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring';
+  'shrink-0 rounded-md text-muted-foreground min-h-11 min-w-11 md:min-h-7 md:min-w-7 ' + SIDEBAR_GHOST_CLASS;
 
 export function MissionNavRow({
   item,
@@ -87,8 +92,10 @@ export function MissionNavRow({
   };
 
   const pinButton = (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-xs"
       onClick={handlePin}
       aria-label={pinLabel}
       aria-pressed={pinned}
@@ -99,8 +106,8 @@ export function MissionNavRow({
         pinCapped && 'cursor-not-allowed opacity-60',
       )}
     >
-      {pinned ? <PinOff aria-hidden="true" className="h-3.5 w-3.5" /> : <Pin aria-hidden="true" className="h-3.5 w-3.5" />}
-    </button>
+      {pinned ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
+    </Button>
   );
 
   return (
@@ -118,13 +125,13 @@ export function MissionNavRow({
         >
           <span
             aria-hidden="true"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted text-[10px] font-semibold text-muted-foreground"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted text-3xs font-semibold text-muted-foreground"
           >
             {missionInitial(item)}
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[13px] leading-5 text-sidebar-foreground/90">{item.name}</span>
-            {item.sub && <span className="truncate text-[11.5px] leading-4 text-muted-foreground">{item.sub}</span>}
+            <span className="truncate text-sm text-foreground-secondary">{item.name}</span>
+            {item.sub && <span className="truncate text-2xs leading-4 text-muted-foreground">{item.sub}</span>}
           </span>
           {hasNewProfiles && (
             <>
@@ -143,8 +150,10 @@ export function MissionNavRow({
           pinButton
         )}
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
           aria-controls={expanded ? viewsId : undefined}
@@ -153,16 +162,16 @@ export function MissionNavRow({
         >
           <ChevronRight
             aria-hidden="true"
-            className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-90')}
+            className={cn('transition-transform', expanded && 'rotate-90')}
           />
-        </button>
+        </Button>
       </div>
 
       {expanded && (
         <div id={viewsId} className="mb-1 ml-4 border-l border-sidebar-border pl-2">
           {MISSION_PHASES.map((phase) => (
             <div key={phase.id} className="pt-1">
-              <p aria-hidden="true" className="px-2 text-[10.5px] font-medium text-muted-foreground/80">
+              <p aria-hidden="true" className="px-2 text-2xs font-medium text-muted-foreground">
                 {phase.label}
               </p>
               <ul aria-label={phase.label} className="flex flex-col">
@@ -170,7 +179,7 @@ export function MissionNavRow({
                   const locked = isViewLocked(readiness, view.id);
                   const isCurrent = isOpenMission && currentView === view.id;
                   const rowClass =
-                    'flex w-full items-center gap-1.5 rounded-md px-2 text-left text-[12.5px] min-h-11 md:min-h-7 ' +
+                    'flex w-full items-center gap-1.5 rounded-md px-2 text-left text-xs min-h-11 md:min-h-7 ' +
                     'outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring';
                   if (locked) {
                     const blocker = blockerOf(readiness, view.id) ?? DEFAULT_BLOCKER_MESSAGE;
@@ -181,7 +190,7 @@ export function MissionNavRow({
                           aria-disabled="true"
                           title={blocker}
                           onClick={() => toast.info(blocker)}
-                          className={cn(rowClass, 'cursor-not-allowed text-muted-foreground/60')}
+                          className={cn(rowClass, 'cursor-not-allowed text-muted-foreground')}
                         >
                           <span className="min-w-0 flex-1 truncate">{view.label}</span>
                           <Lock aria-hidden="true" className="h-3 w-3 shrink-0" />
@@ -197,7 +206,7 @@ export function MissionNavRow({
                         aria-current={isCurrent ? 'page' : undefined}
                         className={cn(
                           rowClass,
-                          'text-sidebar-foreground/85 hover:bg-sidebar-accent/60',
+                          'text-foreground-secondary hover:bg-sidebar-accent/60',
                           isCurrent && 'bg-sidebar-accent font-medium text-sidebar-foreground',
                         )}
                       >

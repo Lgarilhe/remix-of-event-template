@@ -8,10 +8,11 @@ import { readCheckoutReturn, withoutCheckoutReturn } from '@/lib/checkoutReturn'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
-import { CreditCard, ArrowUpRight, Calendar, Sparkles, Download, Loader2, Users, AlertTriangle, ExternalLink } from 'lucide-react';
+import { CreditCard, ArrowUpRight, Calendar, Gauge, Download, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { plural } from '@/lib/plural';
 import { toast } from 'sonner';
 
 /** Requêtes à rafraîchir au retour du paiement (le webhook met la base à jour). */
@@ -39,8 +40,6 @@ const formatLimit = (value: number | undefined) => {
   if (value === -1) return 'Illimité';
   return value.toLocaleString('fr-FR');
 };
-
-const plural = (count: number, singular: string, pluralForm: string) => `${count} ${count > 1 ? pluralForm : singular}`;
 
 const statusBadge = (state: SubscriptionState, isFree: boolean): { label: string; variant: BadgeProps['variant'] } => {
   if (state.status === 'trialing') {
@@ -136,7 +135,7 @@ export const BillingSettings = () => {
       toast.success('Export téléchargé');
     } catch (err) {
       console.error('Export error:', err);
-      toast.error('Erreur lors de l\'export des données');
+      toast.error('L’export n’a pas abouti. Réessayez.');
     } finally {
       setExporting(false);
     }
@@ -144,8 +143,10 @@ export const BillingSettings = () => {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center py-12">
-        <BrutalLoader compact />
+      <div className="space-y-6">
+        <p role="status" className="sr-only">Chargement de l’abonnement…</p>
+        <Skeleton className="h-40 w-full rounded-xl" aria-hidden="true" />
+        <Skeleton className="h-28 w-full rounded-xl" aria-hidden="true" />
       </div>
     );
   }
@@ -156,13 +157,13 @@ export const BillingSettings = () => {
   const limitRows = state
     ? [
         { label: 'Missions actives', value: formatLimit(state.limits.max_jobs) },
-        { label: 'Crédits IA / mois', value: formatLimit(state.limits.ai_credits) },
+        { label: 'Crédits IA par mois', value: formatLimit(state.limits.ai_credits) },
         // Le forfait s'exprime en emails : un mobile en consomme dix, comme au
         // tarif à l'acte. Afficher « contacts » laissait croire que les deux se
         // valaient. Pendant un essai non payé, le serveur plafonne le forfait :
         // annoncer celui du plan promettait dix fois ce qui est accordé.
         {
-          label: 'Emails de contact / mois (un mobile en vaut 10)',
+          label: 'E-mails de contact par mois (un mobile en vaut 10)',
           value: formatLimit(
             isTrialing && !isTrialPaid && typeof state.limits.contacts_included === 'number'
               ? Math.min(state.limits.contacts_included, TRIAL_CONTACT_ALLOWANCE)
@@ -182,8 +183,8 @@ export const BillingSettings = () => {
       {isLoadingError ? (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-              <CreditCard className="w-4 h-4" />
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <CreditCard className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               Abonnement
             </CardTitle>
           </CardHeader>
@@ -196,8 +197,8 @@ export const BillingSettings = () => {
       {/* Current Plan */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-            <CreditCard className="w-4 h-4" />
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <CreditCard className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             Abonnement
           </CardTitle>
         </CardHeader>
@@ -205,7 +206,7 @@ export const BillingSettings = () => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-lg font-semibold text-foreground">
+                <p className="text-base font-semibold text-foreground">
                   {state?.plan_name || 'Gratuit'}
                 </p>
                 <Badge variant={badge.variant}>{badge.label}</Badge>
@@ -220,11 +221,13 @@ export const BillingSettings = () => {
                       : 'Facturé par siège et par mois.'}
               </p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Une action principale : « Gérer l'abonnement » quand il existe, sinon « Choisir un plan ». */}
               <Button
-                variant="outline"
+                type="button"
+                variant={state?.has_stripe_subscription ? 'outline' : 'primary'}
                 size="sm"
-                className="gap-1.5"
+                className="max-md:h-11"
                 disabled={openingPortal}
                 onClick={() => {
                   // Abonnement en place : le changement passe par le portail, pas par un second paiement.
@@ -233,16 +236,19 @@ export const BillingSettings = () => {
                 }}
               >
                 {isPaid ? 'Changer de plan' : 'Choisir un plan'}
-                <ArrowUpRight className="w-3.5 h-3.5" />
+                <ArrowUpRight aria-hidden="true" />
               </Button>
               {state?.has_stripe_subscription && (
                 <Button
+                  type="button"
+                  variant="primary"
                   size="sm"
-                  className="gap-1.5"
+                  className="max-md:h-11"
                   onClick={() => { void handleManageSubscription(); }}
                   disabled={openingPortal}
+                  loading={openingPortal}
                 >
-                  {openingPortal ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                  {!openingPortal && <ExternalLink aria-hidden="true" />}
                   Gérer l'abonnement
                 </Button>
               )}
@@ -252,7 +258,7 @@ export const BillingSettings = () => {
           {state && (
             <div className="space-y-2 pt-2 border-t border-border text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
+                <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>
                   {state.has_stripe_subscription
                     ? `${plural(state.seats, 'siège facturé', 'sièges facturés')}, ${plural(state.seat_count, 'membre', 'membres')}`
@@ -262,14 +268,14 @@ export const BillingSettings = () => {
 
               {isTrialing && state.trial_ends_at && (
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
+                  <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <span>Fin de l'essai le {formatDate(state.trial_ends_at)}</span>
                 </div>
               )}
 
               {(!isTrialing || isTrialPaid) && state.current_period_end && (
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
+                  <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
                   <span>
                     {state.cancel_at_period_end ? "Accès jusqu'au" : 'Prochaine échéance le'}{' '}
                     {formatDate(state.current_period_end)}
@@ -280,8 +286,8 @@ export const BillingSettings = () => {
           )}
 
           {seatsOverLimit && (
-            <div className="flex items-start gap-2 bg-destructive/10 text-destructive text-sm p-3 rounded-md">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning-muted p-3 text-sm text-foreground">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
               <span>
                 Votre espace compte plus de membres que de sièges facturés. Ajoutez un siège depuis « Gérer l'abonnement ».
               </span>
@@ -296,24 +302,24 @@ export const BillingSettings = () => {
         </CardContent>
       </Card>
 
-      {/* Limits / Usage */}
+      {/* Limits / Usage. Revue design (F-22, F-23) : plus d'étincelle, grille qui se replie sur téléphone. */}
       {limitRows.length > 0 && (
         <Card>
           <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-            <Sparkles className="w-4 h-4" />
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             Limites du plan
           </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4">
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]">
               {limitRows.map((item) => (
-                <div key={item.label} className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                  <p className="text-sm font-semibold text-foreground mt-0.5">{item.value}</p>
+                <div key={item.label} className="rounded-lg bg-muted/50 p-3">
+                  <dt className="text-xs text-muted-foreground">{item.label}</dt>
+                  <dd className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">{item.value}</dd>
                 </div>
               ))}
-            </div>
+            </dl>
           </CardContent>
         </Card>
       )}
@@ -323,8 +329,8 @@ export const BillingSettings = () => {
       {/* RGPD Data Export */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-            <Download className="w-4 h-4" />
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <Download className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             Export des données (RGPD)
           </CardTitle>
         </CardHeader>
@@ -334,13 +340,15 @@ export const BillingSettings = () => {
             candidats, missions, transactions IA, membres.
           </p>
           <Button
+            type="button"
             variant="outline"
             onClick={handleExportData}
             disabled={exporting}
-            className="gap-2"
+            loading={exporting}
+            className="max-md:h-11"
           >
-            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {exporting ? 'Export en cours...' : 'Télécharger mes données'}
+            {!exporting && <Download aria-hidden="true" />}
+            {exporting ? 'Export en cours…' : 'Télécharger mes données'}
           </Button>
         </CardContent>
       </Card>

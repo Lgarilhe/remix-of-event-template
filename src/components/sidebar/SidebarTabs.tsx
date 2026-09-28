@@ -10,10 +10,14 @@
  * - onglet non actif : sélection, rien d'autre (aucun marquage lu) ;
  * - onglet actif avec une page (Missions, Assistant) : ouvre la page.
  * Clavier : flèches, Début et Fin déplacent le focus et activent l'onglet
- * visé ; Entrée et Espace sur l'onglet actif valent un second clic.
+ * visé ; Entrée et Espace sur l'onglet actif valent un second clic. Un onglet
+ * est un bouton natif de rôle tab, pas le Button du kit : contrôle propre au
+ * tablist (focus itinérant, aria-selected, second clic), revu au lot 12.
  *
  * Signaux : chiffre d'À traiter (badgeLabel, rien si null ou 0), point fixe
- * sur Assistant quand un agent travaille, rien sur Missions.
+ * sur Assistant quand un agent travaille, rien sur Missions. Le chiffre est le
+ * seul chiffre coloré de la barre : en accent, puisqu'il demande l'attention
+ * (lot 12, A-21), gris hors ligne (données peut-être anciennes, D42).
  */
 import type React from 'react';
 import { Fragment, useRef } from 'react';
@@ -102,9 +106,9 @@ export function SidebarTabs({ tab, onSelect, collapsed, todoCount, agentWorking,
             aria-hidden="true"
             className={cn(
               // Hors du flux dans les deux modes : la pastille ne prend pas de largeur au libellé.
-              'absolute inline-flex min-w-[16px] h-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold tabular-nums text-primary-foreground',
+              'absolute inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-3xs font-semibold tabular-nums',
+              offline ? 'bg-muted text-muted-foreground' : 'bg-brand text-brand-foreground',
               collapsed ? 'top-0 right-0' : 'top-0.5 right-1',
-              offline && 'opacity-60',
             )}
           >
             {badgeLabel(todoCount)}
@@ -134,10 +138,10 @@ export function SidebarTabs({ tab, onSelect, collapsed, todoCount, agentWorking,
               collapsed
                 ? 'h-8 w-8'
                 // Icône au-dessus du libellé : « Assistant » et « À traiter » tiennent entiers en 16rem.
-                : 'min-h-11 min-w-0 flex-col gap-0.5 px-1 py-1 text-[11px] font-medium leading-tight',
+                : 'min-h-11 min-w-0 flex-col gap-0.5 px-1 py-1 text-2xs font-medium leading-tight',
               selected
                 ? 'bg-sidebar-accent text-sidebar-foreground'
-                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
             )}
           >
             <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />

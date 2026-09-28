@@ -5,7 +5,9 @@
  * Quatre liens et un bouton (Aide) ; nom au survol (infobulle) et aria-label,
  * aria-current="page" sur la route active. Déplié : une ligne de cibles de
  * 36 px sur ordinateur, 44 px sur téléphone. Replié : une pile de 32 px.
- * Tâches porte le nombre de mes tâches en retard, en gris (jamais rouge).
+ * Tâches porte le nombre de mes tâches en retard, en gris (jamais rouge), au
+ * palier de 10 px au plus petit (lot 12, A-18). Aide ne propose la vidéo que
+ * sur une page qui en a une (onOpenTutorial absent sinon, A-15).
  */
 import { Link, useLocation } from 'react-router-dom';
 import { Calendar, ListTodo, Settings, Store, type LucideIcon } from 'lucide-react';
@@ -22,7 +24,8 @@ export interface SidebarBottomRowProps {
   /** Mes tâches en retard ; null : inconnu, rien d'affiché. */
   overdueCount: number | null;
   onOpenShortcuts: () => void;
-  onOpenTutorial: () => void;
+  /** Vidéo de la page affichée ; absent : pas d'entrée vidéo dans l'Aide. */
+  onOpenTutorial?: () => void;
 }
 
 interface BottomLink {
@@ -32,7 +35,7 @@ interface BottomLink {
 }
 
 const TARGET_BASE =
-  'relative inline-flex items-center justify-center rounded-md text-sidebar-foreground/70 outline-none transition-colors ' +
+  'relative inline-flex items-center justify-center rounded-md text-muted-foreground outline-none transition-colors ' +
   'hover:bg-sidebar-accent/60 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring';
 
 export function SidebarBottomRow({ collapsed, overdueCount, onOpenShortcuts, onOpenTutorial }: SidebarBottomRowProps) {
@@ -81,7 +84,7 @@ export function SidebarBottomRow({ collapsed, overdueCount, onOpenShortcuts, onO
                     aria-hidden="true"
                     className={cn(
                       'tabular-nums text-muted-foreground',
-                      collapsed ? 'absolute bottom-0 right-0 text-[9px] leading-none' : 'text-[11px]',
+                      collapsed ? 'absolute bottom-0 right-0 text-3xs leading-none' : 'text-2xs',
                     )}
                   >
                     {badgeLabel(overdue)}

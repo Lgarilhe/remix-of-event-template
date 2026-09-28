@@ -51,7 +51,7 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: KeyboardShortcut
             {rows.map((row) => (
               <tr key={row.keys} className="border-b border-border last:border-0">
                 <td className="py-2 pr-4 whitespace-nowrap">
-                  <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[12px]">
+                  <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
                     {row.keys}
                   </kbd>
                 </td>
@@ -60,7 +60,7 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: KeyboardShortcut
             ))}
           </tbody>
         </table>
-        <DialogDescription className="text-[12px]">
+        <DialogDescription className="text-xs">
           Les raccourcis G ne fonctionnent pas dans un champ de saisie ni quand une fenêtre est ouverte.
         </DialogDescription>
       </DialogContent>

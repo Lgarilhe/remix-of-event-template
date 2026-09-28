@@ -68,8 +68,10 @@ test('R5a — les hooks templates et variables exposent isError et refetch', () 
 test('R5a — templates : bloc d\'erreur, ni suggestions ni liste, création désactivée', () => {
   const section = between(templatesUi, 'const TemplatesSection', '// ─── Placeholders Panel');
   assert.match(section, /isLoading, isError, refetch, create, update, remove \} = useMessageTemplates\(\)/);
-  assert.match(section, /disabled=\{isLoading \|\| isError\}/, '« Nouveau template » doit être grisé');
-  assert.match(section, /<ErrorBox title="Impossible de charger vos templates\." onRetry=/);
+  assert.match(section, /disabled=\{isLoading \|\| isError\}/, '« Nouveau modèle » doit être grisé');
+  // Revue design : « modèles » à l'écran au lieu de « templates » (lot 12, F-20) ; même bloc
+  // d'erreur, toujours à la place des suggestions et de la liste.
+  assert.match(section, /<ErrorBox title="Impossible de charger vos modèles\." onRetry=/);
   assert.match(section, /!isLoading && !isError && templates\.length === 0/, 'suggestions affichées en erreur');
   assert.match(section, /!isLoading && !isError && templates\.length > 0/, 'liste affichée en erreur');
   assert.doesNotMatch(section, /!isLoading && templates\.length/, 'une condition sans !isError subsiste');
@@ -91,7 +93,8 @@ test('R5b — signatures : l\'erreur passe avant l\'état vide, « Nouvelle » d
   const iEmpty = zone.indexOf('signatures.length === 0');
   assert.ok(iErr > 0, 'branche isError absente');
   assert.ok(iEmpty > iErr, 'la branche d\'erreur doit précéder l\'état vide');
-  assert.match(zone, /<ErrorBox title="Impossible de charger les signatures email\." onRetry=/);
+  // Revue design : « e-mail » avec son trait d'union (lot 12, F-20) ; même bloc d'erreur, avant l'état vide.
+  assert.match(zone, /<ErrorBox title="Impossible de charger les signatures e-mail\." onRetry=/);
   assert.match(signaturesUi, /onClick=\{openCreate\} disabled=\{isLoading \|\| isError\}/);
 });
 

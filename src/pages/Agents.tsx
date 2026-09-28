@@ -10,7 +10,7 @@
 
 import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, MessageSquare, Plus } from 'lucide-react';
+import { ChevronRight, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAgent } from '@/contexts/AgentContext';
@@ -99,7 +99,7 @@ const AgentsPage = () => {
         />
       ) : conversations.length === 0 ? (
         <EmptyState
-          icon={MessageSquare}
+          illustration="conversation"
           title="Aucune conversation"
           description="Posez une question à l'assistant ou confiez-lui une recherche."
           action={newConversation}

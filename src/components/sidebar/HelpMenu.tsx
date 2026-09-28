@@ -1,5 +1,7 @@
 /**
- * Menu Aide de la rangée basse (§2.4) : deux entrées, aucune fenêtre dedans.
+ * Menu Aide de la rangée basse (§2.4) : les raccourcis clavier, et la vidéo de
+ * la page affichée quand elle en a une (lot 12, A-15 : onOpenTutorial absent,
+ * pas d'entrée). Aucune fenêtre dedans.
  *
  * Les fenêtres (raccourcis, vidéo) sont rendues par AppSidebar hors de
  * <Sidebar> : sur téléphone, le contenu de la feuille est démonté à sa
@@ -11,6 +13,7 @@
  */
 import { useRef } from 'react';
 import { CircleHelp, Keyboard, PlayCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,10 +22,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCloseMobileSidebar } from '@/hooks/sidebar/useCloseMobileSidebar';
+import { cn } from '@/lib/utils';
+import { SIDEBAR_GHOST_CLASS } from './sidebarButtonClass';
 
 export interface HelpMenuProps {
   onOpenShortcuts: () => void;
-  onOpenTutorial: () => void;
+  /** Vidéo de la page affichée ; absent : l'entrée « Vidéo du tutoriel » n'est pas proposée. */
+  onOpenTutorial?: () => void;
   /** Classes du bouton déclencheur (taille et forme fixées par la rangée basse). */
   triggerClassName?: string;
   /** Côté de l'infobulle. */
@@ -43,7 +49,7 @@ export function HelpMenu({ onOpenShortcuts, onOpenTutorial, triggerClassName, to
     event.preventDefault();
     closeMobile();
     if (pending === 'shortcuts') onOpenShortcuts();
-    else onOpenTutorial();
+    else onOpenTutorial?.();
   };
 
   return (
@@ -51,9 +57,15 @@ export function HelpMenu({ onOpenShortcuts, onOpenTutorial, triggerClassName, to
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <button type="button" aria-label="Aide" className={triggerClassName}>
-              <CircleHelp aria-hidden="true" className="h-4 w-4" />
-            </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Aide"
+              className={cn(SIDEBAR_GHOST_CLASS, triggerClassName)}
+            >
+              <CircleHelp aria-hidden="true" />
+            </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side={tooltipSide}>Aide</TooltipContent>
@@ -72,13 +84,15 @@ export function HelpMenu({ onOpenShortcuts, onOpenTutorial, triggerClassName, to
           <Keyboard aria-hidden="true" className="mr-2 h-4 w-4" />
           Raccourcis clavier
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => { pendingRef.current = 'tutorial'; }}
-          className="cursor-pointer min-h-11 md:min-h-8"
-        >
-          <PlayCircle aria-hidden="true" className="mr-2 h-4 w-4" />
-          Vidéo du tutoriel
-        </DropdownMenuItem>
+        {onOpenTutorial && (
+          <DropdownMenuItem
+            onSelect={() => { pendingRef.current = 'tutorial'; }}
+            className="cursor-pointer min-h-11 md:min-h-8"
+          >
+            <PlayCircle aria-hidden="true" className="mr-2 h-4 w-4" />
+            Vidéo du tutoriel
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
