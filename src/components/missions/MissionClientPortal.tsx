@@ -10,13 +10,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
-import { useClientPortalTokens } from '@/hooks/useClientPortalTokens';
+import { useClientPortalTokens, isPortalLinkExpired, PORTAL_LINK_VALIDITY_DAYS } from '@/hooks/useClientPortalTokens';
 import { useOrganization } from '@/hooks/useOrganization';
 import { hasFeature } from '@/lib/featureGates';
 import { Link2, Copy, Trash2, ExternalLink, Plus, Lock, Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 interface MissionClientPortalProps {
@@ -101,7 +101,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
               )}
             </h3>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Lien public pour partager les candidats avec le hiring manager.
+              Le client voit les candidats retenus et au-delà, jamais les profils à trier, écartés ou seulement contactés. Chaque nouveau lien est valable {PORTAL_LINK_VALIDITY_DAYS} jours.
             </p>
           </div>
         </div>
@@ -177,7 +177,10 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
         </p>
       ) : projectTokens.length > 0 ? (
         <div className="space-y-2">
-          {projectTokens.map(t => (
+          {projectTokens.map(t => {
+            // Un lien échu ne se copie ni ne s'ouvre plus ; il se révoque.
+            const expired = isPortalLinkExpired(t.expires_at);
+            return (
             <div
               key={t.id}
               className="flex items-center gap-3 px-3 py-2 rounded-md border border-border bg-background hover:border-foreground/30 transition-colors"
@@ -187,6 +190,11 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
                 {t.client_email && (
                   <p className="text-[11px] text-muted-foreground truncate">{t.client_email}</p>
                 )}
+                <p className={cn('text-[11px] truncate', expired ? 'text-destructive' : 'text-muted-foreground')}>
+                  {t.expires_at && !Number.isNaN(new Date(t.expires_at).getTime())
+                    ? `${expired ? 'Expiré le' : "Valable jusqu'au"} ${format(new Date(t.expires_at), 'd MMM yyyy', { locale: fr })}`
+                    : 'Expiré'}
+                </p>
               </div>
               {t.last_accessed_at && (
                 <span className="text-[10.5px] text-muted-foreground shrink-0 hidden sm:block">
@@ -196,8 +204,9 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
               <button
                 type="button"
                 onClick={() => handleCopy(t.token)}
-                className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
-                title="Copier le lien"
+                disabled={expired}
+                className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+                title={expired ? 'Lien expiré' : 'Copier le lien'}
               >
                 {copiedId === t.token ? (
                   <Check className="w-3.5 h-3.5" style={{ color: 'hsl(var(--status-success))' }} />
@@ -205,15 +214,17 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
                   <Copy className="w-3.5 h-3.5" />
                 )}
               </button>
-              <a
-                href={`/client/${t.token}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
-                title="Ouvrir le portail"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              {!expired && (
+                <a
+                  href={`/client/${t.token}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
+                  title="Ouvrir le portail"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => handleDelete(t.id, t.client_name)}
@@ -223,7 +234,8 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
 

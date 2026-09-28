@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import type { ProcessStep } from '@/hooks/useMissionProcess';
 import { useMissionInvitations } from '@/hooks/useMissionInvitations';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 import { GripVertical, Plus, Trash2, Zap, Clock, User, ChevronDown, Users, Sparkles, Mail, X, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -556,14 +557,16 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
         </div>
       )}
 
-      {/* External invitations */}
-      {!readOnly && (
+      {/* External invitations. Gel de la Marketplace (décision 17) : plus de
+          nouvelle invitation de recruteur partenaire jusqu'au lot P2 ; celles
+          déjà envoyées restent listées et révocables. */}
+      {!readOnly && (!MARKETPLACE_FROZEN || invitations.length > 0) && (
         <div className="mt-4 pt-4 border-t border-border">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
               Invitations externes ({invitations.filter(i => i.status === 'pending').length} en attente)
             </p>
-            {!showInvite && (
+            {!showInvite && !MARKETPLACE_FROZEN && (
               <button
                 onClick={() => setShowInvite(true)}
                 className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
@@ -573,7 +576,13 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             )}
           </div>
 
-          {showInvite && (
+          {MARKETPLACE_FROZEN && (
+            <p className="text-[11px] text-muted-foreground mb-3">
+              L'invitation de recruteurs partenaires n'est pas encore disponible.
+            </p>
+          )}
+
+          {showInvite && !MARKETPLACE_FROZEN && (
             <div className="flex items-center gap-2 mb-3">
               <input
                 type="email"

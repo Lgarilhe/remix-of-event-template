@@ -12,6 +12,7 @@ import { Shield, Loader2, X, Clock, Ban, CheckCircle2, ArrowRight, AlertTriangle
 import { supabase } from '@/integrations/supabase/client';
 import { usePartnerState } from '@/hooks/useMarketplace';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 import { IconTile } from '@/components/ui/IconTile';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -166,12 +167,20 @@ export const PartnerCircleCard: React.FC = () => {
               Votre organisation fait partie du cercle partenaires
               {state.validated_at ? ` depuis le ${formatDate(state.validated_at)}` : ''}.
             </p>
-            <Link
-              to="/marketplace"
-              className="inline-flex items-center gap-1 text-xs font-medium text-foreground underline underline-offset-4"
-            >
-              Voir les missions ouvertes <ArrowRight className="w-3 h-3" />
-            </Link>
+            {MARKETPLACE_FROZEN ? (
+              // Gel de la Marketplace (décision 17) : la page montre l'adhésion
+              // et son état, pas les missions ouvertes.
+              <p className="text-xs text-muted-foreground">
+                La consultation des missions ouvertes n'est pas encore disponible.
+              </p>
+            ) : (
+              <Link
+                to="/marketplace"
+                className="inline-flex items-center gap-1 text-xs font-medium text-foreground underline underline-offset-4"
+              >
+                Voir les missions ouvertes <ArrowRight className="w-3 h-3" />
+              </Link>
+            )}
           </div>
         </div>
       ) : (
@@ -179,11 +188,12 @@ export const PartnerCircleCard: React.FC = () => {
           <div className="space-y-2 text-sm text-foreground/90 leading-relaxed">
             <p>
               Des entreprises publient des missions de recrutement sur Konekt. Les recruteurs du cercle
-              voient ces missions et travaillent dessus avec l'entreprise : recherche, scoring, pipeline.
+              voient le poste (intitulé, lieu, contrat, compétences clés), l'entreprise et la rémunération, puis postulent.
             </p>
             <p>
               Vous postulez à une mission avec un message. L'entreprise accepte ou refuse. Une fois accepté,
-              vous retrouvez la mission dans votre liste et vous sourcez directement dans l'espace de travail.
+              vous retrouvez la fiche de la mission dans votre liste et vous cherchez des candidats de votre côté.
+              La présentation de candidats à l'entreprise dans Konekt n'est pas encore disponible.
             </p>
             <p>
               La rémunération est un pourcentage du salaire annuel, fixé par l'entreprise sur chaque mission.
@@ -194,12 +204,27 @@ export const PartnerCircleCard: React.FC = () => {
           {status === 'pending_validation' && (
             <div className="rounded-lg border border-warning/30 bg-warning/10 p-4 flex items-start gap-3">
               <Clock className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-              <p className="text-sm text-foreground">
-                Demande envoyée{state.requested_at ? ` le ${formatDate(state.requested_at)}` : ''}.
-                {' '}L'équipe Konekt examine chaque demande avant d'ouvrir l'accès. Vous pouvez encore
-                modifier votre fiche ci dessous.
-              </p>
+              {MARKETPLACE_FROZEN ? (
+                <p className="text-sm text-foreground">
+                  Demande envoyée{state.requested_at ? ` le ${formatDate(state.requested_at)}` : ''}.
+                  {' '}La Marketplace n'est pas encore ouverte : votre demande reste en attente jusqu'à
+                  son ouverture. Vous pouvez encore modifier votre fiche ci-dessous.
+                </p>
+              ) : (
+                <p className="text-sm text-foreground">
+                  Demande envoyée{state.requested_at ? ` le ${formatDate(state.requested_at)}` : ''}.
+                  {' '}L'équipe Konekt examine chaque demande avant d'ouvrir l'accès. Vous pouvez encore
+                  modifier votre fiche ci dessous.
+                </p>
+              )}
             </div>
+          )}
+
+          {status === 'inactive' && MARKETPLACE_FROZEN && (
+            <p className="text-xs text-muted-foreground">
+              La Marketplace n'est pas encore ouverte. Une demande envoyée maintenant reste en attente
+              jusqu'à son ouverture.
+            </p>
           )}
 
           {status === 'suspended' && (

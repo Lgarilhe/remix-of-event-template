@@ -208,8 +208,11 @@ verify_jwt = false
 [functions.stripe-webhook]
 verify_jwt = false
 
+# submit-application : neutralisée (C1, R2), en attente de suppression.
+# Exception à la règle verify_jwt = false ci-dessus : aucun appelant, la
+# passerelle refuse donc tout appel sans jeton.
 [functions.submit-application]
-verify_jwt = false
+verify_jwt = true
 
 [functions.unipile-accounts]
 verify_jwt = false

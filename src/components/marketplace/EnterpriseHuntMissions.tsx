@@ -3,6 +3,8 @@
  * entreprise. Deux groupes : les missions proposées aux recruteurs et celles
  * encore en préparation. Chaque ligne montre les candidatures en attente et
  * les recruteurs acceptés.
+ * Gel de la Marketplace (décision 17) : aucune mission n'y entre ; seules
+ * celles déjà proposées restent listées, les brouillons ne le sont plus.
  */
 
 import React, { useMemo } from 'react';
@@ -11,6 +13,7 @@ import { Target, Users, Clock, Calendar, ArrowRight } from 'lucide-react';
 import { useMyHuntMissions, type MyHuntMission } from '@/hooks/useMarketplace';
 import { huntStatusLabel, formatDate } from './huntLabels';
 import { ErrorBox } from './ErrorBox';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 
 const OPEN_STATUSES = new Set(['published', 'in_progress', 'filled', 'cancelled']);
 
@@ -94,8 +97,9 @@ export const EnterpriseHuntMissions: React.FC = () => {
             <Target className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
             <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Aucune mission publiée</h3>
             <p className="text-xs text-muted-foreground">
-              Activez le mode chasse dans la configuration d'une mission, puis publiez-la pour la
-              proposer aux recruteurs partenaires.
+              {MARKETPLACE_FROZEN
+                ? "La publication de missions sur la Marketplace n'est pas encore disponible."
+                : "Activez le mode chasse dans la configuration d'une mission, puis publiez-la pour la proposer aux recruteurs partenaires."}
             </p>
           </div>
         ) : (
@@ -107,7 +111,7 @@ export const EnterpriseHuntMissions: React.FC = () => {
         )}
       </div>
 
-      {drafts.length > 0 && (
+      {drafts.length > 0 && !MARKETPLACE_FROZEN && (
         <div>
           <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
             En préparation

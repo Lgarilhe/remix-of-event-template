@@ -21,6 +21,19 @@ export interface ClientPortalToken {
   last_accessed_at: string | null;
 }
 
+/** Durée de validité d'un nouveau lien du portail client (C1, R4). */
+export const PORTAL_LINK_VALIDITY_DAYS = 90;
+
+/**
+ * Même règle que client-portal-data : un lien sans date, illisible ou échu
+ * ne s'ouvre plus.
+ */
+export const isPortalLinkExpired = (expiresAt: string | null | undefined): boolean => {
+  if (!expiresAt) return true;
+  const t = new Date(expiresAt).getTime();
+  return Number.isNaN(t) || t <= Date.now();
+};
+
 export const useClientPortalTokens = () => {
   const queryClient = useQueryClient();
   const { organizationId } = useOrganization();
@@ -61,6 +74,9 @@ export const useClientPortalTokens = () => {
           client_email: input.client_email || null,
           project_ids: input.project_ids || null,
           token,
+          // Posée ici aussi : la valeur par défaut en base (migration C1) peut
+          // arriver après ce code, et un lien sans date est refusé.
+          expires_at: new Date(Date.now() + PORTAL_LINK_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString(),
         })
         .select()
         .single();
