@@ -20,7 +20,7 @@ Les 410 constats confirmés ont été regroupés en 246 défauts distincts, puis
 - Tests de bout en bout contre une stack locale : 32 tests d'API et 46 tests d'interface passent, voir la section dédiée.
 - tsc : 24 erreurs, contre 25 avant l'audit. Build de production OK.
 - Typage Deno des edge functions : 18 erreurs de moins qu'avant l'audit, aucune dans le code modifié (process-sequences en compte une de plus : trois erreurs anciennes de `_shared/credit-guard.ts`, désormais importé, contre deux erreurs de base corrigées).
-- Migration `20260925163421_sequences_audit_lot_b6.sql` rejouée localement sous PostgreSQL 16, sur une base neuve (274 migrations) et sur une base de type production (`MIGRATION_CLEAN.sql` puis 98 migrations). Audit RLS : 10 contrôles généraux et 22 contrôles séquences passent sur les deux bases. Les anciennes pauses de la production ont été simulées et reclassées comme prévu (D6).
+- Migration `20260928140414_sequences_audit_lot_b6.sql` rejouée localement sous PostgreSQL 16, sur une base neuve (274 migrations) et sur une base de type production (`MIGRATION_CLEAN.sql` puis 98 migrations). Audit RLS : 10 contrôles généraux et 22 contrôles séquences passent sur les deux bases. Les anciennes pauses de la production ont été simulées et reclassées comme prévu (D6).
 
 ## Les 22 défauts critiques trouvés
 
@@ -63,7 +63,7 @@ Six décisions finales, prises après la relecture contradictoire, priment sur l
 
 - D1. Une séquence désactivée n'envoie jamais rien. Le moteur le vérifie lui-même, et aucune reprise automatique ne réactive ses inscriptions.
 - D2. Les canaux e-mail et WhatsApp restent fermés. Le moteur saute ces étapes sans aucun appel. Le code de réparation (résolution de la boîte, adresse du candidat, liens signés) est en place pour une réouverture décidée et testée.
-- D3. Un collaborateur n'agit que sur les inscriptions qu'il a créées, côté base, côté serveur et dans l'assistant IA. Il ne modifie que les séquences qu'il a créées. La désactivation d'une séquence et la pause groupée ne lui sont pas proposées. L'anti-doublon passe par une fonction serveur qui voit toute l'organisation, avec une comparaison exacte des identifiants LinkedIn.
+- D3. Un collaborateur n'agit que sur les inscriptions qu'il a créées, côté base, côté serveur et dans l'assistant IA. Il ne modifie que les séquences qu'il a créées. Depuis la fusion du lot C1 (28 septembre), il ne lit plus par la base les séquences des missions de son équipe ni leurs candidats : C1 retire toute policy qui passe par l'équipe de mission (R7), et le rôle Collaborateur est gelé jusqu'au lot C2 (R11). Les chemins serveur qui l'autorisent à inscrire dans une séquence d'une mission de son équipe restent en place, à revoir au lot C2. La désactivation d'une séquence et la pause groupée ne lui sont pas proposées. L'anti-doublon passe par une fonction serveur qui voit toute l'organisation, avec une comparaison exacte des identifiants LinkedIn.
 - D4. Un rendez-vous Calendly dont l'organisation n'est pas identifiable de façon unique n'arrête rien.
 - D5. Un candidat touché par un effacement RGPD ne peut plus être repris ni relancé.
 - D6. Les pauses héritées de l'ancien code deviennent `manual`, sauf l'ancienne auto-pause identifiée par son marqueur, qui devient `auto_paused`. Aucune ne devient `sequence_inactive`. Rien ne redémarre seul au déploiement : la reprise passe par « Reprendre tous les candidats en pause » ou candidat par candidat.
@@ -116,11 +116,12 @@ Six décisions finales, prises après la relecture contradictoire, priment sur l
 
 ## Mise en production
 
-1. La migration `20260925163421` doit être appliquée avant les edge functions et le front. Le workflow `deploy-migrations.yml` la joue au push sur `main`, en même temps que les fonctions et Vercel : vérifier qu'il passe. Si elle manque, le moteur retombe sur la raison de pause `manual` (repli prévu), et la désactivation d'une séquence échoue avec un message, sans faux succès.
+0. Les quatre migrations de ce chantier (`20260928140414` à `20260928140417`) ont été renumérotées le 28 septembre, à la fusion de `main` : le lot C1 (`20260927233806`) était déjà en production, et `db push` sans `--include-all` refuse une version plus ancienne que la dernière appliquée. Elles passent donc après C1 et ne défont rien de lui : la reconstruction des policies des séquences ne retire que les policies permissives (les RESTRICTIVE `mission_same_org_*` de C1 restent), aucune policy ne passe plus par l'équipe de mission, et la lecture des conversations et des actions de l'assistant reste celle de C1 (bloc D15 et lecture du journal retirés de ces migrations). Rejouées sur une base neuve (278 migrations) : les 15 audits SQL passent, ceux de C1 compris.
+1. La migration `20260928140414` doit être appliquée avant les edge functions et le front. Le workflow `deploy-migrations.yml` la joue au push sur `main`, en même temps que les fonctions et Vercel : vérifier qu'il passe. Si elle manque, le moteur retombe sur la raison de pause `manual` (repli prévu), et la désactivation d'une séquence échoue avec un message, sans faux succès.
 2. Secret facultatif `EMAIL_LINK_SIGNING_SECRET` pour signer les liens suivis des e-mails (repli sur la clé de service). Sans effet tant que le canal e-mail est fermé.
 3. Après déploiement, régénérer `src/integrations/supabase/types.ts` avec `supabase gen types typescript --linked`. Les fonctions nouvelles y ont été ajoutées à la main.
 4. Vérifier la ligne `organization_integrations` de l'organisation Konekt : la synchronisation Notion après envoi ne tourne plus que si `notion_connected` est vrai et que les identifiants correspondent à ceux de la plateforme.
-5. Deux migrations issues des tests de bout en bout, à appliquer avec la première : `20260927194905` (garde du compte d'envoi à la modification, `assigned_sender_id` réservé au moteur, clés étrangères `created_by` des modèles et extraits alignées sur la production, `executed_at` des actions de l'assistant protégé, lecture du journal de l'assistant) et `20260927231417` (inscription d'un candidat effacé non réactivable). Toutes deux rejouent sur une base vide. Puis `20260928055804` (décisions produit : gardes d'inscription et de reprise, étapes réservées au serveur, conversations de l'assistant, droits retirés).
+5. Deux migrations issues des tests de bout en bout, à appliquer avec la première : `20260928140415` (garde du compte d'envoi à la modification, `assigned_sender_id` réservé au moteur, clés étrangères `created_by` des modèles et extraits alignées sur la production, `executed_at` des actions de l'assistant protégé) et `20260928140416` (inscription d'un candidat effacé non réactivable). Toutes deux rejouent sur une base vide. Puis `20260928140417` (décisions produit : gardes d'inscription et de reprise, étapes réservées au serveur, droits retirés).
 6. État de la production au 25 septembre : 2 séquences, 17 inscriptions, aucune active (15 en pause, 2 répondues). Le déploiement ne relance donc aucun envoi.
 
 ## Tests de bout en bout (27 septembre)
@@ -177,9 +178,9 @@ Défauts critiques corrigés :
 | L'outil d'envoi de l'assistant écrivait à un candidat effacé (RGPD), y compris pour un message programmé effacé entre l'approbation et l'échéance | Contrôle d'effacement (registre et marqueur de l'organisation) à l'approbation et à l'exécution |
 | L'assistant pouvait envoyer depuis le compte d'un collègue, dans une conversation de ce collègue | Refus : seules les conversations des comptes de l'appelant |
 | Une inscription programmée par l'assistant était créée pour un candidat effacé par l'organisation | Contrôle du marqueur de l'organisation, avec ou sans adresse de profil |
-| Un client pouvait effacer `executed_at` d'une action de l'assistant et la faire rejouer par le cron | Migration `20260927194905` : seule la remise en attente d'un échec l'efface |
+| Un client pouvait effacer `executed_at` d'une action de l'assistant et la faire rejouer par le cron | Migration `20260928140415` : seule la remise en attente d'un échec l'efface |
 
-Parmi les défauts graves corrigés : garde du compte d'envoi contournable par une modification de l'inscription ; réponse reportée dans toutes les missions de l'organisation, ou jamais au pipeline selon le chemin de détection ; condition « Si pas de réponse » qui terminait l'inscription sans la clore ; rendez-vous rattaché par un morceau d'adresse de profil ; même personne inscrite deux fois dans une séquence sous deux identifiants ; lectures de l'assistant qui comptaient une autre organisation ou lisaient la boîte d'un collègue ; journal de l'assistant lisible par un collaborateur ; faux succès à l'annulation de l'action d'un collègue ; candidat effacé repassé « actif » par une écriture directe dans l'API (migration `20260927231417`).
+Parmi les défauts graves corrigés : garde du compte d'envoi contournable par une modification de l'inscription ; réponse reportée dans toutes les missions de l'organisation, ou jamais au pipeline selon le chemin de détection ; condition « Si pas de réponse » qui terminait l'inscription sans la clore ; rendez-vous rattaché par un morceau d'adresse de profil ; même personne inscrite deux fois dans une séquence sous deux identifiants ; lectures de l'assistant qui comptaient une autre organisation ou lisaient la boîte d'un collègue ; journal de l'assistant lisible par un collaborateur ; faux succès à l'annulation de l'action d'un collègue ; candidat effacé repassé « actif » par une écriture directe dans l'API (migration `20260928140416`).
 
 Le second passage de la suite complète a fait apparaître un défaut intermittent de l'éditeur visuel, introduit par l'audit : quand deux étapes restaient sélectionnées un instant dans le schéma, la sélection au clavier basculait de l'une à l'autre sans fin et le panneau de réglages ne se stabilisait plus. Corrigé dans `WorkflowCanvas.tsx` (seule une sélection d'une étape est suivie), puis vérifié : 123 tests d'éditeur et d'interface verts, deux fois chacun, avec deux navigateurs en parallèle.
 
@@ -187,7 +188,7 @@ Résultat après corrections, sur la stack locale, deux passages de la suite com
 
 ### Décisions produit (validées et appliquées le 28 septembre)
 
-Les 35 recommandations ci-dessous, entre parenthèses, ont été retenues telles quelles et appliquées en six lots de fichiers, chacun relu par deux relecteurs puis repris si besoin, avec des tests dédiés (`e2e/api/seq-decisions-*.spec.ts`, `e2e/flows/seq-decisions-*.spec.ts`, `supabase/tests/seq_decisions_db_audit.sql`, tests Deno `seq-decisions-*.test.ts`) et la migration `20260928055804`.
+Les 35 recommandations ci-dessous, entre parenthèses, ont été retenues telles quelles et appliquées en six lots de fichiers, chacun relu par deux relecteurs puis repris si besoin, avec des tests dédiés (`e2e/api/seq-decisions-*.spec.ts`, `e2e/flows/seq-decisions-*.spec.ts`, `supabase/tests/seq_decisions_db_audit.sql`, tests Deno `seq-decisions-*.test.ts`) et la migration `20260928140417`.
 
 Envois et quotas :
 1. Un envoi incertain (erreur 5xx ou délai après l'appel) doit-il compter dans le taux d'échec qui désactive une séquence ? (Non : une panne passagère du prestataire ne doit pas arrêter une séquence.)
@@ -208,7 +209,7 @@ RGPD et droits :
 12. Bloquer une nouvelle inscription d'un profil effacé (registre global ou organisation) ? (Oui.)
 13. Registre d'effacement illisible : refuser l'inscription et l'envoi ? (Oui.)
 14. Refuser la mise en file InMail d'un candidat effacé dès la mise en file ? (Oui ; l'envoi est déjà bloqué.)
-15. Conversations et messages de l'assistant (`agent_conversations`, `agent_messages`) lisibles par toute l'organisation, y compris le résumé des inscriptions d'un collègue. (Limiter à ses lignes, propriétaire et administrateur voient tout.)
+15. Conversations et messages de l'assistant (`agent_conversations`, `agent_messages`) lisibles par toute l'organisation, y compris le résumé des inscriptions d'un collègue. (Limiter à ses lignes, propriétaire et administrateur voient tout.) Remplacée à la fusion du lot C1 (R3), plus strict : chaque conversation n'est lue que par son auteur, propriétaire et administrateur compris.
 16. Un membre (rôle `member`) a-t-il les mêmes droits dans les lectures et les actions de l'assistant ? (Oui, comme dans l'interface.)
 17. Refuser en base toute réactivation d'inscription hors du serveur, au-delà du cas RGPD ? (Oui.)
 18. Refuser en base qu'un utilisateur connecté réarme une étape annulée ou insère lui-même des étapes ? (Oui.)

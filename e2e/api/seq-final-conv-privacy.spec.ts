@@ -2,9 +2,9 @@
  * Dernière passe, lot « conv-privacy » (docs/audit-2026-09-25-sequences.md,
  * « Décisions produit en attente ») :
  *
- * - 15 : une conversation de l'assistant appartient à son auteur. Propriétaire
- *   et administrateur la lisent (RLS de agent_conversations, migration
- *   20260928055804), mais personne d'autre que l'auteur n'y écrit. Les deux
+ * - 15 : une conversation de l'assistant appartient à son auteur. Personne
+ *   d'autre ne la lit ni n'y écrit, propriétaire et administrateur compris
+ *   (RLS de agent_conversations, lot C1, migration 20260927233806, R3). Les deux
  *   fonctions en clé de service qui prennent un conversation_id du corps
  *   (search-agent-chat, run-agent-search) refusent donc (403) la conversation
  *   d'un collègue, propriétaire compris, sans rien y écrire.
@@ -142,15 +142,15 @@ test.describe('Décision 15 : une conversation appartient à son auteur', () => 
       .toEqual({ conversation: 0, messages: 0 });
   });
 
-  test('search-agent-chat : propriétaire et administrateur lisent la conversation d’un membre mais n’y écrivent pas (403)', async () => {
+  test('search-agent-chat : propriétaire et administrateur ne lisent pas la conversation d’un membre et n’y écrivent pas (403)', async () => {
     const { org, adminUser, author } = await team('E2E conv responsables');
     const conversationId = await seedConversation(org.orgId, author.userId);
     const before = await messagesOf(conversationId);
 
     for (const [label, user] of [['propriétaire', org.owner], ['administrateur', adminUser]] as const) {
       const token = await tokenOf(user);
-      expect(await readsThroughRls(token, conversationId), `RLS : lisible par le ${label}`)
-        .toEqual({ conversation: 1, messages: before.length });
+      expect(await readsThroughRls(token, conversationId), `RLS : invisible au ${label}`)
+        .toEqual({ conversation: 0, messages: 0 });
       const res = await callFunction('search-agent-chat', token, {
         conversation_id: conversationId,
         message: 'Je reprends cette conversation',

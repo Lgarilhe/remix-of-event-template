@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Module séquences, lot « db » des tests de bout en bout (2026-09-27).
 -- Base, contraintes, RLS et reprise des données héritées par la migration
--- 20260925163421_sequences_audit_lot_b6.sql (« B6 »).
+-- 20260928140414_sequences_audit_lot_b6.sql (« B6 »).
 --
 -- BASE LOCALE OU CI UNIQUEMENT, JAMAIS EN PROD : la dernière partie simule
 -- l'état de la prod d'avant B6 (contraintes de statut retirées, colonne
@@ -244,9 +244,10 @@ END $$;
 
 -- ---------------------------------------------------------------------
 -- collaborateur-angles-non-couverts (SEQ-119)
--- Hors de l'équipe de mission, le collaborateur ne lit pas les étapes de la
--- séquence d'un collègue ; dans l'équipe, il ne supprime ni l'inscription ni
--- les exécutions d'un collègue et n'ajoute pas d'exécution à son inscription.
+-- Hors de l'équipe de mission comme dedans (lot C1, R7 : plus de lecture par
+-- l'équipe), le collaborateur ne lit pas les étapes de la séquence d'un
+-- collègue ; dans l'équipe, il ne supprime ni l'inscription ni les exécutions
+-- d'un collègue et n'ajoute pas d'exécution à son inscription.
 -- Contrôle positif : les mêmes opérations sur sa propre inscription passent.
 -- ---------------------------------------------------------------------
 DO $$
@@ -278,10 +279,10 @@ BEGIN
   PERFORM pg_temp.seqdb_as(u_c);
   SET LOCAL ROLE authenticated;
 
-  -- Contrôle positif : dans l'équipe, il lit les étapes.
+  -- Dans l'équipe non plus, il ne lit pas les étapes (lot C1, R7).
   c := c + 1;
   SELECT count(*) INTO n FROM public.sequence_steps WHERE sequence_id = seq_a;
-  IF n <> 2 THEN f := f || format('[dans la mission : le collaborateur lit %s étape(s) sur 2] ', n); END IF;
+  IF n <> 0 THEN f := f || format('[dans la mission : le collaborateur lit %s étape(s) d''un collègue par l''équipe] ', n); END IF;
 
   c := c + 1;
   BEGIN
@@ -904,7 +905,7 @@ BEGIN
     SET LOCAL ROLE authenticated;
     BEGIN
       UPDATE public.sequence_enrollments SET account_id = 'seqdb-acc-owner' WHERE id = v_enr;
-      -- Refus attendu : déclencheur sequence_enrollments_check_sender_owner_update (migration 20260927194905).
+      -- Refus attendu : déclencheur sequence_enrollments_check_sender_owner_update (migration 20260928140415).
       f := f || format('[DÉFAUT seq-db-garde-compte-update : %s, inscription passée sur le compte relié d''un collègue] ', v_who);
     EXCEPTION WHEN insufficient_privilege THEN
       GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
@@ -1009,7 +1010,7 @@ BEGIN
   END;
 
   -- (b) chemin serveur sans auteur, depuis le compte relié d'un membre.
-  -- Décision 20 : refus (migration 20260928055804), plus un simple constat en NOTICE.
+  -- Décision 20 : refus (migration 20260928140417), plus un simple constat en NOTICE.
   c := c + 1;
   BEGIN
     INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
@@ -1049,7 +1050,7 @@ ALTER TABLE public.sequence_step_executions ALTER COLUMN status SET DEFAULT 'pen
 UPDATE public.sequence_enrollments SET assigned_sender_id = NULL
 WHERE assigned_sender_id IS NOT NULL
   AND assigned_sender_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
--- Garde de l'expéditeur de rotation (20260927194905, postérieure à B6) : absente
+-- Garde de l'expéditeur de rotation (20260928140415, postérieure à B6) : absente
 -- de la prod d'avant B6, et sa clause WHEN interdirait le changement de type.
 DROP TRIGGER IF EXISTS sequence_enrollments_check_assigned_sender ON public.sequence_enrollments;
 ALTER TABLE public.sequence_enrollments ALTER COLUMN assigned_sender_id TYPE uuid USING assigned_sender_id::uuid;
@@ -1237,7 +1238,7 @@ SELECT
 
 -- Rejeu de B6, chemin serveur, comme le workflow de déploiement.
 SET LOCAL client_min_messages = warning;
-\ir ../migrations/20260925163421_sequences_audit_lot_b6.sql
+\ir ../migrations/20260928140414_sequences_audit_lot_b6.sql
 SET LOCAL client_min_messages = notice;
 RESET ROLE;
 DO $$ BEGIN PERFORM pg_temp.seqdb_as(NULL); END $$;

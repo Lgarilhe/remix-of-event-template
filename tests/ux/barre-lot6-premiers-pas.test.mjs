@@ -48,9 +48,9 @@ test('B6P-1 : firstSteps.ts est pur, sans aucun import', () => {
 });
 
 // ---------------------------------------------------------------- B6P-2
-test('B6P-2 : étapes par type d\'organisation, exactement comme au §7.1', () => {
+test('B6P-2 : étapes par type d\'organisation, comme au §7.1, sans invite_partner pendant le gel de la Marketplace (décision 17)', () => {
   assert.deepEqual(FIRST_STEPS, {
-    enterprise: ['create_job', 'invite_partner', 'schedule_interview'],
+    enterprise: ['create_job', 'schedule_interview'],
     agency: ['create_mission', 'link_linkedin', 'first_search', 'invite_team'],
     freelance: ['create_mission', 'link_linkedin', 'first_search'],
   });
@@ -91,7 +91,7 @@ test('B6P-3 : missionCount 0 et partnerMissionCount 2 : pas de create_mission ni
   assert.ok(!ids(agency).includes('create_mission'));
   const enterprise = evaluateFirstSteps('enterprise', base({ missionCount: 0, partnerMissionCount: 2 }));
   assert.equal(enterprise.status, 'ok');
-  assert.deepEqual(ids(enterprise), ['invite_partner', 'schedule_interview']);
+  assert.deepEqual(ids(enterprise), ['schedule_interview']);
 });
 
 test('B6P-3 : une mission à soi et des missions partenaires : create_mission gardée et cochée', () => {
@@ -107,7 +107,6 @@ test('B6P-3 : un signal requis null : loading', () => {
     ['agency', 'teamInvited'],
     ['freelance', 'linkedinLinked'],
     ['enterprise', 'missionCount'],
-    ['enterprise', 'partnerInvitedOrPublished'],
     ['enterprise', 'interviewScheduled'],
   ]) {
     const r = evaluateFirstSteps(orgType, base({ [key]: null }));

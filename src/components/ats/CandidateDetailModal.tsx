@@ -20,7 +20,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ATSCandidate, ATS_STAGES } from '@/hooks/useATSData';
-import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
@@ -87,7 +86,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const { organizationId } = useOrganization();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
-  const { data: notionJobs } = useNotionJobs();
   const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [projectNotes, setProjectNotes] = useState<string | null>(null);
@@ -224,7 +222,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     if (!user) throw new Error('Not authenticated');
     if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
     const { error: insertErr } = await supabase.from('candidate_notes').insert({
-      candidate_id: candidate.candidateId, shortlist_id: candidate.notionShortlistId || null,
+      candidate_id: candidate.candidateId,
       content, created_by: user.id, organization_id: organizationId,
     });
     if (insertErr) { toast.error('Erreur lors de l\'ajout de la note'); return; }
@@ -248,7 +246,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
     const { error: insertErr } = await supabase.from('candidate_reminders').insert({
       candidate_id: candidate.candidateId, candidate_name: candidate.name,
-      shortlist_id: candidate.notionShortlistId || null, job_id: candidate.jobId,
+      job_id: candidate.jobId,
       job_title: candidate.jobTitle, title,
       due_at: new Date(date).toISOString(), created_by: user.id,
       organization_id: organizationId,

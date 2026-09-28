@@ -246,11 +246,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             <RoleIcon className="w-2.5 h-2.5" />
                             {roleLabels[member.role] || member.role}
                           </Badge>
-                          {member.role === 'collaborator' && (
-                            <Badge variant="outline" className="text-xs px-1.5 py-0 border-info text-info font-semibold uppercase tracking-wider">
-                              Externe
-                            </Badge>
-                          )}
                         </div>
                         {/* Pas d'e-mail en double quand le nom affiché est déjà l'e-mail */}
                         {memberEmail && memberEmail !== memberName && (
@@ -288,7 +283,11 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             <SelectContent>
                               <SelectItem value="admin">Admin</SelectItem>
                               <SelectItem value="member">Membre</SelectItem>
-                              <SelectItem value="collaborator">Collaborateur</SelectItem>
+                              {/* Jusqu'au lot C2, « Collaborateur » n'est proposé qu'au membre
+                                  qui l'a déjà : ce rôle garde tous les accès d'un membre (C1, R11). */}
+                              {member.role === 'collaborator' && (
+                                <SelectItem value="collaborator">Collaborateur</SelectItem>
+                              )}
                             </SelectContent>
                           </Select>
                           <Button

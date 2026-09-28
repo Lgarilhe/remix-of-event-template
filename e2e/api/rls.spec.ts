@@ -31,6 +31,10 @@ test.describe('@critical RLS — fonctions SECURITY DEFINER révoquées', () => 
     'enqueue_email',
     'increment_enrichment_quota',
     'invoke_process_sequences',
+    // Lot C1 (R13) : fonctions de cron, fermées à anon et à authenticated.
+    'invoke_agent_daily_digest',
+    'invoke_process_agent_tasks',
+    'cleanup_search_failure_log',
   ];
 
   test('anon ne peut exécuter aucune fonction interne révoquée', async () => {

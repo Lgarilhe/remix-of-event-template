@@ -225,8 +225,9 @@ test('SEQ-056 — exécution, inscription et séquence restent dans la même org
 
   const seq = between(b6, 'CREATE OR REPLACE FUNCTION public.outreach_sequences_check_project_org()', '$$;');
   assert.match(seq, /FROM public\.sourcing_projects p/);
-  // Un partenaire de la mission garde le droit d'y rattacher sa séquence.
-  assert.match(seq, /NOT public\.is_mission_team_member_for_project\(auth\.uid\(\), NEW\.project_id\)/);
+  // Lot C1 (R7-b) : plus d'exception pour un partenaire de l'équipe de mission.
+  assert.doesNotMatch(seq, /mission_team/);
+  assert.match(seq, /IF auth\.uid\(\) IS NOT NULL THEN\s+RAISE EXCEPTION 'Cette mission appartient à une autre organisation'/);
 
   // La réparation passe AVANT les déclencheurs (sinon l'alignement des
   // exécutions incohérentes ferait échouer la migration).
@@ -298,11 +299,13 @@ test('SEQ-117 — index du moteur rattrapés et index des rattrapages', () => {
 });
 
 // ---------------------------------------------------------------- SEQ-119
-test('SEQ-119 — un collaborateur ne modifie que ses inscriptions et ne lit que ses missions', () => {
+test('SEQ-119 — un collaborateur ne modifie que ses inscriptions et ne lit que ses séquences', () => {
   const upd = policy('org_members_update', 'sequence_enrollments');
   assert.match(upd, /created_by = auth\.uid\(\) OR NOT \(SELECT public\.is_active_org_collaborator\(auth\.uid\(\)\)\)/);
   const sel = policy('org_members_select', 'sequence_enrollments');
-  assert.match(sel, /public\.is_mission_team_member_for_project\(auth\.uid\(\), s\.project_id\)/);
+  // Lot C1 (R7) : aucune policy ne passe plus par l'équipe de mission.
+  assert.match(sel, /AND s\.created_by = auth\.uid\(\)/);
+  assert.doesNotMatch(b6.slice(b6.indexOf('-- 5. Policies : un seul jeu par table')), /CREATE POLICY[^;]*mission_team/);
   const execUpd = policy('org_members_update', 'sequence_step_executions');
   assert.match(execUpd, /e\.created_by = auth\.uid\(\)/);
   const fn = between(b6, 'CREATE OR REPLACE FUNCTION public.is_active_org_collaborator', '$$;');

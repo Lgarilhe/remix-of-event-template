@@ -2,13 +2,11 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { MessageSquare, CheckCircle2, Star, Zap, Target, Archive, Sparkles, GitBranch } from 'lucide-react';
-import notionLogo from '@/assets/notion-logo.webp';
 import { ProjectEnrollmentInfo } from '@/hooks/useProjectEnrollments';
 
 interface CardStatusBadgesProps {
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null } | null;
   profile: { open_to_work?: boolean; premium?: boolean };
-  notionMatch?: { id: string; name: string } | null;
   /** Score IA pour ce candidat sur le job courant (si déjà scoré) */
   jobScore?: { match_score: number; recommendation?: string; scoringDepth?: 'quick' | 'deep' } | null;
   /** LinkedIn signal "Likely to respond" — affiché en badge "Réactif" si true */
@@ -20,7 +18,6 @@ interface CardStatusBadgesProps {
 export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
   candidateStatus,
   profile,
-  notionMatch,
   jobScore,
   isLikelyToRespond,
   enrollmentInfo,
@@ -162,19 +159,6 @@ export const CardStatusBadges: React.FC<CardStatusBadgesProps> = ({
           <Sparkles className="w-3 h-3 mr-0.5" />
           Réactif
         </Badge>
-      )}
-      {notionMatch && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" className="text-xs px-1 py-0 h-4 sm:h-5 border-border bg-muted shrink-0">
-              <img src={notionLogo} alt="Notion" className="w-3.5 h-3.5 object-contain" />
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-xs">
-            <p className="text-xs font-medium">Déjà dans Notion</p>
-            <p className="text-xs text-muted-foreground">{notionMatch.name}</p>
-          </TooltipContent>
-        </Tooltip>
       )}
     </>
   );

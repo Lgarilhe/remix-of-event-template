@@ -16,14 +16,8 @@ import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { BulkActionsBar } from '@/components/ats/BulkActionsBar';
-import { CandidatePipeline } from '@/components/candidates/CandidatePipeline';
-import { CandidateList } from '@/components/candidates/CandidateList';
-import { CandidateFilters } from '@/components/candidates/CandidateFilters';
-import { PipelineStats } from '@/components/candidates/PipelineStats';
-import { useNotionShortlist, useNotionCandidates } from '@/hooks/useNotionCandidates';
-import { PIPELINE_STAGES, type ShortlistEntry } from '@/types/shortlist';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { Bell, Users, RefreshCw, Loader2, LayoutGrid, List } from 'lucide-react';
+import { Bell, RefreshCw } from 'lucide-react';
 import iconAts3d from '@/assets/icon-ats-3d.webp';
 import iconKanban3d from '@/assets/icon-kanban-3d.webp';
 import iconTable3d from '@/assets/icon-table-3d.webp';
@@ -41,7 +35,6 @@ const viewTabs = [
   { value: 'kanban', label: 'Kanban', icon3d: iconKanban3d },
   { value: 'table', label: 'Table', icon3d: iconTable3d },
   { value: 'timeline', label: 'Timeline', icon3d: iconTimeline3d },
-  { value: 'shortlist', label: 'Shortlist Client', icon3d: iconTimeline3d },
   { value: 'analytics', label: 'Analytics', icon3d: iconAnalytics3d },
 ] as const;
 
@@ -49,8 +42,8 @@ export default function ATS() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialView = (searchParams.get('view') as any) || 'kanban';
   const [user, setUser] = useState<User | null>(null);
-  const [activeView, _setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics'>(
-    ['kanban', 'table', 'timeline', 'shortlist', 'analytics'].includes(initialView) ? initialView : 'kanban'
+  const [activeView, _setActiveView] = useState<'kanban' | 'table' | 'timeline' | 'analytics'>(
+    ['kanban', 'table', 'timeline', 'analytics'].includes(initialView) ? initialView : 'kanban'
   );
 
   // Deep-link support : ?candidate=ID (+ optionnel ?tab=evaluation&prepareInterview=1)
@@ -61,7 +54,7 @@ export default function ATS() {
 
   // Sync view → URL pour bookmark / partage de lien direct
   const setActiveView = useCallback(
-    (next: 'kanban' | 'table' | 'timeline' | 'shortlist' | 'analytics') => {
+    (next: 'kanban' | 'table' | 'timeline' | 'analytics') => {
       _setActiveView(next);
       const params = new URLSearchParams(searchParams);
       if (next === 'kanban') params.delete('view');
@@ -99,57 +92,6 @@ export default function ATS() {
       await handleStageChange(id, newStage);
     }
   }, [handleStageChange]);
-
-  // Notion shortlist data
-  const { data: shortlistData = [], isLoading: shortlistLoading } = useNotionShortlist();
-  const { data: candidatesNotionData = [] } = useNotionCandidates();
-  const [shortlist, setShortlist] = useState<ShortlistEntry[]>([]);
-  useEffect(() => { if (shortlistData.length > 0) setShortlist(shortlistData); }, [shortlistData]);
-
-  const [shortlistViewMode, setShortlistViewMode] = useState<'pipeline' | 'list'>('pipeline');
-  const [shortlistFilters, setShortlistFilters] = useState({ search: '', stage: [] as string[], expertise: [] as string[], entity: [] as string[], position: [] as string[] });
-
-  // Shortlist filter options
-  const shortlistFilterOptions = useMemo(() => {
-    const stages = new Set<string>();
-    const expertise = new Set<string>();
-    const entities = new Set<string>();
-    const positionsMap = new Map<string, string>();
-    shortlist.forEach(entry => {
-      if (entry.stage) stages.add(entry.stage);
-      if (entry.entity) entities.add(entry.entity);
-      entry.candidate?.expertise?.forEach(e => expertise.add(e));
-      entry.positions?.forEach(pos => { if (!positionsMap.has(pos.id)) positionsMap.set(pos.id, pos.name); });
-    });
-    return { stages: Array.from(stages), expertise: Array.from(expertise), entities: Array.from(entities), positions: Array.from(positionsMap.entries()).map(([id, name]) => ({ id, name })) };
-  }, [shortlist]);
-
-  // Filtered shortlist
-  const filteredShortlist = useMemo(() => {
-    return shortlist.filter(entry => {
-      if (shortlistFilters.search) {
-        const s = shortlistFilters.search.toLowerCase();
-        if (!entry.name?.toLowerCase().includes(s) && !entry.candidate?.name?.toLowerCase().includes(s) && !entry.candidate?.email?.toLowerCase().includes(s) && !entry.positions?.some(p => p.name.toLowerCase().includes(s))) return false;
-      }
-      if (shortlistFilters.stage.length > 0 && entry.stage && !shortlistFilters.stage.includes(entry.stage)) return false;
-      if (shortlistFilters.entity.length > 0 && entry.entity && !shortlistFilters.entity.includes(entry.entity)) return false;
-      if (shortlistFilters.expertise.length > 0) { const ce = entry.candidate?.expertise || []; if (!shortlistFilters.expertise.some(e => ce.includes(e))) return false; }
-      if (shortlistFilters.position.length > 0) { const ep = entry.positions?.map(p => p.id) || []; if (!shortlistFilters.position.some(pid => ep.includes(pid))) return false; }
-      return true;
-    });
-  }, [shortlist, shortlistFilters]);
-
-  // Shortlist pipeline data
-  const shortlistPipelineData = useMemo(() => {
-    const grouped: Record<string, ShortlistEntry[]> = {};
-    PIPELINE_STAGES.forEach(stage => { grouped[stage.key] = []; });
-    filteredShortlist.forEach(entry => { const stage = entry.stage || 'Pressenti'; if (grouped[stage]) grouped[stage].push(entry); else grouped['Pressenti'].push(entry); });
-    return grouped;
-  }, [filteredShortlist]);
-
-  const handleShortlistStageChange = (entryId: string, newStage: string) => {
-    setShortlist(prev => prev.map(entry => entry.id === entryId ? { ...entry, stage: newStage } : entry));
-  };
 
   const [filters, setFilters] = useState({
     search: '',
@@ -393,57 +335,6 @@ export default function ATS() {
 
                         <TabsContent value="analytics" className="mt-0">
                           <ATSPipelineAnalytics candidates={filteredCandidates} />
-                        </TabsContent>
-
-                        <TabsContent value="shortlist" className="mt-0">
-                          {shortlistLoading && shortlist.length === 0 ? (
-                            <div className="flex items-center justify-center py-20">
-                              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-                            </div>
-                          ) : shortlist.length === 0 ? (
-                            <EmptyState
-                              icon={<Users className="w-7 h-7" />}
-                              title="Aucune shortlist client"
-                              description="Connectez Notion dans les paramètres pour synchroniser votre base candidats."
-                              actionLabel="Paramètres"
-                              actionHref="/settings/org/general#outils"
-                            />
-                          ) : (
-                            <>
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                                <div className="inline-flex items-center bg-muted/40 p-0.5 rounded-full border border-border shrink-0">
-                                  {[
-                                    { value: 'pipeline' as const, label: 'Pipeline', Icon: LayoutGrid },
-                                    { value: 'list' as const, label: 'Liste', Icon: List },
-                                  ].map((tab) => {
-                                    const isActive = shortlistViewMode === tab.value;
-                                    return (
-                                      <button
-                                        key={tab.value}
-                                        onClick={() => setShortlistViewMode(tab.value)}
-                                        className={cn(
-                                          "inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium transition-all shrink-0",
-                                          isActive
-                                            ? "bg-foreground text-background shadow-sm"
-                                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                                        )}
-                                      >
-                                        <tab.Icon className="w-3.5 h-3.5 shrink-0" />
-                                        {tab.label}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                                <CandidateFilters filters={shortlistFilters} onFiltersChange={setShortlistFilters} options={shortlistFilterOptions} />
-                              </div>
-                              <PipelineStats data={shortlistPipelineData} stages={PIPELINE_STAGES} />
-                              {shortlistViewMode === 'pipeline' ? (
-                                <CandidatePipeline data={shortlistPipelineData} stages={PIPELINE_STAGES} onStageChange={handleShortlistStageChange} />
-                              ) : (
-                                <CandidateList entries={filteredShortlist} />
-                              )}
-                            </>
-                          )}
                         </TabsContent>
                       </>
                     )}

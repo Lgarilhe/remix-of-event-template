@@ -1366,7 +1366,7 @@ test.describe('Journal', () => {
     row = await journalRow(sheet, 'Bruno Mien');
     await expect(row.getByRole('button', { name: 'Ne pas envoyer cette étape' })).toBeVisible();
     // Reprise complète par le propriétaire : auteur ET compte d'envoi (le sien). Changer l'auteur seul, en laissant
-    // le compte relié du collaborateur, est refusé par la garde SEQ-043 (migration 20260927194905).
+    // le compte relié du collaborateur, est refusé par la garde SEQ-043 (migration 20260928140415).
     const { error: handoverError } = await admin().from('sequence_enrollments')
       .update({ created_by: org.owner.userId, account_id: accountId }).eq('id', bruno.enrollmentId);
     expect(handoverError, handoverError?.message).toBeNull();

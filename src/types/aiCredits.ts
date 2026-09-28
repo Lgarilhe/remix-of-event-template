@@ -133,8 +133,6 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
   // offres, actualités, synthèse). L'estimation, elle, couvre la requête
   // entière, soit deux à quatre appels rapides sur des pages récupérées.
   enrich_company: { action: "enrich_company", label: "Fiche société", floor: 1, typicalTokens: 20_000, routingTier: "fast", category: "sourcing" },
-  // Un seul appel groupé pour tous les postes absents du cache de compétences.
-  notion_job_skills: { action: "notion_job_skills", label: "Compétences extraites d'un poste", floor: 1, typicalTokens: 6_000, routingTier: "fast", category: "sourcing" },
   // Base Konekt (recherche base de données) — pas de tokens LLM, floor = coût réel
   // provider. Doc Coresignal : /search/es_dsl ET /search/es_dsl/preview = 2 crédits
   // par requête (une page ≈ 20 profils) ; collect = 2 crédits par profil.

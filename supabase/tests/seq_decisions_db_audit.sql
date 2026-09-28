@@ -1,6 +1,6 @@
 -- =====================================================================
 -- Module séquences, décisions produit de la seconde vague (2026-09-28),
--- lot « db » : migration 20260928055804_sequences_decisions_base.sql.
+-- lot « db » : migration 20260928140417_sequences_decisions_base.sql.
 -- docs/audit-2026-09-25-sequences.md, « Décisions produit en attente »,
 -- numéros 12, 15, 17, 18, 19, 20, 21.
 --
@@ -479,7 +479,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Candidat effacé : le refus RGPD passe avant (20260927231417).
+  -- Candidat effacé : le refus RGPD passe avant (20260928140416).
   c := c + 1;
   PERFORM pg_temp.sdec_as(NULL);
   INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status, completed_at, tracking_data)
@@ -685,10 +685,10 @@ END $$;
 
 -- ---------------------------------------------------------------------
 -- @critical d15-assistant-conversations-par-auteur (décision 15)
--- Conversations et messages de l'assistant : chacun lit les siens ;
--- propriétaire et administrateur lisent toute l'organisation ; une autre
--- organisation ne lit rien. Écriture (message ajouté, conversation modifiée) :
--- l'auteur seul, même pour un administrateur.
+-- Conversations et messages de l'assistant : chacun ne lit que les siens,
+-- propriétaire et administrateur compris (lot C1, 20260927233806, R3, plus
+-- strict que la recommandation 15) ; une autre organisation ne lit rien.
+-- Écriture (message ajouté, conversation modifiée) : l'auteur seul.
 -- ---------------------------------------------------------------------
 DO $$
 DECLARE
@@ -726,8 +726,8 @@ BEGIN
   FOR v_label, v_who, v_exp_conv, v_exp_msg IN SELECT * FROM (VALUES
     ('membre', u_m, 1, 1),
     ('collaborateur', u_c, 1, 1),
-    ('administrateur', u_d, 3, 4),
-    ('propriétaire', u_a, 3, 4),
+    ('administrateur', u_d, 0, 0),
+    ('propriétaire', u_a, 1, 2),
     ('autre organisation', u_b, 0, 0)
   ) AS t(a, b, cv, ms) LOOP
     c := c + 1;

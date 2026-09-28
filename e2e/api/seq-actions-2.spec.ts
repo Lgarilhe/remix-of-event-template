@@ -1329,7 +1329,7 @@ test.describe('Reprise directe par l’API', () => {
     // Réactivation écrite directement par l'API REST avec le JWT du propriétaire.
     const patch = await restPatch(`sequence_enrollments?id=eq.${enrollmentId}`, await tokenOf(org.owner), { status: 'active' });
     const afterPatch = await enrollmentFull(enrollmentId);
-    // reprise-directe-sans-garde, corrigé par le déclencheur sequence_enrollments_gdpr_guard (20260927231417) : refus 42501.
+    // reprise-directe-sans-garde, corrigé par le déclencheur sequence_enrollments_gdpr_guard (20260928140416) : refus 42501.
     expect.soft(afterPatch.status, `PATCH ${patch.status} : l’inscription d’un candidat effacé ne doit pas redevenir active`).toBe('stopped');
 
     if (afterPatch.status === 'active') {

@@ -27,7 +27,10 @@ export const FIRST_STEPS_DONE_KEY = (orgId: string, userId: string) =>
   `konekt:nav:first-steps-done:${orgId}:${userId}`;
 
 export const FIRST_STEPS: Record<FirstStepsOrgType, FirstStepId[]> = {
-  enterprise: ['create_job', 'invite_partner', 'schedule_interview'],
+  // invite_partner retirée pendant le gel de la Marketplace (décision 17,
+  // src/lib/marketplaceFreeze.ts) : ses deux gestes sont masqués. À remettre
+  // entre create_job et schedule_interview au lot P2.
+  enterprise: ['create_job', 'schedule_interview'],
   agency: ['create_mission', 'link_linkedin', 'first_search', 'invite_team'],
   freelance: ['create_mission', 'link_linkedin', 'first_search'],
 };

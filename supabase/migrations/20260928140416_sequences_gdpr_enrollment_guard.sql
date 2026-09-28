@@ -17,7 +17,7 @@
 --    utilisateur connecté ne peut plus la modifier.
 --
 -- Rejouable sur une base vide : les deux tables et la fonction de garde des
--- exécutions existent à ce point de la chaîne (20260925163421).
+-- exécutions existent à ce point de la chaîne (20260928140414).
 -- =====================================================================
 
 CREATE OR REPLACE FUNCTION public.sequence_enrollments_gdpr_guard()
@@ -48,7 +48,7 @@ CREATE TRIGGER sequence_enrollments_gdpr_guard
   BEFORE UPDATE ON public.sequence_enrollments
   FOR EACH ROW EXECUTE FUNCTION public.sequence_enrollments_gdpr_guard();
 
--- 2. Même corps que 20260925163421 §3e, plus le gel de la trace d'effacement.
+-- 2. Même corps que 20260928140414 §3e, plus le gel de la trace d'effacement.
 CREATE OR REPLACE FUNCTION public.sequence_step_executions_client_guard()
 RETURNS trigger
 LANGUAGE plpgsql

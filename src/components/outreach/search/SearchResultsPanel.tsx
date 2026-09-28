@@ -18,8 +18,6 @@ import { ScoredSortBy, canRehydrate } from '@/hooks/useFilteredResults';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
-import { useNotionMatch } from '@/hooks/useNotionMatch';
-import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { useProjectEnrollments } from '@/hooks/useProjectEnrollments';
 import { missionEnrollmentJobIds } from '@/lib/sequenceErrorMessages';
 import { Button } from '@/components/ui/button';
@@ -140,19 +138,6 @@ interface SearchResultsPanelProps {
 
 const getCanonicalProfileUrl = (p: Pick<LinkedInProfile, 'profile_url' | 'public_profile_url'>) =>
   p.public_profile_url || p.profile_url || '';
-
-const getProfileDisplayName = (p: Pick<LinkedInProfile, 'name' | 'first_name' | 'last_name'>) =>
-  p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || undefined;
-
-// Même normalisation que le matching Notion des cartes (LinkedInResultCard)
-const normalizeName = (value?: string | null) =>
-  (value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 
 export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   results,
@@ -355,32 +340,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     [results]
   );
   const { getMatch: getAirtableMatch } = useAirtableMatch(profileMatchInputs);
-  const notionMatchInputs = useMemo(
-    () => results.map((r) => ({ url: getCanonicalProfileUrl(r), name: getProfileDisplayName(r) })),
-    [results]
-  );
-  const { getMatch: getNotionMatch } = useNotionMatch(notionMatchInputs);
-  // Notion shortlist : pré-fetch pour ProfileDetailSheet & LinkedInResultCard,
-  // et matching par nom pour la pill « Shortlist » — les shortlists historiques
-  // vivent dans Notion sans statut Konekt (le sync edge ne matchait jamais).
-  const { data: notionShortlistData } = useNotionShortlist();
-  const notionShortlistNames = React.useMemo(() => {
-    if (!notionShortlistData) return [] as string[];
-    const names = new Set<string>();
-    for (const s of notionShortlistData as any[]) {
-      const n = normalizeName(s?.candidate?.name);
-      if (n) names.add(n);
-    }
-    return Array.from(names);
-  }, [notionShortlistData]);
-  const matchesNotionShortlistName = React.useCallback((rawName?: string | null) => {
-    if (notionShortlistNames.length === 0) return false;
-    const profileName = normalizeName(rawName);
-    if (!profileName) return false;
-    return notionShortlistNames.some(
-      (n) => n === profileName || n.includes(profileName) || profileName.includes(n)
-    );
-  }, [notionShortlistNames]);
   // Enrollments existants pour cette mission → permet d'afficher un badge
   // "En séquence X · Étape N" sur les cards. L'user voit immédiatement
   // qu'un candidat est déjà en séquence avant d'agir dessus.
@@ -409,12 +368,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     // que son compteur)
     for (const [candidateId, s] of treatedCandidates) {
       if (!renderableIds.has(candidateId) && !canRehydrate(s)) continue;
-      // Shortlist Notion (historique sans statut Konekt) — dédupliqué du statut
-      // DB, et AVANT le skip 'discovered' (les résultats de recherche sont
-      // auto-persistés en discovered)
-      if (s.status !== 'shortlisted' && matchesNotionShortlistName(s.candidate_name)) {
-        counts.shortlisted++;
-      }
       if (s.status === 'discovered') continue;
       if (s.status === 'scored') {
         counts.scored++;
@@ -443,46 +396,23 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       else if (s.status === 'dismissed') counts.dismissed++;
     }
 
-    // Count "known" + shortlists Notion des profils de recherche sans ligne DB
+    // Count "known"
     for (const r of mergedResults) {
-      if (!treatedCandidates.has(r.id) && matchesNotionShortlistName(getProfileDisplayName(r))) {
-        counts.shortlisted++;
-      }
-      const profileUrl = getCanonicalProfileUrl(r);
-      const notionMatch = getNotionMatch({
-        url: profileUrl,
-        name: getProfileDisplayName(r),
-      });
-      if (getAirtableMatch(profileUrl) || notionMatch) {
+      if (getAirtableMatch(getCanonicalProfileUrl(r))) {
         counts.known++;
       }
     }
 
     return counts;
-  }, [mergedResults, treatedCandidates, jobScores, getAirtableMatch, getNotionMatch, matchesNotionShortlistName]);
+  }, [mergedResults, treatedCandidates, jobScores, getAirtableMatch]);
 
-  // Apply "known" filter to filteredResults + élargit "shortlisted" au match Notion
+  // Apply "known" filter to filteredResults
   const displayResults = React.useMemo(() => {
     if (statusFilter === 'known') {
-      return filteredResults.filter(r => {
-        const profileUrl = getCanonicalProfileUrl(r);
-        return !!(
-          getAirtableMatch(profileUrl) ||
-          getNotionMatch({ url: profileUrl, name: getProfileDisplayName(r) })
-        );
-      });
-    }
-    if (statusFilter === 'shortlisted') {
-      // filteredResults = statut DB 'shortlisted' (useFilteredResults) ;
-      // on y ajoute les profils matchés dans la shortlist Notion (historique)
-      const included = new Set(filteredResults.map(r => r.id));
-      const notionExtra = mergedResults.filter(
-        r => !included.has(r.id) && matchesNotionShortlistName(getProfileDisplayName(r))
-      );
-      return [...filteredResults, ...notionExtra];
+      return filteredResults.filter(r => !!getAirtableMatch(getCanonicalProfileUrl(r)));
     }
     return filteredResults;
-  }, [filteredResults, mergedResults, statusFilter, getAirtableMatch, getNotionMatch, matchesNotionShortlistName]);
+  }, [filteredResults, statusFilter, getAirtableMatch]);
 
   // « Scorer les 20 premiers » : premier lot sans aucun score. Le bouton
   // sélectionne les 20 premiers profils affichés non scorés et lance le
@@ -1179,7 +1109,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   } : null}
                   enrollmentInfo={projectEnrollments.get(profile.id) || null}
                   airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
-                  notionMatch={getNotionMatch({ url: getCanonicalProfileUrl(profile), name: getProfileDisplayName(profile) })}
                   onOpenDetail={() => openProfileDetail(profile)}
                 />
               </motion.div>
@@ -1280,7 +1209,6 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           updated_at: treatedCandidates.get(detailProfile.id)!.updated_at,
         } : null) : null}
         airtableMatch={detailProfile ? getAirtableMatch(getCanonicalProfileUrl(detailProfile)) : undefined}
-        notionMatch={detailProfile ? getNotionMatch({ url: getCanonicalProfileUrl(detailProfile), name: getProfileDisplayName(detailProfile) }) : undefined}
         onScoreProfile={detailProfile ? () => onScoreProfile(detailProfile) : undefined}
         onDeepScore={onDeepScoreProfile}
         onArchive={detailProfile && selectedJob ? () => onArchive(detailProfile) : undefined}

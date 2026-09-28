@@ -7,6 +7,7 @@ import { autoAnalyzeKey, runAutoAnalyzeOnce } from '@/lib/autoAnalyzeGuard';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { CONTRACT_TYPE_LABELS, REMOTE_LABELS, type JobDetails } from '@/types/jobDetails';
 import { useChatCategories } from './useChatCategories';
 import { useChatStatus, getEffectiveStatus } from './useChatStatus';
 import {
@@ -185,6 +186,41 @@ export interface ActiveMissionLite {
     anonymize_client?: boolean;
     anonymized_alias?: string;
   } | null;
+}
+
+// Brief d'une mission (sourcing_projects.job_details) au format JobData lu par
+// les suggestions de réponse, l'analyse et le bouton « Réponse + CTA ».
+// Le salaire annuel n'est pas repris : generate-reply-suggestions et
+// analyze-response l'attendent en k€, jobDataToBrief en euros.
+function missionToJobData(p: { id: string; name: string | null; job_title: string | null; client_name: string | null; job_details: unknown }): JobData {
+  const jd: JobDetails = (p.job_details as JobDetails | null) || {};
+  // Client anonymisé : l'alias remplace le vrai nom avant tout envoi à l'IA.
+  const clientName = jd.outreach_config?.anonymize_client
+    ? (jd.outreach_config.anonymized_alias || '').trim() || 'une entreprise tech française'
+    : jd.client?.name || p.client_name;
+  const mustHave = jd.skills_must_have || [];
+  const shouldHave = jd.skills_should_have || [];
+  const niceToHave = jd.skills_nice_to_have || [];
+  const daily = jd.salary_type === 'daily';
+  return {
+    id: p.id,
+    title: jd.title || p.job_title || p.name || 'Mission',
+    client: clientName ? { name: clientName, sector: jd.client?.sector || '' } : null,
+    skills: [...mustHave, ...shouldHave],
+    seniority: jd.seniority,
+    location: jd.location,
+    remote: jd.remote_policy ? REMOTE_LABELS[jd.remote_policy] || jd.remote_policy : undefined,
+    tjmMin: daily ? jd.salary_min : undefined,
+    tjmMax: daily ? jd.salary_max : undefined,
+    contractType: jd.contract_type ? CONTRACT_TYPE_LABELS[jd.contract_type] || jd.contract_type : undefined,
+    description: jd.mission_description,
+    mustHave: mustHave.length > 0 ? mustHave.join(', ') : undefined,
+    shouldHave: shouldHave.length > 0 ? shouldHave.join(', ') : undefined,
+    niceToHave: niceToHave.length > 0 ? niceToHave.join(', ') : undefined,
+    teamInfo: jd.context,
+    xpMin: jd.experience_min,
+    xpMax: jd.experience_max,
+  };
 }
 
 // ── Merge chats by candidate ─────────────────────────────
@@ -648,7 +684,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     try {
       const { data, error } = await supabase
         .from('sourcing_projects')
-        .select('id, name, job_id, job_title, client_name, status, job_details')
+        .select('id, name, kind, job_id, job_title, client_name, status, job_details')
         .eq('organization_id', organizationId)
         .neq('status', 'archived')
         .order('updated_at', { ascending: false })
@@ -666,49 +702,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         outreach_config: (p.job_details as any)?.outreach_config || null,
       }));
       setActiveMissions(missions);
+      // Postes proposés aux suggestions de réponse et à l'analyse : les missions
+      // actives, identifiées par leur uuid (le job_id des inscriptions en séquence).
+      setAvailableJobs((data || [])
+        .filter((p) => p.status === 'active' && p.kind !== 'search')
+        .map(missionToJobData));
     } catch (error) {
       console.error('Error fetching active missions:', error);
     }
   }, [organizationId]);
-
-  // Fetch available jobs from Notion
-  const fetchAvailableJobs = useCallback(async () => {
-    try {
-      const response = await invokeEdgeFunction<{ jobs?: any[] }>('fetch-notion-jobs', { status: 'Publié' });
-      
-      if (response.error) throw response.error;
-      
-      if (response.data?.jobs) {
-        const jobs: JobData[] = response.data.jobs.slice(0, 30).map((job: any) => ({
-          id: job.id,
-          title: job.title || 'Poste',
-          client: job.client,
-          skills: job.skills || [],
-          seniority: job.seniority,
-          location: job.location,
-          remote: job.remote,
-          salaryMin: job.salaryMin,
-          salaryMax: job.salaryMax,
-          tjmMin: job.tjmMin || job.tjm,
-          tjmMax: job.tjmMax,
-          contractType: job.contractType,
-          description: job.description,
-          requirements: job.requirements,
-          mustHave: job.mustHave,
-          shouldHave: job.shouldHave,
-          niceToHave: job.niceToHave,
-          sourcingCriteria: job.sourcingCriteria,
-          teamInfo: job.teamInfo,
-          xpMin: job.xpMin,
-          xpMax: job.xpMax,
-          transversalCriteria: job.transversalCriteria,
-        }));
-        setAvailableJobs(jobs);
-      }
-    } catch (error) {
-      console.error('Error fetching jobs for matching:', error);
-    }
-  }, []);
 
   // Séquences actives de l'organisation (la RLS borne à l'organisation), comme
   // le menu Séquence du sourcing : une séquence partagée par un collègue est
@@ -1099,7 +1101,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
   }, [selectedAccount, fetchMessages]);
 
-  // Fire-and-forget: update status to 'messaged' + sync Notion after sending from inbox
+  // Fire-and-forget: update status to 'messaged' + stage 'Contacté' after sending from inbox
   const syncAfterInboxSend = useCallback(async (chat: Chat) => {
     if (!user) return;
 
@@ -1113,8 +1115,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       const enrollmentProfileId = profileId || (profileUrl ? profileUrl.split('/').filter(Boolean).pop() : null);
       const enrollment = enrollmentProfileId ? enrollmentsMap.get(enrollmentProfileId) : null;
       const jobId = enrollment?.job_id || null;
-      const jobTitle = enrollment?.job_title || null;
-      const job = jobId ? availableJobs.find(j => j.id === jobId) : null;
 
       // 1. Statut Konekt : ne pose 'messaged' que si le candidat n'est pas déjà
       //    plus avancé (replied / shortlisted / dismissed, ou stage kanban manuel).
@@ -1163,38 +1163,24 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         }
       }
 
-      // 2. Sync Notion via add-to-shortlist — uniquement si la conversation est
-      //    rattachée à un job (enrollment). Sans jobId, n'importe quel interlocuteur
-      //    LinkedIn (client, collègue) devenait un Candidat + une Shortlist Notion.
-      if (candidateName && jobId) {
-        // Determine accompagnement from job data
-        const accompagnementRaw = (job as any)?.accompagnement || [];
-        let accompagnement: string | undefined;
-        if (accompagnementRaw.some?.((a: string) => a.toLowerCase().includes('rpo') || a.toLowerCase().includes('embedded'))) {
-          accompagnement = 'RPO';
-        } else if (accompagnementRaw.some?.((a: string) => a.toLowerCase().includes('succès') || a.toLowerCase().includes('succes'))) {
-          accompagnement = 'Succès';
-        }
-
+      // 2. Étape kanban 'Contacté' via add-to-shortlist, sans rétrograder un
+      //    candidat plus avancé — uniquement si la conversation est rattachée à
+      //    un job (enrollment), sinon n'importe quel interlocuteur LinkedIn
+      //    (client, collègue) serait touché.
+      if (candidateName && jobId && organizationId) {
         await invokeEdgeFunction('add-to-shortlist', {
+          organization_id: organizationId,
           name: candidateName,
           headline: candidateHeadline,
           linkedinUrl: profileUrl || undefined,
-          jobId: jobId || undefined,
-          jobTitle: jobTitle || undefined,
-          clientName: job?.client?.name || undefined,
-          clientId: (job?.client as any)?.id || undefined,
-          entity: 'Konekt',
-          accompagnement,
+          jobId,
           etape: 'Contacté',
-          etat: 'En attente de réponse',
         });
-        console.log('[Inbox] Notion sync done for', candidateName);
       }
     } catch (err) {
       console.error('[Inbox] Post-send sync error (non-blocking):', err);
     }
-  }, [availableJobs, enrollmentsMap, organizationId, user]);
+  }, [enrollmentsMap, organizationId, user]);
 
   // Scroll to bottom helper
   const scrollToBottom = useCallback((smooth = true) => {
@@ -1242,7 +1228,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       // Mark chat as read locally after sending
       markChatAsReadLocally(selectedChat.id);
       
-      // Fire-and-forget: sync status + Notion
+      // Fire-and-forget: sync du statut Konekt
       syncAfterInboxSend(selectedChat);
       
       setTimeout(() => scrollToBottom(true), 100);
@@ -1287,7 +1273,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       // Mark chat as read locally after sending
       if (selectedChat) markChatAsReadLocally(selectedChat.id);
       
-      // Fire-and-forget: sync status + Notion
+      // Fire-and-forget: sync du statut Konekt
       syncAfterInboxSend(selectedChat);
       
       setTimeout(() => scrollToBottom(true), 100);
@@ -1630,7 +1616,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       fetchChats();
       fetchEnrollments();
       fetchActiveMissions();
-      fetchAvailableJobs();
       fetchSequences();
 
       // Don't reset chat/messages if we have an initial chat to restore
@@ -1639,7 +1624,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         setMessages([]);
       }
     }
-  }, [isReady, selectedAccount, fetchChats, fetchEnrollments, fetchActiveMissions, fetchAvailableJobs, fetchSequences, user]);
+  }, [isReady, selectedAccount, fetchChats, fetchEnrollments, fetchActiveMissions, fetchSequences, user]);
 
   // Auto-poll chat list every 30s to detect new messages / conversations
   useEffect(() => {

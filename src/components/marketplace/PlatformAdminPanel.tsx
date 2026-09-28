@@ -2,6 +2,8 @@
  * PlatformAdminPanel : « Administration du cercle », visible des seuls
  * identifiants listés dans KONEKT_PLATFORM_ADMIN_USER_IDS (edge function
  * marketplace-admin, action whoami). Valide ou suspend une organisation.
+ * Gel de la Marketplace (décision 17) : plus de validation jusqu'au lot P2,
+ * les demandes restent en attente ; la suspension reste possible.
  */
 
 import React, { useState } from 'react';
@@ -16,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { orgTypeLabel, formatDate } from './huntLabels';
 import { ErrorBox } from './ErrorBox';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 
 const PARTNER_STATUS_LABELS: Record<string, string> = {
   inactive: 'Inactif',
@@ -52,6 +55,12 @@ export const PlatformAdminPanel: React.FC = () => {
           <p className="text-xs text-muted-foreground mt-0.5">
             Demandes d'adhésion des cabinets et indépendants. Visible de l'équipe Konekt seulement.
           </p>
+          {MARKETPLACE_FROZEN && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              La validation des partenaires n'est pas encore disponible : les demandes restent en attente
+              jusqu'à l'ouverture de la Marketplace.
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -109,7 +118,7 @@ export const PlatformAdminPanel: React.FC = () => {
                   <TableCell className="text-xs text-right tabular-nums">{p.member_count}</TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex items-center gap-2">
-                      {p.status !== 'active' && (
+                      {p.status !== 'active' && !MARKETPLACE_FROZEN && (
                         <button
                           type="button"
                           onClick={() => setPending({ kind: 'validate', partner: p })}

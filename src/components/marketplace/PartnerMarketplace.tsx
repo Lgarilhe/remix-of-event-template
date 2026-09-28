@@ -100,7 +100,6 @@ const OpenMissionsTab: React.FC = () => {
       const jd = m.job_details ?? {};
       const matchesSearch = !q
         || m.name.toLowerCase().includes(q)
-        || (m.client_name ?? '').toLowerCase().includes(q)
         || (m.organization_name ?? '').toLowerCase().includes(q)
         || (jd.title ?? '').toLowerCase().includes(q)
         || (jd.location ?? '').toLowerCase().includes(q);
@@ -189,7 +188,7 @@ const OpenMissionsTab: React.FC = () => {
                     </h3>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5 flex items-center gap-1">
                       <Building2 className="w-3 h-3" />
-                      {mission.client_name || mission.organization_name || 'Entreprise'}
+                      {mission.organization_name || 'Entreprise'}
                     </p>
                   </div>
 
@@ -259,7 +258,7 @@ const OpenMissionsTab: React.FC = () => {
             <DialogTitle>Postuler à cette mission</DialogTitle>
             <DialogDescription>
               {target ? (target.job_details?.title || target.name) : ''}
-              {target?.client_name ? ` chez ${target.client_name}` : ''}
+              {target?.organization_name ? ` chez ${target.organization_name}` : ''}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -332,7 +331,7 @@ const MyApplicationsTab: React.FC = () => {
               {a.job_title || a.mission_name}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {a.client_name || a.organization_name || 'Entreprise'}
+              {a.organization_name || 'Entreprise'}
               {a.hunt_bounty_percent != null ? ` · ${a.hunt_bounty_percent} % du salaire annuel` : ''}
               {' · '}envoyée le {formatDate(a.created_at)}
               {a.hunt_status && a.hunt_status !== 'published' && a.hunt_status !== 'in_progress'

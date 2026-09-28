@@ -599,6 +599,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Conversation de l'assistant : son auteur seul (R3), avec ou sans
+    // organisation. Le client service-role contourne la RLS, le contrôle doit
+    // être explicite.
+    if (conv.created_by !== user.id) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!createdConversation && conv.organization_id) {
       const { data: membership, error: membershipError } = await supabase
         .from("organization_members")
@@ -619,17 +628,6 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-    }
-    if (conv.created_by !== user.id) {
-      // Décision 15 : une conversation appartient à son auteur, avec ou sans
-      // organisation. Propriétaire et administrateur la lisent (RLS de
-      // agent_conversations), mais ce chemin y écrit un message et renvoie
-      // l'historique dans la réponse : l'auteur seul, comme la policy
-      // d'écriture. Le client service-role bypasse la RLS, le check doit être
-      // explicite.
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
     // Barrière de crédits. Dernier point où une réponse ordinaire est encore

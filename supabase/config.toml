@@ -82,12 +82,6 @@ verify_jwt = false
 [functions.export-org-data]
 verify_jwt = false
 
-[functions.fetch-notion-candidates]
-verify_jwt = false
-
-[functions.fetch-notion-jobs]
-verify_jwt = false
-
 [functions.generate-call-report]
 verify_jwt = false
 
@@ -125,9 +119,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.marketplace-admin]
-verify_jwt = false
-
-[functions.notify-notion]
 verify_jwt = false
 
 [functions.process-agent-tasks]
@@ -208,8 +199,11 @@ verify_jwt = false
 [functions.stripe-webhook]
 verify_jwt = false
 
+# submit-application : neutralisée (C1, R2), en attente de suppression.
+# Exception à la règle verify_jwt = false ci-dessus : aucun appelant, la
+# passerelle refuse donc tout appel sans jeton.
 [functions.submit-application]
-verify_jwt = false
+verify_jwt = true
 
 [functions.unipile-accounts]
 verify_jwt = false
@@ -221,12 +215,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.unipile-webhook]
-verify_jwt = false
-
-[functions.update-candidate-stage]
-verify_jwt = false
-
-[functions.update-notion-job]
 verify_jwt = false
 
 # OAuth callback is a public GET from Notion. POST actions still enforce the

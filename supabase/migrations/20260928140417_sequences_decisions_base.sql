@@ -1,11 +1,11 @@
 -- =====================================================================
 -- Séquences : décisions produit de la seconde vague d'audit (2026-09-28),
--- lot « db ». docs/audit-2026-09-25-sequences.md, « Décisions produit en
--- attente », numéros 12, 15, 17 à 21.
+-- lot « db ». docs/audit-2026-09-25-sequences.md, « Décisions produit »,
+-- numéros 12, 17 à 21 (15 : voir plus bas).
 --
 -- Rejouable sur une base vide (CI e2e) comme en prod : chaque objet visé
--- existe à ce point de la chaîne (20260925163421, 20260927194905,
--- 20260927231417) ; DROP ... IF EXISTS et CREATE OR REPLACE partout.
+-- existe à ce point de la chaîne (20260928140414, 20260928140415,
+-- 20260928140416) ; DROP ... IF EXISTS et CREATE OR REPLACE partout.
 --
 -- Les chemins serveur (service_role : moteur, webhooks, assistant) restent
 -- libres pour 17 et 18 ; 12, 20 et 21 les visent aussi.
@@ -31,7 +31,7 @@
 --         refusée aussi côté serveur (HINT ENROLL_ACCOUNT_OF_OTHER_MEMBER). La
 --         remise à NULL par suppression d'un utilisateur (ON DELETE SET NULL)
 --         reste hors du déclencheur de mise à jour (clause WHEN de
---         20260927194905).
+--         20260928140415).
 -- 4. D17  sequence_enrollments : un utilisateur connecté ne fait plus passer
 --         une inscription d'un autre statut à 'active' (HINT
 --         ENROLLMENT_RESUME_SERVER_ONLY). La reprise passe par le serveur
@@ -41,19 +41,15 @@
 --         ENROLLMENT_GDPR_ERASED.
 -- 5. D18  sequence_step_executions, utilisateur connecté :
 --         - une étape annulée ou en échec ne change plus de statut (HINT
---           EXECUTION_REARM_SERVER_ONLY), après le refus RGPD de 20260927231417 ;
+--           EXECUTION_REARM_SERVER_ONLY), après le refus RGPD de 20260928140416 ;
 --         - seule insertion permise : la première étape d'une inscription
 --           active qui n'en a encore aucune, en 'scheduled' et jamais exécutée
 --           (fenêtres d'inscription du navigateur). Tout le reste : HINT
 --           EXECUTION_INSERT_SERVER_ONLY.
--- 6. D15  agent_conversations, agent_messages : chacun lit ses conversations
---         et leurs messages ; propriétaire et administrateur lisent toute
---         l'organisation. Écriture (mise à jour d'une conversation, message
---         ajouté) : l'auteur seul. Toutes les policies existantes sont retirées
---         quel que soit leur nom (règle 7 de CLAUDE.md), un seul jeu est recréé
---         aux noms de la prod, contrôle final. Les fonctions en clé de service
---         (search-agent-chat, run-agent-search...) ne sont pas concernées.
--- 7. D19  Tables du module : anon perd tous ses droits (aucune policy ne le
+-- (D15, conversations de l'assistant : couverte par 20260927233806, lot C1,
+--         bloc R3, plus stricte que la recommandation : chaque conversation
+--         et ses messages ne sont lus que par leur auteur.)
+-- 6. D19  Tables du module : anon perd tous ses droits (aucune policy ne le
 --         vise) ; authenticated perd TRUNCATE, REFERENCES et TRIGGER partout,
 --         et les écritures sans policy : sequence_analytics,
 --         sequence_email_tracking, sequence_processing_lock, linkedin_action_log
@@ -188,7 +184,7 @@ CREATE TRIGGER sequence_enrollments_same_person_guard
 
 -- ---------------------------------------------------------------------
 -- 3. D20 : inscription sans auteur depuis le compte relié d'un membre
---    Même corps que 20260925163421 §3f, plus le cas created_by NULL.
+--    Même corps que 20260928140414 §3f, plus le cas created_by NULL.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.sequence_enrollments_check_sender_owner()
 RETURNS trigger
@@ -270,7 +266,7 @@ CREATE TRIGGER sequence_enrollments_resume_guard
 
 -- ---------------------------------------------------------------------
 -- 5. D18 : étapes, écritures d'un utilisateur connecté
---    5a. Même corps que 20260927231417 §2, plus le refus du réarmement.
+--    5a. Même corps que 20260928140416 §2, plus le refus du réarmement.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.sequence_step_executions_client_guard()
 RETURNS trigger
@@ -360,83 +356,7 @@ CREATE TRIGGER sequence_step_executions_client_insert_guard
   FOR EACH ROW EXECUTE FUNCTION public.sequence_step_executions_client_insert_guard();
 
 -- ---------------------------------------------------------------------
--- 6. D15 : conversations et messages de l'assistant
--- ---------------------------------------------------------------------
-DO $$
-DECLARE
-  r record;
-BEGIN
-  FOR r IN
-    SELECT policyname, tablename FROM pg_policies
-    WHERE schemaname = 'public' AND tablename IN ('agent_conversations', 'agent_messages')
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
-  END LOOP;
-END $$;
-
-ALTER TABLE public.agent_conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.agent_messages ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY org_members_select ON public.agent_conversations
-  FOR SELECT TO authenticated
-  USING (
-    organization_id = public.get_user_org_id(auth.uid())
-    AND (
-      created_by = auth.uid()
-      OR public.get_org_role(auth.uid(), organization_id) IN ('owner', 'admin')
-    )
-  );
-CREATE POLICY org_members_insert ON public.agent_conversations
-  FOR INSERT TO authenticated
-  WITH CHECK (created_by = auth.uid() AND organization_id = public.get_user_org_id(auth.uid()));
-CREATE POLICY org_members_update ON public.agent_conversations
-  FOR UPDATE TO authenticated
-  USING (created_by = auth.uid() AND organization_id = public.get_user_org_id(auth.uid()))
-  WITH CHECK (created_by = auth.uid() AND organization_id = public.get_user_org_id(auth.uid()));
-
-CREATE POLICY org_members_select ON public.agent_messages
-  FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM public.agent_conversations ac
-    WHERE ac.id = agent_messages.conversation_id
-      AND ac.organization_id = public.get_user_org_id(auth.uid())
-      AND (
-        ac.created_by = auth.uid()
-        OR public.get_org_role(auth.uid(), ac.organization_id) IN ('owner', 'admin')
-      )
-  ));
-CREATE POLICY org_members_insert ON public.agent_messages
-  FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM public.agent_conversations ac
-    WHERE ac.id = agent_messages.conversation_id
-      AND ac.organization_id = public.get_user_org_id(auth.uid())
-      AND ac.created_by = auth.uid()
-  ));
-
--- Contrôle : exactement ce jeu sur les deux tables.
-DO $$
-DECLARE
-  v_expected text[] := ARRAY[
-    'agent_conversations:org_members_insert',
-    'agent_conversations:org_members_select',
-    'agent_conversations:org_members_update',
-    'agent_messages:org_members_insert',
-    'agent_messages:org_members_select'
-  ];
-  v_actual text[];
-BEGIN
-  SELECT array_agg(tablename || ':' || policyname ORDER BY tablename || ':' || policyname)
-    INTO v_actual
-  FROM pg_policies
-  WHERE schemaname = 'public' AND tablename IN ('agent_conversations', 'agent_messages');
-  IF v_actual IS DISTINCT FROM v_expected THEN
-    RAISE EXCEPTION 'Assistant : policies inattendues %, attendu %', v_actual, v_expected;
-  END IF;
-END $$;
-
--- ---------------------------------------------------------------------
--- 7. D19 : droits inutiles sur les tables du module
+-- 6. D19 : droits inutiles sur les tables du module
 -- ---------------------------------------------------------------------
 REVOKE ALL ON TABLE
   public.outreach_sequences, public.sequence_steps, public.sequence_enrollments,

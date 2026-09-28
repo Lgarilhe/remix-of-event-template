@@ -70,7 +70,7 @@ const updateCandidateStage: AgentTool = {
       candidate_id: {
         type: 'string',
         description:
-          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or notion_candidate_id, or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
+          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
       },
       job_id: {
         type: 'string',
@@ -3227,17 +3227,19 @@ const resumeSequence: AgentTool = {
 // via auth.getUser()), d'où la réplication de son envoi ici. Si une invitation
 // pending existe déjà pour l'email, elle est réutilisée et l'email renvoyé.
 
-const ALLOWED_INVITE_ROLES = ['admin', 'collaborator'] as const;
+// C1 (R11) : « collaborator » n'est plus proposé jusqu'au lot C2 ; la table des
+// invitations le refuse (organization_invitations_role_guard).
+const ALLOWED_INVITE_ROLES = ['admin', 'member'] as const;
 type InviteRole = (typeof ALLOWED_INVITE_ROLES)[number];
 
 const inviteTeamMember: AgentTool = {
   name: 'invite_team_member',
   description:
     "Invite a new member to the user's organization by email. " +
-    "Use this when the user says 'invite x@y.fr en collaborateur', 'ajoute Marie à mon équipe'. " +
+    "Use this when the user says 'invite x@y.fr dans mon équipe', 'ajoute Marie à mon équipe'. " +
     "Creates an invitation row (expires in 7 days) and immediately sends the invitation email (same pipeline as Settings → Team). " +
     "If a pending invitation already exists for this email, it is reused (original role kept) and the email is re-sent. " +
-    "Only `admin` and `collaborator` roles allowed via the copilot — to grant `owner`, use the Settings → Team UI. " +
+    "Only `admin` and `member` roles allowed via the copilot — to grant `owner`, use the Settings → Team UI. " +
     "The caller must be admin or owner of the org. " +
     "Always proposes the change for user approval — never executes silently.",
   category: 'mutation_safe',
@@ -3252,7 +3254,7 @@ const inviteTeamMember: AgentTool = {
       role: {
         type: 'string',
         enum: ALLOWED_INVITE_ROLES as unknown as string[],
-        description: "Role to grant on acceptance. One of: admin, collaborator. Default: collaborator.",
+        description: "Role to grant on acceptance. One of: admin, member. Default: member.",
       },
     },
     required: ['email'],
@@ -3260,7 +3262,7 @@ const inviteTeamMember: AgentTool = {
 
   async verifyAccess(params, ctx) {
     const email = String(params.email || '').trim().toLowerCase();
-    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+    const role = (params.role ? String(params.role) : 'member') as InviteRole;
     if (!email) return { allowed: false, reason: 'email is required' };
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return { allowed: false, reason: `Email invalide : "${email}"` };
@@ -3340,7 +3342,7 @@ const inviteTeamMember: AgentTool = {
 
   async dryRun(params, ctx) {
     const email = String(params.email || '').trim().toLowerCase();
-    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+    const role = (params.role ? String(params.role) : 'member') as InviteRole;
 
     const { data: org } = await ctx.adminClient
       .from('organizations')
@@ -3380,7 +3382,7 @@ const inviteTeamMember: AgentTool = {
 
   async execute(params, ctx) {
     const email = String(params.email).trim().toLowerCase();
-    const role = (params.role ? String(params.role) : 'collaborator') as InviteRole;
+    const role = (params.role ? String(params.role) : 'member') as InviteRole;
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceKey = Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');

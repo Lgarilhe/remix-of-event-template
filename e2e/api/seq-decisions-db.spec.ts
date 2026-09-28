@@ -1,7 +1,7 @@
 /**
  * Décisions produit de la seconde vague d'audit des séquences, lot « db »
  * (docs/audit-2026-09-25-sequences.md, « Décisions produit en attente »,
- * numéros 12, 15, 17 à 21 ; migration 20260928055804_sequences_decisions_base.sql).
+ * numéros 12, 15, 17 à 21 ; migration 20260928140417_sequences_decisions_base.sql).
  *
  * Chaque garde est éprouvée par l'API REST avec le JWT d'un vrai utilisateur
  * (comme le navigateur) ou la clé de service (comme les edge functions), et
@@ -301,8 +301,9 @@ test.describe('Décisions produit, lot base de données', () => {
     expect(mailbox.error, JSON.stringify(mailbox.error)).toBeNull();
   });
 
-  // décision 15
-  test('conversations de l’assistant : chacun lit les siennes, propriétaire et administrateur toute l’organisation, et personne n’écrit chez un autre', async () => {
+  // décision 15, rendue plus stricte par le lot C1 (20260927233806, R3) :
+  // propriétaire et administrateur ne lisent que leurs propres conversations.
+  test('conversations de l’assistant : chacun ne lit que les siennes, propriétaire et administrateur compris, et personne n’écrit chez un autre', async () => {
     const org = await createOrg('agency', 'E2E Déc DB Assistant');
     const member = await addMember(org.orgId, 'member', 'membre');
     const orgAdmin = await addMember(org.orgId, 'admin', 'admin');
@@ -325,18 +326,21 @@ test.describe('Décisions produit, lot base de données', () => {
     const leaked = await rest('GET', `agent_messages?select=content&conversation_id=eq.${ownerConv}`, memberToken);
     expect(rows(leaked.body), 'résumé des inscriptions du propriétaire illisible').toEqual([]);
 
-    for (const [who, user] of [['administrateur', orgAdmin], ['propriétaire', org.owner]] as const) {
-      const t = await tokenOf(user);
-      const all = await rest('GET', 'agent_conversations?select=id', t);
-      expect(rows(all.body).map((c) => c.id).sort(), `${who} : toute l’organisation`).toEqual([ownerConv, memberConv].sort());
-      const msgs = await rest('GET', `agent_messages?select=content&conversation_id=in.(${ownerConv},${memberConv})`, t);
-      expect(rows(msgs.body), who).toHaveLength(2);
-    }
+    const ownerToken = await tokenOf(org.owner);
+    const ownerSees = await rest('GET', 'agent_conversations?select=id', ownerToken);
+    expect(rows(ownerSees.body).map((c) => c.id), 'propriétaire : sa conversation seule').toEqual([ownerConv]);
+    const ownerMsgs = await rest('GET', `agent_messages?select=content&conversation_id=in.(${ownerConv},${memberConv})`, ownerToken);
+    expect(rows(ownerMsgs.body), 'propriétaire : ses messages seuls').toHaveLength(1);
+    const adminToken = await tokenOf(orgAdmin);
+    const adminSees = await rest('GET', 'agent_conversations?select=id', adminToken);
+    expect(rows(adminSees.body), 'administrateur : aucune conversation d’un autre').toEqual([]);
+    const adminMsgs = await rest('GET', `agent_messages?select=content&conversation_id=in.(${ownerConv},${memberConv})`, adminToken);
+    expect(rows(adminMsgs.body), 'administrateur : aucun message d’un autre').toEqual([]);
 
     const injected = await rest('POST', 'agent_messages', memberToken, { conversation_id: ownerConv, role: 'user', content: 'Message glissé' });
     expect(injected.status, JSON.stringify(injected.body)).toBe(403);
     const adminInjected = await rest('POST', 'agent_messages', await tokenOf(orgAdmin), { conversation_id: memberConv, role: 'user', content: 'Message glissé' });
-    expect(adminInjected.status, 'l’administrateur lit mais n’écrit pas chez un autre').toBe(403);
+    expect(adminInjected.status, 'l’administrateur n’écrit pas chez un autre').toBe(403);
     const renamed = await rest('PATCH', `agent_conversations?id=eq.${ownerConv}`, memberToken, { title: 'Renommée' });
     expect(rows(renamed.body)).toEqual([]);
     const own = await rest('POST', 'agent_messages', memberToken, { conversation_id: memberConv, role: 'user', content: 'Suite' });

@@ -16,9 +16,10 @@
 // .score pour chaque profil traité → la requête "score IS NULL" rétrécit.
 //
 // Invariants durcis (review adversariale 2026-07-15, 11 findings) :
-//  - TOUTES les requêtes profils sont scopées (project_id, job_id) — le même
-//    couple que score-profile-job utilise pour ÉCRIRE. Sinon des lignes
-//    sélectionnées mais jamais écrites bouclent à l'infini.
+//  - TOUTES les requêtes profils sont scopées (organization_id, project_id,
+//    job_id) — le même triplet que score-profile-job utilise pour ÉCRIRE
+//    (C1, R8). Sinon des lignes sélectionnées mais jamais écrites bouclent à
+//    l'infini.
 //  - Progression mesurée par le DRAIN réel (remaining avant/après), pas par
 //    les envois : un profil envoyé mais non persisté compte en "failed".
 //  - Anti-boucle : un tick avec ≥1 lot envoyé mais AUCUN drain = stall →
@@ -185,6 +186,7 @@ async function runScoreMissionProfiles(
     .from("job_candidate_status")
     .select("job_id")
     .eq("project_id", projectId)
+    .eq("organization_id", task.organization_id)
     .not("job_id", "is", null)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -206,6 +208,7 @@ async function runScoreMissionProfiles(
       .from("job_candidate_status")
       .select("id", { count: "exact", head: true })
       .eq("project_id", projectId)
+      .eq("organization_id", task.organization_id)
       .eq("job_id", jobId)
       .is("score", null)
       .not("linkedin_profile_data", "is", null);
@@ -303,6 +306,7 @@ async function runScoreMissionProfiles(
       .from("job_candidate_status")
       .select("candidate_id, candidate_name, linkedin_profile_data")
       .eq("project_id", projectId)
+      .eq("organization_id", task.organization_id)
       .eq("job_id", jobId)
       .is("score", null)
       .not("linkedin_profile_data", "is", null)
@@ -544,6 +548,7 @@ async function buildScoringRecap(
     .from("job_candidate_status")
     .select("candidate_id, candidate_name, score")
     .eq("project_id", projectId)
+    .eq("organization_id", task.organization_id)
     .not("score", "is", null)
     .order("score", { ascending: false })
     .limit(500);
@@ -566,6 +571,7 @@ async function buildScoringRecap(
       .from("job_candidate_status")
       .select("candidate_name")
       .eq("project_id", projectId)
+      .eq("organization_id", task.organization_id)
       .in("candidate_id", skipIds.slice(0, 20));
     const names = ((skippedRows as Array<{ candidate_name: string | null }>) ?? [])
       .map((r) => r.candidate_name).filter(Boolean);

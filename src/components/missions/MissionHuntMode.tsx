@@ -5,6 +5,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import { useHuntApplicants, useHuntMissionControls, type HuntApplicant, type HuntStatusAction } from '@/hooks/useMarketplace';
 import { hasFeature, hasPlanFeature } from '@/lib/featureGates';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 import {
   Target, Users, Calendar, Percent, Globe, Lock, Loader2, ExternalLink, Sparkles, User,
 } from 'lucide-react';
@@ -46,7 +47,10 @@ const STATUS_ACTION_TEXT: Record<StatusAction, { title: string; description: str
   },
   draft: {
     title: 'Remettre la mission en brouillon ?',
-    description: 'La mission sort de la marketplace. Les candidatures en attente sont closes, avec une notification à leurs auteurs. Vous pourrez modifier les réglages puis publier de nouveau.',
+    description: 'La mission sort de la marketplace. Les candidatures en attente sont closes, avec une notification à leurs auteurs. '
+      + (MARKETPLACE_FROZEN
+        ? "La publication sur la Marketplace n'est pas encore disponible : vous ne pourrez pas la publier de nouveau pour le moment."
+        : 'Vous pourrez modifier les réglages puis publier de nouveau.'),
     confirm: 'Remettre en brouillon',
   },
   disabled: {
@@ -149,6 +153,10 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
   const deadlinePassed = !!project.hunt_deadline
     && project.hunt_deadline.slice(0, 10) < new Date().toISOString().slice(0, 10);
   const isClosed = huntStatus === 'filled' || huntStatus === 'cancelled';
+  // Gel de la Marketplace (décision 17) : une mission qui n'y est pas proposée
+  // n'y entre plus ; seule une mission ouverte garde ses réglages et ses
+  // candidatures, jusqu'à sa clôture.
+  const frozen = MARKETPLACE_FROZEN && !isOpen;
 
   return (
     <div className="rounded-xl border border-border p-5 space-y-5 bg-card">
@@ -161,11 +169,13 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
           <div className="min-w-0">
             <h3 className="font-display text-[14px] font-bold leading-tight">Mode chasse</h3>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Proposez cette mission aux recruteurs partenaires du cercle Konekt. Ils postulent, vous acceptez, ils sourcent avec vous.
+              {frozen
+                ? "Proposer cette mission aux recruteurs partenaires du cercle Konekt n'est pas encore disponible."
+                : "Proposez cette mission aux recruteurs partenaires du cercle Konekt. Ils postulent, vous choisissez. Le recruteur cherche de son côté : la présentation de candidats dans Konekt n'est pas encore disponible."}
             </p>
           </div>
         </div>
-        {isAdmin ? (
+        {frozen && !isEnabled ? null : isAdmin ? (
           <button
             type="button"
             onClick={handleToggle}
@@ -208,7 +218,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             )}
           </div>
 
-          {!canPublishPlan && (
+          {!frozen && !canPublishPlan && (
             <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm space-y-1">
               <div className="flex items-center gap-2 font-medium text-foreground">
                 <Sparkles className="w-4 h-4 shrink-0" />
@@ -234,6 +244,10 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             </div>
           )}
 
+          {/* Réglages, actions de statut et candidatures : sans objet pendant le
+              gel pour une mission qui n'est pas proposée. */}
+          {!frozen && (
+          <>
           {/* Réglages */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-border">
             <div>
@@ -288,7 +302,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 Seul un administrateur peut modifier ces réglages.
               </p>
             )}
-            {isAdmin && huntStatus === 'draft' && (
+            {isAdmin && huntStatus === 'draft' && !MARKETPLACE_FROZEN && (
               <button
                 type="button"
                 onClick={() => { void handleSave(true); }}
@@ -413,8 +427,12 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               </div>
             )}
           </div>
+          </>
+          )}
 
-          {/* Recruteurs partenaires acceptés */}
+          {/* Recruteurs partenaires acceptés : visibles tant qu'il en reste, pour
+              pouvoir mettre fin à la collaboration. */}
+          {(!frozen || accepted.length > 0) && (
           <div className="pt-3 border-t border-border">
             <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
               Recruteurs partenaires ({acceptedCount}/{maxCount})
@@ -450,6 +468,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               </div>
             )}
           </div>
+          )}
         </>
       )}
 
@@ -487,11 +506,11 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingApplicant?.kind === 'accepted' &&
-                `${pendingApplicant.applicant.display_name || 'Ce recruteur'} rejoindra l'équipe de la mission et pourra chercher, scorer et proposer des candidats. Il sera prévenu par notification.`}
+                `${pendingApplicant.applicant.display_name || 'Ce recruteur'} verra la fiche complète de la mission, contact du client compris, et ses étapes d'entretien, mais pas vos candidats. Il cherche de son côté : la présentation de candidats dans Konekt n'est pas encore disponible. Il sera prévenu par notification.`}
               {pendingApplicant?.kind === 'rejected' &&
                 `${pendingApplicant.applicant.display_name || 'Ce recruteur'} sera prévenu que sa candidature n'est pas retenue.`}
               {pendingApplicant?.kind === 'end' &&
-                `${pendingApplicant.applicant.display_name || 'Ce recruteur'} perdra l'accès à la mission. Les candidats qu'il a proposés restent dans votre pipeline.`}
+                `${pendingApplicant.applicant.display_name || 'Ce recruteur'} perdra l'accès à la mission. Il sera prévenu par notification.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

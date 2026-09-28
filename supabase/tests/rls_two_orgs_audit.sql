@@ -176,7 +176,7 @@ END $$;
 
 -- =====================================================================
 -- Module séquences — audit du 2026-09-25, lot B6 (migration
--- 20260925163421_sequences_audit_lot_b6.sql). Même transaction que le bloc
+-- 20260928140414_sequences_audit_lot_b6.sql). Même transaction que le bloc
 -- précédent : il réutilise ses deux utilisateurs, organisations et projets
 -- (aucune nouvelle ligne dans auth.users). Contrôles accumulés, exception
 -- finale listant ceux en échec.
@@ -225,7 +225,7 @@ BEGIN
   INSERT INTO public.sequence_step_executions (id, enrollment_id, step_id, step_order, scheduled_at, status, executed_at, final_message)
   VALUES (exec_sent, enr_a, step_a1, 1, now() - interval '1 day', 'sent', now() - interval '1 day', 'Bonjour'),
          (exec_sched, enr_a, step_a2, 2, now() + interval '1 day', 'scheduled', NULL, NULL);
-  -- created_by : NOT NULL en prod, sans clé étrangère (retirée de la base neuve par 20260927194905).
+  -- created_by : NOT NULL en prod, sans clé étrangère (retirée de la base neuve par 20260928140415).
   INSERT INTO public.sequence_templates (id, organization_id, name, steps_config, is_system, created_by)
   SELECT tpl_b, org_b, 'Modèle B', '[]'::jsonb, false, p.id FROM public.profiles p WHERE p.user_id = u_b;
   PERFORM public.increment_sequence_analytics(seq_a, 'messages_sent', 1);
@@ -280,7 +280,9 @@ BEGIN
                       'sequence_templates', 'sequence_snippets', 'sequence_analytics', 'inmail_queue',
                       'sequence_email_tracking', 'sequence_processing_lock')
     AND policyname NOT IN ('org_members_select', 'org_members_insert', 'org_members_update', 'org_members_delete',
-                           'org_members_all', 'org_or_system_select', 'mission_team_select', 'service_role_all');
+                           'org_members_all', 'org_or_system_select', 'service_role_all',
+                           -- RESTRICTIVE du lot C1 (20260927233806, R7-b)
+                           'mission_same_org_insert', 'mission_same_org_update');
   IF v_text IS NOT NULL THEN failures := failures || format('[SEQ-216 : policies héritées %s] ', v_text); END IF;
 
   -- ===== Contexte : user B (org B) =====
@@ -351,14 +353,17 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   WHEN OTHERS THEN failures := failures || format('[SEQ-056 mission : %s] ', SQLERRM);
   END;
-  -- ... sauf s'il fait partie de l'équipe de cette mission (partenaire).
+  -- ... même s'il fait partie de l'équipe de cette mission (lot C1, R7-b :
+  -- une séquence ne porte que la mission de sa propre organisation).
   RESET ROLE;
   INSERT INTO public.mission_team (project_id, user_id, role) VALUES (proj_a, u_b, 'freelance');
   SET LOCAL ROLE authenticated;
   BEGIN
     INSERT INTO public.outreach_sequences (name, organization_id, created_by, project_id, is_active)
     VALUES ('Séquence partenaire', org_b, u_b, proj_a, false);
-  EXCEPTION WHEN OTHERS THEN failures := failures || format('[Régression partenaire : %s] ', SQLERRM);
+    failures := failures || '[C1/R7-b : séquence du partenaire rattachée à la mission de A] ';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  WHEN OTHERS THEN failures := failures || format('[C1/R7-b partenaire : %s] ', SQLERRM);
   END;
   RESET ROLE;
   DELETE FROM public.outreach_sequences WHERE name = 'Séquence partenaire' AND organization_id = org_b;
@@ -438,15 +443,15 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[D3 collaborateur : %s] ', SQLERRM);
   END;
 
-  -- S14. Dans l'équipe de la mission, il lit les candidats mais ne modifie pas
-  --      ceux d'un collègue.
+  -- S14. Même dans l'équipe de la mission, il ne lit ni ne modifie les
+  --      candidats d'un collègue (lot C1, R7 : plus de lecture par l'équipe).
   RESET ROLE;
   INSERT INTO public.mission_team (project_id, user_id, role) VALUES (proj_a, u_b, 'sourcer');
   SET LOCAL ROLE authenticated;
   checks := checks + 1;
   BEGIN
     SELECT count(*) INTO n FROM public.sequence_enrollments WHERE id = enr_a;
-    IF n <> 1 THEN failures := failures || format('[SEQ-119 : le collaborateur ne lit pas les candidats de sa mission (%s)] ', n); END IF;
+    IF n <> 0 THEN failures := failures || '[C1/R7 : le collaborateur lit les candidats d''un collègue par l''équipe de mission] '; END IF;
     UPDATE public.sequence_enrollments SET status = 'paused', pause_reason = 'manual' WHERE id = enr_a;
     GET DIAGNOSTICS n = ROW_COUNT;
     IF n <> 0 THEN failures := failures || '[SEQ-119 : le collaborateur modifie l''inscription d''un collègue] '; END IF;
@@ -461,7 +466,7 @@ BEGIN
   checks := checks + 1;
   BEGIN
     SELECT count(*) INTO n FROM public.outreach_sequences WHERE id = seq_a;
-    IF n <> 1 THEN failures := failures || format('[SEQ-119 : le collaborateur ne voit pas la séquence de sa mission (%s)] ', n); END IF;
+    IF n <> 0 THEN failures := failures || '[C1/R7 : le collaborateur lit la séquence d''un collègue par l''équipe de mission] '; END IF;
     UPDATE public.sequence_steps SET message_template = 'Texte réécrit par B' WHERE id = step_a1;
     GET DIAGNOSTICS n = ROW_COUNT;
     IF n <> 0 THEN failures := failures || '[SEQ-119 : le collaborateur réécrit l''étape d''un collègue] '; END IF;
@@ -489,9 +494,11 @@ BEGIN
       jsonb_build_object('id', step_a2, 'step_order', 2, 'action_type', 'message')));
     failures := failures || '[SEQ-119 : sauvegarde des étapes d''un collègue acceptée] ';
   EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
-    IF v_hint IS DISTINCT FROM 'SEQUENCE_NOT_OWNER' THEN
-      failures := failures || format('[SEQ-119 : refus sans le HINT attendu (%s)] ', SQLERRM);
+    -- Séquence invisible pour lui (23514 « not found or not accessible »), ou
+    -- refus explicite si elle lui redevenait lisible (SEQUENCE_NOT_OWNER).
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT, v_text = RETURNED_SQLSTATE;
+    IF v_hint IS DISTINCT FROM 'SEQUENCE_NOT_OWNER' AND v_text <> '23514' THEN
+      failures := failures || format('[SEQ-119 : refus inattendu (%s)] ', SQLERRM);
     END IF;
   END;
   --      Régression : il garde l'édition de ses propres séquences.

@@ -1,6 +1,6 @@
 /**
  * Inscription de plusieurs candidats face aux gardes de la base (migration
- * 20260928055804) : un profil effacé (HINT ENROLLMENT_GDPR_ERASED, décision
+ * 20260928140417) : un profil effacé (HINT ENROLLMENT_GDPR_ERASED, décision
  * 12) ou la même personne déjà dans la séquence sous un autre identifiant
  * (HINT ENROLLMENT_SAME_PERSON_IN_SEQUENCE, décision 21) voit sa ligne
  * refusée. Les autres candidats de la sélection sont inscrits avec leur

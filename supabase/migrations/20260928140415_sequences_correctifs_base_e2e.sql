@@ -34,12 +34,9 @@
 --             interrompue ou en cours redevenait exécutable et partait une
 --             seconde fois. Seule la remise en attente d'un échec
 --             (failed → proposed, bouton « Relancer ») l'efface encore.
--- 4. D3 / SEQ-119  agent_tool_executions, lecture : chacun ses propres
---             lignes ; propriétaire et administrateur voient toute
---             l'organisation (portée « Toute l'organisation » du journal et
---             de l'outil de l'assistant). Un collaborateur ne lit plus en
---             clair le résultat d'une lecture d'un collègue (inscriptions,
---             analyses, fil LinkedIn).
+-- (D3 / SEQ-119, lecture de agent_tool_executions par son auteur, et par
+--             le propriétaire ou un administrateur pour toute l'organisation :
+--             posée par 20260927233806, lot C1, bloc R3-b, même règle.)
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -147,45 +144,3 @@ BEGIN
   RETURN NEW;
 END;
 $$;
-
--- ---------------------------------------------------------------------
--- 4. agent_tool_executions : lecture de ses propres lignes, organisation
---    entière pour le propriétaire et l'administrateur
---    Toute policy de lecture existante est retirée (une policy permissive
---    restée à côté annulerait la restriction) ; l'écriture ne change pas.
--- ---------------------------------------------------------------------
-DO $$
-DECLARE
-  r record;
-BEGIN
-  FOR r IN
-    SELECT policyname FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'agent_tool_executions' AND cmd = 'SELECT'
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.agent_tool_executions', r.policyname);
-  END LOOP;
-END $$;
-
-CREATE POLICY org_members_select ON public.agent_tool_executions
-  FOR SELECT TO authenticated
-  USING (
-    organization_id = public.get_user_org_id(auth.uid())
-    AND (
-      user_id = auth.uid()
-      OR public.get_org_role(auth.uid(), organization_id) IN ('owner', 'admin')
-    )
-  );
-
--- Aucune policy « ALL » ouverte aux utilisateurs connectés ne doit subsister :
--- elle rouvrirait la lecture de toute l'organisation.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'agent_tool_executions'
-      AND cmd = 'ALL' AND permissive = 'PERMISSIVE'
-      AND (roles && ARRAY['authenticated', 'public']::name[])
-  ) THEN
-    RAISE EXCEPTION 'agent_tool_executions : une policy ALL permissive ouverte aux utilisateurs connectés subsiste';
-  END IF;
-END $$;

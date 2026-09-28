@@ -78,8 +78,9 @@
 --                l'inscription, refus si l'étape n'est pas de la séquence de
 --                l'inscription.
 --   3d. SEQ-056  outreach_sequences : refus d'une mission d'une autre
---                organisation, sauf pour un membre de l'équipe de cette mission
---                (partenaire qui crée sa séquence dans sa propre organisation).
+--                organisation, pour tout utilisateur connecté (même règle que
+--                les policies RESTRICTIVE mission_same_org_* de 20260927233806,
+--                lot C1, R7-b ; ce déclencheur donne le HINT PROJECT_ORG_MISMATCH).
 --   3e. SEQ-214  sequence_step_executions, écritures d'un utilisateur connecté
 --                (le moteur et les webhooks ne sont pas concernés) : candidat,
 --                étape, organisation, canal et suivi non modifiables ; rien ne
@@ -120,11 +121,16 @@
 --                ou slug public égal au slug extrait de profile_url) : aucun
 --                préfixe ne permet d'énumérer les candidats de l'organisation.
 -- 5. Policies (SEQ-009, 011, 056, 057, 058, 119, 216) : sur les dix tables du
---    module, toutes les policies sont retirées quel que soit leur nom (règle 7
---    de CLAUDE.md) puis un seul jeu est recréé, aux noms de la prod. Contrôle
---    final qui fait échouer la migration si l'état n'est pas le bon.
+--    module, toutes les policies permissives sont retirées quel que soit leur
+--    nom (règle 7 de CLAUDE.md) puis un seul jeu est recréé, aux noms de la
+--    prod. Les policies RESTRICTIVE posées par le lot C1 (20260927233806,
+--    R7-b) restent. Contrôle final qui fait échouer la migration si l'état
+--    n'est pas le bon.
+--    Aucune policy d'équipe de mission (lot C1, R7 : plus aucun accès par
+--    l'équipe hors de la ligne de mission, de ses étapes et de l'équipe).
 --    Collaborateur (décision produit : moindre privilège) : lit ses propres
---    séquences, celles des missions de son équipe et leurs candidats ; ne
+--    séquences et les candidats qu'il a inscrits ou qui sont dans ses
+--    séquences ; ne
 --    modifie que les inscriptions qu'il a créées et leurs étapes, et que les
 --    séquences qu'il a créées et leurs étapes (modèle d'étape, suppression de
 --    la séquence et de son historique en cascade).
@@ -555,11 +561,8 @@ BEGIN
   IF NOT FOUND OR v_proj_org IS NOT DISTINCT FROM NEW.organization_id THEN
     RETURN NEW;
   END IF;
-  -- Un partenaire membre de l'équipe de la mission y rattache sa propre
-  -- séquence (dans son organisation). Les chemins serveur (sans utilisateur)
-  -- vérifient la mission eux-mêmes.
-  IF auth.uid() IS NOT NULL
-     AND NOT public.is_mission_team_member_for_project(auth.uid(), NEW.project_id) THEN
+  -- Les chemins serveur (sans utilisateur) vérifient la mission eux-mêmes.
+  IF auth.uid() IS NOT NULL THEN
     RAISE EXCEPTION 'Cette mission appartient à une autre organisation'
       USING ERRCODE = '42501', HINT = 'PROJECT_ORG_MISMATCH';
   END IF;
@@ -745,10 +748,11 @@ BEGIN
       USING ERRCODE = 'check_violation';
   END IF;
 
-  -- SEQ-119 : un collaborateur voit la séquence d'un collègue (équipe de la
-  -- mission) mais n'en modifie pas les étapes (policies du bloc 5). Sans ce
-  -- refus, les UPDATE et DELETE filtrés par la RLS ne touchaient aucune ligne
-  -- et la sauvegarde était annoncée réussie.
+  -- SEQ-119 : un collaborateur ne modifie pas les étapes de la séquence d'un
+  -- collègue (policies du bloc 5). Il ne la lit plus depuis le lot C1 (plus de
+  -- lecture par l'équipe de mission) ; ce refus reste en défense : sans lui,
+  -- les UPDATE et DELETE filtrés par la RLS ne touchaient aucune ligne et la
+  -- sauvegarde était annoncée réussie.
   IF auth.uid() IS NOT NULL
      AND v_owner IS DISTINCT FROM auth.uid()
      AND public.is_active_org_collaborator(auth.uid()) THEN
@@ -1035,6 +1039,7 @@ BEGIN
   FOR r IN
     SELECT tablename, policyname FROM pg_policies
     WHERE schemaname = 'public'
+      AND permissive = 'PERMISSIVE'
       AND tablename IN (
         'outreach_sequences', 'sequence_steps', 'sequence_enrollments',
         'sequence_step_executions', 'sequence_templates', 'sequence_snippets',
@@ -1064,9 +1069,6 @@ CREATE POLICY org_members_select ON public.outreach_sequences
     organization_id = public.get_user_org_id(auth.uid())
     AND (created_by = auth.uid() OR NOT (SELECT public.is_active_org_collaborator(auth.uid())))
   );
-CREATE POLICY mission_team_select ON public.outreach_sequences
-  FOR SELECT TO authenticated
-  USING (public.is_mission_team_member_for_project(auth.uid(), project_id));
 CREATE POLICY org_members_insert ON public.outreach_sequences
   FOR INSERT TO authenticated
   WITH CHECK (organization_id = public.get_user_org_id(auth.uid()));
@@ -1166,8 +1168,7 @@ CREATE POLICY org_members_select ON public.sequence_enrollments
       OR EXISTS (
         SELECT 1 FROM public.outreach_sequences s
         WHERE s.id = sequence_enrollments.sequence_id
-          AND (s.created_by = auth.uid()
-               OR public.is_mission_team_member_for_project(auth.uid(), s.project_id))
+          AND s.created_by = auth.uid()
       )
     )
   );
@@ -1340,7 +1341,8 @@ DECLARE
     'inmail_queue:org_members_insert',
     'inmail_queue:org_members_select',
     'inmail_queue:service_role_all',
-    'outreach_sequences:mission_team_select',
+    'outreach_sequences:mission_same_org_insert',
+    'outreach_sequences:mission_same_org_update',
     'outreach_sequences:org_members_delete',
     'outreach_sequences:org_members_insert',
     'outreach_sequences:org_members_select',
