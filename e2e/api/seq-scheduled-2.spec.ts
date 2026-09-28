@@ -72,6 +72,8 @@ const PAUSE_COLLAB =
 const RESUME_NOT_OWN = 'Vous ne pouvez réactiver que les séquences que vous avez créées.';
 const RESUME_NEEDS_CHAT =
   "La réactivation de votre séquence doit être validée depuis la conversation avec l'assistant : relancez-la depuis le chat.";
+const SENDING_ACCOUNT_CHANGED =
+  "Votre compte LinkedIn d'envoi a changé depuis l'approbation : le message n'est pas parti. Redemandez l'envoi pour qu'il parte de votre compte actuel.";
 const notLinked = (accountId: string) =>
   `Le compte LinkedIn ${accountId} n'est pas rattaché à votre profil dans cette organisation.`;
 
@@ -363,12 +365,12 @@ test.describe('Assistant : message LinkedIn programmé, rejoué à l’échéanc
     expect(await postsFrom(colleagueAccount), 'rien ne part du compte du collègue').toEqual([]);
   });
 
-  // envoi-compte-change-en-silence (décision produit : l'utilisateur a relié un autre compte avant l'échéance)
+  // envoi-compte-change-en-silence (l'utilisateur a relié un autre compte avant l'échéance)
   // member_linkedin_accounts est unique par (organisation, utilisateur) : les « deux comptes A et B » de
   // l'inventaire n'existent pas ; le seul changement possible est le remplacement de la liaison. Le
-  // contrat (SEQ-041) interdit tout envoi depuis le compte quitté ; il ne dit pas si le message doit
-  // suivre le nouveau compte ou échouer. Le test n'affirme que la partie contractuelle et note le reste.
-  test('liaison remplacée par un autre compte avant l’échéance : rien ne part du compte quitté (comportement du nouveau compte noté, décision produit)', async () => {
+  // contrat (SEQ-041) interdit tout envoi depuis le compte quitté ; la décision 34 tranche le reste :
+  // le message échoue avec un message, rien ne part non plus du nouveau compte.
+  test('liaison remplacée par un autre compte avant l’échéance : échec avec un message, rien ne part ni du compte quitté ni du nouveau (décision 34)', async () => {
     test.skip(!SEND_ZONE, NO_WEEKDAY_REASON);
     const { org, accountId } = await sendingOrg('E2E S2 compte remplacé');
     track(org);
@@ -387,12 +389,10 @@ test.describe('Assistant : message LinkedIn programmé, rejoué à l’échéanc
 
     const row = await runWhenDue(id);
     expect(await postsFrom(accountId), 'rien ne part du compte quitté').toEqual([]);
-    const fromNew = await newChatsTo(newAccount, recipient);
-    test.info().annotations.push({
-      type: 'décision',
-      description: `statut=${row.status}, envois depuis le nouveau compte=${fromNew.length}, résultat=${JSON.stringify(row.real_result)}`,
-    });
-    console.log(`[envoi-compte-change-en-silence] statut=${row.status} envois_nouveau_compte=${fromNew.length} résultat=${JSON.stringify(row.real_result)}`);
+    // Décision 34 : échec avec un message, aucun envoi depuis le nouveau compte.
+    expect(row.status, JSON.stringify(row.real_result)).toBe('failed');
+    expect(row.real_result?.error).toBe(SENDING_ACCOUNT_CHANGED);
+    expect(await newChatsTo(newAccount, recipient), 'rien ne part du nouveau compte').toHaveLength(0);
   });
 
   // envoi-plafond-atteint-a-l-execution

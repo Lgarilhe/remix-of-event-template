@@ -110,7 +110,9 @@ test('D5 — fiche candidat : pas de « Reprendre » pour une inscription effac�
   assert.match(candidateHook, /gdpr_erased_at:tracking_data->gdpr_erased_at,/);
   assert.match(candidateHook, /gdpr_erased: isGdprErasedEnrollment\(e\.gdpr_erased_at, normalizedExecs\),/);
   // Le panneau masque « Reprendre » (bouton et menu passent tous deux par canResume) et dit pourquoi.
-  assert.match(candidatePanel, /const canResume = isPaused && !gdprErased && /);
+  // Décision 31 : reprise possible calculée à part, réservée à l'auteur pour un collaborateur.
+  assert.match(candidatePanel, /const resumable = isPaused && !gdprErased && /);
+  assert.match(candidatePanel, /const canResume = resumable && ownRow;/);
   assert.match(candidatePanel, /const pauseHint = gdprErased\s*\? GDPR_ERASED_NOTICE/);
   const card = block(candidatePanel, 'function EnrollmentCard(', 'function ExecutionRow(');
   for (const m of card.matchAll(/onClick=\{onResume\}/g)) {

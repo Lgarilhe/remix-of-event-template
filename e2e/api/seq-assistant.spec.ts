@@ -618,8 +618,9 @@ test.describe('@critical Assistant : send_linkedin_message', () => {
       const both = await Promise.all([approve(token, id), approve(token, id)]);
       const ok = both.filter((r) => r.body.success === true);
       const refused = both.filter((r) => r.body.success !== true);
-      expect(ok.length, JSON.stringify(both.map((r) => r.body))).toBeGreaterThanOrEqual(1);
-      for (const r of refused) expect(String(r.body.error)).toContain('Action déjà en cours ou déjà traitée');
+      // Décision 33 : un seul succès, l'autre approbation est refusée (« déjà en cours » ou « déjà traitée »).
+      expect(ok.length, JSON.stringify(both.map((r) => r.body))).toBe(1);
+      for (const r of refused) expect(String(r.body.error)).toMatch(/^Action déjà (en cours ou déjà )?traitée$/);
       expect(await newChatsTo(accountId, first), 'un seul envoi pour deux approbations').toHaveLength(1);
       expect((await execRow(id)).status).toBe('executed');
 

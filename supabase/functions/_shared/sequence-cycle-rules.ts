@@ -8,7 +8,7 @@
 //
 //   deno test --no-check supabase/functions/_shared/sequence-cycle-rules.test.ts
 
-import { localDayEnd, safeTimeZone } from './sequence-engine-rules.ts';
+import { linkedinProfileSlug, localDayEnd, safeTimeZone } from './sequence-engine-rules.ts';
 
 // ─── SEQ-074 : budget de temps du cycle ─────────────────────────────────────
 
@@ -126,17 +126,42 @@ export function selectCycleBatch<T extends { step?: BatchStep | null; enrollment
   return { selected, invisible, visible, email, closed };
 }
 
+export interface CandidateIdentity {
+  profile_id?: string | null;
+  resolved_profile_id?: string | null;
+  provider_id?: string | null;
+  profile_url?: string | null;
+}
+
 /**
- * Une exécution par candidat (profile_id) et par cycle, la plus ancienne
- * reçue : espacement naturel entre deux actions vers la même personne. Une
- * exécution sans profile_id n'est jamais prise (comportement historique).
+ * Identités LinkedIn d'une inscription (identifiant d'origine, identifiant
+ * résolu, identifiant du fournisseur, slug exact de profile_url), en
+ * minuscules : un slug enregistré comme profile_id et le même slug lu dans
+ * l'URL désignent la même personne.
  */
-export function dedupeByProfile<T extends { enrollment?: { profile_id?: string | null } | null }>(executions: T[]): T[] {
+export function candidateIdentityKeys(enrollment: CandidateIdentity | null | undefined): string[] {
+  if (!enrollment) return [];
+  const keys = [enrollment.profile_id, enrollment.resolved_profile_id, enrollment.provider_id, linkedinProfileSlug(enrollment.profile_url)]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map((v) => v.trim().toLowerCase());
+  return [...new Set(keys)];
+}
+
+/**
+ * Une exécution par candidat et par cycle, la plus ancienne reçue : espacement
+ * naturel entre deux actions vers la même personne. Décision 22 : toutes
+ * identités confondues (avant, par profile_id seul : la même personne inscrite
+ * sous son identifiant Recruiter et sous son identifiant classique recevait
+ * deux envois dans le même cycle). Une exécution sans profile_id n'est jamais
+ * prise (comportement historique).
+ */
+export function dedupeByProfile<T extends { enrollment?: CandidateIdentity | null }>(executions: T[]): T[] {
   const seen = new Set<string>();
   return executions.filter((exec) => {
-    const profileId = exec.enrollment?.profile_id;
-    if (!profileId || seen.has(profileId)) return false;
-    seen.add(profileId);
+    if (!exec.enrollment?.profile_id) return false;
+    const keys = candidateIdentityKeys(exec.enrollment);
+    if (keys.some((k) => seen.has(k))) return false;
+    for (const k of keys) seen.add(k);
     return true;
   });
 }
@@ -234,7 +259,7 @@ export type CycleSelection<T> = { selected: T[]; invisible: number; visible: num
  * lues que ce filtre garde. Erreur sur la première page : renvoyée ; sur une
  * suivante : lot limité aux pages lues.
  */
-export async function readCycleSelection<T extends { id: string; step?: BatchStep | null; enrollment?: (BatchEnrollment & { profile_id?: string | null }) | null }>(
+export async function readCycleSelection<T extends { id: string; step?: BatchStep | null; enrollment?: (BatchEnrollment & CandidateIdentity) | null }>(
   readPage: (page: { from: number; to: number; exclusionFilter: string | null }) => Promise<{ rows: T[] | null; error: unknown }>,
   opts: { pageSize?: number; maxPages?: number; target?: number; onPageError?: (pageIndex: number, error: unknown) => void } = {},
 ): Promise<{ due: T[]; selection: CycleSelection<T>; error: unknown }> {
@@ -339,7 +364,8 @@ export interface SequenceCycleStats { actioned: number; failed: number }
  * séquence (avant, sur tout le cycle, toutes organisations confondues : les
  * échecs d'une organisation désactivaient la séquence d'une autre), avec un
  * minimum d'actions. Seuls les échecs imputables à la séquence sont comptés
- * (ni compte déconnecté, ni profil introuvable, ni génération IA indisponible).
+ * (ni compte déconnecté, ni profil introuvable, ni génération IA indisponible,
+ * ni envoi incertain ou lecture de profil impossible : décisions 1 et 2).
  */
 export function sequencesToAutoPause(
   stats: Map<string, SequenceCycleStats>,

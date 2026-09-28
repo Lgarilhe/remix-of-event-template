@@ -222,8 +222,8 @@ test.describe('Garde « rendez-vous pris » du moteur', () => {
       await cycleFor(stoppedExec, witnessExec);
 
       const row = await execRow(stoppedExec);
-      // Statut terminal non envoyé ; 'skipped' (code actuel) ou 'cancelled' (« une clôture annule ») : voir le rapport.
-      expect(['skipped', 'cancelled'], 'étape arrêtée par le rendez-vous, jamais envoyée').toContain(row.status);
+      // Décision 28 : l'étape arrêtée par le rendez-vous est annulée (une clôture annule).
+      expect(row.status, 'étape arrêtée par le rendez-vous, jamais envoyée').toBe('cancelled');
       expect(row.skip_reason ?? '').toMatch(/^Stop condition: meeting booked/);
       const closed = await enr(target.enrollmentId);
       expect(closed.status, 'inscription close').toBe('completed');
@@ -405,11 +405,13 @@ test.describe('Webhook Calendly : correspondance exacte', () => {
       const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance']);
       // Identifiants de profil tous différents du candidate_id suivi : seule l'URL rattache.
       const exact = await enroll(org, sequenceId, org.owner.userId, accountId, { profile_url: `https://www.linkedin.com/in/${slug}` });
-      const slash = await enroll(org, sequenceId, org.owner.userId, accountId, { profile_url: `https://www.linkedin.com/in/${slug}/` });
+      // Décision 21 : même slug = même personne, refusée deux fois dans une séquence ; la seconde inscription va dans une autre séquence de l'organisation.
+      const slashSeq = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance']);
+      const slash = await enroll(org, slashSeq.sequenceId, org.owner.userId, accountId, { profile_url: `https://www.linkedin.com/in/${slug}/` });
       const longer = await enroll(org, sequenceId, org.owner.userId, accountId, { profile_url: `https://www.linkedin.com/in/${slug}-martin-4b2a1` });
       const later = minutesFromNow(DAY);
       const execExact = await schedule(org, exact.enrollmentId, steps[0], { scheduled_at: later });
-      const execSlash = await schedule(org, slash.enrollmentId, steps[0], { scheduled_at: later });
+      const execSlash = await schedule(org, slash.enrollmentId, slashSeq.steps[0], { scheduled_at: later });
       const execLonger = await schedule(org, longer.enrollmentId, steps[0], { scheduled_at: later });
 
       const eventId = `evt_meeting_${rand()}`;

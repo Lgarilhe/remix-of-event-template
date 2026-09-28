@@ -51,6 +51,8 @@ export interface CandidateEnrollment {
   sequence_active: boolean | null;
   /** Nom du candidat, pour les confirmations et les messages. */
   profile_name: string | null;
+  /** Membre qui a inscrit le candidat : un collaborateur n'agit que sur ses propres inscriptions. */
+  created_by: string | null;
   status: string; // 'active' | 'paused' | 'replied' | 'completed' | 'stopped'
   pause_reason: string | null;
   current_step_order: number;
@@ -83,6 +85,7 @@ interface EnrollmentRow {
   sequence_id: string;
   status: string;
   profile_name: string | null;
+  created_by: string | null;
   pause_reason: string | null;
   current_step_order: number | null;
   created_at: string;
@@ -133,7 +136,7 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
       const { data, error } = await supabase
         .from('sequence_enrollments')
         .select<string, EnrollmentRow>(`
-          id, sequence_id, status, profile_name, pause_reason, current_step_order, created_at,
+          id, sequence_id, status, profile_name, created_by, pause_reason, current_step_order, created_at,
           replied_at, connection_status, job_id, job_title,
           gdpr_erased_at:tracking_data->gdpr_erased_at,
           outreach_sequences (id, name, is_active),
@@ -188,6 +191,7 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
           sequence_name: sequence?.name || null,
           sequence_active: typeof sequence?.is_active === 'boolean' ? sequence.is_active : null,
           profile_name: e.profile_name ?? null,
+          created_by: e.created_by ?? null,
           status: e.status,
           pause_reason: e.pause_reason ?? null,
           current_step_order: e.current_step_order ?? 0,

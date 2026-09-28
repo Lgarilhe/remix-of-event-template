@@ -17,9 +17,9 @@
  * E2E_EDGE_FUNCTIONS=1). Seule la liste des comptes LinkedIn du prestataire
  * est simulée dans le navigateur.
  *
- * Le kanban de l'onglet « pipeline » d'une mission n'a pas de colonne
- * « Répondu » (une réponse y vit dans « Contacté ») : l'observation se fait sur
- * le kanban de /pipeline, qui a cette colonne.
+ * L'observation se fait sur le kanban de /pipeline. Le kanban de l'onglet
+ * « pipeline » d'une mission a aussi sa colonne « Répondu » depuis la décision
+ * 29 (e2e/flows/seq-decisions-ui.spec.ts).
  */
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { test, expect } from '@playwright/test';

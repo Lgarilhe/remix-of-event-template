@@ -202,7 +202,8 @@ test('SEQ-027 — les clôtures « terminé » exigent une inscription active ; 
   assert.doesNotMatch(schedule, /status: 'completed'/, 'plus aucune écriture directe dans scheduleNextStep');
   // Profondeur max, boucle, fin explicite, branche vide sans suite, fin du flux
   // (les deux clôtures de la garde « Si connecté » sont supprimées, SEQ-030).
-  assert.equal(schedule.split('await completeEnrollmentIfActive(supabase, enrollment.id)').length - 1, 5);
+  // Décision 5 : sixième clôture, boucle vers une étape déjà faite.
+  assert.equal(schedule.split('await completeEnrollmentIfActive(supabase, enrollment.id)').length - 1, 6);
   const helper = sliceBetween(engine, 'async function completeEnrollmentIfActive', '// deno-lint-ignore no-explicit-any');
   assert.match(helper, /\.eq\('status', 'active'\)/);
   assert.match(skip, /if \(enrollment\.status !== 'active'\) \{[\s\S]*?409\)/);

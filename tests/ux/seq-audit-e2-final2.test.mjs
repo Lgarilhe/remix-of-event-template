@@ -87,6 +87,7 @@ test('engine-conditions-channels-1 — la détection de réponse de fond reste o
   // Une réponse clôt l'inscription sans rien envoyer : check_replies n'est
   // pas filtré par is_active, et prend le relais de la phase 2 pour ces séquences.
   assert.ok(checkReplies, 'handleCheckReplies introuvable');
-  assert.match(checkReplies, /\.eq\('status', 'active'\)/);
+  // Décision 9 : actives, et terminées depuis moins de 14 jours.
+  assert.match(checkReplies, /\.or\(`status\.eq\.active,and\(status\.eq\.completed,/);
   assert.doesNotMatch(checkReplies, /is_active/);
 });

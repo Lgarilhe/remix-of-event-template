@@ -2,7 +2,8 @@
  * Réponse d'un candidat : arrêt, dans son organisation, de tout ce qui peut
  * encore lui écrire (SEQ-212 : aucune relance après une réponse, quel que
  * soit le compte qui l'a reçue). Partagé par les deux chemins de réponse de
- * unipile-webhook (message LinkedIn, e-mail).
+ * unipile-webhook (message LinkedIn, e-mail) ; l'annulation des InMails sert
+ * aussi au rendez-vous (décision 27 : calendly-webhook et arrêt du moteur).
  *
  * - Autres inscriptions vivantes (actives ou en pause) du candidat : statut
  *   'stopped' (pas 'replied' : la réponse est comptée sur l'inscription qui
@@ -24,6 +25,7 @@
  */
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { SIBLING_REPLY_SKIP_REASON, type SiblingStopScope } from "./sequence-engine-rules.ts";
+import { isGdprErasedEnrollment } from "./sequence-resume.ts";
 
 const OPEN_ENROLLMENT_STATUSES = ['active', 'paused'];
 const PENDING_EXECUTION_STATUSES = ['scheduled', 'waiting_event', 'quota_blocked'];
@@ -31,6 +33,8 @@ const PENDING_INMAIL_STATUSES = ['pending', 'scheduled'];
 
 /** Motif des InMails annulés parce que le candidat a répondu. */
 export const REPLY_INMAIL_CANCEL_REASON = 'Le candidat a répondu';
+/** Motif des InMails annulés par un rendez-vous (décision 27 : calendly-webhook et arrêt du moteur). */
+export const MEETING_INMAIL_CANCEL_REASON = 'Rendez-vous pris avec le candidat';
 
 /** Identifiants LinkedIn assainis pour un filtre PostgREST (ni virgule, ni parenthèse, ni guillemet), sans doublon. */
 export function candidateIds(values: Array<string | null | undefined>): string[] {
@@ -65,6 +69,57 @@ export interface ReplyAnchor {
   live: boolean;
   /** Fin du contact déjà clos (date de réponse ou de fin). */
   endedAt?: string | null;
+}
+
+/** Inscription close telle que la lit le webhook (select '*'). */
+export interface ClosedEnrollment {
+  id: string;
+  organization_id?: string | null;
+  status: string;
+  completed_at?: string | null;
+  replied_at?: string | null;
+  tracking_data?: unknown;
+}
+
+/**
+ * Fin d'un contact déjà clos : la plus ancienne de sa date de fin et de sa
+ * date de réponse. Une inscription terminée puis « répondu » (décision 8,
+ * « Marquer comme répondu ») garde sa date de fin : c'est elle qui borne
+ * l'arrêt des autres inscriptions (contrat §8), aussi au rejeu.
+ */
+export function closedContactEnd(e: { completed_at?: string | null; replied_at?: string | null }): string | null {
+  const dates = [e.completed_at, e.replied_at]
+    .map((d) => (d ? Date.parse(d) : NaN))
+    .filter((t) => Number.isFinite(t));
+  return dates.length > 0 ? new Date(Math.min(...dates)).toISOString() : null;
+}
+
+/**
+ * Décision 8 : un message du candidat reçu après la fin de sa séquence est une
+ * réponse à la dernière relance. Dans chaque organisation, seule l'inscription
+ * close la plus récente compte : terminée, elle est renvoyée pour passer
+ * « A répondu » ; déjà « répondu », rien (réponse comptée une fois, SEQ-191).
+ * Jamais une inscription close par un rendez-vous (déjà comptée comme
+ * réponse) ni celle d'un candidat effacé (D5).
+ */
+export function lateReplyEnrollments<T extends ClosedEnrollment>(closed: T[]): T[] {
+  const endOf = (e: T) => {
+    const end = closedContactEnd(e);
+    return end ? Date.parse(end) : -Infinity;
+  };
+  const latestByOrg = new Map<string, T>();
+  for (const e of closed) {
+    const key = e.organization_id ?? '';
+    const current = latestByOrg.get(key);
+    if (!current || endOf(e) > endOf(current)) latestByOrg.set(key, e);
+  }
+  return [...latestByOrg.values()].filter((e) => {
+    if (e.status !== 'completed') return false;
+    const tracking = e.tracking_data && typeof e.tracking_data === 'object'
+      ? e.tracking_data as Record<string, unknown>
+      : null;
+    return tracking?.completion_reason !== 'meeting_booked' && !isGdprErasedEnrollment(e.tracking_data, []);
+  });
 }
 
 /**
@@ -155,21 +210,24 @@ export async function closeSiblingEnrollments(
 /**
  * Annule les InMails programmés ou en attente vers le candidat : ceux de
  * l'organisation, depuis n'importe lequel de ses comptes (bornés par
- * `scope`), ou ceux du compte qui vient de recevoir son message. Renvoie le
- * nombre d'InMails annulés.
+ * `scope`), ou ceux du compte qui vient de recevoir son message. `reason` :
+ * motif lisible (réponse par défaut, MEETING_INMAIL_CANCEL_REASON pour un
+ * rendez-vous).
+ * Renvoie le nombre d'InMails annulés.
  */
 export async function cancelScheduledInMails(
   supabase: SupabaseClient,
   target: { organizationId: string } | { accountId: string },
   identifiers: Array<string | null | undefined>,
   scope: SiblingStopScope = { kind: 'all' },
+  reason: string = REPLY_INMAIL_CANCEL_REASON,
 ): Promise<number> {
   if (scope.kind === 'none') return 0;
   const ids = candidateIds(identifiers);
   if (ids.length === 0) return 0;
   let query = supabase
     .from('inmail_queue')
-    .update({ status: 'cancelled', error_message: REPLY_INMAIL_CANCEL_REASON, updated_at: new Date().toISOString() })
+    .update({ status: 'cancelled', error_message: reason, updated_at: new Date().toISOString() })
     .in('status', PENDING_INMAIL_STATUSES)
     .in('recipient_profile_id', ids);
   query = 'organizationId' in target
@@ -179,6 +237,6 @@ export async function cancelScheduledInMails(
   const { data, error } = await query.select('id');
   if (error) throw error;
   const cancelled = (data ?? []).length;
-  if (cancelled > 0) console.log(`[candidate-reply-closure] ${cancelled} scheduled InMail(s) cancelled after a reply`);
+  if (cancelled > 0) console.log(`[candidate-reply-closure] ${cancelled} scheduled InMail(s) cancelled (${reason})`);
   return cancelled;
 }

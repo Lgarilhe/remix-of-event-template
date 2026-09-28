@@ -61,7 +61,8 @@ test('SEQ-154 — séquence créée désactivée faute d’offre : l’éditeur 
   assert.ok(save.length > 0);
   // Même condition que la liste (qui n'affiche alors aucun message).
   assert.match(save, /const savedInactiveForPlan = !sequence\.id && sequence\.isActive && !canSendSequences;/);
-  assert.match(list, /const createInactiveForPlan = !sequence\.id && sequence\.isActive && !canSendSequences;/);
+  // Décision 32 : abonnement pas encore lu, la séquence est aussi créée désactivée.
+  assert.match(list, /const createInactiveForPlan = !sequence\.id && sequence\.isActive && \(!canSendSequences \|\| planStateUnknown\);/);
   assert.match(list, /if \(!createInactiveForPlan\) \{\s*toast\.success\('Séquence créée'/);
   // Annoncé seulement après un enregistrement réussi.
   const apres = save.slice(save.indexOf('await onSave(sequence);'));

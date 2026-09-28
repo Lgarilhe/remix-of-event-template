@@ -107,6 +107,8 @@ export async function sha256Hex(input: string): Promise<string> {
 /**
  * Cascade lookup pour récupérer email/phone sans appel BC payant.
  * Si rien trouvé → caller décide de déclencher l'enrichment payant.
+ * Registre des effacements illisible : GdprRegistryUnavailableError est
+ * propagée (décision 13), l'appelant refuse ou reporte.
  */
 export async function getOrFetchContact(
   supabase: SupabaseClient,
@@ -245,7 +247,27 @@ export async function getOrFetchContact(
 
 // ─── RGPD helpers ─────────────────────────────────────────────────────────────
 
-/** Vérifie si un candidat est dans gdpr_erasures (par email ou linkedin_url) */
+export const GDPR_REGISTRY_UNAVAILABLE_MESSAGE =
+  "Le registre des effacements de données n'a pas pu être lu. Réessayez dans un instant.";
+
+/**
+ * Registre gdpr_erasures illisible (décision 13) : l'appelant refuse
+ * l'inscription, l'envoi ou l'enrichissement, ou reporte l'étape, et ne
+ * traite jamais le candidat comme « non effacé ».
+ */
+export class GdprRegistryUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super(GDPR_REGISTRY_UNAVAILABLE_MESSAGE);
+    this.name = 'GdprRegistryUnavailableError';
+    if (cause !== undefined) console.error('[isGdprBlocked] lecture du registre impossible:', cause);
+  }
+}
+
+/**
+ * Vérifie si un candidat est dans gdpr_erasures (par email ou linkedin_url).
+ * Échec fermé (décision 13) : lève GdprRegistryUnavailableError si le
+ * registre ne peut pas être lu (avant : false, le candidat passait).
+ */
 export async function isGdprBlocked(
   supabase: SupabaseClient,
   input: { email?: string | null; linkedinUrl?: string | null },
@@ -259,20 +281,20 @@ export async function isGdprBlocked(
 
   if (hashes.length === 0) return false;
 
+  let result: { data: unknown; error: unknown };
   try {
-    const { data } = await supabase
+    result = await supabase
       .from('gdpr_erasures')
       .select('id')
       .or(
         hashes.map(h => `email_hash.eq.${h},linkedin_url_hash.eq.${h}`).join(',')
       )
       .limit(1);
-
-    return Array.isArray(data) && data.length > 0;
   } catch (e) {
-    console.warn('[isGdprBlocked] check failed (table may not exist):', e);
-    return false; // Fail open : si la table n'existe pas, on laisse passer
+    throw new GdprRegistryUnavailableError(e);
   }
+  if (result.error) throw new GdprRegistryUnavailableError(result.error);
+  return Array.isArray(result.data) && result.data.length > 0;
 }
 
 /** Slug public d'une URL de profil LinkedIn (/in/{slug}), en minuscules. */
@@ -552,7 +574,7 @@ export async function recordGdprErasure(
  *   - ou une URL de profil du candidat (donnée, relevée sur ces inscriptions
  *     ou sur sa fiche du pipeline) figure au registre global gdpr_erasures.
  * Lève une erreur si une lecture échoue : l'appelant refuse (échec fermé,
- * contrairement à isGdprBlocked).
+ * comme isGdprBlocked, décision 13).
  */
 export async function isCandidateErasedForOrg(
   supabase: SupabaseClient,

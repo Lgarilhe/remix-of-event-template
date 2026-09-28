@@ -8,11 +8,10 @@
  * la date de réponse) et SEQ-220 (date de réponse gardée).
  *
  * La réponse tardive est enregistrée par « Marquer comme ayant répondu » sur la
- * ligne terminée : seul chemin qui accepte aujourd'hui une inscription
- * 'completed' (le webhook ne l'enregistre pas, décision produit à acter, voir
- * le rapport du lot). L'action mark_replied tourne pour de vrai (stack locale,
- * E2E_EDGE_FUNCTIONS=1) ; seule la liste des comptes LinkedIn du prestataire
- * est simulée dans le navigateur.
+ * ligne terminée (le webhook l'enregistre aussi depuis la décision produit 8,
+ * voir e2e/flows/seq-decisions-reply.spec.ts). L'action mark_replied tourne
+ * pour de vrai (stack locale, E2E_EDGE_FUNCTIONS=1) ; seule la liste des
+ * comptes LinkedIn du prestataire est simulée dans le navigateur.
  */
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { test, expect } from '@playwright/test';

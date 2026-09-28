@@ -357,7 +357,8 @@ test.describe('Moteur engine-2 : gardes avant envoi', () => {
     await cycle();
 
     const rowB = await execRow(execB);
-    expect(rowB.status, 'étape arrêtée par le rendez-vous').toBe('skipped');
+    // Décision 28 : l'étape arrêtée par une condition d'arrêt est annulée (avant : sautée).
+    expect(rowB.status, 'étape arrêtée par le rendez-vous').toBe('cancelled');
     expect(rowB.skip_reason).toBe('Stop condition: meeting booked (Calendly)');
     const enrB = await enrollmentFull(b.enrollmentId);
     expect(enrB.status).toBe('completed');

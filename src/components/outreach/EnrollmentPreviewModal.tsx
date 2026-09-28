@@ -58,14 +58,18 @@ import {
   dedupeProfilesByIdentity,
   DUPLICATE_CHECK_FAILED_MESSAGE,
   enrollFailureMessage,
+  enrollmentRefusalOf,
   findBlockingSequenceEnrollments,
   firstActionSummary,
+  formerPassageLabel,
   isOtherMemberAccountError,
   markCandidatesMessaged,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
+  samePersonRefusedLabel,
   sequenceInactiveReason,
 } from './enrollment-preview/enrollmentHelpers';
+import { gdprErasedEnrollLabel } from '@/lib/sequenceErrorMessages';
 import { estimateActionCredits } from '@/lib/invokeWithCredits';
 
 // ── Types ──
@@ -225,6 +229,12 @@ interface EnrollResults {
   skipped: number;
   /** Déjà passés par la séquence (terminée, réponse, arrêtée) : à reprendre depuis le suivi. */
   alreadyPassed: number;
+  /** Refusés par la base : profil effacé (décision 12). */
+  gdprErased: number;
+  /** Refusés par la base : même personne dans la séquence sous un autre identifiant (décision 21). */
+  samePerson: number;
+  /** Inscrits, déjà passés par la séquence il y a plus de 90 jours sous un autre identifiant (décision 23). */
+  formerPassages: number;
   errors: string[];
 }
 
@@ -600,7 +610,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     setIsEnrolling(true);
     setEnrollResults(null);
     setEnrollProgress(null);
-    const results: EnrollResults = { success: 0, skipped: 0, alreadyPassed: 0, errors: [] };
+    const results: EnrollResults = { success: 0, skipped: 0, alreadyPassed: 0, gdprErased: 0, samePerson: 0, formerPassages: 0, errors: [] };
     // Candidats réellement inscrits : leur statut pipeline passe à « contacté ».
     const enrolledProfiles: LinkedInProfile[] = [];
 
@@ -661,12 +671,15 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           // est inconditionnelle, toute ligne existante empêche l'inscription ;
           // sous un autre identifiant du candidat ou son slug public, une
           // inscription en cours ou en pause l'empêche aussi, dérogation
-          // comprise (SEQ-046).
+          // comprise (SEQ-046), et une inscription close depuis moins de 90
+          // jours (décision 21) ; au-delà, il est inscrit avec un avertissement
+          // (décision 23).
           // On distingue « déjà dans la séquence » (en cours, en pause) de
           // « déjà passé par la séquence » (terminée, réponse, arrêtée), à
           // reprendre depuis le suivi. La race fenêtre entre SELECT et INSERT
           // est gérée plus bas via UPSERT + ignoreDuplicates.
-          const existing = (await findBlockingSequenceEnrollments(supabase, sequence.id, [profile])).get(profile.id);
+          const matches = await findBlockingSequenceEnrollments(supabase, sequence.id, [profile]);
+          const existing = matches.blocking.get(profile.id);
 
           if (existing) {
             if (classifyExistingEnrollment(existing.status) === 'in_sequence') results.skipped++;
@@ -787,11 +800,17 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           }
 
           results.success++;
+          if (matches.formerPassages.has(profile.id)) results.formerPassages++;
           enrolledProfiles.push(profile);
         } catch (err) {
           // Refus de la base (SEQ-043) : compte relié à un autre membre. Tous
           // les candidats suivants échoueraient pareil : on arrête la boucle.
           if (isOtherMemberAccountError(err)) throw err;
+          // Refus propres à ce candidat (profil effacé, même personne dans la
+          // séquence) : comptés à part, les suivants restent inscriptibles.
+          const refusal = enrollmentRefusalOf(err);
+          if (refusal === 'gdpr_erased') { results.gdprErased++; continue; }
+          if (refusal === 'same_person') { results.samePerson++; continue; }
           // Détail technique en console seulement : jamais le message brut de
           // la base (« new row violates row-level security policy… »).
           console.error('[EnrollmentPreviewModal] enrollment failed for', profile.id, err);
@@ -823,6 +842,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           description: 'Le détail est affiché dans la fenêtre.',
         });
       }
+      if (results.gdprErased > 0) toast.warning(gdprErasedEnrollLabel(results.gdprErased));
+      if (results.samePerson > 0) toast.warning(samePersonRefusedLabel(results.samePerson));
+      if (results.formerPassages > 0) toast.warning(formerPassageLabel(results.formerPassages));
       if (results.alreadyPassed > 0) toast.info(alreadyPassedLabel(results.alreadyPassed));
       if (results.skipped > 0) toast.info(alreadyInSequenceLabel(results.skipped));
     } catch (err) {
@@ -2128,6 +2150,24 @@ function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollR
           <p className="text-sm text-muted-foreground flex items-start justify-center gap-1.5">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             {alreadyPassedLabel(results.alreadyPassed)}
+          </p>
+        )}
+        {results.samePerson > 0 && (
+          <p className="text-sm text-muted-foreground flex items-start justify-center gap-1.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            {samePersonRefusedLabel(results.samePerson)}
+          </p>
+        )}
+        {results.gdprErased > 0 && (
+          <p className="text-sm text-warning flex items-start justify-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            {gdprErasedEnrollLabel(results.gdprErased)}
+          </p>
+        )}
+        {results.formerPassages > 0 && (
+          <p role="note" className="text-sm text-warning flex items-start justify-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            {formerPassageLabel(results.formerPassages)}
           </p>
         )}
       </motion.div>

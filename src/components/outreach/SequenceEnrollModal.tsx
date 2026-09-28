@@ -34,15 +34,20 @@ import {
   classifyExistingEnrollment,
   dedupeProfilesByIdentity,
   DUPLICATE_CHECK_FAILED_MESSAGE,
+  enrollFailureMessage,
+  enrollmentRefusalOf,
   findBlockingSequenceEnrollments,
   firstActionSummary,
+  formerPassageLabel,
   isOtherMemberAccountError,
   markCandidatesMessaged,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
+  samePersonRefusedLabel,
   SEQUENCES_PLAN_REQUIRED_MESSAGE,
   sequenceInactiveReason,
 } from './enrollment-preview/enrollmentHelpers';
+import { gdprErasedEnrollLabel } from '@/lib/sequenceErrorMessages';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -86,7 +91,23 @@ interface EnrollResults {
   skipped: number;
   /** Déjà passés par la séquence (terminée, réponse, arrêtée) : à reprendre depuis le suivi. */
   alreadyPassed: number;
+  /** Refusés par la base : profil effacé (décision 12). */
+  gdprErased: number;
+  /** Refusés par la base : même personne dans la séquence sous un autre identifiant (décision 21). */
+  samePerson: number;
+  /** Inscrits, déjà passés par la séquence il y a plus de 90 jours sous un autre identifiant (décision 23). */
+  formerPassages: number;
   errors: string[];
+}
+
+/** Toasts des candidats non inscrits (refus, déjà dans la séquence, échecs) et de l'avertissement de réinscription. */
+function announceOthers(r: EnrollResults) {
+  if (r.errors.length > 0) toast.error(`${r.errors.length} inscription${r.errors.length > 1 ? 's' : ''} en échec`, { description: r.errors[0] });
+  if (r.gdprErased > 0) toast.warning(gdprErasedEnrollLabel(r.gdprErased));
+  if (r.samePerson > 0) toast.warning(samePersonRefusedLabel(r.samePerson));
+  if (r.formerPassages > 0) toast.warning(formerPassageLabel(r.formerPassages));
+  if (r.alreadyPassed > 0) toast.info(alreadyPassedLabel(r.alreadyPassed));
+  else if (r.skipped > 0) toast.info(alreadyInSequenceLabel(r.skipped));
 }
 
 /**
@@ -272,6 +293,9 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       success: 0,
       skipped: 0,
       alreadyPassed: 0,
+      gdprErased: 0,
+      samePerson: 0,
+      formerPassages: 0,
       errors: [],
     };
 
@@ -319,13 +343,15 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       // contrainte DB `UNIQUE(sequence_id, profile_id)` est inconditionnelle ;
       // sous un autre identifiant du candidat ou son slug public, une
       // inscription en cours ou en pause bloque aussi, dérogation comprise
-      // (SEQ-046). Ces candidats ne sont pas envoyés à l'upsert. On
+      // (SEQ-046), comme une inscription close depuis moins de 90 jours
+      // (décision 21) ; au-delà, inscription avec un avertissement (décision
+      // 23). Ces candidats ne sont pas envoyés à l'upsert. On
       // distingue ceux qui y sont encore (en cours, en pause) de ceux qui y
       // sont déjà passés (terminée, réponse, arrêtée), à reprendre depuis le
       // suivi. Le résultat exact viendra de
       // l'upsert ci-dessous.
       const profileIds = enrollSet.map(p => p.id);
-      const blocking = await findBlockingSequenceEnrollments(supabase, sequence.id, enrollSet);
+      const { blocking, formerPassages } = await findBlockingSequenceEnrollments(supabase, sequence.id, enrollSet);
       const existingStatus = new Map(Array.from(blocking, ([id, e]) => [id, e.status]));
       const countExisting = (ids: Iterable<string>) => {
         let inSequence = 0;
@@ -386,30 +412,57 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         };
       });
 
+      const upsertOptions = { onConflict: 'sequence_id,profile_id', ignoreDuplicates: true };
       const { data: insertedEnrollments, error: enrollError } = await supabase
         .from('sequence_enrollments')
-        .upsert(enrollmentRows, {
-          onConflict: 'sequence_id,profile_id',
-          ignoreDuplicates: true,
-        })
+        .upsert(enrollmentRows, upsertOptions)
         .select('id, profile_id');
 
-      if (enrollError) throw enrollError;
       // Pas de throw si tableau vide — tous les candidats étaient déjà inscrits
       // entre le pré-check et l'upsert (race fenêtrée + DB a tout dropé).
-      const insertedRows = insertedEnrollments || [];
+      let insertedRows = insertedEnrollments || [];
+      // Candidats refusés ou en échec à l'insertion une par une.
+      const refused = new Set<string>();
+      if (enrollError) {
+        // Refus de la base propre à un candidat (profil effacé, même personne
+        // dans la séquence, décisions 12 et 21) : l'insertion groupée échoue en
+        // entier, on reprend candidat par candidat pour inscrire les autres.
+        if (!enrollmentRefusalOf(enrollError)) throw enrollError;
+        insertedRows = [];
+        for (const row of enrollmentRows) {
+          const { data: one, error: oneError } = await supabase
+            .from('sequence_enrollments')
+            .upsert(row, upsertOptions)
+            .select('id, profile_id');
+          if (!oneError) {
+            insertedRows.push(...(one ?? []));
+            continue;
+          }
+          // Même compte pour toute la sélection : aucune ligne n'a pu passer avant.
+          if (isOtherMemberAccountError(oneError)) throw oneError;
+          refused.add(row.profile_id);
+          const refusal = enrollmentRefusalOf(oneError);
+          if (refusal === 'gdpr_erased') enrollmentResults.gdprErased++;
+          else if (refusal === 'same_person') enrollmentResults.samePerson++;
+          else {
+            console.error('[SequenceEnrollModal] enrollment failed for', row.profile_id, oneError);
+            enrollmentResults.errors.push(enrollFailureMessage(row.profile_name));
+          }
+        }
+      }
       const insertedProfileIds = new Set(insertedRows.map(e => e.profile_id));
-      const notInserted = profileIds.filter(id => !insertedProfileIds.has(id));
+      const notInserted = profileIds.filter(id => !insertedProfileIds.has(id) && !refused.has(id));
       const { passed: passedCount } = countExisting(notInserted);
       enrollmentResults.success = insertedRows.length;
       enrollmentResults.alreadyPassed = passedCount;
       enrollmentResults.skipped = notInserted.length - passedCount + duplicates;
-      if (insertedRows.length < enrollSet.length - existingStatus.size) {
-        console.warn(`[SequenceEnrollModal] Race detected: ${enrollSet.length - existingStatus.size - insertedRows.length} enrollment(s) deduped at DB level (concurrent enroll from another session)`);
+      enrollmentResults.formerPassages = insertedRows.filter(e => formerPassages.has(e.profile_id)).length;
+      if (insertedRows.length < enrollSet.length - existingStatus.size - refused.size) {
+        console.warn(`[SequenceEnrollModal] Race detected: ${enrollSet.length - existingStatus.size - refused.size - insertedRows.length} enrollment(s) deduped at DB level (concurrent enroll from another session)`);
       }
       if (insertedRows.length === 0) {
         setResults(enrollmentResults);
-        toast.info(passedCount > 0 ? alreadyPassedLabel(passedCount) : alreadyInSequenceLabel(enrollmentResults.skipped));
+        announceOthers(enrollmentResults);
         return;
       }
 
@@ -483,8 +536,7 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       toast.success(`${n} candidat${n > 1 ? 's' : ''} inscrit${n > 1 ? 's' : ''} dans la séquence`, {
         description: firstAction ?? undefined,
       });
-      if (enrollmentResults.alreadyPassed > 0) toast.info(alreadyPassedLabel(enrollmentResults.alreadyPassed));
-      else if (enrollmentResults.skipped > 0) toast.info(alreadyInSequenceLabel(enrollmentResults.skipped));
+      announceOthers(enrollmentResults);
     } catch (err) {
       // Détail technique en console seulement : jamais de message brut de la base.
       console.error('Enrollment error:', err);
@@ -751,6 +803,24 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                 <div className="flex items-start gap-2 text-muted-foreground">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{alreadyPassedLabel(results.alreadyPassed)}</span>
+                </div>
+              )}
+              {results.samePerson > 0 && (
+                <div className="flex items-start gap-2 text-muted-foreground">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{samePersonRefusedLabel(results.samePerson)}</span>
+                </div>
+              )}
+              {results.gdprErased > 0 && (
+                <div className="flex items-start gap-2 text-warning">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{gdprErasedEnrollLabel(results.gdprErased)}</span>
+                </div>
+              )}
+              {results.formerPassages > 0 && (
+                <div role="note" className="flex items-start gap-2 text-warning">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{formerPassageLabel(results.formerPassages)}</span>
                 </div>
               )}
               {results.errors.length > 0 && (

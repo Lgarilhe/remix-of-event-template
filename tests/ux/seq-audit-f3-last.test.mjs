@@ -169,7 +169,8 @@ test('integration-6 — fiche candidat : is_active lu, aide juste et « Reprendr
   assert.match(candidateHook, /sequence_active: typeof sequence\?\.is_active === 'boolean' \? sequence\.is_active : null,/);
   assert.match(candidatePanel, /const sequencePauseResumable = isSequencePauseResumable\(enrollment\.status, enrollment\.pause_reason, enrollment\.sequence_active\);/);
   assert.match(candidatePanel, /: isPaused \? \(sequencePauseResumable \? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint\(enrollment\.pause_reason\)\) : null;/);
-  assert.match(candidatePanel, /const canResume = isPaused && !gdprErased && \(!pauseReason \|\| RESUMABLE_PAUSE_REASONS\.has\(pauseReason\) \|\| sequencePauseResumable\);/);
+  // Décision 31 : reprise possible calculée à part, réservée à l'auteur pour un collaborateur.
+  assert.match(candidatePanel, /const resumable = isPaused && !gdprErased && \(!pauseReason \|\| RESUMABLE_PAUSE_REASONS\.has\(pauseReason\) \|\| sequencePauseResumable\);/);
   // Le bouton « Reprendre » (hors échec d'envoi) dépend de canResume.
   assert.match(candidatePanel, /\{canResume && pauseReason !== 'send_failed' && \(\s*<Button[\s\S]*?onClick=\{onResume\}/);
 });
@@ -246,5 +247,6 @@ test('Décision — fiche candidat : même dialogue que le suivi des inscrits', 
   assert.match(candidatePanel, /confirmReply\?\.status === 'completed'/);
   assert.doesNotMatch(candidatePanel, /s'arrête définitivement pour ce candidat/, 'ancien texte retiré');
   assert.match(candidateHook, /profile_name: e\.profile_name \?\? null,/);
-  assert.match(candidateHook, /id, sequence_id, status, profile_name, pause_reason,/);
+  // Décision 31 : l'auteur de l'inscription est lu avec elle.
+  assert.match(candidateHook, /id, sequence_id, status, profile_name, created_by, pause_reason,/);
 });

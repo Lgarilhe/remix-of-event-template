@@ -794,6 +794,7 @@ const RESUME_DEADLINE_MS = 35_000;
 const RESUME_MESSAGES = {
   notFound: 'Inscription introuvable dans votre organisation.',
   sequenceInactive: 'La séquence est désactivée : réactivez-la pour reprendre ce candidat.',
+  sequenceInactiveBulk: 'La séquence est désactivée : réactivez-la pour reprendre ses candidats.',
   // Compte LinkedIn ou boîte e-mail : isSenderAccountLinked accepte les deux.
   accountUnlinked: 'Le compte d\'envoi de ce candidat n\'est plus relié à votre organisation. Reliez-le avant de reprendre la séquence.',
   nothing: 'Rien à reprendre : cette séquence est terminée pour ce candidat.',
@@ -866,13 +867,18 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
       return memberError('not_found', 'Séquence introuvable dans votre organisation.', 404);
     }
     const { data: seq, error: seqErr } = await supabase
-      .from('outreach_sequences').select('id, organization_id').eq('id', req.sequenceId).maybeSingle();
+      .from('outreach_sequences').select('id, organization_id, is_active').eq('id', req.sequenceId).maybeSingle();
     if (seqErr) {
       console.error(`[${mode}] sequence lookup failed:`, seqErr);
       return memberError('server_error', RESUME_MESSAGES.failed, 500);
     }
     if (!seq || (orgId && seq.organization_id !== orgId)) {
       return memberError('not_found', 'Séquence introuvable dans votre organisation.', 404);
+    }
+    // Décision 35 : comme la reprise par candidat, une séquence désactivée
+    // est refusée (l'interface et l'assistant la réactivent d'abord).
+    if (seq.is_active === false) {
+      return memberError('sequence_inactive', RESUME_MESSAGES.sequenceInactiveBulk, 409);
     }
     let pausedQuery = supabase
       .from('sequence_enrollments').select('id', { count: 'exact' })
@@ -958,7 +964,9 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
         continue;
       }
       try {
-        results.push({ enrollment_id: id, ...await resumeOneEnrollment(supabase, mode, enr, enrOrgId, !bySequence, accountCache) });
+        // Décision 35 : séquence relue par candidat dans les deux modes (une
+        // désactivation pendant la reprise groupée arrête la reprise).
+        results.push({ enrollment_id: id, ...await resumeOneEnrollment(supabase, mode, enr, enrOrgId, true, accountCache) });
       } catch (e) {
         console.error(`[${mode}] enrollment ${id} failed:`, e);
         results.push({ enrollment_id: id, outcome: 'error', message: RESUME_MESSAGES.failed });
@@ -1571,6 +1579,7 @@ async function handleProcess(supabase: any, force = false) {
       enrollment?: {
         profile_id?: string | null; status?: string | null; assigned_sender_id?: string | null;
         account_id?: string | null; sequence_id?: string | null;
+        resolved_profile_id?: string | null; provider_id?: string | null; profile_url?: string | null;
       } | null;
     };
     // SEQ-187 (fin) : à partir de la deuxième page, les comptes déjà au plafond
@@ -1580,7 +1589,8 @@ async function handleProcess(supabase: any, force = false) {
     const selectionRead = await readCycleSelection<DueExecution>(async ({ from, to, exclusionFilter }) => {
       let pageQuery = supabase
         .from('sequence_step_executions')
-        .select('id, step:sequence_steps(action_type, step_channel, sender_id), enrollment:sequence_enrollments!inner(profile_id, status, assigned_sender_id, account_id, sequence_id, sequence:outreach_sequences!inner(is_active))')
+        // Décision 22 : toutes les identités du candidat lues, un seul envoi par personne et par cycle (dedupeByProfile).
+        .select('id, step:sequence_steps(action_type, step_channel, sender_id), enrollment:sequence_enrollments!inner(profile_id, resolved_profile_id, provider_id, profile_url, status, assigned_sender_id, account_id, sequence_id, sequence:outreach_sequences!inner(is_active))')
         .eq('status', 'scheduled')
         .lte('scheduled_at', now)
         .neq('enrollment.status', 'paused')
@@ -1616,7 +1626,8 @@ async function handleProcess(supabase: any, force = false) {
     const results = { processed: 0, skipped: 0, failed: 0, retried: 0, quota_blocked: 0, subscription_blocked: 0, ai_unavailable: 0 };
     // SEQ-073 : actions et échecs comptés PAR séquence pour l'auto-pause.
     // Seuls les échecs imputables à la séquence sont notés (ni compte
-    // déconnecté, ni profil introuvable, ni génération IA indisponible).
+    // déconnecté, ni profil introuvable, ni génération IA indisponible, ni
+    // envoi incertain ou lecture de profil impossible : décisions 1 et 2).
     const sequenceStats = new Map<string, SequenceCycleStats>();
     const statsFor = (seqId: string): SequenceCycleStats => {
       let s = sequenceStats.get(seqId);
@@ -1691,6 +1702,14 @@ async function handleProcess(supabase: any, force = false) {
       // Fuseau d'envoi résolu (SEQ-197), connu aussi du catch pour le report
       // après une limite du fournisseur (SEQ-088).
       let resolvedSendTimezone: string | null = null;
+      // Décision 3 : place du plafond LinkedIn réservée par le gate quota,
+      // rendue si l'étape s'arrête ensuite sans rien envoyer.
+      let ledgerSlot: LedgerSlot | null = null;
+      const releaseSlot = async () => {
+        const slot = ledgerSlot;
+        ledgerSlot = null;
+        if (slot) await releaseLedgerSlot(supabase, slot);
+      };
       try {
 
         // Mise en pause entre la sélection et ce passage : on n'y touche pas.
@@ -1747,6 +1766,8 @@ async function handleProcess(supabase: any, force = false) {
         const stopCond = sequence?.stop_conditions || { on_reply: true, on_unsubscribe: true };
         let shouldStop = false;
         let stopReason = '';
+        // Décision 26 : session du rendez-vous, pour la notification et le suivi de l'inscription.
+        let meetingSessionId: string | null = null;
 
         // on_reply is already handled by the existing PRE-SEND REPLY CHECK below — skip here
         if (stopCond.on_click) {
@@ -1773,23 +1794,28 @@ async function handleProcess(supabase: any, force = false) {
           // Inscription relancée (re_enroll) : seul un rendez-vous pris après la
           // relance la reclôt, comme la vérification de réponse (SEQ-220).
           // Avant, l'ancien rendez-vous la reclôturait au cycle suivant.
-          const meetingReEnrolledRaw = ((enrollment.tracking_data as Record<string, unknown> | null)?.re_enrolled_at ?? null) as string | null;
-          const meetingReEnrolledAt = meetingReEnrolledRaw && !Number.isNaN(new Date(meetingReEnrolledRaw).getTime())
-            ? new Date(meetingReEnrolledRaw).toISOString() : null;
+          // Décision 25 : de même, un rendez-vous pris avant le début de
+          // l'inscription ne l'arrête pas.
+          const meetingSince = [enrollment.created_at, (enrollment.tracking_data as Record<string, unknown> | null)?.re_enrolled_at]
+            .map((d) => (typeof d === 'string' ? new Date(d).getTime() : NaN))
+            .filter((t) => Number.isFinite(t))
+            .reduce((a, b) => Math.max(a, b), -Infinity);
           const meetingBase = (columns = 'id', limit = 1) => {
             let q = supabase.from('qualification_sessions').select(columns).limit(limit);
             if (meetingOrgId) q = q.eq('organization_id', meetingOrgId);
-            if (meetingReEnrolledAt) q = q.gt('created_at', meetingReEnrolledAt);
+            if (Number.isFinite(meetingSince)) q = q.gt('created_at', new Date(meetingSince).toISOString());
             return q;
           };
           let meetingFound = false;
           if (!meetingFound && enrollment.email_used) {
             const { data } = await meetingBase().eq('invitee_email', enrollment.email_used);
             meetingFound = !!data?.length;
+            meetingSessionId = (data?.[0]?.id ?? null) as string | null;
           }
           if (!meetingFound && enrollment.profile_id) {
             const { data } = await meetingBase().eq('candidate_profile_id', enrollment.profile_id);
             meetingFound = !!data?.length;
+            meetingSessionId = (data?.[0]?.id ?? null) as string | null;
           }
           const enrollmentSlug = linkedinProfileSlug(enrollment.profile_url as string | null);
           if (!meetingFound && enrollmentSlug) {
@@ -1799,22 +1825,58 @@ async function handleProcess(supabase: any, force = false) {
             // « linkedin.com/in/<slug> », puis comparaison exacte du slug
             // (« / » final, sous-domaine, majuscules, sans schéma, paramètres admis).
             const escapedSlug = enrollmentSlug.replace(/([%_\\])/g, '\\$1');
-            const { data } = await meetingBase('candidate_linkedin_url', 50)
+            const { data } = await meetingBase('id, candidate_linkedin_url', 50)
               .ilike('candidate_linkedin_url', `%linkedin.com/in/${escapedSlug}%`);
-            meetingFound = ((data ?? []) as Array<{ candidate_linkedin_url: string | null }>)
-              .some((s) => linkedinProfileSlug(s.candidate_linkedin_url) === enrollmentSlug);
+            const sameSlug = ((data ?? []) as Array<{ id: string; candidate_linkedin_url: string | null }>)
+              .find((s) => linkedinProfileSlug(s.candidate_linkedin_url) === enrollmentSlug);
+            meetingFound = !!sameSlug;
+            meetingSessionId = sameSlug?.id ?? null;
           }
           if (meetingFound) { shouldStop = true; stopReason = 'Stop condition: meeting booked (Calendly)'; }
         }
         if (shouldStop) {
-          await supabase.from('sequence_step_executions').update({ status: 'skipped', skip_reason: stopReason, executed_at: new Date().toISOString() }).eq('id', exec.id).eq('status', 'scheduled');
-          const { error: stopErr } = await supabase.from('sequence_enrollments')
-            .update({ status: 'completed', completed_at: new Date().toISOString() })
-            .eq('id', enrollment.id).eq('status', 'active');
+          // Décision 28 : l'étape arrêtée par une condition d'arrêt est
+          // « annulée » (une clôture annule), pas « sautée ».
+          await supabase.from('sequence_step_executions').update({ status: 'cancelled', skip_reason: stopReason, executed_at: new Date().toISOString() }).eq('id', exec.id).eq('status', 'scheduled');
+          const meetingBooked = stopReason.startsWith('Stop condition: meeting booked');
+          const stopNowIso = new Date().toISOString();
+          // Décision 26 : clôture par rendez-vous comme celle du webhook
+          // Calendly (raison meeting_booked et session gardées sur l'inscription).
+          const stopPatch: Record<string, unknown> = { status: 'completed', completed_at: stopNowIso };
+          if (meetingBooked) {
+            stopPatch.tracking_data = {
+              ...((enrollment.tracking_data ?? {}) as Record<string, unknown>),
+              completion_reason: 'meeting_booked',
+              meeting_booked_at: stopNowIso,
+              ...(meetingSessionId ? { qualification_session_id: meetingSessionId } : {}),
+            };
+          }
+          const { data: stoppedRows, error: stopErr } = await supabase.from('sequence_enrollments')
+            .update(stopPatch)
+            .eq('id', enrollment.id).eq('status', 'active').select('id');
           // SEQ-071 : clôture = TOUTES les étapes en attente annulées (attentes
           // et blocages de quota compris), pas seulement 'scheduled'.
           if (stopErr) console.error(`[process] Clôture de ${enrollment.id} (${stopReason}) échouée:`, stopErr);
           else await cancelPendingExecutions(supabase, enrollment.id, stopReason);
+          // Décision 26 : le recruteur est prévenu, même notification que le webhook.
+          if (meetingBooked && !stopErr && (stoppedRows ?? []).length > 0 && enrollment.created_by) {
+            const { error: meetingNotifErr } = await supabase.from('notifications').insert({
+              user_id: enrollment.created_by,
+              organization_id: enrollment.organization_id ?? enrollment.sequence?.organization_id ?? null,
+              type: 'action',
+              title: 'RDV pris, séquence arrêtée',
+              body: `${enrollment.profile_name || 'Un candidat'} a réservé un rendez-vous : sa séquence est arrêtée, aucune relance ne partira.`,
+              link: meetingSessionId ? `/qualification/${meetingSessionId}` : '/missions',
+              metadata: {
+                source: 'calendly',
+                enrollment_ids: [enrollment.id],
+                sequence_id: enrollment.sequence_id,
+                profile_name: enrollment.profile_name ?? 'Un candidat',
+                ...(meetingSessionId ? { qualification_session_id: meetingSessionId } : {}),
+              },
+            });
+            if (meetingNotifErr) console.warn(`[process] Notification de rendez-vous non créée pour ${enrollment.id}:`, meetingNotifErr);
+          }
           console.log(`[process] ⛔ ${enrollment.profile_name} — ${stopReason}`);
           results.skipped++;
           continue;
@@ -1830,6 +1892,8 @@ async function handleProcess(supabase: any, force = false) {
         // de 24h puis sauté « Enrollment inactive » une fois l'inscription en
         // pause. Les autres règles (quotas, heures ouvrées, rotation) restent
         // inchangées et s'appliquent après.
+        // Décision 6 : exception assumée à « aucune pause n'annule d'exécution »
+        // (pause posée par le moteur : étape courante annulée, réarmée à la reprise).
         const gateOrgId = (enrollment.organization_id || enrollment.sequence?.organization_id || null) as string | null;
         if (!gateOrgId) {
           console.warn(`[process] Enrollment ${enrollment.id} sans organisation : gate d'abonnement non applicable`);
@@ -2007,10 +2071,14 @@ async function handleProcess(supabase: any, force = false) {
               // Tous au plafond du jour. Jamais de repli sur le compte de
               // l'inscription (plafond dépassé) : étape bloquée jusqu'au début
               // de la plage d'envoi du lendemain.
+              // Décision 4 : dans le fuseau et à l'heure de début du titulaire
+              // du compte de l'inscription (avant : fuseau de l'inscription, 8 h).
+              const holderStart = await holderSendingStart(supabase, enrollmentOrgId ?? null, senderAccountFor(enrollment, step),
+                (enrollment.created_by as string | null) ?? null, enrollment.user_timezone);
               await supabase.from('sequence_step_executions').update({
                 status: 'quota_blocked',
                 skip_reason: ROTATION_SENDERS_EXHAUSTED_REASON,
-                scheduled_at: quotaBlockedRetryAt('daily', new Date(), enrollment.user_timezone, DEFAULT_USER_QUOTAS.business_hours_start).toISOString(),
+                scheduled_at: quotaBlockedRetryAt('daily', new Date(), holderStart.timezone, holderStart.startHour).toISOString(),
               }).eq('id', exec.id).eq('status', 'scheduled');
               results.quota_blocked++;
               continue;
@@ -2084,7 +2152,8 @@ async function handleProcess(supabase: any, force = false) {
               tracking_data: { ...(unlinkedTracking ?? {}), pause_reason: ACCOUNT_NOT_IN_ORG_REASON },
             });
             // Annulée seulement si la pause a pris (sinon inscription active
-            // sans étape) ; la reprise la réarme une fois le compte relié.
+            // sans étape) ; la reprise la réarme une fois le compte relié
+            // (décision 6 : exception assumée, comme l'abonnement requis).
             if (paused.count > 0) {
               await supabase.from('sequence_step_executions').update({
                 status: 'cancelled', skip_reason: ACCOUNT_NOT_IN_ORG_REASON, updated_at: new Date().toISOString(),
@@ -2460,6 +2529,18 @@ async function handleProcess(supabase: any, force = false) {
             }
 
             if (replyState === 'unknown') {
+              // Décision 7 : refus 403 (le candidat a bloqué le compte),
+              // l'inscription vient de passer en pause 'blocked_by_candidate' :
+              // l'étape gardée conserve sa date et son compteur d'essais
+              // (contrat §1). Même règle pour une pause ou une clôture survenue
+              // pendant la vérification.
+              const { data: afterReplyCheck, error: afterReplyCheckErr } = await supabase
+                .from('sequence_enrollments').select('status').eq('id', enrollment.id).maybeSingle();
+              if (!afterReplyCheckErr && afterReplyCheck && afterReplyCheck.status !== 'active') {
+                console.warn(`[process] ⏸️ PRE-SEND REPLY CHECK : inscription ${enrollment.id} passée '${afterReplyCheck.status}' pendant la vérification, étape ${exec.id} gardée telle quelle`);
+                results.skipped++;
+                continue;
+              }
               // Décision produit : sur un doute, on n'envoie pas. L'exécution est
               // encore 'scheduled' (aucun verrou) : nouvel essai dans 30 min, puis
               // échec explicite après MAX_RETRIES, relance manuelle.
@@ -2619,6 +2700,7 @@ async function handleProcess(supabase: any, force = false) {
         // contrôle « étape déjà envoyée », une étape reportée ou sautée ne
         // consomme plus de place.
         if (ledgerActionType) {
+          const gateStartedAt = Date.now();
           const quotaCheck = await checkQuotaForAction(
             supabase,
             ledgerActionType,
@@ -2644,6 +2726,11 @@ async function handleProcess(supabase: any, force = false) {
             results.quota_blocked++;
             continue;
           }
+          ledgerSlot = {
+            accountId: (effectiveAccountId || enrollment.account_id) as string,
+            actionType: quotaCheck.ledgerActionType ?? ledgerActionType,
+            since: new Date(gateStartedAt - LEDGER_RELEASE_CLOCK_MARGIN_MS).toISOString(),
+          };
         }
 
         const { data: lockResult, error: lockError } = await supabase
@@ -2663,7 +2750,7 @@ async function handleProcess(supabase: any, force = false) {
           .select()
           .single();
 
-        if (lockError || !lockResult) { results.skipped++; continue; }
+        if (lockError || !lockResult) { await releaseSlot(); results.skipped++; continue; }
 
         // SEQ-004 : filet au moment de l'envoi (même contrôle qu'avant le gate
         // quota, relu sous verrou). Une boucle de branche ne renvoie donc
@@ -2673,6 +2760,7 @@ async function handleProcess(supabase: any, force = false) {
           await supabase.from('sequence_step_executions').update({
             status: 'skipped', skip_reason: 'Étape déjà envoyée', executed_at: new Date().toISOString(),
           }).eq('id', exec.id).eq('status', 'sending');
+          await releaseSlot();
           await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
           results.skipped++;
           continue;
@@ -2739,6 +2827,7 @@ async function handleProcess(supabase: any, force = false) {
               results.ai_unavailable++;
             }
             console.warn(`[process] Génération IA indisponible pour ${enrollment.id} étape ${step.id} (essai ${aiRetryCount + 1}${aiDiag.reason ? `, ${aiDiag.reason}` : ''}) : rien n'est envoyé`);
+            await releaseSlot();
             continue;
           }
         }
@@ -2798,6 +2887,7 @@ async function handleProcess(supabase: any, force = false) {
             final_subject: preLockSubject,
             error_message: 'Message vide : rien n\'a été envoyé. Complétez le texte de l\'étape puis relancez-la.',
           }).eq('id', exec.id).eq('status', 'sending');
+          await releaseSlot();
           results.failed++;
           noteSequenceFailure(enrollment.sequence_id);
           continue;
@@ -2840,6 +2930,7 @@ async function handleProcess(supabase: any, force = false) {
               final_subject: finalSubject || null,
               ...(aiWillGenerate ? { tracking_data: withContentOrigin(exec.tracking_data, RESOLVED_CONTENT_ORIGIN) } : {}),
             }).eq('id', exec.id).eq('status', 'sending');
+            await releaseSlot();
             results.skipped++;
             continue;
           }
@@ -2848,6 +2939,7 @@ async function handleProcess(supabase: any, force = false) {
             await supabase.from('sequence_step_executions').update({
               status: 'cancelled', skip_reason: 'Inscription supprimée avant l\'envoi', executed_at: new Date().toISOString(),
             }).eq('id', exec.id).eq('status', 'sending');
+            await releaseSlot();
             results.skipped++;
             continue;
           }
@@ -2862,6 +2954,7 @@ async function handleProcess(supabase: any, force = false) {
               status: 'scheduled', final_message: preLockMessage, final_subject: preLockSubject,
               ...(aiWillGenerate ? { tracking_data: preLockTracking } : {}),
             }).eq('id', exec.id).eq('status', 'sending');
+            await releaseSlot();
             results.skipped++;
             continue;
           }
@@ -2871,6 +2964,7 @@ async function handleProcess(supabase: any, force = false) {
               status: 'cancelled', skip_reason: `Enrollment became ${lastCall.status} before send (last-call check)`,
               executed_at: new Date().toISOString(),
             }).eq('id', exec.id).eq('status', 'sending');
+            await releaseSlot();
             results.skipped++;
             continue;
           }
@@ -2891,6 +2985,8 @@ async function handleProcess(supabase: any, force = false) {
             skip_reason: executeResult.skipReason || `Type d'action non supporté : ${effectiveActionType}`,
             executed_at: new Date().toISOString(),
           }).eq('id', exec.id);
+          // Décision 3 : rien n'est parti (déjà en relation, invitation en attente).
+          await releaseSlot();
           await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
           await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
           results.skipped++;
@@ -3036,6 +3132,11 @@ async function handleProcess(supabase: any, force = false) {
           // Error handling: differentiate rate limits, account disconnections, and other retryable errors
           const currentRetryCount = exec.retry_count || 0;
           const errorStr = executeResult.error || '';
+          // Décision 3 : erreur antérieure à l'envoi (lecture du profil, solde
+          // ou crédits InMail, objet manquant) : rien n'est parti, la place du
+          // plafond est rendue. « Vérifier la connexion » garde la sienne : la
+          // lecture du profil est l'action comptée.
+          if (effectiveActionType !== 'check_connection' && NOT_SENT_ERROR_RE.test(errorStr)) await releaseSlot();
 
           // Signal de limite "dure" côté fournisseur (quota réellement atteint,
           // pas un 429 transitoire) → on met TOUT le compte en pause jusqu'à
@@ -3082,7 +3183,8 @@ async function handleProcess(supabase: any, force = false) {
             }).eq('id', exec.id).eq('status', 'sending');
             console.warn(`[process] ⚠️ Envoi incertain pour ${enrollment.id} (${effectiveActionType}) : pas de relance automatique — ${errorStr}`);
             results.failed++;
-            noteSequenceFailure(enrollment.sequence_id);
+            // Décision 1 : hors taux d'échec de l'auto-pause (une panne
+            // passagère du prestataire n'arrête pas la séquence).
           } else if (isMailboxDisconnectedError(errorStr)) {
             // Boîte e-mail d'envoi inutilisable avant l'envoi (rien n'est
             // parti). Ce n'est pas le compte LinkedIn : ni pause
@@ -3196,7 +3298,9 @@ async function handleProcess(supabase: any, force = false) {
             await supabase.from('sequence_step_executions').update({ status: 'failed', error_message: executeResult.error, executed_at: new Date().toISOString(), final_message: finalMessage || null, final_subject: finalSubject || null }).eq('id', exec.id).eq('status', 'sending');
             results.failed++;
             // Échec propre à ce candidat (profil introuvable) : hors auto-pause de la séquence.
-            if (!executeResult.candidateError) noteSequenceFailure(enrollment.sequence_id);
+            // Décision 2 : lecture du profil impossible (« Vérifier la connexion »,
+            // essais épuisés) non plus, c'est une panne passagère du prestataire.
+            if (!executeResult.candidateError && !errorStr.startsWith('profile_read_unavailable')) noteSequenceFailure(enrollment.sequence_id);
           }
         }
       } catch (err) {
@@ -3343,9 +3447,12 @@ async function handleCheckReplies(supabase: any) {
   // les moins récemment contrôlées d'abord (jamais contrôlées en tête). Avant :
   // 20 lignes arbitraires, toujours les mêmes, dont des inscriptions sans envoi.
   // La séquence jointe sert de repli pour l'organisation (SEQ-006, SEQ-007).
+  // Décision 9 : aussi les inscriptions terminées depuis moins de 14 jours
+  // (réponse à la dernière relance), sauf celles closes par un rendez-vous.
+  const recentlyCompletedSince = new Date(Date.now() - RECENTLY_COMPLETED_REPLY_WINDOW_MS).toISOString();
   const { data: activeEnrollments, error: enrollmentsErr } = await supabase.from('sequence_enrollments')
     .select('*, sequence:outreach_sequences(organization_id), sent_steps:sequence_step_executions!inner(id)')
-    .eq('status', 'active')
+    .or(`status.eq.active,and(status.eq.completed,completed_at.gte.${recentlyCompletedSince},or(tracking_data->>completion_reason.is.null,tracking_data->>completion_reason.neq.meeting_booked))`)
     .in('sent_steps.status', SENT_EXECUTION_STATUSES)
     .order('last_check_at', { ascending: true, nullsFirst: true })
     .limit(20);
@@ -3409,7 +3516,12 @@ async function handleCheckReplies(supabase: any) {
     // SEQ-071 : même clôture que les autres détections. Toutes les étapes en
     // attente sont annulées (attentes et blocages de quota compris, jamais un
     // envoi en cours), la réponse est comptée une seule fois, par la clôture.
-    const closed = await closeEnrollmentAsReplied(supabase, enrollment, null, 'Reply detected');
+    // Décision 9 : une inscription terminée passe « répondu » aussi ; seules
+    // les autres inscriptions du candidat créées avant sa fin sont arrêtées
+    // (contrat §8, comme « Marquer comme ayant répondu »).
+    const closed = enrollment.status === 'completed'
+      ? await closeEnrollmentAsReplied(supabase, enrollment, null, 'Reply detected', ['completed'], siblingStopScope('completed', enrollment.completed_at))
+      : await closeEnrollmentAsReplied(supabase, enrollment, null, 'Reply detected');
     if (!closed.changed) continue; // déjà close entre-temps (webhook) : rien à refaire
     repliesDetected++;
 
@@ -3939,6 +4051,8 @@ function senderAccountFor(
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 30 * 60 * 1000; // 30 minutes (for non-rate-limit retryable errors)
+// Décision 9 : fenêtre de la scrutation de secours pour les inscriptions terminées.
+const RECENTLY_COMPLETED_REPLY_WINDOW_MS = 14 * 24 * 3600 * 1000;
 
 function isRateLimitError(error: string | undefined): boolean {
   if (!error) return false;
@@ -4564,6 +4678,41 @@ async function checkQuotaForAction(supabase: any, actionType: string, accountId:
   }
 }
 
+/**
+ * Décision 3 : une étape arrêtée après le gate quota sans rien envoyer (verrou
+ * perdu, étape déjà partie, texte vide, rédaction IA indisponible, dernier
+ * contrôle avant l'envoi, invitation inutile, erreur antérieure à l'envoi) ne
+ * consomme pas de place du plafond LinkedIn. Le gate journalise l'action au
+ * contrôle, sous verrou par compte (deux cycles ne dépassent jamais le
+ * plafond) ; la ligne est retirée ensuite. C'est la plus récente du compte, du
+ * type et de la source « sequence » depuis le gate (marge d'horloge entre la
+ * fonction et la base) : pour le plafond, retirer l'une ou l'autre de ces
+ * lignes revient au même. Non bloquant : en cas d'échec, la place reste prise.
+ */
+interface LedgerSlot { accountId: string; actionType: string; since: string }
+const LEDGER_RELEASE_CLOCK_MARGIN_MS = 60_000;
+// Erreurs d'executeStepAction antérieures à tout envoi.
+const NOT_SENT_ERROR_RE = /^(profile_read_unavailable|inmail_balance_unavailable|inmail_credits_exhausted|inmail_subject_missing)/i;
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function releaseLedgerSlot(supabase: any, slot: LedgerSlot): Promise<void> {
+  try {
+    const { data, error } = await supabase.from('linkedin_action_log').select('id')
+      .eq('account_id', slot.accountId).eq('action_type', slot.actionType).eq('source', 'sequence')
+      .gte('created_at', slot.since).order('created_at', { ascending: false }).limit(1);
+    if (error) {
+      console.warn(`[process] Place du plafond non rendue (${slot.accountId}, ${slot.actionType}) : journal illisible`, error);
+      return;
+    }
+    const rowId = (data?.[0]?.id ?? null) as string | null;
+    if (!rowId) return;
+    const { error: deleteErr } = await supabase.from('linkedin_action_log').delete().eq('id', rowId);
+    if (deleteErr) console.warn(`[process] Place du plafond non rendue (${slot.accountId}, ${slot.actionType}):`, deleteErr);
+  } catch (e) {
+    console.warn(`[process] Place du plafond non rendue (${slot.accountId}, ${slot.actionType}):`, e);
+  }
+}
+
 // Résultat : true / false (condition remplie ou non), 'wait' (l'événement
 // attendu n'a pas encore eu lieu) ou 'retry' (lecture LinkedIn impossible :
 // l'appelant replanifie au lieu de trancher, SEQ-077 et SEQ-078).
@@ -4821,6 +4970,27 @@ async function resolveSendingTimezone(supabase: any, enrollment: any, step?: { s
     if (owner?.user_id) ownerId = owner.user_id as string;
   }
   return pickSendingTimezone(await loadMemberTimezone(supabase, orgId, ownerId), enrollment.user_timezone);
+}
+
+/**
+ * Décision 4 : fuseau et heure de début de la plage d'envoi du titulaire d'un
+ * compte LinkedIn dans l'organisation (Paramètres), sinon de `fallbackUserId`,
+ * puis le fuseau de l'inscription et l'heure par défaut.
+ */
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
+async function holderSendingStart(supabase: any, orgId: string | null, accountId: string | null | undefined, fallbackUserId: string | null, enrollmentTimezone: string | null | undefined): Promise<{ timezone: string; startHour: number }> {
+  let holderId = fallbackUserId;
+  if (orgId && accountId) {
+    const { data: owner } = await supabase.from('member_linkedin_accounts')
+      .select('user_id').eq('organization_id', orgId).eq('linkedin_account_id', accountId).maybeSingle();
+    if (owner?.user_id) holderId = owner.user_id as string;
+  }
+  const quotas = await getUserQuotas(supabase, holderId, orgId);
+  return {
+    timezone: pickSendingTimezone(await loadMemberTimezone(supabase, orgId, holderId), enrollmentTimezone),
+    startHour: quotas.business_hours_start,
+  };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -5103,6 +5273,36 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
     ? PENDING_EXECUTION_STATUSES
     : [...PENDING_EXECUTION_STATUSES, ...DONE_EXECUTION_STATUSES];
   const guardStepIds: string[] = rankVariants.length > 1 ? rankVariants.map((v) => v.id as string) : [nextStep.id];
+
+  // Décision 5 : une boucle (repli de délai, branche, next_step_id) qui revient
+  // sur une étape d'envoi déjà partie chez ce candidat termine l'inscription.
+  // Avant, elle replanifiait l'étape (sautée « Étape déjà envoyée » à
+  // l'exécution) ou laissait l'inscription active sans étape. Même fin pour un
+  // enchaînement simple vers une étape déjà faite : rien ne peut plus partir
+  // (décision 30 à la reprise). Seulement si rien d'autre n'est en attente :
+  // une planification tardive ne clôt pas une inscription qui avance (l'étape
+  // n'est pas replanifiée pour autant).
+  const nextIsVisibleSend = VISIBLE_SEND_ACTIONS.includes(nextStep.action_type)
+    || nextStep.step_channel === 'email' || nextStep.step_channel === 'whatsapp';
+  if (nextIsVisibleSend || !isExplicitBranchJump) {
+    const { data: rankRows, error: rankErr } = await supabase.from('sequence_step_executions')
+      .select('status, skip_reason').eq('enrollment_id', enrollment.id).in('step_id', guardStepIds);
+    const rows = (rankRows ?? []) as Array<{ status: string; skip_reason?: string | null }>;
+    const alreadyGone = !rankErr && ((nextIsVisibleSend && hasAlreadySentStep(rows))
+      || (!isExplicitBranchJump && rows.some((r) => DONE_EXECUTION_STATUSES.includes(r.status))));
+    if (alreadyGone) {
+      const { data: otherPending, error: pendingErr } = await supabase.from('sequence_step_executions').select('id')
+        .eq('enrollment_id', enrollment.id).in('status', ['scheduled', 'waiting_event', 'quota_blocked']).limit(1);
+      if (!pendingErr && (otherPending ?? []).length === 0) {
+        console.log(`[scheduleNextStep] Étape ${nextStep.id} déjà faite pour ${enrollment.id} (boucle) : inscription terminée`);
+        await completeEnrollmentIfActive(supabase, enrollment.id);
+        return;
+      }
+      console.log(`[scheduleNextStep] Étape ${nextStep.id} déjà faite pour ${enrollment.id}, une autre étape est en attente : rien n'est planifié`);
+      return;
+    }
+  }
+
   const { data: existing } = await supabase.from('sequence_step_executions').select('id, status, step_id').eq('enrollment_id', enrollment.id).in('step_id', guardStepIds).in('status', blockingStatuses);
   if (existing && existing.length > 0) {
     console.log(`[scheduleNextStep] Skipping duplicate: enrollment=${enrollment.id} step=${existing[0].step_id ?? nextStep.id} (existing status=${existing[0].status}, branchJump=${isExplicitBranchJump}, variants=${guardStepIds.length})`);

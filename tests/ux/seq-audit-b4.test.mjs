@@ -247,7 +247,8 @@ test('email-inbound-5 — mail_received ignoré ici : unipile-webhook, filtré, 
   const autoReply = newMail.indexOf('if (isAutoReplyMail(payload, subjectLower, senderEmail)) {');
   const threadMatch = newMail.indexOf('inReplyToCandidates(payload.in_reply_to)');
   assert.ok(bounce > 0 && autoReply > bounce && threadMatch > autoReply, 'filtres avant le rattachement par in_reply_to');
-  assert.match(unipile, /case 'mail_received':[\s\S]{0,400}?await handleNewMail\(supabase, payload\);/);
+  // Décision 10 : la clé de l'événement suit, pour ne prévenir le recruteur qu'une fois.
+  assert.match(unipile, /case 'mail_received':[\s\S]{0,400}?await handleNewMail\(supabase, payload, eventKey\);/);
 });
 
 // ---------------------------------------------------------------- SEQ-100

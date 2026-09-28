@@ -8,6 +8,7 @@ import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscript
 import { inmailQueueRetry } from "../_shared/sequence-send-rules.ts";
 import { siblingEnrollmentsFilter, siblingStopScope } from "../_shared/sequence-engine-rules.ts";
 import { isGdprErasedEnrollment } from "../_shared/sequence-resume.ts";
+import { isCandidateErasedForOrg, linkedInProfileSlug } from "../_shared/get-or-fetch-contact.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,6 +43,17 @@ const PLAN_REQUIRED_MESSAGE = "L'envoi de séquences et d'InMails nécessite un 
 // 'replied' : un InMail envoyé auquel le candidat a répondu reste un contact.
 const DUPLICATE_WINDOW_DAYS = 90;
 const DUPLICATE_STATUSES = ["pending", "scheduled", "sending", "sent", "replied"];
+// Décision 24 : une inscription en séquence de l'organisation compte aussi.
+// Vivante (active, paused) : sans limite de date, comme l'anti-doublon du
+// navigateur. Sinon, quel que soit son statut (arrêtée comprise), créée ou
+// close ces 90 derniers jours. Date de clôture : fin ou réponse, la plus
+// récente ; à défaut la dernière écriture (même règle que la garde
+// sequence_enrollments_same_person_guard).
+const LIVE_ENROLLMENT_STATUSES = ["active", "paused"];
+// Lots de destinataires par lecture des inscriptions (longueur d'URL bornée)
+// et contrôles d'effacement menés en parallèle.
+const RECIPIENT_CHUNK_SIZE = 40;
+const ERASURE_CHECK_CONCURRENCY = 10;
 
 // Compte d'envoi absent de l'organisation de l'item (SEQ-011).
 const ACCOUNT_NOT_IN_ORG_MESSAGE = "Compte non rattaché à l'organisation";
@@ -56,6 +68,14 @@ const CANDIDATE_REPLIED_INMAIL_MESSAGE = "Le candidat a déjà répondu à votre
 // deno-lint-ignore no-explicit-any
 async function subscriptionGateFor(supabase: any, orgId: string): Promise<SubscriptionGate> {
   return await getSubscriptionGate(supabase, orgId);
+}
+
+// Effacement RGPD connu du candidat pour l'organisation (décision 14) :
+// marqueur d'une de ses inscriptions ou registre global. Lève une erreur si
+// une lecture échoue.
+// deno-lint-ignore no-explicit-any
+async function candidateErasedFor(supabase: any, orgId: string, recipientId: string, profileUrl: string | null): Promise<boolean> {
+  return await isCandidateErasedForOrg(supabase, { organizationId: orgId, linkedinIds: [recipientId], linkedinUrl: profileUrl });
 }
 
 /** DSN sans schéma ni barre finale (les URL sont construites en https://${dsn}). */
@@ -282,36 +302,130 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Anti-doublon (SEQ-125) : destinataires déjà en file, en cours d'envoi
-      // ou contactés par InMail par l'organisation ces 90 derniers jours, et
-      // doublons dans la sélection elle-même. Ils sont écartés et renvoyés
-      // pour que l'interface affiche un bilan exact.
+      // Anti-doublon (SEQ-125, décision 24) : destinataires déjà en file, en
+      // cours d'envoi ou contactés par InMail par l'organisation ces 90
+      // derniers jours, inscrits en séquence dans l'organisation (inscription
+      // vivante, ou créée ou close ces 90 derniers jours, arrêtée comprise), et
+      // doublons dans la sélection elle-même, sans dérogation. Candidats
+      // effacés (décision 14) : refusés dès la mise en file, l'envoi l'était
+      // déjà. Tous sont écartés et renvoyés pour que l'interface affiche un
+      // bilan exact.
       const requestedRecipients = [
         ...new Set(items.map((it: any) => it?.recipient_profile_id).filter((v: unknown): v is string => typeof v === "string" && v !== "")),
       ] as string[];
+      // URL de profil facultative (recipient_profile_url) : rapprochement des
+      // inscriptions par slug et lecture du registre global des effacements.
+      const profileUrlOf = new Map<string, string>();
+      for (const it of items as any[]) {
+        const rid = it?.recipient_profile_id;
+        const url = typeof it?.recipient_profile_url === "string" ? it.recipient_profile_url.trim() : "";
+        if (typeof rid === "string" && rid && url && !profileUrlOf.has(rid)) profileUrlOf.set(rid, url);
+      }
       const alreadyContacted = new Set<string>();
+      const erasedRecipients = new Set<string>();
       if (callerOrgId && requestedRecipients.length > 0) {
-        const since = new Date(Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
+        const orgId = callerOrgId;
+        const sinceMs = Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 3600 * 1000;
+        const since = new Date(sinceMs).toISOString();
         const { data: existingRows, error: dupErr } = await supabase
           .from("inmail_queue")
           .select("recipient_profile_id")
-          .eq("organization_id", callerOrgId)
+          .eq("organization_id", orgId)
           .in("recipient_profile_id", requestedRecipients)
           .in("status", DUPLICATE_STATUSES)
           .gte("created_at", since);
         if (dupErr) throw dupErr;
         for (const row of (existingRows || []) as Array<{ recipient_profile_id: string }>) alreadyContacted.add(row.recipient_profile_id);
+
+        // Inscriptions de l'organisation, quel que soit l'identifiant
+        // enregistré (profile_id, provider_id, resolved_profile_id) ou par
+        // slug exact quand l'URL est fournie. Lecture impossible : rien n'est
+        // mis en file.
+        let enrollmentsUnreadable = false;
+        for (let i = 0; i < requestedRecipients.length; i += RECIPIENT_CHUNK_SIZE) {
+          const chunk = requestedRecipients.slice(i, i + RECIPIENT_CHUNK_SIZE);
+          const slugOf = new Map<string, string>();
+          for (const rid of chunk) {
+            const slug = linkedInProfileSlug(profileUrlOf.get(rid));
+            if (slug && /^[a-z0-9\-_.%~]+$/i.test(slug)) slugOf.set(rid, slug);
+          }
+          const filters = [
+            siblingEnrollmentsFilter(chunk),
+            ...[...new Set(slugOf.values())].map((slug) => `profile_url.ilike.*/in/${slug}*`),
+          ].filter((f): f is string => !!f);
+          if (filters.length === 0) continue;
+          const { data: enrollments, error: enrErr } = await supabase
+            .from("sequence_enrollments")
+            .select("profile_id, provider_id, resolved_profile_id, profile_url, status, created_at, completed_at, replied_at, updated_at")
+            .eq("organization_id", orgId)
+            .or(filters.join(","));
+          if (enrErr) {
+            console.warn("[process-inmail-queue] enrollments unreadable at enqueue:", enrErr.message);
+            enrollmentsUnreadable = true;
+            break;
+          }
+          for (const e of (enrollments ?? []) as Array<{
+            profile_id: string | null; provider_id: string | null; resolved_profile_id: string | null;
+            profile_url: string | null; status: string; created_at: string;
+            completed_at: string | null; replied_at: string | null; updated_at: string | null;
+          }>) {
+            const closings = [e.completed_at, e.replied_at].map((d) => (d ? Date.parse(d) : NaN)).filter(Number.isFinite);
+            const closedAt = closings.length > 0 ? Math.max(...closings) : Date.parse(e.updated_at ?? "");
+            if (!LIVE_ENROLLMENT_STATUSES.includes(e.status) && !(Date.parse(e.created_at) >= sinceMs) && !(closedAt >= sinceMs)) continue;
+            const slug = linkedInProfileSlug(e.profile_url);
+            for (const rid of chunk) {
+              if (rid === e.profile_id || rid === e.provider_id || rid === e.resolved_profile_id
+                || (!!slug && slugOf.get(rid) === slug)) alreadyContacted.add(rid);
+            }
+          }
+        }
+        if (enrollmentsUnreadable) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "DUPLICATE_CHECK_FAILED",
+              message: "Vérification des contacts récents de votre organisation momentanément impossible : réessayez dans un instant.",
+            }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        try {
+          for (let i = 0; i < requestedRecipients.length; i += ERASURE_CHECK_CONCURRENCY) {
+            const chunk = requestedRecipients.slice(i, i + ERASURE_CHECK_CONCURRENCY);
+            const erased = await Promise.all(chunk.map((rid) => candidateErasedFor(supabase, orgId, rid, profileUrlOf.get(rid) ?? null)));
+            chunk.forEach((rid, k) => { if (erased[k]) erasedRecipients.add(rid); });
+          }
+        } catch (erasureErr) {
+          console.warn("[process-inmail-queue] erasure check failed at enqueue:", erasureErr);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "ERASURE_CHECK_FAILED",
+              message: "Vérification des demandes d'effacement momentanément impossible : réessayez dans un instant.",
+            }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
       }
       const seenInBatch = new Set<string>();
       const freshItems = items.filter((it: any) => {
         const rid = it?.recipient_profile_id;
-        if (!rid || alreadyContacted.has(rid) || seenInBatch.has(rid)) return false;
+        if (!rid || erasedRecipients.has(rid) || alreadyContacted.has(rid) || seenInBatch.has(rid)) return false;
         seenInBatch.add(rid);
         return true;
       });
-      const skippedRecipients = [...new Set(items
-        .map((it: any) => it?.recipient_profile_id)
-        .filter((rid: unknown): rid is string => typeof rid === "string" && alreadyContacted.has(rid)))];
+      // Un candidat effacé est compté comme tel, jamais comme doublon.
+      const erasedSkipped = requestedRecipients.filter((rid) => erasedRecipients.has(rid));
+      const skippedRecipients = requestedRecipients.filter((rid) => !erasedRecipients.has(rid) && alreadyContacted.has(rid));
+      const exclusions = [
+        skippedRecipients.length > 0
+          ? `${skippedRecipients.length} candidat${skippedRecipients.length > 1 ? "s" : ""} déjà contacté${skippedRecipients.length > 1 ? "s" : ""} ces 90 derniers jours, exclu${skippedRecipients.length > 1 ? "s" : ""}`
+          : null,
+        erasedSkipped.length > 0
+          ? `${erasedSkipped.length} candidat${erasedSkipped.length > 1 ? "s" : ""} ayant demandé l'effacement de ${erasedSkipped.length > 1 ? "leurs" : "ses"} données, exclu${erasedSkipped.length > 1 ? "s" : ""}`
+          : null,
+      ].filter((part): part is string => !!part);
       if (freshItems.length === 0) {
         return new Response(
           JSON.stringify({
@@ -319,7 +433,11 @@ Deno.serve(async (req: Request) => {
             queued: 0,
             skipped_duplicates: skippedRecipients.length,
             skipped_recipient_ids: skippedRecipients,
-            message: "Aucun InMail planifié : ces candidats ont déjà un InMail en file ou ont été contactés par votre organisation ces 90 derniers jours.",
+            skipped_erased: erasedSkipped.length,
+            skipped_erased_ids: erasedSkipped,
+            message: erasedSkipped.length === 0
+              ? "Aucun InMail planifié : ces candidats ont déjà un InMail en file, ou ont été inscrits en séquence ou contactés par votre organisation ces 90 derniers jours."
+              : `Aucun InMail planifié : ${exclusions.join(" ; ")}.`,
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
@@ -395,15 +513,16 @@ Deno.serve(async (req: Request) => {
       if (error) throw error;
 
       const queuedCount = data?.length || 0;
-      const skippedCount = skippedRecipients.length;
       return new Response(
         JSON.stringify({
           success: true,
           queued: queuedCount,
-          skipped_duplicates: skippedCount,
+          skipped_duplicates: skippedRecipients.length,
           skipped_recipient_ids: skippedRecipients,
+          skipped_erased: erasedSkipped.length,
+          skipped_erased_ids: erasedSkipped,
           message: `${queuedCount} InMail${queuedCount > 1 ? "s" : ""} planifié${queuedCount > 1 ? "s" : ""}`
-            + (skippedCount > 0 ? ` ; ${skippedCount} candidat${skippedCount > 1 ? "s" : ""} déjà contacté${skippedCount > 1 ? "s" : ""} ces 90 derniers jours, exclu${skippedCount > 1 ? "s" : ""}` : ""),
+            + exclusions.map((part) => ` ; ${part}`).join(""),
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -499,8 +618,10 @@ Deno.serve(async (req: Request) => {
       // (inscription « répondu » après la création de la ligne), ni après une
       // réponse à un autre InMail de l'organisation (fenêtre de l'anti-doublon,
       // ou réponse postérieure à la mise en file). Une réponse en séquence
-      // antérieure à la mise en file n'annule rien : la dérogation « Contacter
-      // quand même » donnée par un administrateur reste valable. Même portée
+      // antérieure à la mise en file n'annule rien : la mise en file écarte
+      // déjà toute inscription créée, close ou répondue ces 90 derniers jours
+      // (décision 24), une réponse plus ancienne n'interdit pas un nouveau
+      // contact. Même portée
       // que la clôture (contrat §8) : une inscription terminée puis marquée
       // « répondu » n'arrête que les InMails mis en file avant sa fin.
       const recipientStopReason = async (item: InMailQueueItem, orgId: string): Promise<

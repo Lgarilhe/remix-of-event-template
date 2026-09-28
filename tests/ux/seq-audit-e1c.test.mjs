@@ -95,7 +95,8 @@ test('SEQ-155 — aucun expéditeur disponible : étape bloquée jusqu\'au lende
   const noSender = slice(rotation, "if (unavailable?.kind === 'block_until_tomorrow') {", 'continue;');
   assert.match(noSender, /status: 'quota_blocked'/);
   assert.match(noSender, /skip_reason: ROTATION_SENDERS_EXHAUSTED_REASON/);
-  assert.match(noSender, /quotaBlockedRetryAt\('daily', new Date\(\), enrollment\.user_timezone, DEFAULT_USER_QUOTAS\.business_hours_start\)/);
+  // Décision 4 : lendemain dans le fuseau et à l'heure de début du titulaire (avant : fuseau de l'inscription, 8 h).
+  assert.match(noSender, /quotaBlockedRetryAt\('daily', new Date\(\), holderStart\.timezone, holderStart\.startHour\)/);
   assert.match(noSender, /\.eq\('status', 'scheduled'\)/);
   assert.match(noSender, /results\.quota_blocked\+\+/);
   // Repli sur le compte de l'inscription (contrôlé ensuite par SEQ-010) seulement
@@ -137,7 +138,8 @@ test('SEQ-121 — crédits InMail épuisés à l\'envoi : bloquée jusqu\'au len
   const retryableAt = errorBlock.indexOf('isRetryableError(errorStr)');
   assert.ok(creditsAt !== -1 && creditsAt < retryableAt, 'avant la relance générique à 30 min');
   // Échec propre au candidat : hors auto-pause (déjà en place).
-  assert.match(errorBlock, /if \(!executeResult\.candidateError\) noteSequenceFailure\(enrollment\.sequence_id\);/);
+  // Décision 2 : la lecture de profil impossible est aussi hors auto-pause.
+  assert.match(errorBlock, /if \(!executeResult\.candidateError && !errorStr\.startsWith\('profile_read_unavailable'\)\) noteSequenceFailure\(enrollment\.sequence_id\);/);
 });
 
 // ---------------------------------------------------------------- n°13 SEQ-092 (E3)

@@ -171,7 +171,8 @@ test('front-editor-list-2 / integration-3 — collaborateur : les pauses des aut
     togglingId: null, canEdit: () => true, readOnlyHint: () => '', deactivationLocked: () => false,
     COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {}, setToggleConfirm: () => {},
     deactivateSequence: async () => assert.fail('pas de désactivation'),
-    canSendSequences: true, navigate: () => {},
+    // Décision 32 : état d'abonnement lu.
+    canSendSequences: true, planStateUnknown: false, navigate: () => {},
     isCollaborator: true, userId: 'u1',
     setActivateConfirm: (value) => { confirm = value; },
     activateSequence: async () => assert.fail('confirmation attendue'),
@@ -188,7 +189,8 @@ test('front-editor-list-2 / integration-3 — collaborateur : les pauses des aut
     supabase: admin.supabase, toast, console: quiet, SEQUENCE_LEVEL_PAUSE_REASONS,
     togglingId: null, canEdit: () => true, readOnlyHint: () => '', deactivationLocked: () => false,
     COLLABORATOR_DEACTIVATION_HINT: '', setTogglingId: () => {}, setToggleConfirm: () => {},
-    deactivateSequence: async () => {}, canSendSequences: true, navigate: () => {},
+    // Décision 32 : état d'abonnement lu.
+    deactivateSequence: async () => {}, canSendSequences: true, planStateUnknown: false, navigate: () => {},
     isCollaborator: false, userId: 'u1',
     setActivateConfirm: (value) => { adminConfirm = value; }, activateSequence: async () => {},
   });

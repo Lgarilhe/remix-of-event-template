@@ -544,7 +544,7 @@ test.describe('Réponse : premier passage en échec puis rejeu', () => {
   test.describe('echec-persistant-soeurs-non-masque', () => {
     test.describe.configure({ mode: 'serial' });
     // echec-persistant-soeurs-non-masque (SEQ-040, SEQ-212)
-    test('tant que la sœur n’est pas arrêtée, un rejeu ne répond pas 200 en silence (500 maintenu, ou alerte au recruteur)', async () => {
+    test('tant que la sœur n’est pas arrêtée, un rejeu ne répond pas 200 en silence (500 maintenu et alerte au recruteur)', async () => {
       const s = await seedS('E2E RR échec persistant');
       await sentThenFollowUp(s.org, s.e1, s.q1.steps);
       await sentThenFollowUp(s.org, s.e2, s.q2.steps);
@@ -557,11 +557,9 @@ test.describe('Réponse : premier passage en échec puis rejeu', () => {
       const e2 = await enr(s.e2);
       expect(e2.status, 'panne toujours active : E2 n’a pas pu être arrêtée').toBe('active');
       const alerts = (await notificationsOf(s.org.orgId)).filter((n) => n.type !== 'new_message');
-      // DÉFAUT echec-persistant-soeurs-masque : au rejeu E1 est introuvable, l'étape des sœurs est sautée et le webhook répond 200 success sans alerte.
-      expect(
-        replay.status === 500 || alerts.length > 0,
-        `rejeu : ${replay.status} ${JSON.stringify(replay.body)} ; alertes : ${JSON.stringify(alerts)}`,
-      ).toBe(true);
+      // Décision 10 : les deux, 500 pour le rejeu et une seule alerte au recruteur.
+      expect(replay.status, `rejeu : ${replay.status} ${JSON.stringify(replay.body)}`).toBe(500);
+      expect(alerts, `alertes : ${JSON.stringify(alerts)}`).toHaveLength(1);
     });
   });
 });

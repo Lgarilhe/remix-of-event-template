@@ -7,6 +7,8 @@
  *   - Mission/job rattaché
  *   - Historique dépliable des étapes
  *   - Actions inline : Mettre en pause / Reprendre / Marquer comme répondu
+ *     (un collaborateur ne les voit que sur les candidats qu'il a inscrits,
+ *     comme dans le suivi des inscrits)
  *
  * Source : useCandidateEnrollments (pause locale sans toucher aux étapes,
  * reprise et « a répondu » par les actions serveur de process-sequences).
@@ -15,6 +17,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCandidateEnrollments, CandidateEnrollment } from '@/hooks/useCandidateEnrollments';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import {
   executionDoneVerb,
   executionStatusLabel,
@@ -24,6 +28,7 @@ import {
   isHiddenActionType,
   isSentExecutionStatus,
   isSequencePauseResumable,
+  OTHER_MEMBER_RESUME_HINT,
   SEQUENCE_ACTIVE_AGAIN_HINT,
   shouldShowExecutionError,
 } from '@/lib/sequenceErrorMessages';
@@ -111,6 +116,11 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
   const [confirmStop, setConfirmStop] = useState<CandidateEnrollment | null>(null);
   const [confirmResume, setConfirmResume] = useState<CandidateEnrollment | null>(null);
   const [confirmReply, setConfirmReply] = useState<CandidateEnrollment | null>(null);
+  // Décision 31 : même règle que le suivi des inscrits et le serveur, un
+  // collaborateur n'agit que sur les inscriptions qu'il a créées.
+  const { isCollaborator } = useOrganization();
+  const { user } = useAuthReady();
+  const userId = user?.id ?? null;
 
   const toggleExpanded = (id: string) => {
     setExpanded(prev => {
@@ -179,6 +189,7 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
           enrollment={enrollment}
           isExpanded={expanded.has(enrollment.id)}
           isBusy={pendingId === enrollment.id}
+          ownRow={!isCollaborator || (!!userId && enrollment.created_by === userId)}
           onToggleExpand={() => toggleExpanded(enrollment.id)}
           onShowError={() => expand(enrollment.id)}
           onStop={() => setConfirmStop(enrollment)}
@@ -270,11 +281,13 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
 // ─── EnrollmentCard ──────────────────────────────────────────────────
 
 function EnrollmentCard({
-  enrollment, isExpanded, isBusy, onToggleExpand, onShowError, onStop, onResume, onMarkReplied, compact,
+  enrollment, isExpanded, isBusy, ownRow, onToggleExpand, onShowError, onStop, onResume, onMarkReplied, compact,
 }: {
   enrollment: CandidateEnrollment;
   isExpanded: boolean;
   isBusy: boolean;
+  /** Faux pour un collaborateur sur l'inscription d'un autre membre : consultation seule. */
+  ownRow: boolean;
   onToggleExpand: () => void;
   onShowError: () => void;
   onStop: () => void;
@@ -291,13 +304,16 @@ function EnrollmentCard({
   // Pause de séquence (désactivation, auto-pause) restée alors que la séquence
   // est de nouveau active : se reprend ici, comme dans le suivi des inscrits.
   const sequencePauseResumable = isSequencePauseResumable(enrollment.status, enrollment.pause_reason, enrollment.sequence_active);
-  const pauseHint = gdprErased
-    ? GDPR_ERASED_NOTICE
-    : isPaused ? (sequencePauseResumable ? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint(enrollment.pause_reason)) : null;
   const pauseReason = enrollment.pause_reason;
   // Une pause sans raison est une pause posée avant l'introduction des raisons :
   // on la traite comme une pause manuelle.
-  const canResume = isPaused && !gdprErased && (!pauseReason || RESUMABLE_PAUSE_REASONS.has(pauseReason) || sequencePauseResumable);
+  const resumable = isPaused && !gdprErased && (!pauseReason || RESUMABLE_PAUSE_REASONS.has(pauseReason) || sequencePauseResumable);
+  const canResume = resumable && ownRow;
+  const pauseHint = gdprErased
+    ? GDPR_ERASED_NOTICE
+    : resumable && !ownRow
+      ? OTHER_MEMBER_RESUME_HINT
+      : isPaused ? (sequencePauseResumable ? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint(enrollment.pause_reason)) : null;
 
   const sentCount = enrollment.sent_count;
 
@@ -361,7 +377,7 @@ function EnrollmentCard({
 
         {/* Actions menu */}
         <div className="flex items-center gap-1 shrink-0">
-          {isActive && (
+          {isActive && ownRow && (
             <Button
               variant="outline"
               size="sm"
@@ -418,7 +434,7 @@ function EnrollmentCard({
                   Reprendre la séquence
                 </DropdownMenuItem>
               )}
-              {(isActive || isPaused) && (
+              {(isActive || isPaused) && ownRow && (
                 <DropdownMenuItem onClick={onMarkReplied}>
                   <MessageCircle className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                   Marquer comme ayant répondu

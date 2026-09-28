@@ -97,7 +97,8 @@ test('SEQ-150 / SEQ-154 — l’éditeur connaît les candidats en cours et le d
   assert.match(list, /canSendSequences=\{canSendSequences\}/);
   assert.match(body(list, 'handleEdit'), /setEditingActiveCount\(activeError \? undefined : \(activeNow \?\? 0\)\)/);
   const save = body(list, 'handleSaveSequence');
-  assert.match(save, /const createInactiveForPlan = !sequence\.id && sequence\.isActive && !canSendSequences;/);
+  // Décision 32 : abonnement pas encore lu, la séquence est aussi créée désactivée.
+  assert.match(save, /const createInactiveForPlan = !sequence\.id && sequence\.isActive && \(!canSendSequences \|\| planStateUnknown\);/);
   assert.match(save, /is_active: sequence\.isActive && !createInactiveForPlan,/);
   // En modification, l'interrupteur (pause et reprise des candidats) reste seul à écrire is_active.
   const update = save.slice(save.indexOf(".from('outreach_sequences')\n          .update({"), save.indexOf(".eq('id', sequence.id);"));

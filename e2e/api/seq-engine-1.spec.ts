@@ -674,7 +674,8 @@ test.describe('@critical Gardes avant envoi', () => {
     await runCycle();
 
     const d = await execRow(due);
-    expect(d?.status).toBe('skipped');
+    // Décision 28 : l'étape arrêtée par une condition d'arrêt est annulée (avant : sautée).
+    expect(d?.status).toBe('cancelled');
     expect(d?.skip_reason).toBe('Stop condition: unsubscribed');
     const enr = await enrollmentFull(enrollmentId);
     expect(enr?.status).toBe('completed');

@@ -11,13 +11,9 @@
  * fois), SEQ-212 (une réponse arrête toutes les séquences du candidat dans
  * l'organisation), SEQ-220 (la relance garde la date de réponse).
  *
- * Hors assertions (décision produit à acter, voir le rapport du lot) : faut-il
- * que le webhook passe une inscription 'completed' en 'replied', compte la
- * réponse et mette le pipeline à jour ? Le code actuel ne lit l'inscription
- * terminée que pour la notification. Les tests ci-dessous n'affirment que ce
- * qui tient quelle que soit cette décision ; la réponse tardive est
- * « enregistrée » par « Marquer comme ayant répondu », seul chemin qui accepte
- * aujourd'hui une inscription terminée.
+ * Décision produit 8 (tranchée) : le webhook passe l'inscription 'completed'
+ * en 'replied', compte la réponse et met le pipeline à jour, comme « Marquer
+ * comme ayant répondu » (tests dédiés : e2e/api/seq-decisions-reply.spec.ts).
  *
  * Harnais : moteur et webhook servis par la stack locale (e2e/local-stack),
  * LinkedIn et l'IA simulés par vendor-mock.mjs. `force: true` lève la fenêtre
@@ -256,7 +252,8 @@ isolated('completed-reply-no-send-no-restart',
 
     expect(await execsOf(s.enrollmentId), 'exécutions identiques, aucune nouvelle ligne').toEqual(before);
     const row = await enr(s.enrollmentId);
-    expect(['completed', 'replied'], `statut après la réponse : ${row.status}`).toContain(row.status);
+    // Décision 8 : l'inscription terminée passe « A répondu ».
+    expect(row.status, `statut après la réponse : ${row.status}`).toBe('replied');
     expect(row.pause_reason).toBeNull();
     expect(ts(row.completed_at), 'date de fin conservée').toBe(ts(s.completedAt));
 
@@ -267,11 +264,11 @@ isolated('completed-reply-no-send-no-restart',
     expect(await execsOf(s.enrollmentId), 'toujours aucune exécution nouvelle après le cycle').toEqual(before);
     const after = await enr(s.enrollmentId);
     expect(after.status, 'jamais réactivée').not.toBe('active');
-    expect(['completed', 'replied']).toContain(after.status);
+    // Décision 8 : « A répondu » après le cycle aussi.
+    expect(after.status).toBe('replied');
   });
 
-// completed-reply-counted-once (SEQ-191) : « au plus une fois ». Le « exactement
-// une fois » dépend de la décision produit sur la réponse tardive (rapport).
+// completed-reply-counted-once (SEQ-191) : exactement une fois (décision 8).
 isolated('completed-reply-counted-once',
   'réponse tardive puis second message du même candidat : la réponse n’est jamais comptée plus d’une fois sur la séquence',
   async () => {
@@ -282,7 +279,8 @@ isolated('completed-reply-counted-once',
 
     await webhook(replyFrom(s.accountId, s.profileId, { chatId }));
     const afterFirst = await repliesOf(s.sequenceId);
-    expect(afterFirst - initial, 'premier message : au plus +1').toBeLessThanOrEqual(1);
+    // Décision 8 : la réponse tardive est comptée.
+    expect(afterFirst - initial, 'premier message : +1').toBe(1);
 
     await webhook(replyFrom(s.accountId, s.profileId, { chatId }));
     expect(await repliesOf(s.sequenceId), 'second message du même candidat : aucun recomptage').toBe(afterFirst);
@@ -577,8 +575,8 @@ isolated('completed-mark-replied-roles',
   });
 
 // completed-reply-re-enroll-tracking (SEQ-004, SEQ-220). La réponse tardive est
-// enregistrée par « Marquer comme ayant répondu » (le webhook ne l'enregistre
-// pas aujourd'hui : décision produit, voir le rapport).
+// enregistrée par « Marquer comme ayant répondu » (le webhook le fait aussi
+// depuis la décision 8).
 isolated('completed-reply-re-enroll-tracking',
   'réponse tardive enregistrée puis « Relancer depuis l’étape suivante » : date de réponse gardée dans previous_replied_at, re_enrolled_at posé, étape suivante programmée selon son délai',
   async () => {

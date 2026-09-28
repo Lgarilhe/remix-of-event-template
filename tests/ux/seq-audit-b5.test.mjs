@@ -110,7 +110,9 @@ test('SEQ-012 — réponse LinkedIn ou e-mail : les inscriptions en pause sont c
   // Clôture : pause_reason effacée, et seulement si l'inscription était ouverte.
   const close = sliceBetween(newMessage, "status: 'replied',", ".select('id')");
   assert.match(close, /pause_reason: null,/);
-  assert.match(close, /\.in\('status', OPEN_ENROLLMENT_STATUSES\)/);
+  // Décision 8 : clôture partagée avec la réponse tardive, statuts de départ passés par l'appelant.
+  assert.match(close, /\.in\('status', fromStatuses\)/);
+  assert.match(newMessage, /await recordReply\(enrollment, OPEN_ENROLLMENT_STATUSES\)/);
   // La recherche « passée » (notification seule) ne contient plus 'paused'.
   assert.doesNotMatch(newMessage, /\['replied', 'completed', 'paused'\]/);
   // E-mail : même élargissement (repli par adresse).
@@ -377,7 +379,8 @@ test('SEQ-116 — purge RGPD : inscriptions closes et InMails terminés, jamais 
 
 test('SEQ-190 / SEQ-191 — garde de statut : réarmement et clôture conditionnés', () => {
   assert.match(newRelation, /\.update\(\{ status: 'scheduled', scheduled_at: new Date\(\)\.toISOString\(\) \}\)\s*\.eq\('id', waitStep\.id\)\s*\.in\('status', \['waiting_event', 'scheduled'\]\)/);
-  assert.match(newMessage, /if \(!changed \|\| changed\.length === 0\) continue;\s*closedEnrollments\.push\(enrollment\);/);
+  // Décision 8 : la clôture est une fonction partagée (return au lieu de continue).
+  assert.match(newMessage, /if \(!changed \|\| changed\.length === 0\) return;\s*closedEnrollments\.push\(enrollment\);/);
 });
 
 test('SEQ-208 / SEQ-210 / SEQ-211 / SEQ-212 / SEQ-213', () => {

@@ -869,8 +869,8 @@ END $$;
 -- compte d'une inscription existante doit aussi être refusé (HINT
 -- ENROLL_ACCOUNT_OF_OTHER_MEMBER), et l'expéditeur de rotation
 -- (assigned_sender_id, prioritaire sur account_id à l'envoi) n'est écrit que
--- par le moteur (HINT ASSIGNED_SENDER_SERVER_ONLY). L'insertion serveur sans
--- auteur attend une décision produit (constat en NOTICE).
+-- par le moteur (HINT ASSIGNED_SENDER_SERVER_ONLY). Décision 20 : l'insertion
+-- serveur sans auteur depuis le compte relié d'un membre est refusée.
 -- ---------------------------------------------------------------------
 DO $$
 DECLARE
@@ -1009,13 +1009,17 @@ BEGIN
   END;
 
   -- (b) chemin serveur sans auteur, depuis le compte relié d'un membre.
-  -- décision produit en attente : une inscription serveur sans auteur (created_by NULL) doit-elle être refusée ? Constat en NOTICE, hors échecs.
+  -- Décision 20 : refus (migration 20260928055804), plus un simple constat en NOTICE.
+  c := c + 1;
   BEGIN
     INSERT INTO public.sequence_enrollments (sequence_id, account_id, profile_id, organization_id, created_by, status)
     VALUES (seq_a, 'seqdb-acc-owner', 'seqdb-prof-gnull', org_a, NULL, 'active');
-    RAISE NOTICE 'seq-db-garde-compte-auteur-absent (décision produit en attente) : inscription serveur sans auteur depuis le compte relié d''un membre acceptée';
+    f := f || '[DÉFAUT seq-db-garde-compte-auteur-absent : inscription serveur sans auteur depuis le compte relié d''un membre acceptée] ';
   EXCEPTION WHEN insufficient_privilege THEN
-    RAISE NOTICE 'seq-db-garde-compte-auteur-absent (décision produit en attente) : inscription serveur sans auteur refusée';
+    GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT;
+    IF v_hint IS DISTINCT FROM 'ENROLL_ACCOUNT_OF_OTHER_MEMBER' THEN
+      f := f || format('[auteur absent : refus sans le HINT ENROLL_ACCOUNT_OF_OTHER_MEMBER (%s)] ', v_hint);
+    END IF;
   WHEN OTHERS THEN f := f || format('[auteur absent : %s (%s)] ', SQLERRM, SQLSTATE);
   END;
 

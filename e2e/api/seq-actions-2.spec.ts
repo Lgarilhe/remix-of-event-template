@@ -877,14 +877,14 @@ test.describe('Assistant : approbation', () => {
 
     // 3. Double clic du proposant : une seule exécution.
     const [first, second] = await Promise.all([approve(a1Token, byA1), approve(a1Token, byA1)]);
-    // Résultat d'exécution : direct au premier clic ; le clic rejoué sur une
-    // ligne déjà exécutée renvoie la ligne relue (real_result, enveloppé dans data).
+    // Résultat d'exécution : direct au premier clic.
     const pausedIn = (r: { body: ToolResponse }) => r.body.data?.paused_enrollments ?? r.body.data?.data?.paused_enrollments;
     expect([first, second].some((r) => r.body.success && pausedIn(r) === 2), JSON.stringify([first.body, second.body])).toBe(true);
+    // Décision 33 : l'autre clic est refusé (« déjà en cours », ou « déjà traitée » s'il arrive après l'exécution), jamais un second succès.
+    expect([first, second].filter((r) => r.body.success === true), JSON.stringify([first.body, second.body])).toHaveLength(1);
     for (const r of [first, second]) {
-      // L'autre clic : « déjà en cours » ou le même résultat relu (idempotence), jamais une seconde exécution (0 candidat).
       expect(
-        (r.body.success === true && pausedIn(r) === 2) || /déjà en cours ou déjà traitée/.test(String(r.body.error)),
+        (r.body.success === true && pausedIn(r) === 2) || /^Action déjà (en cours ou déjà )?traitée$/.test(String(r.body.error)),
         JSON.stringify(r.body),
       ).toBe(true);
     }

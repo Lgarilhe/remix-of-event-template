@@ -532,16 +532,10 @@ test.describe('InMail groupé : mise en file et envoi', () => {
   });
 
   // file-refuse-candidat-efface-rgpd
-  // Attente réfutée (inmail-file-candidat-efface) : D5 tel que décidé interdit
-  // la reprise et la relance d'une inscription effacée ; refuser une nouvelle
-  // mise en file n'est écrit nulle part (décision produit à prendre, avec les
-  // nouvelles inscriptions). Ce qui est garanti : rien ne part vers le candidat
-  // effacé, la ligne éventuellement mise en file est annulée au traitement par
-  // le dernier contrôle de process-inmail-queue.
-  test('un InMail mis en file après l’effacement (RGPD) d’un candidat de l’organisation ne part jamais : annulé au traitement', async () => {
-    const tz = sendingTimezone();
+  // Décision 14 : la mise en file refuse le candidat effacé (avant : ligne
+  // acceptée puis annulée au traitement par le dernier contrôle).
+  test('un candidat effacé (RGPD) dans l’organisation est refusé dès la mise en file : aucune ligne, aucun envoi', async () => {
     const { org, accountId } = await newSendingOrg('E2E InMailX file RGPD');
-    await openSendingHours(org.orgId, org.owner.userId);
     const slug = `camille-efface-${rand()}`;
     const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour']);
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, {
@@ -553,22 +547,17 @@ test.describe('InMail groupé : mise en file et envoi', () => {
 
     const res = await callFunction('process-inmail-queue', await ownerToken(org), {
       action: 'queue',
-      user_timezone: tz,
+      user_timezone: 'Europe/Paris',
       items: [{ account_id: accountId, recipient_profile_id: profileId, recipient_name: 'Camille Martin', subject: 'Nouvelle opportunité', message: 'Bonjour', network_distance: 2 }],
     });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
+    // Décision 14 : refusé à la mise en file, compté comme effacé (pas comme doublon).
+    expect(res.body.queued, JSON.stringify(res.body)).toBe(0);
+    expect(res.body.skipped_erased).toBe(1);
+    expect(res.body.skipped_erased_ids).toEqual([profileId]);
     const { data: rows } = await admin().from('inmail_queue').select('id').eq('organization_id', org.orgId).eq('recipient_profile_id', profileId);
-    const ids = ((rows ?? []) as Array<{ id: string }>).map((r) => r.id);
-    for (const id of ids) await makeDue(id);
-
-    await processUntilHandled(ids);
-
+    expect(rows ?? [], 'aucune ligne en file').toEqual([]);
     expect(await inmailSends(accountId), 'aucun InMail vers un candidat effacé').toEqual([]);
-    for (const id of ids) {
-      const row = await inmailRow(id);
-      expect(row.status, 'InMail annulé').toBe('cancelled');
-      expect(row.error_message).toBe('Effacement des données demandé');
-    }
   });
 
   // envoi-saute-si-inmail-repondu

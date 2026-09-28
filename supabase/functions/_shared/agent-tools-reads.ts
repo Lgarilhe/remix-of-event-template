@@ -6,15 +6,18 @@
 //
 // ⚠️ ctx.adminClient = service-role (bypass RLS). Le cloisonnement par RÔLE
 // est donc appliqué EXPLICITEMENT ici (décision produit "selon le rôle") :
-//   - owner / admin       → toutes les missions & candidats de l'org
-//   - collaborator (autre) → uniquement ses missions (created_by = lui
+//   - owner / admin / member → toutes les missions & candidats de l'org
+//     (décision 16 : un membre a les mêmes droits que dans l'interface)
+//   - collaborator (autre)   → uniquement ses missions (created_by = lui
 //     OU membre de mission_team)
+// Réservés à owner / admin, comme dans l'interface : solde de crédits
+// détaillé et actions de l'assistant de toute l'organisation.
 // ============================================================================
 
 import type { AgentTool, ToolContext } from './agent-tools.ts';
 import { registerTool } from './agent-tools.ts';
 
-type OrgRole = 'owner' | 'admin' | 'collaborator';
+type OrgRole = 'owner' | 'admin' | 'member' | 'collaborator';
 
 async function resolveRole(ctx: ToolContext): Promise<OrgRole> {
   const { data } = await ctx.adminClient
@@ -24,10 +27,13 @@ async function resolveRole(ctx: ToolContext): Promise<OrgRole> {
     .eq('user_id', ctx.userId)
     .maybeSingle();
   const r = String((data as { role?: string } | null)?.role || '').toLowerCase();
-  return r === 'owner' || r === 'admin' ? (r as OrgRole) : 'collaborator';
+  return r === 'owner' || r === 'admin' || r === 'member' ? (r as OrgRole) : 'collaborator';
 }
 
-const isPrivileged = (role: OrgRole) => role === 'owner' || role === 'admin';
+/** Voit toute l'organisation (missions, candidats, prospection) : owner, admin et member (décision 16). */
+const isPrivileged = (role: OrgRole) => role === 'owner' || role === 'admin' || role === 'member';
+/** Réglages de l'organisation, réservés à owner / admin dans l'interface. */
+const isOrgAdmin = (role: OrgRole) => role === 'owner' || role === 'admin';
 
 interface MissionRow {
   id: string;
@@ -1402,7 +1408,7 @@ const searchKnowledge: AgentTool = {
     "commentaires d'équipe, comptes-rendus d'appel, évaluations d'entretien, profil/expériences " +
     "LinkedIn, échanges, ET les FICHIERS JOINTS uploadés dans le chat (CV, fiches de poste, " +
     "notes — renvoyés dans le champ « documents »). Par DÉFAUT cherche À TRAVERS TOUS les candidats accessibles (toute " +
-    "l'organisation pour owner/admin ; tes missions pour un collaborateur) — idéal pour les " +
+    "l'organisation pour owner/admin/membre ; tes missions pour un collaborateur) — idéal pour les " +
     "questions TRANSVERSES qui ne nomment pas de candidat : « quels candidats ont parlé de " +
     "télétravail », « qui a des réserves sur leur dispo », « des retours mentionnant un préavis " +
     "long ». Pour cibler UN candidat précis, passe candidate_name OU candidate_id (réduit la " +
@@ -1462,7 +1468,7 @@ const searchKnowledge: AgentTool = {
     };
 
     // ── entity:'job' → recherche transverse dans les briefs de missions ──
-    // (RAG v3). owner/admin → toute l'org ; collaborateur → allow-list de
+    // (RAG v3). owner/admin/membre → toute l'org ; collaborateur → allow-list de
     // ses missions (own + team). Attribution par mission via entity_id.
     const entity = String((params.entity ?? 'candidate') as string).toLowerCase() === 'job'
       ? 'job'
@@ -1586,7 +1592,7 @@ const searchKnowledge: AgentTool = {
     }
 
     // ── Transverse (aucun candidat nommé) : rappel cross-candidats ─────
-    // owner/admin → toute l'org ; collaborateur → allow-list des candidats
+    // owner/admin/membre → toute l'org ; collaborateur → allow-list des candidats
     // de ses missions (own + team), même règle que resolveCandidateRef.
     let allowList: string[] | null = null;
     let scope: 'org' | 'missions' = 'org';
@@ -1720,7 +1726,7 @@ function formatCredits(b: Record<string, any> | null, role: OrgRole): Record<str
   // Les débits entament la sentinelle jusqu'au reset : tolérance de 10 000 sous 999999.
   const isUnlimited = planCredits >= UNLIMITED_PLAN_CREDITS - 10_000;
   const periodEnd = formatPeriodEnd(b.period_end);
-  if (!isPrivileged(role)) {
+  if (!isOrgAdmin(role)) {
     return { period_end: periodEnd, note: 'Solde détaillé visible uniquement par owner/admin.' };
   }
   if (isUnlimited) {
@@ -1826,7 +1832,7 @@ const getOrgAnalytics: AgentTool = {
     "Tableau de bord cross-mission de l'organisation : nb total de missions par statut, " +
     "pipeline agrégé par étape (tous candidats accessibles confondus), activité d'outreach " +
     "sur la période (séquences créées/actives, réponses, InMails envoyés/en attente), " +
-    "entretiens (qualifications) et leurs verdicts, consommation de crédits IA. owner/admin = " +
+    "entretiens (qualifications) et leurs verdicts, consommation de crédits IA. owner/admin/membre = " +
     "toute l'organisation ; collaborateur = ses missions (own + team). À utiliser pour « mes " +
     "stats du mois », « combien de candidats au total », « activité de prospection », " +
     "« combien d'entretiens cette semaine », « où en sont mes missions ».",
@@ -2136,7 +2142,7 @@ const getRecentAgentActions: AgentTool = {
     const requestedScope = String(params.scope ?? 'mine');
 
     const role = await resolveRole(ctx);
-    const scope = requestedScope === 'org' && isPrivileged(role) ? 'org' : 'mine';
+    const scope = requestedScope === 'org' && isOrgAdmin(role) ? 'org' : 'mine';
 
     const since = new Date(Date.now() - sinceHours * 3600 * 1000).toISOString();
 

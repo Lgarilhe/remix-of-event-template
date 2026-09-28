@@ -549,7 +549,7 @@ test.describe('Enchaînement des étapes', () => {
   });
 
   // engine-branch-loop-no-resend
-  test('Repli de délai vers une étape déjà envoyée : exécution sautée « Étape déjà envoyée », aucun renvoi ni place de plafond consommée', async () => {
+  test('Repli de délai vers une étape déjà envoyée : inscription terminée, aucune nouvelle exécution, aucun renvoi ni place de plafond consommée', async () => {
     const { org, accountId } = await paidOrg('E2E steps-2 boucle');
     const { sequenceId, steps } = await buildSequence(org, org.owner.userId, [
       { action_type: 'message', message_template: 'A' },
@@ -560,20 +560,17 @@ test.describe('Enchaînement des étapes', () => {
     const sentA = await schedule(org, enrollmentId, steps[0], { status: 'sent', scheduled_at: daysAgo(3), executed_at: daysAgo(3), final_message: 'A' });
     const wait = await schedule(org, enrollmentId, steps[1], { status: 'waiting_event', scheduled_at: daysAgo(2) });
 
+    const logBefore = await actionLogCount(accountId, 'message');
     await timeoutsFor(wait);
     expect((await execById(wait)).status, 'attente expirée').toBe('skipped');
+    // Décision 5 : la boucle qui revient sur une étape déjà partie termine l'inscription (avant : nouvelle exécution de A, sautée « Étape déjà envoyée »).
     const loop = (await execs(enrollmentId)).find((e) => e.step_id === steps[0].id && e.id !== sentA);
-    expect(loop?.status, 'le repli planifie une nouvelle exécution de A').toBe('scheduled');
+    expect(loop, 'aucune nouvelle exécution de A').toBeUndefined();
+    expect((await enrollmentFull(enrollmentId)).status, 'inscription terminée').toBe('completed');
 
-    const logBefore = await actionLogCount(accountId, 'message');
-    await makeDue(loop!.id);
-    await cycleFor(loop!.id);
-    const loopRow = await execById(loop!.id);
-    expect(loopRow.status).toBe('skipped');
-    expect(loopRow.skip_reason).toBe('Étape déjà envoyée');
+    await runCycle();
     expect(await sends(accountId), 'aucun appel d’envoi au fournisseur').toEqual([]);
-    // DÉFAUT seq-already-sent-consumes-quota : le gate quota (process-sequences/index.ts:2530) journalise un « message » avant le filet « Étape déjà envoyée » (index.ts:2576-2606).
-    expect(await actionLogCount(accountId, 'message'), 'aucune place de plafond consommée par une étape sautée').toBe(logBefore);
+    expect(await actionLogCount(accountId, 'message'), 'aucune place de plafond consommée').toBe(logBefore);
   });
 
   // engine-branch-loop-no-resend (« À vérifier » : boucle next_step_id A→B→A)
@@ -593,11 +590,11 @@ test.describe('Enchaînement des étapes', () => {
     expect(await sentTexts(accountId), 'B part une fois, A jamais renvoyé').toEqual(['B']);
     const pendingA = (await execs(enrollmentId)).filter((e) => e.step_id === steps[0].id && e.status !== 'sent');
     expect(pendingA, 'aucune nouvelle exécution de A').toEqual([]);
-    // Statut observé après la boucle : question produit (voir le rapport), non affirmé ici.
+    // Décision 5 : la boucle qui revient sur une étape déjà partie termine l'inscription (statut auparavant seulement observé).
     const observed = await enrollmentFull(enrollmentId);
     const pendingAfter = (await execs(enrollmentId)).filter((e) => ['scheduled', 'waiting_event', 'quota_blocked'].includes(e.status)).length;
-    test.info().annotations.push({ type: 'statut-observé', description: `${observed.status}, ${pendingAfter} exécution(s) en attente` });
-    console.log(`[steps-2] boucle A→B→A : inscription ${observed.status}, ${pendingAfter} exécution(s) en attente`);
+    expect(observed.status, 'inscription terminée').toBe('completed');
+    expect(pendingAfter, 'rien en attente').toBe(0);
   });
 });
 
@@ -926,7 +923,8 @@ test.describe('Réponse et désinscription arrêtent toujours la séquence', () 
 
     await cycleFor(exec);
     const row = await execById(exec);
-    expect(row.status).toBe('skipped');
+    // Décision 28 : l'étape arrêtée par une condition d'arrêt est annulée (avant : sautée).
+    expect(row.status).toBe('cancelled');
     expect(row.skip_reason).toBe('Stop condition: unsubscribed');
     const enr = await enrollmentFull(enrollmentId);
     expect(enr.status).toBe('completed');

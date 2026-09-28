@@ -15,7 +15,7 @@ import { registerTool } from './agent-tools.ts';
 import { checkLinkedInQuota, getUserQuotas, nextBusinessHoursStart } from './linkedin-quotas.ts';
 import { resolveUnipileCredentials } from './resolve-org-credentials.ts';
 import { getSubscriptionGate } from './subscription-gate.ts';
-import { getOrFetchContact, isCandidateErasedForOrg } from './get-or-fetch-contact.ts';
+import { getOrFetchContact, isCandidateErasedForOrg, GdprRegistryUnavailableError } from './get-or-fetch-contact.ts';
 import { firstExecutionTime, pickFirstRootStep, validTimeZone } from './sequence-first-step.ts';
 
 // ─── Helper — fetch avec timeout (15s par défaut, pattern standard) ─────────
@@ -990,6 +990,8 @@ const enrollInSequence: AgentTool = {
         emailUsed = contact.email ? contact.email.trim().toLowerCase() : null;
         phoneUsed = contact.phone ? String(contact.phone).trim() || null : null;
       } catch (err) {
+        // Décision 13 : registre des effacements illisible, inscription refusée.
+        if (err instanceof GdprRegistryUnavailableError) return { success: false, error: GDPR_UNVERIFIED_MESSAGE };
         console.warn('[enroll_in_sequence] contact lookup failed (non-blocking):', err);
       }
     }
@@ -2508,6 +2510,8 @@ async function resolveChatSendingAccount(
 }
 
 const GDPR_MESSAGE_REFUSED = "Ce candidat a demandé l'effacement de ses données : message impossible.";
+const SENDING_ACCOUNT_CHANGED_MESSAGE =
+  "Votre compte LinkedIn d'envoi a changé depuis l'approbation : le message n'est pas parti. Redemandez l'envoi pour qu'il parte de votre compte actuel.";
 
 const sendLinkedInMessage: AgentTool = {
   name: 'send_linkedin_message',
@@ -2733,6 +2737,13 @@ const sendLinkedInMessage: AgentTool = {
       if ('error' in chat) return { success: false, error: chat.error };
       accountId = chat.account_id;
     }
+    // Décision 34 : message programmé dont le compte d'envoi n'est plus celui
+    // affiché à l'approbation (liaison remplacée avant l'échéance) : échec,
+    // rien ne part du nouveau compte.
+    const approvedAccount = typeof ctx.approvedDetails?.account_id === 'string' ? ctx.approvedDetails.account_id.trim() : '';
+    if (approvedAccount && approvedAccount !== accountId) {
+      return { success: false, error: SENDING_ACCOUNT_CHANGED_MESSAGE };
+    }
     const recipientId = params.recipient_provider_id ? String(params.recipient_provider_id) : null;
     const isInmail = params.is_inmail === true;
     const subject = params.subject ? String(params.subject) : null;
@@ -2851,7 +2862,7 @@ const RIGHTS_UNVERIFIED_MESSAGE = "Vos droits n'ont pas pu être vérifiés. Ré
  * Rôle exact de l'appelant dans l'organisation courante (organization_members).
  * null si la lecture échoue ou s'il n'est pas membre : l'appelant refuse
  * (échec fermé). Ne pas reprendre resolveRole de agent-tools-reads.ts, qui
- * range le rôle 'member' parmi les collaborateurs.
+ * ne distingue pas un échec de lecture d'un collaborateur.
  */
 async function readCallerOrgRole(ctx: ToolContext): Promise<string | null> {
   const { data, error } = await ctx.adminClient

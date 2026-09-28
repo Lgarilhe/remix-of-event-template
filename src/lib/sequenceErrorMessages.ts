@@ -41,7 +41,18 @@ export const SEQUENCE_WRITE_REFUSALS: Record<string, string> = {
   PROJECT_ORG_MISMATCH: FOREIGN_ELEMENT_REFUSAL,
   STEP_SEQUENCE_MISMATCH: FOREIGN_ELEMENT_REFUSAL,
   SEQUENCE_NOT_OWNER: "Seul l'auteur de cette séquence peut modifier ses étapes.",
+  // Décision 12 : profil effacé (registre RGPD ou marqueur de l'organisation).
+  ENROLLMENT_GDPR_ERASED: "Ce candidat a demandé l'effacement de ses données : il ne peut plus être inscrit ni relancé.",
+  // Décisions 21 et 23 : même personne sous un autre identifiant.
+  ENROLLMENT_SAME_PERSON_IN_SEQUENCE: "Ce candidat est déjà dans cette séquence sous un autre identifiant LinkedIn, ou l'a quittée il y a moins de 90 jours.",
 };
+
+/** « 1 candidat a demandé l'effacement de ses données… » : inscriptions refusées par la base (décision 12). */
+export function gdprErasedEnrollLabel(count: number): string {
+  return count > 1
+    ? `${count} candidats ont demandé l'effacement de leurs données : ils ne peuvent plus être inscrits dans une séquence.`
+    : "1 candidat a demandé l'effacement de ses données : il ne peut plus être inscrit dans une séquence.";
+}
 
 /**
  * Phrase française d'un refus posé par la base sur une écriture du navigateur
@@ -399,6 +410,13 @@ const SEQUENCE_LEVEL_PAUSES = ['sequence_inactive', 'auto_paused'];
 
 /** Même phrase que le suivi des inscrits (SequenceEnrollmentsPanel). */
 export const SEQUENCE_ACTIVE_AGAIN_HINT = 'La séquence est de nouveau active : reprenez ce candidat.';
+
+/**
+ * Même phrase que le suivi des inscrits. D3 : un collaborateur ne reprend que
+ * les candidats qu'il a inscrits (le serveur refuse les autres) : « Reprendre »
+ * lui est masqué et on dit qui peut.
+ */
+export const OTHER_MEMBER_RESUME_HINT = 'Candidat inscrit par un autre membre : un administrateur ou ce membre peut reprendre sa séquence.';
 
 /**
  * Pause posée par la séquence (désactivation, auto-pause) restée en place alors

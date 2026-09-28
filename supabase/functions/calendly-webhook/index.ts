@@ -1,6 +1,7 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
+import { cancelScheduledInMails, MEETING_INMAIL_CANCEL_REASON } from "../_shared/candidate-reply-closure.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -362,6 +363,7 @@ Deno.serve(async (req) => {
     // base neuve), exécutions annulées seulement pour les inscriptions
     // réellement closes.
     let sequencesStopped = 0;
+    let inmailsCancelled = 0;
     let stopSkippedReason: string | null = null;
     if (candidateMatch?.candidate_id && candidateOrgId) {
       try {
@@ -372,8 +374,11 @@ Deno.serve(async (req) => {
           organization_id: string | null;
           profile_name: string | null;
           tracking_data: Record<string, unknown> | null;
+          profile_id: string | null;
+          provider_id: string | null;
+          resolved_profile_id: string | null;
         };
-        const enrollmentColumns = 'id, sequence_id, created_by, organization_id, profile_name, tracking_data';
+        const enrollmentColumns = 'id, sequence_id, created_by, organization_id, profile_name, tracking_data, profile_id, provider_id, resolved_profile_id';
         const found = new Map<string, EnrollmentToStop>();
 
         const { data: byProfile, error: byProfileError } = await supabase
@@ -481,6 +486,24 @@ Deno.serve(async (req) => {
           console.log(`[calendly-webhook] ✅ Stopped ${sequencesStopped} sequence enrollment(s) → status: completed (meeting_booked)`);
         } else {
           console.log('[calendly-webhook] No active or paused sequence enrollments found for this candidate');
+        }
+
+        // Décision 27 : le rendez-vous annule aussi les InMails pas encore
+        // partis vers le candidat dans l'organisation du rendez-vous, avec ou
+        // sans inscription (InMail groupé hors séquence) ; jamais quand
+        // l'arrêt est refusé (trop de correspondances). Non bloquant.
+        if (stopSkippedReason !== 'too_many_matches') {
+          try {
+            inmailsCancelled = await cancelScheduledInMails(
+              supabase,
+              { organizationId: candidateOrgId },
+              [candidateMatch.candidate_id, ...candidates.flatMap((e) => [e.profile_id, e.provider_id, e.resolved_profile_id])],
+              { kind: 'all' },
+              MEETING_INMAIL_CANCEL_REASON,
+            );
+          } catch (inmailErr) {
+            console.error('[calendly-webhook] scheduled InMails not cancelled:', inmailErr);
+          }
         }
       } catch (seqErr) {
         console.warn('[calendly-webhook] Sequence stop failed (non-blocking):', seqErr);
@@ -614,6 +637,7 @@ Deno.serve(async (req) => {
       session_id: session.id,
       candidate_matched: !!candidateMatch,
       sequences_stopped: sequencesStopped,
+      inmails_cancelled: inmailsCancelled,
       ...(stopSkippedReason ? { sequences_stop_skipped: stopSkippedReason } : {}),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

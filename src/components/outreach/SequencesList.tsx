@@ -233,6 +233,10 @@ const COLLABORATOR_DEACTIVATION_HINT = 'Désactiver une séquence met en pause t
 const OTHER_ORG_READ_ONLY_HINT = 'Séquence d’une autre organisation : vous pouvez la consulter, pas la modifier.';
 const NOT_AUTHOR_READ_ONLY_HINT = 'Seul l’auteur de cette séquence peut la modifier : dupliquez-la pour l’adapter.';
 
+// Décision 32 : aucune activation tant que l'état d'abonnement n'est pas lu.
+const PLAN_STATE_LOADING_MESSAGE = 'Vérification de votre abonnement en cours : réessayez dans un instant.';
+const PLAN_STATE_UNREADABLE_MESSAGE = 'Votre abonnement n’a pas pu être vérifié : la séquence n’a pas été activée. Réessayez dans un instant.';
+
 export const SequencesList: React.FC<SequencesListProps> = ({
   accounts,
   selectedAccount,
@@ -252,10 +256,14 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   const userId = user?.id ?? null;
   const navigate = useNavigate();
   // Gating par plan (lot P0-C) : l'activation d'une séquence est refusée sur le
-  // plan gratuit. Tant que l'état d'abonnement charge, on ne refuse rien (le
-  // moteur d'envoi côté serveur reste la référence).
-  const { effectivePlanId, isLoading: isPlanLoading } = useSubscriptionState();
+  // plan gratuit. Décision 32 : tant que l'état d'abonnement n'est pas lu
+  // (chargement ou lecture en échec), aucune activation, ni par l'interrupteur
+  // ni à la création. canSendSequences reste vrai pendant le chargement pour
+  // que l'éditeur n'annonce pas l'offre gratuite à tort.
+  const { effectivePlanId, isLoading: isPlanLoading, isLoadingError: isPlanLoadError, refetch: refetchPlan } = useSubscriptionState();
   const canSendSequences = isPlanLoading || hasPlanFeature(effectivePlanId, 'sequences_send');
+  const planStateUnknown = isPlanLoading || isPlanLoadError;
+  const activationWaitsForPlan = (seq: SequenceWithStats) => !seq.is_active && isPlanLoading;
   const [sequences, setSequences] = useState<SequenceWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -526,8 +534,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       // Type de chaque étape en base, par step_order : nomme une étape refusée
       // (STEP_HAS_HISTORY) que l'éditeur a renumérotée.
       const baseStepLabels = new Map<number, string>();
-      // Sans droit d'envoi (plan gratuit), une nouvelle séquence est créée désactivée.
-      const createInactiveForPlan = !sequence.id && sequence.isActive && !canSendSequences;
+      // Sans droit d'envoi (plan gratuit) ou abonnement pas encore lu (décision 32),
+      // une nouvelle séquence est créée désactivée.
+      const createInactiveForPlan = !sequence.id && sequence.isActive && (!canSendSequences || planStateUnknown);
 
       if (sequence.id) {
         // Une étape en base que l'éditeur n'a jamais vue a été ajoutée par un
@@ -630,6 +639,11 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           toast.success('Séquence créée', {
             description: 'Sélectionnez ensuite vos candidats dans l’onglet Sourcing et cliquez sur Séquence.',
             ...(enrollAction ? { action: enrollAction } : {}),
+          });
+        } else if (canSendSequences) {
+          // Abonnement pas encore lu : l'éditeur n'a rien annoncé.
+          toast.warning('Séquence créée désactivée', {
+            description: 'Votre abonnement n’était pas encore vérifié : activez-la depuis la liste des séquences.',
           });
         }
       }
@@ -918,7 +932,17 @@ export const SequencesList: React.FC<SequencesListProps> = ({
       await deactivateSequence(seq.id);
       return;
     }
-    // Activer (pas désactiver) exige un plan qui autorise l'envoi de séquences.
+    // Activer (pas désactiver) exige un plan qui autorise l'envoi de séquences,
+    // donc un état d'abonnement lu (décision 32).
+    if (planStateUnknown) {
+      if (isPlanLoadError) {
+        void refetchPlan();
+        toast.error(PLAN_STATE_UNREADABLE_MESSAGE);
+      } else {
+        toast.info(PLAN_STATE_LOADING_MESSAGE);
+      }
+      return;
+    }
     if (!canSendSequences) {
       toast.error("L'envoi de séquences nécessite un abonnement", {
         action: { label: 'Voir les plans', onClick: () => navigate('/pricing') },
@@ -1450,9 +1474,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 {canEdit(seq) ? (
                   <Switch
                     checked={seq.is_active}
-                    disabled={togglingId === seq.id}
+                    disabled={togglingId === seq.id || activationWaitsForPlan(seq)}
                     aria-disabled={deactivationLocked(seq) || undefined}
-                    title={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : undefined}
+                    title={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : activationWaitsForPlan(seq) ? PLAN_STATE_LOADING_MESSAGE : undefined}
                     onCheckedChange={() => { void requestToggle(seq); }}
                     onClick={(e) => e.stopPropagation()}
                     className={cn("data-[state=checked]:bg-foreground", deactivationLocked(seq) && "opacity-60")}
@@ -1651,9 +1675,9 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                     {canEdit(seq) ? (
                       <Switch
                         checked={seq.is_active}
-                        disabled={togglingId === seq.id}
+                        disabled={togglingId === seq.id || activationWaitsForPlan(seq)}
                         aria-disabled={deactivationLocked(seq) || undefined}
-                        title={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : undefined}
+                        title={deactivationLocked(seq) ? COLLABORATOR_DEACTIVATION_HINT : activationWaitsForPlan(seq) ? PLAN_STATE_LOADING_MESSAGE : undefined}
                         onCheckedChange={() => { void requestToggle(seq); }}
                         onClick={(e) => e.stopPropagation()}
                         className={cn("data-[state=checked]:bg-foreground", deactivationLocked(seq) && "opacity-60")}

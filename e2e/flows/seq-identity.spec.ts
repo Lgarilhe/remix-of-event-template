@@ -273,8 +273,8 @@ test.describe('Identité du candidat : sélection en double', () => {
 
 test.describe('Identité du candidat : pré-contrôle de la séquence', () => {
   // ui-precheck-sequence-autre-identifiant (SEQ-222, SEQ-046), aperçu d'inscription
-  // décision produit en attente : une inscription close (arrêtée, ou terminée hors des 90 jours) sous un autre identifiant bloque-t-elle la même séquence ?
-  test.fixme('aperçu : un candidat déjà passé par la séquence sous son identifiant Recruiter (arrêtée, ou terminée il y a 120 jours) n’est pas réinscrit', async ({ browser }) => {
+  // Décision 23 : arrêtée il y a 5 jours = pas réinscrit ; terminée il y a plus de 90 jours = réinscrit avec un avertissement.
+  test('aperçu : un candidat arrêté il y a 5 jours sous son identifiant Recruiter n’est pas réinscrit ; terminé il y a plus de 90 jours, il l’est avec un avertissement', async ({ browser }) => {
     const ws = await workspace('E2E Identité pré-contrôle aperçu');
     const owner = ws.org.owner.userId;
     const seq = await sequence(ws.org.orgId, owner, ws.missionId, 'message');
@@ -298,13 +298,16 @@ test.describe('Identité du candidat : pré-contrôle de la séquence', () => {
 
     // DÉFAUT ui-precheck-autre-identifiant : le pré-contrôle ne lit que .eq('profile_id') ; l'anti-doublon ne voit ni une inscription arrêtée ni une inscription close depuis plus de 90 jours.
     expect.soft((await rowsForPerson(seq.id, [stopped.classic, stopped.recruiter])).length, 'inscription arrêtée : pas de seconde ligne').toBe(1);
-    expect.soft((await rowsForPerson(seq.id, [old.classic, old.recruiter])).length, 'terminée il y a 120 jours : pas de seconde ligne').toBe(1);
-    await expect(dialog.getByText('2 candidats sont déjà passés par cette séquence (terminée, réponse ou arrêt). Relancez-les depuis le suivi de la séquence.')).toBeVisible();
+    // Décision 23 : sortie depuis plus de 90 jours, la réinscription est permise et signalée.
+    expect.soft((await rowsForPerson(seq.id, [old.classic, old.recruiter])).length, 'terminée il y a 100 jours : seconde ligne').toBe(2);
+    await expect(previewOutcome(dialog)).toHaveText('1 candidat inscrit');
+    await expect(dialog.getByText('1 candidat est déjà passé par cette séquence (terminée, réponse ou arrêt). Relancez-le depuis le suivi de la séquence.')).toBeVisible();
+    await expect(dialog.getByText('1 candidat était déjà passé par cette séquence il y a plus de 90 jours, sous un autre identifiant LinkedIn : il a été réinscrit et recevra de nouveau ses étapes.')).toBeVisible();
   });
 
   // ui-precheck-sequence-autre-identifiant (SEQ-222, SEQ-046), inscription simple
-  // décision produit en attente : une inscription arrêtée sous un autre identifiant bloque-t-elle la même séquence ?
-  test.fixme('inscription simple : un candidat déjà passé par la séquence sous son identifiant Recruiter n’est pas réinscrit', async ({ browser }) => {
+  // Décision 23 : une inscription arrêtée depuis moins de 90 jours sous un autre identifiant bloque la même séquence.
+  test('inscription simple : un candidat déjà passé par la séquence sous son identifiant Recruiter n’est pas réinscrit', async ({ browser }) => {
     const ws = await workspace('E2E Identité pré-contrôle simple');
     const owner = ws.org.owner.userId;
     const seq = await sequence(ws.org.orgId, owner, ws.missionId, 'invitation');

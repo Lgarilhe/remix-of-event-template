@@ -49,6 +49,7 @@ type ColTheme = { dot: string; ring: string };
 const NEUTRAL: ColTheme = { dot: 'bg-muted-foreground/50', ring: 'ring-foreground/25' };
 const INFO: ColTheme = { dot: 'bg-info', ring: 'ring-info/40' };
 const SUCCESS: ColTheme = { dot: 'bg-success', ring: 'ring-success/40' };
+const REPLIED_T: ColTheme = { dot: 'bg-brand-blue', ring: 'ring-brand-blue/40' };
 const DISMISSED_T: ColTheme = { dot: 'bg-destructive/60', ring: 'ring-destructive/40' };
 const STEP_THEMES: ColTheme[] = [
   { dot: 'bg-brand-cyan', ring: 'ring-brand-cyan/40' },
@@ -64,11 +65,17 @@ interface PipelineColumn {
   isProcessStep?: boolean;
 }
 
+// Colonne « Répondu » (décision 29) : sa clé est l'étape que le moteur et le
+// webhook écrivent à la réponse d'un candidat.
+const REPLIED_KEY = 'Répondu';
+const REPLIED_COLUMN: PipelineColumn = { key: REPLIED_KEY, label: 'Répondu', theme: REPLIED_T };
+
 // ── Static fallback columns (used when no process steps defined) ──
 
 const STATIC_COLUMNS: PipelineColumn[] = [
   { key: 'untreated', label: 'Sourcé', theme: NEUTRAL },
   { key: 'messaged', label: 'Contacté', theme: INFO },
+  REPLIED_COLUMN,
   { key: 'shortlisted', label: 'Shortlisté', theme: SUCCESS },
 ];
 
@@ -95,6 +102,19 @@ const initials = (name?: string | null) => {
   return p.length ? ((p[0][0] || '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() : '?';
 };
 
+// Statuts d'une réponse du candidat (réponse brute ou analysée), et étapes de
+// départ qu'une réponse fait passer dans « Répondu ». Une étape plus avancée
+// (entretien, embauche) garde le candidat là où le recruteur l'a placé.
+const REPLY_STATUSES = new Set(['replied', 'interested', 'not_interested']);
+const REPLY_PROMOTABLE_STAGES = new Set(['sourced', 'untreated', 'messaged', 'Nouveau', 'Contacté']);
+
+/** Colonne d'un candidat (clé de colonne, ou valeur inconnue rangée dans la première). */
+const columnKeyOf = (c: ProjectCandidate): string => {
+  if (c.pipeline_stage === REPLIED_KEY) return REPLIED_KEY;
+  if (REPLY_STATUSES.has(c.status) && (!c.pipeline_stage || REPLY_PROMOTABLE_STAGES.has(c.pipeline_stage))) return REPLIED_KEY;
+  return c.pipeline_stage || c.status;
+};
+
 const stageAgeDays = (iso: string | null) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : 0);
 const formatStageAge = (d: number) => (d < 1 ? 'auj.' : d < 7 ? `${d}j` : d < 30 ? `${Math.floor(d / 7)}sem` : `${Math.floor(d / 30)}mois`);
 
@@ -110,6 +130,7 @@ const EMPTY_COPY: Record<string, string> = {
   sourced: 'Aucun candidat sourcé',
   untreated: 'Aucun candidat sourcé',
   messaged: "Personne n'a encore été contacté",
+  [REPLIED_KEY]: 'Aucune réponse pour le moment',
   hired: 'Ça se joue à gauche',
   dismissed: 'Rien à écarter, bon signe',
 };
@@ -222,6 +243,8 @@ const KanbanColumn = ({ column, candidates, isDismissed, innerRef, onOpen, onGoO
   return (
     <div
       ref={(node) => { setNodeRef(node); innerRef?.(node); }}
+      role="region"
+      aria-label={`Colonne ${column.label}, ${candidates.length} candidat${candidates.length > 1 ? 's' : ''}`}
       className={cn(
         "flex flex-col rounded-xl bg-muted/20 transition-colors",
         // Colonnes fluides : remplissent la largeur dispo, bornées pour rester
@@ -324,6 +347,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     return [
       { key: 'sourced', label: 'Sourcé', theme: NEUTRAL },
       { key: 'messaged', label: 'Contacté', theme: INFO },
+      REPLIED_COLUMN,
       ...steps.map((s, i) => ({ key: s.id, label: s.name, theme: STEP_THEMES[i % STEP_THEMES.length], isProcessStep: true })),
       { key: 'hired', label: 'Embauché', theme: SUCCESS },
     ];
@@ -338,6 +362,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     const statusMap: Record<string, string> = {
       sourced: 'untreated', untreated: 'untreated',
       messaged: 'messaged',
+      [REPLIED_KEY]: 'replied',
       dismissed: 'dismissed',
       hired: 'shortlisted',
     };
@@ -363,8 +388,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     grouped['dismissed'] = [];
 
     (candidates as ProjectCandidate[]).forEach(c => {
-      // 'replied' n'est pas une colonne : il vit dans « Contacté »
-      const stage = c.pipeline_stage || (c.status === 'replied' ? 'messaged' : c.status);
+      const stage = columnKeyOf(c);
       if (stage === 'dismissed') {
         grouped['dismissed'].push(c);
       } else if (grouped[stage]) {
@@ -424,8 +448,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     if (!targetColumn) return;
 
     const candidate = (candidates as ProjectCandidate[]).find(c => c.id === candidateId);
-    const currentStage = candidate?.pipeline_stage || candidate?.status;
-    if (currentStage === targetColumn) return;
+    if (candidate && columnKeyOf(candidate) === targetColumn) return;
 
     updateStage(candidateId, targetColumn);
     const colLabel = columns.find(c => c.key === targetColumn)?.label || targetColumn;
@@ -633,7 +656,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             linkedin: detailCandidate.linkedin_profile_url,
             headline: detailCandidate.candidate_headline,
             expertise: [],
-            stage: detailCandidate.pipeline_stage || detailCandidate.status,
+            stage: columnKeyOf(detailCandidate),
             entity: null,
             source: 'local',
             sourceId: detailCandidate.id,

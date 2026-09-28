@@ -149,7 +149,8 @@ test('SEQ-025 — interrupteur désactivé pendant l’appel, masqué hors de mo
   // D3 (dernière passe, front-editor-list-3) : le verrou d'un collaborateur est
   // signalé (aria-disabled) mais l'interrupteur reste cliquable pour dire pourquoi.
   for (const s of switches) {
-    assert.match(s, /disabled=\{togglingId === seq\.id\}/);
+    // Décision 32 : grisé aussi, pour activer, tant que l'abonnement n'est pas lu.
+    assert.match(s, /disabled=\{togglingId === seq\.id \|\| activationWaitsForPlan\(seq\)\}/);
     assert.match(s, /aria-disabled=\{deactivationLocked\(seq\) \|\| undefined\}/);
   }
   assert.match(list, /const canManage = \(seq: SequenceWithStats\) => !!organizationId && seq\.organization_id === organizationId;/);
