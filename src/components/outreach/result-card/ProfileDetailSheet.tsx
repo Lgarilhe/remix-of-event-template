@@ -16,11 +16,9 @@ import { CardExpandedContent } from './CardExpandedContent';
 import { CardStatusBadges } from './CardStatusBadges';
 import { useProfileData } from './useProfileData';
 import { useCandidateHistory } from '@/hooks/useCandidateHistory';
-import { NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
 import { CandidateHistoryPanel } from '../CandidateHistoryPanel';
 import { useAircallHistory } from '@/hooks/useAircallHistory';
 import { AircallHistoryPanel } from '../AircallHistoryPanel';
-import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { OutreachMessageModal } from '../OutreachMessageModal';
 import { SequenceEnrollButton } from '../SequenceEnrollButton';
 import { AddToProjectButton } from '../projects/AddToProjectButton';
@@ -198,7 +196,6 @@ interface ProfileDetailSheetProps {
   activeProject?: SourcingProject | null;
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at: string } | null;
   airtableMatch?: any;
-  notionMatch?: any;
   onScoreProfile?: () => void;
   /** Scoring profond : appelé quand l'user clique "Analyse complète" avec
    *  le profil complet (après visite du profil). Le hook re-score avec ces
@@ -239,7 +236,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   activeProject,
   candidateStatus,
   airtableMatch,
-  notionMatch,
   onScoreProfile,
   onDeepScore,
   onArchive,
@@ -538,69 +534,12 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
         : null
   );
 
-  // Notion shortlist data for this candidate
-  const { data: notionShortlistData, isLoading: notionShortlistLoading } = useNotionShortlist();
-
   // Aircall history
   const aircallHistory = useAircallHistory(
     airtableMatch?.airtable_id || null,
     profile ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') : null,
     historyData?.candidate?.phone || null
   );
-
-  const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
-    if (!notionShortlistData) return [];
-
-    const normalizeName = (value?: string | null) =>
-      (value || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    const profileNames = [
-      profileData.fullName,
-      profile?.name,
-      [profile?.first_name, profile?.last_name].filter(Boolean).join(' '),
-    ]
-      .map(normalizeName)
-      .filter(Boolean);
-
-    const matched = notionShortlistData.filter((s: any) => {
-      if (!s.candidate) return false;
-      if (notionMatch && s.candidate.id === notionMatch.id) return true;
-
-      const candidateName = normalizeName(s.candidate.name);
-      if (!candidateName || profileNames.length === 0) return false;
-
-      return profileNames.some((profileName) =>
-        profileName === candidateName ||
-        profileName.includes(candidateName) ||
-        candidateName.includes(profileName)
-      );
-    });
-
-    const seen = new Set<string>();
-    return matched
-      .filter((s: any) => {
-        if (!s.id || seen.has(s.id)) return false;
-        seen.add(s.id);
-        return true;
-      })
-      .map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        stage: s.stage,
-        entity: s.entity,
-        positions: s.positions || [],
-        createdAt: s.createdAt,
-        preQualifDate: s.preQualifDate,
-        cvPresentationDate: s.cvPresentationDate,
-        startDate: s.startDate,
-      }));
-  }, [notionMatch, notionShortlistData, profileData.fullName, profile?.name, profile?.first_name, profile?.last_name]);
 
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
@@ -653,15 +592,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   } = profileData;
 
 
-  const shouldWaitForNotionHistory = Boolean(notionMatch) && notionShortlistsForCandidate.length === 0 && !historyData;
-  const historyPanelLoading = historyLoading || (shouldWaitForNotionHistory && notionShortlistLoading);
-  const hasHistory = notionShortlistsForCandidate.length > 0 || (historyData && (
+  const hasHistory = historyData && (
     historyData.placements.length > 0 ||
     historyData.shortlists.length > 0 ||
     historyData.notes.length > 0 ||
     historyData.appointments.length > 0 ||
     historyData.candidate
-  ));
+  );
 
   return (
     <>
@@ -760,7 +697,6 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                     profile={profile}
                     isLikelyToRespond={isLikelyToRespond}
                     airtableMatch={airtableMatch}
-                    notionMatch={notionMatch}
                     historyData={historyData}
                     historyLoading={historyLoading}
                     historyLatestDateLabel={historyLatestDateLabel}
@@ -1023,16 +959,16 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   Les infos sont déjà accessibles ailleurs :
                   - About → section "À propos" dans Aperçu
                   - Aircall stats → card Engagement dans Aperçu
-                  - Airtable history + Notion shortlists → onglet Activité
+                  - Airtable history → onglet Activité
                     (timeline) qui les incorpore déjà.
                   En mode sourcing pur (pas de pipelineMeta), comportement
                   inchangé : panels visibles avant les tabs comme avant. */}
               {!pipelineMeta && (
                 <>
                   {/* Airtable History Panel */}
-                  {(historyPanelLoading || hasHistory) && (
+                  {(historyLoading || hasHistory) && (
                     <div className="bg-background rounded-lg border border-border overflow-hidden">
-                      <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact={false} notionShortlists={notionShortlistsForCandidate} />
+                      <CandidateHistoryPanel data={historyData} loading={historyLoading} compact={false} />
                     </div>
                   )}
 

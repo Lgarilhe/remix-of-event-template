@@ -28,9 +28,8 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
-import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
-import { UnifiedProject, mergeProjectsAndJobs } from '@/types/projects';
+import { UnifiedProject, toUnifiedProjects } from '@/types/projects';
 import { useOrganization } from '@/hooks/useOrganization';
 import { Input } from '@/components/ui/input';
 import {
@@ -75,17 +74,6 @@ function computeNextStep(
   stats: ProjectStats,
 ): NextStep | null {
   const sp = project.sourcingProject;
-  // Pas de sourcing project (mission Notion seule) → CTA pour démarrer
-  if (!sp) {
-    return {
-      label: 'Démarrer la mission',
-      cta: 'Commencer',
-      targetTab: 'overview',
-      urgency: 'medium',
-      icon: Play,
-    };
-  }
-
   const filtersOk = sp.filters_snapshot && Object.keys(sp.filters_snapshot).length > 0;
   const briefOk = !!(sp.job_details as any)?.title;
 
@@ -360,8 +348,7 @@ const KpiInline: React.FC<{ label: string; value: number; highlight?: boolean }>
 export const ProjectsListV2: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject, createProject } = useSourcingProjects();
-  const { data: notionJobs = [], isLoading: jobsLoading } = useNotionJobs();
+  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject } = useSourcingProjects();
   const { canCreateJob, jobQuotaKnown, maxJobs } = useQuotaGate();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -392,8 +379,8 @@ export const ProjectsListV2: React.FC = () => {
   }, [createParam, jobQuotaKnown, canCreateJob, maxJobs, setSearchParams]);
 
   const unifiedProjects = useMemo(
-    () => mergeProjectsAndJobs(notionJobs, sourcingProjects),
-    [notionJobs, sourcingProjects],
+    () => toUnifiedProjects(sourcingProjects),
+    [sourcingProjects],
   );
 
   const spIds = useMemo(
@@ -476,29 +463,9 @@ export const ProjectsListV2: React.FC = () => {
   }, [unifiedProjects, projectStats]);
 
   // Navigate
-  const navigateToWorkspace = useCallback(async (project: UnifiedProject, tab?: string) => {
-    let spId = project.sourcingProject?.id;
-
-    if (!spId && project.source === 'notion' && project.job) {
-      try {
-        const newProject = await createProject({
-          name: project.job.title,
-          job_id: project.job.id,
-          job_title: project.job.title,
-          client_name: project.job.client?.name,
-          description: project.description || undefined,
-        });
-        spId = newProject?.id;
-      } catch {
-        const { toast } = await import('sonner');
-        toast.error('Impossible de créer la mission');
-        return;
-      }
-    }
-
-    if (!spId) return;
-    navigate(`/missions/${spId}${tab ? `?tab=${tab}` : ''}`);
-  }, [createProject, navigate]);
+  const navigateToWorkspace = useCallback((project: UnifiedProject, tab?: string) => {
+    navigate(`/missions/${project.sourcingProject.id}${tab ? `?tab=${tab}` : ''}`);
+  }, [navigate]);
 
   const handleStatusChange = (project: UnifiedProject) => async (newStatus: SourcingProject['status']) => {
     if (project.sourcingProject) {
@@ -506,7 +473,7 @@ export const ProjectsListV2: React.FC = () => {
     }
   };
 
-  const isLoading = spLoading || jobsLoading;
+  const isLoading = spLoading;
 
   // Empty state if no missions at all
   if (!isLoading && unifiedProjects.length === 0) {

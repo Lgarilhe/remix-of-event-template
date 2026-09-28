@@ -26,9 +26,11 @@ const PACK_REFRESH_DELAY_MS = 5000;
  * Libellés des actions débitées hors du catalogue ACTION_COSTS. La détection de
  * fraude règle sous « detect_profile_fraud » (detect-profile-fraud/index.ts),
  * absente du catalogue : sans cette entrée elle se lirait « Action IA ».
+ * « notion_job_skills » a quitté le catalogue, ses débits passés restent lisibles.
  */
 const HISTORY_EXTRA_LABELS: Record<string, string> = {
   detect_profile_fraud: 'Détection de fraude',
+  notion_job_skills: 'Compétences extraites d\'un poste',
 };
 
 /**

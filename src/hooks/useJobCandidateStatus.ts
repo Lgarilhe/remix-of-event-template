@@ -94,7 +94,7 @@ export function useJobCandidateStatus(jobId: string | null) {
         : [jobId];
 
       // Phase 1: lightweight fetch (no linkedin_profile_data)
-      const LIGHT_COLUMNS = 'id,job_id,candidate_id,linkedin_profile_url,candidate_name,candidate_headline,status,score,recommendation,skip_reason,created_by,created_at,updated_at,scoring_details,tags,pipeline_stage,project_id,notion_candidate_id,notion_shortlist_id,notion_synced_at,organization_id';
+      const LIGHT_COLUMNS = 'id,job_id,candidate_id,linkedin_profile_url,candidate_name,candidate_headline,status,score,recommendation,skip_reason,created_by,created_at,updated_at,scoring_details,tags,pipeline_stage,project_id,organization_id';
       const allData: any[] = [];
       const PAGE_SIZE = 1000;
       let offset = 0;

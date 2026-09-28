@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LinkedInProfile } from './types';
-import { useCandidateHistory, NotionShortlistHistoryItem } from '@/hooks/useCandidateHistory';
+import { useCandidateHistory } from '@/hooks/useCandidateHistory';
 import { computeLikelyToSwitch } from '@/hooks/linkedin/likelyToSwitch';
 import { LikelyToSwitchBadge } from './LikelyToSwitchBadge';
 import { CandidateHistoryPanel } from './CandidateHistoryPanel';
-import { useNotionShortlist } from '@/hooks/useNotionCandidates';
 import { JobMatchResult } from './JobScoreDisplay';
 
 import { Job } from '@/types/jobs';
@@ -54,7 +53,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   onArchive,
   candidateStatus,
   airtableMatch,
-  notionMatch,
   enrollmentInfo,
   onOpenDetail,
   isBatchScoring = false,
@@ -142,62 +140,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       : null
   );
 
-  // Notion shortlist data for this candidate
-  const { data: notionShortlistData, isLoading: notionShortlistLoading } = useNotionShortlist();
-  const notionShortlistsForCandidate: NotionShortlistHistoryItem[] = React.useMemo(() => {
-    if (!notionShortlistData) return [];
-
-    const normalizeName = (value?: string | null) =>
-      (value || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    const profileNames = [
-      fullName,
-      profile.name,
-      [profile.first_name, profile.last_name].filter(Boolean).join(' '),
-    ]
-      .map(normalizeName)
-      .filter(Boolean);
-
-    const matched = notionShortlistData.filter((s: any) => {
-      if (!s.candidate) return false;
-      if (notionMatch && s.candidate.id === notionMatch.id) return true;
-
-      const candidateName = normalizeName(s.candidate.name);
-      if (!candidateName || profileNames.length === 0) return false;
-
-      return profileNames.some((profileName) =>
-        profileName === candidateName ||
-        profileName.includes(candidateName) ||
-        candidateName.includes(profileName)
-      );
-    });
-
-    const seen = new Set<string>();
-    return matched
-      .filter((s: any) => {
-        if (!s.id || seen.has(s.id)) return false;
-        seen.add(s.id);
-        return true;
-      })
-      .map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        stage: s.stage,
-        entity: s.entity,
-        positions: s.positions || [],
-        createdAt: s.createdAt,
-        preQualifDate: s.preQualifDate,
-        cvPresentationDate: s.cvPresentationDate,
-        startDate: s.startDate,
-      }));
-  }, [fullName, notionMatch, notionShortlistData, profile.first_name, profile.last_name, profile.name]);
-
   const formatHistoryDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return null;
     const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -220,8 +162,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   const historyLatestDateLabel = formatHistoryDate(historyLatestDate);
 
   const showScoringOverlay = isBatchScoring && isSelected;
-  const shouldWaitForNotionHistory = Boolean(notionMatch) && notionShortlistsForCandidate.length === 0 && !historyData;
-  const historyPanelLoading = historyLoading || (shouldWaitForNotionHistory && notionShortlistLoading);
   const hasHighScore = jobScore && jobScore.match_score > 80;
   const flashColorMap = {
     go: 'hsl(var(--accent))',
@@ -390,7 +330,6 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   <CardStatusBadges
                     candidateStatus={candidateStatus}
                     profile={profile}
-                    notionMatch={notionMatch}
                     jobScore={jobScore}
                     isLikelyToRespond={isLikelyToRespond}
                     enrollmentInfo={enrollmentInfo}
@@ -536,10 +475,10 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </>
             )}
 
-            {/* Row 7: History (Airtable / Notion) */}
-            {(historyData || notionShortlistsForCandidate.length > 0 || historyPanelLoading) && (
+            {/* Row 7: History (Airtable) */}
+            {(historyData || historyLoading) && (
               <div className="mt-2">
-                <CandidateHistoryPanel data={historyData} loading={historyPanelLoading} compact notionShortlists={notionShortlistsForCandidate} />
+                <CandidateHistoryPanel data={historyData} loading={historyLoading} compact />
               </div>
             )}
 

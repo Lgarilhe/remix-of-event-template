@@ -68,7 +68,7 @@ const updateCandidateStage: AgentTool = {
       candidate_id: {
         type: 'string',
         description:
-          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or notion_candidate_id, or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
+          "The candidate's stable identifier (Unipile LinkedIn provider_id like 'ACoAA...', or whichever ID was stored when the candidate was first discovered on this job). MUST already exist in job_candidate_status for this job.",
       },
       job_id: {
         type: 'string',

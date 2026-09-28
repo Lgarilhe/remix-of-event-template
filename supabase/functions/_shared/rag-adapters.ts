@@ -190,32 +190,6 @@ export function adaptQualificationSession(session: any): Chunk[] {
   }];
 }
 
-// 7. Contexte de poste
-export function adaptJobContext(jobData: any, bodyContent?: string): Chunk[] {
-  if (!jobData) return [];
-  const lines: string[] = [];
-  const title = safeStr(jobData.title || jobData['Poste'] || jobData['Titre'] || '');
-  const client = safeStr(jobData.client?.name || jobData['Client'] || jobData['Entreprise'] || '');
-  if (title) lines.push(`Poste : ${title}`);
-  if (client) lines.push(`Client : ${client}`);
-  if (jobData.skills) lines.push(`Compétences : ${Array.isArray(jobData.skills) ? jobData.skills.join(', ') : jobData.skills}`);
-  if (jobData.seniority) lines.push(`Séniorité : ${jobData.seniority}`);
-  if (jobData.location) lines.push(`Localisation : ${jobData.location}`);
-  if (jobData.remote) lines.push(`Remote : ${jobData.remote}`);
-  if (jobData.salaryMin || jobData.salaryMax) lines.push(`Salaire : ${jobData.salaryMin || '?'}k - ${jobData.salaryMax || '?'}k€`);
-  if (jobData.mustHave) lines.push(`Must-have : ${jobData.mustHave}`);
-  if (jobData.shouldHave) lines.push(`Should-have : ${jobData.shouldHave}`);
-  if (jobData.description) lines.push(`Description : ${truncate(safeStr(jobData.description), 300)}`);
-  if (bodyContent) lines.push(`Détails : ${truncate(bodyContent, 500)}`);
-  if (lines.length === 0) return [];
-  return [{
-    chunk_type: 'job_context',
-    content: lines.join('\n'),
-    source_table: 'notion_jobs',
-    metadata: { title, client },
-  }];
-}
-
 // 8. Historique de séquence
 export function adaptSequenceHistory(executions: any[]): Chunk[] {
   if (!Array.isArray(executions) || executions.length === 0) return [];

@@ -577,7 +577,8 @@ test('§3.2 — les liens du front visent directement les nouvelles rubriques', 
     ['src/components/assistant-ui/connector-menu.tsx', ['/settings/account/connections#notion', '/settings/account/connections#email']],
     ['src/components/outreach/inbox/MessageComposer.tsx', ['/settings/account/writing#modeles']],
     ['src/components/missions/PedigreePresetSelector.tsx', ['/settings/org/assistant#icp']],
-    ['src/pages/ATS.tsx', ['/settings/org/general#outils']],
+    // src/pages/ATS.tsx ne renvoie plus vers #outils : son seul lien était l'état
+    // vide « Connectez Notion » de l'onglet Shortlist Client, retiré le 2026-09-28.
     ['src/components/settings/InviteMemberForm.tsx', ['/settings/org/billing']],
     ['src/pages/Marketplace.tsx', ['/settings/org/general']],
     ['src/pages/PrivacyExtension.tsx', ['/settings/account/connections#extension']],

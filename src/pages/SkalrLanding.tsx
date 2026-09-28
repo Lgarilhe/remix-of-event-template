@@ -10,7 +10,6 @@ import { KonektLogo } from '@/components/KonektLogo';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useToast } from '@/hooks/use-toast';
 import { LandingProductDemo } from '@/components/landing/LandingProductDemo';
 import { getValidatedSession } from '@/lib/authSession';
@@ -116,14 +115,6 @@ const SkalrLanding = () => {
         message: contactForm.message.trim(),
       });
       if (error) throw error;
-      try {
-        await invokeEdgeFunction('notify-notion', {
-          name: contactForm.name.trim(),
-          email: contactForm.email.trim(),
-          company: contactForm.company.trim() || null,
-          message: contactForm.message.trim(),
-        });
-      } catch (e) { console.warn('Notion sync error:', e); }
       toast({ title: "Message envoyé !", description: "Nous vous recontacterons très vite." });
       setContactForm({ name: '', email: '', company: '', message: '' });
       setShowContact(false);

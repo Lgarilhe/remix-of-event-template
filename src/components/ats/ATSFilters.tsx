@@ -24,7 +24,6 @@ interface ATSFiltersProps {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  shortlist: 'Pipeline Notion',
   sequence: 'Séquences',
   inmail: 'InMails',
 };

@@ -36,7 +36,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
-import { useNotionJobs } from '@/hooks/useNotionJobs';
+import { CONTRACT_TYPE_LABELS, type JobDetails } from '@/types/jobDetails';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -49,6 +49,18 @@ interface QuickEval {
   ratedCount: number;
   overallScore: number | null;
   recommendation: string | null;
+}
+
+/** Détails du poste affichés dans la colonne « Mission », lus dans sourcing_projects.job_details. */
+interface JobSidebarDetails {
+  title: string | null;
+  client: { name: string } | null;
+  location: string | null;
+  seniority: string | null;
+  contractType: string | null;
+  remote: boolean;
+  mustHave: string[];
+  description: string | null;
 }
 
 export default function ScorecardFullPage() {
@@ -64,8 +76,7 @@ export default function ScorecardFullPage() {
   const [mobilePane, setMobilePane] = useState<'sidebar' | 'scorecard'>('scorecard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [quickEval, setQuickEval] = useState<QuickEval | null>(null);
-
-  const { data: notionJobs } = useNotionJobs();
+  const [jobDetails, setJobDetails] = useState<JobSidebarDetails | null>(null);
 
   useEffect(() => {
     if (!candidateId) return;
@@ -109,17 +120,37 @@ export default function ScorecardFullPage() {
         tags: data.tags || [],
       };
 
-      if (data.job_id) {
-        const { data: proj } = await supabase
+      let job: JobSidebarDetails | null = null;
+      if (data.project_id || data.job_id) {
+        // Mission par project_id (rempli depuis les deux formes de job_id),
+        // job_id en repli pour les anciennes missions.
+        const projQuery = supabase
           .from('sourcing_projects')
-          .select('job_title')
-          .eq('job_id', data.job_id)
+          .select('job_title, client_name, description, job_details');
+        const { data: proj } = await (data.project_id
+          ? projQuery.eq('id', data.project_id)
+          : projQuery.eq('job_id', data.job_id))
           .limit(1)
           .maybeSingle();
         if (proj?.job_title) c.jobTitle = proj.job_title;
+        if (proj) {
+          const jd: JobDetails = (proj.job_details as JobDetails | null) ?? {};
+          const clientName = jd.client?.name || proj.client_name;
+          job = {
+            title: jd.title || proj.job_title || null,
+            client: clientName ? { name: clientName } : null,
+            location: jd.location || null,
+            seniority: jd.seniority || null,
+            contractType: jd.contract_type ? (CONTRACT_TYPE_LABELS[jd.contract_type] || jd.contract_type) : null,
+            remote: jd.remote_policy === 'full_remote',
+            mustHave: jd.skills_must_have || [],
+            description: jd.mission_description || jd.context || proj.description || null,
+          };
+        }
       }
 
       setCandidate(c);
+      setJobDetails(job);
       setLoading(false);
     };
     load();
@@ -211,11 +242,6 @@ export default function ScorecardFullPage() {
       yearsOfExperience,
     };
   }, [candidate]);
-
-  const jobDetails = useMemo(() => {
-    if (!candidate?.jobId) return null;
-    return notionJobs?.find(j => j.id === candidate.jobId) || null;
-  }, [candidate?.jobId, notionJobs]);
 
   if (loading) {
     return (

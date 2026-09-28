@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { CreditCostBadge } from '@/components/ai/CreditCostBadge';
 import { ModelPicker } from '@/components/ai/ModelPicker';
@@ -218,17 +217,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({ candidate, enrichedP
             jobContext.evaluationWeights = jd.evaluation_weights;
           }
         }
-
-        try {
-          const { data: notionData } = await invokeEdgeFunction('fetch-notion-jobs', {
-            jobId: candidate.jobId,
-          });
-          if ((notionData as any)?.job) {
-            jobContext.description = (notionData as any).job.description || jobContext.description;
-            jobContext.requirements = (notionData as any).job.criteria;
-            jobContext.skills = (notionData as any).job.skills;
-          }
-        } catch { /* Non-blocking */ }
       }
 
       const stage = activeEval?.interviewStage || selectedStage || undefined;

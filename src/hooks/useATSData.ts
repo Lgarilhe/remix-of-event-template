@@ -1,7 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
 
 // Types
@@ -31,8 +30,6 @@ export interface ATSCandidate {
   score?: number | null;
   recommendation?: string | null;
   outreachStatus?: string | null;
-  notionShortlistId?: string | null;
-  notionCandidateId?: string | null;
   tags?: string[];
   scoringDetails?: {
     match_score: number;
@@ -123,7 +120,7 @@ function computeEffectiveStage(pipelineStage: string | null, status: string): st
 }
 
 // Columns needed for ATS display (excluding heavy linkedin_profile_data JSON)
-const JCS_DISPLAY_COLUMNS = 'id, candidate_id, candidate_name, candidate_headline, linkedin_profile_url, status, pipeline_stage, score, recommendation, job_id, tags, updated_at, created_at, notion_shortlist_id, notion_candidate_id, scoring_details';
+const JCS_DISPLAY_COLUMNS = 'id, candidate_id, candidate_name, candidate_headline, linkedin_profile_url, status, pipeline_stage, score, recommendation, job_id, tags, updated_at, created_at, scoring_details';
 
 // Fetch all candidates from local job_candidate_status table (primary source)
 async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
@@ -175,8 +172,6 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
       score: r.score,
       recommendation: r.recommendation,
       outreachStatus: r.status,
-      notionShortlistId: r.notion_shortlist_id || null,
-      notionCandidateId: r.notion_candidate_id || null,
       tags: r.tags || [],
       scoringDetails: r.scoring_details || null,
       linkedinProfileData: r.linkedin_profile_data || null,
@@ -370,7 +365,7 @@ export function useATSData() {
     refetchOnWindowFocus: true, // Fix Opus A4 — voir commentaire sur STALE_TIME
   });
 
-  // Handle stage change: update local DB first, then propagate to Notion
+  // Handle stage change: update local DB
   const handleStageChange = useCallback(async (candidateId: string, newStage: string) => {
     const candidate = candidates.find(c => c.id === candidateId);
     if (!candidate) return;
@@ -435,16 +430,6 @@ export function useATSData() {
           // Ne throw pas — on garde l'optimistic UI même si la persistence échoue
           // (le toast informera l'user). Alternative : throw pour revert.
         }
-      }
-
-      // 3. Propagate to Notion in background (fire-and-forget)
-      const notionShortlistId = candidate.notionShortlistId;
-      if (notionShortlistId) {
-        invokeEdgeFunction('update-candidate-stage', {
-          shortlistId: notionShortlistId, newStage,
-        }).catch(err => {
-          console.warn('[ATS] Notion propagation failed (non-blocking):', err);
-        });
       }
 
       // Toast avec action Undo (Opus audit idée #E)
