@@ -350,10 +350,13 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   // utile pour rouvrir l'étape déjà sélectionnée après le choix d'une étape.
   // Seul un changement réel compte : la sélection posée par l'éditeur (au
   // montage, après un ajout) ne rouvre rien.
+  // Deux étapes peuvent rester sélectionnées un instant (ancienne et nouvelle) :
+  // choisir la première des deux faisait basculer l'éditeur de l'une à l'autre
+  // sans fin. On ne suit qu'une sélection d'une seule étape.
   const handleSelectionChange = useCallback(({ nodes: selected }: OnSelectionChangeParams) => {
-    const stepNode = selected.find(n => n.type === 'stepNode' && n.data?.step);
-    if (!stepNode) return;
-    const stepId = (stepNode.data.step as SequenceStep).id;
+    const stepNodes = selected.filter(n => n.type === 'stepNode' && n.data?.step);
+    if (stepNodes.length !== 1) return;
+    const stepId = (stepNodes[0].data.step as SequenceStep).id;
     if (stepId !== selectedStepId) onStepClick(stepId);
   }, [onStepClick, selectedStepId]);
 

@@ -181,7 +181,9 @@ Défauts critiques corrigés :
 
 Parmi les défauts graves corrigés : garde du compte d'envoi contournable par une modification de l'inscription ; réponse reportée dans toutes les missions de l'organisation, ou jamais au pipeline selon le chemin de détection ; condition « Si pas de réponse » qui terminait l'inscription sans la clore ; rendez-vous rattaché par un morceau d'adresse de profil ; même personne inscrite deux fois dans une séquence sous deux identifiants ; lectures de l'assistant qui comptaient une autre organisation ou lisaient la boîte d'un collègue ; journal de l'assistant lisible par un collaborateur ; faux succès à l'annulation de l'action d'un collègue ; candidat effacé repassé « actif » par une écriture directe dans l'API (migration `20260927231417`).
 
-Résultat après corrections, sur la stack locale : 372 tests d'API sur 372 ; 116 tests d'interface verts, 6 mis de côté (décisions en attente), 1 échec hors séquences (carte « Extension Chrome », code identique à `main`) ; 10 fichiers d'audit SQL verts sur une base neuve où les 276 migrations rejouent ; tests UX 840, agent 40, Deno 150 ; tsc 24 ; build OK.
+Le second passage de la suite complète a fait apparaître un défaut intermittent de l'éditeur visuel, introduit par l'audit : quand deux étapes restaient sélectionnées un instant dans le schéma, la sélection au clavier basculait de l'une à l'autre sans fin et le panneau de réglages ne se stabilisait plus. Corrigé dans `WorkflowCanvas.tsx` (seule une sélection d'une étape est suivie), puis vérifié : 123 tests d'éditeur et d'interface verts, deux fois chacun, avec deux navigateurs en parallèle.
+
+Résultat après corrections, sur la stack locale, deux passages de la suite complète : 372 tests d'API sur 372 ; 116 tests d'interface verts, 6 mis de côté (décisions en attente), 1 échec hors séquences (carte « Extension Chrome », code identique à `main`) ; 10 fichiers d'audit SQL verts sur une base neuve où les 276 migrations rejouent ; tests UX 840, agent 40, Deno 150 ; tsc 24 ; build OK.
 
 ### Décisions produit en attente
 
