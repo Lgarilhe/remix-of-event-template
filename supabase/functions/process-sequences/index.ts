@@ -22,7 +22,11 @@ import {
   MAILBOX_DISCONNECTED_SKIP_REASON,
   type ResumeMode, type ResumeOutcome, type ResumeExecutionRow,
 } from "../_shared/sequence-resume.ts";
-import { isGdprBlocked, GDPR_ERASURE_SKIP_REASON, GDPR_ERASED_AT_KEY } from "../_shared/get-or-fetch-contact.ts";
+import {
+  isGdprBlocked, GDPR_ERASURE_SKIP_REASON, GDPR_ERASED_AT_KEY,
+  GdprRegistryUnavailableError, GDPR_REGISTRY_UNAVAILABLE_MESSAGE,
+} from "../_shared/get-or-fetch-contact.ts";
+import { cancelScheduledInMails, MEETING_INMAIL_CANCEL_REASON } from "../_shared/candidate-reply-closure.ts";
 import {
   CYCLE_BUDGET_MS, hasTimeToLock, readCycleSelection, sendingAccountKey, stepSendChannel, executionChannel,
   MAX_VISIBLE_PER_ACCOUNT_PER_CYCLE,
@@ -713,7 +717,9 @@ async function pauseActiveEnrollments(supabase: any, target: { id?: string; sequ
  * gratuites de SON organisation seulement (jamais d'enrichissement payant),
  * refus RGPD respecté, adresse « non délivrable » écartée. Persistée en
  * minuscules sur l'inscription (sequence-send-email la relit en base) ; null
- * si rien n'est trouvé ou si l'écriture échoue.
+ * si rien n'est trouvé ou si l'écriture échoue. Registre des effacements
+ * illisible : GdprRegistryUnavailableError est propagée (décision 13),
+ * l'appelant reporte l'étape au lieu de la sauter.
  */
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
@@ -741,6 +747,7 @@ async function recoverEnrollmentEmail(supabase: any, enrollment: Record<string, 
     console.log(`[process] Adresse e-mail retrouvée pour l'inscription ${enrollment.id} (source ${contact.source})`);
     return email;
   } catch (e) {
+    if (e instanceof GdprRegistryUnavailableError) throw e;
     console.warn(`[process] Recherche d'adresse e-mail échouée pour ${enrollment.id} (non bloquant):`, e);
     return null;
   }
@@ -969,7 +976,11 @@ async function handleResumeEnrollments(supabase: any, mode: ResumeMode, req: Res
         results.push({ enrollment_id: id, ...await resumeOneEnrollment(supabase, mode, enr, enrOrgId, true, accountCache) });
       } catch (e) {
         console.error(`[${mode}] enrollment ${id} failed:`, e);
-        results.push({ enrollment_id: id, outcome: 'error', message: RESUME_MESSAGES.failed });
+        // Décision 13 : registre des effacements illisible, refus avec la raison.
+        results.push({
+          enrollment_id: id, outcome: 'error',
+          message: e instanceof GdprRegistryUnavailableError ? GDPR_REGISTRY_UNAVAILABLE_MESSAGE : RESUME_MESSAGES.failed,
+        });
       }
     }
   }
@@ -1877,6 +1888,23 @@ async function handleProcess(supabase: any, force = false) {
             });
             if (meetingNotifErr) console.warn(`[process] Notification de rendez-vous non créée pour ${enrollment.id}:`, meetingNotifErr);
           }
+          // Décision 27 : le rendez-vous annule aussi les InMails pas encore
+          // partis vers le candidat dans l'organisation, comme calendly-webhook.
+          // Non bloquant : la clôture reste acquise.
+          const meetingInmailOrgId = (enrollment.organization_id ?? enrollment.sequence?.organization_id ?? null) as string | null;
+          if (meetingBooked && !stopErr && (stoppedRows ?? []).length > 0 && meetingInmailOrgId) {
+            try {
+              await cancelScheduledInMails(
+                supabase,
+                { organizationId: meetingInmailOrgId },
+                [enrollment.profile_id, enrollment.resolved_profile_id, enrollment.provider_id],
+                { kind: 'all' },
+                MEETING_INMAIL_CANCEL_REASON,
+              );
+            } catch (inmailErr) {
+              console.warn(`[process] InMails du candidat de ${enrollment.id} non annulés après le rendez-vous:`, inmailErr);
+            }
+          }
           console.log(`[process] ⛔ ${enrollment.profile_name} — ${stopReason}`);
           results.skipped++;
           continue;
@@ -1944,7 +1972,21 @@ async function handleProcess(supabase: any, force = false) {
         // de l'organisation (coordonnées enrichies, fiche pipeline), filtre RGPD
         // compris, et on la garde sur l'inscription.
         if (effectiveChannel === 'email' && !enrollment.email_used) {
-          const recoveredEmail = await recoverEnrollmentEmail(supabase, enrollment);
+          // Décision 13 : registre des effacements illisible, étape reportée
+          // d'une heure (comme SEQ-192), jamais sautée ni annulée.
+          let recoveredEmail: string | null;
+          try {
+            recoveredEmail = await recoverEnrollmentEmail(supabase, enrollment);
+          } catch (e) {
+            if (!(e instanceof GdprRegistryUnavailableError)) throw e;
+            console.warn(`[process] Registre RGPD illisible pour ${enrollment.id} : étape e-mail reportée d'une heure`);
+            await supabase.from('sequence_step_executions').update({
+              scheduled_at: new Date(Date.now() + 3600_000).toISOString(),
+              error_message: GDPR_REGISTRY_UNAVAILABLE_MESSAGE,
+            }).eq('id', exec.id).eq('status', 'scheduled');
+            results.skipped++;
+            continue;
+          }
           if (recoveredEmail) enrollment.email_used = recoveredEmail;
         }
         if (effectiveChannel === 'email' && !enrollment.email_used) {

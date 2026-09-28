@@ -14,6 +14,7 @@
  * | unipile-webhook (message reçu)                    | new_message           | Nouveau message de …                 | /inbox?chatId=… ou /inbox | —                     | message |
  * | unipile-webhook (réponse par e-mail, sans chat_id)| new_message           | Nouveau message de …                 | /missions/…?tab=outreach  | —                     | message |
  * | unipile-webhook (rebond d'e-mail)                 | action                | Adresse e-mail invalide, séquence arrêtée | /missions/…?tab=outreach | email_bounce     | action  |
+ * | unipile-webhook (relances non arrêtées après une réponse) | action        | Relances non arrêtées après une réponse | /missions/…?tab=outreach ou /missions | reply_sibling_stop_failed | action |
  * | calendly-webhook (RDV pris)                       | action                | RDV pris, séquence arrêtée           | /qualification/… ou /missions | calendly          | action  |
  * | unipile-webhook (compte déconnecté ou en erreur)  | linkedin_disconnected | Compte LinkedIn déconnecté           | /settings?tab=account     | —                     | action  |
  * | unipile-webhook (rattachement du compte échoué)   | error                 | Compte LinkedIn non rattaché         | /settings?tab=account     | —                     | action  |

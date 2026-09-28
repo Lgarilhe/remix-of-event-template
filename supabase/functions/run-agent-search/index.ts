@@ -171,6 +171,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Décision 15 : seul l'auteur de la conversation lance sa recherche, qui
+    // écrit dans la conversation (statut, messages de progression). La RLS
+    // d'écriture de agent_conversations dit la même chose ; la clé de service
+    // la contourne, d'où le contrôle explicite.
+    if (conv.created_by !== user.id) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const searchPlan = conv.search_config as any;
     if (!searchPlan?.filters) {
       return new Response(JSON.stringify({ error: "No search plan configured" }), {

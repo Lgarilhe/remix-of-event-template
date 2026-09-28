@@ -114,9 +114,9 @@ interface QueueStats {
 const SEND_PACE_TEXT = "Envoi pendant vos heures d'envoi, les jours ouvrés, 1 à 2 minutes entre chaque InMail.";
 const INMAIL_DUPLICATE_CHECK_FAILED_MESSAGE =
   'Impossible de vérifier les contacts récents de votre organisation. Réessayez avant de planifier.';
-/** Un InMail groupé récent n'admet pas de dérogation : la file le refuse (process-inmail-queue). */
-const RECENT_INMAIL_REFUSED_MESSAGE =
-  `Déjà un InMail groupé ces ${RECENT_CONTACT_WINDOW_DAYS} derniers jours : un nouvel InMail groupé sera refusé`;
+/** Décision 24 : la file refuse tout candidat déjà contacté, InMail groupé ou séquence, sans dérogation (process-inmail-queue). */
+const RECENT_CONTACT_REFUSED_MESSAGE =
+  `Sans dérogation possible : la file InMail refuse tout candidat inscrit en séquence ou contacté par votre organisation ces ${RECENT_CONTACT_WINDOW_DAYS} derniers jours, séquence arrêtée comprise.`;
 /** Refus du compte d'envoi (liaison stricte), formulés pour l'InMail groupé. */
 const INMAIL_ACCOUNT_BLOCK_MESSAGES: Record<string, string> = {
   [NO_ACCOUNT_MESSAGE]: "Aucun compte LinkedIn n'est sélectionné. Connectez votre compte avant d'envoyer des InMails.",
@@ -151,7 +151,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   accountId,
   selectedJob,
 }) => {
-  const { organizationId, isAdmin } = useOrganization();
+  const { organizationId } = useOrganization();
   const { user } = useAuthReady();
   // Compte d'envoi (liaison stricte, comme les inscriptions) : chacun envoie
   // depuis son propre compte relié. Relié à un collègue, déconnecté ou absent,
@@ -168,20 +168,19 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
   // Anti-doublon organisation, comme les inscriptions en séquence : candidats
   // en séquence chez un collègue, contactés ces 90 derniers jours ou ayant déjà
-  // un InMail groupé programmé ou envoyé. Exclus par défaut, dérogation
-  // réservée aux propriétaires et administrateurs. null = pas encore vérifié.
+  // un InMail groupé programmé ou envoyé. Toujours exclus : la file les refuse
+  // sans dérogation (décision 24), aucune génération payée pour rien.
+  // null = pas encore vérifié.
   const [recentContacts, setRecentContacts] = useState<Map<string, RecentEnrollment> | null>(null);
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [duplicateCheckFailed, setDuplicateCheckFailed] = useState(false);
   const [duplicateCheckAttempt, setDuplicateCheckAttempt] = useState(0);
-  const [includeDuplicates, setIncludeDuplicates] = useState(false);
   const allRecipientsKey = allRecipients.map(r => r.id).join(',');
   useEffect(() => {
     if (!isOpen || !organizationId) return;
     let cancelled = false;
     setRecentContacts(null);
     setDuplicateCheckFailed(false);
-    setIncludeDuplicates(false);
     setIsCheckingDuplicates(true);
     findRecentEnrollments(supabase, organizationId, allRecipients.map(r => ({
       id: r.id,
@@ -199,26 +198,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, organizationId, allRecipientsKey, duplicateCheckAttempt]);
-  const allowDuplicates = isAdmin && includeDuplicates;
   const duplicateRecipients = useMemo(
     () => (recentContacts ? allRecipients.filter(r => recentContacts.has(r.id)) : []),
     [allRecipients, recentContacts],
   );
-  // Dérogation « Contacter quand même » : contacts par séquence seulement. Un
-  // InMail groupé des 90 derniers jours est refusé par la file sans dérogation
-  // possible : ces candidats restent exclus (aucune génération payée pour rien).
-  const overridableDuplicates = useMemo(
-    () => duplicateRecipients.filter(r => !recentContacts?.get(r.id)?.hasRecentInMail),
-    [duplicateRecipients, recentContacts],
-  );
-  const recentInMailCount = duplicateRecipients.length - overridableDuplicates.length;
   // Destinataires réellement visés : génération, crédits, planification.
   const recipients = useMemo(
-    () => (!recentContacts ? allRecipients : allRecipients.filter(r => {
-      const entry = recentContacts.get(r.id);
-      return !entry || (allowDuplicates && !entry.hasRecentInMail);
-    })),
-    [allRecipients, recentContacts, allowDuplicates],
+    () => (!recentContacts ? allRecipients : allRecipients.filter(r => !recentContacts.has(r.id))),
+    [allRecipients, recentContacts],
   );
   // La génération et la planification attendent la fin de la vérification.
   const duplicatesUnchecked = !recentContacts;
@@ -634,6 +621,9 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           return {
             account_id: accountId,
             recipient_profile_id: r.profile_id,
+            // URL publique : la file rapproche les inscriptions par slug et lit
+            // le registre global des effacements (décision 14).
+            recipient_profile_url: r.profile?.public_profile_url || r.profile?.profile_url || null,
             recipient_name: r.name,
             recipient_headline: r.headline,
             subject: messages[r.id].subject,
@@ -642,7 +632,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           };
         });
 
-      const { data, error } = await invokeEdgeFunction<{ queued?: number; skipped_duplicates?: number; message?: string }>('process-inmail-queue', {
+      const { data, error } = await invokeEdgeFunction<{ queued?: number; skipped_duplicates?: number; skipped_erased?: number; message?: string }>('process-inmail-queue', {
         action: 'queue',
         items,
         user_timezone: userTimezone,
@@ -663,20 +653,28 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
       const queued = data.queued ?? 0;
       const skippedDuplicates = data.skipped_duplicates ?? 0;
+      // Candidats effacés (RGPD) : refusés par la file, comptés à part des doublons.
+      const skippedErased = data.skipped_erased ?? 0;
+      const exclusions = [
+        skippedDuplicates > 0
+          ? `${skippedDuplicates} candidat${skippedDuplicates > 1 ? 's' : ''} déjà contacté${skippedDuplicates > 1 ? 's' : ''} par votre organisation, exclu${skippedDuplicates > 1 ? 's' : ''}.`
+          : null,
+        skippedErased > 0
+          ? `${skippedErased} candidat${skippedErased > 1 ? 's' : ''} ayant demandé l'effacement de ${skippedErased > 1 ? 'leurs' : 'ses'} données, exclu${skippedErased > 1 ? 's' : ''}.`
+          : null,
+      ].filter(Boolean).join(' ');
       if (queued === 0) {
         // Rien en file : les messages restent affichés pour réessayer.
         toast.error('Aucun InMail n’a été planifié', {
-          description: skippedDuplicates > 0
+          description: skippedDuplicates > 0 && skippedErased === 0
             ? `Ces candidats ont déjà un InMail en file ou ont été contactés par votre organisation ces ${RECENT_CONTACT_WINDOW_DAYS} derniers jours.`
-            : 'Réessayez.',
+            : exclusions || 'Réessayez.',
         });
         return;
       }
       if (queued < items.length) {
         toast.warning(`${queued} InMail${queued > 1 ? 's' : ''} planifié${queued > 1 ? 's' : ''} sur ${items.length}`, {
-          description: skippedDuplicates > 0
-            ? `${skippedDuplicates} candidat${skippedDuplicates > 1 ? 's' : ''} déjà contacté${skippedDuplicates > 1 ? 's' : ''} par votre organisation, exclu${skippedDuplicates > 1 ? 's' : ''}.`
-            : 'Consultez la file d’attente pour vérifier les envois prévus.',
+          description: exclusions || 'Consultez la file d’attente pour vérifier les envois prévus.',
         });
       } else {
         toast.success(`${queued} InMail${queued > 1 ? 's' : ''} planifié${queued > 1 ? 's' : ''} pour envoi`);
@@ -838,10 +836,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
               <div className="mt-3 p-3 border border-warning/40 bg-warning/5 rounded-lg space-y-2">
                 <p className="text-xs font-semibold text-warning flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                  {duplicateRecipients.length} candidat{duplicateRecipients.length > 1 ? 's' : ''} déjà contacté{duplicateRecipients.length > 1 ? 's' : ''} par votre organisation
-                  {allowDuplicates && overridableDuplicates.length > 0
-                    ? (recentInMailCount > 0 ? `, ${overridableDuplicates.length} inclus quand même` : ', inclus quand même')
-                    : ', exclu' + (duplicateRecipients.length > 1 ? 's' : '')}
+                  {duplicateRecipients.length} candidat{duplicateRecipients.length > 1 ? 's' : ''} déjà contacté{duplicateRecipients.length > 1 ? 's' : ''} par votre organisation, exclu{duplicateRecipients.length > 1 ? 's' : ''}
                 </p>
                 <ul className="text-[11px] text-muted-foreground space-y-0.5 max-h-20 overflow-y-auto">
                   {duplicateRecipients.slice(0, 5).map(r => {
@@ -857,26 +852,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                     <li className="italic">et {duplicateRecipients.length - 5} autre{duplicateRecipients.length - 5 > 1 ? 's' : ''}</li>
                   )}
                 </ul>
-                {recentInMailCount > 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    {RECENT_INMAIL_REFUSED_MESSAGE} ({recentInMailCount} candidat{recentInMailCount > 1 ? 's' : ''}, toujours exclu{recentInMailCount > 1 ? 's' : ''}).
-                  </p>
-                )}
-                {overridableDuplicates.length > 0 && (isAdmin ? (
-                  <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={includeDuplicates}
-                      onChange={(e) => setIncludeDuplicates(e.target.checked)}
-                      className="h-3 w-3 rounded border-border"
-                    />
-                    <span className="text-foreground">Contacter quand même ({overridableDuplicates.length})</span>
-                  </label>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    Seuls les propriétaires et administrateurs peuvent les contacter quand même.
-                  </p>
-                ))}
+                <p className="text-[11px] text-muted-foreground">{RECENT_CONTACT_REFUSED_MESSAGE}</p>
               </div>
             )}
             {!selectedJob ? (

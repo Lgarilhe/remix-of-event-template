@@ -619,9 +619,14 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-    } else if (conv.created_by !== user.id) {
-      // Conversation sans organisation : seul son créateur peut y accéder
-      // (le client service-role bypasse la RLS, le check doit être explicite).
+    }
+    if (conv.created_by !== user.id) {
+      // Décision 15 : une conversation appartient à son auteur, avec ou sans
+      // organisation. Propriétaire et administrateur la lisent (RLS de
+      // agent_conversations), mais ce chemin y écrit un message et renvoie
+      // l'historique dans la réponse : l'auteur seul, comme la policy
+      // d'écriture. Le client service-role bypasse la RLS, le check doit être
+      // explicite.
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
