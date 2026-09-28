@@ -7,6 +7,7 @@ Documents de conception, dans l'ordre de lecture :
 3. `etude-ats.md` : faisabilité des intégrations ATS, douze outils, voie par connecteur unifié.
 4. `mesures-production-2026-09-24.md` : mesures de production anonymisées (`org_1` à `org_17`) sur lesquelles s'appuient les deux conceptions.
 5. `arbitrages-2026-09-27.md` : les choix du fondateur sur les 23 décisions ouvertes.
+6. `honoraires-marketplace-2026-09-28.md` : modèle d'honoraires de la Marketplace (commission de 20 %), inspiré de Paraform, adapté au droit français.
 
 Maquette cliquable (19 planches) : https://claude.ai/artifact/VeDjeGQz5JwrawtsEW7vYT
 

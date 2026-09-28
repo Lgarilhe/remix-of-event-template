@@ -194,3 +194,8 @@ Choix : **Par défaut**. La première présentation datée d'un candidat, pour c
 
 - 9. Le portail client pour une entreprise : remplacée par le champ « Qui recrute » de chaque mission.
 - 10. Le mode chasse gardé dans Cadrage : remplacée par la décision 17.
+
+## Précisions du fondateur, 28/09/2026
+
+- **Notion (décision 16, élargie).** « Notion est un reliquat du début de la construction de l'app : il ne doit plus être de la partie, sauf pour l'intégration MCP, qui peut rester disponible comme intégration. » Tout ce qui touche Notion est retiré, sauf la connexion Notion de l'assistant (MCP).
+- **Honoraires (décision 22).** « Konekt prend 20 % du deal. Le client met un pourcentage, et côté recruteur est visible son pourcentage à lui, déduit de notre commission. S'inspirer de Paraform. » Proposition détaillée et questions ouvertes : `honoraires-marketplace-2026-09-28.md`.
