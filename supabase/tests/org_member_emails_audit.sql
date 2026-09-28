@@ -10,12 +10,16 @@
 -- sous le rôle authenticated, dont le résultat va dans une table temporaire.
 -- Un DO final lève une exception listant les contrôles en échec.
 --
--- Ne jamais appeler cette fonction depuis un bloc PL/pgSQL qui rattrape une
--- erreur (DO … EXCEPTION) : le Postgres de l'image Supabase de la CI y meurt
--- par erreur de segmentation (signal 11 ; runs du 24/09, appel sous
--- authenticated, et du 25/09, appel refusé sous anon). Le refus d'un appel
--- anonyme est donc contrôlé ici par les droits de la fonction (contrôles 1
--- et 10), et en vrai par .github/workflows/e2e.yml, hors bloc PL/pgSQL.
+-- Ne jamais appeler depuis psql, sous le rôle anon ou authenticated, une
+-- fonction refusée à ce rôle. Dans l'image Postgres de Supabase (17.6.1.106,
+-- CLI 2.90.0), une session ouverte en postgres charge supautils, et l'indice
+-- que supautils ajoute au refus d'une fonction fait tomber le serveur
+-- (signal 11 ; runs du 24 au 26/09, reproduit en local le 27/09, dans un DO
+-- comme en instruction simple). Le refus d'une table n'a pas ce défaut. L'API
+-- non plus : ses sessions (rôle authenticator) ne chargent pas supautils.
+-- Le refus anonyme est donc contrôlé ici par les droits de la fonction
+-- (contrôles 1 et 10), et en vrai par .github/workflows/e2e.yml, qui appelle
+-- la fonction par l'API.
 -- =====================================================================
 
 CREATE TEMP TABLE emails_audit_results (n int, ok boolean, detail text) ON COMMIT DROP;

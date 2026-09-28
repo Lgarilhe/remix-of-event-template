@@ -128,15 +128,19 @@ jobs:
             -c 'BEGIN;' -f supabase/tests/org_writes_audit.sql -c 'ROLLBACK;'
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/org_member_emails_audit.sql -c 'ROLLBACK;'
-          # Appel anonyme réel, hors bloc PL/pgSQL (voir l'en-tête de l'audit) :
-          # il doit être refusé, comme un appel anonyme de l'API.
-          if psql "$DB_URL" -v ON_ERROR_STOP=1 \
-            -c "SET ROLE anon; SELECT * FROM public.get_org_member_emails('00000000-0000-0000-0000-000000000000');" \
-            2> anon_call.err; then
-            echo "::error::get_org_member_emails est appelable par anon"; exit 1
+          # Appel anonyme réel, par l'API avec la clé anon : il doit être refusé
+          # (401, code 42501). Pas par psql : sous SET ROLE anon, le refus d'une
+          # fonction fait tomber le Postgres de l'image (voir l'en-tête de l'audit).
+          code=$(curl -sS -o anon_call.json -w '%{http_code}' -X POST \
+            "$E2E_SUPABASE_URL/rest/v1/rpc/get_org_member_emails" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"p_organization_id":"00000000-0000-0000-0000-000000000000"}')
+          if [ "$code" != "401" ] || ! grep -q '"42501"' anon_call.json; then
+            echo "::error::appel anonyme de get_org_member_emails : HTTP $code (401 et 42501 attendus)"
+            cat anon_call.json; exit 1
           fi
-          grep -q 'permission denied for function get_org_member_emails' anon_call.err \
-            || { cat anon_call.err; exit 1; }
           psql "$DB_URL" -v ON_ERROR_STOP=1 \
             -c 'BEGIN;' -f supabase/tests/member_quotas_self_service.sql -c 'ROLLBACK;'
 
