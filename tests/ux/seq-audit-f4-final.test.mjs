@@ -225,17 +225,15 @@ test('front-enroll-follow-5 — anti-doublon : un InMail groupé récent est sig
   assert.equal(result.has('ACoAAMarc'), false);
 });
 
-test('front-enroll-follow-5 — la dérogation « Contacter quand même » ne couvre pas un InMail groupé récent', () => {
-  const overridable = slice(bulkInMail, 'const overridableDuplicates = useMemo(', ');\n');
-  assert.match(overridable, /duplicateRecipients\.filter\(r => !recentContacts\?\.get\(r\.id\)\?\.hasRecentInMail\)/);
-  const recipients = slice(bulkInMail, 'const recipients = useMemo(', '[allRecipients, recentContacts, allowDuplicates]');
-  assert.match(recipients, /return !entry \|\| \(allowDuplicates && !entry\.hasRecentInMail\);/);
-  // Libellé et visibilité de la case sur les seuls contacts par séquence.
-  assert.match(bulkInMail, /Contacter quand même \(\{overridableDuplicates\.length\}\)/);
-  assert.doesNotMatch(bulkInMail, /Contacter quand même \(\{duplicateRecipients\.length\}\)/);
-  assert.match(bulkInMail, /\{overridableDuplicates\.length > 0 && \(isAdmin \? \(/);
-  assert.match(bulkInMail, /`Déjà un InMail groupé ces \$\{RECENT_CONTACT_WINDOW_DAYS\} derniers jours : un nouvel InMail groupé sera refusé`/);
-  assert.match(bulkInMail, /\{recentInMailCount > 0 && \(/);
+// Décision 24 : la file InMail refuse sans dérogation tout candidat déjà contacté, la case « Contacter quand même » a disparu.
+test('front-enroll-follow-5 — InMail groupé : tout candidat déjà contacté reste exclu, sans dérogation', () => {
+  const recipients = slice(bulkInMail, 'const recipients = useMemo(', '[allRecipients, recentContacts]');
+  assert.match(recipients, /allRecipients\.filter\(r => !recentContacts\.has\(r\.id\)\)/);
+  assert.doesNotMatch(bulkInMail, /Contacter quand même/);
+  assert.doesNotMatch(bulkInMail, /overridableDuplicates|allowDuplicates|includeDuplicates/);
+  // Aide affichée sous la liste des candidats exclus.
+  assert.match(bulkInMail, /const RECENT_CONTACT_REFUSED_MESSAGE =\s*`Sans dérogation possible : la file InMail refuse tout candidat inscrit en séquence ou contacté par votre organisation ces \$\{RECENT_CONTACT_WINDOW_DAYS\} derniers jours, séquence arrêtée comprise\.`;/);
+  assert.match(bulkInMail, /<p className="text-\[11px\] text-muted-foreground">\{RECENT_CONTACT_REFUSED_MESSAGE\}<\/p>/);
 });
 
 // ---------------------------------------------------------------- front-enroll-follow-6

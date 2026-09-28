@@ -69,7 +69,7 @@ import {
   samePersonRefusedLabel,
   sequenceInactiveReason,
 } from './enrollment-preview/enrollmentHelpers';
-import { gdprErasedEnrollLabel } from '@/lib/sequenceErrorMessages';
+import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
 import { estimateActionCredits } from '@/lib/invokeWithCredits';
 
 // ── Types ──
@@ -229,10 +229,10 @@ interface EnrollResults {
   skipped: number;
   /** Déjà passés par la séquence (terminée, réponse, arrêtée) : à reprendre depuis le suivi. */
   alreadyPassed: number;
-  /** Refusés par la base : profil effacé (décision 12). */
-  gdprErased: number;
-  /** Refusés par la base : même personne dans la séquence sous un autre identifiant (décision 21). */
-  samePerson: number;
+  /** Refusés par la base, par nom : profil effacé (décision 12). */
+  gdprErased: string[];
+  /** Refusés par la base, par nom : même personne dans la séquence sous un autre identifiant (décision 21). */
+  samePerson: string[];
   /** Inscrits, déjà passés par la séquence il y a plus de 90 jours sous un autre identifiant (décision 23). */
   formerPassages: number;
   errors: string[];
@@ -610,7 +610,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     setIsEnrolling(true);
     setEnrollResults(null);
     setEnrollProgress(null);
-    const results: EnrollResults = { success: 0, skipped: 0, alreadyPassed: 0, gdprErased: 0, samePerson: 0, formerPassages: 0, errors: [] };
+    const results: EnrollResults = { success: 0, skipped: 0, alreadyPassed: 0, gdprErased: [], samePerson: [], formerPassages: 0, errors: [] };
     // Candidats réellement inscrits : leur statut pipeline passe à « contacté ».
     const enrolledProfiles: LinkedInProfile[] = [];
 
@@ -809,8 +809,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           // Refus propres à ce candidat (profil effacé, même personne dans la
           // séquence) : comptés à part, les suivants restent inscriptibles.
           const refusal = enrollmentRefusalOf(err);
-          if (refusal === 'gdpr_erased') { results.gdprErased++; continue; }
-          if (refusal === 'same_person') { results.samePerson++; continue; }
+          if (refusal === 'gdpr_erased') { results.gdprErased.push(profile.name || 'Candidat sans nom'); continue; }
+          if (refusal === 'same_person') { results.samePerson.push(profile.name || 'Candidat sans nom'); continue; }
           // Détail technique en console seulement : jamais le message brut de
           // la base (« new row violates row-level security policy… »).
           console.error('[EnrollmentPreviewModal] enrollment failed for', profile.id, err);
@@ -842,8 +842,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           description: 'Le détail est affiché dans la fenêtre.',
         });
       }
-      if (results.gdprErased > 0) toast.warning(gdprErasedEnrollLabel(results.gdprErased));
-      if (results.samePerson > 0) toast.warning(samePersonRefusedLabel(results.samePerson));
+      if (results.gdprErased.length > 0) toast.warning(gdprErasedEnrollLabel(results.gdprErased.length), { description: refusedCandidatesLabel(results.gdprErased) });
+      if (results.samePerson.length > 0) toast.warning(samePersonRefusedLabel(results.samePerson.length), { description: refusedCandidatesLabel(results.samePerson) });
       if (results.formerPassages > 0) toast.warning(formerPassageLabel(results.formerPassages));
       if (results.alreadyPassed > 0) toast.info(alreadyPassedLabel(results.alreadyPassed));
       if (results.skipped > 0) toast.info(alreadyInSequenceLabel(results.skipped));
@@ -2152,17 +2152,23 @@ function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollR
             {alreadyPassedLabel(results.alreadyPassed)}
           </p>
         )}
-        {results.samePerson > 0 && (
-          <p className="text-sm text-muted-foreground flex items-start justify-center gap-1.5">
+        {results.samePerson.length > 0 && (
+          <div className="text-sm text-muted-foreground flex items-start justify-center gap-1.5">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            {samePersonRefusedLabel(results.samePerson)}
-          </p>
+            <div className="min-w-0">
+              <p>{samePersonRefusedLabel(results.samePerson.length)}</p>
+              <p className="text-xs">{refusedCandidatesLabel(results.samePerson)}</p>
+            </div>
+          </div>
         )}
-        {results.gdprErased > 0 && (
-          <p className="text-sm text-warning flex items-start justify-center gap-1.5">
+        {results.gdprErased.length > 0 && (
+          <div className="text-sm text-warning flex items-start justify-center gap-1.5">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            {gdprErasedEnrollLabel(results.gdprErased)}
-          </p>
+            <div className="min-w-0">
+              <p>{gdprErasedEnrollLabel(results.gdprErased.length)}</p>
+              <p className="text-xs">{refusedCandidatesLabel(results.gdprErased)}</p>
+            </div>
+          </div>
         )}
         {results.formerPassages > 0 && (
           <p role="note" className="text-sm text-warning flex items-start justify-center gap-1.5">

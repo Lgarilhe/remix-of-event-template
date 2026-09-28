@@ -182,6 +182,18 @@ async function rewind(execId: string) {
   if (error) throw new Error(`rewind: ${error.message}`);
 }
 
+/**
+ * Repousse de trois jours les exécutions d'une étape : elles restent hors des
+ * cycles suivants du test. En semaine aux heures d'envoi, une étape sans délai
+ * est planifiée dans les deux minutes et partirait au cycle suivant (les tests
+ * écrits un dimanche comptaient sur un report au lundi).
+ */
+async function postpone(enrollmentId: string, step: SeededStep) {
+  const { error } = await admin().from('sequence_step_executions')
+    .update({ scheduled_at: minutesFromNow(3 * 24 * 60) }).eq('enrollment_id', enrollmentId).eq('step_id', step.id);
+  if (error) throw new Error(`postpone: ${error.message}`);
+}
+
 async function enrollmentFull(id: string) {
   const { data } = await admin()
     .from('sequence_enrollments')
@@ -269,6 +281,10 @@ test.describe('@critical Étapes de connexion', () => {
       expect((await enrollmentFull(who.enrollmentId)).connection_status).toBe(status);
     }
 
+    // Les suites des séquences sans branche ne partent pas avec les cibles.
+    await postpone(pFirst.enrollmentId, plainFirst.steps[1]);
+    await postpone(pSecond.enrollmentId, plainSecond.steps[1]);
+
     // Les cibles partent : message au connecté, invitation au non-connecté, et
     // la branche « Si connecté » ne retombe pas sur l'invitation ensuite.
     await rewind(onStep(firstRows, seqFirst.steps[1])[0].id);
@@ -350,6 +366,8 @@ test.describe('@critical Étapes de connexion', () => {
     expect(onStep(targetedRows, withTarget.steps[1])).toHaveLength(0);
     expect((await execById(pausedWait)).status, 'rien ne bouge pour l\'inscription en pause').toBe('waiting_event');
 
+    // La cible « Si connecté » ne part pas avec « Merci ».
+    await postpone(targeted.enrollmentId, withTarget.steps[2]);
     await rewind(next[0].id);
     await runCycle();
     expect(await sentTexts(accountId)).toEqual(['Merci']);

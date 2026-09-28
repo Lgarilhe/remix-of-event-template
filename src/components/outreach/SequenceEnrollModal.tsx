@@ -47,7 +47,7 @@ import {
   SEQUENCES_PLAN_REQUIRED_MESSAGE,
   sequenceInactiveReason,
 } from './enrollment-preview/enrollmentHelpers';
-import { gdprErasedEnrollLabel } from '@/lib/sequenceErrorMessages';
+import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -91,10 +91,10 @@ interface EnrollResults {
   skipped: number;
   /** Déjà passés par la séquence (terminée, réponse, arrêtée) : à reprendre depuis le suivi. */
   alreadyPassed: number;
-  /** Refusés par la base : profil effacé (décision 12). */
-  gdprErased: number;
-  /** Refusés par la base : même personne dans la séquence sous un autre identifiant (décision 21). */
-  samePerson: number;
+  /** Refusés par la base, par nom : profil effacé (décision 12). */
+  gdprErased: string[];
+  /** Refusés par la base, par nom : même personne dans la séquence sous un autre identifiant (décision 21). */
+  samePerson: string[];
   /** Inscrits, déjà passés par la séquence il y a plus de 90 jours sous un autre identifiant (décision 23). */
   formerPassages: number;
   errors: string[];
@@ -103,8 +103,8 @@ interface EnrollResults {
 /** Toasts des candidats non inscrits (refus, déjà dans la séquence, échecs) et de l'avertissement de réinscription. */
 function announceOthers(r: EnrollResults) {
   if (r.errors.length > 0) toast.error(`${r.errors.length} inscription${r.errors.length > 1 ? 's' : ''} en échec`, { description: r.errors[0] });
-  if (r.gdprErased > 0) toast.warning(gdprErasedEnrollLabel(r.gdprErased));
-  if (r.samePerson > 0) toast.warning(samePersonRefusedLabel(r.samePerson));
+  if (r.gdprErased.length > 0) toast.warning(gdprErasedEnrollLabel(r.gdprErased.length), { description: refusedCandidatesLabel(r.gdprErased) });
+  if (r.samePerson.length > 0) toast.warning(samePersonRefusedLabel(r.samePerson.length), { description: refusedCandidatesLabel(r.samePerson) });
   if (r.formerPassages > 0) toast.warning(formerPassageLabel(r.formerPassages));
   if (r.alreadyPassed > 0) toast.info(alreadyPassedLabel(r.alreadyPassed));
   else if (r.skipped > 0) toast.info(alreadyInSequenceLabel(r.skipped));
@@ -293,8 +293,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
       success: 0,
       skipped: 0,
       alreadyPassed: 0,
-      gdprErased: 0,
-      samePerson: 0,
+      gdprErased: [],
+      samePerson: [],
       formerPassages: 0,
       errors: [],
     };
@@ -442,8 +442,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
           if (isOtherMemberAccountError(oneError)) throw oneError;
           refused.add(row.profile_id);
           const refusal = enrollmentRefusalOf(oneError);
-          if (refusal === 'gdpr_erased') enrollmentResults.gdprErased++;
-          else if (refusal === 'same_person') enrollmentResults.samePerson++;
+          if (refusal === 'gdpr_erased') enrollmentResults.gdprErased.push(row.profile_name || 'Candidat sans nom');
+          else if (refusal === 'same_person') enrollmentResults.samePerson.push(row.profile_name || 'Candidat sans nom');
           else {
             console.error('[SequenceEnrollModal] enrollment failed for', row.profile_id, oneError);
             enrollmentResults.errors.push(enrollFailureMessage(row.profile_name));
@@ -805,16 +805,22 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
                   <span>{alreadyPassedLabel(results.alreadyPassed)}</span>
                 </div>
               )}
-              {results.samePerson > 0 && (
+              {results.samePerson.length > 0 && (
                 <div className="flex items-start gap-2 text-muted-foreground">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{samePersonRefusedLabel(results.samePerson)}</span>
+                  <div className="min-w-0">
+                    <p>{samePersonRefusedLabel(results.samePerson.length)}</p>
+                    <p className="text-xs">{refusedCandidatesLabel(results.samePerson)}</p>
+                  </div>
                 </div>
               )}
-              {results.gdprErased > 0 && (
+              {results.gdprErased.length > 0 && (
                 <div className="flex items-start gap-2 text-warning">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{gdprErasedEnrollLabel(results.gdprErased)}</span>
+                  <div className="min-w-0">
+                    <p>{gdprErasedEnrollLabel(results.gdprErased.length)}</p>
+                    <p className="text-xs">{refusedCandidatesLabel(results.gdprErased)}</p>
+                  </div>
                 </div>
               )}
               {results.formerPassages > 0 && (

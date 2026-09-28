@@ -1375,6 +1375,10 @@ function recordInMailQueue(page: Page): string[] {
   return actions;
 }
 
+/** Aide sous les candidats exclus de l'InMail groupé (RECENT_CONTACT_REFUSED_MESSAGE de BulkInMailModal). */
+const RECENT_CONTACT_REFUSED_TEXT =
+  'Sans dérogation possible : la file InMail refuse tout candidat inscrit en séquence ou contacté par votre organisation ces 90 derniers jours, séquence arrêtée comprise.';
+
 async function openBulkInMail(page: Page): Promise<Locator> {
   await page.getByRole('button', { name: /InMail/ }).filter({ hasText: 'InMail' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'InMails personnalisés' });
@@ -1433,28 +1437,35 @@ test.describe('Sourcing : offre gratuite et InMail groupé', () => {
   });
 
   // inmail-groupe-doublons-credits-annulation (SEQ-125, SEQ-133)
-  test('InMail groupé : InMail déjà en file et candidat en séquence exclus (dérogation seulement pour la séquence), un crédit par destinataire hors relation, crédits manquants bloquants', async ({ browser }) => {
+  test('InMail groupé : InMail déjà en file et candidat en séquence exclus sans dérogation, un crédit par destinataire hors relation, crédits manquants bloquants', async ({ browser }) => {
     const ws = await workspace('E2E ui-2 inmail doublons');
     const seq = await missionSequence(ws, 'Séquence InMail ui-2', messageSteps(['Bonjour']));
     const queued = { id: `ACoAAUI2IQ${rand()}`, name: 'Alice Enfile' };
     const enrolled = { id: `ACoAAUI2IE${rand()}`, name: 'Bruno Sequence' };
     const related = { id: `ACoAAUI2IR${rand()}`, name: 'Chloé Relation', network_distance: 'FIRST_DEGREE' };
+    const fresh = { id: `ACoAAUI2IF${rand()}`, name: 'Diane Libre' };
     await seedEnrollments(ws, seq, [{ profile_id: enrolled.id, profile_name: enrolled.name }]);
     await seedPendingInMails(ws, [queued.id]);
 
-    const page = await openSearchResults(browser, ws, [queued, enrolled, related], { inmailBalance: () => 0 });
+    const page = await openSearchResults(browser, ws, [queued, enrolled, related, fresh], { inmailBalance: () => 0 });
     const generated = await mockInMailGeneration(page);
     await selectCandidates(page, [queued.name, enrolled.name, related.name]);
-    const dialog = await openBulkInMail(page);
+    let dialog = await openBulkInMail(page);
 
     await expect(dialog.getByText('Messages rédigés par l\'IA Konekt pour 1 candidat sur 3')).toBeVisible();
     await expect(dialog.getByText('2 candidats déjà contactés par votre organisation, exclus')).toBeVisible();
     await expect(dialog.getByText('0 InMail payant, 1 message gratuit (déjà en relation)', { exact: true })).toBeVisible();
     await expect(dialog.getByRole('button', { name: /^Générer 1 message/ }), 'rien à payer : génération possible sans crédit').toBeEnabled();
+    // Décision 24 : la file refuse ces candidats côté serveur, plus de « Contacter quand même ».
+    await expect(dialog.getByText(/Contacter quand même/)).toHaveCount(0);
+    await expect(dialog.getByText(RECENT_CONTACT_REFUSED_TEXT, { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
 
-    // Dérogation du propriétaire : le candidat en séquence seulement, jamais l'InMail déjà en file.
-    await dialog.getByRole('checkbox', { name: 'Contacter quand même (1)' }).check();
-    await expect(dialog.getByText('Messages rédigés par l\'IA Konekt pour 2 candidats sur 3')).toBeVisible();
+    // Crédits : un candidat ni en séquence ni en relation coûte un InMail.
+    await selectCandidates(page, [fresh.name]);
+    dialog = await openBulkInMail(page);
+    await expect(dialog.getByText('Messages rédigés par l\'IA Konekt pour 2 candidats sur 4')).toBeVisible();
     await expect(dialog.getByText('1 InMail payant, 1 message gratuit (déjà en relation)', { exact: true })).toBeVisible();
     await expect(dialog.getByText('Crédits insuffisants (0 restants, 1 requis)')).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Crédits insuffisants', exact: true })).toBeDisabled();

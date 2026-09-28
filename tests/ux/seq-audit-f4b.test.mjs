@@ -164,11 +164,12 @@ test('SEQ-125 — anti-doublon étendu aux InMails groupés (programmés, en cou
   assert.equal(inmailQuery.gte[0]?.[0], 'created_at');
 });
 
-test('SEQ-125 — l’InMail groupé vérifie les contacts récents et exclut par défaut (dérogation owner/admin)', () => {
+test('SEQ-125 — l’InMail groupé vérifie les contacts récents et exclut les candidats déjà contactés', () => {
   assert.match(bulkInMail, /findRecentEnrollments\(supabase, organizationId, allRecipients\.map\(/);
-  assert.match(bulkInMail, /const allowDuplicates = isAdmin && includeDuplicates;/);
-  // Vague finale (front-enroll-follow-5) : la dérogation ne vaut que sans InMail groupé récent.
-  assert.match(bulkInMail, /return !entry \|\| \(allowDuplicates && !entry\.hasRecentInMail\);/);
+  // Décision 24 : plus de dérogation owner/admin, la file refuse ces candidats côté serveur.
+  assert.doesNotMatch(bulkInMail, /allowDuplicates|includeDuplicates|Contacter quand même/);
+  assert.match(bulkInMail, /allRecipients\.filter\(r => !recentContacts\.has\(r\.id\)\)/);
+  assert.match(bulkInMail, /\{RECENT_CONTACT_REFUSED_MESSAGE\}/);
   assert.match(bulkInMail, /formatRecentContactLabel\(entry\)/);
   // Rien n'est généré ni planifié tant que la vérification n'a pas abouti.
   const queue = slice(bulkInMail, 'const handleQueueAll = async () => {', '// Cancel pending items');

@@ -55,6 +55,20 @@ export function gdprErasedEnrollLabel(count: number): string {
 }
 
 /**
+ * « Candidat concerné : Eva Martin » ou « Candidats concernés : Eva Martin,
+ * Paul Roy et 2 autres » : nomme les candidats d'un refus d'inscription, sous
+ * la phrase qui en donne la raison (cinq noms au plus).
+ */
+export function refusedCandidatesLabel(names: readonly string[]): string {
+  const shown = names.slice(0, 5);
+  const rest = names.length - shown.length;
+  const list = rest > 0
+    ? `${shown.join(', ')} et ${rest} autre${rest > 1 ? 's' : ''}`
+    : shown.length > 1 ? `${shown.slice(0, -1).join(', ')} et ${shown[shown.length - 1]}` : shown.join('');
+  return `${names.length > 1 ? 'Candidats concernés' : 'Candidat concerné'} : ${list}`;
+}
+
+/**
  * Phrase française d'un refus posé par la base sur une écriture du navigateur
  * (erreur Supabase portant `hint`, ou le code seul). null si ce n'est pas un
  * de ces refus : l'appelant garde alors son propre message.

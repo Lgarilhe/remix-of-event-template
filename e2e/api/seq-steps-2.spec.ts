@@ -608,11 +608,14 @@ test.describe('Variantes A/B', () => {
     const { org, accountId } = await paidOrg('E2E steps-2 AB');
     // Étape 0 : attente de connexion déjà satisfaite (candidat connu connecté),
     // franchie sans appel ni plafond d'envoi par compte : 20 inscriptions
-    // passent en deux cycles au plus.
+    // passent en deux cycles au plus. Rang 1 à un jour : une variante planifiée
+    // au premier cycle ne part pas au second (sans délai, en semaine aux heures
+    // d'envoi, elle tombait dans les deux minutes, partait et terminait
+    // l'inscription ; le test ne passait que hors plage).
     const { sequenceId, steps } = await buildSequence(org, org.owner.userId, [
       { action_type: 'wait_connection', timeout_days: 7 },
-      { action_type: 'message', message_template: 'Variante A', step_order: 1, variant_group: 'A', variant_weight: 99 },
-      { action_type: 'message', message_template: 'Variante B', step_order: 1, variant_group: 'B', variant_weight: 1 },
+      { action_type: 'message', message_template: 'Variante A', step_order: 1, variant_group: 'A', variant_weight: 99, delay_days: 1 },
+      { action_type: 'message', message_template: 'Variante B', step_order: 1, variant_group: 'B', variant_weight: 1, delay_days: 1 },
     ]);
     const variantByStep = new Map([[steps[1].id, 'A'], [steps[2].id, 'B']]);
     const { data: crowd, error } = await admin().from('sequence_enrollments').insert(Array.from({ length: 20 }, (_, i) => ({

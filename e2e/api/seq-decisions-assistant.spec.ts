@@ -60,7 +60,8 @@ test.setTimeout(240_000);
 // ─── Textes du contrat ──────────────────────────────────────────────────────
 const DENIED = "Accès refusé à l'exécution : ";
 const GDPR_UNVERIFIED = "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié. Réessayez dans un instant.";
-const RESUME_FAILED = "La reprise n'a pas pu être enregistrée. Réessayez dans un instant.";
+// Décision 13 : la reprise dit que le registre est illisible, plus l'échec générique.
+const GDPR_REGISTRY_UNREADABLE = "Le registre des effacements de données n'a pas pu être lu. Réessayez dans un instant.";
 const ALREADY_HANDLED = 'Action déjà traitée';
 const ACCOUNT_CHANGED =
   "Votre compte LinkedIn d'envoi a changé depuis l'approbation : le message n'est pas parti. Redemandez l'envoi pour qu'il parte de votre compte actuel.";
@@ -328,7 +329,7 @@ test.describe('Décision 13 : registre des effacements illisible', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const result = (res.body.results as Array<{ enrollment_id: string; outcome: string; message?: string }>)
       .find((r) => r.enrollment_id === enrollmentId);
-    expect(result, JSON.stringify(res.body)).toMatchObject({ outcome: 'error', message: RESUME_FAILED });
+    expect(result, JSON.stringify(res.body)).toMatchObject({ outcome: 'error', message: GDPR_REGISTRY_UNREADABLE });
     expect(await enrollmentRow(enrollmentId)).toMatchObject({ status: 'paused', pause_reason: 'manual' });
     const [kept] = (await executionsOf(enrollmentId)).filter((e) => e.id === pending);
     expect(kept.status, 'étape reportée, jamais annulée').toBe('scheduled');
