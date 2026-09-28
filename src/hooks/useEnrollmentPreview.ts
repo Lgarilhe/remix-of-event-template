@@ -137,14 +137,16 @@ export type PreviewMap = Map<string, Map<string, GeneratedMessage>>; // candidat
  * Lu par le cron process-sequences au moment de scheduler le step :
  *   override.delayDays ?? step.delay_days
  */
-export interface StepConfigOverride {
+// Alias de type (et non interface) : il s'écrit tel quel dans la colonne JSON
+// tracking_data, sans conversion.
+export type StepConfigOverride = {
   /** Délai en jours avant l'exécution du step (override de step.delay_days). */
   delayDays?: number;
   /** Délai en heures additionnel (override de step.delay_hours). */
   delayHours?: number;
   /** Pour les steps wait_* : nombre de jours avant timeout (override de step.timeout_days). */
   timeoutDays?: number;
-}
+};
 
 interface UseEnrollmentPreviewOptions {
   steps: SequenceStepPreview[];
@@ -157,6 +159,11 @@ interface UseEnrollmentPreviewOptions {
   targetProfiles?: LinkedInProfile[];
   job?: { id: string; title: string; client?: any; skills?: string[]; description?: string; location?: string; accompagnement?: string[] } | null;
   accountId: string;
+  /**
+   * Clé de conservation des aperçus pendant la session (séquence, mission,
+   * compte d'envoi). Sans clé, les aperçus vivent le temps du composant.
+   */
+  sessionKey?: string;
 }
 
 // Steps that have sendable messages
@@ -179,6 +186,66 @@ function hasMessage(step: SequenceStepPreview): boolean {
  */
 function isSentReachStep(step: SequenceStepPreview): boolean {
   return MESSAGE_ACTION_TYPES.includes(step.actionType) && !isClosedChannelStep(step.actionType);
+}
+
+// ── Aperçus conservés pendant la session (revue design D-46) ──
+// Fermer la préparation ne jette plus les messages déjà générés (facturés) ni
+// les retouches : ils sont gardés en mémoire, par séquence, mission et compte
+// d'envoi, puis par candidat. Rien n'est écrit dans le navigateur : un
+// rechargement de la page les efface. Un aperçu n'est repris que si son étape
+// n'a pas changé depuis (même type, même modèle, même réglage IA).
+
+interface StoredPreview {
+  signature: string;
+  message: GeneratedMessage;
+}
+
+/** Nombre de préparations gardées ; la plus ancienne part au-delà. */
+const SESSION_LIMIT = 20;
+const sessionPreviews = new Map<string, Map<string, Map<string, StoredPreview>>>();
+
+function stepSignature(step: SequenceStepPreview): string {
+  return [step.actionType, step.useAiPersonalization ? 'ia' : '', step.aiTone ?? '', step.subjectTemplate, step.messageTemplate].join('\u0001');
+}
+
+function isWorthKeeping(msg: GeneratedMessage): boolean {
+  return !msg.isGenerating && (msg.isGenerated || msg.isEdited);
+}
+
+function keepInSession(key: string | undefined, step: SequenceStepPreview | undefined, candidateId: string, msg: GeneratedMessage) {
+  if (!key || !step || !isWorthKeeping(msg)) return;
+  let byCandidate = sessionPreviews.get(key);
+  if (!byCandidate) {
+    if (sessionPreviews.size >= SESSION_LIMIT) {
+      const oldest = sessionPreviews.keys().next().value;
+      if (oldest !== undefined) sessionPreviews.delete(oldest);
+    }
+    byCandidate = new Map();
+    sessionPreviews.set(key, byCandidate);
+  }
+  let byStep = byCandidate.get(candidateId);
+  if (!byStep) {
+    byStep = new Map();
+    byCandidate.set(candidateId, byStep);
+  }
+  byStep.set(step.stepId, { signature: stepSignature(step), message: { ...msg, isGenerating: false } });
+}
+
+function restoreFromSession(key: string | undefined, steps: SequenceStepPreview[], profiles: LinkedInProfile[]): PreviewMap {
+  const restored: PreviewMap = new Map();
+  const stored = key ? sessionPreviews.get(key) : undefined;
+  if (!stored) return restored;
+  const signatures = new Map(steps.map(s => [s.stepId, stepSignature(s)]));
+  for (const profile of profiles) {
+    const byStep = stored.get(profile.id);
+    if (!byStep) continue;
+    const messages = new Map<string, GeneratedMessage>();
+    byStep.forEach((entry, stepId) => {
+      if (signatures.get(stepId) === entry.signature) messages.set(stepId, { ...entry.message, isGenerating: false });
+    });
+    if (messages.size > 0) restored.set(profile.id, messages);
+  }
+  return restored;
 }
 
 /**
@@ -335,8 +402,8 @@ export function useSenderFirstName(): string | undefined {
   return undefined;
 }
 
-export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, accountId }: UseEnrollmentPreviewOptions) {
-  const [previews, setPreviews] = useState<PreviewMap>(new Map());
+export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, accountId, sessionKey }: UseEnrollmentPreviewOptions) {
+  const [previews, setPreviews] = useState<PreviewMap>(() => restoreFromSession(sessionKey, steps, profiles));
   // Dernier état des aperçus, lu par les générations en cours : une closure
   // figée (raccourci clavier, workers de la génération groupée) ne voyait pas
   // les messages modifiés entre-temps et les régénérait par-dessus.
@@ -344,7 +411,41 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
   useEffect(() => { previewsRef.current = previews; }, [previews]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const abortRef = useRef(false);
+  // Préparation fermée : plus aucune génération ne part (celles en cours
+  // arrivent quand même et sont conservées pour la session).
+  const unmountedRef = useRef(false);
+  // Candidats inscrits : leurs aperçus ne sont plus conservés.
+  const discardedRef = useRef<Set<string>>(new Set());
   const targets = targetProfiles ?? profiles;
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
+
+  const keep = useCallback((step: SequenceStepPreview | undefined, candidateId: string, msg: GeneratedMessage) => {
+    if (discardedRef.current.has(candidateId)) return;
+    keepInSession(sessionKey, step, candidateId, msg);
+  }, [sessionKey]);
+
+  // Les retouches et les aperçus affichés rejoignent la session à chaque
+  // changement ; un aperçu en cours de génération garde la version précédente.
+  useEffect(() => {
+    if (!sessionKey) return;
+    const stepsById = new Map(steps.map(s => [s.stepId, s]));
+    previews.forEach((byStep, candidateId) => {
+      byStep.forEach((msg, stepId) => keep(stepsById.get(stepId), candidateId, msg));
+    });
+  }, [previews, steps, sessionKey, keep]);
+
+  /** Oublie les aperçus des candidats inscrits (ils ne servent plus). */
+  const discardSessionPreviews = useCallback((candidateIds: string[]) => {
+    const stored = sessionKey ? sessionPreviews.get(sessionKey) : undefined;
+    for (const id of candidateIds) {
+      discardedRef.current.add(id);
+      stored?.delete(id);
+    }
+  }, [sessionKey]);
 
   // Overrides des règles de timing par étape pour l'inscription en cours :
   // une seule valeur, appliquée à TOUS les candidats inscrits depuis cette
@@ -458,6 +559,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     }
 
     for (const step of messageSteps) {
+      if (unmountedRef.current) return;
       if (abortRef.current && !options?.ignoreBulkAbort) return;
 
       // Jamais de régénération d'un message déjà généré ou modifié à la main
@@ -635,6 +737,9 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
           // steps suivants).
           localPreviews.set(step.stepId, generatedMsg);
           setPreview(profile.id, step.stepId, generatedMsg);
+          // Écrit aussi pour la session : si la préparation a été fermée
+          // pendant l'appel, le message payé n'est pas perdu.
+          keep(step, profile.id, generatedMsg);
         } catch (err: any) {
           console.error('Preview generation error:', err);
           // Fallback to template with variables resolved
@@ -664,10 +769,13 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
         // vue séquentiel).
         localPreviews.set(step.stepId, noAiMsg);
         setPreview(profile.id, step.stepId, noAiMsg);
+        keep(step, profile.id, noAiMsg);
       }
     }
-  }, [messageSteps, steps, job, accountId, setPreview, outreachConfig, missionClientName, senderName]);
+  }, [messageSteps, steps, job, accountId, setPreview, keep, outreachConfig, missionClientName, senderName]);
 
+  // Génération pour un seul candidat : indépendante de l'arrêt de la
+  // génération groupée, interrompue quand la préparation se ferme.
   const generateForCandidateById = useCallback(async (candidateId: string) => {
     const profile = profiles.find(p => p.id === candidateId);
     if (!profile) return;
@@ -801,14 +909,16 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
         // Texte brut, rendu en whitespace-pre-wrap côté modal (plus d'innerHTML).
         const formattedMessage = data?.message || step.messageTemplate;
 
-        setPreview(candidateId, stepId, {
+        const regenerated: GeneratedMessage = {
           subject: data?.subject || '',
           message: formattedMessage,
           personalizationPoints: data?.personalization_points,
           isGenerated: true,
           isGenerating: false,
           isEdited: false,
-        });
+        };
+        setPreview(candidateId, stepId, regenerated);
+        keep(step, candidateId, regenerated);
       } catch {
         setPreview(candidateId, stepId, {
           subject: resolveVariables(step.subjectTemplate, profile, senderName),
@@ -819,15 +929,17 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
         });
       }
     } else {
-      setPreview(candidateId, stepId, {
+      const resolved: GeneratedMessage = {
         subject: resolveVariables(step.subjectTemplate, profile, senderName),
         message: resolveVariables(step.messageTemplate, profile, senderName),
         isGenerated: true,
         isGenerating: false,
         isEdited: false,
-      });
+      };
+      setPreview(candidateId, stepId, resolved);
+      keep(step, candidateId, resolved);
     }
-  }, [profiles, messageSteps, steps, job, accountId, previews, setPreview, outreachConfig, missionClientName, senderName]);
+  }, [profiles, messageSteps, steps, job, accountId, previews, setPreview, keep, outreachConfig, missionClientName, senderName]);
 
   const editMessage = useCallback((candidateId: string, stepId: string, field: 'subject' | 'message', value: string) => {
     // Un message modifié à la main part tel quel (getMessageOverrides) : l'avis
@@ -848,6 +960,8 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
 
     const worker = async () => {
       while (queue.length > 0 && !abortRef.current) {
+        // Préparation fermée : les candidats restants ne sont pas générés.
+        if (unmountedRef.current) break;
         const profile = queue.shift();
         if (!profile) break;
         await generateForCandidate(profile);
@@ -922,7 +1036,8 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
   // pas son estimation, et annonçait moins de la moitié de ce qui sera exigé.
   const aiStepCount = messageSteps.filter(s => s.useAiPersonalization).length;
   const hasAiSteps = aiStepCount > 0;
-  const estimatedCredits = targets.length * aiStepCount * estimateActionCredits('outreach_message');
+  const creditsPerMessage = estimateActionCredits('outreach_message');
+  const estimatedCredits = targets.length * aiStepCount * creditsPerMessage;
 
   // Aperçus prêts : candidats visés dont tous les messages sont générés ou
   // modifiés. Dérivé des aperçus (et non compté à chaque clic) : relancer la
@@ -943,6 +1058,8 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     totalToGenerate,
     isBulkGenerating,
     estimatedCredits,
+    /** Coût estimé d'un message personnalisé par l'IA, en crédits. */
+    creditsPerMessage,
     candidateAnalysis,
     getPreview,
     generateForCandidateById,
@@ -951,6 +1068,7 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     generateAll,
     cancelBulkGeneration,
     getMessageOverrides,
+    discardSessionPreviews,
     // Per-step rule overrides (delays, timeouts) for this enrollment only.
     getStepConfig,
     setStepConfig,

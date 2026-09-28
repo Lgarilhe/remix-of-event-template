@@ -145,7 +145,11 @@ test('SEQ-025 — désactiver : pause des inscriptions vérifiée avant l’inte
 
 test('SEQ-025 — interrupteur désactivé pendant l’appel, masqué hors de mon organisation', () => {
   const switches = [...list.matchAll(/<Switch[\s\S]*?\/>/g)].map((m) => m[0]);
-  assert.equal(switches.length, 2);
+  // Revue design : une seule ligne responsive par séquence, donc un seul interrupteur
+  // dans le code ; plus de copie séparée pour téléphone.
+  assert.equal(switches.length, 1);
+  assert.equal((list.match(/filteredSequences\.map\(/g) || []).length, 1, 'une seule liste de lignes');
+  assert.doesNotMatch(list, /key=\{`mobile-|sm:hidden/, 'plus de copie pour téléphone');
   // D3 (dernière passe, front-editor-list-3) : le verrou d'un collaborateur est
   // signalé (aria-disabled) mais l'interrupteur reste cliquable pour dire pourquoi.
   for (const s of switches) {
@@ -155,9 +159,9 @@ test('SEQ-025 — interrupteur désactivé pendant l’appel, masqué hors de mo
   }
   assert.match(list, /const canManage = \(seq: SequenceWithStats\) => !!organizationId && seq\.organization_id === organizationId;/);
   // Contrat §8 (front-editor-list-1) : interrupteur, « Modifier » et « Supprimer » sous canEdit.
-  assert.equal((list.match(/\{canEdit\(seq\) \? \(\s*<Switch/g) || []).length, 2);
-  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<>\s*<DropdownMenuSeparator \/>/g) || []).length, 2);
-  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<DropdownMenuItem onClick=\{\(e\) => \{ e\.stopPropagation\(\); handleEdit\(seq\); \}\}>/g) || []).length, 2);
+  assert.equal((list.match(/\{canEdit\(seq\) \? \(\s*<Switch/g) || []).length, 1);
+  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<>\s*<DropdownMenuSeparator \/>/g) || []).length, 1);
+  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<DropdownMenuItem onClick=\{\(e\) => \{ e\.stopPropagation\(\); handleEdit\(seq\); \}\}>/g) || []).length, 1);
 });
 
 test('SEQ-025 — supprimer : 0 ligne n’affiche jamais de succès', () => {

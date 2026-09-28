@@ -149,19 +149,19 @@ test('SEQ-095 — type de message affiché : note d’invitation, relances en Li
 
   // Séquence construite en mode Liste : aucun renvoi, l'ordre fait le parcours.
   const linear = [mk('a', 0), mk('b', 1), mk('c', 2)];
-  assert.equal(m.getStepMessageType(linear[0], linear).shortLabel, '1er message');
+  assert.equal(m.getStepMessageType(linear[0], linear).shortLabel, 'Premier message');
   assert.equal(m.getStepMessageType(linear[1], linear).shortLabel, 'Relance 1');
   assert.equal(m.getStepMessageType(linear[2], linear).shortLabel, 'Relance 2');
 
   const steps = recommended();
   const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
   // Branche « connecté » : message direct, pas un InMail.
-  assert.equal(m.getStepMessageType(byId.t1, steps).shortLabel, '1er message');
+  assert.equal(m.getStepMessageType(byId.t1, steps).shortLabel, 'Premier message');
   assert.equal(m.getStepMessageType(byId.t3, steps).shortLabel, 'Relance 1');
   // Invitation acceptée : suite d'invitation.
-  assert.equal(m.getStepMessageType(byId.f1, steps).shortLabel, 'Post-connexion');
+  assert.equal(m.getStepMessageType(byId.f1, steps).shortLabel, 'Après connexion');
   // Délai de l'attente dépassé : InMail.
-  assert.equal(m.getStepMessageType(byId.im, steps).shortLabel, 'InMail initial');
+  assert.equal(m.getStepMessageType(byId.im, steps).shortLabel, 'Premier InMail');
   // Sans relation garantie, un Message IA annonce son repli.
   assert.match(m.getStepMessageType(mk('x', 0, 'smart_message'), [mk('x', 0, 'smart_message')]).label, /InMail si non connecté/);
 });
@@ -200,7 +200,12 @@ test('SEQ-146 — une seule vérification pour la liste, le mode Guidé et l’e
   assert.match(builder, /const errors: string\[\] = validateSequence\(sequence, linkedSenderIds\)\.errors/);
   assert.match(builder, /for \(const issue of validation\.errors\)/, 'le fil du mode Guidé lit la même vérification');
   assert.doesNotMatch(builder, /setValidationErrors/, 'plus de liste d’erreurs figée entre deux enregistrements');
-  assert.match(builder, /className="lg:hidden border border-border rounded-lg"/, 'vérification repliable sous 1024 px');
+  // Revue design : sous 1024 px, la vérification s'ouvre depuis la barre d'outils.
+  assert.match(
+    builder,
+    /lg:hidden[\s\S]{0,2000}<PopoverContent[\s\S]{0,300}<SequenceValidationChecklist sequence=\{sequence\} linkedSenderIds=\{linkedSenderIds\} \/>/,
+    'vérification atteignable sous 1024 px',
+  );
   assert.doesNotMatch(checklist, /description: hasStopConditions \? 'Configurées' : 'Aucune'/);
   const g = await graph(t);
   if (!g) return;
@@ -416,7 +421,8 @@ test('SEQ-235 — échec de chargement des modèles distinct d’une liste vide'
   const fetch = body(selector, 'const fetchTemplates');
   assert.match(fetch, /setLoadError\(true\)/);
   assert.match(selector, /Impossible de charger les modèles\./);
-  assert.match(selector, /onClick=\{\(\) => \{ void fetchTemplates\(\); \}\}/);
+  // « Réessayer » du bloc d'erreur du socle (ErrorState).
+  assert.match(selector, /onRetry=\{\(\) => \{ void fetchTemplates\(\); \}\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-236
@@ -442,7 +448,8 @@ test('SEQ-239 — téléphone : vérification repliable et réglages en plein é
 test('SEQ-240 — boutons icône nommés, libellés reliés aux champs', () => {
   assert.match(builder, /aria-label="Retour à la liste"/);
   assert.match(builder, /<Label htmlFor=\{fieldId\('delay-days'\)\}>Jours<\/Label>/);
-  assert.match(builder, /aria-label=\{`Aller à l'étape \$\{WIZARD_STEPS\.find/);
+  // Revue design : plus de points de progression, le fil d'étapes nomme chaque étape.
+  assert.match(read('src/components/outreach/sequence/SequenceWizardStepper.tsx'), /aria-label=\{`Étape \$\{index \+ 1\} : \$\{step\.label\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-245

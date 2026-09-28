@@ -927,7 +927,7 @@ test.describe('Éditeur : création, types d\'étape, repli et fin', () => {
     await openEditor(page, legacy.name);
     await expect(page.getByText('Les étapes e-mail ne partent pas encore : elles seront sautées pour tous les candidats.').first()).toBeVisible();
     await expect(page.getByText('Cette étape Branchement ne route rien : la séquence continue dans les deux cas.', { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('⚠ Non pris en charge')).toHaveCount(2);
+    await expect(page.getByText('Non pris en charge', { exact: true })).toHaveCount(2);
   });
 
   // editeur-repli-delai-et-fin-de-sequence (SEQ-069, SEQ-160, SEQ-015)
@@ -947,9 +947,9 @@ test.describe('Éditeur : création, types d\'étape, repli et fin', () => {
     await expandStep(stepHeader(page, 2, 'Attente', 'Attendre la connexion'));
     await expect(page.getByRole('combobox', { name: 'Si rien ne se passe' })).toHaveText('Aller à une étape de repli');
     const target = page.getByRole('combobox', { name: 'Étape de repli' });
-    await expect(target).toHaveText('Étape 4 — InMail');
+    await expect(target).toHaveText('Étape 4 : InMail');
     await target.click();
-    await expect(page.getByRole('option'), 'jamais une étape antérieure').toHaveText(['Sélectionner...', 'Étape 3 — Message LinkedIn', 'Étape 4 — InMail']);
+    await expect(page.getByRole('option'), 'jamais une étape antérieure').toHaveText(['Choisir une étape', 'Étape 3 : Message LinkedIn', 'Étape 4 : InMail']);
     await page.keyboard.press('Escape');
 
     // Réenregistrer sans rien toucher : repli et fin de séquence intacts.

@@ -251,8 +251,10 @@ test('SEQ-059 — une étape déjà exécutée n’est pas supprimée sans expli
   assert.match(request, /`Supprimer l'étape \$\{target\.order \+ 1\} \?`/);
   assert.match(request, /if \(error\) throw error;/, 'en cas d’échec de la vérification, rien n’est supprimé');
   assert.match(builder, /ne pourra pas être supprimée à l'enregistrement/);
-  // Le Visuel passe par la même vérification.
-  assert.equal((builder.match(/onRemoveStep=\{requestRemoveStep\}/g) || []).length, 2);
+  // Le Visuel passe par la même vérification, dans les deux modes : un seul
+  // rendu des onglets, partagé par Expert et Guidé (revue design).
+  assert.equal((builder.match(/onRemoveStep=\{requestRemoveStep\}/g) || []).length, 1);
+  assert.equal((builder.match(/\{renderStepsTabs\((?:true|false)\)\}/g) || []).length, 2);
 });
 
 // ---------------------------------------------------------------- SEQ-060

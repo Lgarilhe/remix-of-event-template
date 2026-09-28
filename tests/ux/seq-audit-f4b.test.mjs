@@ -250,7 +250,9 @@ test('SEQ-130 — bilan de l’aperçu : titre et icône selon le résultat, toa
   const results = slice(previewModal, 'function EnrollmentResults(', 'function PreviewPanelFallback(');
   assert.doesNotMatch(results, /'Inscription terminée'/, 'plus de titre de succès fixe');
   assert.match(results, /'Aucun candidat inscrit'/);
-  assert.match(results, /inscrit\$\{plural\(results\.success\)\} sur \$\{attempted\}/);
+  // Revue design : pluriel partagé (D-71) au lieu d'un plural local ; même titre (« 2 candidats inscrits sur 3 »).
+  assert.match(results, /const inscribed = plural\(results\.success, 'candidat inscrit', 'candidats inscrits'\);/);
+  assert.match(results, /`\$\{inscribed\} sur \$\{attempted\}`/);
   assert.match(results, /outcome === 'partial'\s*\?\s*<AlertTriangle/);
   const enroll = slice(previewModal, 'const handleEnroll = async () => {', 'const handleShortlist = async () => {');
   assert.match(enroll, /toast\.error\(`\$\{e\} inscription\$\{e > 1 \? 's' : ''\} en échec`, \{\s*description: 'Le détail est affiché dans la fenêtre\.',/);
@@ -363,22 +365,39 @@ test('SEQ-139 — un seul compteur, et les candidats exclus sont marqués dans l
   assert.match(previewModal, /exclusion=\{exclusionByCandidate\.get\(p\.id\) \?\? null\}/);
   assert.match(previewModal, /label: 'Déjà contacté, exclu'/);
   assert.match(sidebarCard, /\{exclusion\.label\}/);
-  assert.match(sidebarCard, /\(state\.skipped \|\| exclusion\) && "opacity-50"/);
+  // Revue design : ligne passée ou exclue marquée par un nom atténué (jeton de texte,
+  // sans opacité) et la pastille de sa raison, raison reprise dans le nom accessible.
+  assert.match(sidebarCard, /const dimmed = state\.skipped \|\| !!shownExclusion;/);
+  assert.match(sidebarCard, /dimmed \? 'text-muted-foreground' : 'text-foreground'/);
+  assert.match(sidebarCard, /<Badge variant="muted"[^>]*title=\{exclusion\.title\}>\s*\{exclusion\.label\}/);
+  assert.match(sidebarCard, /aria-label=\{status \? `\$\{name\}, \$\{status\}` : name\}/);
+  assert.doesNotMatch(sidebarCard, /opacity-\d/);
   const banner = read('src/components/outreach/enrollment-preview/DynamicSummaryBanner.tsx');
   assert.match(banner, /\{active > 1 \? 'seront inscrits' : 'sera inscrit'\}/);
   assert.match(banner, /déjà contacté\$\{duplicates > 1 \? 's' : ''\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-140
+// Revue design : modèle clavier du design (D-44). Les raccourcis partent de la
+// ligne d'un candidat (listShortcut) : flèches pour parcourir, P pour passer,
+// X ou Suppr pour retirer. Aucune touche avec modificateur (plus de Ctrl+Entrée),
+// jamais Entrée ni Espace (ils restent aux boutons), aucune génération au
+// clavier. Les menus, fenêtres et champs ouverts depuis la liste n'ont pas de
+// data-candidate-id : leurs touches sont ignorées, comme avec l'ancien sélecteur de portée.
 test('SEQ-140 — raccourcis posés sur la liste, jamais Entrée seule pour une génération payante', () => {
-  const shortcuts = slice(previewModal, 'const handleShortcutKeyDown = (e', 'const handleGenerateShortcut');
-  assert.doesNotMatch(shortcuts, /e\.key === 'Enter'/, 'Entrée doit activer le bouton ciblé');
-  assert.doesNotMatch(shortcuts, /generateForCandidateById/);
-  const generate = slice(previewModal, 'const handleGenerateShortcut = (e', '// ── Enrollment Logic ──');
-  assert.match(generate, /if \(e\.key !== 'Enter' \|\| !\(e\.ctrlKey \|\| e\.metaKey\)\) return;/);
-  assert.match(previewModal, /ref=\{candidateListRef\}[\s\S]{0,200}onKeyDown=\{handleShortcutKeyDown\}/);
-  assert.match(previewModal, /↑ ↓ changer de candidat · Espace passer · X retirer/);
-  assert.match(previewModal, /\[role="menu"\], \[role="menuitem"\], \[role="dialog"\]/);
+  const shortcuts = slice(previewModal, 'function listShortcut(', 'function mapSteps(');
+  assert.match(shortcuts, /if \(e\.metaKey \|\| e\.ctrlKey \|\| e\.altKey \|\| e\.defaultPrevented\) return null;/, 'aucune touche avec modificateur');
+  assert.match(shortcuts, /if \(!target\.dataset\?\.candidateId\) return null;/, 'seulement depuis la ligne d’un candidat');
+  assert.doesNotMatch(shortcuts, /'Enter'|' '|'Spacebar'/, 'Entrée et Espace restent aux boutons');
+  assert.match(shortcuts, /case 'p': case 'P': return 'skip';/);
+  assert.match(shortcuts, /case 'Delete': case 'x': case 'X': return 'remove';/);
+  const handler = slice(previewModal, 'const handleListKeyDown = (e', 'if (!isOpen) return null;');
+  assert.match(handler, /if \(isBusy\) return;/, 'la sélection ne bouge plus pendant une inscription');
+  assert.doesNotMatch(handler, /generate/i, 'aucune génération payante ne part d’une touche');
+  assert.doesNotMatch(previewModal, /handleGenerateShortcut|handleShortcutKeyDown/);
+  assert.doesNotMatch(previewModal, /window\.addEventListener\(\s*['"]keydown/);
+  assert.match(previewModal, /ref=\{listRef\}[\s\S]{0,200}onKeyDown=\{handleListKeyDown\}/);
+  assert.match(previewModal, /<Kbd>↑<\/Kbd> <Kbd>↓<\/Kbd> parcourir, <Kbd>P<\/Kbd> passer, <Kbd>X<\/Kbd> retirer/);
 });
 
 // ---------------------------------------------------------------- SEQ-141 / SEQ-142 / SEQ-145
@@ -447,16 +466,21 @@ test('SEQ-071 / SEQ-185 — messagerie : mise en pause simple (contrat), vérifi
   // Vague finale (front-enroll-follow-6) : profile_id, provider_id ou resolved_profile_id.
   assert.match(messageView, /\.or\(enrollmentProfileFilter\(chatProfileId\)\)\s*\.eq\('status', 'active'\)/);
   assert.doesNotMatch(messageView, /displayContext\.status === 'active'/);
-  assert.match(messageView, /\{hasActiveEnrollment && \(\s*<button/);
+  // Revue design : l'action est rangée dans le menu « Plus d'actions » de l'en-tête.
+  assert.match(messageView, /const canStopSequence = hasActiveEnrollment;/);
+  assert.match(messageView, /\{canStopSequence && \(/);
   assert.match(messageView, /Mettre en pause/);
   assert.match(inbox, /onEnrollmentsChanged=\{inbox\.fetchEnrollments\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-163
 test('SEQ-163 — messagerie : libellés partagés, repli neutre au lieu de « En séquence »', () => {
-  const badge = messageView.slice(messageView.indexOf('const SequenceStatusBadge'));
-  assert.match(badge, /enrollmentStatusLabel\(effectiveStatus\)/);
-  assert.doesNotMatch(badge, /config\.active/);
+  // Revue design D-55 : le badge commun du socle (SequenceBadges.tsx), dont les
+  // libellés viennent de sequenceLabels.ts.
+  assert.match(messageView, /<EnrollmentStatusBadge\s+status=\{enrollmentStatus\}/);
+  assert.doesNotMatch(messageView, /En séquence|config\.active/);
+  assert.match(read('src/components/outreach/SequenceBadges.tsx'), /pausedLabel\(pauseReason\)/);
+  assert.match(read('src/lib/sequenceCatalog.ts'), /import \{ ENROLLMENT_STATUS_LABELS \} from '\.\/sequenceLabels';/);
 });
 
 // ---------------------------------------------------------------- SEQ-184
@@ -464,8 +488,11 @@ test('SEQ-184 — fil de la messagerie : vrais types d’étape, échec et étap
   assert.doesNotMatch(activityCard, /send_connection:/);
   // Passe 2 (demande de F5) : libellés et mentions du dictionnaire partagé
   // src/lib/sequenceActionLabels.ts, comportement vérifié dans seq-audit-f4c.
-  assert.match(activityCard, /connection_request: \{ icon: UserPlus,/);
-  assert.match(activityCard, /profile_visit: \{ icon: Eye,/);
+  // Revue design : icônes d'étape du socle (SequenceBadges.tsx).
+  assert.match(activityCard, /<SequenceActionIcon type=\{event\.actionType\}/);
+  const badges = read('src/components/outreach/SequenceBadges.tsx');
+  assert.match(badges, /connection_request: UserPlus,/);
+  assert.match(badges, /profile_visit: Eye,/);
   assert.match(activityCard, /return sequenceExecutionTitle\(actionType, status\);/);
   assert.match(activityCard, /formatSkipReason\(event\.skipReason\)/);
 });
@@ -487,7 +514,10 @@ test('SEQ-222 — « déjà dans la séquence » distinct de « déjà passé pa
 // ---------------------------------------------------------------- SEQ-223
 test('SEQ-223 — la modale simple grise les candidats exclus avec leur raison', () => {
   assert.match(enrollModal, /const exclusion = exclusionReasons\.get\(profile\.id\);/);
-  assert.match(enrollModal, /exclusion && 'opacity-60'/);
+  // Revue design : ligne exclue au nom atténué (jeton de texte, sans opacité), la raison à la place du titre et une pastille « Exclu ».
+  assert.match(enrollModal, /exclusion \? 'text-muted-foreground' : 'text-foreground'/);
+  assert.match(enrollModal, /\{exclusion \?\? profile\.headline\}/);
+  assert.match(enrollModal, /\{!results && exclusion && \(\s*<Badge variant="muted"[^>]*>Exclu<\/Badge>/);
   // Vague finale : un candidat déjà en relation n'est plus exclu (invitation sautée).
   assert.match(enrollModal, /issue === 'too_far' \? 'Hors réseau, exclu' : 'InMail inutile, exclu'/);
 });
@@ -501,7 +531,12 @@ test('SEQ-224 — le délai modifié vaut pour tous les candidats de l’inscrip
 test('SEQ-225 — crédits affichés seulement pour une étape IA, compteur d’aperçus dérivé des aperçus', () => {
   const card = slice(previewModal, 'function MessageStepCard(', 'function SummaryMode(');
   assert.doesNotMatch(card, /~2 crédits/);
-  assert.match(card, /~\{estimateActionCredits\('outreach_message'\)\} crédits/);
+  // Revue design : coût écrit en toutes lettres (« environ 1 crédit », pluriel partagé),
+  // calculé une fois par le hook, affiché pour une étape IA seulement.
+  assert.match(previewModal, /return n > 0 \? `environ \$\{plural\(n, 'crédit'\)\}` : 'aucun crédit';/);
+  assert.match(card, /const cost = step\.useAiPersonalization \? creditsLabel\(creditsPerMessage\) : 'aucun crédit';/);
+  assert.match(card, /\{step\.useAiPersonalization && <p className="text-xs text-muted-foreground">\{cost\}<\/p>\}/);
+  assert.match(previewHookSrc, /const creditsPerMessage = estimateActionCredits\('outreach_message'\);/);
   assert.match(card, /Voir l'aperçu \(gratuit\)/);
   assert.doesNotMatch(previewHookSrc, /setGeneratedCount/, 'le compteur ne s’incrémente plus à chaque clic');
   assert.match(previewHookSrc, /const generatedCount = messageSteps\.length === 0/);
@@ -521,10 +556,14 @@ test('SEQ-228 — plus d’inscription directe exportée par la messagerie', () 
 
 // ---------------------------------------------------------------- SEQ-229
 test('SEQ-229 — carte candidat focalisable et menu d’actions visible au clavier et au toucher', () => {
-  assert.match(sidebarCard, /role="button"\s*tabIndex=\{0\}/);
-  assert.match(sidebarCard, /onKeyDown=\{handleKeyDown\}/);
-  assert.match(sidebarCard, /group-focus-within:opacity-100/);
-  assert.match(sidebarCard, /\[@media\(hover:none\)\]:opacity-100/);
+  // Revue design : la ligne est un Button du kit (focalisable, Entrée et Espace natifs,
+  // data-candidate-id pour les raccourcis de la liste) ; le menu d'actions est
+  // toujours affiché, au clavier comme au doigt, avec une cible de 44 px sur téléphone.
+  assert.match(sidebarCard, /<Button\s+type="button"\s+variant="ghost"\s+data-candidate-id=\{profile\.id\}/);
+  assert.match(sidebarCard, /aria-current=\{isSelected \? 'true' : undefined\}/);
+  assert.match(sidebarCard, /onClick=\{onSelect\}/);
+  assert.doesNotMatch(sidebarCard, /opacity-0|group-hover:opacity/, 'menu jamais caché hors survol');
+  assert.match(sidebarCard, /size="icon-xs"[\s\S]{0,200}max-md:h-11 max-md:w-11/);
   assert.match(sidebarCard, /aria-label=\{`Actions pour \$\{profile\.name \|\| 'ce candidat'\}`\}/);
 });
 
@@ -534,7 +573,8 @@ test('SEQ-245 — textes de l’inscription : français, vouvoiement, vocabulair
   for (const pattern of [/Shortlister sans message/, /Smart Message/, /réessaie/, /ajoute au moins/, /Tape \/ai/, /séquence d'outreach/, / dans:/]) {
     assert.doesNotMatch(texts, pattern, String(pattern));
   }
-  assert.match(previewModal, /Ajouter à la shortlist sans message/);
+  // Revue design : rédaction du design (D-47), un seul verbe ; aucun parcours e2e ne lit ce libellé.
+  assert.match(previewModal, /Présélectionner sans message/);
   assert.match(enrollModal, /Inscrire \{enrollCount\} candidat\{enrollCount > 1 \? 's' : ''\}/);
   assert.match(enrollButton, /Inscrire \{count\} candidat\{count > 1 \? 's' : ''\} dans :/);
 });

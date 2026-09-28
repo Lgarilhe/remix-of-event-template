@@ -233,7 +233,8 @@ test('front-enroll-follow-5 — InMail groupé : tout candidat déjà contacté 
   assert.doesNotMatch(bulkInMail, /overridableDuplicates|allowDuplicates|includeDuplicates/);
   // Aide affichée sous la liste des candidats exclus.
   assert.match(bulkInMail, /const RECENT_CONTACT_REFUSED_MESSAGE =\s*`Sans dérogation possible : la file InMail refuse tout candidat inscrit en séquence ou contacté par votre organisation ces \$\{RECENT_CONTACT_WINDOW_DAYS\} derniers jours, séquence arrêtée comprise\.`;/);
-  assert.match(bulkInMail, /<p className="text-\[11px\] text-muted-foreground">\{RECENT_CONTACT_REFUSED_MESSAGE\}<\/p>/);
+  // Revue design : taille du barème (text-xs, plus de text-[11px]) et texte secondaire lisible ; même aide, texte exact lu par l'e2e.
+  assert.match(bulkInMail, /<p className="text-xs text-foreground-secondary">\{RECENT_CONTACT_REFUSED_MESSAGE\}<\/p>/);
 });
 
 // ---------------------------------------------------------------- front-enroll-follow-6
@@ -258,24 +259,35 @@ test('front-enroll-follow-6 — messagerie : inscription retrouvée par profile_
 });
 
 // ---------------------------------------------------------------- front-enroll-follow-7
+// Revue design : fenêtre du kit. Échap, la croix et « Annuler » passent par
+// requestClose : rien pendant une écriture, le bilan après un succès, une
+// confirmation s'il reste du travail préparé. Les aperçus générés ou retouchés
+// restent pour la session (D-46) : la confirmation le dit au lieu d'annoncer
+// leur perte.
 test('front-enroll-follow-7 — fermer la préparation avec des messages préparés demande confirmation', () => {
   const close = slice(previewModal, 'const handleClose = () => {', '\n  };\n');
   assert.match(close, /if \(isBusy\) return;/);
   assert.match(close, /if \(enrollResults\?\.success\) \{\s*onSuccess\(\);\s*return;\s*\}/);
-  assert.match(close, /if \(!enrollResults && hasPreparedWork\) \{\s*setConfirmDiscardOpen\(true\);\s*return;\s*\}/);
-  assert.ok(close.indexOf('setConfirmDiscardOpen(true)') < close.lastIndexOf('onClose();'), 'confirmation avant la fermeture');
-  // Croix et « Annuler » passent par handleClose.
-  assert.ok((previewModal.match(/onClick=\{handleClose\}\s*disabled=\{isBusy\}/g) || []).length >= 2);
-  // Confirmation au-dessus de la couche plein écran, hors du contenu (raccourcis).
-  const dialog = slice(previewModal, '<AlertDialog open={confirmDiscardOpen}', '</AlertDialog>');
-  assert.match(dialog, /<AlertDialogContent className="z-\[10000\]">/);
-  assert.match(dialog, /<AlertDialogTitle>Fermer sans inscrire \?<\/AlertDialogTitle>/);
-  assert.match(dialog, /<AlertDialogDescription>Les messages préparés seront perdus\.<\/AlertDialogDescription>/);
+  const request = slice(previewModal, 'const requestClose = () => {', '\n  };\n');
+  assert.match(request, /if \(isBusy\) return;/);
+  assert.match(request, /if \(enrollResults\) \{\s*handleClose\(\);\s*return;\s*\}/);
+  assert.match(request, /if \(hasWorkInProgress\) \{\s*setConfirmCloseOpen\(true\);\s*return;\s*\}/);
+  assert.ok(request.indexOf('setConfirmCloseOpen(true)') < request.lastIndexOf('onClose();'), 'confirmation avant la fermeture');
+  assert.match(previewModal, /const hasWorkInProgress = previewStats\.kept > 0 \|\| delayChanges > 0 \|\| isBulkGenerating;/);
+  // Croix (onOpenChange du kit) et « Annuler » passent par requestClose.
+  assert.match(previewModal, /onOpenChange=\{\(open\) => \{ if \(!open\) requestClose\(\); \}\}/);
+  assert.match(previewModal, /onClick=\{requestClose\} disabled=\{isBusy\}/);
+  // Confirmation du kit rendue après la fenêtre : même calque, posée au-dessus, hors du contenu (raccourcis).
+  const dialog = slice(previewModal, '<AlertDialog open={confirmCloseOpen}', '</AlertDialog>');
+  assert.doesNotMatch(dialog, /z-\[/);
+  assert.match(dialog, /<AlertDialogTitle>Fermer la préparation \?<\/AlertDialogTitle>/);
+  assert.match(dialog, /jusqu'au rechargement de la page/);
   assert.match(dialog, /<AlertDialogCancel>Continuer la préparation<\/AlertDialogCancel>/);
   // Même garde que handleClose (dernière passe, front-enroll-follow-3).
-  assert.match(dialog, /setConfirmDiscardOpen\(false\);[\s\S]*?if \(!isBusy\) onClose\(\);/);
-  assert.match(dialog, /Fermer sans inscrire\s*<\/AlertDialogAction>/);
-  assert.ok(previewModal.indexOf('</DialogPrimitive.Portal>') < previewModal.indexOf('<AlertDialog open={confirmDiscardOpen}'));
+  assert.match(dialog, /<AlertDialogAction onClick=\{confirmClose\}>Fermer la préparation<\/AlertDialogAction>/);
+  const confirm = slice(previewModal, 'const confirmClose = () => {', '\n  };\n');
+  assert.match(confirm, /setConfirmCloseOpen\(false\);[\s\S]*?if \(isBusy\) return;[\s\S]*?onClose\(\);/);
+  assert.ok(previewModal.indexOf('</Dialog>') < previewModal.indexOf('<AlertDialog open={confirmCloseOpen}'));
 });
 
 // ---------------------------------------------------------------- points low

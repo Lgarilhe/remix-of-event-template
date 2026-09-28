@@ -5,32 +5,24 @@
  */
 
 import React from 'react';
-import { AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/layout/ErrorState';
 
 interface ErrorBoxProps {
   /** Phrase qui dit ce qui n'a pas pu être chargé. */
   title: string;
-  /** Message renvoyé par le serveur, affiché en second plan. */
+  /** Message renvoyé par le serveur (déjà traduit), affiché en second plan. */
   detail?: string | null;
   onRetry?: () => void;
 }
 
-export const ErrorBox: React.FC<ErrorBoxProps> = ({ title, detail, onRetry }) => (
-  <div className="border border-destructive/30 bg-destructive/5 p-6 space-y-3">
-    <div className="flex items-start gap-3">
-      <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-      <div>
-        <p className="text-sm text-foreground">{title}</p>
-        {detail ? <p className="text-xs text-muted-foreground mt-1">{detail}</p> : null}
-      </div>
-    </div>
-    {onRetry ? (
-      <Button size="sm" variant="outline" className="rounded-full" onClick={onRetry}>
-        Réessayer
-      </Button>
-    ) : null}
-  </div>
-);
+const sameSentence = (a: string, b: string) =>
+  a.trim().replace(/[.\s]+$/, '').toLowerCase() === b.trim().replace(/[.\s]+$/, '').toLowerCase();
+
+export const ErrorBox: React.FC<ErrorBoxProps> = ({ title, detail, onRetry }) => {
+  // Le message de repli des hooks reprend souvent le titre mot pour mot : on dit
+  // alors quoi faire plutôt que de répéter ce qui a échoué.
+  const description = !detail ? undefined : sameSentence(detail, title) ? 'Vérifiez votre connexion, puis réessayez.' : detail;
+  return <ErrorState variant="compact" title={title} description={description} onRetry={onRetry} />;
+};
 
 export default ErrorBox;

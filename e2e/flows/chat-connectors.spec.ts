@@ -57,7 +57,7 @@ test('Notion can be paused and re-enabled from the chat composer', async ({ asRo
   await expect(page.getByText('En pause')).toBeVisible();
 
   await menuButton.click();
-  const composer = page.getByPlaceholder('Écris un message à Konekt IA…');
+  const composer = page.getByRole('textbox', { name: 'Message à l’assistant' });
   await composer.fill('Réponds simplement test');
   await composer.press('Enter');
   await expect.poll(() => connectorSelections.length).toBe(1);

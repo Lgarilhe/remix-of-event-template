@@ -16,10 +16,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Linkedin, Target, Sparkles, ArrowRight, ChevronLeft, X, Check } from 'lucide-react';
+import { IconTile } from '@/components/ui/IconTile';
+import { Linkedin, Target, Users, ArrowRight, ChevronLeft, Check } from 'lucide-react';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
+import { cn } from '@/lib/utils';
 
 const WELCOME_PENDING_KEY = 'konekt_welcome_pending';
 
@@ -92,132 +95,111 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
-      <DialogContent className="max-w-md p-0 overflow-hidden">
+      <DialogContent className="max-w-md p-0">
         {/* Visually hidden title for a11y */}
         <DialogTitle className="sr-only">Bienvenue sur Konekt</DialogTitle>
 
-        {/* Progress dots */}
-        <div className="flex items-center justify-center gap-2 pt-6">
+        {/* Progression : trois étapes, l'étape en cours en accent */}
+        <div className="flex items-center justify-center gap-2 pt-6" aria-hidden="true">
           {[1, 2, 3].map((n) => (
-            <div
+            <span
               key={n}
-              className={`h-1.5 rounded-full transition-all ${
-                n === step ? 'w-8 bg-foreground' : 'w-1.5 bg-muted'
-              }`}
+              className={cn(
+                'h-1.5 rounded-full transition-[width,background-color] duration-200',
+                n === step ? 'w-8 bg-brand' : n < step ? 'w-1.5 bg-foreground-secondary' : 'w-1.5 bg-border-strong',
+              )}
             />
           ))}
         </div>
+        <p className="sr-only" aria-live="polite">Étape {step} sur 3</p>
 
-        {/* Step 1 — Bienvenue */}
+        {/* Step 1 : Bienvenue */}
         {step === 1 && (
-          <div className="px-6 py-8 text-center space-y-4">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-foreground text-background flex items-center justify-center">
-              <Sparkles className="w-7 h-7" />
-            </div>
+          <div className="space-y-4 px-6 py-8 text-center">
+            <IconTile icon={Users} size="lg" className="mx-auto" aria-hidden="true" />
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-foreground">
-                Bienvenue dans l'équipe {organization?.name || 'Konekt'} 👋
+              <h2 className="text-xl font-semibold text-foreground">
+                Bienvenue dans l'équipe {organization?.name || 'Konekt'}
               </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p className="text-sm text-muted-foreground">
                 Vous venez de rejoindre Konekt. En 2 minutes, on vous montre comment
                 lancer votre premier sourcing.
               </p>
             </div>
-            <Button onClick={handleNext} className="w-full mt-4">
+            <Button variant="primary" onClick={handleNext} className="mt-4 w-full min-h-11 md:min-h-0">
               Commencer
-              <ArrowRight className="w-4 h-4 ml-1.5" />
+              <ArrowRight aria-hidden="true" />
             </Button>
-            <button
-              onClick={handleClose}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
+            <Button variant="ghost" size="sm" onClick={handleClose} className="text-muted-foreground min-h-11 md:min-h-0">
               Passer le tutoriel
-            </button>
+            </Button>
           </div>
         )}
 
-        {/* Step 2 — Connecter LinkedIn */}
+        {/* Step 2 : Connecter LinkedIn */}
         {step === 2 && (
-          <div className="px-6 py-8 text-center space-y-4">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-info/10 text-info flex items-center justify-center">
-              <Linkedin className="w-7 h-7" />
-            </div>
+          <div className="space-y-4 px-6 py-8 text-center">
+            <IconTile icon={Linkedin} size="lg" className="mx-auto" aria-hidden="true" />
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-foreground">
+              <h2 className="text-xl font-semibold text-foreground">
                 Connectez votre LinkedIn
               </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Konekt utilise <strong>votre compte LinkedIn</strong> pour faire le
-                sourcing. Aucun coût supplémentaire — vous gardez toutes vos
-                connexions et messages.
+              <p className="text-sm text-muted-foreground">
+                Konekt utilise <strong className="font-semibold text-foreground">votre compte LinkedIn</strong> pour
+                le sourcing. Aucun coût supplémentaire : vous gardez toutes vos connexions et vos messages.
               </p>
-              <p className="text-xs text-muted-foreground italic">
-                LinkedIn Recruiter ou Sales Navigator recommandé pour les filtres
-                avancés. Classic fonctionne aussi.
+              <p className="text-xs text-muted-foreground">
+                LinkedIn Recruiter ou Sales Navigator est recommandé pour les filtres avancés. LinkedIn Classic
+                fonctionne aussi.
               </p>
             </div>
-            <Button onClick={handleConnectLinkedIn} className="w-full mt-4">
+            <Button variant="primary" onClick={handleConnectLinkedIn} className="mt-4 w-full min-h-11 md:min-h-0">
               Connecter mon LinkedIn
-              <ArrowRight className="w-4 h-4 ml-1.5" />
+              <ArrowRight aria-hidden="true" />
             </Button>
-            <div className="flex items-center justify-between text-xs">
-              <button
-                onClick={() => setStep(1)}
-                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-              >
-                <ChevronLeft className="w-3 h-3" />
+            <div className="flex items-center justify-between">
+              <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="text-muted-foreground min-h-11 md:min-h-0">
+                <ChevronLeft aria-hidden="true" />
                 Retour
-              </button>
-              <button
-                onClick={handleNext}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                Plus tard →
-              </button>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleNext} className="text-muted-foreground min-h-11 md:min-h-0">
+                Plus tard
+              </Button>
             </div>
           </div>
         )}
 
-        {/* Step 3 — Découvrir les missions */}
+        {/* Step 3 : Découvrir les missions */}
         {step === 3 && (
-          <div className="px-6 py-8 text-center space-y-4">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-success/10 text-success flex items-center justify-center">
-              <Target className="w-7 h-7" />
-            </div>
+          <div className="space-y-4 px-6 py-8 text-center">
+            <IconTile icon={Target} size="lg" className="mx-auto" aria-hidden="true" />
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-foreground">
-                {hasLinkedIn ? 'Vous êtes prêt·e !' : 'Vous y êtes presque'}
+              <h2 className="text-xl font-semibold text-foreground">
+                {hasLinkedIn ? 'Tout est prêt' : 'Vous y êtes presque'}
               </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p className="text-sm text-muted-foreground">
                 Découvrez les missions actives de votre équipe. Ouvrez-en une pour
                 lancer votre première recherche de candidats.
               </p>
               {hasLinkedIn && (
-                <div className="inline-flex items-center gap-1.5 text-xs text-success bg-success/10 px-2.5 py-1 rounded-full">
-                  <Check className="w-3 h-3" />
+                <Badge variant="success">
+                  <Check className="h-3 w-3" aria-hidden="true" />
                   LinkedIn connecté
-                </div>
+                </Badge>
               )}
             </div>
-            <Button onClick={handleGoToMissions} className="w-full mt-4">
+            <Button variant="primary" onClick={handleGoToMissions} className="mt-4 w-full min-h-11 md:min-h-0">
               Voir les missions
-              <ArrowRight className="w-4 h-4 ml-1.5" />
+              <ArrowRight aria-hidden="true" />
             </Button>
-            <div className="flex items-center justify-between text-xs">
-              <button
-                onClick={() => setStep(hasLinkedIn ? 1 : 2)}
-                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-              >
-                <ChevronLeft className="w-3 h-3" />
+            <div className="flex items-center justify-between">
+              <Button variant="ghost" size="sm" onClick={() => setStep(hasLinkedIn ? 1 : 2)} className="text-muted-foreground min-h-11 md:min-h-0">
+                <ChevronLeft aria-hidden="true" />
                 Retour
-              </button>
-              <button
-                onClick={handleClose}
-                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-              >
-                <X className="w-3 h-3" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleClose} className="text-muted-foreground min-h-11 md:min-h-0">
                 Fermer
-              </button>
+              </Button>
             </div>
           </div>
         )}

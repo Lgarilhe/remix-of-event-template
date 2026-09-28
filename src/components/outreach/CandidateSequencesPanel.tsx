@@ -67,7 +67,7 @@ const STATUS_STYLE: Record<string, { color: string; icon: React.ReactNode }> = {
   active: { color: 'bg-success/10 text-success border-success/30', icon: <Play className="w-3 h-3" aria-hidden="true" /> },
   paused: { color: 'bg-muted text-muted-foreground border-border', icon: <Pause className="w-3 h-3" aria-hidden="true" /> },
   replied: { color: 'bg-info/10 text-info border-info/30', icon: <MessageCircle className="w-3 h-3" aria-hidden="true" /> },
-  completed: { color: 'bg-foreground/8 text-foreground border-border', icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> },
+  completed: { color: 'bg-muted text-foreground border-border', icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> },
   stopped: { color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <StopCircle className="w-3 h-3" aria-hidden="true" /> },
   bounced: { color: 'bg-destructive/10 text-destructive border-destructive/30', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },
   cancelled: { color: 'bg-muted text-muted-foreground border-border', icon: <XCircle className="w-3 h-3" aria-hidden="true" /> },

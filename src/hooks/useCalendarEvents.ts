@@ -141,17 +141,17 @@ const inferRound = (eventName: string | null | undefined): CalendarEventRound =>
 
   // Final round (avant les autres pour éviter conflit)
   if (/(final|last round|dernier(?:[\s-]tour)?|final round)/i.test(lower)) {
-    return { kind: 'final', label: 'Final' };
+    return { kind: 'final', label: 'Entretien final' };
   }
 
   // Round 3
   if (/(troisième|trois[ièm]+e|3[èe]?me|3e[\s)]|round[\s-]?3|3rd)/i.test(lower)) {
-    return { kind: 'numbered', n: 3, label: '3e tour' };
+    return { kind: 'numbered', n: 3, label: '3e entretien' };
   }
 
   // Round 2
   if (/(deuxième|deux[ièm]+e|2[èe]?me|2e[\s)]|second|round[\s-]?2|2nd)/i.test(lower)) {
-    return { kind: 'numbered', n: 2, label: '2e tour' };
+    return { kind: 'numbered', n: 2, label: '2e entretien' };
   }
 
   // Round 1 / qualif initiale
@@ -160,7 +160,7 @@ const inferRound = (eventName: string | null | undefined): CalendarEventRound =>
       lower,
     )
   ) {
-    return { kind: 'numbered', n: 1, label: '1er tour' };
+    return { kind: 'numbered', n: 1, label: '1er entretien' };
   }
 
   return null;
@@ -170,6 +170,10 @@ async function fetchCalendarEvents(from: Date, days: number, outreach = true): P
   const rangeStart = startOfDay(from).toISOString();
   const rangeEnd = endOfDay(addDays(from, days - 1)).toISOString();
   const events: CalendarEvent[] = [];
+
+  // Une lecture en échec fait échouer la requête : l'agenda affiche une erreur
+  // avec « Réessayer » au lieu d'une semaine vide (revue design A-40). Les
+  // lectures d'appoint (noms, photos) restent tolérantes.
 
   // 1. Qualifications (entretiens) — pull tous les champs riches utiles à l'UI.
   // Une source principale en échec fait échouer la lecture : l'agenda affiche

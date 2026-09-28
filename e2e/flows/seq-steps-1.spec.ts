@@ -250,7 +250,7 @@ test.describe('@critical Éditeur : enchaînement bloquant', () => {
 
     // Aucune étape d'ordre inférieur (ni l'invitation, ni l'attente elle-même) parmi les replis.
     await page.getByRole('combobox', { name: 'Étape de repli' }).click();
-    await expect(page.getByRole('option')).toHaveText(['Sélectionner...']);
+    await expect(page.getByRole('option')).toHaveText(['Choisir une étape']);
     await page.keyboard.press('Escape');
 
     await save(page);
@@ -263,8 +263,8 @@ test.describe('@critical Éditeur : enchaînement bloquant', () => {
     await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Merci pour la connexion.');
     await expand(header(page, 2, 'Attente', 'Attendre la connexion'));
     await page.getByRole('combobox', { name: 'Étape de repli' }).click();
-    await expect(page.getByRole('option')).toHaveText(['Sélectionner...', 'Étape 3 — Message LinkedIn']);
-    await page.getByRole('option', { name: 'Étape 3 — Message LinkedIn' }).click();
+    await expect(page.getByRole('option')).toHaveText(['Choisir une étape', 'Étape 3 : Message LinkedIn']);
+    await page.getByRole('option', { name: 'Étape 3 : Message LinkedIn' }).click();
     await save(page);
     await expect(page.getByText('Séquence créée', { exact: true })).toBeVisible({ timeout: 15_000 });
     const [seq] = await sequenceByName(space.orgId, name);
@@ -383,7 +383,7 @@ test.describe('Éditeur : types d\'étape, enchaînement, fin et repli', () => {
 
     await expand(header(page, 2, 'Attente', 'Attendre la connexion'));
     await choose(page, 'Si rien ne se passe', 'Aller à une étape de repli');
-    await choose(page, 'Étape de repli', 'Étape 4 — Message LinkedIn');
+    await choose(page, 'Étape de repli', 'Étape 4 : Message LinkedIn');
 
     // « Fin de séquence » sur l'étape 3, depuis l'onglet Visuel.
     await page.getByRole('tab', { name: 'Visuel' }).click();
@@ -406,7 +406,7 @@ test.describe('Éditeur : types d\'étape, enchaînement, fin et repli', () => {
     await openExisting(page, space, name);
     await expand(header(page, 2, 'Attente', 'Attendre la connexion'));
     await expect(page.getByRole('combobox', { name: 'Si rien ne se passe' })).toHaveText('Aller à une étape de repli');
-    await expect(page.getByRole('combobox', { name: 'Étape de repli' })).toHaveText('Étape 4 — Message LinkedIn');
+    await expect(page.getByRole('combobox', { name: 'Étape de repli' })).toHaveText('Étape 4 : Message LinkedIn');
     await page.getByRole('tab', { name: 'Visuel' }).click();
     await openStepSettings(page, 3, 4);
     await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Merci pour la connexion.');

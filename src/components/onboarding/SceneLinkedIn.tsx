@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, ExternalLink, RefreshCw, Lock, Unplug } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ExternalLink, RefreshCw, Lock, Unplug } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { useOrganization } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
@@ -27,10 +28,12 @@ const LINKEDIN_BENEFITS = [
   'Connexion sécurisée, déconnectable à tout moment',
 ];
 
+const NAV_BUTTON_CLASS = 'min-h-11 md:min-h-0';
+
 /**
- * Scène de connexion LinkedIn — la seule intégration indispensable pour
- * utiliser l'app (sourcing + messages). Email et WhatsApp se connectent
- * plus tard depuis les Réglages.
+ * Scène de connexion LinkedIn : la seule intégration indispensable pour
+ * utiliser l'app (sourcing et messages). E-mail et WhatsApp se connectent
+ * plus tard depuis les Paramètres.
  */
 export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
   const { accounts, reload: reloadLinkedIn } = useLinkedInAccounts();
@@ -102,12 +105,13 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
       if (data?.success && data.url) {
         window.open(data.url, '_blank', 'noopener,noreferrer');
         setPollUntil(Date.now() + POLL_WINDOW_MS);
-        toast.info('Fenêtre de connexion LinkedIn ouverte. Revenez ici après connexion.');
+        toast.info('Fenêtre de connexion LinkedIn ouverte. Revenez ici une fois connecté.');
       } else {
-        throw new Error(data?.error || 'Erreur');
+        throw new Error(data?.error || 'lien de connexion absent');
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erreur lors de la connexion');
+      console.error('[SceneLinkedIn] lien de connexion indisponible :', e);
+      toast.error("La fenêtre de connexion LinkedIn n'a pas pu s'ouvrir. Réessayez dans un instant.");
     } finally {
       setConnecting(false);
     }
@@ -123,117 +127,89 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
   }, [reloadLinkedIn]);
 
   return (
-    <div className="w-full flex flex-col gap-5">
-      {/* Header */}
-      <div className="mb-2">
-        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">Branchez le moteur.</h2>
-        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+    <div className="flex w-full flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Connectez votre compte LinkedIn</h1>
+        <p className="mt-2 max-w-md text-md text-foreground-secondary">
           Sans LinkedIn connecté, pas de sourcing ni de messages.
         </p>
       </div>
 
-      {/* Hero LinkedIn */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className={`rounded-xl border p-4 sm:p-5 transition-colors duration-300 ${
-          linkedInConnected ? 'border-success/40 bg-success/5' : 'border-border bg-background/40'
-        }`}
+      <div
+        className={cn(
+          'rounded-xl border p-4 transition-colors duration-150 sm:p-5',
+          linkedInConnected ? 'border-success/40 bg-success-muted' : 'border-border bg-card',
+        )}
       >
-        <div className="flex items-center gap-3 mb-3">
-          <img src={linkedinLogo} alt="LinkedIn" className="w-9 h-9 object-contain shrink-0" />
-          <div className="flex-1 min-w-0">
-            <span className="text-sm font-semibold">LinkedIn</span>
+        <div className="mb-3 flex items-center gap-3">
+          <img src={linkedinLogo} alt="" className="h-9 w-9 shrink-0 object-contain" />
+          <div className="min-w-0 flex-1">
+            <p className="text-md font-semibold text-foreground">LinkedIn</p>
             <p className="text-xs text-muted-foreground">Le moteur de votre sourcing.</p>
           </div>
           {linkedInConnected && (
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-success shrink-0"
-            >
-              <Check className="w-3.5 h-3.5" /> Connecté
-            </motion.div>
+            <Badge variant="success" className="shrink-0">
+              <Check className="h-3 w-3" aria-hidden="true" />
+              Connecté
+            </Badge>
           )}
         </div>
 
-        <ul className="space-y-1.5 mb-4">
-          {LINKEDIN_BENEFITS.map((benefit, i) => (
-            <motion.li
-              key={benefit}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.15 + i * 0.08 }}
-              className="flex items-start gap-2 text-xs text-foreground/85"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-px" />
+        <ul className="mb-4 space-y-1.5">
+          {LINKEDIN_BENEFITS.map((benefit) => (
+            <li key={benefit} className="flex items-start gap-2 text-sm text-foreground-secondary">
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               {benefit}
-            </motion.li>
+            </li>
           ))}
         </ul>
 
         {!linkedInConnected && (
           <Button
             onClick={handleConnect}
-            disabled={connecting}
-            className="w-full h-10 text-sm font-semibold text-white bg-linkedin hover:bg-linkedin-hover"
+            loading={connecting}
+            className="h-11 w-full border-transparent bg-linkedin font-semibold text-white hover:border-transparent hover:bg-linkedin-hover hover:text-white md:h-10"
           >
-            {connecting ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            ) : (
-              <ExternalLink className="w-4 h-4 mr-2" />
-            )}
+            {!connecting && <ExternalLink aria-hidden="true" />}
             Connecter LinkedIn
           </Button>
         )}
-      </motion.div>
+      </div>
 
-      {/* Confiance + refresh */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.35 }}
-        className="flex items-center justify-center gap-4 flex-wrap"
-      >
-        <span className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
-          <Lock className="w-3 h-3" /> Connexion sécurisée
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Lock className="h-3.5 w-3.5" aria-hidden="true" /> Connexion sécurisée
         </span>
-        <span className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
-          <Unplug className="w-3 h-3" /> Déconnectable à tout moment
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Unplug className="h-3.5 w-3.5" aria-hidden="true" /> Déconnectable à tout moment
         </span>
-        <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Actualiser la connexion"
-        >
-          <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
-          Actualiser
-        </button>
-      </motion.div>
+        <Button variant="ghost" size="xs" onClick={handleRefresh} disabled={refreshing} className="text-muted-foreground min-h-11 md:min-h-0">
+          <RefreshCw className={cn(refreshing && 'animate-spin')} aria-hidden="true" />
+          Vérifier la connexion
+        </Button>
+      </div>
 
-      {/* Navigation */}
-      <div className={`flex items-center pt-2 ${onBack ? 'justify-between' : 'justify-end'}`}>
+      <div className={cn('flex items-center gap-2 pt-2', onBack ? 'justify-between' : 'justify-end')}>
         {onBack && (
-          <Button variant="ghost" onClick={onBack} className="gap-2 text-sm">
-            <ArrowLeft className="w-4 h-4" /> Retour
+          <Button variant="ghost" onClick={onBack} className={NAV_BUTTON_CLASS}>
+            <ArrowLeft aria-hidden="true" />
+            Retour
           </Button>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {!linkedInConnected && (
-            <Button variant="ghost" onClick={() => onNext(false)} className="text-sm text-muted-foreground">
+            <Button variant="ghost" onClick={() => onNext(false)} className={NAV_BUTTON_CLASS}>
               Connecter plus tard
             </Button>
           )}
           <Button
+            variant="primary"
             onClick={() => onNext(linkedInConnected)}
             disabled={!linkedInConnected}
-            className="gap-2 border border-border bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
+            className={NAV_BUTTON_CLASS}
           >
-            Continuer <ArrowRight className="w-4 h-4" />
+            Continuer
+            <ArrowRight aria-hidden="true" />
           </Button>
         </div>
       </div>

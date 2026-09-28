@@ -14,6 +14,9 @@
  * Lecture seule : plus de bouton d'accélération. L'ancien « Forcer un cycle »
  * avançait à maintenant toutes les relances futures de l'organisation, alors
  * que les actions échues partent de toute façon au passage suivant.
+ *
+ * Les textes parlent au recruteur : « envois », « passage », jamais « cron »
+ * ni nom de fonction.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
@@ -26,23 +29,21 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState, StatGrid, StatTile } from '@/components/layout';
 import {
-  Activity,
   CheckCircle2,
   AlertCircle,
   XCircle,
   RefreshCw,
-  Clock,
-  Loader2,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import {
   formatSequenceError,
   missionEnrollmentJobIds,
   SENT_EXECUTION_STATUSES,
 } from '@/lib/sequenceErrorMessages';
+import { timeAgo } from '@/lib/relativeTime';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
 import { useLinkedInQuotaStatus } from '@/hooks/useLinkedInQuotaStatus';
@@ -90,8 +91,10 @@ const initialState: DiagnosticData = {
 
 // Le cron passe toutes les 5 minutes et un passage dure jusqu'à 60 s : sous
 // 12 minutes (deux passages plus une marge), l'envoi est jugé normal. Le seuil
-// de 5 minutes affichait une panne à tort, un passage sur deux.
+// de 5 minutes affichait une panne à tort, un passage sur deux. L'aide cite
+// le même seuil.
 const HEALTHY_DELAY_MS = 12 * 60 * 1000;
+const HEALTHY_DELAY_MIN = HEALTHY_DELAY_MS / 60_000;
 
 // Étapes qui envoient un message ou une invitation au candidat (hors visites
 // de profil et étapes internes d'attente ou de condition).
@@ -103,6 +106,8 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
   projectId,
 }) => {
   const [data, setData] = useState<DiagnosticData>(initialState);
+  // Panne complète du chargement : état d'erreur avec « Réessayer », jamais des compteurs à zéro.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Compte LinkedIn relié à l'utilisateur (jamais celui d'un collègue) et son
   // plafond réel, palier de montée en charge compris.
@@ -118,6 +123,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
 
   const refresh = useCallback(async () => {
     setData(prev => ({ ...prev, loading: true }));
+    setLoadError(null);
 
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     // Inscriptions de la mission : filtre par job_id, écrit à l'inscription.
@@ -213,6 +219,7 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
     } catch (err) {
       console.error('[SequenceDiagnostic] refresh error:', err);
       setData(prev => ({ ...prev, loading: false, loaded: true, hasError: true }));
+      setLoadError(err instanceof Error ? err.message : String(err));
     }
   }, [projectId]);
 
@@ -233,9 +240,11 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
   const cronSkipped = cronRecent && data.lastCronStatus === 'skipped';
   const cronFailed = cronRecent && data.lastCronStatus === 'error';
   const cronHealthy = cronRecent && !cronSkipped && !cronFailed;
-  const lastRunAgo = lastCronRunAt ? formatDistanceToNow(lastCronRunAt, { addSuffix: true, locale: fr }) : '';
+  const lastRunAgo = lastCronRunAt ? timeAgo(lastCronRunAt) ?? '' : '';
 
-  const figureText = (value: Figure) => (value === null ? 'Chiffre indisponible' : String(value));
+  const figureValue = (value: Figure) => (value === null
+    ? <span className="text-xs font-medium text-muted-foreground">Chiffre indisponible</span>
+    : value);
 
   // Jauge d'invitations : plafond hebdomadaire du compte de l'utilisateur.
   const weeklyCap = quota?.caps?.weekly_invitations ?? 0;
@@ -243,66 +252,57 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
   const inviteRatio = weeklyCap > 0 ? weeklySent / weeklyCap : 0;
   const inviteWarn = inviteRatio >= 0.8;
   const inviteCritical = inviteRatio >= 0.95;
+  const quotaReady = !!myAccountId && !quotaLoading && !quotaError && !!quota && weeklyCap > 0;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader className="mb-4">
-          <SheetTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5" aria-hidden="true" />
-            Diagnostic des séquences
-          </SheetTitle>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+        <SheetHeader className="space-y-1 border-b border-border px-6 py-5 pr-14 text-left">
+          <SheetTitle>Diagnostic des envois</SheetTitle>
           <SheetDescription>
-            État du système d'envoi {projectId ? '(cette mission)' : '(toutes les missions)'}
+            État des envois automatiques {projectId ? 'de cette mission' : 'de toutes vos missions'}.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-4">
-          <Button
-            onClick={handleRefresh}
-            disabled={data.loading}
-            variant="outline"
-            size="sm"
-            className="w-full"
-          >
-            <RefreshCw className={cn('w-3.5 h-3.5 mr-2', data.loading && 'animate-spin')} aria-hidden="true" />
-            Actualiser
-          </Button>
-
-          {data.loading && !data.loaded ? (
-            <div className="flex items-center justify-center py-8" role="status" aria-label="Chargement du diagnostic">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {loadError ? (
+            <ErrorState
+              title="Impossible de charger le diagnostic"
+              description="Vérifiez votre connexion, puis réessayez."
+              detail={loadError}
+              onRetry={handleRefresh}
+              retrying={data.loading}
+            />
+          ) : data.loading && !data.loaded ? (
+            <div role="status" aria-label="Chargement du diagnostic">
+              <DiagnosticSkeleton />
             </div>
           ) : (
             <>
+              <div className="flex justify-end">
+                <Button onClick={handleRefresh} disabled={data.loading} variant="outline" size="sm" className="max-md:h-11">
+                  <RefreshCw className={cn(data.loading && 'animate-spin')} aria-hidden="true" />
+                  Actualiser
+                </Button>
+              </div>
+
               {data.hasError && (
-                <div className="p-3 rounded-xl border border-warning/30 bg-warning/5 text-xs text-foreground" role="alert">
+                <div role="alert" className="rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-xs text-foreground">
                   Certains chiffres n'ont pas pu être chargés. Vérifiez votre connexion puis actualisez.
                 </div>
               )}
 
-              {/* État du système d'envoi */}
-              <div
-                className={cn(
-                  'p-4 rounded-xl border',
-                  !data.cronStatusKnown
-                    ? 'bg-muted/20 border-border'
-                    : cronHealthy
-                      ? 'bg-success/5 border-success/30'
-                      : cronSkipped
-                        ? 'bg-warning/5 border-warning/30'
-                        : 'bg-destructive/5 border-destructive/30',
-                )}
-              >
-                <div className="flex items-center gap-2 mb-2">
+              {/* État du système d'envoi : lecture directe de la table cron_heartbeat */}
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2">
                   {cronHealthy ? (
-                    <CheckCircle2 className="w-4 h-4 text-success" aria-hidden="true" />
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
                   ) : cronSkipped ? (
-                    <AlertCircle className="w-4 h-4 text-warning" aria-hidden="true" />
+                    <AlertCircle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
                   ) : (
-                    <XCircle className={cn('w-4 h-4', data.cronStatusKnown ? 'text-destructive' : 'text-muted-foreground')} aria-hidden="true" />
+                    <XCircle className={cn('h-4 w-4 shrink-0', data.cronStatusKnown ? 'text-danger' : 'text-muted-foreground')} aria-hidden="true" />
                   )}
-                  <span className="text-sm font-semibold">
+                  <p className="text-sm font-semibold text-foreground">
                     {!data.cronStatusKnown
                       ? 'État de l’envoi automatique indisponible'
                       : cronHealthy
@@ -310,9 +310,9 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                         : cronSkipped
                           ? 'Passage sauté (un autre passage était en cours)'
                           : cronFailed ? 'Dernier passage en erreur' : 'Envoi automatique en retard'}
-                  </span>
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="mt-1 text-sm text-foreground-secondary">
                   {!data.cronStatusKnown
                     ? 'Actualisez dans quelques instants.'
                     : cronHealthy && lastCronRunAt
@@ -322,64 +322,69 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
                         : cronFailed
                           ? `Le dernier passage, ${lastRunAgo}, s’est terminé en erreur. Réessayez dans quelques minutes ou contactez le support si cela dure.`
                           : lastCronRunAt
-                            ? `Les envois automatiques semblent interrompus depuis ${formatDistanceToNow(lastCronRunAt, { locale: fr })}. Réessayez dans quelques minutes ou contactez le support.`
+                            ? `Les envois automatiques semblent interrompus depuis ${timeAgo(lastCronRunAt, { compact: true })}. Réessayez dans quelques minutes ou contactez le support.`
                             : 'Aucun passage de l’envoi automatique n’a encore été enregistré. Réessayez dans quelques minutes ou contactez le support.'}
                 </p>
                 {data.lastSentAt && (
-                  <p className="text-[11px] text-muted-foreground/70 mt-1">
-                    Dernier message envoyé {formatDistanceToNow(data.lastSentAt, { addSuffix: true, locale: fr })}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Dernier message envoyé {timeAgo(data.lastSentAt)}.
                   </p>
                 )}
               </div>
 
               {/* Plafond d'invitations du compte LinkedIn de l'utilisateur */}
-              <div className="p-3 rounded-xl border border-border bg-card">
-                <p className="text-xs font-semibold text-foreground mb-2">Invitations LinkedIn cette semaine</p>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">Invitations LinkedIn de la semaine</p>
+                  {quotaReady && (
+                    <span className="text-sm font-medium tabular-nums text-foreground">
+                      {weeklySent}
+                      <span className="text-muted-foreground"> sur {weeklyCap}</span>
+                    </span>
+                  )}
+                </div>
                 {!mappingsReady && !mappingsError ? (
-                  <p className="text-[11px] text-muted-foreground">Chargement…</p>
+                  <p className="text-xs text-muted-foreground">Chargement…</p>
                 ) : !myAccountId ? (
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {mappingsError ? 'Compte LinkedIn indisponible. Actualisez dans quelques instants.' : 'Aucun compte LinkedIn n’est relié à votre profil. '}
                     {!mappingsError && (
-                      <Link to="/settings/account/connections" className="underline underline-offset-2 text-foreground">
+                      <Link to="/settings/account/connections" className="text-foreground underline underline-offset-2">
                         Relier mon compte
                       </Link>
                     )}
                   </p>
                 ) : quotaLoading ? (
-                  <p className="text-[11px] text-muted-foreground">Chargement…</p>
-                ) : quotaError || !quota || weeklyCap <= 0 ? (
-                  <p className="text-[11px] text-muted-foreground">Plafond indisponible pour votre compte. Actualisez dans quelques instants.</p>
+                  <p className="text-xs text-muted-foreground">Chargement…</p>
+                ) : !quotaReady ? (
+                  <p className="text-xs text-muted-foreground">Plafond indisponible pour votre compte. Actualisez dans quelques instants.</p>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] text-muted-foreground">Votre compte</span>
-                      <span className="text-xs font-mono font-medium text-foreground">
-                        {weeklySent}<span className="text-muted-foreground"> / {weeklyCap}</span>
-                      </span>
-                    </div>
                     <div
-                      className="h-2 rounded-full bg-muted overflow-hidden"
+                      className="h-2 overflow-hidden rounded-full bg-muted"
                       role="progressbar"
+                      aria-label="Invitations LinkedIn envoyées cette semaine"
                       aria-valuemin={0}
                       aria-valuemax={weeklyCap}
                       aria-valuenow={weeklySent}
-                      aria-label="Invitations LinkedIn envoyées cette semaine"
                     >
                       <div
-                        className={cn('h-full transition-all', inviteCritical ? 'bg-destructive' : inviteWarn ? 'bg-warning' : 'bg-success')}
+                        className={cn(
+                          'h-full rounded-full',
+                          inviteCritical ? 'bg-danger' : inviteWarn ? 'bg-warning' : 'bg-foreground-secondary',
+                        )}
                         style={{ width: `${Math.min(100, inviteRatio * 100)}%` }}
                       />
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-1.5">
+                    <p className="mt-2 text-xs text-muted-foreground">
                       Plafond de votre compte, ajusté pendant sa montée en charge.
                     </p>
                     {inviteCritical ? (
-                      <p className="text-[11px] text-destructive mt-1 font-medium">
+                      <p className="mt-1 text-xs font-medium text-danger">
                         Plafond presque atteint : les prochaines invitations seront reportées.
                       </p>
                     ) : inviteWarn ? (
-                      <p className="text-[11px] text-warning mt-1">
+                      <p className="mt-1 text-xs font-medium text-warning">
                         Vous approchez du plafond de la semaine.
                       </p>
                     ) : null}
@@ -388,75 +393,58 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
               </div>
 
               {/* Chiffres des dernières 24 h */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="p-3 rounded-xl border border-border bg-card">
-                  <p className="text-[11px] text-muted-foreground font-medium mb-1">Envoyés en 24 h</p>
-                  <p className={cn('font-semibold', data.sentCount24h === null ? 'text-xs text-muted-foreground' : 'text-xl text-success')}>
-                    {figureText(data.sentCount24h)}
-                  </p>
-                </div>
-                <div className="p-3 rounded-xl border border-border bg-card">
-                  <p className="text-[11px] text-muted-foreground font-medium mb-1">Échecs en 24 h</p>
-                  <p
-                    className={cn(
-                      'font-semibold',
-                      data.failedCount24h === null
-                        ? 'text-xs text-muted-foreground'
-                        : cn('text-xl', data.failedCount24h > 0 ? 'text-destructive' : 'text-foreground'),
-                    )}
-                  >
-                    {figureText(data.failedCount24h)}
-                  </p>
-                </div>
-                <div className="p-3 rounded-xl border border-border bg-card">
-                  <p className="text-[11px] text-muted-foreground font-medium mb-1">En attente</p>
-                  <p className={cn('font-semibold', data.scheduledCount === null ? 'text-xs text-muted-foreground' : 'text-xl')}>
-                    {figureText(data.scheduledCount)}
-                  </p>
-                </div>
-                <div className="p-3 rounded-xl border border-border bg-card">
-                  <p className="text-[11px] text-muted-foreground font-medium mb-1">Candidats en cours</p>
-                  <p className={cn('font-semibold', data.activeEnrollments === null ? 'text-xs text-muted-foreground' : 'text-xl')}>
-                    {figureText(data.activeEnrollments)}
-                  </p>
-                </div>
-              </div>
+              <StatGrid cols={{ base: 2 }}>
+                <StatTile label="Envoyés (24 h)" value={figureValue(data.sentCount24h)} />
+                <StatTile
+                  label="Échecs (24 h)"
+                  value={figureValue(data.failedCount24h)}
+                  variant="destructive"
+                  accent={(data.failedCount24h ?? 0) > 0}
+                />
+                <StatTile label="Étapes planifiées" value={figureValue(data.scheduledCount)} />
+                <StatTile label="Inscriptions en cours" value={figureValue(data.activeEnrollments)} />
+              </StatGrid>
 
-              {/* Erreurs récentes */}
+              {/* Échecs récents */}
               {data.recentErrors.length > 0 && (
-                <div className="p-3 rounded-xl border border-destructive/30 bg-destructive/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="w-4 h-4 text-destructive" aria-hidden="true" />
-                    <span className="text-sm font-semibold text-destructive">
-                      Erreurs récentes ({data.recentErrors.length})
-                    </span>
+                <section aria-labelledby="diagnostic-errors" className="rounded-xl border border-border bg-card p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+                    <h3 id="diagnostic-errors" className="text-sm font-semibold text-foreground">
+                      {data.recentErrors.length > 1 ? `${data.recentErrors.length} derniers échecs` : 'Dernier échec'}
+                    </h3>
                   </div>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  <ul className="max-h-48 space-y-2 overflow-y-auto">
                     {data.recentErrors.map(err => (
-                      <div key={err.id} className="text-xs">
+                      <li key={err.id} className="text-xs">
                         {/* formatSequenceError : traduit et retire les noms de fournisseurs */}
-                        <p className="text-destructive break-words">
-                          {formatSequenceError(err.error_message) || 'Erreur inconnue'}
+                        <p className="break-words text-foreground-secondary">
+                          {formatSequenceError(err.error_message) || 'Échec sans détail'}
                         </p>
-                        <p className="text-muted-foreground/70 text-[10px] mt-0.5">
-                          <Clock className="w-2.5 h-2.5 inline mr-0.5" aria-hidden="true" />
-                          {formatDistanceToNow(new Date(err.at), { addSuffix: true, locale: fr })}
+                        <p className="mt-0.5 text-muted-foreground">
+                          {timeAgo(err.at)}
                         </p>
-                      </div>
+                      </li>
                     ))}
-                  </div>
-                </div>
+                  </ul>
+                </section>
               )}
 
               {/* Aide */}
-              <div className="p-3 rounded-xl border border-border bg-muted/20 text-xs space-y-1.5">
-                <p className="font-semibold text-foreground">Comment lire ce diagnostic ?</p>
-                <ul className="text-muted-foreground space-y-1 list-disc list-inside">
-                  <li>Le système d'envoi passe toutes les 5 minutes.</li>
-                  <li><strong>En attente</strong> : étapes prévues pour des candidats en cours, dont l'heure n'est pas encore arrivée.</li>
-                  <li><strong>Échecs en 24 h</strong> : consultez les erreurs ci-dessus, souvent un compte LinkedIn à reconnecter.</li>
+              <section aria-labelledby="diagnostic-help" className="rounded-xl border border-border bg-muted p-4 text-xs">
+                <h3 id="diagnostic-help" className="font-semibold text-foreground">Comment lire ce diagnostic ?</h3>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-foreground-secondary">
+                  <li>
+                    <span className="font-medium text-foreground">Envoi automatique opérationnel</span> : un passage a eu lieu dans les {HEALTHY_DELAY_MIN} dernières minutes. Le système d'envoi passe toutes les 5 minutes.
+                  </li>
+                  <li>
+                    <span className="font-medium text-foreground">Étapes planifiées</span> : étapes prévues pour des candidats en cours, dont l'heure n'est pas encore arrivée.
+                  </li>
+                  <li>
+                    <span className="font-medium text-foreground">Échecs (24 h)</span> : consultez les échecs ci-dessus, souvent un compte LinkedIn à reconnecter.
+                  </li>
                 </ul>
-              </div>
+              </section>
             </>
           )}
         </div>
@@ -464,3 +452,16 @@ export const SequenceDiagnostic: React.FC<SequenceDiagnosticProps> = ({
     </Sheet>
   );
 };
+
+/** Squelette du diagnostic : état des envois, invitations, puis quatre tuiles. */
+const DiagnosticSkeleton: React.FC = () => (
+  <div className="space-y-4" aria-hidden="true">
+    <Skeleton className="h-24 w-full rounded-xl" />
+    <Skeleton className="h-28 w-full rounded-xl" />
+    <div className="grid grid-cols-2 gap-3">
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+  </div>
+);

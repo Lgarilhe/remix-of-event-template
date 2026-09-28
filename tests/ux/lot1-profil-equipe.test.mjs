@@ -107,7 +107,8 @@ test('R3 — barre latérale et salutation n\'attendent plus d\'avatar du profil
     assert.match(src, /const \{ displayName \} = useCurrentProfile\(\);/, name);
   }
   assert.match(sidebarMenu, /const avatarUrl = connections\.linkedin\.avatarUrl \|\| null;/);
-  assert.match(dashboard, /const greetingAvatarUrl = connections\.linkedin\.avatarUrl;/);
+  // Depuis le lot 4 du chantier design, la salutation n'affiche plus d'avatar : rien à lire.
+  assert.doesNotMatch(dashboard, /avatar_url/);
   assert.doesNotMatch(dashboard, /profil custom upload/, 'le téléversement d\'avatar n\'existe pas');
 });
 

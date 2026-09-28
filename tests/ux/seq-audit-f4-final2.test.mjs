@@ -222,11 +222,18 @@ test('front-enroll-follow-2 — une première étape e-mail n’est pas annoncé
 });
 
 // ---------------------------------------------------------------- front-enroll-follow-3
+// Revue design : confirmation du kit (AlertDialog, aria-modal), rendue après la
+// fenêtre au même calque : son voile couvre la préparation, qui n'a plus à être
+// neutralisée à la main. Confirmer ne ferme jamais pendant une inscription.
 test('front-enroll-follow-3 — « Fermer sans inscrire » : préparation neutralisée, jamais de fermeture en pleine inscription', () => {
-  const confirm = slice(previewModal, '<AlertDialog open={confirmDiscardOpen}', '</AlertDialog>');
-  assert.match(confirm, /setConfirmDiscardOpen\(false\);[\s\S]*if \(!isBusy\) onClose\(\);/);
-  assert.doesNotMatch(confirm, /setConfirmDiscardOpen\(false\);\s*onClose\(\);/);
-  const content = slice(previewModal, '<DialogPrimitive.Content', 'onOpenAutoFocus');
-  assert.match(content, /confirmDiscardOpen && 'pointer-events-none'/);
-  assert.match(previewModal, /\{confirmDiscardOpen && <div aria-hidden="true" className="absolute inset-0 z-50 bg-black\/80" \/>\}/);
+  const confirm = slice(previewModal, '<AlertDialog open={confirmCloseOpen}', '</AlertDialog>');
+  assert.match(confirm, /<AlertDialogAction onClick=\{confirmClose\}>/);
+  const onConfirm = slice(previewModal, 'const confirmClose = () => {', '\n  };\n');
+  assert.match(onConfirm, /setConfirmCloseOpen\(false\);[\s\S]*if \(isBusy\) return;[\s\S]*onClose\(\);/);
+  assert.doesNotMatch(onConfirm, /setConfirmCloseOpen\(false\);\s*onClose\(\);/);
+  assert.ok(previewModal.indexOf('</Dialog>') < previewModal.indexOf('<AlertDialog open={confirmCloseOpen}'), 'confirmation hors de la fenêtre, posée au-dessus');
+  const kit = read('src/components/ui/alert-dialog.tsx');
+  assert.match(kit, /<AlertDialogOverlay \/>/);
+  assert.match(kit, /fixed inset-0 z-modal bg-black/);
+  assert.match(kit, /aria-modal="true"/);
 });

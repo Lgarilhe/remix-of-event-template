@@ -3,14 +3,11 @@
 import type { SequenceStep } from '../SequenceBuilder';
 import { connectionContextOf, previousStepsOf, type ConnectionContext } from './sequenceGraph.ts';
 
+/** Type de message annoncé : badge neutre, sans couleur par type (revue design D-35). */
 export interface MessageTypeInfo {
   label: string;
   shortLabel: string;
-  color: string; // tailwind classes
 }
-
-const DIRECT_COLOR = 'bg-brand-purple/10 text-brand-purple';
-const INMAIL_COLOR = 'bg-info/10 text-info';
 
 /**
  * Type de message annoncé pour une étape, aligné sur la rédaction du moteur
@@ -34,8 +31,8 @@ export function getStepMessageType(
 
   if (step.actionType === 'connection_request') {
     return step.messageTemplate?.trim()
-      ? { label: 'Invitation avec note', shortLabel: 'Avec note', color: 'bg-success/10 text-success' }
-      : { label: 'Invitation sans note', shortLabel: 'Sans note', color: 'bg-success/10 text-success' };
+      ? { label: 'Invitation avec note', shortLabel: 'Avec note' }
+      : { label: 'Invitation sans note', shortLabel: 'Sans note' };
   }
 
   const previousSteps = previousStepsOf(step, allSteps);
@@ -43,9 +40,9 @@ export function getStepMessageType(
   if (step.actionType === 'whatsapp_message') {
     const prevWhatsApp = previousSteps.filter(s => s.actionType === 'whatsapp_message');
     if (prevWhatsApp.length === 0) {
-      return { label: 'WhatsApp initial', shortLabel: 'WhatsApp', color: 'bg-green-500/10 text-green-500' };
+      return { label: 'Premier message WhatsApp', shortLabel: 'WhatsApp' };
     }
-    return { label: 'WhatsApp relance', shortLabel: 'WA relance', color: 'bg-green-500/10 text-green-500' };
+    return { label: 'Relance WhatsApp', shortLabel: 'Relance WhatsApp' };
   }
 
   const context: ConnectionContext = step.actionType === 'message' ? 'connected' : connectionContextOf(step, allSteps);
@@ -54,20 +51,20 @@ export function getStepMessageType(
   const hadInvite = previousSteps.some(s => s.actionType === 'connection_request');
 
   const inmailType = (): MessageTypeInfo => (prevInMails.length === 0
-    ? { label: 'InMail initial (formel)', shortLabel: 'InMail initial', color: INMAIL_COLOR }
-    : { label: 'InMail de relance', shortLabel: 'InMail relance', color: INMAIL_COLOR });
+    ? { label: 'Premier InMail (formel)', shortLabel: 'Premier InMail' }
+    : { label: 'Relance par InMail', shortLabel: 'Relance InMail' });
 
   const directType = (): MessageTypeInfo => {
     if (prevDirectMsgs.length === 0 && !hadInvite) {
-      return { label: 'Premier message (accroche)', shortLabel: '1er message', color: DIRECT_COLOR };
+      return { label: 'Premier message (accroche)', shortLabel: 'Premier message' };
     }
     if (prevDirectMsgs.length === 0) {
-      return { label: 'Suite invitation (merci + pitch)', shortLabel: 'Post-connexion', color: DIRECT_COLOR };
+      return { label: "Après l'invitation (remerciement et présentation)", shortLabel: 'Après connexion' };
     }
     if (prevDirectMsgs.length === 1) {
-      return { label: 'Relance 1', shortLabel: 'Relance 1', color: 'bg-warning/10 text-warning' };
+      return { label: 'Relance 1', shortLabel: 'Relance 1' };
     }
-    return { label: 'Relance 2', shortLabel: 'Relance 2', color: 'bg-destructive/10 text-destructive' };
+    return { label: 'Relance 2', shortLabel: 'Relance 2' };
   };
 
   if (context === 'connected') return directType();

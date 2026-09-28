@@ -7,7 +7,8 @@
  * - SEQ-184 (F5) : fil de la messagerie, libellés du dictionnaire partagé
  *   src/lib/sequenceActionLabels.ts (les mêmes que la fiche candidat).
  * - SEQ-245 (F1b) : un seul nom par type d'étape, celui de l'éditeur
- *   (stepTypeLabel de sequenceGraph), dans l'aperçu d'inscription.
+ *   (stepTypeLabel de sequenceGraph), dans l'aperçu d'inscription, lu au
+ *   catalogue unifié (sequenceCatalog) depuis la revue design.
  *
  * La carte d'activité de la messagerie est transpilée par esbuild et rendue
  * avec un React factice (arbre d'éléments) : on lit le texte réellement affiché.
@@ -73,6 +74,7 @@ const treeView = read('src/components/outreach/enrollment-preview/SequenceTreeVi
 const errorLib = await loadModule('src/lib/sequenceErrorMessages.ts');
 const actionLabels = await loadModule('src/lib/sequenceActionLabels.ts');
 const graph = await loadModule('src/components/outreach/sequence/sequenceGraph.ts');
+const catalog = await loadModule('src/lib/sequenceCatalog.ts');
 
 // React factice : createElement renvoie l'arbre, on en lit le texte et les classes.
 const REACT_STUB = `
@@ -81,12 +83,17 @@ const REACT_STUB = `
   export default { createElement, Fragment };
 `;
 const ICON_STUB = ['Eye', 'UserPlus', 'MessageSquare', 'Mail', 'Clock', 'GitBranch', 'CheckCircle2', 'XCircle',
-  'SkipForward', 'Hourglass', 'CalendarCheck', 'PhoneIncoming', 'PhoneOutgoing', 'Phone']
+  'SkipForward', 'Hourglass', 'CalendarCheck', 'PhoneIncoming', 'PhoneOutgoing', 'Phone',
+  // Icônes d'étape du socle (SequenceBadges.tsx, revue design).
+  'MessageCircle', 'MessageSquareText', 'Send', 'Workflow']
   .map((name) => `export const ${name} = '${name}';`).join('\n');
 const card = await loadModule('src/components/outreach/inbox/ActivityEventCard.tsx', {
   react: REACT_STUB,
-  'react-router-dom': 'export const useNavigate = () => () => {};',
+  'react-router-dom': "export const useNavigate = () => () => {}; export const Link = 'Link';",
   'lucide-react': ICON_STUB,
+  // Composants du kit (revue design) : leurs enfants suffisent au texte lu.
+  '@/components/ui/badge': "export const Badge = 'Badge';",
+  '@/components/ui/ChannelIcon': "export const ChannelIcon = 'ChannelIcon';",
   '@/assets/aircall-logo.webp': "export default 'aircall.webp';",
   '@/hooks/useProfileActivity': 'export {};',
   '@/hooks/useMessagesInboxHelpers': "export const formatMessageTime = () => '10:00';",
@@ -154,7 +161,7 @@ test('SEQ-184 — messagerie : mêmes libellés et mentions de statut que la fic
   const failed = renderCard({ actionType: 'inmail', status: 'failed', errorMessage: 'boom' });
   assert.doesNotMatch(textOf(failed), /InMail envoyé/);
   assert.match(textOf(failed), /^InMail : échec/);
-  assert.ok(findByClass(failed, /font-medium truncate text-destructive/), 'le titre d’un échec est en rouge');
+  assert.ok(findByClass(failed, /font-medium text-danger/), 'le titre d’un échec est en rouge');
   const skipped = textOf(renderCard({ actionType: 'connection_request', status: 'skipped' }));
   assert.match(skipped, /^Invitation : étape sautée/);
   // Type inconnu : pas d'identifiant technique affiché.
@@ -167,21 +174,34 @@ test('SEQ-184 — messagerie : mêmes libellés et mentions de statut que la fic
 });
 
 test('SEQ-184 / SEQ-245 — messagerie : une étape interne prend le nom de l’éditeur', () => {
-  assert.equal(textOf(renderCard({ actionType: 'wait_connection', status: 'sent' })).replace('10:00', ''), graph.stepTypeLabel('wait_connection'));
+  // L'heure suit le titre, après un point médian (revue design).
+  assert.equal(textOf(renderCard({ actionType: 'wait_connection', status: 'sent' })).replace(/·10:00$/, ''), graph.stepTypeLabel('wait_connection'));
   assert.match(textOf(renderCard({ actionType: 'wait_reply', status: 'skipped' })), /^Attendre une réponse : étape sautée/);
-  // Rendez-vous : libellé inchangé.
-  assert.match(textOf(renderCard({ type: 'booking', actionType: 'calendly_booking', status: 'scheduled' })), /RDV planifié/);
+  // Rendez-vous : libellé sans abréviation (passe texte du design).
+  assert.match(textOf(renderCard({ type: 'booking', actionType: 'calendly_booking', status: 'scheduled' })), /Rendez-vous planifié/);
 });
 
 // ---------------------------------------------------------------- SEQ-245
+// Revue design : l'aperçu et la vue arborescente lisent le catalogue unifié
+// (sequenceActionLabel, SequenceActionLabel), qui prend ses libellés dans
+// ACTION_TYPE_LABELS : les noms de l'éditeur, vérifiés ici type par type et
+// par lot6-catalogue.
 test('SEQ-245 — aperçu d’inscription : un seul nom par type d’étape, celui de l’éditeur', () => {
   for (const [name, source] of [['aperçu', previewModal], ['vue arborescente', treeView]]) {
     assert.doesNotMatch(source, /const ACTION_LABELS/, `${name} : table locale divergente`);
-    assert.match(source, /from '@\/components\/outreach\/sequence\/sequenceGraph';/, name);
-    assert.match(source, /\{stepTypeLabel\(step\.actionType\)\}/, name);
+    assert.match(source, /import \{ sequenceActionLabel, formatStepDelay \} from '@\/lib\/sequenceCatalog';/, name);
   }
-  assert.equal((previewModal.match(/\{stepTypeLabel\(step\.actionType\)\}/g) ?? []).length, 3);
-  assert.match(treeView, /const label = STEP_TYPE_LABELS\[step\.actionType\] \|\| 'Décision';/);
+  // Les trois endroits de l'aperçu qui nomment une étape passent par le catalogue.
+  assert.equal((previewModal.match(/<SequenceActionLabel type=\{step\.actionType\}/g) ?? []).length, 2);
+  assert.equal((previewModal.match(/sequenceActionLabel\(step\.actionType\)/g) ?? []).length, 1);
+  assert.match(treeView, /<SequenceActionLabel type=\{step\.actionType\}/);
+  // Nœud de décision : « Étape N · décision », nom lu au catalogue (repli neutre pour un type inconnu).
+  assert.match(treeView, /Étape \{index \+ 1\} · décision/);
+  assert.match(treeView, /\{sequenceActionLabel\(step\.actionType\)\}/);
+  // Mêmes noms que l'éditeur, pour chaque type qu'il écrit.
+  for (const [type, label] of Object.entries(graph.STEP_TYPE_LABELS)) {
+    assert.equal(catalog.sequenceActionLabel(type), label, type);
+  }
   // Anciens noms divergents de l'aperçu.
   for (const legacy of ['Attendre connexion', 'Attendre acceptation', 'Vérifier connexion']) {
     assert.ok(!previewModal.includes(legacy) && !treeView.includes(legacy), legacy);

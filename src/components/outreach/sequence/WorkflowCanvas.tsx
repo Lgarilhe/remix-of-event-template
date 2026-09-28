@@ -19,6 +19,7 @@ import { WorkflowAddNode } from './nodes/WorkflowAddNode';
 import { WorkflowBranchLabelNode } from './nodes/WorkflowBranchLabelNode';
 import { AnimatedEdge } from './edges/AnimatedEdge';
 import { branchStepIds, engineNextStepId } from './sequenceGraph';
+import { useAppTheme } from '@/lib/theme';
 
 const nodeTypes: NodeTypes = {
   stepNode: WorkflowStepNode,
@@ -62,9 +63,27 @@ const getBranchChain = (startId: string | undefined, all: SequenceStep[]): Seque
 
 
 // ── Colour palette ──
-const EDGE_DEFAULT = 'hsl(var(--border))';
-const EDGE_TRUE = 'hsl(152, 68%, 46%)';
-const EDGE_FALSE = 'hsl(25, 95%, 53%)';
+// Arêtes neutres : les branches se distinguent par leur étiquette (« Connecté »,
+// « Non connecté ») et leur position, pas par une couleur de statut (revue
+// design D-35).
+const EDGE_DEFAULT = 'hsl(var(--muted-foreground))';
+const EDGE_TRUE = EDGE_DEFAULT;
+const EDGE_FALSE = EDGE_DEFAULT;
+
+// Libellés d'accessibilité du canevas, en français.
+const ARIA_LABELS = {
+  'node.a11yDescription.default': 'Appuyez sur Entrée ou Espace pour sélectionner cette étape.',
+  'node.a11yDescription.keyboardDisabled': 'Appuyez sur Entrée ou Espace pour sélectionner cette étape.',
+  'node.a11yDescription.ariaLiveMessage': () => 'Étape déplacée.',
+  'edge.a11yDescription.default': 'Liaison entre deux étapes.',
+  'controls.ariaLabel': 'Zoom du parcours',
+  'controls.zoomIn.ariaLabel': 'Agrandir',
+  'controls.zoomOut.ariaLabel': 'Réduire',
+  'controls.fitView.ariaLabel': "Ajuster à l'écran",
+  'controls.interactive.ariaLabel': 'Verrouiller le parcours',
+  'minimap.ariaLabel': "Vue d'ensemble",
+  'handle.ariaLabel': 'Point de liaison',
+};
 
 type WorkflowGraph = {
   nodes: Node[];
@@ -186,7 +205,7 @@ function buildLayout(
       nodes.push({
         id: trueLabelId, type: 'branchLabel',
         position: { x: -BRANCH_GAP / 2 - 36, y: labelY },
-        data: { label: '✓ Connecté', variant: 'true' },
+        data: { label: 'Connecté', variant: 'true' },
         selectable: false, draggable: false,
       });
       edges.push({
@@ -243,7 +262,7 @@ function buildLayout(
       nodes.push({
         id: falseLabelId, type: 'branchLabel',
         position: { x: BRANCH_GAP / 2 - 44, y: labelY },
-        data: { label: '✗ Non connecté', variant: 'false' },
+        data: { label: 'Non connecté', variant: 'false' },
         selectable: false, draggable: false,
       });
       edges.push({
@@ -321,6 +340,9 @@ function buildLayout(
 export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   steps, selectedStepId, onStepClick, onAddStep, onRemoveStep,
 }) => {
+  // Le canevas suit le thème de l'application : par défaut, React Flow pose la
+  // classe « light » sur sa racine, ce qui rebascule les jetons en thème clair.
+  const theme = useAppTheme();
   const layout = useMemo(() => {
     try {
       return sanitizeGraph(buildLayout(steps, selectedStepId, onRemoveStep, onAddStep));
@@ -357,6 +379,7 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   return (
     <div className="w-full h-full" onKeyDown={handleKeyDown}>
       <ReactFlow
+        colorMode={theme}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
@@ -374,9 +397,14 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
         className="bg-muted/5"
-        defaultEdgeOptions={{ type: 'animated', animated: true }}
+        // Arêtes immobiles : pas d'animation en boucle (01-direction.md, § 7).
+        defaultEdgeOptions={{ type: 'animated' }}
+        ariaLabelConfig={ARIA_LABELS}
+        // Une étape se retire par son bouton : la touche Suppr ne ferait
+        // disparaître que son dessin, pas l'étape.
+        deleteKeyCode={null}
       >
-        <Background gap={24} size={1} color="hsl(var(--border) / 0.2)" />
+        <Background gap={24} size={1} color="hsl(var(--border-strong-hsl) / var(--border-strong-alpha))" />
         <Controls
           showInteractive={false}
           className="!bg-background !border-border !shadow-sm !rounded-lg [&>button]:!bg-background [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted [&>button]:!rounded-md"

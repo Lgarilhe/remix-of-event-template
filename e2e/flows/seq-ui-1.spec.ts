@@ -1656,7 +1656,7 @@ test.describe('Liste des séquences', () => {
 
     // Séquence de mission avec inscrits : impact et protection annoncés, Annuler n'écrit rien.
     await page.getByRole('button', { name: `Actions de la séquence ${missionSeq.name}`, exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Supprimer' }).click();
+    await page.getByRole('menuitem', { name: 'Supprimer', exact: true }).click();
     await expect(deleteDialog).toContainText(/3 candidats inscrits\s*\(dont 2 en cours d'envoi\)/);
     await expect(deleteDialog).toContainText("Ces candidats ne seront plus signalés comme déjà contactés lors d'une prochaine inscription.");
     await deleteDialog.getByRole('button', { name: 'Annuler' }).click();
@@ -1671,7 +1671,7 @@ test.describe('Liste des séquences', () => {
       return route.fallback();
     });
     await page.getByRole('button', { name: `Actions de la séquence ${missionSeq.name}`, exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Supprimer' }).click();
+    await page.getByRole('menuitem', { name: 'Supprimer', exact: true }).click();
     await deleteDialog.getByRole('button', { name: 'Supprimer définitivement' }).click();
     await expect(toast(page, 'Suppression impossible')).toBeVisible({ timeout: 15_000 });
     await expect(toast(page, 'Séquence supprimée')).toHaveCount(0);
@@ -1681,7 +1681,7 @@ test.describe('Liste des séquences', () => {
 
     // Séquence partagée sans inscrit : « partagée entre toutes vos missions », puis suppression réelle.
     await page.getByRole('button', { name: `Actions de la séquence ${shared.name}`, exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Supprimer' }).click();
+    await page.getByRole('menuitem', { name: 'Supprimer', exact: true }).click();
     await expect(deleteDialog).toContainText('Cette séquence est partagée entre toutes vos missions : elle disparaîtra partout.');
     await deleteDialog.getByRole('button', { name: 'Supprimer définitivement' }).click();
     await expect(toast(page, 'Séquence supprimée')).toBeVisible({ timeout: 15_000 });
@@ -1689,7 +1689,7 @@ test.describe('Liste des séquences', () => {
 
     // Suppression réelle de la séquence de mission : inscriptions supprimées avec elle.
     await page.getByRole('button', { name: `Actions de la séquence ${missionSeq.name}`, exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Supprimer' }).click();
+    await page.getByRole('menuitem', { name: 'Supprimer', exact: true }).click();
     await deleteDialog.getByRole('button', { name: 'Supprimer définitivement' }).click();
     await expect(toast(page, 'Séquence supprimée').last()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(missionSeq.name, { exact: true })).toHaveCount(0);

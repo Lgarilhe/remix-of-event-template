@@ -1,7 +1,10 @@
 import type { Config } from "tailwindcss";
 
 export default {
-  darkMode: ["class"],
+  // Le thème sombre est celui de :root, le clair ajoute .light sur <html>
+  // (main.tsx, AppSidebar, NavigationPalette). La variante dark: vaut donc hors
+  // de .light ; avec ["class"], elle attendait une classe .dark jamais posée.
+  darkMode: ["variant", "&:not(.light *)"],
   content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   prefix: "",
   theme: {
@@ -13,13 +16,10 @@ export default {
   		}
   	},
   	extend: {
+  		// Une seule famille d'interface (docs/design/01-direction.md, § 3).
+  		// display et serif sont des alias dépréciés : ils rendent la police
+  		// d'interface pour que les écrans pas encore repris restent homogènes.
   		fontFamily: {
-			brand: [
-				'Bricolage Grotesque',
-				'Outfit',
-				'system-ui',
-				'sans-serif'
-			],
 			sans: [
 				'Instrument Sans',
 				'ui-sans-serif',
@@ -34,18 +34,23 @@ export default {
 				'sans-serif'
 			],
 			display: [
-				'Outfit',
+				'Instrument Sans',
 				'ui-sans-serif',
 				'system-ui',
 				'sans-serif'
 			],
 			serif: [
-				'Instrument Serif',
-				'Georgia',
-				'Cambria',
-				'Times New Roman',
-				'Times',
-				'serif'
+				'Instrument Sans',
+				'ui-sans-serif',
+				'system-ui',
+				'sans-serif'
+			],
+			// Police de marque : titres des pages publiques seulement.
+			brand: [
+				'Bricolage Grotesque',
+				'Instrument Sans',
+				'system-ui',
+				'sans-serif'
 			],
   			mono: [
   				'Space Mono',
@@ -60,11 +65,18 @@ export default {
   			]
   		},
   		colors: {
-  			border: 'hsl(var(--border))',
-  			input: 'hsl(var(--input))',
+  			// Filets : teinte et opacité séparées pour que border-border/40 reste valide en sombre.
+  			border: {
+  				DEFAULT: 'hsl(var(--border-hsl) / calc(var(--border-alpha) * <alpha-value>))',
+  				strong: 'hsl(var(--border-strong-hsl) / calc(var(--border-strong-alpha) * <alpha-value>))'
+  			},
+  			input: 'hsl(var(--input-hsl) / calc(var(--input-alpha) * <alpha-value>))',
   			ring: 'hsl(var(--ring))',
   			background: 'hsl(var(--background))',
-  			foreground: 'hsl(var(--foreground))',
+  			foreground: {
+  				DEFAULT: 'hsl(var(--foreground))',
+  				secondary: 'hsl(var(--foreground-secondary))'
+  			},
   			primary: {
   				DEFAULT: 'hsl(var(--primary))',
   				foreground: 'hsl(var(--primary-foreground))'
@@ -76,6 +88,11 @@ export default {
   			destructive: {
   				DEFAULT: 'hsl(var(--destructive))',
   				foreground: 'hsl(var(--destructive-foreground))'
+  			},
+  			// Erreur d'état (texte, icône, filet), distincte de l'aplat destructif.
+  			danger: {
+  				DEFAULT: 'hsl(var(--danger))',
+  				muted: 'hsl(var(--danger-muted))'
   			},
   			muted: {
   				DEFAULT: 'hsl(var(--muted))',
@@ -100,7 +117,7 @@ export default {
   				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
   				accent: 'hsl(var(--sidebar-accent))',
   				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
-  				border: 'hsl(var(--sidebar-border))',
+  				border: 'hsl(var(--sidebar-border-hsl) / calc(var(--sidebar-border-alpha) * <alpha-value>))',
   				ring: 'hsl(var(--sidebar-ring))'
   			},
   			success: {
@@ -118,7 +135,15 @@ export default {
   				foreground: 'hsl(var(--status-info-foreground))',
   				muted: 'hsl(var(--status-info-muted))',
   			},
+  			// brand : l'accent indigo unique, rationné (focus, sélection, signaux, progression).
+  			// purple, pink, blue, cyan, green : ancienne palette Skalr, à ne plus employer.
   			brand: {
+  				DEFAULT: 'hsl(var(--brand))',
+  				foreground: 'hsl(var(--brand-foreground))',
+  				hover: 'hsl(var(--brand-hover))',
+  				press: 'hsl(var(--brand-press))',
+  				solid: 'hsl(var(--brand-solid))',
+  				'solid-foreground': 'hsl(var(--brand-solid-foreground))',
   				purple: 'hsl(var(--skalr-purple))',
   				pink: 'hsl(var(--skalr-pink))',
   				blue: 'hsl(var(--skalr-blue))',
@@ -140,12 +165,46 @@ export default {
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
+  		// Six paliers (docs/design/01-direction.md, § 3). sm vaut 13 px, le corps
+  		// des maquettes ; md (14 px) sert aux titres de carte et au texte de lecture.
+  		// Bannit l'usage de text-[Npx] arbitraires.
   		fontSize: {
-  			// Étend l'échelle Tailwind pour avoir des paliers entre 10 et 12px,
-  			// nécessaires pour les eyebrow labels, badges, kbd shortcuts.
-  			// Bannit l'usage de text-[Npx] arbitraires (8px / 9.5px / 10.5px / 11.5px).
   			'3xs': ['0.625rem', { lineHeight: '0.875rem' }], // 10px / 14px
   			'2xs': ['0.6875rem', { lineHeight: '0.9375rem' }], // 11px / 15px
+  			sm: ['0.8125rem', { lineHeight: '1.25rem' }], // 13px / 20px
+  			md: ['0.875rem', { lineHeight: '1.25rem' }], // 14px / 20px
+  		},
+  		// Calques nommés : l'ordre reprend les valeurs en place (dialogues à 9998-9999).
+  		zIndex: {
+  			sticky: '20',
+  			overlay: '9998',
+  			modal: '9999',
+  			popover: '10000',
+  			toast: '10050',
+  		},
+  		transitionTimingFunction: {
+  			emphasized: 'cubic-bezier(0.22, 1, 0.36, 1)',
+  		},
+  		// text-destructive rend la couleur danger : en sombre, aucun rouge ne peut
+  		// à la fois se lire sur le fond et porter du texte blanc (01-direction.md, § 2).
+  		textColor: {
+  			destructive: {
+  				DEFAULT: 'hsl(var(--danger))',
+  				foreground: 'hsl(var(--destructive-foreground))'
+  			},
+  			// text-accent et border-accent ont toujours été écrits pour dire « couleur de
+  			// marque » (statut en cours, profil à contacter, sélection) : ils rendent
+  			// l'indigo. bg-accent reste le gris de survol de shadcn.
+  			accent: {
+  				DEFAULT: 'hsl(var(--brand))',
+  				foreground: 'hsl(var(--accent-foreground))'
+  			}
+  		},
+  		borderColor: {
+  			accent: {
+  				DEFAULT: 'hsl(var(--brand))',
+  				foreground: 'hsl(var(--accent-foreground))'
+  			}
   		},
   		keyframes: {
   			'accordion-down': {

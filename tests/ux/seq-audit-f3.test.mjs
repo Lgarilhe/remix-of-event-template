@@ -263,7 +263,8 @@ test('SEQ-165 — le Journal signale une liste tronquée', () => {
 
 test('SEQ-180 — la période s’applique aux inscriptions et les réponses ont une seule source', () => {
   assert.match(analytics, /\.gte\('created_at', sinceTs\)\s*\.lte\('created_at', untilTs\);\s*if \(filterSeqId\) enrollQuery/);
-  assert.match(analytics, /\{ name: 'RÉPONSES', value: enrollmentStats\?\.replied \?\? 0 \}/);
+  // Revue design : casse d'origine (pas de capitales), même source de valeur.
+  assert.match(analytics, /\{ name: 'Réponses', value: enrollmentStats\?\.replied \?\? 0 \}/);
   assert.doesNotMatch(analytics, /action_type\.replace\(\/_\/g, ' '\)/);
 });
 

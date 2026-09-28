@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useId, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EditorialChoiceList } from './EditorialChoiceList';
@@ -35,8 +34,11 @@ interface Props {
   savedSpecializations?: string[];
 }
 
+const NAV_BUTTON_CLASS = 'min-h-11 md:min-h-0';
+
 export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedSpecializations }) => {
   const [selected, setSelected] = useState<Set<string>>(new Set(savedSpecializations ?? []));
+  const titleId = useId();
 
   const toggle = (value: string) => {
     setSelected((prev) => {
@@ -46,13 +48,15 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
     });
   };
 
+  const count = selected.size;
+
   return (
     <div className="w-full">
       <div className="mb-8">
-        <h2 className="font-editorial font-normal italic text-4xl sm:text-5xl leading-[1.08]">
+        <h1 id={titleId} className="text-2xl font-semibold tracking-tight text-foreground">
           Vos terrains de chasse ?
-        </h2>
-        <p className="text-muted-foreground text-[15px] leading-relaxed mt-3 max-w-md">
+        </h1>
+        <p className="mt-2 max-w-md text-md text-foreground-secondary">
           Vos secteurs donnent son vocabulaire à l'IA Konekt : briefs, scoring des candidats
           et filtres de recherche pré-remplis avec les bons mots.
         </p>
@@ -65,29 +69,29 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onBack, savedS
         onSelect={toggle}
         columns={2}
         dense
+        labelledBy={titleId}
       />
 
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.55 }}
-        className="flex items-center justify-between mt-8"
-      >
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Retour
-        </button>
-        <Button
-          onClick={() => onSubmit(Array.from(selected))}
-          disabled={selected.size === 0}
-          className="gap-2 bg-foreground text-background hover:bg-foreground/90 text-sm px-6"
-        >
-          Continuer <ArrowRight className="w-4 h-4" />
+      <div className="mt-8 flex items-center justify-between gap-3">
+        <Button variant="ghost" onClick={onBack} className={NAV_BUTTON_CLASS}>
+          <ArrowLeft aria-hidden="true" />
+          Retour
         </Button>
-      </motion.div>
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs text-muted-foreground sm:inline" aria-live="polite">
+            {count === 0 ? 'Aucun secteur choisi' : `${count} secteur${count > 1 ? 's' : ''} choisi${count > 1 ? 's' : ''}`}
+          </span>
+          <Button
+            variant="primary"
+            onClick={() => onSubmit(Array.from(selected))}
+            disabled={count === 0}
+            className={NAV_BUTTON_CLASS}
+          >
+            Continuer
+            <ArrowRight aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

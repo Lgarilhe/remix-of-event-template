@@ -129,13 +129,18 @@ test('front-editor-list-1 — un collaborateur ne modifie que les séquences qu�
   });
   assert.equal(readOnlyHint(colleague), NOT_AUTHOR_HINT);
   assert.equal(readOnlyHint(otherOrg), OTHER_ORG_HINT);
-  assert.equal((list.match(/title=\{readOnlyHint\(seq\)\}/g) || []).length, 2, 'bureau et mobile');
+  // Revue design : une seule ligne responsive par séquence (plus de copie séparée
+  // pour téléphone) ; « Lecture seule » est un badge près du nom, avec son explication.
+  assert.equal((list.match(/filteredSequences\.map\(/g) || []).length, 1, 'une seule liste de lignes');
+  assert.doesNotMatch(list, /key=\{`mobile-|sm:hidden/, 'plus de copie pour téléphone');
+  assert.equal((list.match(/title=\{readOnlyHint\(seq\)\}/g) || []).length, 1, 'ligne unique');
+  assert.match(list, /\{!canEdit\(seq\) && \(\s*<Badge variant="outline" title=\{readOnlyHint\(seq\)\}>Lecture seule<\/Badge>/);
 
   // Interrupteur, « Modifier » et « Supprimer » sous canEdit ; « Dupliquer » reste sous canManage.
-  assert.equal((list.match(/\{canEdit\(seq\) \? \(\s*<Switch/g) || []).length, 2);
-  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<DropdownMenuItem onClick=\{\(e\) => \{ e\.stopPropagation\(\); handleEdit\(seq\); \}\}>/g) || []).length, 2);
-  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<>\s*<DropdownMenuSeparator \/>/g) || []).length, 2);
-  assert.equal((list.match(/\{canManage\(seq\) && \(\s*<DropdownMenuItem disabled=\{!!duplicatingId\}/g) || []).length, 2);
+  assert.equal((list.match(/\{canEdit\(seq\) \? \(\s*<Switch/g) || []).length, 1);
+  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<DropdownMenuItem onClick=\{\(e\) => \{ e\.stopPropagation\(\); handleEdit\(seq\); \}\}>/g) || []).length, 1);
+  assert.equal((list.match(/\{canEdit\(seq\) && \(\s*<>\s*<DropdownMenuSeparator \/>/g) || []).length, 1);
+  assert.equal((list.match(/\{canManage\(seq\) && \(\s*<DropdownMenuItem disabled=\{!!duplicatingId\}/g) || []).length, 1);
 });
 
 test('front-editor-list-1 — l’éditeur ne s’ouvre pas sur la séquence d’un collègue', async () => {
@@ -295,7 +300,10 @@ test('front-editor-list-2 — filet, tous rôles : des pauses de séquence inexp
 // ---------------------------------------------------------------- 4. front-editor-list-3 (low)
 test('front-editor-list-3 — interrupteur verrouillé d’un collaborateur : cliquable, il dit pourquoi', async () => {
   const switches = [...list.matchAll(/<Switch[\s\S]*?\/>/g)].map((m) => m[0]);
-  assert.equal(switches.length, 2);
+  // Revue design : une seule ligne responsive par séquence, un seul interrupteur
+  // (plus de copie séparée pour téléphone).
+  assert.equal(switches.length, 1);
+  assert.doesNotMatch(list, /key=\{`mobile-|sm:hidden/, 'plus de copie pour téléphone');
   for (const s of switches) {
     assert.doesNotMatch(s, /\sdisabled=\{[^}]*deactivationLocked/, 'Radix n’appelle pas onCheckedChange sur un interrupteur désactivé');
     assert.match(s, /aria-disabled=\{deactivationLocked\(seq\) \|\| undefined\}/);
@@ -356,5 +364,6 @@ test('D3 — sur la ligne d’un autre membre, un collaborateur ne voit ni pause
   assert.match(src, /\{enrollment\.status === 'active' && ownRow \? \(\s*<DropdownMenuItem\s*onClick=\{\(\) => setConfirmAction\(\{ type: 'stop'/);
   assert.match(src, /\{ownRow && \(enrollment\.status === 'active' \|\| enrollment\.status === 'paused' \|\| enrollment\.status === 'completed'\) && \(\s*<DropdownMenuItem\s*onClick=\{\(\) => setConfirmAction\(\{ type: 'markReplied'/);
   assert.match(src, /\{ownRow && !gdprErased && \(enrollment\.status === 'replied'/);
-  assert.match(src, /\{enrollment\.status === 'active' && ownRow && \(\s*<button[\s\S]{0,400}type: 'skipStep'/);
+  // Revue design : « Sauter » est un bouton du kit (<Button>), même garde.
+  assert.match(src, /\{enrollment\.status === 'active' && ownRow && \(\s*<Button\b[\s\S]{0,400}type: 'skipStep'/);
 });

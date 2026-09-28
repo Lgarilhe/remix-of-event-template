@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
@@ -16,9 +15,10 @@ import {
   summarizeResumeResponse,
   type ResumeResponse,
 } from '@/lib/sequenceErrorMessages';
+import { ENROLLMENT_STATUSES, executionStatusMeta, formatStepDelay, type StatusTone } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +32,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
@@ -46,34 +47,28 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
-import { 
-  Users, 
-  ExternalLink, 
-  MoreHorizontal, 
-  StopCircle, 
+import { EmptyState, ErrorState, StatGrid, StatTile } from '@/components/layout';
+import { SequenceActionIcon } from './SequenceBadges';
+import {
+  Users,
+  ExternalLink,
+  MoreHorizontal,
+  StopCircle,
   Play,
-  CheckCircle,
-  MessageCircle,
-  Clock,
-  XCircle,
-  ChevronDown,
-  ChevronRight,
-  Send,
-  UserPlus,
-  Eye,
-  Mail,
-  AlertCircle,
   CheckCircle2,
-  Timer,
-  SkipForward,
+  ChevronRight,
   RefreshCw,
+  Clock,
   Search,
+  AlertCircle,
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 import {
   DONE_EXECUTION_STATUSES,
   PENDING_EXECUTION_STATUSES,
@@ -128,19 +123,16 @@ interface SequenceEnrollmentsPanelProps {
   sequenceName: string;
 }
 
-// Apparence d'une inscription par statut. Les libellés viennent de
-// src/lib/sequenceLabels.ts (enrollmentStatusLabel, pausedLabel) : un statut
-// inconnu s'affiche « Statut inconnu », jamais « En cours ».
-const statusStyle: Record<string, { icon: React.ReactNode; className: string }> = {
-  active: { icon: <Clock className="w-3 h-3" aria-hidden="true" />, className: 'bg-info text-info-foreground border border-info' },
-  paused: { icon: <StopCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-warning text-warning-foreground border border-warning' },
-  completed: { icon: <CheckCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-success text-success-foreground border border-success' },
-  replied: { icon: <MessageCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-purple-500 text-white border border-purple-600' },
-  bounced: { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-destructive/10 text-destructive border border-destructive/30' },
-  stopped: { icon: <XCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-destructive/10 text-destructive border border-destructive/30' },
-  cancelled: { icon: <XCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border border-border' },
-};
-const NEUTRAL_STATUS_STYLE = { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border border-border' };
+
+// Apparence d'une inscription par statut : le ton de badge du catalogue
+// (src/lib/sequenceCatalog.ts), la même peinture sur tous les écrans. Les
+// libellés viennent de src/lib/sequenceLabels.ts (enrollmentStatusLabel,
+// pausedLabel) : un statut inconnu s'affiche « Statut inconnu », jamais « En cours ».
+const statusStyle: Record<string, { tone: StatusTone }> = Object.fromEntries(
+  Object.entries(ENROLLMENT_STATUSES).map(([status, meta]) => [status, { tone: meta.tone }]),
+);
+const NEUTRAL_STATUS_STYLE: { tone: StatusTone } = { tone: 'muted' };
+
 
 /** Raisons de pause qu'un « Reprendre » individuel peut lever (les autres ont leur propre action). */
 const RESUMABLE_PAUSE_REASONS = new Set<string>(['manual', 'send_failed']);
@@ -226,37 +218,10 @@ const resumeRetriesFailedStep = (enrollment: Pick<Enrollment, 'status' | 'pause_
   return executions.some(e => e.status === 'failed' && !isUncertain(e) && e.step_order > lastDoneOrder);
 };
 
-// Icône et couleur par type d'étape réel. Libellés et étapes internes
-// (attentes, contrôles, conditions) : src/lib/sequenceErrorMessages.ts.
-const actionTypeStyle: Record<string, { icon: React.ReactNode; bgColor: string }> = {
-  message: { icon: <Send className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-info' },
-  smart_message: { icon: <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-indigo-500' },
-  inmail: { icon: <Mail className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-purple-500' },
-  email: { icon: <Mail className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-info' },
-  whatsapp_message: { icon: <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-success' },
-  connection_request: { icon: <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-success' },
-  profile_visit: { icon: <Eye className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-muted' },
-};
-const DEFAULT_ACTION_STYLE = { icon: <Send className="w-3.5 h-3.5" aria-hidden="true" />, bgColor: 'bg-muted' };
-
-// Apparence d'une étape par statut d'exécution ('pending' = pas encore programmée).
-const executionStatusStyle: Record<string, { icon: React.ReactNode; className: string }> = {
-  pending: { icon: <Clock className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border border-dashed' },
-  scheduled: { icon: <Clock className="w-3 h-3" aria-hidden="true" />, className: 'bg-info/10 text-info-foreground border-info/30' },
-  sending: { icon: <Send className="w-3 h-3" aria-hidden="true" />, className: 'bg-info/10 text-info-foreground border-info/30' },
-  waiting_event: { icon: <Timer className="w-3 h-3" aria-hidden="true" />, className: 'bg-info/10 text-info-foreground border-info/30' },
-  quota_blocked: { icon: <Timer className="w-3 h-3" aria-hidden="true" />, className: 'bg-warning/10 text-warning-foreground border-warning/30' },
-  sent: { icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  opened: { icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  clicked: { icon: <CheckCircle2 className="w-3 h-3" aria-hidden="true" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  replied: { icon: <MessageCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-success/10 text-success-foreground border-success/30' },
-  bounced: { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
-  skipped: { icon: <SkipForward className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
-  failed: { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-destructive/10 text-destructive border-destructive/30' },
-  cancelled: { icon: <XCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
-};
-const NEUTRAL_EXECUTION_STYLE = { icon: <AlertCircle className="w-3 h-3" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' };
 const executionLabel = (status: string) => (status === 'pending' ? 'À venir' : executionStatusLabel(status));
+
+/** « 26/09 à 10:42 » */
+const formatWhen = (value: string) => format(new Date(value), "dd/MM 'à' HH:mm", { locale: fr });
 
 // Exécutions chargées par lots d'inscriptions : une seule requête pour 200
 // inscriptions dépassait la limite de 1 000 lignes de l'API, et les étapes
@@ -310,9 +275,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const { isCollaborator } = useOrganization();
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
-  // Échec du dernier chargement complet : affiché avec « Réessayer » au lieu
-  // de « Aucun candidat inscrit ».
-  const [loadError, setLoadError] = useState(false);
+  // Échec du dernier chargement complet (message technique, montré replié) :
+  // affiché avec « Réessayer » au lieu de « Aucun candidat inscrit ».
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchStatusCounts = async () => {
     const countFor = (statuses: string[]) => supabase
@@ -434,10 +399,10 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       }));
 
       setEnrollments(prev => append ? [...prev, ...enriched] : enriched);
-      setLoadError(false);
+      setLoadError(null);
     } catch (err) {
       console.error('Error fetching enrollments:', err);
-      if (!append) setLoadError(true);
+      if (!append) setLoadError(err instanceof Error ? err.message : String(err));
       toast.error('Impossible de charger les inscrits. Vérifiez votre connexion puis réessayez.');
     } finally {
       setLoading(false);
@@ -826,556 +791,522 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   // « Reprendre » d'une pause pour échec d'envoi : c'est l'étape en échec qui repart.
   const confirmRetriesFailedStep = confirmAction?.type === 'resume' && !!confirmEnrollment && resumeRetriesFailedStep(confirmEnrollment);
 
+
+  const query = searchQuery.toLowerCase().trim();
+  const filtered = query
+    ? enrollments.filter(e =>
+        (e.profile_name || '').toLowerCase().includes(query) ||
+        (e.profile_headline || '').toLowerCase().includes(query)
+      )
+    : enrollments;
+
+  // Étapes affichées dans le parcours : les étapes internes (attentes, conditions) sont masquées.
+  const visibleSteps = allSteps.filter(s => !isHiddenActionType(s.action_type));
+
+  const description = loading
+    ? 'Chargement des inscriptions…'
+    : loadError
+      ? 'Inscriptions indisponibles'
+      : totalCount === 0
+        ? 'Aucun candidat inscrit'
+        : plural(totalCount, 'candidat inscrit', 'candidats inscrits');
+
   return (
     <>
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:w-[500px] sm:max-w-[500px] bg-background rounded-lg border-l border-border">
-        <SheetHeader>
-          <div className="flex items-center justify-between gap-2 pr-8">
-            <SheetTitle className="flex items-center gap-2 uppercase tracking-wide min-w-0">
-              <div className="h-7 w-7 bg-foreground text-background flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4" aria-hidden="true" />
-              </div>
-              <span className="truncate">{sequenceName}</span>
-            </SheetTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2 text-xs shrink-0"
-              onClick={() => { void fetchEnrollments(); }}
-              disabled={loading || loadingMore}
-              aria-label="Actualiser la liste des inscrits"
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5 mr-1', loading && 'animate-spin')} aria-hidden="true" />
-              Actualiser
-            </Button>
+      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
+        <SheetHeader className="border-b border-border px-6 py-5 pr-14 text-left">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <p className="eyebrow">Inscriptions</p>
+              <SheetTitle className="break-words">{sequenceName}</SheetTitle>
+              <SheetDescription>{description}</SheetDescription>
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  className="shrink-0 max-md:h-11 max-md:w-11"
+                  onClick={() => { void fetchEnrollments(); }}
+                  disabled={loading || loadingMore}
+                  aria-label="Actualiser la liste des inscrits"
+                >
+                  <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Actualiser</TooltipContent>
+            </Tooltip>
           </div>
         </SheetHeader>
 
-        <div className="mt-6 space-y-4">
-          {/* Information : actions échues en attente du prochain passage */}
-          {pendingExecutions.length > 0 && (
-            <div className="p-3 bg-background border border-border" role="status">
-              <div className="flex items-start gap-2 text-foreground">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
-                <span className="text-sm">
-                  {pendingExecutions.length > 1
-                    ? `${pendingExecutions.length} actions en attente d’envoi. Elles partiront au prochain passage, pendant vos heures d’envoi.`
-                    : '1 action en attente d’envoi. Elle partira au prochain passage, pendant vos heures d’envoi.'}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-0 border border-border">
-            <div className="p-3 text-center border-r border-border">
-              <div className="text-xl font-bold text-foreground">{activeCount}</div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Actifs</div>
-            </div>
-            <div className="p-3 text-center border-r border-border">
-              <div className="text-xl font-bold text-foreground">{pausedCount}</div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">En pause</div>
-            </div>
-            <div className="p-3 text-center">
-              <div className="text-xl font-bold text-foreground">{completedCount}</div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Terminés</div>
-            </div>
-          </div>
-
-          {/* Actions groupées : réservées à ceux qui gèrent toutes les
-              inscriptions (D3, un collaborateur n'agit que sur les siennes). */}
-          {canBulkManage && activeCount > 0 && (
-            <button
-              onClick={() => setConfirmAction({ type: 'bulkStop' })}
-              className="w-full relative overflow-hidden h-9 px-4 bg-background text-destructive border border-destructive text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2"
-            >
-              <StopCircle className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>
-                {statusCounts
-                  ? `Mettre en pause tous les candidats actifs (${statusCounts.active})`
-                  : 'Mettre en pause tous les candidats actifs'}
-              </span>
-            </button>
-          )}
-          {/* D6 : reprise groupée, seulement quand la séquence est active (le
-              serveur refuse la reprise d'une séquence désactivée). */}
-          {canBulkManage && sequenceActive === true && bulkResumableCount > 0 && (
-            <button
-              onClick={() => setConfirmAction({ type: 'bulkResume' })}
-              disabled={bulkResuming}
-              className="w-full relative overflow-hidden h-9 px-4 bg-background text-foreground border border-border text-xs font-medium uppercase tracking-wider group flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <Play className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>
-                {bulkResuming ? 'Reprise en cours…' : `Reprendre tous les candidats en pause (${bulkResumableCount})`}
-              </span>
-            </button>
-          )}
-
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
-            <Input
-              aria-label="Rechercher un candidat"
-              placeholder="Rechercher un candidat…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-8 text-xs border-border rounded-lg"
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {loading ? (
+            <EnrollmentsSkeleton />
+          ) : loadError && enrollments.length === 0 ? (
+            <ErrorState
+              title="Impossible de charger les inscriptions"
+              description="Vérifiez votre connexion, puis réessayez."
+              detail={loadError}
+              onRetry={() => { void fetchEnrollments(); }}
             />
-          </div>
-
-          {/* Enrollments list */}
-          <div className="h-[calc(100vh-340px)] overflow-y-auto">
-            <div className="space-y-2">
-              {loading ? (
-                <BrutalLoader compact messages={['Chargement des inscriptions…', 'Récupération des étapes…', 'Synchronisation…']} />
-              ) : loadError && enrollments.length === 0 ? (
-                <div className="text-center py-8 space-y-3" role="alert">
+          ) : enrollments.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="Aucun candidat inscrit"
+              description="Inscrivez des candidats depuis la recherche ou la messagerie : leur progression dans la séquence s'affichera ici."
+            />
+          ) : (
+            <>
+              {/* Information : actions échues en attente du prochain passage (pas de bouton d'accélération ici) */}
+              {pendingExecutions.length > 0 && (
+                <div role="status" className="flex items-start gap-3 rounded-xl border border-border bg-card p-3">
+                  <Clock className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
                   <p className="text-sm text-foreground">
-                    Impossible de charger les inscrits. Vérifiez votre connexion puis réessayez.
+                    {pendingExecutions.length > 1
+                      ? `${pendingExecutions.length} actions en attente d’envoi. Elles partiront au prochain passage, pendant vos heures d’envoi.`
+                      : '1 action en attente d’envoi. Elle partira au prochain passage, pendant vos heures d’envoi.'}
                   </p>
-                  <Button variant="outline" size="sm" onClick={() => { void fetchEnrollments(); }}>
-                    <RefreshCw className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
-                    Réessayer
-                  </Button>
                 </div>
-              ) : enrollments.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Aucun candidat inscrit
-                </div>
-              ) : (() => {
-                const query = searchQuery.toLowerCase().trim();
-                const filtered = query
-                  ? enrollments.filter(e => 
-                      (e.profile_name || '').toLowerCase().includes(query) ||
-                      (e.profile_headline || '').toLowerCase().includes(query)
-                    )
-                  : enrollments;
-                return filtered.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm">
-                    Aucun résultat pour « {searchQuery} »
-                  </div>
-                ) : filtered.map((enrollment) => {
-                  const status = statusStyle[enrollment.status] || NEUTRAL_STATUS_STYLE;
-                  const statusLabel = enrollment.status === 'paused'
-                    ? pausedLabel(enrollment.pause_reason)
-                    : enrollmentStatusLabel(enrollment.status);
-                  const isExpanded = expandedEnrollments.has(enrollment.id);
-                  const executions = enrollment.executions || [];
-                  const pauseDetail = sendFailedDetail(enrollment);
-                  // D5 : effacement RGPD, ni reprise ni relance.
-                  const gdprErased = isGdprErased(enrollment);
-                  // Pause de séquence restée alors que la séquence est active : se reprend ici.
-                  const sequencePauseResumable = enrollment.status === 'paused'
-                    && isSequenceLevelPause(enrollment.pause_reason)
-                    && sequenceActive === true;
-                  // D3 : même règle que le serveur (canActOnEnrollment), un
-                  // collaborateur n'agit que sur les candidats qu'il a inscrits.
-                  const ownRow = !isCollaborator || (!!userId && enrollment.created_by === userId);
-                  const canResume = enrollment.status === 'paused' && !gdprErased && ownRow
-                    && (!enrollment.pause_reason || RESUMABLE_PAUSE_REASONS.has(enrollment.pause_reason) || sequencePauseResumable);
-                  // Reprise possible, mais par un administrateur ou le membre qui l'a inscrit.
-                  const resumeReservedToOthers = !ownRow && enrollment.status === 'paused' && !gdprErased
-                    && (!enrollment.pause_reason || RESUMABLE_PAUSE_REASONS.has(enrollment.pause_reason) || sequencePauseResumable);
-                  const retriesFailedStep = resumeRetriesFailedStep(enrollment);
-                  const pauseHint = gdprErased
-                    ? GDPR_ERASED_NOTICE
-                    : resumeReservedToOthers && !pauseDetail
-                      ? OTHER_MEMBER_RESUME_HINT
-                      : enrollment.status === 'paused'
-                        ? (pauseDetail ?? (sequencePauseResumable ? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint(enrollment.pause_reason)))
-                        : null;
-                  
-                  return (
-                    <Collapsible
-                      key={enrollment.id}
-                      open={isExpanded}
-                      onOpenChange={() => toggleExpanded(enrollment.id)}
+              )}
+
+              <StatGrid cols={{ base: 3 }}>
+                <StatTile label="En cours" value={activeCount} />
+                <StatTile label="En pause" value={pausedCount} />
+                <StatTile label="Terminées" value={completedCount} />
+              </StatGrid>
+
+              {/* Actions groupées : réservées à ceux qui gèrent toutes les
+                  inscriptions (D3, un collaborateur n'agit que sur les siennes). */}
+              {canBulkManage && (activeCount > 0 || (sequenceActive === true && bulkResumableCount > 0)) && (
+                <div className="flex flex-wrap justify-end gap-2">
+                  {canBulkManage && activeCount > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmAction({ type: 'bulkStop' })}
+                      className="text-danger hover:text-danger max-md:h-11 max-md:w-full"
                     >
-                      <div className="border border-border">
-                        {/* Header - always visible */}
-                        <div className="p-3 bg-background hover:bg-accent/10 group">
-                          <div className="flex items-start gap-2 w-full">
-                            <CollapsibleTrigger className="flex items-start gap-2 flex-1 min-w-0 text-left">
-                              <div className="mt-0.5 shrink-0">
-                                {isExpanded ? (
-                                  <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-foreground truncate">
-                                    {enrollment.profile_name || 'Candidat'}
-                                  </span>
-                                  {enrollment.profile_url && (
-                                    <a
-                                      href={enrollment.profile_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-muted-foreground hover:text-linkedin shrink-0"
-                                      onClick={(e) => e.stopPropagation()}
-                                      aria-label={`Voir le profil LinkedIn de ${enrollment.profile_name || 'ce candidat'}`}
-                                    >
-                                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-                                    </a>
+                      <StopCircle aria-hidden="true" />
+                      {statusCounts
+                        ? `Mettre en pause tous les candidats actifs (${statusCounts.active})`
+                        : 'Mettre en pause tous les candidats actifs'}
+                    </Button>
+                  )}
+                  {/* D6 : reprise groupée, seulement quand la séquence est active (le
+                      serveur refuse la reprise d'une séquence désactivée). */}
+                  {canBulkManage && sequenceActive === true && bulkResumableCount > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmAction({ type: 'bulkResume' })}
+                      loading={bulkResuming}
+                      className="max-md:h-11 max-md:w-full"
+                    >
+                      {!bulkResuming && <Play aria-hidden="true" />}
+                      {bulkResuming ? 'Reprise en cours…' : `Reprendre tous les candidats en pause (${bulkResumableCount})`}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="search"
+                  aria-label="Rechercher un candidat"
+                  placeholder="Rechercher un candidat"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+
+              {filtered.length === 0 ? (
+                <EmptyState
+                  variant="compact"
+                  icon={Search}
+                  title={`Aucun candidat ne correspond à « ${searchQuery.trim()} »`}
+                  description="Cherchez par nom ou par intitulé de poste."
+                  action={
+                    <Button variant="outline" size="sm" onClick={() => setSearchQuery('')}>
+                      Effacer la recherche
+                    </Button>
+                  }
+                />
+              ) : (
+                <ul className="space-y-2" aria-label="Candidats inscrits">
+                  {filtered.map((enrollment) => {
+                    const status = statusStyle[enrollment.status] || NEUTRAL_STATUS_STYLE;
+                    const statusLabel = enrollment.status === 'paused'
+                      ? pausedLabel(enrollment.pause_reason)
+                      : enrollmentStatusLabel(enrollment.status);
+                    const isExpanded = expandedEnrollments.has(enrollment.id);
+                    const executions = enrollment.executions || [];
+                    const name = enrollment.profile_name || 'Candidat';
+                    const pauseDetail = sendFailedDetail(enrollment);
+                    // D5 : effacement RGPD, ni reprise ni relance.
+                    const gdprErased = isGdprErased(enrollment);
+                    // Pause de séquence restée alors que la séquence est active : se reprend ici.
+                    const sequencePauseResumable = enrollment.status === 'paused'
+                      && isSequenceLevelPause(enrollment.pause_reason)
+                      && sequenceActive === true;
+                    // D3 : même règle que le serveur (canActOnEnrollment), un
+                    // collaborateur n'agit que sur les candidats qu'il a inscrits.
+                    const ownRow = !isCollaborator || (!!userId && enrollment.created_by === userId);
+                    const canResume = enrollment.status === 'paused' && !gdprErased && ownRow
+                      && (!enrollment.pause_reason || RESUMABLE_PAUSE_REASONS.has(enrollment.pause_reason) || sequencePauseResumable);
+                    // Reprise possible, mais par un administrateur ou le membre qui l'a inscrit.
+                    const resumeReservedToOthers = !ownRow && enrollment.status === 'paused' && !gdprErased
+                      && (!enrollment.pause_reason || RESUMABLE_PAUSE_REASONS.has(enrollment.pause_reason) || sequencePauseResumable);
+                    const retriesFailedStep = resumeRetriesFailedStep(enrollment);
+                    const pauseHint = gdprErased
+                      ? GDPR_ERASED_NOTICE
+                      : resumeReservedToOthers && !pauseDetail
+                        ? OTHER_MEMBER_RESUME_HINT
+                        : enrollment.status === 'paused'
+                          ? (pauseDetail ?? (sequencePauseResumable ? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint(enrollment.pause_reason)))
+                          : null;
+
+                    // Prochaine étape programmée et dernière étape partie (étapes internes masquées).
+                    const shownExecutions = executions.filter(e => !isHiddenActionType(e.step?.action_type));
+                    const nextScheduled = shownExecutions
+                      .filter(e => e.status === 'scheduled')
+                      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0];
+                    const lastExecuted = shownExecutions
+                      .filter(e => isSentExecutionStatus(e.status) && e.executed_at)
+                      .sort((a, b) => new Date(b.executed_at!).getTime() - new Date(a.executed_at!).getTime())[0];
+
+                    return (
+                      <li key={enrollment.id}>
+                        <Collapsible
+                          open={isExpanded}
+                          onOpenChange={() => toggleExpanded(enrollment.id)}
+                          className="rounded-xl border border-border bg-card"
+                        >
+                          <div className="p-2">
+                            <div className="flex items-start gap-1">
+                              <CollapsibleTrigger className="flex min-w-0 flex-1 items-start gap-2 rounded-lg p-1.5 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <ChevronRight
+                                  className={cn('mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150', isExpanded && 'rotate-90')}
+                                  aria-hidden="true"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-foreground">{name}</p>
+                                  {enrollment.profile_headline && (
+                                    <p className="truncate text-xs text-muted-foreground">{enrollment.profile_headline}</p>
+                                  )}
+                                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <Badge variant={status.tone}>{statusLabel}</Badge>
+                                    {lastExecuted && (
+                                      <span className="text-xs text-muted-foreground">
+                                        Dernière étape le {formatWhen(lastExecuted.executed_at!)}
+                                      </span>
+                                    )}
+                                    {nextScheduled && (
+                                      <span className="text-xs text-muted-foreground">
+                                        Prochaine : {actionTypeLabel(nextScheduled.step?.action_type)}, le {formatWhen(nextScheduled.scheduled_at)}
+                                      </span>
+                                    )}
+                                    {!nextScheduled && !lastExecuted && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {shownExecutions.length === 0 ? 'Aucune étape planifiée' : 'Aucune étape envoyée'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {pauseHint && (
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      {pauseHint}
+                                    </p>
                                   )}
                                 </div>
-                                {enrollment.profile_headline && (
-                                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                                    {enrollment.profile_headline}
-                                  </p>
-                                )}
-                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                  <Badge className={`text-xs rounded-full ${status.className}`}>
-                                    {status.icon}
-                                    <span className="ml-1">{statusLabel}</span>
-                                  </Badge>
-                                  {(() => {
-                                    // Find next scheduled or last executed action
-                                    const scheduledExecs = executions
-                                      .filter(e => e.status === 'scheduled' && !isHiddenActionType(e.step?.action_type))
-                                      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
-                                    const executedExecs = executions
-                                      .filter(e => isSentExecutionStatus(e.status) && e.executed_at && !isHiddenActionType(e.step?.action_type))
-                                      .sort((a, b) => new Date(b.executed_at!).getTime() - new Date(a.executed_at!).getTime());
+                              </CollapsibleTrigger>
 
-                                    const nextScheduled = scheduledExecs[0];
-                                    const lastExecuted = executedExecs[0];
-
-                                    return (
-                                      <>
-                                        {lastExecuted && (
-                                          <span className="text-xs text-success-foreground">
-                                            ✓ {format(new Date(lastExecuted.executed_at!), 'dd/MM à HH:mm', { locale: fr })}
-                                          </span>
-                                        )}
-                                        {nextScheduled && (
-                                          <span className="text-xs text-info-foreground font-medium">
-                                            → {actionTypeLabel(nextScheduled.step?.action_type)} le {format(new Date(nextScheduled.scheduled_at), 'dd/MM à HH:mm', { locale: fr })}
-                                          </span>
-                                        )}
-                                        {!nextScheduled && !lastExecuted && (
-                                          <span className="text-xs text-muted-foreground">
-                                            {executions.length} étape(s)
-                                          </span>
-                                        )}
-                                      </>
-                                    );
-                                  })()}
-                                </div>
-                                {pauseHint && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    {pauseHint}
-                                  </p>
-                                )}
-                              </div>
-                            </CollapsibleTrigger>
-
-                            {/* Actions menu */}
-                            <DropdownMenu modal={false}>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0 border-border rounded-lg"
-                                  onClick={(e) => e.stopPropagation()}
-                                  aria-label={`Actions pour ${enrollment.profile_name || 'ce candidat'}`}
-                                >
-                                  <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="bg-background border-border rounded-lg">
-                                {/* D3 : sur la ligne d'un candidat inscrit par un autre membre, un
-                                    collaborateur ne voit que les liens de consultation : le
-                                    serveur et la base refuseraient ces actions. */}
-                                {enrollment.status === 'active' && ownRow ? (
-                                  <DropdownMenuItem
-                                    onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id })}
-                                    className="text-warning-foreground"
-                                  >
-                                    <StopCircle className="w-4 h-4 mr-2" aria-hidden="true" />
-                                    Mettre en pause pour ce candidat
-                                  </DropdownMenuItem>
-                                ) : enrollment.status === 'paused' ? (
-                                  <>
-                                    {/* Chaque raison de pause propose l'action qui débloque :
-                                        « Reprendre » seul relançait le moteur, qui remettait
-                                        en pause au passage suivant. */}
-                                    {enrollment.pause_reason === 'account_disconnected' && (
-                                      <DropdownMenuItem asChild>
-                                        <Link to="/settings/account/connections">
-                                          <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
-                                          Reconnecter le compte
-                                        </Link>
-                                      </DropdownMenuItem>
-                                    )}
-                                    {enrollment.pause_reason === 'subscription_required' && (
-                                      <DropdownMenuItem asChild>
-                                        <Link to="/pricing">
-                                          <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
-                                          Voir les offres
-                                        </Link>
-                                      </DropdownMenuItem>
-                                    )}
-                                    {enrollment.pause_reason === 'send_failed' && !pauseDetail && (
-                                      <DropdownMenuItem onClick={() => showEnrollmentDetail(enrollment.id)}>
-                                        <AlertCircle className="w-4 h-4 mr-2" aria-hidden="true" />
-                                        Voir l'erreur
-                                      </DropdownMenuItem>
-                                    )}
-                                    {canResume && (
-                                      <DropdownMenuItem
-                                        onClick={() => setConfirmAction({ type: 'resume', id: enrollment.id })}
-                                        className="text-success-foreground"
+                              {enrollment.profile_url && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon-sm" asChild className="shrink-0 max-md:h-11 max-md:w-11">
+                                      <a
+                                        href={enrollment.profile_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        aria-label={`Voir le profil LinkedIn de ${enrollment.profile_name || 'ce candidat'}`}
                                       >
-                                        <Play className="w-4 h-4 mr-2" aria-hidden="true" />
-                                        {/* Sans étape en attente, le serveur replanifie l'étape en échec elle-même. */}
-                                        {retriesFailedStep ? 'Réessayer l’étape en échec' : 'Reprendre la séquence'}
-                                      </DropdownMenuItem>
-                                    )}
-                                  </>
-                                ) : null}
-                                {/* Marquer répondu manuellement (cas réponse hors-canal :
-                                    téléphone, en personne, autre boîte mail). Évite de
-                                    continuer à spammer le candidat. */}
-                                {ownRow && (enrollment.status === 'active' || enrollment.status === 'paused' || enrollment.status === 'completed') && (
-                                  <DropdownMenuItem
-                                    onClick={() => setConfirmAction({ type: 'markReplied', id: enrollment.id })}
-                                  >
-                                    <CheckCircle2 className="w-4 h-4 mr-2 text-success" aria-hidden="true" />
-                                    Marquer comme ayant répondu
-                                  </DropdownMenuItem>
-                                )}
-                                {/* Relancer : inscription close (réponse, fin, arrêt). Jamais
-                                    pour un candidat en pause, qui a « Reprendre », ni après
-                                    un effacement RGPD (D5). */}
-                                {ownRow && !gdprErased && (enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'cancelled' || enrollment.status === 'stopped') && (
-                                  <DropdownMenuItem
-                                    onClick={() => setConfirmAction({ type: 'reEnroll', id: enrollment.id })}
-                                  >
-                                    <RefreshCw className="w-4 h-4 mr-2 text-foreground" aria-hidden="true" />
-                                    Relancer depuis l’étape suivante
-                                  </DropdownMenuItem>
-                                )}
-                                {enrollment.profile_url && (
-                                  <DropdownMenuItem asChild>
-                                    <a
-                                      href={enrollment.profile_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
-                                      Voir sur LinkedIn
-                                    </a>
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                          {/* Action qui débloque, visible sans ouvrir le menu */}
-                          {enrollment.status === 'paused' && ['account_disconnected', 'subscription_required', 'send_failed'].includes(enrollment.pause_reason || '') && !pauseDetail && (
-                            <div className="mt-2 pl-6">
-                              {enrollment.pause_reason === 'account_disconnected' ? (
-                                <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-                                  <Link to="/settings/account/connections">Reconnecter le compte</Link>
-                                </Button>
-                              ) : enrollment.pause_reason === 'subscription_required' ? (
-                                <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-                                  <Link to="/pricing">Voir les offres</Link>
-                                </Button>
-                              ) : (
-                                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => showEnrollmentDetail(enrollment.id)}>
-                                  <AlertCircle className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
-                                  Voir l'erreur
-                                </Button>
+                                        <ExternalLink aria-hidden="true" />
+                                      </a>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Voir sur LinkedIn</TooltipContent>
+                                </Tooltip>
                               )}
-                            </div>
-                          )}
-                        </div>
 
-                        {/* Expanded content - Full workflow timeline */}
-                        <CollapsibleContent>
-                          <div className="border-t border-border bg-muted p-3">
-                            {allSteps.length === 0 ? (
-                              <p className="text-xs text-muted-foreground text-center py-2">
-                                Aucune étape dans la séquence
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                <p className="text-xs font-medium text-foreground mb-2 uppercase tracking-wide">
-                                  Parcours
-                                </p>
-                                {allSteps.filter(s => !isHiddenActionType(s.action_type)).map((step) => {
-                                  // Exécution de cette étape, si elle existe
-                                  const exec = executions.find(e => e.step_id === step.id);
-                                  const actionStyle = actionTypeStyle[step.action_type] || DEFAULT_ACTION_STYLE;
-
-                                  // Statut : celui de l'exécution, ou « À venir » tant qu'elle n'est pas programmée
-                                  const status = exec?.status || 'pending';
-                                  const execStatus = executionStatusStyle[status] || NEUTRAL_EXECUTION_STYLE;
-                                  const isPending = status === 'pending';
-                                  const isFailed = status === 'failed';
-                                  const isSkipped = status === 'skipped';
-                                  const isSent = isSentExecutionStatus(status);
-                                  const isChannelSkip = isSkipped && exec?.skip_reason?.toLowerCase().includes('channel');
-
-                                  return (
-                                    <div 
-                                      key={step.id}
-                                      className={cn(
-                                        "flex items-start gap-3 p-2.5 border transition-colors",
-                                        isFailed && "bg-destructive/5 border-destructive/30",
-                                        isChannelSkip && "bg-muted/50 border-border/5 opacity-60",
-                                        isSkipped && !isChannelSkip && "bg-muted border-border",
-                                        !isFailed && !isSkipped && execStatus.className
-                                      )}
+                              {/* Actions menu */}
+                              <DropdownMenu modal={false}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        className="shrink-0 max-md:h-11 max-md:w-11"
+                                        aria-label={`Actions pour ${enrollment.profile_name || 'ce candidat'}`}
+                                      >
+                                        <MoreHorizontal aria-hidden="true" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Actions</TooltipContent>
+                                </Tooltip>
+                                <DropdownMenuContent align="end">
+                                  {/* D3 : sur la ligne d'un candidat inscrit par un autre membre, un
+                                      collaborateur ne voit que les liens de consultation : le
+                                      serveur et la base refuseraient ces actions. */}
+                                  {enrollment.status === 'active' && ownRow ? (
+                                    <DropdownMenuItem
+                                      onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id })}
                                     >
-                                      {/* Icône du type d'étape */}
-                                      <div className={cn(
-                                        "flex-shrink-0 w-7 h-7 flex items-center justify-center",
-                                        isPending ? 'bg-muted text-muted-foreground' : `${actionStyle.bgColor} text-white`
-                                      )}>
-                                        {actionStyle.icon}
-                                      </div>
+                                      <StopCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                                      Mettre en pause pour ce candidat
+                                    </DropdownMenuItem>
+                                  ) : enrollment.status === 'paused' ? (
+                                    <>
+                                      {/* Chaque raison de pause propose l'action qui débloque :
+                                          « Reprendre » seul relançait le moteur, qui remettait
+                                          en pause au passage suivant. */}
+                                      {enrollment.pause_reason === 'account_disconnected' && (
+                                        <DropdownMenuItem asChild>
+                                          <Link to="/settings/account/connections">
+                                            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                                            Reconnecter le compte
+                                          </Link>
+                                        </DropdownMenuItem>
+                                      )}
+                                      {enrollment.pause_reason === 'subscription_required' && (
+                                        <DropdownMenuItem asChild>
+                                          <Link to="/pricing">
+                                            <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                                            Voir les offres
+                                          </Link>
+                                        </DropdownMenuItem>
+                                      )}
+                                      {enrollment.pause_reason === 'send_failed' && !pauseDetail && (
+                                        <DropdownMenuItem onClick={() => showEnrollmentDetail(enrollment.id)}>
+                                          <AlertCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                                          Voir l'erreur
+                                        </DropdownMenuItem>
+                                      )}
+                                      {canResume && (
+                                        <DropdownMenuItem
+                                          onClick={() => setConfirmAction({ type: 'resume', id: enrollment.id })}
+                                        >
+                                          <Play className="mr-2 h-4 w-4" aria-hidden="true" />
+                                          {/* Sans étape en attente, le serveur replanifie l'étape en échec elle-même. */}
+                                          {retriesFailedStep ? 'Réessayer l’étape en échec' : 'Reprendre la séquence'}
+                                        </DropdownMenuItem>
+                                      )}
+                                    </>
+                                  ) : null}
+                                  {/* Marquer comme ayant répondu (réponse hors canal :
+                                      téléphone, en personne, autre boîte mail). Évite de
+                                      continuer à relancer le candidat. */}
+                                  {ownRow && (enrollment.status === 'active' || enrollment.status === 'paused' || enrollment.status === 'completed') && (
+                                    <DropdownMenuItem
+                                      onClick={() => setConfirmAction({ type: 'markReplied', id: enrollment.id })}
+                                    >
+                                      <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                                      Marquer comme ayant répondu
+                                    </DropdownMenuItem>
+                                  )}
+                                  {/* Relancer : inscription close (réponse, fin, arrêt). Jamais
+                                      pour un candidat en pause, qui a « Reprendre », ni après
+                                      un effacement RGPD (D5). */}
+                                  {ownRow && !gdprErased && (enrollment.status === 'replied' || enrollment.status === 'completed' || enrollment.status === 'cancelled' || enrollment.status === 'stopped') && (
+                                    <DropdownMenuItem
+                                      onClick={() => setConfirmAction({ type: 'reEnroll', id: enrollment.id })}
+                                    >
+                                      <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                                      Relancer depuis l’étape suivante
+                                    </DropdownMenuItem>
+                                  )}
+                                  {enrollment.profile_url && (
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={enrollment.profile_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                                        Voir sur LinkedIn
+                                      </a>
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
 
-                                      {/* Détail de l'étape */}
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className={cn(
-                                            "text-sm font-medium", 
-                                            isPending ? 'text-muted-foreground' : 'text-foreground'
-                                          )}>
-                                            {actionTypeLabel(step.action_type)}
-                                          </span>
-                                          <Badge variant="outline" className={cn(
-                                            "text-xs px-1.5 py-0 h-4",
-                                            execStatus.className
-                                          )}>
-                                            {execStatus.icon}
-                                            <span className="ml-0.5">{executionLabel(status)}</span>
-                                          </Badge>
-                                          {/* Délai d'une étape pas encore programmée */}
-                                          {isPending && (step.delay_days > 0 || step.delay_hours > 0 || (step.delay_minutes ?? 0) > 0) && (
-                                            <span className="text-xs text-muted-foreground">
-                                              +{step.delay_days > 0 ? `${step.delay_days} j` : ''}{step.delay_hours > 0 ? ` ${step.delay_hours} h` : ''}{(step.delay_minutes ?? 0) > 0 ? ` ${step.delay_minutes} min` : ''}
-                                            </span>
-                                          )}
-                                        </div>
-
-
-                                        {/* Dates et raisons, d'après l'exécution */}
-                                        {exec && (
-                                          <div className="text-xs mt-1">
-                                            {exec.status === 'scheduled' && (
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-muted-foreground">
-                                                  Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}
-                                                </span>
-                                                {/* Le serveur refuse de sauter l'étape d'un candidat en
-                                                    pause ou clos (enrollment_not_active) : bouton masqué. */}
-                                                {enrollment.status === 'active' && ownRow && (
-                                                  <button
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setConfirmAction({ type: 'skipStep', stepId: exec.id });
-                                                    }}
-                                                    className="text-xs text-muted-foreground hover:text-foreground underline px-1 py-0.5"
-                                                    title="Sauter cette étape pour ce candidat"
-                                                  >
-                                                    Sauter
-                                                  </button>
-                                                )}
-                                              </div>
-                                            )}
-                                            {exec.status === 'quota_blocked' && (
-                                              <span className="text-muted-foreground">
-                                                Nouvel essai prévu le {format(new Date(exec.scheduled_at), 'dd/MM à HH:mm', { locale: fr })}
-                                              </span>
-                                            )}
-                                            {exec.status === 'scheduled' && exec.error_message && (
-                                              <p className="text-warning-foreground mt-1">
-                                                {formatErrorMessage(exec.error_message)}
-                                              </p>
-                                            )}
-                                            {isSent && exec.executed_at && (
-                                              <span className="text-success-foreground">
-                                                ✓ {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}
-                                              </span>
-                                            )}
-                                            {(exec.status === 'skipped' || exec.status === 'cancelled') && exec.skip_reason && (
-                                              <span className={cn(
-                                                "text-muted-foreground flex items-center gap-1",
-                                                isChannelSkip && "italic"
-                                              )}>
-                                                {formatSkipReason(exec.skip_reason)}
-                                              </span>
-                                            )}
-                                            {exec.status === 'failed' && exec.error_message && (
-                                              <div className="text-destructive mt-1 p-2 bg-destructive/10 border border-destructive/20 text-xs">
-                                                <strong>Erreur :</strong> {formatErrorMessage(exec.error_message)}
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-
-                                        {/* Aperçu du message envoyé */}
-                                        {isSent && exec?.final_message && (
-                                          <div className="mt-2 p-2 bg-background border border-border text-xs text-muted-foreground">
-                                            {exec.final_subject && (
-                                              <p className="font-medium text-foreground mb-1 pb-1 border-b text-xs">
-                                                {exec.final_subject}
-                                              </p>
-                                            )}
-                                            <p className="line-clamp-2 leading-relaxed">
-                                              {exec.final_message.replace(/\\n/g, ' ').substring(0, 120)}...
-                                            </p>
-                                          </div>
-                                        )}
-
-                                        {/* Template preview for pending steps */}
-                                        {isPending && step.message_template && (
-                                          <div className="mt-1.5 text-xs text-muted-foreground/70 italic line-clamp-1">
-                                            « {step.message_template.replace(/\\n/g, ' ').substring(0, 80)}... »
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
+                            {/* Action qui débloque, visible sans ouvrir le menu */}
+                            {enrollment.status === 'paused' && ['account_disconnected', 'subscription_required', 'send_failed'].includes(enrollment.pause_reason || '') && !pauseDetail && (
+                              <div className="mt-1 pl-8">
+                                {enrollment.pause_reason === 'account_disconnected' ? (
+                                  <Button asChild variant="outline" size="xs" className="max-md:h-11">
+                                    <Link to="/settings/account/connections">Reconnecter le compte</Link>
+                                  </Button>
+                                ) : enrollment.pause_reason === 'subscription_required' ? (
+                                  <Button asChild variant="outline" size="xs" className="max-md:h-11">
+                                    <Link to="/pricing">Voir les offres</Link>
+                                  </Button>
+                                ) : (
+                                  <Button variant="outline" size="xs" className="max-md:h-11" onClick={() => showEnrollmentDetail(enrollment.id)}>
+                                    <AlertCircle aria-hidden="true" />
+                                    Voir l'erreur
+                                  </Button>
+                                )}
                               </div>
                             )}
                           </div>
-                        </CollapsibleContent>
-                      </div>
-                    </Collapsible>
-                  );
-                });
-              })()}
 
-              {/* Pagination — Charger plus si > PAGE_SIZE candidats */}
-              {hasMore && !loading && (
-                <div className="text-center py-3 border-t border-border mt-2">
+                          {/* Parcours complet du candidat */}
+                          <CollapsibleContent>
+                            <div className="border-t border-border px-4 pb-4 pt-3">
+                              {visibleSteps.length === 0 ? (
+                                <p className="py-2 text-center text-xs text-muted-foreground">
+                                  Cette séquence n'a pas encore d'étape.
+                                </p>
+                              ) : (
+                                <>
+                                  <p className="eyebrow mb-2">Parcours</p>
+                                  <ol className="space-y-2">
+                                    {visibleSteps.map((step) => {
+                                      // Exécution de cette étape, si elle existe
+                                      const exec = executions.find(e => e.step_id === step.id);
+                                      // Statut : celui de l'exécution, ou « À venir » tant qu'elle n'est pas programmée
+                                      const status = exec?.status || 'pending';
+                                      const isPending = status === 'pending';
+                                      const isSkipped = status === 'skipped';
+                                      const isSent = isSentExecutionStatus(status);
+                                      const isChannelSkip = isSkipped && exec?.skip_reason?.toLowerCase().includes('channel');
+                                      const delay = formatStepDelay(step.delay_days, step.delay_hours, step.delay_minutes);
+
+                                      return (
+                                        <li
+                                          key={step.id}
+                                          className={cn('flex items-start gap-3 rounded-lg border border-border p-2.5', isChannelSkip && 'opacity-60')}
+                                        >
+                                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                                            <SequenceActionIcon type={step.action_type} />
+                                          </span>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                              <span className={cn('text-sm font-medium', isPending ? 'text-foreground-secondary' : 'text-foreground')}>
+                                                {actionTypeLabel(step.action_type)}
+                                              </span>
+                                              <Badge variant={executionStatusMeta(status).tone}>{executionLabel(status)}</Badge>
+                                              {/* Délai d'une étape pas encore programmée */}
+                                              {isPending && delay && (
+                                                <span className="text-xs text-muted-foreground">Délai {delay}</span>
+                                              )}
+                                            </div>
+
+                                            {/* Dates et raisons, d'après l'exécution */}
+                                            {exec && (
+                                              <div className="mt-1 space-y-1 text-xs">
+                                                {exec.status === 'scheduled' && (
+                                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                                    <span className="text-muted-foreground">Prévu : {formatWhen(exec.scheduled_at)}</span>
+                                                    {/* Le serveur refuse de sauter l'étape d'un candidat en
+                                                        pause ou clos (enrollment_not_active) : bouton masqué. */}
+                                                    {enrollment.status === 'active' && ownRow && (
+                                                      <Button
+                                                        variant="outline"
+                                                        size="xs"
+                                                        className="max-md:h-11"
+                                                        onClick={() => setConfirmAction({ type: 'skipStep', stepId: exec.id })}
+                                                        title="Sauter cette étape pour ce candidat"
+                                                      >
+                                                        Sauter
+                                                      </Button>
+                                                    )}
+                                                  </div>
+                                                )}
+                                                {exec.status === 'quota_blocked' && (
+                                                  <p className="text-muted-foreground">
+                                                    Nouvel essai prévu le {formatWhen(exec.scheduled_at)}
+                                                  </p>
+                                                )}
+                                                {exec.status === 'scheduled' && exec.error_message && (
+                                                  <p className="text-warning">
+                                                    {formatErrorMessage(exec.error_message)}
+                                                  </p>
+                                                )}
+                                                {isSent && exec.executed_at && (
+                                                  <p className="text-muted-foreground">Envoyée le {formatWhen(exec.executed_at)}</p>
+                                                )}
+                                                {(exec.status === 'skipped' || exec.status === 'cancelled') && exec.skip_reason && (
+                                                  <p className={cn('text-muted-foreground', isChannelSkip && 'italic')}>
+                                                    {formatSkipReason(exec.skip_reason)}
+                                                  </p>
+                                                )}
+                                                {exec.status === 'failed' && exec.error_message && (
+                                                  <p className="rounded-md bg-danger-muted px-2.5 py-1.5 text-danger">
+                                                    Échec : {formatErrorMessage(exec.error_message)}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            )}
+
+                                            {/* Aperçu du message envoyé */}
+                                            {isSent && exec?.final_message && (
+                                              <div className="mt-2 rounded-md border border-border bg-background p-2.5 text-xs">
+                                                {exec.final_subject && (
+                                                  <p className="mb-1 font-medium text-foreground">{exec.final_subject}</p>
+                                                )}
+                                                <p className="line-clamp-2 leading-relaxed text-foreground-secondary">
+                                                  {exec.final_message.replace(/\\n|\n/g, ' ')}
+                                                </p>
+                                              </div>
+                                            )}
+
+                                            {/* Modèle d'une étape pas encore programmée */}
+                                            {isPending && step.message_template && (
+                                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                                Modèle : {step.message_template.replace(/\\n|\n/g, ' ')}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </li>
+                                      );
+                                    })}
+                                  </ol>
+                                </>
+                              )}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {/* Pagination : 200 inscriptions par page */}
+              {hasMore && (
+                <div className="flex justify-center pt-1">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => fetchEnrollments(true)}
-                    disabled={loadingMore}
-                    className="text-xs"
+                    loading={loadingMore}
+                    className="max-md:h-11"
                   >
-                    {loadingMore ? 'Chargement…' : `Charger plus (${enrollments.length} / ${totalCount})`}
+                    Afficher la suite ({enrollments.length} sur {totalCount})
                   </Button>
                 </div>
               )}
               {!hasMore && enrollments.length >= PAGE_SIZE && (
-                <div className="text-center py-3 text-xs text-muted-foreground">
-                  Tous les candidats chargés ({totalCount})
-                </div>
+                <p className="text-center text-xs text-muted-foreground">Les {totalCount} candidats sont affichés.</p>
               )}
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>
@@ -1432,9 +1363,15 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogCancel>
+            {confirmAction?.type === 'stop' || confirmAction?.type === 'bulkStop'
+              ? 'Laisser en cours'
+              : confirmAction?.type === 'skipStep'
+                ? "Garder l'étape"
+                : 'Annuler'}
+          </AlertDialogCancel>
           <AlertDialogAction
-            className={['markReplied', 'reEnroll', 'resume', 'bulkResume'].includes(confirmAction?.type || '') ? '' : 'bg-destructive hover:bg-destructive/90'}
+            className={['markReplied', 'reEnroll', 'resume', 'bulkResume'].includes(confirmAction?.type || '') ? undefined : 'bg-destructive'}
             onClick={handleConfirmedAction}
           >
             {confirmAction?.type === 'markReplied' ? 'Marquer comme ayant répondu'
@@ -1450,3 +1387,22 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     </>
   );
 };
+
+/** Squelette du panneau : tuiles, recherche, puis quatre lignes de candidat. */
+const EnrollmentsSkeleton: React.FC = () => (
+  <div className="space-y-4" aria-hidden="true">
+    <div className="grid grid-cols-3 gap-3">
+      {[0, 1, 2].map((i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+    <Skeleton className="h-9 w-full rounded-lg" />
+    {[0, 1, 2, 3].map((i) => (
+      <div key={i} className="space-y-2 rounded-xl border border-border p-4">
+        <Skeleton className="h-4 w-2/5 rounded-sm" />
+        <Skeleton className="h-3 w-3/5 rounded-sm" />
+        <Skeleton className="h-5 w-24 rounded-full" />
+      </div>
+    ))}
+  </div>
+);

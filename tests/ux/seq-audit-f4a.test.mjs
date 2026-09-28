@@ -89,7 +89,8 @@ test('SEQ-021 — « Générer tous les aperçus » et Entrée ne remplacent jam
   assert.doesNotMatch(deps, /\bpreviews\b/, 'generateForCandidate ne doit plus dépendre de la closure `previews`');
   // Le raccourci n'est plus un écouteur window figé sur d'anciens aperçus.
   assert.doesNotMatch(previewModal, /window\.addEventListener\('keydown'/);
-  assert.match(previewModal, /onKeyDown=\{handleShortcutKeyDown\}/);
+  // Revue design : les raccourcis vivent sur la liste des candidats (listShortcut, D-44), sans génération au clavier.
+  assert.match(previewModal, /onKeyDown=\{handleListKeyDown\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-022
@@ -188,7 +189,8 @@ test('SEQ-045 — l’aperçu d’inscription exclut les incompatibles de l’in
   assert.match(previewModal, /checkProfilesCompat\(profiles, sequence\.steps\)/);
   const active = slice(previewModal, 'const activeProfiles = useMemo(() =>', '});\n');
   assert.match(active, /if \(!includeIncompatible && incompatibleIds\.has\(p\.id\)\) return false;/);
-  assert.match(previewModal, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId \}\)/);
+  // Revue design : la clé de session des aperçus gardés (D-46) complète l'appel.
+  assert.match(previewModal, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey \}\)/);
   assert.match(previewModal, /Inclure quand même \(\{compat\.blockers\.length\}\)/);
   // Le hook génère et estime sur les candidats visés, pas sur toute la sélection.
   assert.match(previewHook, /const queue = \[\.\.\.targets\];/);
@@ -245,11 +247,17 @@ test('SEQ-046 / SEQ-066 — chaque inscription porte provider_id, email_used et 
 test('SEQ-047 — pendant l’inscription, la préparation ne se ferme pas et montre la progression', () => {
   const close = slice(previewModal, 'const handleClose = () => {', '};');
   assert.match(close, /if \(isBusy\) return;/);
-  assert.match(previewModal, /onEscapeKeyDown=\{\(e\) => \{\s*if \(isBusy \|\| hasPreparedWork\) e\.preventDefault\(\);/);
+  // Revue design : fenêtre du kit. Échap et la croix passent par onOpenChange, donc
+  // par requestClose, qui ne ferme rien pendant une écriture et demande
+  // confirmation s'il reste des aperçus ou des délais préparés.
+  assert.match(previewModal, /onOpenChange=\{\(open\) => \{ if \(!open\) requestClose\(\); \}\}/);
+  const request = slice(previewModal, 'const requestClose = () => {', 'const confirmClose = () => {');
+  assert.match(request, /^const requestClose = \(\) => \{\s*if \(isBusy\) return;/);
+  assert.match(request, /if \(hasWorkInProgress\) \{\s*setConfirmCloseOpen\(true\);\s*return;\s*\}/);
   assert.match(previewModal, /onInteractOutside=\{\(e\) => e\.preventDefault\(\)\}/);
-  // Croix et « Annuler » désactivés.
-  assert.ok((previewModal.match(/onClick=\{handleClose\}\s*disabled=\{isBusy\}/g) || []).length >= 2);
-  assert.match(previewModal, /onClick=\{onClose\}\s*disabled=\{isBusy\}/);
+  // « Annuler » désactivé pendant l'écriture ; un seul pied, commun au résumé et aux aperçus.
+  assert.match(previewModal, /onClick=\{requestClose\} disabled=\{isBusy\}/);
+  assert.doesNotMatch(slice(previewModal, 'function SummaryMode(', 'function SummaryRow('), /onClose|onEnroll|onShortlist/, 'le résumé n’a plus de bouton qui ferme ou inscrit hors de la garde');
   assert.match(previewModal, /`Inscription \$\{progress\.done\} sur \$\{progress\.total\}…`/);
   assert.match(previewModal, /setEnrollProgress\(\{ done: index \+ 1, total: enrollSet\.length \}\)/);
   assert.match(previewModal, /Inscription en cours, ne fermez pas cette fenêtre\./);
@@ -280,9 +288,15 @@ test('SEQ-048 — « Shortlister sans message » écrit organization_id et annon
 test('SEQ-050 — la préparation est un Dialog Radix plein écran, au-dessus de la fiche profil', () => {
   assert.doesNotMatch(previewModal, /createPortal\(/);
   assert.doesNotMatch(previewModal, /z-\[4000\]/);
-  // Classe statique ou composée par cn() (neutralisation pendant la confirmation de fermeture).
-  assert.match(previewModal, /<DialogPrimitive\.Content[\s\S]*?className=(?:"|\{cn\(\s*')fixed inset-0 z-\[9999\][^"']*pointer-events-auto/);
-  assert.match(previewModal, /<DialogPrimitive\.Title asChild>/);
+  // Revue design : Dialog Radix du kit, au calque des fenêtres (z-modal) : ouverte
+  // après la fiche profil (Sheet du kit, même calque), elle se pose au-dessus.
+  // Plein écran sur téléphone, presque plein écran ailleurs, sans calque arbitraire.
+  assert.match(previewModal, /import \{ Dialog, DialogContent, DialogDescription, DialogTitle \} from '@\/components\/ui\/dialog';/);
+  assert.match(previewModal, /<DialogContent\s+className="flex h-\[calc\(100dvh-2rem\)\] w-\[calc\(100vw-2rem\)\] max-w-6xl[^"]*max-sm:h-\[100dvh\] max-sm:w-screen/);
+  assert.doesNotMatch(previewModal, /z-\[\d+\]/);
+  assert.match(read('src/components/ui/dialog.tsx'), /fixed left-\[50%\] top-\[50%\] z-modal/);
+  // Nom de la fenêtre : le titre du kit, que lisent les parcours e2e.
+  assert.match(previewModal, /<DialogTitle className="truncate">\{sequence\.name\}<\/DialogTitle>/);
 });
 
 // ---------------------------------------------------------------- SEQ-051
@@ -321,5 +335,6 @@ test('Vocabulaire — « inscrire », jamais « enrôler », dans les textes de 
   const jsxText = previewModal.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
   assert.doesNotMatch(jsxText, />\s*Enrôler /);
   assert.doesNotMatch(jsxText, /Avant d'enrôler/);
-  assert.match(previewModal, /Inscrire \{activeProfiles\.length\} candidat/);
+  // Revue design : pluriel partagé (D-71), même texte affiché (« Inscrire 2 candidats »).
+  assert.match(previewModal, /`Inscrire \$\{plural\(activeProfiles\.length, 'candidat'\)\}`/);
 });

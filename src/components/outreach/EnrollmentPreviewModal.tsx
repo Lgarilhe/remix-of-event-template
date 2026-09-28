@@ -1,6 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useId } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { useEnrollmentPreview, SequenceStepPreview } from '@/hooks/useEnrollmentPreview';
 import { BulkEnrichButton } from '@/components/outreach/result-card/BulkEnrichButton';
@@ -9,11 +7,16 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Textarea } from '@/components/ui/textarea';
 import { AiTextarea } from '@/components/ai/AiTextarea';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Spinner } from '@/components/ui/spinner';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,21 +27,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { cn } from '@/lib/utils';
+import { sequenceActionLabel, formatStepDelay } from '@/lib/sequenceCatalog';
 import {
-  X, Check, CheckCircle, AlertTriangle, AlertCircle,
-  Sparkles, RefreshCw, Pencil, Eye, Send, Users, Mail, MessageSquare,
-  Loader2, ChevronLeft, ChevronRight, Search, Zap,
-  Clock, GitBranch, ListChecks, CalendarClock,
+  AlertCircle, AlertTriangle, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Info, ListChecks, Pencil, RefreshCw, Search,
 } from 'lucide-react';
+import { SequenceActionLabel } from './SequenceBadges';
 import { CandidateSidebarCard } from './enrollment-preview/CandidateSidebarCard';
-import { SequenceTreeView } from './enrollment-preview/SequenceTreeView';
+import { SequenceTreeView, StepNumber } from './enrollment-preview/SequenceTreeView';
 import { CandidateContextHeader } from './enrollment-preview/CandidateContextHeader';
 import { ScoringPopover } from './enrollment-preview/ScoringPopover';
 import { HistoryPopover } from './enrollment-preview/HistoryPopover';
 import { DynamicSummaryBanner } from './enrollment-preview/DynamicSummaryBanner';
 import { CandidateStatesMap, CandidateState } from './enrollment-preview/types';
 import { useOrganization } from '@/hooks/useOrganization';
+import type { Json } from '@/integrations/supabase/types';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
@@ -46,10 +50,8 @@ import {
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
 import { CLOSED_CHANNEL_ACTION_TYPES, checkProfilesCompat, isClosedChannelStep, pickFirstStep } from '@/lib/sequenceCompatibility';
-// Un seul nom par type d'étape, celui de l'éditeur de séquence.
-import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
-import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount, type SendingAccountState } from './enrollment-preview/useSendingAccount';
+import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount } from './enrollment-preview/useSendingAccount';
 import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
 import {
   alreadyInSequenceLabel,
@@ -70,7 +72,7 @@ import {
   sequenceInactiveReason,
 } from './enrollment-preview/enrollmentHelpers';
 import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
-import { estimateActionCredits } from '@/lib/invokeWithCredits';
+import { plural } from '@/lib/plural';
 
 // ── Types ──
 
@@ -92,53 +94,39 @@ interface EnrollmentPreviewModalProps {
 
 // ── Helpers ──
 
-// Logos officiels pour LinkedIn et WhatsApp (cohérence avec le reste du
-// site qui utilise les vrais logos plutôt que les icônes génériques Lucide).
-import linkedinLogo from '@/assets/linkedin-logo.svg';
-import whatsappLogo from '@/assets/whatsapp-logo.svg';
+/** Coût annoncé avant l'action, en toutes lettres. */
+function creditsLabel(n: number): string {
+  return n > 0 ? `environ ${plural(n, 'crédit')}` : 'aucun crédit';
+}
 
-const makeBrandIcon = (src: string): typeof Mail => {
-  const BrandIcon: any = ({ className }: { className?: string }) => (
-    <img
-      src={src}
-      alt=""
-      className={`object-contain ${className || ''}`}
-      aria-hidden="true"
-    />
-  );
-  BrandIcon.displayName = 'BrandIcon';
-  return BrandIcon as typeof Mail;
-};
+/** « +1 j 2 h » : délai avant une étape. */
+function delayLabel(days?: number, hours?: number, minutes?: number): string | null {
+  const delay = formatStepDelay(days, hours, minutes);
+  return delay ? `+${delay}` : null;
+}
 
-const LinkedInBrand = makeBrandIcon(linkedinLogo);
-const WhatsAppBrand = makeBrandIcon(whatsappLogo);
+type ListShortcut = 'next' | 'previous' | 'remove' | 'skip';
 
-const ACTION_ICONS: Record<string, typeof Mail> = {
-  email: Mail,
-  message: LinkedInBrand,
-  smart_message: LinkedInBrand,
-  inmail: LinkedInBrand,
-  connection_request: LinkedInBrand,
-  whatsapp_message: WhatsAppBrand,
-  profile_visit: Eye,
-  wait_connection: Clock,
-  wait_reply: Clock,
-  wait_profile_visit: Clock,
-  check_connection: GitBranch,
-  condition_branch: GitBranch,
-};
-
-// Channel colors via design tokens. Backgrounds harmonisés avec les
-// vrais logos de marque (LinkedIn = bleu/info, WhatsApp = vert/success,
-// Email = neutre).
-const CHANNEL_COLORS: Record<string, { header: string; border: string }> = {
-  email: { header: 'bg-emerald-500/15 text-foreground', border: 'border-border' },
-  message: { header: 'bg-info/10 text-info', border: 'border-border' },
-  smart_message: { header: 'bg-info/10 text-info', border: 'border-border' },
-  inmail: { header: 'bg-info/10 text-info', border: 'border-border' },
-  connection_request: { header: 'bg-info/10 text-info', border: 'border-border' },
-  whatsapp_message: { header: 'bg-success/10 text-success', border: 'border-border' },
-};
+/**
+ * Raccourcis de la liste des candidats (revue design D-44). Ils ne partent que
+ * de la ligne d'un candidat qui a le focus, jamais d'un champ, d'un menu ou
+ * d'un autre bouton, ni avec une touche de modification : mêmes règles que la
+ * garde commune (`shouldIgnoreShortcut`), qui ne peut pas servir ici puisque la
+ * préparation est elle-même un dialogue. Entrée et Espace restent au bouton
+ * (afficher le candidat) ; aucune touche ne lance de génération payante.
+ */
+function listShortcut(e: React.KeyboardEvent<HTMLElement>): ListShortcut | null {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return null;
+  const target = e.target as HTMLElement;
+  if (!target.dataset?.candidateId) return null;
+  switch (e.key) {
+    case 'ArrowDown': return 'next';
+    case 'ArrowUp': return 'previous';
+    case 'Delete': case 'x': case 'X': return 'remove';
+    case 'p': case 'P': return 'skip';
+    default: return null;
+  }
+}
 
 function mapSteps(rawSteps: any[]): SequenceStepPreview[] {
   return rawSteps.map(s => ({
@@ -189,9 +177,9 @@ function renderSendTimeVariables(text: string): React.ReactNode {
   return segments.flatMap((segment, i) => (i === 0 ? [segment] : [
     <span
       key={`agenda-${i}`}
-      className="inline-flex items-center gap-1 rounded-full border border-info/30 bg-info/10 px-1.5 py-px text-[11px] font-medium text-info align-baseline"
+      className="inline-flex items-center gap-1 rounded-full border border-info/25 bg-info-muted px-1.5 py-px align-baseline text-2xs font-medium text-info"
     >
-      <CalendarClock className="w-3 h-3" aria-hidden="true" />
+      <CalendarClock className="h-3 w-3" aria-hidden="true" />
       Lien d'agenda, ajouté à l'envoi
     </span>,
     segment,
@@ -208,19 +196,20 @@ function enrollProgressLabel(progress: { done: number; total: number } | null): 
  * Bloquent : un candidat injoignable, et un candidat déjà en relation quand la
  * séquence ne contient que l'invitation. Déjà en relation avec des messages
  * après l'invitation : simple avertissement (invitation sautée, suite envoyée).
+ * Autonome (sans import) : les tests l'évaluent seule.
  */
 function compatHeadline(blockers: { issue: string | null }[], included: boolean): string {
   const n = blockers.length;
-  const plural = n > 1;
+  const many = n > 1;
   const reason = blockers.every(r => r.issue === 'too_far')
-    ? ` : hors de votre réseau LinkedIn, seul un InMail peut ${plural ? 'les ' : "l'"}atteindre`
+    ? ` : hors de votre réseau LinkedIn, seul un InMail peut ${many ? 'les ' : "l'"}atteindre`
     : blockers.every(r => r.issue === 'connection_only_already_connected')
       ? " : déjà en relation, et la séquence ne contient qu'une invitation"
       : '';
   const outcome = included
-    ? (plural ? 'Ils seront inscrits quand même.' : 'Il sera inscrit quand même.')
-    : (plural ? "Ils sont exclus de l'inscription." : "Il est exclu de l'inscription.");
-  return `${n} candidat${plural ? 's' : ''} ne ${plural ? 'peuvent' : 'peut'} pas suivre cette séquence${reason}. ${outcome}`;
+    ? (many ? 'Ils seront inscrits quand même.' : 'Il sera inscrit quand même.')
+    : (many ? "Ils sont exclus de l'inscription." : "Il est exclu de l'inscription.");
+  return `${n} candidat${many ? 's' : ''} ne ${many ? 'peuvent' : 'peut'} pas suivre cette séquence${reason}. ${outcome}`;
 }
 
 interface EnrollResults {
@@ -275,11 +264,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   // n'arrêterait pas les inscriptions et le bilan serait perdu.
   const isBusy = isEnrolling || isShortlisting;
   const [enrollResults, setEnrollResults] = useState<EnrollResults | null>(null);
-  // Fermeture avec des messages préparés : confirmation (croix, « Annuler »).
-  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [mobilePane, setMobilePane] = useState<'list' | 'preview'>('preview');
   const pageSize = 10;
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
 
   // ── Candidate states (remove/skip) ──
   const [candidateStates, setCandidateStates] = useState<CandidateStatesMap>(new Map());
@@ -314,13 +303,13 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     candidateStates.get(id) || { removed: false, skipped: false }, [candidateStates]);
 
   const handleRemoveCandidate = useCallback((id: string) => {
-    const name = profiles.find(p => p.id === id)?.name || 'Candidat';
+    const name = profiles.find(p => p.id === id)?.name || 'candidat sans nom';
     setCandidateStates(prev => {
       const next = new Map(prev);
       next.set(id, { ...getCandidateState(id), removed: true });
       return next;
     });
-    toast(`${name} retiré de la sélection`, {
+    toast(`Retiré de la sélection : ${name}`, {
       action: {
         label: 'Annuler',
         onClick: () => {
@@ -390,6 +379,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const compat = useMemo(() => checkProfilesCompat(profiles, sequence.steps), [profiles, sequence.steps]);
   const incompatibleIds = useMemo(() => new Set(compat.blockers.map(r => r.profile.id)), [compat.blockers]);
   const [includeIncompatible, setIncludeIncompatible] = useState(false);
+  const includeIncompatibleId = useId();
 
   // Active profiles (not removed, not skipped, compatible unless included,
   // not recently contacted unless override)
@@ -429,16 +419,19 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     return { duplicates, incompatible };
   }, [exclusionByCandidate]);
 
-  // La génération groupée, son compteur et l'estimation de crédits ne visent
-  // que les candidats qui seront inscrits (activeProfiles).
+  // Aperçus conservés pour la session : même séquence, même mission, même
+  // compte d'envoi (revue design D-46). La génération groupée, son compteur et
+  // l'estimation de crédits ne visent que les candidats qui seront inscrits
+  // (activeProfiles).
+  const sessionKey = `${sequence.id}|${job?.id ?? ''}|${accountId}`;
   const {
     previews, messageSteps, hasMessageSteps, hasAiSteps,
     generatedCount, totalToGenerate, isBulkGenerating,
-    estimatedCredits, candidateAnalysis,
+    estimatedCredits, creditsPerMessage, candidateAnalysis,
     getPreview, generateForCandidateById, regenerateStep,
-    editMessage, generateAll, cancelBulkGeneration, getMessageOverrides,
+    editMessage, generateAll, cancelBulkGeneration, getMessageOverrides, discardSessionPreviews,
     getStepConfig, setStepConfig, getStepConfigOverrides,
-  } = useEnrollmentPreview({ steps, profiles, targetProfiles: activeProfiles, job, accountId });
+  } = useEnrollmentPreview({ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey });
 
   // « Première action : …, dès maintenant / dans 2 jours, pendant vos heures
   // d'envoi » : première étape planifiée et son délai effectif (délai modifié
@@ -446,13 +439,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const firstAction = useMemo(
     () => firstActionSummary(sequence.steps, getStepConfigOverrides()),
     [sequence.steps, getStepConfigOverrides],
-  );
-
-  // Des messages ont été générés ou modifiés : Échap ne ferme pas la fenêtre
-  // (le travail et les crédits dépensés seraient perdus sans prévenir).
-  const hasPreparedWork = useMemo(
-    () => Array.from(previews.values()).some(m => Array.from(m.values()).some(x => x.isGenerated || x.isEdited)),
-    [previews],
   );
 
   useEffect(() => {
@@ -498,9 +484,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     if (page > 0 && page >= totalPages) setPage(Math.max(totalPages - 1, 0));
   }, [page, totalPages]);
 
-  const handleSelectCandidate = (id: string) => {
+  const handleSelectCandidate = (id: string, options: { showPreview?: boolean } = {}) => {
     setSelectedCandidateId(id);
-    setMobilePane('preview');
+    if (options.showPreview !== false) setMobilePane('preview');
     // 🛑 Auto-trigger retiré : sélectionner un candidat n'enclenche plus
     // la génération. L'user doit cliquer explicitement sur "Générer la
     // preview" pour ce candidat. Évite la consommation silencieuse de
@@ -516,76 +502,6 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     });
   };
 
-  // ── Raccourcis clavier ──
-  // Posés sur la liste des candidats, pas sur toute la fenêtre : Entrée et
-  // Espace gardent leur rôle natif sur les boutons, liens, menus et champs du
-  // reste de la préparation. Aucune touche seule ne lance de génération payante
-  // (Ctrl+Entrée, voir handleGenerateShortcut). Relus à chaque rendu : pas de
-  // closure figée sur d'anciens aperçus.
-  const candidateListRef = useRef<HTMLDivElement>(null);
-  const focusCandidateCard = (id: string) => {
-    requestAnimationFrame(() => {
-      const cards = candidateListRef.current?.querySelectorAll<HTMLElement>('[data-candidate-id]');
-      cards?.forEach(card => { if (card.dataset.candidateId === id) card.focus(); });
-    });
-  };
-  const moveSelection = (index: number) => {
-    const next = filteredProfiles[index];
-    if (!next) return;
-    handleSelectCandidate(next.id);
-    setPage(Math.floor(index / pageSize));
-    focusCandidateCard(next.id);
-  };
-  /** Cible hors raccourcis : champ, élément éditable, menu, popover ou fenêtre ouverts dessus. */
-  const isOutsideShortcutScope = (e: React.KeyboardEvent<HTMLElement>): boolean => {
-    // Les couches ouvertes depuis la liste (menus, popovers, confirmations)
-    // sont dans des portails : leurs touches remontent l'arbre React jusqu'ici
-    // mais ne sont pas des raccourcis de la préparation.
-    if (!e.currentTarget.contains(e.target as Node)) return true;
-    const target = e.target as HTMLElement;
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
-    if (target.isContentEditable) return true;
-    return !!target.closest('[role="menu"], [role="menuitem"], [role="dialog"], [role="listbox"], [data-radix-popper-content-wrapper]');
-  };
-  const handleShortcutKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (mode !== 'preview' || enrollResults || isBusy || e.defaultPrevented) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (isOutsideShortcutScope(e)) return;
-    const target = e.target as HTMLElement;
-    // Bouton natif (menu d'actions d'une carte), lien, case à cocher : Entrée
-    // et Espace leur appartiennent. La carte elle-même (role="button") gère
-    // Entrée (sélection) et laisse remonter Espace quand elle est sélectionnée.
-    const onNativeControl = !!target.closest('button, a, [role="checkbox"], [role="switch"]');
-
-    const currentIdx = filteredProfiles.findIndex(p => p.id === selectedCandidateId);
-
-    if (e.key === 'ArrowDown' && currentIdx < filteredProfiles.length - 1) {
-      e.preventDefault();
-      moveSelection(currentIdx + 1);
-    } else if (e.key === 'ArrowUp' && currentIdx > 0) {
-      e.preventDefault();
-      moveSelection(currentIdx - 1);
-    } else if ((e.key === 'Delete' || e.key === 'x' || e.key === 'X') && selectedCandidateId && !onNativeControl) {
-      e.preventDefault();
-      handleRemoveCandidate(selectedCandidateId);
-    } else if (e.key === ' ' && selectedCandidateId && !onNativeControl) {
-      e.preventDefault();
-      handleSkipCandidate(selectedCandidateId);
-    }
-  };
-  // Ctrl+Entrée (Cmd+Entrée sur Mac) : génère les aperçus encore vides du
-  // candidat affiché. Jamais Entrée seule (elle active le bouton ciblé), jamais
-  // depuis un champ de saisie ou une couche ouverte par-dessus.
-  const handleGenerateShortcut = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
-    if (mode !== 'preview' || enrollResults || isBusy || e.defaultPrevented || !selectedCandidateId) return;
-    if (isOutsideShortcutScope(e)) return;
-    e.preventDefault();
-    // Ne génère que les messages encore vides : un message déjà généré ou
-    // modifié n'est jamais remplacé (useEnrollmentPreview.generateForCandidate).
-    void generateForCandidateById(selectedCandidateId);
-  };
-
   // ── Enrollment Logic ──
 
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -595,7 +511,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     // refusés par RLS ou invisibles pour l'org (même garde que
     // SequenceEnrollModal). On refuse plutôt que d'enrôler dans le vide.
     if (!organizationId) {
-      toast.error("Organisation non résolue : rechargez la page, puis réessayez.");
+      toast.error("Votre organisation n'a pas pu être identifiée", {
+        description: 'Rechargez la page ou reconnectez votre compte.',
+      });
       return;
     }
     if (!accountId) {
@@ -704,7 +622,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
           // Construit tracking_data uniquement si on a au moins un override
           // (sinon on laisse la colonne null pour rester clean).
-          const trackingData: Record<string, unknown> = {};
+          const trackingData: Record<string, Json> = {};
           if (Object.keys(overrides).length > 0) {
             trackingData.message_overrides = overrides;
           }
@@ -829,10 +747,12 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         });
       }
 
+      // Les candidats inscrits n'ont plus besoin de leurs aperçus.
+      const enrolledIds = enrolledProfiles.map(p => p.id);
+      discardSessionPreviews(enrolledIds);
       setEnrollResults(results);
       if (results.success > 0) {
-        const n = results.success;
-        toast.success(`${n} candidat${n > 1 ? 's' : ''} inscrit${n > 1 ? 's' : ''} dans la séquence`, {
+        toast.success(`${plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
           description: firstAction ?? undefined,
         });
       }
@@ -865,11 +785,15 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   // répondu garde son statut (jamais rétrogradé en « shortlisté »).
   const handleShortlist = async () => {
     if (!job?.id) {
-      toast.error("Aucun poste associé pour la shortlist");
+      toast.error('Aucune mission associée à ces candidats', {
+        description: 'Ouvrez la préparation depuis une mission pour les présélectionner.',
+      });
       return;
     }
     if (!organizationId) {
-      toast.error("Organisation non résolue : rechargez la page, puis réessayez.");
+      toast.error("Votre organisation n'a pas pu être identifiée", {
+        description: 'Rechargez la page ou reconnectez votre compte.',
+      });
       return;
     }
     if (activeProfiles.length === 0) return;
@@ -930,7 +854,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       }
       const failed = rows.length - saved;
       if (saved > 0) {
-        const added = `${saved} candidat${saved > 1 ? 's' : ''} ajouté${saved > 1 ? 's' : ''} à la shortlist`;
+        const added = plural(saved, 'candidat présélectionné', 'candidats présélectionnés');
         if (failed > 0) {
           toast.warning(added, {
             description: `${failed} candidat${failed > 1 ? 's' : ''} n'${failed > 1 ? 'ont' : 'a'} pas pu être enregistré${failed > 1 ? 's' : ''}.`,
@@ -940,8 +864,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         }
       }
       if (alreadyContacted.size > 0) {
-        const n = alreadyContacted.size;
-        toast.info(`${n} candidat${n > 1 ? 's' : ''} déjà contacté${n > 1 ? 's' : ''} : statut conservé`);
+        toast.info(`${plural(alreadyContacted.size, 'candidat déjà contacté', 'candidats déjà contactés')} : statut conservé`);
       }
       onSuccess();
     } catch (err) {
@@ -952,690 +875,753 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     }
   };
 
-  const contentRef = useRef<HTMLDivElement>(null);
-
   const handleClose = () => {
+    // Jamais de fermeture pendant une écriture : la boucle d'inscription
+    // continuerait et le bilan serait perdu.
     if (isBusy) return;
     if (enrollResults?.success) {
       onSuccess();
       return;
     }
-    // Messages générés ou modifiés (crédits dépensés) : rien n'est conservé à
-    // la fermeture, on demande confirmation (croix, « Annuler »).
-    if (!enrollResults && hasPreparedWork) {
-      setConfirmDiscardOpen(true);
+    onClose();
+  };
+
+  // ── Fermeture (revue design D-46) ──
+  // Fermer ne jette plus rien sans prévenir : les aperçus déjà préparés
+  // (générés, donc payés, ou retouchés) restent pour la session ; la
+  // confirmation le dit, et dit ce qui ne sera pas gardé.
+  const previewStats = useMemo(() => {
+    let kept = 0;
+    let edited = 0;
+    previews.forEach(byStep => byStep.forEach(msg => {
+      if (!msg.isGenerating && (msg.isGenerated || msg.isEdited)) kept++;
+      if (msg.isEdited) edited++;
+    }));
+    return { kept, edited };
+  }, [previews]);
+  const delayChanges = Object.keys(getStepConfigOverrides()).length;
+  const hasWorkInProgress = previewStats.kept > 0 || delayChanges > 0 || isBulkGenerating;
+
+  // Croix, Échap et « Annuler » passent tous par ici.
+  const requestClose = () => {
+    if (isBusy) return;
+    if (enrollResults) {
+      handleClose();
+      return;
+    }
+    if (hasWorkInProgress) {
+      setConfirmCloseOpen(true);
       return;
     }
     onClose();
   };
 
+  const confirmClose = () => {
+    setConfirmCloseOpen(false);
+    // Même garde que handleClose : jamais de fermeture pendant une inscription.
+    if (isBusy) return;
+    cancelBulkGeneration();
+    onClose();
+  };
+
+  // ── Aperçus : prêts, manquants, coût annoncé avant l'action ──
+  const isReady = useCallback((candidateId: string, stepId: string) => {
+    const preview = getPreview(candidateId, stepId);
+    return !!preview && !preview.isGenerating && (preview.isGenerated || !!preview.isEdited);
+  }, [getPreview]);
+
+  const listedProfiles = useMemo(
+    () => profiles.filter(p => !getCandidateState(p.id).removed),
+    [profiles, getCandidateState],
+  );
+  // Comme la génération groupée : seulement les candidats qui seront inscrits.
+  const readyCount = activeProfiles.filter(p => messageSteps.every(s => isReady(p.id, s.stepId))).length;
+  const bulkMissingAi = activeProfiles.reduce(
+    (sum, p) => sum + messageSteps.filter(s => s.useAiPersonalization && !isReady(p.id, s.stepId)).length,
+    0,
+  );
+  const bulkMissingCandidates = activeProfiles.filter(p => messageSteps.some(s => !isReady(p.id, s.stepId))).length;
+
+  // ── Clavier de la liste des candidats (revue design D-44) ──
+  const listRef = useRef<HTMLDivElement>(null);
+  const focusCandidateRef = useRef<string | null>(null);
+  const listLabelId = useId();
+  const shortcutsHelpId = useId();
+
+  const focusCandidate = (id: string) => {
+    focusCandidateRef.current = id;
+    setFocusRequest(n => n + 1);
+  };
+
+  useEffect(() => {
+    const id = focusCandidateRef.current;
+    if (!id) return;
+    const position = filteredProfiles.findIndex(p => p.id === id);
+    if (position === -1) {
+      focusCandidateRef.current = null;
+      return;
+    }
+    const targetPage = Math.floor(position / pageSize);
+    if (targetPage !== page) {
+      setPage(targetPage);
+      return;
+    }
+    const row = listRef.current?.querySelector<HTMLElement>(`[data-candidate-id="${CSS.escape(id)}"]`);
+    if (row) {
+      row.focus();
+      focusCandidateRef.current = null;
+    }
+  }, [focusRequest, filteredProfiles, page, pageSize]);
+
+  const handleListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Pendant une inscription, la sélection ne bouge plus.
+    if (isBusy) return;
+    const action = listShortcut(e);
+    if (!action) return;
+    const id = (e.target as HTMLElement).dataset.candidateId as string;
+    const index = filteredProfiles.findIndex(p => p.id === id);
+    if (index === -1) return;
+    e.preventDefault();
+    if (action === 'next' || action === 'previous') {
+      const target = filteredProfiles[index + (action === 'next' ? 1 : -1)];
+      if (!target) return;
+      handleSelectCandidate(target.id, { showPreview: false });
+      focusCandidate(target.id);
+    } else if (action === 'remove') {
+      const neighbour = filteredProfiles[index + 1] ?? filteredProfiles[index - 1];
+      handleRemoveCandidate(id);
+      if (neighbour) {
+        if (id === selectedCandidateId) handleSelectCandidate(neighbour.id, { showPreview: false });
+        focusCandidate(neighbour.id);
+      }
+    } else {
+      handleSkipCandidate(id);
+    }
+  };
+
   if (!isOpen) return null;
 
   // ── Render ──
-  // Dialog Radix plein écran : la préparation rejoint la pile de couches (au-
-  // dessus de la fiche profil ouverte en panneau, Échap et clics gérés par la
-  // couche du dessus). Non modal pour que les notifications (« Annuler » d'un
-  // retrait) restent cliquables ; pointer-events-auto la garde utilisable quand
-  // un panneau modal est ouvert dessous.
+
+  const enrollLabel = activeProfiles.length > 0
+    ? `Inscrire ${plural(activeProfiles.length, 'candidat')}`
+    : 'Aucun candidat à inscrire';
+  const compatListed = [...compat.blockers, ...compat.warnings];
+
   return (
-    <DialogPrimitive.Root
-      open
-      modal={false}
-      onOpenChange={(open) => {
-        if (!open) handleClose();
-      }}
-    >
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Content
-          ref={contentRef}
-          aria-describedby={undefined}
-          // Confirmation « Fermer sans inscrire ? » ouverte : son voile passe
-          // sous cette couche plein écran, on neutralise donc la préparation
-          // (aucun clic sur « Inscrire » ni ailleurs) et on l'assombrit.
-          className={cn(
-            'fixed inset-0 z-[9999] bg-background flex flex-col pointer-events-auto outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0',
-            confirmDiscardOpen && 'pointer-events-none',
-          )}
-          onOpenAutoFocus={(e) => {
-            // Focus sur la liste des candidats (flèches actives) ou, sans liste,
-            // sur la fenêtre elle-même ; jamais sur la croix : Entrée ne doit
-            // pas fermer la préparation.
-            e.preventDefault();
-            (candidateListRef.current ?? contentRef.current)?.focus();
-          }}
-          onEscapeKeyDown={(e) => {
-            if (isBusy || hasPreparedWork) e.preventDefault();
-          }}
+    <>
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) requestClose(); }}>
+        <DialogContent
+          className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 max-sm:h-[100dvh] max-sm:w-screen max-sm:max-w-none"
+          // Grand espace de travail : un clic sur la marge ne ferme pas.
           onInteractOutside={(e) => e.preventDefault()}
-          onKeyDown={handleGenerateShortcut}
+          // Focus d'arrivée : la ligne du candidat affiché, là où les
+          // raccourcis de la liste s'appliquent ; sinon la fenêtre elle-même
+          // (jamais la croix : Entrée ne doit pas fermer la préparation).
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            const row = listRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
+            (row ?? (e.target as HTMLElement | null))?.focus();
+          }}
         >
-      {confirmDiscardOpen && <div aria-hidden="true" className="absolute inset-0 z-50 bg-black/80" />}
-      {/* Header — refonte avec font-display + bouton X circular + eyebrow */}
-      <motion.div
-        className="border-b border-border shrink-0 bg-background"
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
-      >
-        <div className="flex items-center justify-between px-4 sm:px-6 h-14 sm:h-16">
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-            <button
-              onClick={handleClose}
-              disabled={isBusy}
-              className="h-9 w-9 grid place-items-center rounded-full border border-border bg-background hover:bg-accent transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-              aria-label="Fermer"
-              title={isBusy ? 'Inscription en cours, ne fermez pas cette fenêtre' : undefined}
-            >
-              <X className="w-4 h-4" />
-            </button>
+          {/* En-tête */}
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border py-3 pl-4 pr-14 sm:pl-6">
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 hidden sm:block">
-                Inscription en séquence
-              </p>
-              <DialogPrimitive.Title asChild>
-                <h2 className="font-display text-[15px] sm:text-base font-semibold truncate leading-tight">
-                  {sequence.name}
-                </h2>
-              </DialogPrimitive.Title>
-              <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
-                {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''}
-                {' · '}
-                {sequence.steps.length} étape{sequence.steps.length > 1 ? 's' : ''}
-              </p>
+              <p className="eyebrow hidden sm:block">Inscription en séquence</p>
+              <DialogTitle className="truncate">{sequence.name}</DialogTitle>
+              <DialogDescription className="text-xs tabular-nums">
+                {plural(activeProfiles.length, 'candidat')} · {plural(sequence.steps.length, 'étape')}
+              </DialogDescription>
             </div>
-          </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {hasMessageSteps && !enrollResults && (
-              <div className="flex items-center bg-muted/40 p-0.5 rounded-full border border-border">
-                <button
-                  onClick={() => setMode('summary')}
-                  className={cn(
-                    "px-3 sm:px-3.5 h-7 text-[11.5px] font-medium rounded-full transition-all",
-                    mode === 'summary'
-                      ? "bg-foreground text-background shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+              <SegmentedControl<'summary' | 'preview'>
+                aria-label="Affichage de la préparation"
+                value={mode}
+                onValueChange={setMode}
+                options={[
+                  { value: 'summary', label: 'Résumé' },
+                  { value: 'preview', label: 'Aperçus' },
+                ]}
+              />
+            )}
+          </div>
+
+          {/* Bandeau de synthèse */}
+          {mode === 'preview' && !enrollResults && !isSingle && (
+            <DynamicSummaryBanner
+              profiles={profiles}
+              states={candidateStates}
+              activeProfiles={activeProfiles}
+              duplicateExcludedCount={excludedCounts.duplicates}
+              incompatibleExcludedCount={excludedCounts.incompatible}
+              readyCount={readyCount}
+            />
+          )}
+
+          {/* Anti-doublon organisation : contactés par un membre (séquence en
+              cours, ou contact ces 90 derniers jours), toute séquence et tout
+              compte. Exclus par défaut ; dérogation réservée aux propriétaires
+              et administrateurs. */}
+          {!enrollResults && isCheckingDuplicates && (
+            <div role="status" className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground sm:px-6">
+              <Spinner size="sm" label="Vérification en cours" />
+              Vérification des contacts récents de l'organisation
+            </div>
+          )}
+          {!enrollResults && duplicateCheckFailed && !isCheckingDuplicates && (
+            <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-danger/25 bg-danger-muted px-4 py-2 sm:px-6">
+              <AlertCircle className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+              <p className="min-w-0 flex-1 text-sm text-foreground">{DUPLICATE_CHECK_FAILED_MESSAGE}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="shrink-0 max-md:h-11"
+                onClick={() => setDuplicateCheckAttempt(a => a + 1)}
+              >
+                Réessayer
+              </Button>
+            </div>
+          )}
+          {!enrollResults && recentEnrollments && duplicateProfiles.length > 0 && (
+            <DuplicatesNotice
+              duplicates={duplicateProfiles}
+              recentEnrollments={recentEnrollments}
+              isAdmin={isAdmin}
+              enrollAnyway={enrollDuplicatesAnyway}
+              onEnrollAnywayChange={setEnrollDuplicatesAnyway}
+            />
+          )}
+
+          {!enrollResults && notice && (
+            <div role="note" className="flex shrink-0 items-start gap-2 border-b border-warning/25 bg-warning-muted px-4 py-2.5 sm:px-6">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <p className="text-sm text-foreground">{notice}</p>
+            </div>
+          )}
+
+          {/* Compatibilité : candidats qui ne peuvent pas suivre cette séquence
+              (hors réseau sans InMail, déjà en relation avec une invitation
+              seule), exclus par défaut, « Inclure quand même » pour les garder ;
+              avertissements (déjà en relation : invitation sautée, messages
+              suivants envoyés) sans exclusion. */}
+          {!enrollResults && compatListed.length > 0 && (
+            <div role="status" className="shrink-0 border-b border-warning/25 bg-warning-muted px-4 py-2.5 sm:px-6">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <p className="text-sm font-medium text-foreground">
+                    {compat.blockers.length > 0
+                      ? compatHeadline(compat.blockers, includeIncompatible)
+                      : `${plural(compat.warnings.length, 'candidat')} avec un avertissement`}
+                  </p>
+                  <ul className="max-h-16 space-y-0.5 overflow-y-auto text-xs text-foreground-secondary">
+                    {compatListed.slice(0, 5).map(r => (
+                      <li key={r.profile.id} className="break-words">
+                        <span className="font-medium text-foreground">{r.profile.name}</span>
+                        {' : '}{r.message}
+                      </li>
+                    ))}
+                    {compatListed.length > 5 && <li>et {plural(compatListed.length - 5, 'autre')}</li>}
+                  </ul>
+                  {compat.blockers.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={includeIncompatibleId}
+                        checked={includeIncompatible}
+                        onCheckedChange={checked => setIncludeIncompatible(checked === true)}
+                      />
+                      <Label htmlFor={includeIncompatibleId} className="cursor-pointer text-xs font-normal text-foreground max-md:py-3">
+                        Inclure quand même ({compat.blockers.length})
+                      </Label>
+                    </div>
                   )}
-                >
-                  Résumé
-                </button>
-                <button
-                  onClick={() => setMode('preview')}
-                  className={cn(
-                    "px-3 sm:px-3.5 h-7 text-[11.5px] font-medium rounded-full transition-all",
-                    mode === 'preview'
-                      ? "bg-foreground text-background shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Corps */}
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            {enrollResults ? (
+              <div className="flex flex-1 items-center justify-center overflow-y-auto p-6 sm:p-8">
+                <EnrollmentResults results={enrollResults} firstAction={firstAction} onClose={handleClose} />
+              </div>
+            ) : mode === 'summary' ? (
+              <div className="flex-1 overflow-y-auto">
+                <SummaryMode
+                  activeProfiles={activeProfiles}
+                  steps={steps}
+                  candidateAnalysis={candidateAnalysis}
+                  estimatedCredits={estimatedCredits}
+                  hasAiSteps={hasAiSteps}
+                  hasMessageSteps={hasMessageSteps}
+                  firstAction={firstAction}
+                  onSwitchToPreview={() => setMode('preview')}
+                />
+              </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+                {/* Téléphone : la liste ou l'aperçu */}
+                {!isSingle && (
+                  <div className="shrink-0 border-b border-border px-4 py-2 sm:hidden">
+                    <SegmentedControl<'list' | 'preview'>
+                      aria-label="Partie affichée"
+                      value={mobilePane}
+                      onValueChange={setMobilePane}
+                      size="default"
+                      options={[
+                        { value: 'list', label: `Candidats (${listedProfiles.length})` },
+                        { value: 'preview', label: 'Aperçu' },
+                      ]}
+                      className="flex h-11 w-full [&>button]:flex-1"
+                    />
+                  </div>
+                )}
+
+                {/* Liste des candidats */}
+                {!isSingle && (
+                  <div
+                    className={cn(
+                      'w-full shrink-0 flex-col border-border sm:flex sm:w-72 sm:border-r',
+                      mobilePane === 'list' ? 'flex min-h-0 flex-1 sm:flex-none' : 'hidden',
+                    )}
+                  >
+                    <div className="space-y-2 border-b border-border p-3">
+                      <div className="flex items-center justify-between">
+                        <p id={listLabelId} className="eyebrow">Candidats</p>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {filteredProfiles.length === listedProfiles.length
+                            ? listedProfiles.length
+                            : `${filteredProfiles.length} sur ${listedProfiles.length}`}
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                        <Input
+                          type="search"
+                          value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
+                          placeholder="Nom ou titre"
+                          aria-label="Rechercher un candidat"
+                          className="h-8 pl-8 max-md:h-11"
+                        />
+                      </div>
+                    </div>
+                    <ScrollArea className="min-h-0 flex-1">
+                      <div
+                        ref={listRef}
+                        role="list"
+                        aria-labelledby={listLabelId}
+                        onKeyDown={handleListKeyDown}
+                        className="space-y-0.5 p-1.5"
+                      >
+                        {pagedProfiles.map(p => {
+                          const allGenerated = messageSteps.every(s => getPreview(p.id, s.stepId)?.isGenerated);
+                          const hasEdits = messageSteps.some(s => getPreview(p.id, s.stepId)?.isEdited);
+                          const state = getCandidateState(p.id);
+                          const cachedScore = scoreCache.get(p.id);
+
+                          return (
+                            <div role="listitem" key={p.id}>
+                              <ScoringPopover
+                                candidateId={p.id}
+                                jobId={job?.id}
+                                isOpen={scoringPopoverId === p.id}
+                                onOpenChange={open => setScoringPopoverId(open ? p.id : null)}
+                              >
+                                <HistoryPopover
+                                  candidateId={p.id}
+                                  linkedinUrl={p.profile_url || p.public_profile_url || null}
+                                  isOpen={historyPopoverId === p.id}
+                                  onOpenChange={open => setHistoryPopoverId(open ? p.id : null)}
+                                >
+                                  <div>
+                                    <CandidateSidebarCard
+                                      profile={p}
+                                      isSelected={p.id === selectedCandidateId}
+                                      allGenerated={allGenerated}
+                                      hasEdits={hasEdits}
+                                      state={state}
+                                      exclusion={exclusionByCandidate.get(p.id) ?? null}
+                                      score={cachedScore?.score}
+                                      shortcutsHelpId={shortcutsHelpId}
+                                      onSelect={() => handleSelectCandidate(p.id)}
+                                      onRemove={() => handleRemoveCandidate(p.id)}
+                                      onSkip={() => handleSkipCandidate(p.id)}
+                                      onViewScoring={() => setScoringPopoverId(p.id)}
+                                      onViewHistory={() => setHistoryPopoverId(p.id)}
+                                    />
+                                  </div>
+                                </HistoryPopover>
+                              </ScoringPopover>
+                            </div>
+                          );
+                        })}
+                        {filteredProfiles.length === 0 && (
+                          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+                            {searchQuery.trim()
+                              ? 'Aucun candidat ne correspond à cette recherche.'
+                              : 'Tous les candidats ont été retirés de la sélection.'}
+                          </p>
+                        )}
+                      </div>
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between border-t border-border px-2 py-1.5">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label="Page précédente"
+                                onClick={() => setPage(p => Math.max(0, p - 1))}
+                                disabled={page === 0}
+                                className="max-md:h-11 max-md:w-11"
+                              >
+                                <ChevronLeft aria-hidden="true" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Page précédente</TooltipContent>
+                          </Tooltip>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {page * pageSize + 1} à {Math.min((page + 1) * pageSize, filteredProfiles.length)} sur {filteredProfiles.length}
+                          </span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label="Page suivante"
+                                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                                disabled={page >= totalPages - 1}
+                                className="max-md:h-11 max-md:w-11"
+                              >
+                                <ChevronRight aria-hidden="true" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Page suivante</TooltipContent>
+                          </Tooltip>
+                        </div>
+                      )}
+                    </ScrollArea>
+                    <p id={shortcutsHelpId} className="hidden border-t border-border px-3 py-2 text-3xs text-muted-foreground sm:block">
+                      <Kbd>↑</Kbd> <Kbd>↓</Kbd> parcourir, <Kbd>P</Kbd> passer, <Kbd>X</Kbd> retirer
+                    </p>
+                  </div>
+                )}
+
+                {/* Aperçus du candidat sélectionné */}
+                <div className={cn(
+                  'min-h-0 flex-1 flex-col overflow-hidden',
+                  !isSingle && mobilePane === 'list' ? 'hidden sm:flex' : 'flex',
+                )}>
+                  {/* Génération groupée : bouton secondaire, coût annoncé avant
+                      l'action, sur les seuls candidats qui seront inscrits. */}
+                  {!isSingle && hasAiSteps && activeProfiles.length > 0 && (
+                    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2.5 sm:px-6">
+                      {isBulkGenerating ? (
+                        <>
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <Progress
+                              value={(generatedCount / Math.max(totalToGenerate, 1)) * 100}
+                              aria-label="Génération des aperçus"
+                              className="h-1.5 flex-1"
+                            />
+                            <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                              {generatedCount} sur {totalToGenerate}
+                            </span>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={cancelBulkGeneration} className="max-md:h-11">
+                            Arrêter la génération
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          {/* Toujours proposé : relancé quand tout est prêt, il ne
+                              régénère rien (les aperçus prêts ou retouchés sont gardés). */}
+                          <Button variant="outline" size="sm" onClick={() => generateAll(3)} className="max-md:h-11">
+                            Générer tous les aperçus
+                          </Button>
+                          {bulkMissingCandidates > 0 ? (
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {creditsLabel(bulkMissingAi * creditsPerMessage)} pour {plural(bulkMissingCandidates, 'candidat')}
+                            </span>
+                          ) : (
+                            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-success" aria-hidden="true" />
+                              Les aperçus de tous les candidats à inscrire sont prêts.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
                   )}
-                >
-                  Aperçus
-                </button>
+
+                  <ScrollArea className="min-h-0 flex-1">
+                    <div className="mx-auto max-w-2xl space-y-4 p-4 sm:p-6">
+                      {selectedProfile ? (
+                        <>
+                          <CandidateContextHeader
+                            profile={selectedProfile}
+                            score={scoreCache.get(selectedProfile.id)}
+                            linkedinUrl={selectedProfile.profile_url || selectedProfile.public_profile_url || null}
+                          />
+
+                          <CandidatePreviewsBar
+                            steps={messageSteps}
+                            isReady={stepId => isReady(selectedProfile.id, stepId)}
+                            isGenerating={messageSteps.some(s => getPreview(selectedProfile.id, s.stepId)?.isGenerating)}
+                            isBulkGenerating={isBulkGenerating}
+                            creditsPerMessage={creditsPerMessage}
+                            onGenerate={() => generateForCandidateById(selectedProfile.id)}
+                          />
+
+                          {/* Vue arborescente : décisions à filet pointillé et
+                              branches libellées ; les étapes message gardent leur
+                              carte complète (aperçu), les autres sont compactes.
+                              Délais et délais maximaux se modifient pour tous les
+                              candidats de cette inscription (override stocké
+                              côté hook). */}
+                          <SequenceTreeView
+                            steps={steps}
+                            getStepConfig={getStepConfig}
+                            setStepConfig={setStepConfig}
+                            renderStep={(step, idx) => {
+                              const isMessageStep = isPreviewedMessageStep(step);
+                              if (!isMessageStep) {
+                                return null; // tree view rend ses propres cards pour non-message
+                              }
+
+                              const preview = getPreview(selectedCandidateId, step.stepId);
+                              const isEditing = editingSteps.has(step.stepId);
+
+                              return (
+                                <MessageStepCard
+                                  key={step.stepId}
+                                  step={step}
+                                  preview={preview}
+                                  isEditing={isEditing}
+                                  index={idx}
+                                  candidateName={selectedProfile.name}
+                                  creditsPerMessage={creditsPerMessage}
+                                  onToggleEdit={() => toggleEditing(step.stepId)}
+                                  onRegenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
+                                  onEditMessage={(field, value) => editMessage(selectedCandidateId, step.stepId, field, value)}
+                                  // Génération de cette seule étape, à la demande.
+                                  onGenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
+                                />
+                              );
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <PreviewPanelFallback hasProfiles={profiles.length > 0} />
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
               </div>
             )}
           </div>
-        </div>
-      </motion.div>
 
-      {/* Dynamic summary banner */}
-      {mode === 'preview' && !enrollResults && !isSingle && (
-        <DynamicSummaryBanner
-          profiles={profiles}
-          states={candidateStates}
-          activeProfiles={activeProfiles}
-          duplicateExcludedCount={excludedCounts.duplicates}
-          incompatibleExcludedCount={excludedCounts.incompatible}
-          generatedCount={generatedCount}
-          totalToGenerate={totalToGenerate}
-          estimatedCredits={estimatedCredits}
-          hasAiSteps={hasAiSteps}
-        />
-      )}
-
-      {/* Anti-doublon organisation : contactés dans les 90 derniers jours par
-          un membre, toute séquence et tout compte. Exclus par défaut ;
-          dérogation réservée aux propriétaires et administrateurs. */}
-      {!enrollResults && isCheckingDuplicates && (
-        <div className="px-4 sm:px-6 py-1.5 border-b border-border bg-muted/10 flex items-center gap-2 text-[11px] text-muted-foreground" role="status">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Vérification des contacts récents de l'organisation
-        </div>
-      )}
-      {!enrollResults && duplicateCheckFailed && !isCheckingDuplicates && (
-        <div className="px-4 sm:px-6 py-2 border-b border-destructive/40 bg-destructive/5 flex items-center gap-2 shrink-0" role="alert">
-          <AlertCircle className="w-4 h-4 text-destructive shrink-0" aria-hidden="true" />
-          <p className="flex-1 text-[12px] text-destructive">{DUPLICATE_CHECK_FAILED_MESSAGE}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs shrink-0"
-            onClick={() => setDuplicateCheckAttempt(a => a + 1)}
-          >
-            Réessayer
-          </Button>
-        </div>
-      )}
-      {!enrollResults && recentEnrollments && duplicateProfiles.length > 0 && (
-        <div className="px-4 sm:px-6 py-2.5 border-b border-warning/40 bg-warning/5 shrink-0">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0 space-y-1.5">
-              <p className="text-[12px] font-semibold text-warning">
-                {duplicateProfiles.length} candidat{duplicateProfiles.length > 1 ? 's' : ''} déjà contacté{duplicateProfiles.length > 1 ? 's' : ''} par votre organisation (séquence en cours, ou contact ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours)
-              </p>
-              <ul className="text-[11px] text-muted-foreground space-y-0.5 max-h-20 overflow-y-auto">
-                {duplicateProfiles.slice(0, 5).map(p => {
-                  const entry = recentEnrollments.get(p.id);
-                  return (
-                    <li key={p.id} className="truncate">
-                      <span className="font-medium text-foreground">{p.name}</span>
-                      {' : '}{entry ? formatRecentContactLabel(entry) : 'Déjà contacté'}
-                    </li>
-                  );
-                })}
-                {duplicateProfiles.length > 5 && (
-                  <li className="italic">et {duplicateProfiles.length - 5} autre{duplicateProfiles.length - 5 > 1 ? 's' : ''}</li>
-                )}
-              </ul>
-              {isAdmin ? (
-                <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={enrollDuplicatesAnyway}
-                    onChange={(e) => setEnrollDuplicatesAnyway(e.target.checked)}
-                    className="h-3 w-3 rounded border-border"
-                  />
-                  <span className="text-foreground">Inscrire quand même ({duplicateProfiles.length})</span>
-                </label>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">
-                  Exclus de l'inscription. Seuls les propriétaires et administrateurs peuvent les inscrire quand même.
+          {/* Actions : compte d'envoi, puis une seule action principale,
+              monochrome (revue design D-45). */}
+          {!enrollResults && (
+            <div className="shrink-0 space-y-2 border-t border-border px-4 py-3 sm:px-6">
+              <SendingAccountNotice state={sendingAccount} />
+              {isEnrolling && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  Inscription en cours, ne fermez pas cette fenêtre.
                 </p>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!enrollResults && notice && (
-        <div className="px-4 sm:px-6 py-2 border-b border-warning/40 bg-warning/5 flex items-start gap-2 shrink-0" role="note">
-          <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
-          <p className="text-[12px] text-foreground">{notice}</p>
-        </div>
-      )}
-
-      {/* Compatibilité : candidats qui ne peuvent pas suivre cette séquence
-          (hors réseau sans InMail), exclus par défaut, « Inclure quand même »
-          pour les garder ; avertissements (déjà en relation : invitation
-          sautée, messages suivants envoyés) sans exclusion. */}
-      {!enrollResults && (compat.blockers.length > 0 || compat.warnings.length > 0) && (
-        <div className="px-4 sm:px-6 py-2.5 border-b border-warning/40 bg-warning/5 shrink-0">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
-            <div className="flex-1 min-w-0 space-y-1.5">
-              {compat.blockers.length > 0 ? (
-                <p className="text-[12px] font-semibold text-warning">
-                  {compatHeadline(compat.blockers, includeIncompatible)}
-                </p>
-              ) : (
-                <p className="text-[12px] font-semibold text-warning">
-                  {compat.warnings.length} candidat{compat.warnings.length > 1 ? 's' : ''} avec un avertissement
-                </p>
-              )}
-              <ul className="text-[11px] text-muted-foreground space-y-0.5 max-h-20 overflow-y-auto">
-                {[...compat.blockers, ...compat.warnings].slice(0, 5).map(r => (
-                  <li key={r.profile.id} className="truncate">
-                    <span className="font-medium text-foreground">{r.profile.name}</span>
-                    {' : '}{r.message}
-                  </li>
-                ))}
-                {compat.blockers.length + compat.warnings.length > 5 && (
-                  <li className="italic">
-                    et {compat.blockers.length + compat.warnings.length - 5} autre{compat.blockers.length + compat.warnings.length - 5 > 1 ? 's' : ''}
-                  </li>
-                )}
-              </ul>
-              {compat.blockers.length > 0 && (
-                <label className="flex items-center gap-2 text-[11px] cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={includeIncompatible}
-                    onChange={(e) => setIncludeIncompatible(e.target.checked)}
-                    className="h-3 w-3 rounded border-border"
-                  />
-                  <span className="text-foreground">Inclure quand même ({compat.blockers.length})</span>
-                </label>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Body */}
-      <div className="flex-1 flex overflow-hidden">
-        <AnimatePresence initial={false}>
-          {enrollResults ? (
-            <motion.div
-              key="results"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex-1 flex items-center justify-center p-8"
-            >
-              <EnrollmentResults results={enrollResults} firstAction={firstAction} onClose={handleClose} />
-            </motion.div>
-          ) : mode === 'summary' ? (
-            <motion.div
-              key="summary"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              className="flex-1 overflow-y-auto"
-            >
-              <SummaryMode
-                profiles={profiles}
-                activeProfiles={activeProfiles}
-                steps={steps}
-                candidateAnalysis={candidateAnalysis}
-                estimatedCredits={estimatedCredits}
-                hasAiSteps={hasAiSteps}
-                hasMessageSteps={hasMessageSteps}
-                isBulk={isBulk}
-                onSwitchToPreview={() => setMode('preview')}
-                isEnrolling={isEnrolling}
-                isBusy={isBusy}
-                enrollProgress={enrollProgress}
-                sendingAccount={sendingAccount}
-                duplicatesUnchecked={duplicatesUnchecked}
-                firstAction={firstAction}
-                onEnroll={handleEnroll}
-                onShortlist={handleShortlist}
-                onClose={handleClose}
-                jobId={job?.id}
-              />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="preview"
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              className="flex-1 flex flex-col sm:flex-row overflow-hidden"
-            >
-              {/* Mobile pane toggle */}
-              {!isSingle && (
-                <div className="sm:hidden flex items-center border-b border-border bg-muted/10">
-                  <button
-                    onClick={() => setMobilePane('list')}
-                    className={cn(
-                      "flex-1 py-2 text-[11px] font-medium text-center transition-colors",
-                      mobilePane === 'list' ? "text-foreground border-b-2 border-primary" : "text-muted-foreground"
-                    )}
-                  >
-                    Candidats ({activeProfiles.length})
-                  </button>
-                  <button
-                    onClick={() => setMobilePane('preview')}
-                    className={cn(
-                      "flex-1 py-2 text-[11px] font-medium text-center transition-colors",
-                      mobilePane === 'preview' ? "text-foreground border-b-2 border-primary" : "text-muted-foreground"
-                    )}
-                  >
-                    Aperçu
-                  </button>
-                </div>
-              )}
-
-              {/* Candidate Sidebar — hidden on mobile when viewing preview.
-                  Refonte : header avec eyebrow uppercase + compteur,
-                  recherche pill rounded-full au lieu de carrée. */}
-              {!isSingle && (
-                <motion.div
-                  className={cn(
-                    "w-full sm:w-72 border-b sm:border-b-0 sm:border-r border-border bg-muted/10 flex flex-col shrink-0",
-                    "sm:flex",
-                    mobilePane === 'list' ? "flex flex-1 sm:flex-none" : "hidden sm:flex"
-                  )}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
-                >
-                  <div className="p-3 border-b border-border space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                        Candidats
-                      </p>
-                      <span className="text-[10px] tabular-nums text-muted-foreground/70">
-                        {filteredProfiles.length}
-                        {filteredProfiles.length !== profiles.length && <span className="opacity-50"> / {profiles.length}</span>}
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        placeholder="Rechercher…"
-                        aria-label="Rechercher un candidat"
-                        className="w-full h-8 pl-8 pr-3 text-[12px] bg-background border border-border rounded-full focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/30 transition-all"
-                      />
-                    </div>
-                    <p className="hidden sm:block text-[10px] text-muted-foreground leading-snug">
-                      ↑ ↓ changer de candidat · Espace passer · X retirer · Ctrl+Entrée générer l'aperçu
-                    </p>
-                  </div>
-                  <ScrollArea className="flex-1">
-                    <div
-                      ref={candidateListRef}
-                      tabIndex={-1}
-                      role="group"
-                      aria-label="Candidats à inscrire"
-                      onKeyDown={handleShortcutKeyDown}
-                      className="p-1 space-y-0.5 outline-none"
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="ghost" onClick={requestClose} disabled={isBusy} className="max-md:h-11">
+                  Annuler
+                </Button>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                  {job?.id && (
+                    <Button
+                      variant="outline"
+                      onClick={handleShortlist}
+                      loading={isShortlisting}
+                      disabled={isBusy || activeProfiles.length === 0}
+                      className="max-md:h-11"
                     >
-                      {pagedProfiles.map(p => {
-                        const allGenerated = messageSteps.every(s => getPreview(p.id, s.stepId)?.isGenerated);
-                        const hasEdits = messageSteps.some(s => getPreview(p.id, s.stepId)?.isEdited);
-                        const state = getCandidateState(p.id);
-                        const cachedScore = scoreCache.get(p.id);
-
-                        return (
-                          <React.Fragment key={p.id}>
-                            <ScoringPopover
-                              candidateId={p.id}
-                              jobId={job?.id}
-                              isOpen={scoringPopoverId === p.id}
-                              onOpenChange={open => setScoringPopoverId(open ? p.id : null)}
-                            >
-                              <HistoryPopover
-                                candidateId={p.id}
-                                linkedinUrl={p.profile_url || p.public_profile_url || null}
-                                isOpen={historyPopoverId === p.id}
-                                onOpenChange={open => setHistoryPopoverId(open ? p.id : null)}
-                              >
-                                <div>
-                                  <CandidateSidebarCard
-                                    profile={p}
-                                    isSelected={p.id === selectedCandidateId}
-                                    allGenerated={allGenerated}
-                                    hasEdits={hasEdits}
-                                    state={state}
-                                    exclusion={exclusionByCandidate.get(p.id) ?? null}
-                                    score={cachedScore?.score}
-                                    onSelect={() => handleSelectCandidate(p.id)}
-                                    onRemove={() => handleRemoveCandidate(p.id)}
-                                    onSkip={() => handleSkipCandidate(p.id)}
-                                    onViewScoring={() => setScoringPopoverId(p.id)}
-                                    onViewHistory={() => setHistoryPopoverId(p.id)}
-                                  />
-                                </div>
-                              </HistoryPopover>
-                            </ScoringPopover>
-                          </React.Fragment>
-                        );
-                      })}
-                    </div>
-                    {totalPages > 1 && (
-                      <div className="flex items-center justify-between px-2 py-1.5 border-t border-border">
-                        <button
-                          onClick={() => setPage(p => Math.max(0, p - 1))}
-                          disabled={page === 0}
-                          className="p-1 disabled:opacity-30"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="text-[10px] text-muted-foreground">
-                          {page * pageSize + 1}-{Math.min((page + 1) * pageSize, filteredProfiles.length)} / {filteredProfiles.length}
-                        </span>
-                        <button
-                          onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                          disabled={page >= totalPages - 1}
-                          className="p-1 disabled:opacity-30"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </ScrollArea>
-                </motion.div>
-              )}
-
-              {/* Preview Panel — hidden on mobile when viewing list */}
-              <div className={cn(
-                "flex-1 flex flex-col overflow-hidden",
-                !isSingle && mobilePane === 'list' ? "hidden sm:flex" : "flex"
-              )}>
-                {/* Bulk generation bar — refonte avec shine button +
-                    progress animé. Disparaît quand isSingle. */}
-                {!isSingle && hasAiSteps && (
-                  <div className="px-4 py-2.5 border-b border-border bg-gradient-to-r from-brand-purple/[0.04] via-brand-pink/[0.03] to-transparent flex items-center gap-3">
-                    {isBulkGenerating ? (
-                      <>
-                        <div className="flex-1 flex items-center gap-2">
-                          <Progress value={(generatedCount / totalToGenerate) * 100} className="flex-1 h-1.5" />
-                          <span className="text-[11px] text-muted-foreground tabular-nums font-medium">
-                            {generatedCount}/{totalToGenerate}
-                          </span>
-                        </div>
-                        <button
-                          onClick={cancelBulkGeneration}
-                          className="h-7 px-3 text-[11px] text-muted-foreground hover:text-foreground transition-colors rounded-full"
-                        >
-                          Annuler
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <motion.button
-                          type="button"
-                          onClick={() => generateAll(3)}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          className="h-8 px-4 inline-flex items-center gap-1.5 text-[11.5px] font-bold rounded-full text-white konekt-skalr-bg konekt-shine shadow-sm"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" strokeWidth={2.5} />
-                          Générer tous les aperçus
-                        </motion.button>
-                        <span className="text-[11px] text-muted-foreground tabular-nums">
-                          ~{estimatedCredits} crédits
-                        </span>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Message previews */}
-                <ScrollArea className="flex-1 p-4 sm:p-6">
-                  {selectedProfile ? (
-                    <div className="max-w-2xl mx-auto space-y-4">
-                      {/* Enriched candidate context header */}
-                      <CandidateContextHeader
-                        profile={selectedProfile}
-                        score={scoreCache.get(selectedProfile.id)}
-                        linkedinUrl={selectedProfile.profile_url || selectedProfile.public_profile_url || null}
-                      />
-
-                      {/* Vue arborescente : décisions stylées en diamants
-                          + connecteurs avec labels (si accepté / si réponse...)
-                          + flèches entre étapes. Les steps message gardent
-                          leur card complète (avec preview AI), les autres
-                          (visite, invitation, etc.) sont compactés.
-                          Les délais et timeouts sont éditables PER step
-                          pour cette inscription (override stocké côté hook). */}
-                      <SequenceTreeView
-                        steps={steps}
-                        getStepConfig={getStepConfig}
-                        setStepConfig={setStepConfig}
-                        renderStep={(step, idx) => {
-                          const isMessageStep = isPreviewedMessageStep(step);
-                          const Icon = ACTION_ICONS[step.actionType] || MessageSquare;
-
-                          if (!isMessageStep) {
-                            return null; // tree view rend ses propres cards pour non-message
-                          }
-
-                          const preview = getPreview(selectedCandidateId, step.stepId);
-                          const isEditing = editingSteps.has(step.stepId);
-
-                          return (
-                            <MessageStepCard
-                              key={step.stepId}
-                              step={step}
-                              preview={preview}
-                              isEditing={isEditing}
-                              Icon={Icon}
-                              index={idx}
-                              candidateId={selectedCandidateId}
-                              onToggleEdit={() => toggleEditing(step.stepId)}
-                              onRegenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
-                              onEditMessage={(field, value) => editMessage(selectedCandidateId, step.stepId, field, value)}
-                              // Génération INDIVIDUELLE de ce step (pas de toute la séquence) :
-                              // l'user clique le bouton sur la card du step, on génère juste
-                              // ce step. Sinon "Générer tous les aperçus" (bulk) reste
-                              // disponible en haut pour tout générer d'un coup.
-                              onGenerate={() => regenerateStep(selectedCandidateId, step.stepId)}
-                            />
-                          );
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <PreviewPanelFallback hasProfiles={profiles.length > 0} />
+                      {!isShortlisting && <ListChecks aria-hidden="true" />}
+                      Présélectionner sans message
+                    </Button>
                   )}
-                </ScrollArea>
-
-                {/* Bottom bar — compte d'envoi, puis 3 boutons : primaire
-                    (Inscrire), secondaire (Shortlist), tertiaire (Annuler). */}
-                <div className="px-4 sm:px-6 py-3 border-t border-border bg-background space-y-2">
-                  <SendingAccountNotice state={sendingAccount} />
-                  {isEnrolling && (
-                    <p className="text-[11px] text-muted-foreground" role="status">
-                      Inscription en cours, ne fermez pas cette fenêtre.
-                    </p>
-                  )}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
-                    <button
-                      type="button"
-                      onClick={handleClose}
-                      disabled={isBusy}
-                      className="h-9 px-3 text-[12px] text-muted-foreground hover:text-foreground transition-colors rounded-full disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      Annuler
-                    </button>
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                      {job?.id && (
-                        <button
-                          type="button"
-                          onClick={handleShortlist}
-                          disabled={isBusy || activeProfiles.length === 0}
-                          className="h-9 px-4 inline-flex items-center justify-center gap-1.5 text-[12px] font-medium rounded-full border border-border bg-background hover:bg-accent disabled:opacity-50 transition-colors"
-                        >
-                          {isShortlisting
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <ListChecks className="w-3.5 h-3.5" />}
-                          Ajouter à la shortlist sans message
-                        </button>
-                      )}
-                      <motion.button
-                        type="button"
-                        onClick={handleEnroll}
-                        disabled={isBusy || activeProfiles.length === 0 || duplicatesUnchecked || !!sendingAccount.blockReason}
-                        whileHover={{ scale: isBusy ? 1 : 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="h-9 px-5 inline-flex items-center justify-center gap-1.5 text-[12px] font-bold rounded-full text-white konekt-skalr-bg konekt-shine konekt-glow disabled:opacity-50 disabled:cursor-not-allowed shadow-md transition-shadow"
-                      >
-                        {isEnrolling ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            {enrollProgressLabel(enrollProgress)}
-                          </>
-                        ) : (
-                          <>
-                            <Send className="w-3.5 h-3.5" strokeWidth={2.5} />
-                            Inscrire {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''}
-                          </>
-                        )}
-                      </motion.button>
-                    </div>
-                  </div>
+                  <Button
+                    variant="primary"
+                    onClick={handleEnroll}
+                    loading={isEnrolling}
+                    disabled={isBusy || activeProfiles.length === 0 || duplicatesUnchecked || !!sendingAccount.blockReason}
+                    className="max-md:h-11"
+                  >
+                    {isEnrolling ? enrollProgressLabel(enrollProgress) : enrollLabel}
+                  </Button>
                 </div>
               </div>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
-      </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-      {/* Hors du contenu : ni Ctrl+Entrée ni les autres raccourcis de la
-          préparation ne reçoivent les touches de cette confirmation. Au-dessus
-          de la couche plein écran (z-[9999]). */}
-      <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
-        <AlertDialogContent className="z-[10000]">
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Fermer sans inscrire ?</AlertDialogTitle>
-            <AlertDialogDescription>Les messages préparés seront perdus.</AlertDialogDescription>
+            <AlertDialogTitle>Fermer la préparation ?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                {previewStats.kept > 0 && (
+                  <p>
+                    {previewStats.kept > 1
+                      ? `Les ${previewStats.kept} aperçus déjà préparés${previewStats.edited > 0 ? `, dont ${plural(previewStats.edited, 'retouché', 'retouchés')},` : ''} restent disponibles`
+                      : `L'aperçu déjà préparé${previewStats.edited > 0 ? ', retouché,' : ''} reste disponible`}
+                    {' '}jusqu'au rechargement de la page : rouvrez la préparation de cette séquence avec ces candidats pour {previewStats.kept > 1 ? 'les' : 'le'} retrouver.
+                  </p>
+                )}
+                {isBulkGenerating && <p>La génération en cours sera arrêtée.</p>}
+                {delayChanges > 0 && (
+                  <p>
+                    {delayChanges > 1 ? 'Les délais modifiés' : 'Le délai modifié'} pour cette inscription ne {delayChanges > 1 ? 'seront' : 'sera'} pas conservé{delayChanges > 1 ? 's' : ''}.
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Continuer la préparation</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                setConfirmDiscardOpen(false);
-                // Même garde que handleClose : jamais de fermeture pendant une
-                // inscription (la boucle continuerait, le bilan serait perdu).
-                if (!isBusy) onClose();
-              }}
-            >
-              Fermer sans inscrire
-            </AlertDialogAction>
+            <AlertDialogAction onClick={confirmClose}>Fermer la préparation</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </DialogPrimitive.Root>
+    </>
   );
 };
 
 // ── Sub-components ──
 
-function CompactStepCard({ step, Icon, index }: { step: SequenceStepPreview; Icon: typeof Mail; index: number }) {
+function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative">
-      {/* Node sur la timeline (placé sur le rail vertical à -7 pour l'aligner) */}
-      <div
-        className="absolute left-[-22px] sm:left-[-26px] top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-background border border-border grid place-items-center text-[10px] font-bold text-muted-foreground tabular-nums shadow-sm z-10"
-        aria-hidden="true"
-      >
-        {index + 1}
-      </div>
-      <div className="flex items-center gap-3 px-3 py-2 bg-muted/30 rounded-lg border border-border/50">
-        <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <span className="text-[11.5px] font-medium text-foreground/80">{stepTypeLabel(step.actionType)}</span>
-        {(step.delayDays || step.delayHours) ? (
-          <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
-            +{step.delayDays ? `${step.delayDays}j` : ''}{step.delayHours ? `${step.delayHours}h` : ''}
-          </span>
-        ) : null}
+    <kbd className="rounded-sm border border-border px-1 font-mono text-3xs text-foreground-secondary">{children}</kbd>
+  );
+}
+
+/** Candidats déjà contactés par l'organisation (séquence en cours, ou contact récent). */
+function DuplicatesNotice({
+  duplicates, recentEnrollments, isAdmin, enrollAnyway, onEnrollAnywayChange,
+}: {
+  duplicates: LinkedInProfile[];
+  recentEnrollments: Map<string, RecentEnrollment>;
+  isAdmin: boolean;
+  enrollAnyway: boolean;
+  onEnrollAnywayChange: (value: boolean) => void;
+}) {
+  const checkboxId = useId();
+  const count = duplicates.length;
+  return (
+    <div role="status" className="shrink-0 border-b border-warning/25 bg-warning-muted px-4 py-2.5 sm:px-6">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="text-sm font-medium text-foreground">
+            {count > 1 ? `${count} candidats déjà contactés` : '1 candidat déjà contacté'} par votre organisation (séquence en cours, ou contact ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours)
+          </p>
+          <ul className="max-h-16 space-y-0.5 overflow-y-auto text-xs text-foreground-secondary">
+            {duplicates.slice(0, 5).map(p => {
+              const entry = recentEnrollments.get(p.id);
+              return (
+                <li key={p.id} className="break-words">
+                  <span className="font-medium text-foreground">{p.name}</span>
+                  {' : '}{entry ? formatRecentContactLabel(entry) : 'Déjà contacté'}
+                </li>
+              );
+            })}
+            {count > 5 && <li>et {plural(count - 5, 'autre')}</li>}
+          </ul>
+          {isAdmin ? (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id={checkboxId}
+                checked={enrollAnyway}
+                onCheckedChange={checked => onEnrollAnywayChange(checked === true)}
+              />
+              <Label htmlFor={checkboxId} className="cursor-pointer text-xs font-normal text-foreground max-md:py-3">
+                Inscrire quand même ({count})
+              </Label>
+            </div>
+          ) : (
+            <p className="text-xs text-foreground-secondary">
+              Exclus de l'inscription. Seuls les propriétaires et administrateurs peuvent les inscrire quand même.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
+/** Aperçus du candidat affiché : combien sont prêts, et de quoi générer le reste. */
+function CandidatePreviewsBar({
+  steps, isReady, isGenerating, isBulkGenerating, creditsPerMessage, onGenerate,
+}: {
+  steps: SequenceStepPreview[];
+  isReady: (stepId: string) => boolean;
+  isGenerating: boolean;
+  isBulkGenerating: boolean;
+  creditsPerMessage: number;
+  onGenerate: () => void;
+}) {
+  if (steps.length === 0) return null;
+  const missing = steps.filter(s => !isReady(s.stepId));
+  const missingAi = missing.filter(s => s.useAiPersonalization).length;
+  const ready = steps.length - missing.length;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-border px-4 py-3">
+      <p className="flex items-center gap-1.5 text-sm text-foreground">
+        {missing.length === 0 && <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />}
+        Aperçus prêts pour ce candidat : <span className="tabular-nums">{ready} sur {steps.length}</span>
+      </p>
+      {missing.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs tabular-nums text-muted-foreground">{creditsLabel(missingAi * creditsPerMessage)}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onGenerate}
+            loading={isGenerating}
+            disabled={isBulkGenerating}
+            className="max-md:h-11"
+          >
+            {missing.length > 1 ? `Générer les ${missing.length} aperçus` : "Générer l'aperçu"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageStepCard({
-  step, preview, isEditing, Icon, index, candidateId,
+  step, preview, isEditing, index, candidateName, creditsPerMessage,
   onToggleEdit, onRegenerate, onEditMessage, onGenerate,
 }: {
   step: SequenceStepPreview;
   preview: ReturnType<ReturnType<typeof useEnrollmentPreview>['getPreview']>;
   isEditing: boolean;
-  Icon: typeof Mail;
   index: number;
-  candidateId: string;
+  candidateName?: string;
+  creditsPerMessage: number;
   onToggleEdit: () => void;
   onRegenerate: () => void;
   onEditMessage: (field: 'subject' | 'message', value: string) => void;
   onGenerate: () => void;
 }) {
-  const colors = CHANNEL_COLORS[step.actionType] || { header: 'text-foreground', border: 'border-border' };
-  const isPreviewActive = preview?.isGenerating || preview?.isGenerated;
+  const fieldId = useId();
+  const cost = step.useAiPersonalization ? creditsLabel(creditsPerMessage) : 'aucun crédit';
+  const label = sequenceActionLabel(step.actionType);
+  const message = (preview?.message || '').replace(/<br\s*\/?>/gi, '\n');
   // Un aperçu en échec reste modifiable et régénérable : le texte affiché
   // n'est pas celui qui partira tant qu'il n'est ni généré ni modifié.
   const hasContent = !!(preview?.isGenerated || preview?.isEdited || preview?.error);
@@ -1648,87 +1634,51 @@ function MessageStepCard({
   };
 
   return (
-    <div className="relative">
-      {/* Node sur la timeline — couleur active si preview généré */}
-      <div
-        className={cn(
-          "absolute left-[-22px] sm:left-[-26px] top-4 h-6 w-6 rounded-full border-2 grid place-items-center text-[10px] font-bold tabular-nums z-10 transition-all",
-          isPreviewActive
-            ? "bg-foreground text-background border-foreground shadow-md"
-            : "bg-background text-muted-foreground border-border shadow-sm"
+    <article aria-label={`Étape ${index + 1} : ${label}`} className="rounded-xl border border-border bg-card">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+        <StepNumber index={index} />
+        <SequenceActionLabel type={step.actionType} className="text-sm font-medium text-foreground" />
+        {step.useAiPersonalization && step.actionType !== 'smart_message' && (
+          <Badge variant="muted" className="px-1.5 py-0 text-3xs">Personnalisé par l'IA</Badge>
         )}
-        aria-hidden="true"
-      >
-        {index + 1}
-      </div>
-      <motion.div
-        className={cn("rounded-xl border overflow-hidden bg-card", colors.border)}
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      >
-      <div className={cn("flex items-center gap-2 px-4 sm:px-5 py-2.5 border-b border-border bg-muted/20")}>
-        <div className={cn("h-7 w-7 rounded-lg grid place-items-center shrink-0", colors.header)}>
-          <Icon className="w-3.5 h-3.5" strokeWidth={2.25} />
-        </div>
-        <span className="text-[12.5px] font-semibold tracking-tight text-foreground">
-          {stepTypeLabel(step.actionType)}
-        </span>
-        {step.useAiPersonalization && (
-          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-purple/10 text-brand-purple border border-brand-purple/20 font-semibold uppercase tracking-wider">
-            <Sparkles className="w-2.5 h-2.5" />
-            IA
-          </span>
+        {preview?.isEdited && <Badge variant="outline" className="px-1.5 py-0 text-3xs">Modifié</Badge>}
+        {hasContent && !preview?.isGenerating && (
+          <div className="ml-auto flex items-center gap-1">
+            {/* En échec, « Réessayer » est dans l'avis ci-dessous. */}
+            {!generationFailed && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`Régénérer ce message (${cost})`}
+                    onClick={handleRegenerateClick}
+                    className="text-muted-foreground max-md:h-11 max-md:w-11"
+                  >
+                    <RefreshCw aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Régénérer ce message ({cost})</TooltipContent>
+              </Tooltip>
+            )}
+            <Button
+              variant="ghost"
+              size="xs"
+              aria-label={isEditing ? 'Voir le message' : 'Modifier le message'}
+              onClick={onToggleEdit}
+              className={cn('max-md:h-11', isEditing ? 'bg-accent text-foreground' : 'text-muted-foreground')}
+            >
+              <Pencil aria-hidden="true" />
+              {isEditing ? 'Voir' : 'Modifier'}
+            </Button>
+          </div>
         )}
-        {preview?.isEdited && (
-          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/30 font-semibold uppercase tracking-wider">
-            Modifié
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-0.5">
-          {hasContent && !preview?.isGenerating && (
-            <>
-              {generationFailed ? (
-                <button
-                  type="button"
-                  onClick={handleRegenerateClick}
-                  className="h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] font-medium text-foreground hover:bg-muted transition-colors"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-                  Réessayer
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleRegenerateClick}
-                  className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  title="Régénérer ce message"
-                  aria-label="Régénérer ce message"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                </button>
-              )}
-              <button
-                onClick={onToggleEdit}
-                className={cn(
-                  "h-7 w-7 grid place-items-center rounded-md transition-colors",
-                  isEditing
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                )}
-                title={isEditing ? "Voir" : "Modifier"}
-                aria-label={isEditing ? 'Voir le message' : 'Modifier le message'}
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      </header>
 
-      <div className="px-4 sm:px-5 py-4">
+      <div className="px-4 py-4">
         {preview?.isGenerating ? (
-          <div className="space-y-3">
+          <div className="space-y-3" role="status">
+            <span className="sr-only">Génération de l'aperçu en cours</span>
             <Skeleton className="h-5 w-3/4" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-5/6" />
@@ -1737,97 +1687,86 @@ function MessageStepCard({
         ) : hasContent ? (
           <div className="space-y-4">
             {preview.error && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/30 text-[12px] text-warning">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                {preview.error}
+              <div role="alert" className="flex flex-wrap items-start gap-2 rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-xs text-foreground">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+                <p className="min-w-0 flex-1">{preview.error}</p>
+                <Button variant="outline" size="xs" onClick={handleRegenerateClick} className="max-md:h-11">
+                  <RefreshCw aria-hidden="true" />
+                  Réessayer
+                </Button>
               </div>
             )}
             {step.actionType === 'email' && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 mb-1.5">
-                  Objet
-                </p>
+              <div className="space-y-1.5">
                 {isEditing ? (
-                  <Input
-                    value={preview?.subject || ''}
-                    onChange={e => onEditMessage('subject', e.target.value)}
-                    className="h-9 text-[13px] font-medium"
-                  />
+                  <>
+                    <Label htmlFor={`${fieldId}-objet`} className="text-xs text-muted-foreground">Objet</Label>
+                    <Input
+                      id={`${fieldId}-objet`}
+                      value={preview?.subject || ''}
+                      onChange={e => onEditMessage('subject', e.target.value)}
+                      className="font-medium"
+                    />
+                  </>
                 ) : (
-                  <p className="text-[14px] font-semibold text-foreground">{preview?.subject || '—'}</p>
+                  <>
+                    <p className="eyebrow">Objet</p>
+                    <p className="text-md font-semibold text-foreground">
+                      {preview?.subject || <span className="font-normal text-muted-foreground">Sans objet</span>}
+                    </p>
+                  </>
                 )}
               </div>
             )}
-            <div>
-              {step.actionType === 'email' && (
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 mb-1.5">
-                  Message
-                </p>
-              )}
+            <div className="space-y-1.5">
               {isEditing ? (
-                <AiTextarea
-                  value={(preview?.message || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')}
-                  onChange={e => onEditMessage('message', e.target.value)}
-                  className="min-h-[140px] text-[13px] leading-relaxed resize-y pr-10"
-                  context={{
-                    purpose: step.actionType === 'email' ? 'email outreach' : 'message LinkedIn',
-                    data: { step_type: step.actionType, candidate: preview?.candidateName },
-                    tone: 'casual',
-                  }}
-                  placeholder="Tapez /ai pour générer ou améliorer le message"
-                />
+                <>
+                  <Label htmlFor={`${fieldId}-message`} className="text-xs text-muted-foreground">Message</Label>
+                  <AiTextarea
+                    id={`${fieldId}-message`}
+                    value={message.replace(/<[^>]+>/g, '')}
+                    onChange={e => onEditMessage('message', e.target.value)}
+                    className="min-h-36 resize-y pr-10 text-sm leading-relaxed"
+                    context={{
+                      purpose: step.actionType === 'email' ? 'email outreach' : 'message LinkedIn',
+                      data: { step_type: step.actionType, candidate: candidateName },
+                      tone: 'casual',
+                    }}
+                    placeholder="Tapez /ai pour générer ou améliorer le message"
+                  />
+                </>
               ) : (
-                <div className="text-[13.5px] leading-relaxed text-foreground/90 whitespace-pre-wrap font-sans">
-                  {renderSendTimeVariables((preview?.message || '').replace(/<br\s*\/?>/gi, '\n'))}
-                </div>
+                <>
+                  {step.actionType === 'email' && <p className="eyebrow">Message</p>}
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                    {renderSendTimeVariables((preview?.message || '').replace(/<br\s*\/?>/gi, '\n'))}
+                  </p>
+                </>
               )}
             </div>
             {preview?.personalizationPoints && preview.personalizationPoints.length > 0 && (
-              <div className="pt-3 border-t border-border/60">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Sparkles className="w-3 h-3 text-brand-purple" />
-                  <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70">
-                    Points de personnalisation
-                  </p>
-                </div>
-                <div className="space-y-1.5">
+              <div className="border-t border-border pt-3">
+                <p className="eyebrow mb-2">Points de personnalisation</p>
+                <ol className="list-decimal space-y-1 pl-4 text-xs leading-relaxed text-foreground-secondary">
                   {preview.personalizationPoints.map((pt, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-2 px-3 py-2 rounded-lg bg-brand-purple/[0.04] border border-brand-purple/15 text-[12px] leading-relaxed text-foreground/85"
-                    >
-                      <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-brand-purple/15 text-brand-purple text-[10px] font-bold shrink-0 mt-0.5">
-                        {i + 1}
-                      </span>
-                      <span>{pt}</span>
-                    </div>
+                    <li key={i}>{pt}</li>
                   ))}
-                </div>
+                </ol>
               </div>
             )}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={onGenerate}
-            className="w-full py-5 px-4 flex flex-col items-center gap-2 rounded-md text-muted-foreground hover:text-foreground border-2 border-dashed border-border hover:border-brand-purple/40 hover:bg-brand-purple/5 transition-all group"
-          >
-            {step.useAiPersonalization ? (
-              <>
-                <Sparkles className="w-5 h-5 group-hover:text-brand-purple transition-colors" />
-                <span className="text-[12px] font-medium">Générer l'aperçu de ce message</span>
-                <span className="text-[10px] text-muted-foreground/70">~{estimateActionCredits('outreach_message')} crédits</span>
-              </>
-            ) : (
-              <>
-                <Eye className="w-5 h-5" />
-                <span className="text-[12px] font-medium">Voir l'aperçu (gratuit)</span>
-              </>
-            )}
-          </button>
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-5 text-center">
+            <p className="text-sm text-muted-foreground">Aperçu pas encore généré pour ce candidat.</p>
+            <Button variant="outline" size="sm" onClick={onGenerate} className="max-md:h-11">
+              {step.useAiPersonalization ? "Générer l'aperçu de ce message" : "Voir l'aperçu (gratuit)"}
+            </Button>
+            {/* Coût annoncé seulement pour une étape personnalisée par l'IA. */}
+            {step.useAiPersonalization && <p className="text-xs text-muted-foreground">{cost}</p>}
+          </div>
         )}
       </div>
-      </motion.div>
+
       <AlertDialog open={confirmRegenerate} onOpenChange={setConfirmRegenerate}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1850,34 +1789,21 @@ function MessageStepCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </article>
   );
 }
 
 function SummaryMode({
-  profiles, activeProfiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, isBulk,
-  onSwitchToPreview, isEnrolling, isBusy, enrollProgress, sendingAccount, duplicatesUnchecked, firstAction,
-  onEnroll, onShortlist, onClose, jobId,
+  activeProfiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, firstAction, onSwitchToPreview,
 }: {
-  profiles: LinkedInProfile[];
   activeProfiles: LinkedInProfile[];
   steps: SequenceStepPreview[];
   candidateAnalysis: { total: number; withEmail: number; withoutEmail: number; withPhone: number; withoutPhone: number };
   estimatedCredits: number;
   hasAiSteps: boolean;
   hasMessageSteps: boolean;
-  isBulk: boolean;
-  onSwitchToPreview: () => void;
-  isEnrolling: boolean;
-  isBusy: boolean;
-  enrollProgress: { done: number; total: number } | null;
-  sendingAccount: SendingAccountState;
-  duplicatesUnchecked: boolean;
   firstAction: string | null;
-  onEnroll: () => void;
-  onShortlist: () => void;
-  onClose: () => void;
-  jobId?: string;
+  onSwitchToPreview: () => void;
 }) {
   // Canaux fermés (D2) : leurs étapes sont sautées même avec une adresse ou
   // un numéro, donc aucun appel à l'enrichissement payant, un seul avis. Les
@@ -1887,308 +1813,224 @@ function SummaryMode({
   const closedChannels = CLOSED_CHANNEL_ACTION_TYPES
     .filter(t => steps.some(s => s.actionType === t))
     .map(t => (t === 'email' ? 'e-mail' : 'WhatsApp'));
+  const stepsTitleId = useId();
 
   return (
-    <div className="max-w-xl mx-auto p-6 sm:p-8 space-y-6">
-      {/* Hero icon konekt-skalr-bg + animation pour cohérence avec V2 */}
-      <motion.div
-        className="text-center space-y-3"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <motion.div
-          className="w-14 h-14 mx-auto rounded-xl konekt-skalr-bg konekt-shine flex items-center justify-center shadow-lg"
-          initial={{ scale: 0, rotate: -10 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ delay: 0.1, type: 'spring', stiffness: 180, damping: 14 }}
-        >
-          <GitBranch className="w-7 h-7 text-white" strokeWidth={2.5} />
-        </motion.div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">
-            Récapitulatif
-          </p>
-          <h3 className="font-display text-xl font-bold">Avant l'inscription</h3>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            <strong className="text-foreground">{activeProfiles.length}</strong> candidat{activeProfiles.length > 1 ? 's' : ''} sélectionné{activeProfiles.length > 1 ? 's' : ''} pour <strong className="text-foreground">{steps.length} étape{steps.length > 1 ? 's' : ''}</strong> de séquence
-          </p>
-        </div>
-      </motion.div>
+    <div className="mx-auto max-w-xl space-y-6 p-4 sm:p-8">
+      <div className="space-y-1 text-center">
+        <p className="eyebrow">Récapitulatif</p>
+        <h3 className="text-lg font-semibold text-foreground">Avant l'inscription</h3>
+        <p className="text-sm text-foreground-secondary">
+          {plural(activeProfiles.length, 'candidat sélectionné', 'candidats sélectionnés')} pour une séquence de {plural(steps.length, 'étape')}
+        </p>
+      </div>
 
       {firstAction && (
-        <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-border bg-muted/20 text-[12.5px] text-foreground">
-          <CalendarClock className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true" />
+        <p className="flex items-start gap-2 rounded-xl border border-border px-3 py-2.5 text-sm text-foreground">
+          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span>{firstAction}</span>
-        </div>
+        </p>
       )}
 
       {closedChannels.length > 0 && (
-        <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-warning/30 bg-warning/5 text-[12px] text-foreground" role="note">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-warning" aria-hidden="true" />
+        <p role="note" className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-muted px-3 py-2.5 text-sm text-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
           <span>Les étapes {closedChannels.join(' et ')} ne partent pas encore : elles seront sautées.</span>
+        </p>
+      )}
+
+      <ul className="divide-y divide-border rounded-xl border border-border">
+        <SummaryRow channel="linkedin" label="Joignables sur LinkedIn" count={activeProfiles.length} />
+        {candidateAnalysis.withEmail > 0 && (
+          <SummaryRow channel="email" label="Avec une adresse e-mail" count={candidateAnalysis.withEmail} />
+        )}
+      </ul>
+
+      {candidateAnalysis.withoutEmail > 0 && emailSteps.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-warning/25 bg-warning-muted p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              {plural(candidateAnalysis.withoutEmail, 'candidat')} sans adresse e-mail
+            </p>
+            <BulkEnrichButton profiles={activeProfiles.filter(p => !(p.contact_info?.emails?.[0]))} />
+          </div>
+          <p className="text-xs text-foreground-secondary">
+            Leurs étapes e-mail seront ignorées. Enrichissez leurs coordonnées maintenant pour qu'ils reçoivent les e-mails de la séquence.
+          </p>
+        </div>
+      )}
+      {candidateAnalysis.withoutPhone > 0 && whatsappSteps.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-warning/25 bg-warning-muted p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              {plural(candidateAnalysis.withoutPhone, 'candidat')} sans téléphone
+            </p>
+            <BulkEnrichButton profiles={activeProfiles.filter(p => !(p.contact_info?.phones?.[0]))} />
+          </div>
+          <p className="text-xs text-foreground-secondary">
+            Leurs messages WhatsApp seront ignorés. L'enrichissement du numéro coûte 10 crédits par profil.
+          </p>
         </div>
       )}
 
-      <div className="space-y-2">
-        <SummaryRow icon={CheckCircle} color="text-success-foreground" label="Candidats avec LinkedIn" count={activeProfiles.length} />
-        {candidateAnalysis.withEmail > 0 && (
-          <SummaryRow icon={Mail} color="text-info-foreground" label="Avec e-mail" count={candidateAnalysis.withEmail} />
-        )}
-        {candidateAnalysis.withoutEmail > 0 && emailSteps.length > 0 && (
-          <div className="bg-warning/5 border border-warning/30 rounded-lg p-2.5 space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <SummaryRow icon={AlertTriangle} color="text-warning-foreground" label="Sans e-mail (étapes e-mail sautées)" count={candidateAnalysis.withoutEmail} />
-              <BulkEnrichButton
-                profiles={activeProfiles.filter(p => !(p.contact_info?.emails?.[0]))}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground pl-1">
-              Enrichissez maintenant pour que ces candidats reçoivent les e-mails de la séquence.
-              Sans adresse, leurs étapes e-mail seront sautées.
-            </p>
-          </div>
-        )}
-        {candidateAnalysis.withoutPhone > 0 && whatsappSteps.length > 0 && (
-          <div className="bg-warning/5 border border-warning/30 rounded-lg p-2.5 space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <SummaryRow icon={AlertTriangle} color="text-warning-foreground" label="Sans téléphone (étapes WhatsApp sautées)" count={candidateAnalysis.withoutPhone} />
-              <BulkEnrichButton
-                profiles={activeProfiles.filter(p => !(p.contact_info?.phones?.[0]))}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground pl-1">
-              Enrichissez avec le téléphone (10 crédits par candidat) pour que les étapes WhatsApp partent.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <div className="border border-border rounded-lg overflow-hidden">
-        <div className="px-3 py-2 bg-muted/30 border-b border-border">
-          <span className="text-[11px] font-medium">Séquence — {steps.length} étapes</span>
-        </div>
-        <div className="p-2 space-y-1">
+      <section className="rounded-xl border border-border" aria-labelledby={stepsTitleId}>
+        <h4 id={stepsTitleId} className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+          Étapes de la séquence
+        </h4>
+        <ol className="space-y-0.5 p-2">
           {steps.slice(0, 6).map((step, i) => {
-            const Icon = ACTION_ICONS[step.actionType] || MessageSquare;
+            const delay = delayLabel(step.delayDays, step.delayHours, step.delayMinutes);
             return (
-              <div key={step.stepId} className="flex items-center gap-2 px-2 py-1.5 text-xs">
-                <span className="text-[10px] text-muted-foreground tabular-nums w-4">#{i + 1}</span>
-                <Icon className="w-3 h-3 text-muted-foreground" />
-                <span>{stepTypeLabel(step.actionType)}</span>
-                {step.useAiPersonalization && <Sparkles className="w-2.5 h-2.5 text-warning" />}
-                {(step.delayDays || step.delayHours) ? (
-                  <span className="text-[10px] text-muted-foreground ml-auto">
-                    +{step.delayDays ? `${step.delayDays}j` : ''}{step.delayHours ? `${step.delayHours}h` : ''}
-                  </span>
-                ) : null}
-              </div>
+              <li key={step.stepId} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm">
+                <StepNumber index={i} />
+                <SequenceActionLabel type={step.actionType} className="text-foreground" />
+                {step.useAiPersonalization && step.actionType !== 'smart_message' && (
+                  <Badge variant="muted" className="px-1.5 py-0 text-3xs">IA</Badge>
+                )}
+                {delay && <span className="ml-auto text-xs tabular-nums text-muted-foreground">{delay}</span>}
+              </li>
             );
           })}
-          {steps.length > 6 && (
-            <p className="text-[10px] text-muted-foreground text-center py-1">
-              +{steps.length - 6} autres étapes
-            </p>
-          )}
-        </div>
-      </div>
-
-      {hasAiSteps && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-brand-purple/5 border border-brand-purple/20 rounded-xl text-xs text-foreground">
-          <Sparkles className="w-3.5 h-3.5 shrink-0 text-brand-purple" />
-          <span>
-            Estimation : <strong className="tabular-nums">~{estimatedCredits} crédits IA</strong>
-            {' '}({hasMessageSteps ? 'personnalisation' : 'génération'})
-          </span>
-        </div>
-      )}
-
-      {/* 3-button footer avec hierarchy claire et CTA hero skalr */}
-      <div className="flex flex-col gap-2 pt-2">
-        {hasMessageSteps && (
-          <button
-            type="button"
-            onClick={onSwitchToPreview}
-            className="w-full h-10 inline-flex items-center justify-center gap-2 text-[12px] font-medium rounded-full border border-border bg-background hover:bg-accent transition-colors"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            Ouvrir les aperçus des messages
-          </button>
-        )}
-        <SendingAccountNotice state={sendingAccount} />
-        {isEnrolling && (
-          <p className="text-[11px] text-muted-foreground text-center" role="status">
-            Inscription en cours, ne fermez pas cette fenêtre.
+        </ol>
+        {steps.length > 6 && (
+          <p className="px-4 pb-3 text-xs text-muted-foreground">
+            et {plural(steps.length - 6, 'autre étape', 'autres étapes')}
           </p>
         )}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isBusy}
-            className="sm:flex-1 h-9 text-[12px] text-muted-foreground hover:text-foreground transition-colors rounded-full disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Annuler
-          </button>
-          {jobId && (
-            <button
-              type="button"
-              onClick={onShortlist}
-              disabled={isBusy || activeProfiles.length === 0}
-              className="sm:flex-1 h-9 inline-flex items-center justify-center gap-1.5 text-[12px] font-medium rounded-full border border-border bg-background hover:bg-accent disabled:opacity-50 transition-colors"
-            >
-              <ListChecks className="w-3.5 h-3.5" />
-              Ajouter à la shortlist sans message
-            </button>
-          )}
-          <motion.button
-            type="button"
-            onClick={onEnroll}
-            disabled={isBusy || activeProfiles.length === 0 || duplicatesUnchecked || !!sendingAccount.blockReason}
-            whileHover={{ scale: isBusy ? 1 : 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="sm:flex-1 h-10 inline-flex items-center justify-center gap-2 text-[12px] font-bold rounded-full text-white konekt-skalr-bg konekt-shine konekt-glow disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
-          >
-            {isEnrolling ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {enrollProgressLabel(enrollProgress)}
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" strokeWidth={2.5} />
-                Inscrire {activeProfiles.length} candidat{activeProfiles.length > 1 ? 's' : ''}
-              </>
-            )}
-          </motion.button>
-        </div>
-      </div>
+      </section>
+
+      {hasAiSteps && (
+        <p className="flex items-start gap-2 rounded-xl border border-border px-3 py-2.5 text-sm text-foreground-secondary">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span>
+            Coût estimé de la personnalisation par l'IA :{' '}
+            <strong className="font-semibold tabular-nums text-foreground">{creditsLabel(estimatedCredits)}</strong>.
+          </span>
+        </p>
+      )}
+
+      {hasMessageSteps && (
+        <Button variant="outline" className="w-full max-md:h-11" onClick={onSwitchToPreview}>
+          Voir les aperçus des messages
+        </Button>
+      )}
     </div>
   );
 }
 
-function SummaryRow({ icon: Icon, color, label, count }: { icon: typeof Mail; color: string; label: string; count: number }) {
+function SummaryRow({ channel, label, count }: { channel: 'linkedin' | 'email'; label: string; count: number }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2 bg-muted/20 rounded-lg">
-      <Icon className={cn("w-4 h-4 shrink-0", color)} />
-      <span className="text-sm flex-1">{label}</span>
-      <span className="text-sm font-semibold tabular-nums">{count}</span>
-    </div>
+    <li className="flex items-center gap-3 px-4 py-2.5">
+      <ChannelIcon channel={channel} size="sm" decorative />
+      <span className="flex-1 text-sm text-foreground">{label}</span>
+      <span className="text-sm font-semibold tabular-nums text-foreground">{count}</span>
+    </li>
   );
 }
 
 function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollResults; firstAction: string | null; onClose: () => void }) {
   // Icône, couleur et titre selon le bilan : jamais de coche verte quand
   // personne n'a été inscrit, jamais de succès plein sur un échec partiel.
-  const attempted = results.success + results.errors.length;
+  const failed = results.errors.length;
+  const attempted = results.success + failed;
   const outcome: 'success' | 'partial' | 'failure' | 'none' =
-    results.success > 0 && results.errors.length === 0 ? 'success'
+    results.success > 0 && failed === 0 ? 'success'
       : results.success > 0 ? 'partial'
-      : results.errors.length > 0 ? 'failure'
+      : failed > 0 ? 'failure'
       : 'none';
-  const plural = (n: number) => (n > 1 ? 's' : '');
+  const inscribed = plural(results.success, 'candidat inscrit', 'candidats inscrits');
   const title = outcome === 'success'
-    ? `${results.success} candidat${plural(results.success)} inscrit${plural(results.success)}`
+    ? inscribed
     : outcome === 'partial'
-      ? `${results.success} candidat${plural(results.success)} inscrit${plural(results.success)} sur ${attempted}`
+      ? `${inscribed} sur ${attempted}`
       : outcome === 'failure'
         ? 'Aucun candidat inscrit'
         : 'Aucune nouvelle inscription';
+
   return (
-    <div className="max-w-md w-full text-center space-y-6">
-      <motion.div
+    <div className="w-full max-w-md space-y-5 text-center">
+      <span
         className={cn(
-          "w-20 h-20 mx-auto rounded-full border-2 flex items-center justify-center shadow-lg",
-          outcome === 'success' ? "bg-success/10 border-success/30"
-            : outcome === 'partial' ? "bg-warning/10 border-warning/30"
-            : outcome === 'failure' ? "bg-destructive/10 border-destructive/30"
-            : "bg-muted border-border",
+          'mx-auto grid h-12 w-12 place-items-center rounded-full',
+          outcome === 'success' ? 'bg-success-muted text-success'
+            : outcome === 'partial' ? 'bg-warning-muted text-warning'
+            : outcome === 'failure' ? 'bg-danger-muted text-danger'
+            : 'bg-muted text-muted-foreground',
         )}
-        initial={{ scale: 0, rotate: -90 }}
-        animate={{ scale: 1, rotate: 0 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+        aria-hidden="true"
       >
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.15, type: 'spring', stiffness: 220, damping: 16 }}
-        >
-          {outcome === 'success'
-            ? <CheckCircle className="w-10 h-10 text-success" strokeWidth={2.5} />
-            : outcome === 'partial'
-              ? <AlertTriangle className="w-10 h-10 text-warning" strokeWidth={2.5} />
-              : <AlertCircle className={cn("w-10 h-10", outcome === 'failure' ? "text-destructive" : "text-muted-foreground")} strokeWidth={2.5} />}
-        </motion.div>
-      </motion.div>
-      <motion.div
-        className="space-y-2"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25, duration: 0.3 }}
-      >
-        <h3 className="font-display text-xl font-bold">{title}</h3>
+        {outcome === 'success'
+          ? <CheckCircle2 className="h-6 w-6" />
+          : outcome === 'partial'
+            ? <AlertTriangle className="h-6 w-6" />
+            : outcome === 'failure' ? <AlertCircle className="h-6 w-6" /> : <Info className="h-6 w-6" />}
+      </span>
+      <div className="space-y-1.5" role="status">
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
         {results.success > 0 && firstAction && (
           <p className="text-sm text-muted-foreground">{firstAction}</p>
         )}
-        {results.errors.length > 0 && (
-          <div className="text-sm text-destructive text-left bg-destructive/5 rounded-xl border border-destructive/30 p-3 mt-3 space-y-1">
-            <p className="text-xs font-semibold">
-              {results.errors.length} inscription{plural(results.errors.length)} en échec
-            </p>
+      </div>
+      {failed > 0 && (
+        <div className="space-y-1.5 rounded-xl border border-danger/25 bg-danger-muted p-3 text-left">
+          <p className="text-sm font-medium text-foreground">
+            {plural(failed, 'inscription')} en échec
+          </p>
+          <ul className="space-y-0.5 text-xs text-foreground-secondary">
             {results.errors.map((err, i) => (
-              <p key={i} className="text-xs">{err}</p>
+              <li key={i}>{err}</li>
             ))}
-          </div>
-        )}
-        {results.skipped > 0 && (
-          <p className="text-sm text-muted-foreground flex items-center justify-center gap-1.5">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            {alreadyInSequenceLabel(results.skipped)}
+          </ul>
+          <p className="text-xs text-foreground-secondary">
+            Rouvrez la préparation pour relancer leur inscription : leurs aperçus sont conservés.
           </p>
-        )}
-        {results.alreadyPassed > 0 && (
-          <p className="text-sm text-muted-foreground flex items-start justify-center gap-1.5">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            {alreadyPassedLabel(results.alreadyPassed)}
-          </p>
-        )}
-        {results.samePerson.length > 0 && (
-          <div className="text-sm text-muted-foreground flex items-start justify-center gap-1.5">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p>{samePersonRefusedLabel(results.samePerson.length)}</p>
-              <p className="text-xs">{refusedCandidatesLabel(results.samePerson)}</p>
-            </div>
-          </div>
-        )}
-        {results.gdprErased.length > 0 && (
-          <div className="text-sm text-warning flex items-start justify-center gap-1.5">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p>{gdprErasedEnrollLabel(results.gdprErased.length)}</p>
-              <p className="text-xs">{refusedCandidatesLabel(results.gdprErased)}</p>
-            </div>
-          </div>
-        )}
-        {results.formerPassages > 0 && (
-          <p role="note" className="text-sm text-warning flex items-start justify-center gap-1.5">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            {formerPassageLabel(results.formerPassages)}
-          </p>
-        )}
-      </motion.div>
-      <motion.button
-        type="button"
-        onClick={onClose}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.25 }}
-        className="h-9 px-5 inline-flex items-center justify-center gap-1.5 text-[12px] font-bold rounded-full text-white konekt-skalr-bg konekt-shine konekt-glow shadow-md"
-      >
+        </div>
+      )}
+      {(results.skipped > 0 || results.alreadyPassed > 0 || results.samePerson.length > 0 || results.gdprErased.length > 0 || results.formerPassages > 0) && (
+        <ul className="space-y-2 text-left text-sm">
+          {results.skipped > 0 && (
+            <li className="flex items-start gap-2 text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{alreadyInSequenceLabel(results.skipped)}</span>
+            </li>
+          )}
+          {results.alreadyPassed > 0 && (
+            <li className="flex items-start gap-2 text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{alreadyPassedLabel(results.alreadyPassed)}</span>
+            </li>
+          )}
+          {results.samePerson.length > 0 && (
+            <li className="flex items-start gap-2 text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block">{samePersonRefusedLabel(results.samePerson.length)}</span>
+                <span className="block text-xs">{refusedCandidatesLabel(results.samePerson)}</span>
+              </span>
+            </li>
+          )}
+          {results.gdprErased.length > 0 && (
+            <li className="flex items-start gap-2 text-foreground">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block">{gdprErasedEnrollLabel(results.gdprErased.length)}</span>
+                <span className="block text-xs text-foreground-secondary">{refusedCandidatesLabel(results.gdprErased)}</span>
+              </span>
+            </li>
+          )}
+          {results.formerPassages > 0 && (
+            <li className="flex items-start gap-2 text-foreground">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <span role="note">{formerPassageLabel(results.formerPassages)}</span>
+            </li>
+          )}
+        </ul>
+      )}
+      <Button variant="primary" onClick={onClose} autoFocus>
         Fermer
-      </motion.button>
+      </Button>
     </div>
   );
 }
@@ -2196,16 +2038,16 @@ function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollR
 function PreviewPanelFallback({ hasProfiles }: { hasProfiles: boolean }) {
   if (!hasProfiles) {
     return (
-      <div className="max-w-2xl mx-auto py-12 text-center text-sm text-muted-foreground">
-        Aucun candidat sélectionné.
-      </div>
+      <p className="py-12 text-center text-sm text-muted-foreground">
+        Aucun candidat dans la sélection.
+      </p>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      <div className="flex items-center gap-3 pb-4 border-b border-border">
-        <Skeleton className="w-10 h-10 rounded-full" />
+    <div className="space-y-4" aria-hidden="true">
+      <div className="flex items-center gap-3 border-b border-border pb-4">
+        <Skeleton className="h-10 w-10 rounded-full" />
         <div className="flex-1 space-y-2">
           <Skeleton className="h-4 w-40" />
           <Skeleton className="h-3 w-64 max-w-full" />
@@ -2213,11 +2055,11 @@ function PreviewPanelFallback({ hasProfiles }: { hasProfiles: boolean }) {
       </div>
 
       {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="rounded-lg border border-border overflow-hidden">
-          <div className="px-3 py-2 border-b border-border bg-muted/20">
+        <div key={index} className="overflow-hidden rounded-xl border border-border">
+          <div className="border-b border-border px-3 py-2">
             <Skeleton className="h-3 w-32" />
           </div>
-          <div className="px-3 py-3 space-y-2 bg-background">
+          <div className="space-y-2 px-3 py-3">
             <Skeleton className="h-4 w-3/4" />
             <Skeleton className="h-3 w-full" />
             <Skeleton className="h-3 w-5/6" />

@@ -71,7 +71,11 @@ test('SEQ-122 / SEQ-232 — la suppression dit ce qu’elle efface, séquence pa
   assert.match(list, /Cette séquence est partagée entre toutes vos missions : elle disparaîtra partout/);
   assert.match(list, /const shared = !deleteTarget\.project_id;/);
   assert.doesNotMatch(list, /✨ Template/);
-  assert.equal((list.match(/Partagée entre missions/g) || []).length, 2, 'badge desktop et mobile');
+  // Revue design : une seule ligne responsive par séquence, un seul badge ; plus de
+  // copie séparée pour téléphone.
+  assert.equal((list.match(/Partagée entre missions/g) || []).length, 1, 'badge de la ligne unique');
+  assert.equal((list.match(/filteredSequences\.map\(/g) || []).length, 1, 'une seule liste de lignes');
+  assert.doesNotMatch(list, /key=\{`mobile-|sm:hidden/, 'plus de copie pour téléphone');
 });
 
 // ---------------------------------------------------------------- SEQ-147
@@ -145,13 +149,16 @@ test('SEQ-162 — raisons et erreurs du moteur traduites dans le panneau', () =>
 // ---------------------------------------------------------------- SEQ-164
 test('SEQ-164 — un échec de chargement affiche une erreur et « Réessayer », jamais l’accueil', () => {
   assert.match(list, /const \[loadError, setLoadError\] = useState\(false\);/);
-  assert.match(list, /Impossible de charger vos séquences\. Vérifiez votre connexion puis réessayez\./);
-  assert.match(list, /\{loadError && sequences\.length === 0 \? \(/);
+  // Revue design : la phrase est répartie entre le titre et la description de l'état
+  // d'erreur du socle, dont le bouton « Réessayer » relance le chargement.
+  assert.match(list, /\{loadError && sequences\.length === 0 \? \(\s*<ErrorState\s+title="Impossible de charger vos séquences"\s+description="Vérifiez votre connexion puis réessayez\.[^"]*"[^>]*onRetry=\{handleRetry\}/);
   assert.match(list, /Impossible de charger le détail des séquences\./);
   assert.doesNotMatch(list, /const \{ data: stepsData \} = await/);
   assert.doesNotMatch(list, /const \{ data: enrollData \} = await/);
-  assert.match(list, /detailError\.counts \? '—' : String\(n\)/);
-  assert.match(list, /Aucune séquence ne correspond à « \{searchQuery\} »\./);
+  // Revue design : pas de tiret long visible, le compteur indisponible s'écrit « – ».
+  assert.match(list, /detailError\.counts \? '–' : String\(n\)/);
+  // Revue design : recherche sans résultat dans l'état vide du socle.
+  assert.match(list, /title=\{`Aucune séquence ne correspond à « \$\{searchQuery\.trim\(\)\} »`\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-165
@@ -247,7 +254,12 @@ test('SEQ-177 — bandeau Go : vrai comptage et bouton qui ouvre la création', 
 
 test('SEQ-178 — l’onglet Contact montre le chemin pour inscrire des candidats', () => {
   assert.match(list, /navigate\(`\/missions\/\$\{projectId\}\?tab=sourcing`\)/);
-  assert.ok((list.match(/Inscrire des candidats/g) || []).length >= 3, 'lien desktop, lien mobile et action du toast de création');
+  // Revue design : une seule ligne responsive par séquence, donc un seul lien de
+  // ligne (plus de copie séparée pour téléphone), plus l'action du toast de création.
+  assert.ok((list.match(/Inscrire des candidats/g) || []).length >= 2, 'lien de la ligne et action du toast de création');
+  assert.match(list, /onClick=\{goToSourcing\}[^>]*>\s*Inscrire des candidats/, 'lien de la ligne vers le Sourcing');
+  assert.equal((list.match(/filteredSequences\.map\(/g) || []).length, 1, 'une seule liste de lignes');
+  assert.doesNotMatch(list, /key=\{`mobile-|sm:hidden/, 'plus de copie pour téléphone');
   assert.match(list, /Ensuite, sélectionnez vos candidats dans l’onglet Sourcing et cliquez sur Séquence\./);
 });
 
@@ -263,12 +275,17 @@ test('SEQ-179 — les envois bloqués sont signalés dans la liste, par cause', 
 
 // ---------------------------------------------------------------- SEQ-239 / SEQ-240
 test('SEQ-239 / SEQ-240 — actions mobiles complètes et noms accessibles', () => {
-  assert.equal((list.match(/handleDuplicate\(seq\);/g) || []).length, 2, 'Dupliquer sur desktop et mobile');
-  assert.equal((list.match(/setSaveTemplateSeq\(seq\);/g) || []).length, 2, 'Enregistrer comme modèle sur desktop et mobile');
+  // Revue design : une seule ligne responsive par séquence, avec un seul menu complet
+  // pour le téléphone et l'ordinateur (plus de copie séparée pour téléphone).
+  assert.equal((list.match(/filteredSequences\.map\(/g) || []).length, 1, 'une seule liste de lignes');
+  assert.doesNotMatch(list, /key=\{`mobile-|sm:hidden/, 'plus de copie pour téléphone');
+  assert.equal((list.match(/handleDuplicate\(seq\);/g) || []).length, 1, 'Dupliquer dans le menu unique');
+  assert.equal((list.match(/setSaveTemplateSeq\(seq\);/g) || []).length, 1, 'Enregistrer comme modèle dans le menu unique');
+  assert.equal((list.match(/setAnalyticsSequence\(seq\);/g) || []).length, 1, 'Statistiques dans le menu unique');
   assert.doesNotMatch(list, /scale-90/);
   assert.match(list, /<div className="text-center">Créée<\/div>/);
   assert.doesNotMatch(list, /addSuffix: false/);
-  assert.equal((list.match(/aria-label=\{seq\.is_active \? `Mettre en pause la séquence \$\{seq\.name\}` : `Activer la séquence \$\{seq\.name\}`\}/g) || []).length, 2);
+  assert.equal((list.match(/aria-label=\{seq\.is_active \? `Mettre en pause la séquence \$\{seq\.name\}` : `Activer la séquence \$\{seq\.name\}`\}/g) || []).length, 1);
   assert.match(list, /aria-label=\{`Voir les statistiques de la séquence \$\{seq\.name\}`\}/);
   assert.match(panel, /aria-label=\{`Voir le profil LinkedIn de \$\{enrollment\.profile_name \|\| 'ce candidat'\}`\}/);
 });

@@ -2,6 +2,7 @@
 // (sequence-send-email, process-sequences) vers du français user-facing.
 // Le but est de masquer les noms de fournisseurs (Unipile, Microsoft Graph,
 // Anthropic, etc.) qui ne doivent jamais apparaître côté utilisateur.
+// Vouvoiement, deux-points plutôt que tiret long (revue design D-59, D-71).
 //
 // Ce module porte aussi le vocabulaire du suivi des séquences (statuts
 // d'exécution, types d'action, raisons de saut, taux de réponse, résultats
@@ -9,14 +10,14 @@
 // inscrits et les statistiques. Il reste sans import pour être testé tel quel.
 
 const ERROR_CODE_LABELS: Record<string, string> = {
-  email_provider_not_configured: "Compte e-mail non connecté à Konekt",
-  email_send_failed: "Échec de l'envoi (service d'envoi e-mail indisponible)",
-  no_email_method_available: "Aucun moyen d'envoyer l'e-mail",
-  rate_limit: "Limite du service d'envoi atteinte, réessayez plus tard",
-  unauthorized: "Accès au service d'envoi expiré, reconnectez le compte",
+  email_provider_not_configured: "Aucune boîte e-mail reliée à Konekt",
+  email_send_failed: "Échec de l'envoi de l'e-mail : service d'envoi indisponible",
+  no_email_method_available: "Aucun moyen d'envoyer l'e-mail : reliez une boîte d'envoi",
+  rate_limit: "Limite d'envois atteinte : réessayez plus tard",
+  unauthorized: "Connexion du compte expirée : reconnectez-le",
   not_found: "Destinataire introuvable",
-  internal_error: "Erreur interne",
-  suppression_check_failed: "Vérification de désinscription impossible, envoi reporté",
+  internal_error: "Erreur inattendue pendant l'envoi",
+  suppression_check_failed: "Liste de désinscription non vérifiée : envoi reporté",
   // Codes du moteur (SEQ-005). Seuls, sans la phrase française qui les suit
   // d'ordinaire (« code: phrase »).
   send_uncertain: 'Envoi incertain : vérifiez la conversation avant de relancer',
@@ -158,8 +159,8 @@ export function formatSequenceError(error: string | null | undefined): string {
   const linkedinMatch = error.match(/^linkedin_send_failed_(\d+)/);
   if (linkedinMatch) {
     const code = linkedinMatch[1];
-    if (code === '429') return 'Limite LinkedIn atteinte, les envois sont ralentis';
-    if (code === '401' || code === '403') return 'Compte LinkedIn déconnecté, reconnectez-le';
+    if (code === '429') return "Limite LinkedIn atteinte : envois ralentis";
+    if (code === '401' || code === '403') return "Compte LinkedIn déconnecté : reconnectez-le";
     return "Échec de l'envoi LinkedIn";
   }
   // whatsapp_send_failed_<status_code>[: body]
@@ -169,7 +170,7 @@ export function formatSequenceError(error: string | null | undefined): string {
   // `Invite <status>: <body>` (envoi d'invitation refusé par le provider)
   const inviteMatch = error.match(/^Invite (\d+)/);
   if (inviteMatch) {
-    if (inviteMatch[1] === '429') return "Limite d'invitations LinkedIn atteinte, les envois sont ralentis";
+    if (inviteMatch[1] === '429') return "Limite d'invitations LinkedIn atteinte : envois ralentis";
     return "Échec de l'envoi de l'invitation LinkedIn";
   }
   // `Profile visit <status>: <body>`
@@ -183,7 +184,7 @@ export function formatSequenceError(error: string | null | undefined): string {
   // `Account status: CREDENTIALS|ERROR|...`
   const accountStatusMatch = error.match(/^Account status:\s*(\w+)/);
   if (accountStatusMatch) {
-    return "Compte LinkedIn à reconnecter (envoi en pause)";
+    return "Compte LinkedIn à reconnecter : envois en pause";
   }
   // `no_email: ...`
   if (/^no_email/.test(error)) {
@@ -191,25 +192,25 @@ export function formatSequenceError(error: string | null | undefined): string {
   }
   // Limites dures fournisseur
   if (/limit_exceeded|cannot_resend_yet|cannot_resend_within_24hrs/i.test(error)) {
-    return "Limite LinkedIn atteinte, envoi en pause jusqu'à demain";
+    return "Limite LinkedIn atteinte : envois en pause jusqu'à demain";
   }
   // Message du nettoyage (déjà en français) : envoi peut-être parti.
   if (/^Interrompu pendant l'envoi/.test(error)) {
     return "Interrompu pendant l'envoi : pas de nouvel essai automatique, pour éviter un doublon";
   }
   if (/^Failed after 3 retries/.test(error)) {
-    return "Échec après 3 tentatives, action abandonnée";
+    return "Échec après 3 tentatives : étape abandonnée";
   }
   // Solde InMail épuisé (message moteur déjà FR mais avec détails techniques)
   if (/Quota InMail épuisé/i.test(error)) {
     return "Crédits InMail épuisés : rechargez-les ou changez de mode d'envoi";
   }
   if (/InMail balance check/i.test(error)) {
-    return "Vérification des crédits InMail impossible, envoi reporté";
+    return "Crédits InMail non vérifiés : envoi reporté";
   }
   // Timeout IA
   if (/API timeout/i.test(error)) {
-    return "Génération IA trop lente, nouvel essai au prochain passage";
+    return "Rédaction par l'IA trop lente : nouvel essai au prochain passage";
   }
 
   // JSON-encoded errors : extraire un champ lisible (vendor-strippé —
@@ -654,8 +655,6 @@ export interface ResumeSummary {
 
 const ACCOUNT_UNLINKED_MESSAGE = "Ce compte LinkedIn n'est plus relié. Reliez-le avant de reprendre la séquence.";
 
-const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
-
 /** Message à afficher après une reprise, d'après le résultat réel de chaque inscription. */
 export function summarizeResumeResponse(response: ResumeResponse | null | undefined, candidateName?: string | null): ResumeSummary {
   const counts: ResumeCounts = { resumed: 0, nothing_to_resume: 0, account_unlinked: 0, not_paused: 0, error: 0 };
@@ -701,9 +700,10 @@ export function summarizeResumeResponse(response: ResumeResponse | null | undefi
     return { tone: 'error', message: detail || 'La reprise a échoué. Réessayez.', resumed: 0 };
   }
 
-  const parts = [plural(counts.resumed, 'séquence reprise', 'séquences reprises')];
-  if (counts.nothing_to_resume) parts.push(plural(counts.nothing_to_resume, 'déjà terminée', 'déjà terminées'));
-  if (counts.not_paused) parts.push(plural(counts.not_paused, "qui n'était plus en pause", "qui n'étaient plus en pause"));
+  // Accords écrits sur place : ce module reste sans import (les tests le chargent seul), et D-71 veut une seule fonction de pluriel.
+  const parts = [`${counts.resumed} ${counts.resumed > 1 ? 'séquences reprises' : 'séquence reprise'}`];
+  if (counts.nothing_to_resume) parts.push(`${counts.nothing_to_resume} ${counts.nothing_to_resume > 1 ? 'déjà terminées' : 'déjà terminée'}`);
+  if (counts.not_paused) parts.push(`${counts.not_paused} ${counts.not_paused > 1 ? "qui n'étaient plus en pause" : "qui n'était plus en pause"}`);
   if (counts.account_unlinked) parts.push(`${counts.account_unlinked} bloquée${counts.account_unlinked > 1 ? 's' : ''} : compte LinkedIn non relié`);
   if (counts.error) parts.push(`${counts.error} en erreur`);
   return { tone: counts.resumed > 0 ? 'info' : 'error', message: parts.join(', '), resumed: counts.resumed };

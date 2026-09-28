@@ -212,8 +212,12 @@ test('front-editor-list-2 — « Dupliquer » réservé aux séquences de mon or
   const { handleDuplicate, seq, calls } = duplicateHarness({ manage: false });
   await handleDuplicate(seq);
   assert.equal(calls.length, 0, 'aucune lecture ni copie pour une séquence d’une autre organisation');
-  // Les deux entrées de menu (bureau et mobile) sont sous canManage.
-  assert.equal((list.match(/\{canManage\(seq\) && \(\s*<DropdownMenuItem disabled=\{!!duplicatingId\} onClick=\{\(e\) => \{ e\.stopPropagation\(\); handleDuplicate\(seq\); \}\}>/g) || []).length, 2);
+  // Revue design : une seule ligne responsive par séquence, donc une seule entrée de
+  // menu, sous canManage, pour le téléphone et l'ordinateur (plus de copie séparée pour téléphone).
+  assert.equal((list.match(/\{canManage\(seq\) && \(\s*<DropdownMenuItem disabled=\{!!duplicatingId\} onClick=\{\(e\) => \{ e\.stopPropagation\(\); handleDuplicate\(seq\); \}\}>/g) || []).length, 1);
+  assert.equal((list.match(/handleDuplicate\(seq\);/g) || []).length, 1, 'aucune autre entrée « Dupliquer »');
+  assert.equal((list.match(/filteredSequences\.map\(/g) || []).length, 1, 'une seule liste de lignes');
+  assert.doesNotMatch(list, /key=\{`mobile-|sm:hidden/, 'plus de copie pour téléphone');
 });
 
 test('engine-conditions-channels-14 — la copie d’une attente sans délai reçoit le délai par défaut', async () => {

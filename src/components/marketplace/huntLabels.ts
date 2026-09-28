@@ -61,3 +61,30 @@ export function formatDate(value: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('fr-FR');
 }
+
+type StatusBadgeVariant = 'muted' | 'outline' | 'info' | 'success' | 'warning' | 'danger';
+
+/** Couleur d'un statut de mission en mode chasse ; le libellé porte le sens, la couleur le soutient. */
+const HUNT_STATUS_VARIANTS: Record<string, StatusBadgeVariant> = {
+  draft: 'muted',
+  published: 'outline',
+  in_progress: 'info',
+  filled: 'success',
+  cancelled: 'danger',
+};
+
+const APPLICATION_STATUS_VARIANTS: Record<string, StatusBadgeVariant> = {
+  pending: 'warning',
+  accepted: 'success',
+  rejected: 'muted',
+  withdrawn: 'muted',
+  ended: 'muted',
+};
+
+export function huntStatusVariant(status: string | null | undefined): StatusBadgeVariant {
+  return HUNT_STATUS_VARIANTS[status ?? 'draft'] ?? 'muted';
+}
+
+export function applicationStatusVariant(status: string | null | undefined): StatusBadgeVariant {
+  return (status && APPLICATION_STATUS_VARIANTS[status]) || 'muted';
+}

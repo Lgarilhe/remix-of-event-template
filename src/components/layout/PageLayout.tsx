@@ -5,7 +5,7 @@
  * - padding vertical (py-6 pb-8)
  * - max-width (1600px default, override possible)
  * - padding horizontal responsive (px-3 sm:px-6 lg:px-8)
- * - animate-in fade pour transitions douces entre routes
+ * - pas d'animation propre : AppLayout anime déjà le changement de route (220 ms)
  */
 
 import React from 'react';
@@ -15,7 +15,7 @@ export interface PageLayoutProps {
   children: React.ReactNode;
   /** Max width du conteneur — défaut 1600px */
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
-  /** Désactive l'animation d'entrée (utile si contenu déjà animé) */
+  /** Conservé pour compatibilité : l'animation d'entrée est portée par AppLayout */
   noAnimation?: boolean;
   className?: string;
 }
@@ -32,11 +32,12 @@ const MAX_WIDTH_CLASSES: Record<NonNullable<PageLayoutProps['maxWidth']>, string
 export const PageLayout: React.FC<PageLayoutProps> = ({
   children,
   maxWidth = '2xl',
-  noAnimation = false,
+  noAnimation = true,
   className,
 }) => {
   return (
-    <div className="min-h-screen bg-background">
+    // flex-1 plutôt que min-h-screen : sous l'en-tête de 48 px, min-h-screen faisait défiler toute page courte.
+    <div className="flex-1 bg-background">
       <div className={cn('py-6 pb-8', !noAnimation && 'animate-in fade-in-0 slide-in-from-bottom-1 duration-300', className)}>
         <div className={cn(
           MAX_WIDTH_CLASSES[maxWidth],

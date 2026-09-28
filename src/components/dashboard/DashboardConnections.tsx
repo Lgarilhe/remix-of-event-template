@@ -1,197 +1,86 @@
 /**
- * DashboardConnections — état temps réel des canaux outreach.
+ * DashboardConnections — état des canaux d'envoi (LinkedIn, e-mail).
  *
- * 2 cartes compactes : LinkedIn / Email avec :
- * - Logo du canal (couleur de marque ou icon mono)
- * - Statut visuel (dot pulse coloré) : connected / connecting / error / disconnected
- * - Label (nom du compte ou identifier)
- * - Mini CTA "Reconnecter" si error/disconnected
- *
- * Si tout est connecté : header discret "Tous vos canaux sont actifs" + dot vert
- * Si problème : header tone destructive avec CTA pour aller dans Settings
- *
- * V2 anim : stagger entrance, status pulse animé, CTA hover lift.
+ * Une carte par canal : logo, nom, statut en texte avec un point de couleur,
+ * et une action visible quand le canal demande quelque chose (« Connecter »,
+ * « Reconnecter »). Pas d'animation : un statut se lit, il ne clignote pas.
  */
 
 import React from 'react';
-import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import { Mail, AlertTriangle, ArrowRight, Plug, CheckCircle2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Mail } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { ChannelConnection, ConnectionStatus } from '@/hooks/useDashboardConnections';
-import { LivePulse } from './LivePulse';
 
 interface DashboardConnectionsProps {
   linkedin: ChannelConnection;
   email: ChannelConnection;
-  hasIssue: boolean;
-  allConnected: boolean;
+  isLoading?: boolean;
 }
 
-const STATUS_LABEL: Record<ConnectionStatus, string> = {
-  connected: 'Connecté',
-  connecting: 'Connexion…',
-  error: 'À reconnecter',
-  disconnected: 'Non connecté',
+const CONNECTIONS_PATH = '/settings/account/connections';
+
+const STATUS: Record<ConnectionStatus, { label: string; dot: string; action: string | null }> = {
+  connected: { label: 'Connecté', dot: 'bg-success', action: null },
+  connecting: { label: 'Connexion en cours', dot: 'bg-warning', action: null },
+  error: { label: 'À reconnecter', dot: 'bg-danger', action: 'Reconnecter' },
+  disconnected: { label: 'Non connecté', dot: 'bg-muted-foreground', action: 'Connecter' },
 };
 
-const STATUS_TONE: Record<ConnectionStatus, { dot: string; text: string; bg: string }> = {
-  connected: { dot: 'bg-success', text: 'text-success', bg: 'bg-success/10' },
-  connecting: { dot: 'bg-warning', text: 'text-warning', bg: 'bg-warning/10' },
-  error: { dot: 'bg-destructive', text: 'text-destructive', bg: 'bg-destructive/10' },
-  disconnected: { dot: 'bg-muted-foreground/40', text: 'text-muted-foreground', bg: 'bg-muted/40' },
-};
-
-const ConnectionCard: React.FC<{
+const ChannelCard: React.FC<{
   channel: ChannelConnection;
   name: string;
-  brandLogo?: React.ReactNode;
-  brandIcon?: React.ReactNode;
-  index: number;
-  onClick: () => void;
-}> = ({ channel, name, brandLogo, brandIcon, index, onClick }) => {
-  const tone = STATUS_TONE[channel.status];
-  const isOk = channel.status === 'connected';
-  const needsAction = channel.status === 'error' || channel.status === 'disconnected';
+  logo: React.ReactNode;
+}> = ({ channel, name, logo }) => {
+  const status = STATUS[channel.status];
+  const detail = channel.status === 'connected' && channel.label ? ` · ${channel.label}` : '';
 
   return (
-    <motion.button
-      onClick={onClick}
-      variants={{
-        hidden: { opacity: 0, y: 8 },
-        visible: {
-          opacity: 1,
-          y: 0,
-          transition: { duration: 0.4, ease: 'easeOut', delay: index * 0.06 },
-        },
-      }}
-      whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      whileTap={{ scale: 0.98 }}
-      className={cn(
-        'group relative rounded-xl border p-3.5 text-left transition-colors flex items-center gap-3 overflow-hidden',
-        needsAction
-          ? 'bg-destructive/[0.04] hover:bg-destructive/[0.08] border-destructive/20 hover:border-destructive/40'
-          : isOk
-          ? 'bg-card hover:bg-muted/30 border-border'
-          : 'bg-muted/20 hover:bg-muted/40 border-border',
-      )}
-    >
-      {/* Brand logo / icon */}
-      <div
-        className={cn(
-          'h-10 w-10 rounded-xl flex items-center justify-center shrink-0',
-          isOk ? 'bg-foreground/[0.04]' : 'bg-muted/40',
-        )}
-      >
-        {brandLogo || brandIcon}
-      </div>
-
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted">{logo}</span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="font-display font-bold text-foreground text-[13px] tracking-tight leading-none truncate">
-            {name}
+        <p className="text-sm font-medium text-foreground">{name}</p>
+        <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', status.dot)} aria-hidden="true" />
+          <span className="truncate">
+            {status.label}
+            {detail}
           </span>
-          {channel.status === 'connecting' && <LivePulse tone="info" />}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span
-            className={cn(
-              'relative flex h-1.5 w-1.5 rounded-full shrink-0',
-              tone.dot,
-            )}
-          >
-            {isOk && (
-              <motion.span
-                className={cn('absolute inset-0 rounded-full', tone.dot)}
-                initial={{ opacity: 0.5, scale: 1 }}
-                animate={{ opacity: 0, scale: 2.6 }}
-                transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut' }}
-              />
-            )}
-          </span>
-          <span className={cn('text-[10.5px] uppercase tracking-wider font-bold', tone.text)}>
-            {STATUS_LABEL[channel.status]}
-          </span>
-          {channel.label && isOk && (
-            <span className="text-[10.5px] text-muted-foreground truncate">· {channel.label}</span>
-          )}
-        </div>
+        </p>
       </div>
-
-      {needsAction && (
-        <ArrowRight
-          className={cn(
-            'w-4 h-4 shrink-0 transition-all opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0',
-            tone.text,
-          )}
-          aria-hidden="true"
-        />
+      {status.action && (
+        <Button asChild variant="outline" size="sm">
+          <Link to={CONNECTIONS_PATH} aria-label={`${status.action} ${name}`}>
+            {status.action}
+          </Link>
+        </Button>
       )}
-    </motion.button>
+    </div>
   );
 };
 
-export const DashboardConnections: React.FC<DashboardConnectionsProps> = ({
-  linkedin,
-  email,
-  hasIssue,
-  allConnected,
-}) => {
-  const navigate = useNavigate();
-  const goToConnectors = () => navigate('/settings/account/connections');
-
-  return (
-    <motion.div
-      className="mb-6"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: 'easeOut', delay: 0.1 }}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-          Vos canaux
-        </span>
-        <div className="flex-1 h-px bg-border" />
-        {hasIssue ? (
-          <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-destructive">
-            <AlertTriangle className="w-3 h-3" />
-            Action requise
-          </span>
-        ) : allConnected ? (
-          <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-success">
-            <CheckCircle2 className="w-3 h-3" />
-            Tout actif
-          </span>
-        ) : null}
+export const DashboardConnections: React.FC<DashboardConnectionsProps> = ({ linkedin, email, isLoading }) => (
+  <section aria-labelledby="dashboard-channels">
+    <h2 id="dashboard-channels" className="eyebrow mb-3">
+      Vos canaux
+    </h2>
+    {isLoading ? (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="status" aria-label="Chargement des canaux">
+        <Skeleton className="h-16 rounded-xl" />
+        <Skeleton className="h-16 rounded-xl" />
       </div>
-
-      <motion.div
-        className="grid grid-cols-1 sm:grid-cols-2 gap-2.5"
-        initial="hidden"
-        animate="visible"
-        variants={{
-          hidden: {},
-          visible: { transition: { staggerChildren: 0.05 } },
-        }}
-      >
-        <ConnectionCard
+    ) : (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <ChannelCard
           channel={linkedin}
           name="LinkedIn"
-          brandLogo={
-            <img src={linkedinLogo} alt="LinkedIn" className="w-5 h-5 object-contain" />
-          }
-          index={0}
-          onClick={goToConnectors}
+          logo={<img src={linkedinLogo} alt="" aria-hidden="true" className="h-5 w-5 object-contain" />}
         />
-        <ConnectionCard
-          channel={email}
-          name="Email"
-          brandIcon={<Mail className="w-5 h-5 text-info" />}
-          index={1}
-          onClick={goToConnectors}
-        />
-      </motion.div>
-    </motion.div>
-  );
-};
+        <ChannelCard channel={email} name="E-mail" logo={<Mail className="h-4 w-4 text-foreground-secondary" aria-hidden="true" />} />
+      </div>
+    )}
+  </section>
+);

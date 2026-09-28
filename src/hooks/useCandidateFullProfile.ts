@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { aiRecommendationMeta, qualificationVerdictMeta } from '@/lib/verdicts';
 import { enrollmentStatusLabel } from '@/lib/sequenceLabels';
 import { isInternalSequenceAction, sequenceExecutionTitle, stepNumberLabel } from '@/lib/sequenceActionLabels';
 
@@ -443,7 +444,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       timeline.push({
         type: 'qualification_verdict',
         date: qs.eventStartAt || '',
-        title: `Verdict : ${qs.verdict === 'go' ? '✅ Go' : qs.verdict === 'no_go' ? '❌ No-Go' : '🤔 Maybe'}`,
+        title: `Verdict : ${qualificationVerdictMeta(qs.verdict)?.label ?? 'À revoir'}`,
         detail: qs.verdictNotes || undefined,
       });
     }
@@ -453,7 +454,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     timeline.push({
       type: 'sequence_enrolled',
       date: se.createdAt,
-      title: `Inscrit à "${se.sequenceName}"`,
+      title: `Inscription à « ${se.sequenceName} »`,
       detail: se.status === 'completed' ? 'Séquence terminée'
         : se.repliedAt || se.status === 'replied' ? 'A répondu'
         : se.status === 'active' ? stepNumberLabel(se.currentStep)
@@ -469,7 +470,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       type: 'sequence_step',
       date: step.executedAt || '',
       title: sequenceExecutionTitle(step.actionType, step.status),
-      detail: step.sequenceName ? `${step.sequenceName} • ${stepLabel}` : stepLabel,
+      detail: step.sequenceName ? `${step.sequenceName} · ${stepLabel}` : stepLabel,
     });
   });
 
@@ -478,7 +479,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       type: 'inmail_sent',
       date: im.sentAt || im.createdAt,
       title: `InMail : ${im.subject}`,
-      detail: im.status === 'sent' ? 'Envoyé' : im.status === 'replied' ? 'Répondu' : im.status,
+      detail: im.status === 'sent' ? 'Envoyé' : im.status === 'replied' ? 'A répondu' : undefined,
     });
   });
 
@@ -487,8 +488,8 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       timeline.push({
         type: 'scored',
         date: sr.updatedAt,
-        title: `Scoring : ${sr.score}% ${sr.jobTitle ? `• ${sr.jobTitle}` : ''}`,
-        detail: sr.scoringDetails?.recommendation || sr.recommendation || undefined,
+        title: `Score ${sr.score}${sr.jobTitle ? ` · ${sr.jobTitle}` : ''}`,
+        detail: aiRecommendationMeta(sr.scoringDetails?.recommendation || sr.recommendation)?.label,
       });
     }
   });
@@ -510,7 +511,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     timeline.push({
       type: 'note_added',
       date: n.noteDate || '',
-      title: n.title ? `📝 ${n.title}` : '📝 Note',
+      title: n.title || 'Note',
       detail: n.detail || undefined,
       meta: { author: n.author, source: 'airtable' },
     });
@@ -521,21 +522,21 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     timeline.push({
       type: 'appointment',
       date: a.appointmentDate || '',
-      title: a.title || `RDV ${a.appointmentType || ''}`,
+      title: a.title || `Rendez-vous ${a.appointmentType || ''}`.trim(),
       detail: a.status || undefined,
     });
   });
 
   // Aircall calls in timeline
   aircallCalls.forEach(c => {
-    const dirLabel = c.direction === 'inbound' ? '📞 Appel reçu' : '📞 Appel émis';
+    const dirLabel = c.direction === 'inbound' ? 'Appel reçu' : 'Appel émis';
     const statusLabel = c.status === 'missed' || c.status === 'no-answer' ? ' (manqué)' : '';
-    const durationLabel = c.duration > 0 ? ` • ${Math.floor(c.duration / 60)}min${c.duration % 60 > 0 ? ` ${c.duration % 60}s` : ''}` : '';
+    const durationLabel = c.duration > 0 ? ` · ${Math.floor(c.duration / 60)} min${c.duration % 60 > 0 ? ` ${c.duration % 60} s` : ''}` : '';
     timeline.push({
       type: 'aircall_call',
       date: c.startedAt || '',
       title: `${dirLabel}${statusLabel}${durationLabel}`,
-      detail: [c.userName, c.notes].filter(Boolean).join(' — ') || undefined,
+      detail: [c.userName, c.notes].filter(Boolean).join(' · ') || undefined,
     });
   });
 

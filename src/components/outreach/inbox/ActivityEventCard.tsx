@@ -1,50 +1,39 @@
+/**
+ * ActivityEventCard — événement de la frise d'une conversation : étape de
+ * séquence exécutée, rendez-vous pris, appel téléphonique.
+ *
+ * Une étape prend le même titre que dans la fiche candidat (dictionnaire
+ * partagé src/lib/sequenceActionLabels.ts) : « InMail envoyé », « InMail :
+ * échec », « Invitation : étape sautée ». Jamais un identifiant technique
+ * (« connection_request »), jamais un message d'erreur brut : raisons et
+ * erreurs sont traduites (revue design D-01). Icônes neutres ; l'appel prend
+ * l'icône du canal (ChannelIcon), sans couleur propre (D-16, D-65).
+ */
+
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { CalendarCheck } from 'lucide-react';
 import { ActivityEvent } from '@/hooks/useProfileActivity';
-import { cn } from '@/lib/utils';
-import {
-  Eye,
-  UserPlus,
-  MessageSquare,
-  Mail,
-  Clock,
-  GitBranch,
-  CheckCircle2,
-  XCircle,
-  SkipForward,
-  Hourglass,
-  CalendarCheck,
-  PhoneIncoming,
-  PhoneOutgoing,
-  Phone,
-} from 'lucide-react';
 import { formatMessageTime } from '@/hooks/useMessagesInboxHelpers';
+import { ChannelIcon } from '@/components/ui/ChannelIcon';
+import { ExecutionStatusBadge, SequenceActionIcon } from '@/components/outreach/SequenceBadges';
+import { STEP_TYPE_LABELS, stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
 import { formatSequenceError, formatSkipReason } from '@/lib/sequenceErrorMessages';
 import {
   isInternalSequenceAction,
   sequenceExecutionStatusMention,
   sequenceExecutionTitle,
 } from '@/lib/sequenceActionLabels';
-import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
-import aircallLogo from '@/assets/aircall-logo.webp';
+import { cn } from '@/lib/utils';
 
-// Icônes par type d'étape réel (sequence_steps.action_type, mêmes clés que
-// SEQUENCE_ACTION_LABELS). Les libellés viennent du dictionnaire partagé
-// (src/lib/sequenceActionLabels.ts), comme la frise de la fiche candidat.
-const ACTION_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
-  profile_visit: { icon: Eye, color: 'text-blue-500' },
-  connection_request: { icon: UserPlus, color: 'text-green-500' },
-  message: { icon: MessageSquare, color: 'text-primary' },
-  smart_message: { icon: MessageSquare, color: 'text-primary' },
-  inmail: { icon: Mail, color: 'text-purple-500' },
-  email: { icon: Mail, color: 'text-primary' },
-  whatsapp_message: { icon: MessageSquare, color: 'text-green-600' },
-  wait_connection: { icon: Hourglass, color: 'text-amber-500' },
-  wait_reply: { icon: Hourglass, color: 'text-amber-500' },
-  check_connection: { icon: GitBranch, color: 'text-muted-foreground' },
-  calendly_booking: { icon: CalendarCheck, color: 'text-emerald-500' },
-  aircall_call: { icon: Phone, color: 'text-green-600' },
-};
+/** Durée d'appel : « 45 s », « 3 min », « 3 min 20 s ». */
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m} min ${s} s` : `${m} min`;
+}
 
 /**
  * Titre d'une étape de séquence exécutée, identique à la fiche candidat :
@@ -54,96 +43,81 @@ const ACTION_ICONS: Record<string, { icon: React.ElementType; color: string }> =
  */
 function sequenceStepTitle(actionType: string, status: string): string {
   if (!isInternalSequenceAction(actionType)) return sequenceExecutionTitle(actionType, status);
+  // Sans nom dans l'éditeur (attente d'un événement), celui du catalogue :
+  // jamais l'identifiant technique.
+  const name = actionType in STEP_TYPE_LABELS ? stepTypeLabel(actionType) : sequenceActionLabel(actionType);
   const mention = sequenceExecutionStatusMention(status);
-  return mention ? `${stepTypeLabel(actionType)} : ${mention.toLowerCase()}` : stepTypeLabel(actionType);
+  return mention ? `${name} : ${mention.toLowerCase()}` : name;
 }
 
-const STATUS_ICONS: Record<string, { icon: React.ElementType; color: string }> = {
-  sent: { icon: CheckCircle2, color: 'text-green-500' },
-  failed: { icon: XCircle, color: 'text-destructive' },
-  skipped: { icon: SkipForward, color: 'text-amber-500' },
-  waiting_event: { icon: Clock, color: 'text-amber-500' },
-};
+/** Réaction du candidat à un envoi : le titre dit « envoyé », le badge précise. */
+const REACTION_STATUSES = new Set(['opened', 'clicked', 'replied']);
+
+const Separator = () => (
+  <span aria-hidden="true" className="text-muted-foreground">
+    ·
+  </span>
+);
 
 export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event }) => {
-  const navigate = useNavigate();
-  const isSequenceStep = event.type === 'sequence_step';
-  const config = ACTION_ICONS[event.actionType] || { icon: GitBranch, color: 'text-muted-foreground' };
-  // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
-  // jamais présentée comme envoyée.
-  const label = isSequenceStep ? sequenceStepTitle(event.actionType, event.status) : '📅 RDV planifié';
-  const stepFailed = isSequenceStep && (event.status === 'failed' || event.status === 'bounced');
-  const statusConfig = STATUS_ICONS[event.status];
-  const Icon = config.icon;
-  const StatusIcon = statusConfig?.icon;
-
   const isBooking = event.type === 'booking';
-  const isAircall = event.type === 'aircall';
+  const isCall = event.type === 'aircall';
+  const time = formatMessageTime(event.timestamp);
 
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return s > 0 ? `${m}m${s}s` : `${m}m`;
-  };
+  let icon: React.ReactNode;
+  let label: React.ReactNode;
+  let stepFailed = false;
+  const details: React.ReactNode[] = [];
+
+  if (isCall) {
+    // Décorative : le libellé dit déjà « Appel »
+    icon = <ChannelIcon channel="call" size="xs" decorative className="shrink-0" />;
+    label = event.callDirection === 'inbound' ? 'Appel entrant' : 'Appel sortant';
+    if (event.callDuration != null && event.callDuration > 0) details.push(formatDuration(event.callDuration));
+    if (event.callUserName) details.push(event.callUserName);
+  } else if (isBooking) {
+    icon = <CalendarCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />;
+    label = event.qualificationSessionId ? (
+      <Link
+        to={`/qualification/${event.qualificationSessionId}`}
+        className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Rendez-vous planifié
+      </Link>
+    ) : (
+      'Rendez-vous planifié'
+    );
+    if (event.eventName) details.push(event.eventName);
+  } else {
+    icon = <SequenceActionIcon type={event.actionType} className="text-muted-foreground" />;
+    // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
+    // jamais présentée comme envoyée.
+    label = sequenceStepTitle(event.actionType, event.status);
+    stepFailed = event.status === 'failed' || event.status === 'bounced';
+    if (REACTION_STATUSES.has(event.status)) {
+      details.push(<ExecutionStatusBadge key="status" status={event.status} className="px-1.5 py-0 text-2xs" />);
+    }
+    if (event.status === 'skipped' && event.skipReason) details.push(formatSkipReason(event.skipReason));
+    if (event.status === 'failed' && event.errorMessage) details.push(formatSequenceError(event.errorMessage));
+  }
 
   return (
-    <div className="flex justify-center my-2">
-      <div
-        className={cn(
-          "inline-flex items-center gap-2 px-3 py-1.5 border border-dashed rounded-sm max-w-[85%]",
-          isBooking
-            ? "bg-success/10 border-success/30 cursor-pointer hover:bg-success/20 transition-colors"
-            : isAircall
-              ? "bg-whatsapp/10 border-whatsapp/30"
-              : "bg-muted/50 border-border"
+    <div className="my-2 flex justify-center">
+      <div className="inline-flex max-w-[85%] flex-wrap items-center justify-center gap-x-1.5 gap-y-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-foreground-secondary">
+        {icon}
+        <span className={cn('font-medium', stepFailed ? 'text-danger' : 'text-foreground')}>{label}</span>
+        {details.map((detail, i) => (
+          <React.Fragment key={i}>
+            <Separator />
+            {typeof detail === 'string' ? <span className="text-muted-foreground">{detail}</span> : detail}
+          </React.Fragment>
+        ))}
+        {time && (
+          <>
+            <Separator />
+            <span className="whitespace-nowrap tabular-nums text-muted-foreground">{time}</span>
+          </>
         )}
-        onClick={isBooking && event.qualificationSessionId ? () => navigate(`/qualification/${event.qualificationSessionId}`) : undefined}
-      >
-        {isAircall ? (
-          <img src={aircallLogo} alt="Aircall" className="w-3.5 h-3.5 shrink-0" />
-        ) : (
-          <Icon className={cn("w-3.5 h-3.5 shrink-0", config.color)} />
-        )}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className={cn('text-xs font-medium truncate', stepFailed ? 'text-destructive' : 'text-foreground')}>
-            {isAircall 
-              ? `${event.callDirection === 'inbound' ? '📞 Appel entrant' : '📞 Appel sortant'}`
-              : label
-            }
-          </span>
-          {isAircall && event.callDuration != null && event.callDuration > 0 && (
-            <span className="text-xs text-muted-foreground">
-              ({formatDuration(event.callDuration)})
-            </span>
-          )}
-          {isAircall && event.callUserName && (
-            <span className="text-xs text-muted-foreground truncate">
-              — {event.callUserName}
-            </span>
-          )}
-          {isBooking && event.eventName && (
-            <span className="text-xs text-muted-foreground truncate">
-              — {event.eventName}
-            </span>
-          )}
-          {event.status === 'skipped' && event.skipReason && (
-            <span className="text-xs text-muted-foreground truncate">
-              ({formatSkipReason(event.skipReason)})
-            </span>
-          )}
-          {event.status === 'failed' && event.errorMessage && (
-            <span className="text-xs text-destructive truncate">
-              ({formatSequenceError(event.errorMessage)})
-            </span>
-          )}
-          {StatusIcon && !isBooking && !isAircall && (
-            <StatusIcon className={cn("w-3 h-3 shrink-0", statusConfig.color)} />
-          )}
-        </div>
-        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-          {formatMessageTime(event.timestamp)}
-        </span>
       </div>
     </div>
   );

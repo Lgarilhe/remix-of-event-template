@@ -11,6 +11,7 @@ import { isClosedChannelStep, pickFirstStep, type FirstStepCandidate } from '@/l
 import { actionTypeLabel } from '@/lib/sequenceErrorMessages';
 import { enrollmentProfileFilter, normalizeEnrollmentKey, type EnrollmentProfileRef } from '@/lib/enrollmentDuplicates';
 import { extractLinkedInSlug } from '@/lib/linkedinUtils';
+import { plural } from '@/lib/plural';
 
 export const SEQUENCE_INACTIVE_MESSAGE =
   "Cette séquence est désactivée. Réactivez-la avant d'inscrire des candidats.";
@@ -327,10 +328,6 @@ type StepLike = FirstStepCandidate & {
   delay_minutes?: number | null;
   delayMinutes?: number | null;
 };
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n > 1 ? 's' : ''}`;
-}
 
 /**
  * « Première action : Invitation LinkedIn, dès maintenant pendant vos heures

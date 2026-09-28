@@ -17,13 +17,15 @@ import {
   type HeldExecutionNotice,
 } from '@/lib/sequenceErrorMessages';
 import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
+import { executionStatusMeta } from '@/lib/sequenceCatalog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
@@ -39,30 +41,18 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { EmptyState, ErrorState, StatGrid, StatTile } from '@/components/layout';
+import { SequenceActionIcon } from './SequenceBadges';
 import {
   Activity,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  SkipForward,
   Search,
   ExternalLink,
-  ChevronDown,
   ChevronRight,
-  Send,
-  Mail,
-  UserPlus,
-  Eye,
-  MessageSquare,
   RefreshCw,
-  Calendar,
   Pencil,
   Ban,
   Pause,
-  Loader2,
-  MailOpen,
-  MousePointerClick,
 } from 'lucide-react';
 import { format, isAfter, isBefore, startOfDay, endOfDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -79,6 +69,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { plural } from '@/lib/plural';
 
 /** Nombre de lignes lues : au-delà, les compteurs portent sur les plus récentes. */
 const JOURNAL_LIMIT = 500;
@@ -138,42 +129,15 @@ type MessageOverride = { subject?: string; message?: string };
 /** Types d'étape dont le texte est rédigé par l'IA au moment de l'envoi. */
 const AI_ACTION_TYPES = new Set(['smart_message']);
 
-const actionTypeStyle: Record<string, { icon: React.ReactNode; color: string; bgColor: string }> = {
-  profile_visit: { icon: <Eye className="w-4 h-4" aria-hidden="true" />, color: 'text-foreground', bgColor: 'bg-muted' },
-  connection_request: { icon: <UserPlus className="w-4 h-4" aria-hidden="true" />, color: 'text-emerald-900', bgColor: 'bg-emerald-400' },
-  message: { icon: <Send className="w-4 h-4" aria-hidden="true" />, color: 'text-blue-900', bgColor: 'bg-blue-400' },
-  inmail: { icon: <Mail className="w-4 h-4" aria-hidden="true" />, color: 'text-purple-900', bgColor: 'bg-purple-400' },
-  smart_message: { icon: <MessageSquare className="w-4 h-4" aria-hidden="true" />, color: 'text-indigo-900', bgColor: 'bg-indigo-400' },
-  email: { icon: <Mail className="w-4 h-4" aria-hidden="true" />, color: 'text-sky-900', bgColor: 'bg-sky-400' },
-  whatsapp_message: { icon: <MessageSquare className="w-4 h-4" aria-hidden="true" />, color: 'text-green-900', bgColor: 'bg-green-400' },
-};
-const defaultActionStyle = { icon: <Activity className="w-4 h-4" aria-hidden="true" />, color: 'text-muted-foreground', bgColor: 'bg-muted' };
-
-const statusStyle: Record<string, { icon: React.ReactNode; className: string }> = {
-  scheduled: { icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-info text-info-foreground border-info' },
-  sending: { icon: <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />, className: 'bg-info text-info-foreground border-info' },
-  waiting_event: { icon: <Clock className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
-  quota_blocked: { icon: <Pause className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-warning/15 text-warning-foreground border-warning' },
-  sent: { icon: <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-success text-success-foreground border-success' },
-  opened: { icon: <MailOpen className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-success text-success-foreground border-success' },
-  clicked: { icon: <MousePointerClick className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-success text-success-foreground border-success' },
-  replied: { icon: <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-purple-500 text-white border-purple-600' },
-  skipped: { icon: <SkipForward className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
-  failed: { icon: <XCircle className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-destructive text-destructive-foreground border-destructive' },
-  bounced: { icon: <XCircle className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-destructive text-destructive-foreground border-destructive' },
-  cancelled: { icon: <XCircle className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' },
-};
-const unknownStatusStyle = { icon: <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />, className: 'bg-muted text-muted-foreground border-border' };
-
 type FilterStatus = 'all' | 'scheduled' | 'sent' | 'failed' | 'skipped';
 type FilterPeriod = 'all' | 'today' | 'week' | 'upcoming';
 type Scope = 'mission' | 'all';
 
 const STATUS_FILTER_MATCH: Record<Exclude<FilterStatus, 'all'>, (status: string) => boolean> = {
-  scheduled: (s) => ['scheduled', 'quota_blocked', 'waiting_event', 'sending'].includes(s),
-  sent: (s) => isSentExecutionStatus(s),
-  failed: (s) => s === 'failed' || s === 'bounced',
-  skipped: (s) => s === 'skipped' || s === 'cancelled',
+  scheduled: (status) => ['scheduled', 'quota_blocked', 'waiting_event', 'sending'].includes(status),
+  sent: (status) => isSentExecutionStatus(status),
+  failed: (status) => status === 'failed' || status === 'bounced',
+  skipped: (status) => status === 'skipped' || status === 'cancelled',
 };
 
 /** Étapes encore modifiables ou retirables depuis le Journal (jamais pendant l'envoi). */
@@ -187,6 +151,9 @@ const PREVIEW_TITLES: Record<PreviewSource, string> = {
   ai: "Message rédigé par l'IA au moment de l'envoi",
   template_unverified: "Modèle de l'étape (aperçu personnalisé indisponible)",
 };
+
+/** « 26/09 à 10:42 » */
+const formatWhen = (value: string) => format(new Date(value), "dd/MM 'à' HH:mm", { locale: fr });
 
 /**
  * Ce qui partira vraiment : le texte figé sur l'exécution (envoyé ou modifié à
@@ -222,7 +189,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
 }) => {
   const [executions, setExecutions] = useState<StepExecution[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [periodFilter, setPeriodFilter] = useState<FilterPeriod>('all');
@@ -242,7 +209,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
   const fetchExecutions = useCallback(async () => {
     try {
       setLoading(true);
-      setLoadError(false);
+      setLoadError(null);
 
       // Dans une mission : seulement ses inscriptions (job_id de la mission),
       // y compris celles faites avec un modèle partagé entre missions.
@@ -340,7 +307,8 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       setExecutions(enrichedExecutions);
     } catch (err) {
       console.error('Error fetching executions:', err);
-      setLoadError(true);
+      // Une panne ne se lit pas comme un journal vide : état d'erreur avec « Réessayer ».
+      setLoadError(err instanceof Error ? err.message : String(err));
       toast.error("Impossible de charger le Journal d'activité");
     } finally {
       setLoading(false);
@@ -407,6 +375,12 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       setSkippingId(null);
       fetchExecutions();
     }
+  };
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setPeriodFilter('all');
   };
 
   // Filter and group executions
@@ -504,351 +478,310 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
       return "Demain";
     }
 
-    return format(date, 'EEEE d MMMM', { locale: fr });
+    const label = format(date, 'EEEE d MMMM', { locale: fr });
+    return label.charAt(0).toUpperCase() + label.slice(1);
   };
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <SheetContent className="w-full sm:w-[600px] sm:max-w-[600px] bg-background p-0 rounded-lg border-l border-border">
-        <SheetHeader className="p-6 pb-4 border-b border-border">
-          <SheetTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5" aria-hidden="true" />
-            Journal d'activité
-          </SheetTitle>
+      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
+        <SheetHeader className="space-y-1 border-b border-border px-6 py-5 pr-14 text-left">
+          <SheetTitle>Journal d'activité</SheetTitle>
+          <SheetDescription>
+            Les {JOURNAL_LIMIT} dernières étapes {missionScoped ? 'des candidats de cette mission' : 'de vos séquences'}, envoyées ou planifiées.
+          </SheetDescription>
         </SheetHeader>
 
-        <div className="p-4 space-y-4">
-          {/* Stats */}
-          <div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-0">
-              <div className="p-2.5 sm:p-3 border border-border text-center">
-                <div className="text-lg sm:text-xl font-bold text-info-foreground">{loadError ? '—' : stats.scheduled}</div>
-                <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">À venir</div>
-              </div>
-              <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center bg-amber-400/10">
-                <div className="text-lg sm:text-xl font-bold text-destructive">{loadError ? '—' : stats.pending}</div>
-                <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">En retard</div>
-              </div>
-              <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center">
-                <div className="text-lg sm:text-xl font-bold text-success-foreground">{loadError ? '—' : stats.sent}</div>
-                <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Envoyés</div>
-              </div>
-              <div className="p-2.5 sm:p-3 border border-border border-l-0 text-center">
-                <div className="text-lg sm:text-xl font-bold text-destructive">{loadError ? '—' : stats.failed}</div>
-                <div className="text-xs sm:text-xs text-muted-foreground uppercase font-medium">Échoués</div>
-              </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {loading ? (
+            <div role="status" aria-label="Chargement du journal">
+              <span className="sr-only">Chargement…</span>
+              <ActivityLogSkeleton />
             </div>
-            {isTruncated && !loadError && (
-              <p className="mt-1.5 text-2xs text-muted-foreground">
-                Sur les {JOURNAL_LIMIT} dernières actions.
-              </p>
-            )}
-          </div>
-
-          {/* Filters */}
-          <div className="space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-2">
-            <div className="relative flex-1 min-w-[180px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-              <Input
-                placeholder="Candidat, séquence ou action…"
-                aria-label="Rechercher dans le Journal"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-background border-border rounded-lg"
-              />
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {projectId && (
-                <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
-                  <SelectTrigger className="flex-1 sm:w-[160px] border-border rounded-lg" aria-label="Périmètre">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mission">Cette mission</SelectItem>
-                    <SelectItem value="all">Toutes les missions</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
-                <SelectTrigger className="flex-1 sm:w-[140px] border-border rounded-lg" aria-label="Statut">
-                  <SelectValue placeholder="Statut" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="scheduled">Programmés</SelectItem>
-                  <SelectItem value="sent">Envoyés</SelectItem>
-                  <SelectItem value="failed">Échoués</SelectItem>
-                  <SelectItem value="skipped">Ignorés ou annulés</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
-                <SelectTrigger className="flex-1 sm:w-[130px] border-border rounded-lg" aria-label="Période">
-                  <SelectValue placeholder="Période" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tout</SelectItem>
-                  <SelectItem value="today">Aujourd'hui</SelectItem>
-                  <SelectItem value="week">7 derniers jours</SelectItem>
-                  <SelectItem value="upcoming">À venir</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="icon" className="shrink-0 border-border rounded-lg" onClick={fetchExecutions} disabled={loading} aria-label="Rafraîchir les activités">
-                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} aria-hidden="true" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Activity list */}
-        <ScrollArea className="h-[calc(100vh-320px)]">
-          <div className="px-4 pb-6 space-y-4">
-            {loading ? (
-              <div className="text-center py-12 text-muted-foreground">Chargement…</div>
-            ) : loadError ? (
-              <div className="text-center py-12 space-y-3">
-                <p className="text-sm text-destructive">
-                  Impossible de charger le Journal. Vérifiez votre connexion puis réessayez.
-                </p>
-                <Button variant="outline" size="sm" onClick={fetchExecutions}>
-                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
-                  Réessayer
+          ) : loadError ? (
+            <ErrorState
+              title="Impossible de charger le journal"
+              description="Vérifiez votre connexion, puis réessayez."
+              detail={loadError}
+              onRetry={fetchExecutions}
+            />
+          ) : executions.length === 0 ? (
+            <EmptyState
+              icon={Activity}
+              title={missionScoped ? 'Aucune étape pour cette mission' : "Aucune étape pour l'instant"}
+              description="Les étapes envoyées et planifiées de vos séquences s'afficheront ici dès la première inscription."
+              action={missionScoped ? (
+                <Button variant="outline" size="sm" onClick={() => setScope('all')}>
+                  Voir toutes les missions
                 </Button>
+              ) : undefined}
+            />
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <StatGrid cols={{ base: 2, sm: 4 }}>
+                  <StatTile label="À venir" value={stats.scheduled} />
+                  <StatTile label="En retard" value={stats.pending} variant="warning" accent={stats.pending > 0} />
+                  <StatTile label="Envoyées" value={stats.sent} />
+                  <StatTile label="En échec" value={stats.failed} variant="destructive" accent={stats.failed > 0} />
+                </StatGrid>
+                {isTruncated && (
+                  <p className="text-xs text-muted-foreground">
+                    Sur les {JOURNAL_LIMIT} dernières actions.
+                  </p>
+                )}
               </div>
-            ) : groupedExecutions.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                {executions.length === 0
-                  ? missionScoped
-                    ? 'Aucune activité pour cette mission.'
-                    : 'Aucune activité pour le moment.'
-                  : 'Aucune activité ne correspond à ces filtres.'}
-              </div>
-            ) : (
-              groupedExecutions.map(([date, items]) => (
-                <div key={date} className="space-y-2">
-                  {/* Date header */}
-                  <div className="flex items-center gap-2 py-2">
-                    <Calendar className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                    <span className="text-sm font-semibold text-foreground uppercase tracking-wide">
-                      {formatDateHeader(date)}
-                    </span>
-                    <div className="flex-1 h-px bg-foreground/20" />
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {items.length} action{items.length > 1 ? 's' : ''}
-                    </span>
-                  </div>
 
-                  {/* Items */}
-                  {items.map((exec) => {
-                    const actionType = exec.step?.action_type || '';
-                    const actionStyle = actionTypeStyle[actionType] || defaultActionStyle;
-                    const actionLabel = actionType ? stepTypeLabel(actionType) : 'Action';
-                    const execStatus = statusStyle[exec.status] || unknownStatusStyle;
-                    const isExpanded = expandedItems.has(exec.id);
-                    const preview = exec.preview;
-                    const hasMessage = !!preview.message || preview.source === 'ai';
-                    const showError = !!exec.error_message && shouldShowExecutionError(exec.status);
-                    const showReason = !!exec.skip_reason && !isSentExecutionStatus(exec.status);
-                    const held = exec.held;
-                    const isPast = isBefore(new Date(exec.scheduled_at), new Date());
-                    const isOverdue = exec.status === 'scheduled' && isPast && !held;
-                    const candidateName = exec.enrollment?.profile_name || 'Candidat';
-                    const doneVerb = executionDoneVerb(exec.status);
-                    // Le serveur refuse de sauter l'étape d'un candidat non actif (409)
-                    // et, pour un collaborateur, d'un candidat inscrit par un collègue (403).
-                    const ownRow = !isCollaborator || (!!userId && exec.enrollment?.created_by === userId);
-                    const canSkip = SKIPPABLE_STATUSES.has(exec.status) && !held && ownRow;
-                    // Le texte reste modifiable pendant la pause, avant la reprise.
-                    const canEdit = exec.status === 'scheduled' && !!preview.message;
-
-                    return (
-                      <Collapsible
-                        key={exec.id}
-                        open={isExpanded}
-                        onOpenChange={() => toggleExpanded(exec.id)}
-                      >
-                        <div className={cn(
-                          "border border-border rounded-lg overflow-hidden transition-colors",
-                          isOverdue && "border-warning bg-warning/5",
-                          exec.status === 'failed' && "border-destructive bg-destructive/5",
-                        )}>
-                          <CollapsibleTrigger className="w-full">
-                            <div className="p-3 flex items-start gap-3 hover:bg-muted/30 transition-colors">
-                              {/* Action icon */}
-                              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", actionStyle.bgColor)}>
-                                <span className={actionStyle.color}>{actionStyle.icon}</span>
-                              </div>
-
-                              {/* Main content */}
-                              <div className="flex-1 min-w-0 text-left">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-medium text-foreground">
-                                    {candidateName}
-                                  </span>
-                                  {exec.enrollment?.profile_url && (
-                                    <a
-                                      href={exec.enrollment.profile_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-muted-foreground hover:text-linkedin transition-colors"
-                                      onClick={(e) => e.stopPropagation()}
-                                      aria-label={`Voir le profil LinkedIn de ${candidateName}`}
-                                    >
-                                      <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-                                    </a>
-                                  )}
-                                  {held ? (
-                                    <Badge className="text-xs border h-5 bg-muted text-muted-foreground border-border">
-                                      <Pause className="w-3.5 h-3.5" aria-hidden="true" />
-                                      <span className="ml-1">{held.label}</span>
-                                    </Badge>
-                                  ) : (
-                                    <Badge className={cn("text-xs border h-5", execStatus.className)}>
-                                      {execStatus.icon}
-                                      <span className="ml-1">{executionStatusLabel(exec.status)}</span>
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                                  <span className={cn("font-medium", actionStyle.color)}>{actionLabel}</span>
-                                  <span className="text-muted-foreground/50">·</span>
-                                  <span className="truncate max-w-[180px]">{exec.enrollment?.sequence?.name}</span>
-                                  <span className="text-muted-foreground/50">·</span>
-                                  <span className="tabular-nums">{format(new Date(exec.scheduled_at), 'HH:mm')}</span>
-                                </div>
-                                {held && (
-                                  <p className="text-xs text-muted-foreground mt-0.5">{held.hint}</p>
-                                )}
-                              </div>
-
-                              {/* Expand indicator */}
-                              {(hasMessage || showError || showReason || canSkip || canEdit) && (
-                                <div className="shrink-0 self-center">
-                                  {isExpanded ? (
-                                    <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                                  ) : (
-                                    <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </CollapsibleTrigger>
-
-                          <CollapsibleContent>
-                            <div className="px-3 pb-3 pt-2 space-y-2 border-t border-border bg-muted/30">
-                              {/* Error message */}
-                              {showError && (
-                                <div className="p-2.5 bg-destructive/10 border border-destructive rounded-lg text-sm">
-                                  <div className="flex items-center gap-2 font-medium text-destructive">
-                                    <AlertCircle className="w-4 h-4" aria-hidden="true" />
-                                    {exec.status === 'failed' ? 'Erreur' : 'Tentative précédente'}
-                                  </div>
-                                  <p className="mt-1 text-destructive text-xs">
-                                    {formatSequenceError(exec.error_message)}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Skip reason */}
-                              {showReason && (
-                                <div className="p-2.5 bg-muted border border-border rounded-lg text-sm">
-                                  <div className="flex items-center gap-2 font-medium text-foreground">
-                                    <AlertCircle className="w-4 h-4" aria-hidden="true" />
-                                    Raison
-                                  </div>
-                                  <p className="mt-1 text-muted-foreground text-xs">
-                                    {formatSkipReason(exec.skip_reason)}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Message preview */}
-                              {hasMessage && (
-                                <div className="p-3 bg-background border border-border rounded-lg mt-2">
-                                  <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                                    {PREVIEW_TITLES[preview.source]}
-                                  </div>
-                                  {preview.subject && (
-                                    <div className="text-xs text-muted-foreground mb-2 pb-2 border-b">
-                                      <span className="font-medium">Objet :</span>{' '}
-                                      {preview.subject}
-                                    </div>
-                                  )}
-                                  {preview.message && (
-                                    <div className="text-sm text-foreground leading-relaxed">
-                                      {preview.message
-                                        .split(/\\n|\n/)
-                                        .map((line, i, arr) => (
-                                          <React.Fragment key={i}>
-                                            {line}
-                                            {i < arr.length - 1 && <br />}
-                                          </React.Fragment>
-                                        ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Actions for pending items */}
-                              {(canEdit || canSkip) && (
-                                <div className="flex items-center gap-2 pt-2">
-                                  {canEdit && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7 text-xs"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingExecution(exec);
-                                      }}
-                                    >
-                                      <Pencil className="w-3 h-3 mr-1.5" aria-hidden="true" />
-                                      Modifier
-                                    </Button>
-                                  )}
-                                  {canSkip && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7 text-xs text-destructive hover:text-destructive/80 hover:bg-destructive/10"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSkipConfirm({ id: exec.id, candidateName });
-                                      }}
-                                      disabled={skippingId === exec.id}
-                                    >
-                                      {skippingId === exec.id
-                                        ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" aria-hidden="true" />
-                                        : <Ban className="w-3 h-3 mr-1.5" aria-hidden="true" />}
-                                      Ne pas envoyer cette étape
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Metadata */}
-                              <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
-                                <div className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" aria-hidden="true" />
-                                  <span>Prévu : {format(new Date(exec.scheduled_at), 'dd/MM HH:mm', { locale: fr })}</span>
-                                </div>
-                                {exec.executed_at && doneVerb && (
-                                  <div className="flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3 text-success-foreground" aria-hidden="true" />
-                                    <span>{doneVerb} : {format(new Date(exec.executed_at), 'dd/MM HH:mm', { locale: fr })}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </CollapsibleContent>
-                        </div>
-                      </Collapsible>
-                    );
-                  })}
+              <div className="flex flex-col gap-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    type="search"
+                    aria-label="Rechercher dans le journal"
+                    placeholder="Candidat, séquence ou étape"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8"
+                  />
                 </div>
-              ))
-            )}
-          </div>
-        </ScrollArea>
+                <div className="flex flex-wrap gap-2">
+                  {projectId && (
+                    <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
+                      <SelectTrigger className="flex-1 sm:w-40" aria-label="Périmètre">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mission">Cette mission</SelectItem>
+                        <SelectItem value="all">Toutes les missions</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterStatus)}>
+                    <SelectTrigger className="flex-1 sm:w-40" aria-label="Filtrer par statut">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous les statuts</SelectItem>
+                      <SelectItem value="scheduled">Planifiées</SelectItem>
+                      <SelectItem value="sent">Envoyées</SelectItem>
+                      <SelectItem value="failed">En échec</SelectItem>
+                      <SelectItem value="skipped">Ignorées ou annulées</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
+                    <SelectTrigger className="flex-1 sm:w-36" aria-label="Filtrer par période">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Toutes les dates</SelectItem>
+                      <SelectItem value="today">Aujourd'hui</SelectItem>
+                      <SelectItem value="week">7 derniers jours</SelectItem>
+                      <SelectItem value="upcoming">À venir</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="shrink-0 max-md:h-11 max-md:w-11"
+                        onClick={fetchExecutions}
+                        disabled={loading}
+                        aria-label="Rafraîchir les activités"
+                      >
+                        <RefreshCw aria-hidden="true" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Rafraîchir les activités</TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+
+              {groupedExecutions.length === 0 ? (
+                <EmptyState
+                  variant="compact"
+                  icon={Search}
+                  title="Aucune étape ne correspond à ces filtres"
+                  description="Élargissez la période ou le statut, ou effacez la recherche."
+                  action={
+                    <Button variant="outline" size="sm" onClick={resetFilters}>
+                      Réinitialiser les filtres
+                    </Button>
+                  }
+                />
+              ) : (
+                <div className="space-y-5">
+                  {groupedExecutions.map(([date, items]) => (
+                    <section key={date} aria-labelledby={`journal-${date}`} className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <h3 id={`journal-${date}`} className="text-sm font-semibold text-foreground">
+                          {formatDateHeader(date)}
+                        </h3>
+                        <div className="h-px flex-1 bg-border" aria-hidden="true" />
+                        <span className="text-xs text-muted-foreground">{plural(items.length, 'étape')}</span>
+                      </div>
+
+                      <ul className="space-y-2">
+                        {items.map((exec) => {
+                          const actionType = exec.step?.action_type || '';
+                          const actionLabel = actionType ? stepTypeLabel(actionType) : 'Action';
+                          const isExpanded = expandedItems.has(exec.id);
+                          const candidateName = exec.enrollment?.profile_name || 'Candidat';
+                          const preview = exec.preview;
+                          const hasMessage = !!preview.message || preview.source === 'ai';
+                          const showError = !!exec.error_message && shouldShowExecutionError(exec.status);
+                          const showReason = !!exec.skip_reason && !isSentExecutionStatus(exec.status);
+                          const held = exec.held;
+                          const isPast = isBefore(new Date(exec.scheduled_at), new Date());
+                          const isOverdue = exec.status === 'scheduled' && isPast && !held;
+                          const doneVerb = executionDoneVerb(exec.status);
+                          // Le serveur refuse de sauter l'étape d'un candidat non actif (409)
+                          // et, pour un collaborateur, d'un candidat inscrit par un collègue (403).
+                          const ownRow = !isCollaborator || (!!userId && exec.enrollment?.created_by === userId);
+                          const canSkip = SKIPPABLE_STATUSES.has(exec.status) && !held && ownRow;
+                          // Le texte reste modifiable pendant la pause, avant la reprise.
+                          const canEdit = exec.status === 'scheduled' && !!preview.message;
+
+                          return (
+                            <li key={exec.id}>
+                              <Collapsible
+                                open={isExpanded}
+                                onOpenChange={() => toggleExpanded(exec.id)}
+                                className="rounded-xl border border-border bg-card"
+                              >
+                                <CollapsibleTrigger className="flex w-full items-start gap-3 rounded-xl p-3 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                                    <SequenceActionIcon type={exec.step?.action_type} className="h-4 w-4" />
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <span className="truncate text-sm font-medium text-foreground">{candidateName}</span>
+                                      {held ? (
+                                        <Badge variant="muted">
+                                          <Pause className="h-3 w-3" aria-hidden="true" />
+                                          <span className="ml-1">{held.label}</span>
+                                        </Badge>
+                                      ) : (
+                                        // Libellé de la table partagée des statuts d'exécution, ton du catalogue.
+                                        <Badge variant={executionStatusMeta(exec.status).tone}>
+                                          {executionStatusLabel(exec.status)}
+                                        </Badge>
+                                      )}
+                                      {isOverdue && <Badge variant="warning">En retard</Badge>}
+                                    </div>
+                                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                      {actionLabel}
+                                      {exec.enrollment?.sequence?.name && ` · ${exec.enrollment.sequence.name}`}
+                                      {' · '}
+                                      <span className="tabular-nums">{format(new Date(exec.scheduled_at), 'HH:mm')}</span>
+                                    </p>
+                                    {held && (
+                                      <p className="text-xs text-muted-foreground mt-0.5">{held.hint}</p>
+                                    )}
+                                  </div>
+                                  <ChevronRight
+                                    className={cn('mt-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150', isExpanded && 'rotate-90')}
+                                    aria-hidden="true"
+                                  />
+                                </CollapsibleTrigger>
+
+                                <CollapsibleContent>
+                                  <div className="space-y-3 border-t border-border p-3">
+                                    {showError && (
+                                      <p
+                                        className={cn(
+                                          'rounded-lg px-3 py-2 text-xs',
+                                          exec.status === 'failed' ? 'bg-danger-muted text-danger' : 'bg-warning-muted text-foreground',
+                                        )}
+                                      >
+                                        {exec.status === 'failed' ? 'Échec' : 'Tentative précédente'} : {formatSequenceError(exec.error_message)}
+                                      </p>
+                                    )}
+                                    {showReason && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Raison : {formatSkipReason(exec.skip_reason)}
+                                      </p>
+                                    )}
+
+                                    {hasMessage && (
+                                      <div className="rounded-lg border border-border bg-background p-3">
+                                        <p className="mb-2 text-xs font-medium text-foreground-secondary">
+                                          {PREVIEW_TITLES[preview.source]}
+                                        </p>
+                                        {preview.subject && (
+                                          <p className="mb-2 border-b border-border pb-2 text-xs text-muted-foreground">
+                                            <span className="font-medium text-foreground-secondary">Objet :</span> {preview.subject}
+                                          </p>
+                                        )}
+                                        {preview.message && (
+                                          <p className="text-sm leading-relaxed text-foreground">
+                                            {preview.message.split(/\\n|\n/).map((line, i, arr) => (
+                                              <React.Fragment key={i}>
+                                                {line}
+                                                {i < arr.length - 1 && <br />}
+                                              </React.Fragment>
+                                            ))}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                      <span>Prévu : {formatWhen(exec.scheduled_at)}</span>
+                                      {exec.executed_at && doneVerb && (
+                                        <span>{doneVerb} : {formatWhen(exec.executed_at)}</span>
+                                      )}
+                                    </div>
+
+                                    {(canEdit || canSkip || exec.enrollment?.profile_url) && (
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        {canEdit && (
+                                          <Button
+                                            variant="outline"
+                                            size="xs"
+                                            className="max-md:h-11"
+                                            onClick={() => setEditingExecution(exec)}
+                                          >
+                                            <Pencil aria-hidden="true" />
+                                            Modifier
+                                          </Button>
+                                        )}
+                                        {canSkip && (
+                                          <Button
+                                            variant="outline"
+                                            size="xs"
+                                            className="text-danger hover:text-danger max-md:h-11"
+                                            onClick={() => setSkipConfirm({ id: exec.id, candidateName })}
+                                            loading={skippingId === exec.id}
+                                          >
+                                            {skippingId !== exec.id && <Ban aria-hidden="true" />}
+                                            Ne pas envoyer cette étape
+                                          </Button>
+                                        )}
+                                        {exec.enrollment?.profile_url && (
+                                          <Button variant="ghost" size="xs" asChild className="max-md:h-11">
+                                            <a href={exec.enrollment.profile_url} target="_blank" rel="noopener noreferrer">
+                                              <ExternalLink aria-hidden="true" />
+                                              Ouvrir le profil LinkedIn
+                                            </a>
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </SheetContent>
 
       {/* Edit scheduled message modal */}
@@ -865,7 +798,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Ne pas envoyer cette étape ?</AlertDialogTitle>
             <AlertDialogDescription>
-              <strong>{skipConfirm?.candidateName}</strong> ne recevra pas cette étape. La séquence passera à
+              <strong className="font-medium text-foreground">{skipConfirm?.candidateName}</strong> ne recevra pas cette étape. La séquence passera à
               l'étape suivante. Pour tout arrêter, mettez ce candidat en pause.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -877,7 +810,7 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
                 setSkipConfirm(null);
                 if (target) handleSkipExecution(target.id, target.candidateName);
               }}
-              className="bg-destructive hover:bg-destructive/90"
+              className="bg-destructive"
             >
               Ne pas envoyer
             </AlertDialogAction>
@@ -887,3 +820,24 @@ export const SequenceActivityLog: React.FC<SequenceActivityLogProps> = ({
     </Sheet>
   );
 };
+
+/** Squelette du journal : tuiles, filtres, puis des lignes d'étape. */
+const ActivityLogSkeleton: React.FC = () => (
+  <div className="space-y-4" aria-hidden="true">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+    <Skeleton className="h-9 w-full rounded-lg" />
+    {[0, 1, 2, 3, 4].map((i) => (
+      <div key={i} className="flex items-start gap-3 rounded-xl border border-border p-3">
+        <Skeleton className="h-8 w-8 rounded-lg" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-2/5 rounded-sm" />
+          <Skeleton className="h-3 w-3/5 rounded-sm" />
+        </div>
+      </div>
+    ))}
+  </div>
+);

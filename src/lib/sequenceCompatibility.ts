@@ -65,6 +65,10 @@ export interface ProfileCompatResult {
   profile: ProfileCompat;
   distance: string | null;
   issue: CompatIssue;
+  /**
+   * Motif au vouvoiement, sans tiret long, affiché après le nom du candidat :
+   * « Chloé Lefèvre : Déjà en relation : l'invitation sera sautée… ».
+   */
   message: string | null;
 }
 

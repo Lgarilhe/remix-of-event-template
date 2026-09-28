@@ -99,22 +99,28 @@ test('SEQ-042 — la confirmation annonce l’arrêt des envois et attend le ré
 
 // ------------------------------------------------------------ SEQ-104
 test('SEQ-104 — désinscription en échec : message distinct et nouvel essai', () => {
-  assert.match(unsubscribe, /\{status === 'invalid' && \(/);
+  // Revue design : un écran par état, pages sans issue du socle (PublicDeadEnd).
+  assert.match(unsubscribe, /if \(status === 'invalid'\) \{/);
   assert.doesNotMatch(unsubscribe, /status === 'invalid' \|\| status === 'error'/);
-  const errorBlock = block(unsubscribe, "{status === 'error' && (", '</>');
-  assert.match(errorBlock, /Une erreur est survenue, réessayez dans un instant\./);
-  assert.match(errorBlock, /onClick=\{retry\}/);
-  assert.doesNotMatch(errorBlock, /Lien invalide/);
+  const errorBlock = block(unsubscribe, "if (status === 'error') {", "if (status === 'invalid') {");
+  assert.match(errorBlock, /kind="network"/);
+  assert.match(errorBlock, /onRetry=\{retry\}/);
+  assert.doesNotMatch(errorBlock, /n'est plus valide|Lien invalide/);
+  // Échec de la confirmation : le lien reste bon, nouvel essai sur place.
+  assert.match(unsubscribe, /La désinscription n'a pas abouti\. Vérifiez votre connexion, puis réessayez\./);
+  assert.match(unsubscribe, /'Réessayer la désinscription'/);
 });
 
 test('désinscription : français sans anglicisme, un seul verbe, tournures neutres', () => {
   assert.doesNotMatch(unsubscribe, /emails/);
   assert.doesNotMatch(unsubscribe, /désabonn/i);
   assert.doesNotMatch(unsubscribe, /désinscrit avec succès|Déjà désinscrit|déjà désinscrit de/);
-  assert.match(unsubscribe, />Se désinscrire</);
-  assert.match(unsubscribe, /Vous ne recevrez plus d'e-mails de notre part\./);
-  assert.match(unsubscribe, /Votre désinscription est enregistrée\./);
-  assert.match(unsubscribe, /Cette adresse est déjà désinscrite : vous ne recevez plus nos e-mails\./);
+  // Revue design : l'expéditeur est nommé (e-mails envoyés par l'intermédiaire de Konekt).
+  assert.match(unsubscribe, />Se désinscrire des e-mails</);
+  assert.match(unsubscribe, /Votre adresse ne recevra plus d'e-mails envoyés par l'intermédiaire de Konekt\./);
+  assert.match(unsubscribe, />Désinscription confirmée</);
+  assert.match(unsubscribe, />Désinscription déjà enregistrée</);
+  assert.match(unsubscribe, /Votre adresse ne reçoit déjà plus d'e-mails envoyés par l'intermédiaire de Konekt\./);
   assert.match(unsubscribe, /Confirmer la désinscription/);
 });
 
@@ -178,10 +184,12 @@ test('SEQ-181 — agenda : seules les inscriptions actives, étapes internes éc
 });
 
 test('SEQ-181 — agenda en erreur : bloc d’erreur, pas de semaine vide', () => {
-  assert.match(calendarPage, /isLoading, isError, isFetching, refetch \} = useCalendarEvents/);
-  assert.match(calendarPage, /\{isError && \(/);
-  assert.match(calendarPage, /<ErrorBox/);
-  assert.match(calendarPage, /!isLoading && !isError && totalCount === 0 && rawEvents\.length === 0/);
+  // Revue design : états du socle (ErrorState, EmptyState) dans une seule chaîne de rendu.
+  assert.match(calendarPage, /isFetching,\s*isError,\s*error,\s*refetch,\s*\} = useCalendarEvents/);
+  // Panne sans données : bloc d'erreur, jamais l'agenda vide qui suit dans la chaîne.
+  assert.match(calendarPage, /\) : isError && rawEvents\.length === 0 \? \(\s*<ErrorState[\s\S]*?onRetry=\{\(\) => refetch\(\)\}[\s\S]*?\/>\s*\) : rawEvents\.length === 0 \? \(\s*<EmptyState/);
+  // Panne d'une nouvelle lecture : les événements déjà chargés restent, signalés.
+  assert.match(calendarPage, /\{!isLoading && isError && rawEvents\.length > 0 && \(\s*<ErrorState/);
   // Le tableau de bord ne lit que les entretiens : une panne des envois ne les lui retire pas.
   assert.match(todayPanel, /useCalendarEvents\(\{ from: today, days: 1, outreach: false \}\)/);
   assert.match(todayPanel, /todayEventsError \? null : <EmptyState/);
@@ -381,11 +389,11 @@ test('SEQ-043 / SEQ-044 — « inscrire », jamais « enrôler », dans les libe
 });
 
 test('SEQ-161 — agenda du jour : une étape reportée ou en cours d’envoi affiche son statut réel', () => {
-  const item = block(todayPanel, '// ─── Render scheduled message', '<motion.button');
+  const item = block(todayPanel, '// ─── Envoi prévu', '<li className');
   assert.match(item, /!isDone && msg\.type === 'sequence' && \(msg\.status === 'quota_blocked' \|\| msg\.status === 'sending'\)/);
   assert.match(item, /\? msg\.statusLabel \|\| null/);
   assert.match(item, /const subtitle = pendingStatusLabel \? `\$\{pendingStatusLabel\} · \$\{baseSubtitle\}` : baseSubtitle;/);
-  assert.match(todayPanel, /<p className="text-2xs text-muted-foreground truncate">\{subtitle\}<\/p>/);
+  assert.match(todayPanel, /\{subtitle && <span className="block truncate text-xs text-muted-foreground">\{subtitle\}<\/span>\}/);
   // Le hook fournit bien ce libellé, sur le statut réel de l'exécution.
   const hook = read('src/hooks/useTodayScheduledMessages.ts');
   assert.match(hook, /statusLabel\?: string;/);

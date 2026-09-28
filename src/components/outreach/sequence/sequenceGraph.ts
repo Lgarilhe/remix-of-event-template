@@ -10,6 +10,7 @@
 import type { Sequence, SequenceStep, StopConditions, SenderAccountConfig } from '../SequenceBuilder';
 // Extension explicite : ce fichier est aussi importé tel quel par les tests Node.
 import { retiredConditionNotice } from './conditionTypes.ts';
+import { plural } from '../../../lib/plural.ts';
 
 type Step = SequenceStep;
 
@@ -104,8 +105,6 @@ export function formatStepDelay(step: Delay): string {
   const m = step.delayMinutes || 0;
   return [d > 0 ? `${d} j` : '', h > 0 ? `${h} h` : '', m > 0 ? `${m} min` : ''].filter(Boolean).join(' ');
 }
-
-const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
 
 /** Phrase sous les champs de délai : point de départ explicite. */
 export function delaySentence(step: Delay): string {
@@ -876,13 +875,13 @@ export const SEQUENCE_TEMPLATE_KEYS: readonly string[] = [
 ];
 
 const PREVIEW_EXAMPLES: Record<string, string> = {
-  prenom: 'Laurent', first_name: 'Laurent',
-  nom: 'Garilhe', last_name: 'Garilhe',
-  nom_complet: 'Laurent Garilhe', name: 'Laurent Garilhe',
-  entreprise_actuelle: 'Konekt', company: 'Konekt',
-  poste_actuel: 'Lead Developer', job_title: 'Lead Developer',
-  headline: 'Lead Developer chez Konekt',
-  profil_linkedin: 'linkedin.com/in/laurent-garilhe',
+  prenom: 'Marie', first_name: 'Marie',
+  nom: 'Dupont', last_name: 'Dupont',
+  nom_complet: 'Marie Dupont', name: 'Marie Dupont',
+  entreprise_actuelle: 'Cabinet Horizon', company: 'Cabinet Horizon',
+  poste_actuel: 'Directrice technique', job_title: 'Directrice technique',
+  headline: 'Directrice technique chez Cabinet Horizon',
+  profil_linkedin: 'linkedin.com/in/marie-dupont',
   niveau_connexion: '2e',
   poste_recherche: '[poste de la mission]',
   client: '[client de la mission]',

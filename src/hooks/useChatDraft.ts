@@ -23,6 +23,16 @@ const DRAFT_PREFIX = 'konekt_chat_draft_';
 const DRAFT_INDEX_KEY = 'konekt_chat_draft_index'; // { [chatId]: timestamp }
 const MAX_DRAFTS = 100;
 const SAVE_DEBOUNCE_MS = 500;
+/** Émis à chaque écriture de brouillon : la liste des conversations se relit (revue design D-10). */
+const DRAFTS_CHANGED_EVENT = 'konekt:chat-drafts-changed';
+
+function notifyDraftsChanged(): void {
+  try {
+    window.dispatchEvent(new Event(DRAFTS_CHANGED_EVENT));
+  } catch {
+    // Hors navigateur : rien à prévenir
+  }
+}
 
 interface DraftIndex {
   [chatId: string]: number; // timestamp last touched
@@ -100,6 +110,43 @@ function persistChatDraft(chatId: string, value: string): void {
   } catch {
     // localStorage plein ou navigation privée
   }
+  notifyDraftsChanged();
+}
+
+/** Brouillons enregistrés, par conversation (lecture synchrone du stockage local). */
+function readAllChatDrafts(): Map<string, string> {
+  const drafts = new Map<string, string>();
+  for (const chatId of Object.keys(loadIndex())) {
+    const text = readChatDraft(chatId);
+    if (text.trim()) drafts.set(chatId, text);
+  }
+  return drafts;
+}
+
+/**
+ * Brouillons de toutes les conversations, relus à chaque écriture (dans cet
+ * onglet ou un autre) : la liste signale un texte en cours (revue design D-10).
+ */
+export function useChatDrafts(): Map<string, string> {
+  const [drafts, setDrafts] = useState<Map<string, string>>(() => readAllChatDrafts());
+
+  useEffect(() => {
+    const refresh = () => {
+      const next = readAllChatDrafts();
+      // Même contenu : on garde la référence, la liste ne se redessine pas.
+      setDrafts((prev) =>
+        prev.size === next.size && [...next].every(([id, text]) => prev.get(id) === text) ? prev : next,
+      );
+    };
+    window.addEventListener(DRAFTS_CHANGED_EVENT, refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener(DRAFTS_CHANGED_EVENT, refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
+
+  return drafts;
 }
 
 export function useChatDraft(chatId: string | null | undefined) {
@@ -187,6 +234,7 @@ export function useChatDraft(chatId: string | null | undefined) {
       delete idx[chatId];
       saveIndex(idx);
     } catch { /* noop */ }
+    notifyDraftsChanged();
   }, [chatId]);
 
   return {

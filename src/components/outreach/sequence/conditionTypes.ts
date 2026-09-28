@@ -2,25 +2,27 @@
 //
 // Ce fichier n'importe rien : il est lu tel quel par les tests Node.
 
+// Libellés en français, sans emoji (revue design D-41, D-70). « Si connecté »
+// reste court : la liste des conditions de l'éditeur le propose tel quel.
 export const ALL_CONDITION_TYPES = [
   { value: 'always', label: 'Toujours exécuter' },
   { value: 'if_connected', label: 'Si connecté' },
   { value: 'if_not_connected', label: 'Si non connecté' },
   { value: 'if_no_response', label: 'Si pas de réponse' },
   // Engagement e-mail
-  { value: 'if_email_opened', label: '📧 Si e-mail ouvert' },
-  { value: 'if_email_not_opened', label: '📧 Si e-mail non ouvert' },
-  { value: 'if_link_clicked', label: '🔗 Si lien cliqué' },
-  { value: 'if_link_not_clicked', label: '🔗 Si lien non cliqué' },
+  { value: 'if_email_opened', label: "Si l'e-mail est ouvert" },
+  { value: 'if_email_not_opened', label: "Si l'e-mail n'est pas ouvert" },
+  { value: 'if_link_clicked', label: 'Si un lien est cliqué' },
+  { value: 'if_link_not_clicked', label: "Si aucun lien n'est cliqué" },
   // Données candidat
-  { value: 'if_has_email', label: '📬 Si a un e-mail' },
-  { value: 'if_no_email', label: '📬 Si pas d\'e-mail' },
-  { value: 'if_has_phone', label: '📞 Si a un téléphone' },
-  { value: 'if_no_phone', label: '📞 Si pas de téléphone' },
+  { value: 'if_has_email', label: 'Si une adresse e-mail est connue' },
+  { value: 'if_no_email', label: 'Si aucune adresse e-mail' },
+  { value: 'if_has_phone', label: 'Si un numéro de téléphone est connu' },
+  { value: 'if_no_phone', label: 'Si aucun numéro de téléphone' },
   // Statut
-  { value: 'if_bounced', label: '⚠️ Si l\'e-mail est revenu en erreur' },
-  { value: 'if_unsubscribed', label: '🚫 Si désinscrit' },
-  { value: 'if_score_above', label: '⭐ Si score au-dessus de...' },
+  { value: 'if_bounced', label: "Si l'e-mail est revenu en erreur" },
+  { value: 'if_unsubscribed', label: "Si le candidat s'est désinscrit" },
+  { value: 'if_score_above', label: 'Si le score dépasse un seuil' },
 ];
 
 /**
@@ -120,13 +122,13 @@ export function getConditionsForActionType(actionType: string, current?: string)
 export function isCrossChannelCondition(actionType: string, conditionType: string): boolean {
   const channel = getStepChannel(actionType);
   if (channel === 'branch') return false;
-  
+
   const emailOnlyConditions = ['if_email_opened', 'if_email_not_opened', 'if_link_clicked', 'if_link_not_clicked', 'if_bounced', 'if_unsubscribed'];
   const linkedinOnlyConditions = ['if_connected', 'if_not_connected', 'if_no_response'];
 
   if (channel !== 'email' && emailOnlyConditions.includes(conditionType)) return true;
   if (channel !== 'linkedin' && linkedinOnlyConditions.includes(conditionType)) return true;
-  
+
   return false;
 }
 

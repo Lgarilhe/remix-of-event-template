@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Check, X, AlertTriangle, Shield, Users, MessageSquare, Clock, Mail, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, Check, X, AlertTriangle, CheckCircle2, Shield, Users, MessageSquare, Clock, Mail } from 'lucide-react';
 import { Sequence } from '../SequenceBuilder';
+import { plural } from '@/lib/plural';
 import { validateSequence, stepNeedsSubject, type SequenceIssue } from './sequenceGraph';
 
 interface ValidationItem {
@@ -50,10 +51,18 @@ const RECOMMENDED_CHECKS: Array<{ check: string; label: string; icon: typeof Che
 
 const messagesOf = (issues: SequenceIssue[], check: string) => issues.filter(i => i.check === check).map(i => i.message);
 
+type SummaryTone = 'danger' | 'warning' | 'success';
+
+function SummaryIcon({ tone }: { tone: SummaryTone }) {
+  if (tone === 'danger') return <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />;
+  if (tone === 'warning') return <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />;
+  return <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />;
+}
+
 /**
  * Liste de vérification. Elle lit validateSequence, comme l'enregistrement et
  * le fil du mode Guidé : ce qu'elle dit bloquant bloque l'enregistrement, et
- * « Prêt » veut dire que l'enregistrement passera.
+ * « Prête » veut dire que l'enregistrement passera.
  */
 export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistProps> = ({
   sequence,
@@ -69,7 +78,7 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
     // Toujours affichés, au vert quand rien ne bloque.
     const passSummary: Record<string, string | null> = {
       name: sequence.name.trim() || null,
-      steps: stepCount > 0 ? `${stepCount} étape${stepCount !== 1 ? 's' : ''}` : null,
+      steps: stepCount > 0 ? plural(stepCount, 'étape') : null,
       messages: 'Tous rédigés',
       subjects: needsSubjects ? 'Tous renseignés' : null,
     };
@@ -94,7 +103,7 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
       id: 'senders', label: 'Expéditeurs',
       details: senderWarnings.length > 0
         ? senderWarnings
-        : [sequence.multiSenderEnabled ? `${senderCount} expéditeur${senderCount !== 1 ? 's' : ''}` : 'Un seul expéditeur'],
+        : [sequence.multiSenderEnabled ? plural(senderCount, 'expéditeur') : 'Un seul expéditeur'],
       status: senderWarnings.length > 0 ? 'warning' : 'pass',
       icon: Users, category: 'recommended',
     });
@@ -123,90 +132,80 @@ export const SequenceValidationChecklist: React.FC<SequenceValidationChecklistPr
     .filter(i => i.status === 'fail')
     .reduce((sum, i) => sum + i.details.length, 0);
   const warningCount = items.filter(i => i.status === 'warning').length;
-  const passCount = items.filter(i => i.status === 'pass').length;
+  const tone: SummaryTone = blockerCount > 0 ? 'danger' : warningCount > 0 ? 'warning' : 'success';
 
   return (
-    <div className={cn("space-y-4", className)}>
-      {/* Progress summary */}
-      <div
+    <div className={cn('space-y-4', className)}>
+      {/* Résumé */}
+      <p
         role="status"
         className={cn(
-          "px-3 py-2.5 text-xs font-medium flex items-center gap-2 border-l-2",
-          blockerCount > 0
-            ? "border-l-destructive bg-destructive/5 text-destructive"
-            : warningCount > 0
-              ? "border-l-warning bg-warning/10 text-warning"
-              : "border-l-success bg-success/10 text-success"
+          'flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium',
+          tone === 'danger' && 'bg-danger-muted text-danger',
+          tone === 'warning' && 'bg-warning-muted text-warning',
+          tone === 'success' && 'bg-success-muted text-success',
         )}
       >
-        {blockerCount > 0 ? (
-          <><X className="w-3.5 h-3.5" aria-hidden="true" />{blockerCount} point{blockerCount > 1 ? 's' : ''} à corriger avant d'enregistrer</>
-        ) : warningCount > 0 ? (
-          <><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />Prête, avec {warningCount} recommandation{warningCount > 1 ? 's' : ''}</>
-        ) : (
-          <><CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />Prête ({passCount}/{items.length})</>
-        )}
-      </div>
+        <SummaryIcon tone={tone} />
+        {blockerCount > 0
+          ? `${plural(blockerCount, 'point')} à corriger avant d'enregistrer`
+          : warningCount > 0
+            ? `Prête, avec ${plural(warningCount, 'recommandation')}`
+            : 'Prête à être enregistrée'}
+      </p>
 
-      {/* Required */}
-      <div>
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1.5 px-1">
-          Obligatoire
-        </div>
-        <div className="space-y-0.5">
-          {requiredItems.map(item => (
-            <ChecklistItem key={item.id} item={item} />
-          ))}
-        </div>
-      </div>
-
-      {/* Recommended */}
-      {recommendedItems.length > 0 && (
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1.5 px-1">
-            Recommandé
-          </div>
-          <div className="space-y-0.5">
-            {recommendedItems.map(item => (
-              <ChecklistItem key={item.id} item={item} />
-            ))}
-          </div>
-        </div>
-      )}
+      <ChecklistGroup title="Obligatoire" items={requiredItems} />
+      {recommendedItems.length > 0 && <ChecklistGroup title="Recommandé" items={recommendedItems} />}
     </div>
   );
+};
+
+const STATUS_TEXT: Record<ValidationItem['status'], string> = {
+  pass: 'Correct',
+  warning: 'Recommandation',
+  fail: 'À corriger',
 };
 
 /** Au-delà, les points suivants sont résumés en « et N autres ». */
 const MAX_DETAILS = 4;
 
-const ChecklistItem: React.FC<{ item: ValidationItem }> = ({ item }) => {
-  const shown = item.details.slice(0, MAX_DETAILS);
-  const hidden = item.details.length - shown.length;
-  return (
-    <div className="flex items-start gap-2.5 py-1.5 px-2 rounded-md hover:bg-muted/40 transition-colors">
-      <div className={cn(
-        "w-4 h-4 rounded-full flex items-center justify-center shrink-0",
-        item.status === 'pass' ? "bg-success/10 text-success"
-          : item.status === 'warning' ? "bg-warning/10 text-warning"
-            : "bg-destructive/10 text-destructive"
-      )}>
-        {item.status === 'pass' ? <Check className="w-2.5 h-2.5" aria-hidden="true" /> :
-          item.status === 'warning' ? <AlertTriangle className="w-2.5 h-2.5" aria-hidden="true" /> :
-            <X className="w-2.5 h-2.5" aria-hidden="true" />}
-        <span className="sr-only">
-          {item.status === 'pass' ? 'Correct' : item.status === 'warning' ? 'Recommandation' : 'À corriger'}
-        </span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[11px] font-medium leading-tight truncate" title={item.label}>{item.label}</div>
-        {shown.map((detail, i) => (
-          <div key={i} className="text-[10px] text-muted-foreground/70 leading-snug break-words">{detail}</div>
-        ))}
-        {hidden > 0 && (
-          <div className="text-[10px] text-muted-foreground/70 leading-snug">et {hidden} autre{hidden > 1 ? 's' : ''}</div>
-        )}
-      </div>
-    </div>
-  );
-};
+const ChecklistGroup: React.FC<{ title: string; items: ValidationItem[] }> = ({ title, items }) => (
+  <div>
+    <p className="eyebrow mb-1.5 px-1">{title}</p>
+    <ul className="space-y-0.5">
+      {items.map(item => {
+        const shown = item.details.slice(0, MAX_DETAILS);
+        const hidden = item.details.length - shown.length;
+        return (
+          <li key={item.id} className="flex items-start gap-2.5 px-1 py-1.5">
+            <span
+              className={cn(
+                'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full',
+                item.status === 'pass' ? 'bg-success-muted text-success'
+                  : item.status === 'warning' ? 'bg-warning-muted text-warning'
+                    : 'bg-danger-muted text-danger',
+              )}
+              aria-hidden="true"
+            >
+              {item.status === 'pass' ? <Check className="h-2.5 w-2.5" /> :
+                item.status === 'warning' ? <AlertTriangle className="h-2.5 w-2.5" /> :
+                  <X className="h-2.5 w-2.5" />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-medium leading-tight text-foreground">
+                {item.label}
+                <span className="sr-only"> : {STATUS_TEXT[item.status]}.</span>
+              </span>
+              {shown.map((detail, i) => (
+                <span key={i} className="mt-0.5 block break-words text-2xs leading-snug text-muted-foreground">{detail}</span>
+              ))}
+              {hidden > 0 && (
+                <span className="mt-0.5 block text-2xs leading-snug text-muted-foreground">et {plural(hidden, 'autre')}</span>
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  </div>
+);

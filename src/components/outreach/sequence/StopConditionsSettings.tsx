@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { MessageCircle, MousePointerClick, CalendarCheck } from 'lucide-react';
@@ -29,30 +29,31 @@ const STOP_ITEMS = [
 ];
 
 export const StopConditionsSettings: React.FC<StopConditionsSettingsProps> = ({ value, onChange }) => {
+  const baseId = useId();
   return (
-    <div className="space-y-3">
-      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-        Conditions d'arrêt
-      </Label>
+    <fieldset>
+      <legend className="eyebrow mb-3">Conditions d'arrêt</legend>
       <div className="space-y-2">
-        <div className="flex items-center gap-2.5 p-2.5 border border-border bg-muted/20">
-          <MessageCircle className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
-          <span className="text-sm">La séquence s'arrête toujours quand le candidat répond ou se désinscrit.</span>
+        <div className="flex items-center gap-2.5 rounded-lg border border-border bg-muted px-3 py-2.5">
+          <MessageCircle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <p className="text-sm leading-snug">La séquence s'arrête toujours quand le candidat répond ou se désinscrit.</p>
         </div>
         {STOP_ITEMS.map(item => {
           const Icon = item.icon;
-          const id = `stop-condition-${item.key}`;
+          const id = `${baseId}-${item.key}`;
+          const hintId = `${id}-hint`;
           return (
-            <div key={item.key} className="flex items-center justify-between gap-3 p-2.5 border border-border bg-background">
-              <div className="flex items-start gap-2.5 min-w-0">
-                <Icon className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" aria-hidden="true" />
+            <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+              <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <div className="min-w-0">
-                  <Label htmlFor={id} className="text-sm font-normal cursor-pointer">{item.label}</Label>
-                  {item.hint && <p className="text-xs text-muted-foreground mt-0.5">{item.hint}</p>}
+                  <Label htmlFor={id} className="cursor-pointer font-normal leading-snug">{item.label}</Label>
+                  {item.hint && <p id={hintId} className="mt-0.5 text-xs text-muted-foreground">{item.hint}</p>}
                 </div>
               </div>
               <Switch
                 id={id}
+                aria-describedby={item.hint ? hintId : undefined}
                 checked={value[item.key]}
                 onCheckedChange={(checked) => onChange({ ...value, on_reply: true, on_unsubscribe: true, [item.key]: checked })}
               />
@@ -60,6 +61,6 @@ export const StopConditionsSettings: React.FC<StopConditionsSettingsProps> = ({ 
           );
         })}
       </div>
-    </div>
+    </fieldset>
   );
 };
