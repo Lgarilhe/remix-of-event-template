@@ -5,6 +5,10 @@ import {
   isWithinBusinessHours, nextBusinessHoursStart, ACCOUNT_DISCONNECTED_PAUSE_REASON,
 } from "../_shared/linkedin-quotas.ts";
 import { getSubscriptionGate, type SubscriptionGate } from "../_shared/subscription-gate.ts";
+import { inmailQueueRetry } from "../_shared/sequence-send-rules.ts";
+import { siblingEnrollmentsFilter, siblingStopScope } from "../_shared/sequence-engine-rules.ts";
+import { isGdprErasedEnrollment } from "../_shared/sequence-resume.ts";
+import { isCandidateErasedForOrg, linkedInProfileSlug } from "../_shared/get-or-fetch-contact.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,6 +35,54 @@ const INTERACTIVE_COOLDOWN_MS = 5 * 60 * 1000;
 // lui-même une fois l'abonnement souscrit.
 const SUBSCRIPTION_REQUIRED_REASON = "Abonnement requis pour l'envoi d'InMails";
 
+// Mise en file refusée sans abonnement (SEQ-134) : même texte que l'interface.
+const PLAN_REQUIRED_MESSAGE = "L'envoi de séquences et d'InMails nécessite un abonnement. Passez à un plan payant pour contacter ces candidats.";
+
+// Anti-doublon de la mise en file (SEQ-125) : un candidat déjà en file ou déjà
+// contacté par InMail par l'organisation ces 90 derniers jours n'est pas remis.
+// 'replied' : un InMail envoyé auquel le candidat a répondu reste un contact.
+const DUPLICATE_WINDOW_DAYS = 90;
+const DUPLICATE_STATUSES = ["pending", "scheduled", "sending", "sent", "replied"];
+// Décision 24 : une inscription en séquence de l'organisation compte aussi.
+// Vivante (active, paused) : sans limite de date, comme l'anti-doublon du
+// navigateur. Sinon, quel que soit son statut (arrêtée comprise), créée ou
+// close ces 90 derniers jours. Date de clôture : fin ou réponse, la plus
+// récente ; à défaut la dernière écriture (même règle que la garde
+// sequence_enrollments_same_person_guard).
+const LIVE_ENROLLMENT_STATUSES = ["active", "paused"];
+// Lots de destinataires par lecture des inscriptions (longueur d'URL bornée)
+// et contrôles d'effacement menés en parallèle.
+const RECIPIENT_CHUNK_SIZE = 40;
+const ERASURE_CHECK_CONCURRENCY = 10;
+
+// Compte d'envoi absent de l'organisation de l'item (SEQ-011).
+const ACCOUNT_NOT_IN_ORG_MESSAGE = "Compte non rattaché à l'organisation";
+
+// Dernier contrôle avant l'envoi : motifs d'annulation affichés dans la file.
+// Même texte que l'annulation posée par l'effacement (recordGdprErasure).
+const GDPR_ERASED_INMAIL_MESSAGE = "Effacement des données demandé";
+const CANDIDATE_REPLIED_INMAIL_MESSAGE = "Le candidat a déjà répondu à votre organisation";
+
+// Clients `esm.sh` et `npm:` aux types internes incompatibles : même
+// convention permissive que loadUserQuotas ci-dessous.
+// deno-lint-ignore no-explicit-any
+async function subscriptionGateFor(supabase: any, orgId: string): Promise<SubscriptionGate> {
+  return await getSubscriptionGate(supabase, orgId);
+}
+
+// Effacement RGPD connu du candidat pour l'organisation (décision 14) :
+// marqueur d'une de ses inscriptions ou registre global. Lève une erreur si
+// une lecture échoue.
+// deno-lint-ignore no-explicit-any
+async function candidateErasedFor(supabase: any, orgId: string, recipientId: string, profileUrl: string | null): Promise<boolean> {
+  return await isCandidateErasedForOrg(supabase, { organizationId: orgId, linkedinIds: [recipientId], linkedinUrl: profileUrl });
+}
+
+/** DSN sans schéma ni barre finale (les URL sont construites en https://${dsn}). */
+function bareDsn(raw: string): string {
+  return raw.replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+
 interface InMailQueueItem {
   id: string;
   account_id: string;
@@ -42,7 +94,9 @@ interface InMailQueueItem {
   scheduled_at: string | null;
   user_timezone: string;
   created_by: string;
+  created_at?: string | null;
   organization_id?: string | null;
+  error_message?: string | null;
   network_distance: number | null; // 1=1st degree, 2=2nd degree, 3=3rd degree
 }
 
@@ -101,11 +155,6 @@ Deno.serve(async (req: Request) => {
     // Service role client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Resolve Unipile credentials from org_integrations with env fallback
-    let unipileApiKey: string | undefined;
-    let unipileDsn: string | undefined;
-    // We'll resolve after auth when we have the user ID
-
     const { action, items, user_timezone, item_ids } = await req.json();
 
     // Helper function to validate user from auth header
@@ -132,25 +181,10 @@ Deno.serve(async (req: Request) => {
         console.error("Auth error:", authError);
         throw new Error("Authentication failed");
       }
-      
-      // Resolve Unipile credentials for this user's org
-      if (!unipileApiKey || !unipileDsn) {
-        try {
-          const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-          const orgId = await resolveOrgIdFromUser(user.id, supabase);
-          const creds = await resolveUnipileCredentials(orgId, supabase);
-          if (creds) {
-            unipileApiKey = creds.apiKey;
-            unipileDsn = creds.dsn.replace(/^https?:\/\//, '');
-          }
-        } catch (e) {
-          console.warn('[process-inmail-queue] Org credential resolution failed:', e);
-        }
-        if (!unipileApiKey) unipileApiKey = Deno.env.get("UNIPILE_API_KEY");
-        if (!unipileDsn) unipileDsn = Deno.env.get("UNIPILE_DSN");
-        if (!unipileApiKey || !unipileDsn) throw new Error("Missing Unipile configuration");
-      }
-      
+
+      // Les credentials LinkedIn ne sont plus résolus ici (organisation active
+      // de l'appelant) : l'envoi les résout par organisation de chaque item
+      // (SEQ-199), et mise en file, statut et annulation n'en ont pas besoin.
       return user;
     };
 
@@ -177,32 +211,236 @@ Deno.serve(async (req: Request) => {
         if (requestedAccountIds.length === 0) {
           throw new Error("Missing account_id");
         }
+        // Lecture directe (resolveOrgIdFromUser avale les erreurs et renvoie
+        // null) : une panne passagère n'est jamais présentée comme un compte
+        // hors organisation, le recruteur est invité à réessayer.
+        let orgLookupFailed = false;
         try {
-          const { resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-          callerOrgId = await resolveOrgIdFromUser(user.id, supabase);
+          const { data: callerProfile, error: profileErr } = await supabase
+            .from("profiles")
+            .select("active_organization_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (profileErr) {
+            orgLookupFailed = true;
+            console.warn("[process-inmail-queue] org resolution failed at enqueue:", profileErr);
+          } else {
+            callerOrgId = (callerProfile as { active_organization_id?: string | null } | null)?.active_organization_id || null;
+          }
         } catch (e) {
+          orgLookupFailed = true;
           console.warn("[process-inmail-queue] org resolution failed at enqueue:", e);
+        }
+        if (orgLookupFailed) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "ORG_LOOKUP_FAILED",
+              message: "Vérification de votre organisation momentanément impossible : réessayez dans un instant.",
+            }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         }
         const { data: ownedAccounts, error: ownErr } = callerOrgId
           ? await supabase
               .from("member_linkedin_accounts")
-              .select("linkedin_account_id")
+              .select("linkedin_account_id, user_id")
               .eq("organization_id", callerOrgId)
               .in("linkedin_account_id", requestedAccountIds)
           : { data: [], error: null };
         if (ownErr) throw ownErr;
-        const ownedSet = new Set((ownedAccounts || []).map((a: any) => a.linkedin_account_id));
-        const unauthorized = requestedAccountIds.filter((id) => !ownedSet.has(id));
+        const linkRows = (ownedAccounts || []) as Array<{ linkedin_account_id: string; user_id: string | null }>;
+        const inOrgSet = new Set(linkRows.map((a) => a.linkedin_account_id));
+        const unauthorized = requestedAccountIds.filter((id) => !inOrgSet.has(id));
         if (unauthorized.length > 0) {
           console.warn(
             `[process-inmail-queue] user ${user.id} tried to enqueue with unauthorized account(s):`,
             unauthorized,
           );
           return new Response(
-            JSON.stringify({ success: false, error: "Compte LinkedIn non autorisé" }),
+            JSON.stringify({ success: false, error: "ACCOUNT_NOT_ALLOWED", message: "Ce compte LinkedIn n’appartient pas à votre organisation." }),
             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         }
+        // Liaison stricte (même règle que les inscriptions, SEQ-043) : on
+        // n'envoie que depuis SON compte relié, jamais celui d'un collègue,
+        // administrateurs compris (identité et crédits InMail du collègue).
+        const callerAccountSet = new Set(linkRows.filter((a) => a.user_id === user.id).map((a) => a.linkedin_account_id));
+        const ofOtherMember = requestedAccountIds.filter((id) => !callerAccountSet.has(id));
+        if (ofOtherMember.length > 0) {
+          console.warn(
+            `[process-inmail-queue] user ${user.id} tried to enqueue from another member's account(s):`,
+            ofOtherMember,
+          );
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "ACCOUNT_OF_OTHER_MEMBER",
+              message: "Ce compte LinkedIn est relié à un autre membre de l'équipe. Envoyez les InMails depuis votre propre compte.",
+            }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+
+      // Abonnement (SEQ-134) : sans plan autorisant l'envoi, rien n'est mis en
+      // file (avant : « InMails planifiés » puis report d'heure en heure sans
+      // fin). callerOrgId est non nul ici (sinon 403 plus haut).
+      if (callerOrgId) {
+        try {
+          const planGate = await subscriptionGateFor(supabase, callerOrgId);
+          if (!planGate.canSendSequences) {
+            return new Response(
+              JSON.stringify({ success: false, error: "PLAN_REQUIRED", message: PLAN_REQUIRED_MESSAGE }),
+              { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        } catch (gateErr) {
+          // Lecture impossible : la mise en file continue, l'envoi revérifie
+          // l'abonnement à chaque cycle (canSendForSubscription).
+          console.warn("[process-inmail-queue] subscription gate unavailable at enqueue:", gateErr);
+        }
+      }
+
+      // Anti-doublon (SEQ-125, décision 24) : destinataires déjà en file, en
+      // cours d'envoi ou contactés par InMail par l'organisation ces 90
+      // derniers jours, inscrits en séquence dans l'organisation (inscription
+      // vivante, ou créée ou close ces 90 derniers jours, arrêtée comprise), et
+      // doublons dans la sélection elle-même, sans dérogation. Candidats
+      // effacés (décision 14) : refusés dès la mise en file, l'envoi l'était
+      // déjà. Tous sont écartés et renvoyés pour que l'interface affiche un
+      // bilan exact.
+      const requestedRecipients = [
+        ...new Set(items.map((it: any) => it?.recipient_profile_id).filter((v: unknown): v is string => typeof v === "string" && v !== "")),
+      ] as string[];
+      // URL de profil facultative (recipient_profile_url) : rapprochement des
+      // inscriptions par slug et lecture du registre global des effacements.
+      const profileUrlOf = new Map<string, string>();
+      for (const it of items as any[]) {
+        const rid = it?.recipient_profile_id;
+        const url = typeof it?.recipient_profile_url === "string" ? it.recipient_profile_url.trim() : "";
+        if (typeof rid === "string" && rid && url && !profileUrlOf.has(rid)) profileUrlOf.set(rid, url);
+      }
+      const alreadyContacted = new Set<string>();
+      const erasedRecipients = new Set<string>();
+      if (callerOrgId && requestedRecipients.length > 0) {
+        const orgId = callerOrgId;
+        const sinceMs = Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 3600 * 1000;
+        const since = new Date(sinceMs).toISOString();
+        const { data: existingRows, error: dupErr } = await supabase
+          .from("inmail_queue")
+          .select("recipient_profile_id")
+          .eq("organization_id", orgId)
+          .in("recipient_profile_id", requestedRecipients)
+          .in("status", DUPLICATE_STATUSES)
+          .gte("created_at", since);
+        if (dupErr) throw dupErr;
+        for (const row of (existingRows || []) as Array<{ recipient_profile_id: string }>) alreadyContacted.add(row.recipient_profile_id);
+
+        // Inscriptions de l'organisation, quel que soit l'identifiant
+        // enregistré (profile_id, provider_id, resolved_profile_id) ou par
+        // slug exact quand l'URL est fournie. Lecture impossible : rien n'est
+        // mis en file.
+        let enrollmentsUnreadable = false;
+        for (let i = 0; i < requestedRecipients.length; i += RECIPIENT_CHUNK_SIZE) {
+          const chunk = requestedRecipients.slice(i, i + RECIPIENT_CHUNK_SIZE);
+          const slugOf = new Map<string, string>();
+          for (const rid of chunk) {
+            const slug = linkedInProfileSlug(profileUrlOf.get(rid));
+            if (slug && /^[a-z0-9\-_.%~]+$/i.test(slug)) slugOf.set(rid, slug);
+          }
+          const filters = [
+            siblingEnrollmentsFilter(chunk),
+            ...[...new Set(slugOf.values())].map((slug) => `profile_url.ilike.*/in/${slug}*`),
+          ].filter((f): f is string => !!f);
+          if (filters.length === 0) continue;
+          const { data: enrollments, error: enrErr } = await supabase
+            .from("sequence_enrollments")
+            .select("profile_id, provider_id, resolved_profile_id, profile_url, status, created_at, completed_at, replied_at, updated_at")
+            .eq("organization_id", orgId)
+            .or(filters.join(","));
+          if (enrErr) {
+            console.warn("[process-inmail-queue] enrollments unreadable at enqueue:", enrErr.message);
+            enrollmentsUnreadable = true;
+            break;
+          }
+          for (const e of (enrollments ?? []) as Array<{
+            profile_id: string | null; provider_id: string | null; resolved_profile_id: string | null;
+            profile_url: string | null; status: string; created_at: string;
+            completed_at: string | null; replied_at: string | null; updated_at: string | null;
+          }>) {
+            const closings = [e.completed_at, e.replied_at].map((d) => (d ? Date.parse(d) : NaN)).filter(Number.isFinite);
+            const closedAt = closings.length > 0 ? Math.max(...closings) : Date.parse(e.updated_at ?? "");
+            if (!LIVE_ENROLLMENT_STATUSES.includes(e.status) && !(Date.parse(e.created_at) >= sinceMs) && !(closedAt >= sinceMs)) continue;
+            const slug = linkedInProfileSlug(e.profile_url);
+            for (const rid of chunk) {
+              if (rid === e.profile_id || rid === e.provider_id || rid === e.resolved_profile_id
+                || (!!slug && slugOf.get(rid) === slug)) alreadyContacted.add(rid);
+            }
+          }
+        }
+        if (enrollmentsUnreadable) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "DUPLICATE_CHECK_FAILED",
+              message: "Vérification des contacts récents de votre organisation momentanément impossible : réessayez dans un instant.",
+            }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        try {
+          for (let i = 0; i < requestedRecipients.length; i += ERASURE_CHECK_CONCURRENCY) {
+            const chunk = requestedRecipients.slice(i, i + ERASURE_CHECK_CONCURRENCY);
+            const erased = await Promise.all(chunk.map((rid) => candidateErasedFor(supabase, orgId, rid, profileUrlOf.get(rid) ?? null)));
+            chunk.forEach((rid, k) => { if (erased[k]) erasedRecipients.add(rid); });
+          }
+        } catch (erasureErr) {
+          console.warn("[process-inmail-queue] erasure check failed at enqueue:", erasureErr);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "ERASURE_CHECK_FAILED",
+              message: "Vérification des demandes d'effacement momentanément impossible : réessayez dans un instant.",
+            }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+      const seenInBatch = new Set<string>();
+      const freshItems = items.filter((it: any) => {
+        const rid = it?.recipient_profile_id;
+        if (!rid || erasedRecipients.has(rid) || alreadyContacted.has(rid) || seenInBatch.has(rid)) return false;
+        seenInBatch.add(rid);
+        return true;
+      });
+      // Un candidat effacé est compté comme tel, jamais comme doublon.
+      const erasedSkipped = requestedRecipients.filter((rid) => erasedRecipients.has(rid));
+      const skippedRecipients = requestedRecipients.filter((rid) => !erasedRecipients.has(rid) && alreadyContacted.has(rid));
+      const exclusions = [
+        skippedRecipients.length > 0
+          ? `${skippedRecipients.length} candidat${skippedRecipients.length > 1 ? "s" : ""} déjà contacté${skippedRecipients.length > 1 ? "s" : ""} ces 90 derniers jours, exclu${skippedRecipients.length > 1 ? "s" : ""}`
+          : null,
+        erasedSkipped.length > 0
+          ? `${erasedSkipped.length} candidat${erasedSkipped.length > 1 ? "s" : ""} ayant demandé l'effacement de ${erasedSkipped.length > 1 ? "leurs" : "ses"} données, exclu${erasedSkipped.length > 1 ? "s" : ""}`
+          : null,
+      ].filter((part): part is string => !!part);
+      if (freshItems.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            queued: 0,
+            skipped_duplicates: skippedRecipients.length,
+            skipped_recipient_ids: skippedRecipients,
+            skipped_erased: erasedSkipped.length,
+            skipped_erased_ids: erasedSkipped,
+            message: erasedSkipped.length === 0
+              ? "Aucun InMail planifié : ces candidats ont déjà un InMail en file, ou ont été inscrits en séquence ou contactés par votre organisation ces 90 derniers jours."
+              : `Aucun InMail planifié : ${exclusions.join(" ; ")}.`,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
 
       // Load user's configured business hours + timezone (default 8h-19h Paris)
@@ -213,7 +451,7 @@ Deno.serve(async (req: Request) => {
       const now = new Date();
 
       // Schedule items with staggered times
-      const queuedItems = items.map((item: any, index: number) => {
+      const queuedItems = freshItems.map((item: any, index: number) => {
         // Calculate scheduled time: first item soon, others staggered
         let scheduledAt: Date;
 
@@ -259,7 +497,7 @@ Deno.serve(async (req: Request) => {
           user_timezone: timezone,
           created_by: user.id,
           // Organisation du compte, vérifiée plus haut (jamais null ici : sans
-          // organisation, ownedSet est vide et l'action a déjà répondu 403).
+          // organisation, inOrgSet est vide et l'action a déjà répondu 403).
           // Sans elle, « Dissocier » n'annulait pas la ligne, et plafond et
           // plages suivaient l'organisation active au moment de l'envoi.
           organization_id: callerOrgId,
@@ -274,11 +512,17 @@ Deno.serve(async (req: Request) => {
 
       if (error) throw error;
 
+      const queuedCount = data?.length || 0;
       return new Response(
         JSON.stringify({
           success: true,
-          queued: data?.length || 0,
-          message: `${data?.length || 0} InMails scheduled for sending`,
+          queued: queuedCount,
+          skipped_duplicates: skippedRecipients.length,
+          skipped_recipient_ids: skippedRecipients,
+          skipped_erased: erasedSkipped.length,
+          skipped_erased_ids: erasedSkipped,
+          message: `${queuedCount} InMail${queuedCount > 1 ? "s" : ""} planifié${queuedCount > 1 ? "s" : ""}`
+            + exclusions.map((part) => ` ; ${part}`).join(""),
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -315,43 +559,128 @@ Deno.serve(async (req: Request) => {
       // son plafond s'appliquent (ceux qu'affichent Équipe et « Plafonds du
       // jour »), pas ceux de la personne qui a mis l'InMail en file. Repli sur
       // l'auteur de l'item si la liaison est introuvable. Cache par run.
-      const accountOwnerCache = new Map<string, string | null>();
+      // Liaison (organisation, compte) : 'linked' avec son titulaire,
+      // 'not_linked' si le compte n'appartient pas à l'organisation de l'item,
+      // 'unreadable' si la lecture a échoué (jamais mis en cache).
+      const accountOwnerCache = new Map<string, { state: "linked" | "not_linked"; userId: string | null }>();
       const getAccountOwner = async (accountId: string, orgId: string | null): Promise<string | null> => {
-        if (!orgId) return null;
-        const key = `${orgId}:${accountId}`;
-        if (!accountOwnerCache.has(key)) {
-          const { data: ownerRow, error: ownerErr } = await supabase
-            .from("member_linkedin_accounts")
-            .select("user_id")
-            .eq("organization_id", orgId)
-            .eq("linkedin_account_id", accountId)
-            .maybeSingle();
-          if (ownerErr) console.warn(`[process-inmail-queue] account owner unreadable for ${accountId}:`, ownerErr.message);
-          accountOwnerCache.set(key, (ownerRow?.user_id as string | undefined) ?? null);
-        }
-        return accountOwnerCache.get(key) ?? null;
+        const link = await getAccountLink(accountId, orgId);
+        return link.state === "linked" ? link.userId : null;
       };
+      const getAccountLink = async (accountId: string, orgId: string | null): Promise<{ state: "linked" | "not_linked" | "unreadable"; userId: string | null }> => {
+        if (!orgId || !accountId) return { state: "not_linked", userId: null };
+        const key = `${orgId}:${accountId}`;
+        const cached = accountOwnerCache.get(key);
+        if (cached) return cached;
+        const { data: ownerRow, error: ownerErr } = await supabase
+          .from("member_linkedin_accounts")
+          .select("user_id")
+          .eq("organization_id", orgId)
+          .eq("linkedin_account_id", accountId)
+          .maybeSingle();
+        if (ownerErr) {
+          console.warn(`[process-inmail-queue] account owner unreadable for ${accountId}:`, ownerErr.message);
+          return { state: "unreadable", userId: null };
+        }
+        const link = ownerRow
+          ? { state: "linked" as const, userId: (ownerRow.user_id as string | undefined) ?? null }
+          : { state: "not_linked" as const, userId: null };
+        accountOwnerCache.set(key, link);
+        return link;
+      };
+      // Credentials LinkedIn de l'ORGANISATION DE L'ITEM (SEQ-199), cache par
+      // organisation et par run. Avant : organisation active du créateur, ou
+      // celle de l'appelant pour tous les items en mode manuel. DSN sans
+      // schéma, repli d'environnement compris (plus de double https://).
       const credsCache = new Map<string, { apiKey: string; dsn: string } | null>();
-      const getCredsFor = async (userId: string) => {
-        // Mode manuel : validateUser() a déjà résolu les credentials de l'org du caller.
-        if (unipileApiKey && unipileDsn) return { apiKey: unipileApiKey, dsn: unipileDsn };
-        if (credsCache.has(userId)) return credsCache.get(userId)!;
+      const getCredsFor = async (orgId: string) => {
+        if (credsCache.has(orgId)) return credsCache.get(orgId)!;
         let resolved: { apiKey: string; dsn: string } | null = null;
         try {
-          const { resolveUnipileCredentials, resolveOrgIdFromUser } = await import("../_shared/resolve-org-credentials.ts");
-          const orgId = await resolveOrgIdFromUser(userId, supabase);
-          const creds = await resolveUnipileCredentials(orgId, supabase);
-          if (creds) resolved = { apiKey: creds.apiKey, dsn: creds.dsn.replace(/^https?:\/\//, "") };
+          const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
+          const creds = await resolveUnipileCredentials(orgId);
+          if (creds) resolved = { apiKey: creds.apiKey, dsn: bareDsn(creds.dsn) };
         } catch (e) {
           console.warn("[process-inmail-queue] org credential resolution failed:", e);
         }
         if (!resolved) {
           const envKey = Deno.env.get("UNIPILE_API_KEY");
           const envDsn = Deno.env.get("UNIPILE_DSN");
-          if (envKey && envDsn) resolved = { apiKey: envKey, dsn: envDsn };
+          if (envKey && envDsn) resolved = { apiKey: envKey, dsn: bareDsn(envDsn) };
         }
-        credsCache.set(userId, resolved);
+        credsCache.set(orgId, resolved);
         return resolved;
+      };
+
+      // Dernier contrôle avant l'envoi, dans l'organisation de l'item (D5,
+      // SEQ-212) : rien ne part vers un candidat effacé (marqueur d'une de ses
+      // inscriptions), ni vers un candidat qui a répondu depuis la mise en file
+      // (inscription « répondu » après la création de la ligne), ni après une
+      // réponse à un autre InMail de l'organisation (fenêtre de l'anti-doublon,
+      // ou réponse postérieure à la mise en file). Une réponse en séquence
+      // antérieure à la mise en file n'annule rien : la mise en file écarte
+      // déjà toute inscription créée, close ou répondue ces 90 derniers jours
+      // (décision 24), une réponse plus ancienne n'interdit pas un nouveau
+      // contact. Même portée
+      // que la clôture (contrat §8) : une inscription terminée puis marquée
+      // « répondu » n'arrête que les InMails mis en file avant sa fin.
+      const recipientStopReason = async (item: InMailQueueItem, orgId: string): Promise<
+        { state: "clear" } | { state: "stop"; message: string; code: string } | { state: "unreadable" }
+      > => {
+        const queuedAt = item.created_at ? Date.parse(item.created_at) : NaN;
+        const recipientIds = new Set<string>([item.recipient_profile_id]);
+        const filter = siblingEnrollmentsFilter([item.recipient_profile_id]);
+        if (filter) {
+          const { data: enrollments, error } = await supabase
+            .from("sequence_enrollments")
+            .select("profile_id, provider_id, resolved_profile_id, status, replied_at, completed_at, tracking_data")
+            .eq("organization_id", orgId)
+            .or(filter);
+          if (error) {
+            console.warn(`[process-inmail-queue] enrollments unreadable for item ${item.id}:`, error.message);
+            return { state: "unreadable" };
+          }
+          const rows = (enrollments ?? []) as Array<{
+            profile_id: string | null; provider_id: string | null; resolved_profile_id: string | null;
+            status: string; replied_at: string | null; completed_at: string | null; tracking_data: unknown;
+          }>;
+          if (rows.some((e) => isGdprErasedEnrollment(e.tracking_data, []))) {
+            return { state: "stop", message: GDPR_ERASED_INMAIL_MESSAGE, code: "candidate erased" };
+          }
+          const repliedSinceQueued = rows.some((e) => {
+            const repliedAt = e.replied_at ? Date.parse(e.replied_at) : NaN;
+            if (e.status !== "replied" || !Number.isFinite(repliedAt) || !Number.isFinite(queuedAt) || repliedAt < queuedAt) return false;
+            // completed_at n'est gardé que par « Marquer comme répondu » sur une
+            // inscription terminée : même portée que siblingStopScope.
+            if (!e.completed_at) return true;
+            const scope = siblingStopScope("completed", e.completed_at);
+            return scope.kind === "created_before" && queuedAt < Date.parse(scope.before);
+          });
+          if (repliedSinceQueued) {
+            return { state: "stop", message: CANDIDATE_REPLIED_INMAIL_MESSAGE, code: "candidate replied" };
+          }
+          // Autres identifiants connus du candidat (Recruiter AE…, ACo…).
+          for (const e of rows) {
+            for (const v of [e.profile_id, e.provider_id, e.resolved_profile_id]) if (v) recipientIds.add(v);
+          }
+        }
+        const { data: repliedInMails, error: repliedErr } = await supabase
+          .from("inmail_queue")
+          .select("created_at, updated_at")
+          .eq("organization_id", orgId)
+          .eq("status", "replied")
+          .in("recipient_profile_id", [...recipientIds]);
+        if (repliedErr) {
+          console.warn(`[process-inmail-queue] replied InMails unreadable for item ${item.id}:`, repliedErr.message);
+          return { state: "unreadable" };
+        }
+        const windowStart = Date.now() - DUPLICATE_WINDOW_DAYS * 24 * 3600 * 1000;
+        const repliedToInMail = ((repliedInMails ?? []) as Array<{ created_at: string; updated_at: string }>).some((r) =>
+          Date.parse(r.created_at) >= windowStart || (Number.isFinite(queuedAt) && Date.parse(r.updated_at) >= queuedAt));
+        if (repliedToInMail) {
+          return { state: "stop", message: CANDIDATE_REPLIED_INMAIL_MESSAGE, code: "candidate replied" };
+        }
+        return { state: "clear" };
       };
 
       // Gate d'abonnement (lot P0-C), résolu une fois par organisation et par
@@ -376,7 +705,7 @@ Deno.serve(async (req: Request) => {
         }
         if (!subscriptionGates.has(orgId)) {
           try {
-            subscriptionGates.set(orgId, await getSubscriptionGate(supabase, orgId));
+            subscriptionGates.set(orgId, await subscriptionGateFor(supabase, orgId));
           } catch (gateErr) {
             console.warn(`[process-inmail-queue] subscription gate unavailable for org=${orgId} (not blocking this run):`, gateErr);
             subscriptionGates.set(orgId, null);
@@ -458,6 +787,62 @@ Deno.serve(async (req: Request) => {
         // active du créateur (orgIdByUser, rempli par canSendForSubscription
         // juste au-dessus). Même valeur que celle passée au gate quota.
         const itemOrgId = item.organization_id ?? orgIdByUser.get(item.created_by) ?? null;
+
+        // Propriété du compte d'envoi (SEQ-011), AVANT tout contrôle coûteux et
+        // avant le claim : une ligne insérée directement par l'API avec le
+        // compte LinkedIn d'une autre organisation ne part jamais. Items sans
+        // organisation : organisation du créateur, même exigence.
+        const accountLink = await getAccountLink(item.account_id, itemOrgId);
+        if (accountLink.state === "unreadable") {
+          await supabase
+            .from("inmail_queue")
+            .update({
+              scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+              error_message: "Vérification du compte LinkedIn impossible, nouvel essai dans 30 min",
+            })
+            .eq("id", item.id)
+            .in("status", ["scheduled", "pending"]);
+          results.push({ id: item.id, success: false, error: "account link unreadable" });
+          continue;
+        }
+        if (accountLink.state === "not_linked") {
+          console.warn(`[process-inmail-queue] item ${item.id}: account ${item.account_id} not linked to org ${itemOrgId} — failed`);
+          await supabase
+            .from("inmail_queue")
+            .update({ status: "failed", error_message: ACCOUNT_NOT_IN_ORG_MESSAGE })
+            .eq("id", item.id)
+            .in("status", ["scheduled", "pending"]);
+          results.push({ id: item.id, success: false, error: "account not in organization" });
+          continue;
+        }
+
+        // Candidat effacé ou qui a répondu à l'organisation : annulé sans
+        // appel au fournisseur. Lecture impossible : report de 30 min, jamais
+        // d'envoi à l'aveugle. itemOrgId est non nul ici (sinon not_linked).
+        const stop = await recipientStopReason(item, itemOrgId as string);
+        if (stop.state === "unreadable") {
+          await supabase
+            .from("inmail_queue")
+            .update({
+              scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+              error_message: "Vérification des réponses du candidat impossible, nouvel essai dans 30 min",
+            })
+            .eq("id", item.id)
+            .in("status", ["scheduled", "pending"]);
+          results.push({ id: item.id, success: false, error: "recipient check unreadable" });
+          continue;
+        }
+        if (stop.state === "stop") {
+          console.warn(`[process-inmail-queue] item ${item.id} cancelled: ${stop.code}`);
+          await supabase
+            .from("inmail_queue")
+            .update({ status: "cancelled", error_message: stop.message })
+            .eq("id", item.id)
+            .in("status", ["scheduled", "pending"]);
+          results.push({ id: item.id, success: false, error: stop.code });
+          continue;
+        }
+
         const quotaUserId = (await getAccountOwner(item.account_id, itemOrgId)) ?? item.created_by;
 
         // Check if we're within business hours (per-user configurable via member_quotas)
@@ -483,6 +868,7 @@ Deno.serve(async (req: Request) => {
           const { data: acctRow } = await supabase
             .from('member_linkedin_accounts')
             .select('account_status')
+            .eq('organization_id', itemOrgId as string)
             .eq('linkedin_account_id', item.account_id)
             .maybeSingle();
           const status = acctRow?.account_status;
@@ -537,8 +923,8 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        // Credentials LinkedIn de l'org propriétaire de l'item (cache par run).
-        const creds = await getCredsFor(item.created_by);
+        // Credentials LinkedIn de l'organisation de l'item (cache par run).
+        const creds = await getCredsFor(itemOrgId as string);
         if (!creds) {
           await supabase
             .from("inmail_queue")
@@ -593,7 +979,9 @@ Deno.serve(async (req: Request) => {
               .update({
                 status: "scheduled",
                 scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-                error_message: balErr instanceof Error ? balErr.message : "balance check failed",
+                // Libellé fixe affiché dans la file : l'erreur brute (code HTTP,
+                // URL du fournisseur) reste dans le console.error ci-dessus.
+                error_message: "Contrôle des crédits InMail momentanément indisponible, nouvel essai dans 30 min",
               })
               .eq("id", item.id);
             results.push({ id: item.id, success: false, error: "balance check failed" });
@@ -706,17 +1094,25 @@ Deno.serve(async (req: Request) => {
             subject: !isFirstDegree ? item.subject : undefined,
           });
 
-          const response = await fetchWithTimeout(
-            `https://${creds.dsn}/api/v1/chats`,
-            {
-              method: "POST",
-              headers: {
-                "X-API-KEY": creds.apiKey,
-                "accept": "application/json",
-              },
-              body: formData,
-            }
-          );
+          let response: Response;
+          try {
+            response = await fetchWithTimeout(
+              `https://${creds.dsn}/api/v1/chats`,
+              {
+                method: "POST",
+                headers: {
+                  "X-API-KEY": creds.apiKey,
+                  "accept": "application/json",
+                },
+                body: formData,
+              }
+            );
+          } catch (netErr) {
+            // Délai dépassé ou coupure : l'InMail a pu partir. Jamais de
+            // relance automatique (double envoi, second crédit consommé).
+            console.error(`[process-inmail-queue] send request failed for item ${item.id} (issue inconnue):`, netErr);
+            throw new Error("Envoi incertain : le service LinkedIn n'a pas répondu. Vérifiez la conversation avant de replanifier l'InMail.");
+          }
 
           if (!response.ok) {
             const errorText = await response.text();
@@ -728,6 +1124,27 @@ Deno.serve(async (req: Request) => {
             // Le corps brut du fournisseur reste dans les logs ; error_message
             // (affiché dans la file InMail) reçoit un libellé Konekt.
             console.error(`[process-inmail-queue] LinkedIn provider ${response.status} for item ${item.id}: ${errorText}`);
+            // 429 : requête non traitée, nouvel essai dans 1 h, trois fois au
+            // plus (SEQ-103). Tout 5xx (503 compris) est incertain, comme dans
+            // le moteur (SEQ-005) : jamais renvoyé seul. Refus 4xx définitifs.
+            const retry = inmailQueueRetry(response.status, item.error_message ?? null);
+            if (retry.retry) {
+              await supabase
+                .from("inmail_queue")
+                .update({
+                  status: "scheduled",
+                  scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                  error_message: retry.message,
+                })
+                .eq("id", item.id)
+                .eq("status", "sending");
+              results.push({ id: item.id, success: false, error: `retry ${retry.attempt}` });
+              continue;
+            }
+            if (retry.attempt > 0) throw new Error(retry.message);
+            if (response.status >= 500) {
+              throw new Error(`Envoi incertain (code ${response.status}) : vérifiez la conversation avant de replanifier l'InMail.`);
+            }
             throw new Error(`Le service de connexion LinkedIn a refusé l'envoi (code ${response.status})`);
           }
 
@@ -804,10 +1221,25 @@ Deno.serve(async (req: Request) => {
         cancelled: 0,
       };
 
-      (queueItems || []).forEach((item: InMailQueueItem) => {
-        if (item.status in stats) {
-          stats[item.status as keyof typeof stats]++;
+      // Compteurs exacts sur toute la file de l'appelant (SEQ-126), pas sur
+      // les 100 lignes renvoyées dans `items`. Un comptage illisible retombe
+      // sur le décompte de ces lignes pour ce statut.
+      const statusKeys = Object.keys(stats) as Array<keyof typeof stats>;
+      const counts = await Promise.all(statusKeys.map((status) =>
+        supabase
+          .from("inmail_queue")
+          .select("id", { count: "exact", head: true })
+          .eq("created_by", user.id)
+          .eq("status", status)
+      ));
+      statusKeys.forEach((status, i) => {
+        const { count, error: countError } = counts[i];
+        if (!countError && typeof count === "number") {
+          stats[status] = count;
+          return;
         }
+        console.warn(`[process-inmail-queue] status: comptage « ${status} » illisible, décompte des lignes affichées`, countError);
+        stats[status] = (queueItems || []).filter((item: InMailQueueItem) => item.status === status).length;
       });
 
       return new Response(
@@ -821,16 +1253,29 @@ Deno.serve(async (req: Request) => {
     }
 
     // Action: cancel - Cancel pending items
+    // Sans item_ids : tous les InMails en attente (pending, scheduled) créés
+    // par l'appelant, pas seulement les 100 derniers affichés (SEQ-126). Le
+    // nombre renvoyé est celui des lignes réellement annulées.
     if (action === "cancel") {
       const user = await validateUser();
 
-      const { data, error } = await supabase
+      const ids = Array.isArray(item_ids)
+        ? item_ids.filter((id: unknown): id is string => typeof id === "string" && id !== "")
+        : null;
+      if (Array.isArray(item_ids) && ids && ids.length === 0) {
+        return new Response(
+          JSON.stringify({ success: true, cancelled: 0 }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      let cancelQuery = supabase
         .from("inmail_queue")
         .update({ status: "cancelled" })
         .eq("created_by", user.id)
-        .in("id", item_ids)
-        .in("status", ["pending", "scheduled"])
-        .select();
+        .in("status", ["pending", "scheduled"]);
+      if (ids) cancelQuery = cancelQuery.in("id", ids);
+      const { data, error } = await cancelQuery.select("id");
 
       if (error) throw error;
 

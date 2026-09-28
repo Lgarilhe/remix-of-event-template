@@ -144,16 +144,19 @@ test('R7c — la file InMail transmet l\'organisation au gate quota', () => {
 
 // ---------------------------------------------------------------- R7d
 test('R7d — heures ouvrées contrôlées avant le gate qui journalise l\'action', () => {
+  // Audit séquences SEQ-076 : le gate quota est juste avant le verrou
+  // 'sending', après la santé du compte et la vérification de réponse.
   const loop = sliceBetween(
     sequences,
     'const enrollmentOrgId = enrollment.organization_id',
-    '// Check LinkedIn account health before executing',
+    'const { data: lockResult',
   );
   const hoursAt = loop.indexOf('!isWithinBusinessHours(userTimezone');
   const gateAt = loop.indexOf('await checkQuotaForAction(');
   assert.notEqual(hoursAt, -1, 'contrôle des heures ouvrées introuvable dans la boucle');
   assert.notEqual(gateAt, -1, 'gate quota introuvable dans la boucle');
   assert.ok(hoursAt < gateAt, 'une étape hors plage ne doit plus consommer une place du plafond');
+  assert.ok(loop.indexOf('// Check LinkedIn account health before executing') < gateAt, 'une étape reportée pour compte en erreur ne consomme pas de place');
   assert.equal(loop.split('const userTimezone =').length - 1, 1, 'le bloc est déplacé, pas dupliqué');
 });
 

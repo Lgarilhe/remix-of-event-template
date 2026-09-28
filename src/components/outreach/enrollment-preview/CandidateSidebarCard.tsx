@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useId, useMemo, useRef } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { CandidateState, computeYearsOfExperience, getChannelAvailability } from './types';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,8 @@ interface Props {
   allGenerated: boolean;
   hasEdits: boolean;
   state: CandidateState;
+  /** Candidat affiché mais exclu de l'inscription (déjà contacté, incompatible) : pastille et raison. */
+  exclusion?: { label: string; title: string } | null;
   score: number | null | undefined;
   /** Texte d'aide des raccourcis de la liste (aria-describedby). */
   shortcutsHelpId?: string;
@@ -37,13 +39,16 @@ interface Props {
  * Ligne d'un candidat dans la préparation : un bouton qui affiche ses aperçus
  * et un menu « Actions » toujours visible, au doigt comme au clavier. Les
  * raccourcis (↑ ↓, P, X ou Suppr) sont gérés par la liste (revue design D-44).
+ * Un candidat passé ou exclu de l'inscription (déjà contacté, incompatible)
+ * reste listé, nom atténué, avec sa pastille et sa raison.
  */
 export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
-  profile, isSelected, allGenerated, hasEdits, state, score, shortcutsHelpId,
+  profile, isSelected, allGenerated, hasEdits, state, exclusion, score, shortcutsHelpId,
   onSelect, onRemove, onSkip, onViewScoring, onViewHistory,
 }: Props) {
   const yearsXP = useMemo(() => computeYearsOfExperience(profile), [profile]);
   const channels = useMemo(() => getChannelAvailability(profile), [profile]);
+  const detailsId = useId();
   // La fenêtre du score ou de l'historique ne s'ouvre qu'une fois le menu
   // refermé : ouverte pendant sa fermeture, elle perdait aussitôt le focus et
   // se refermait (souris comme clavier).
@@ -54,6 +59,10 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
   const linkedinUrl = profile.profile_url || profile.public_profile_url;
   const name = profile.name || 'Candidat sans nom';
   const city = profile.location?.split(',')[0];
+  const shownExclusion = state.skipped ? null : exclusion ?? null;
+  const dimmed = state.skipped || !!shownExclusion;
+  // Nom accessible : le candidat et, s'il ne sera pas inscrit, pourquoi.
+  const status = state.skipped ? 'Passé' : shownExclusion?.label;
 
   return (
     <div className="relative">
@@ -62,7 +71,8 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
         variant="ghost"
         data-candidate-id={profile.id}
         aria-current={isSelected ? 'true' : undefined}
-        aria-describedby={shortcutsHelpId}
+        aria-label={status ? `${name}, ${status}` : name}
+        aria-describedby={[detailsId, shortcutsHelpId].filter(Boolean).join(' ')}
         onClick={onSelect}
         className={cn(
           // Ligne de liste : pleine largeur, sur plusieurs lignes, sans effet d'appui.
@@ -73,36 +83,47 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
         <CandidateAvatar name={profile.name} imageUrl={profile.profile_picture_url} size="sm" className="mt-0.5" />
 
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className={cn('truncate text-sm font-semibold leading-tight', state.skipped ? 'text-muted-foreground' : 'text-foreground')}>
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className={cn('truncate text-sm font-semibold leading-tight', dimmed ? 'text-muted-foreground' : 'text-foreground')}>
               {name}
             </span>
             {state.skipped && <Badge variant="muted" className="shrink-0 px-1.5 py-0 text-3xs">Passé</Badge>}
+            {!state.skipped && exclusion && (
+              <Badge variant="muted" className="shrink-0 px-1.5 py-0 text-3xs" title={exclusion.title}>
+                {exclusion.label}
+              </Badge>
+            )}
           </span>
-          {profile.headline && (
-            <span className="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">{profile.headline}</span>
-          )}
 
-          {(city || yearsXP != null || score != null) && (
-            <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              {city && <span>{city}</span>}
-              {yearsXP != null && <span className="tabular-nums">{yearsXP} ans d'exp.</span>}
-              <ScoreBadge score={score} className="px-1.5 py-0" />
-            </span>
-          )}
+          <span id={detailsId} className="block">
+            {/* Raison détaillée de l'exclusion : au survol de la pastille et dans
+                l'avis en tête de la préparation (pas recopiée ici : un seul
+                texte « Déjà contacté par … » dans la fenêtre). */}
+            {profile.headline && (
+              <span className="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">{profile.headline}</span>
+            )}
 
-          {/* Canaux : logo ou icône quand le candidat est joignable, le manque
-              écrit en toutes lettres (jamais la couleur ni l'opacité seules). */}
-          <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <ChannelAvailability available={channels.linkedin} channel="linkedin" />
-            <ChannelAvailability available={channels.email} channel="email" />
-            <ChannelAvailability available={channels.whatsapp} channel="whatsapp" />
-            {(allGenerated || hasEdits) && (
-              <span className="ml-auto inline-flex items-center gap-1">
-                {hasEdits ? <Pencil aria-hidden="true" /> : <Check aria-hidden="true" />}
-                {hasEdits ? 'Retouché' : 'Aperçus prêts'}
+            {(city || yearsXP != null || score != null) && (
+              <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                {city && <span>{city}</span>}
+                {yearsXP != null && <span className="tabular-nums">{yearsXP} ans d'exp.</span>}
+                <ScoreBadge score={score} className="px-1.5 py-0" />
               </span>
             )}
+
+            {/* Canaux : logo ou icône quand le candidat est joignable, le manque
+                écrit en toutes lettres (jamais la couleur ni l'opacité seules). */}
+            <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <ChannelAvailability available={channels.linkedin} channel="linkedin" />
+              <ChannelAvailability available={channels.email} channel="email" />
+              <ChannelAvailability available={channels.whatsapp} channel="whatsapp" />
+              {(allGenerated || hasEdits) && (
+                <span className="ml-auto inline-flex items-center gap-1">
+                  {hasEdits ? <Pencil aria-hidden="true" /> : <Check aria-hidden="true" />}
+                  {hasEdits ? 'Retouché' : 'Aperçus prêts'}
+                </span>
+              )}
+            </span>
           </span>
         </span>
       </Button>
@@ -115,7 +136,7 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                aria-label={`Actions pour ${name}`}
+                aria-label={`Actions pour ${profile.name || 'ce candidat'}`}
                 className="absolute right-1.5 top-1.5 text-muted-foreground max-md:h-11 max-md:w-11"
               >
                 <MoreHorizontal aria-hidden="true" />

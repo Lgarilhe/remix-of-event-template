@@ -6,14 +6,19 @@
  * 'error', le scoring terminé en 'success'. Le classement combine donc type,
  * metadata.source et lien.
  *
- * Inventaire des écritures (2026-09-22) — toute nouvelle écriture dans la table
+ * Inventaire des écritures (2026-09-25) — toute nouvelle écriture dans la table
  * notifications doit être ajoutée ici et, si besoin, dans les règles ci-dessous.
  *
  * | Écrivain                                          | type                  | Titre                                | Lien                      | metadata.source       | Classe  |
  * |---------------------------------------------------|-----------------------|--------------------------------------|---------------------------|-----------------------|---------|
  * | unipile-webhook (message reçu)                    | new_message           | Nouveau message de …                 | /inbox?chatId=… ou /inbox | —                     | message |
+ * | unipile-webhook (réponse par e-mail, sans chat_id)| new_message           | Nouveau message de …                 | /missions/…?tab=outreach  | —                     | message |
+ * | unipile-webhook (rebond d'e-mail)                 | action                | Adresse e-mail invalide, séquence arrêtée | /missions/…?tab=outreach | email_bounce     | action  |
+ * | unipile-webhook (relances non arrêtées après une réponse) | action        | Relances non arrêtées après une réponse | /missions/…?tab=outreach ou /missions | reply_sibling_stop_failed | action |
+ * | calendly-webhook (RDV pris)                       | action                | RDV pris, séquence arrêtée           | /qualification/… ou /missions | calendly          | action  |
  * | unipile-webhook (compte déconnecté ou en erreur)  | linkedin_disconnected | Compte LinkedIn déconnecté           | /settings?tab=account     | —                     | action  |
  * | unipile-webhook (rattachement du compte échoué)   | error                 | Compte LinkedIn non rattaché         | /settings?tab=account     | —                     | action  |
+ * | process-sequences (auto-pause, trop d'échecs)     | error                 | Séquence mise en pause automatiquement | /missions/…?tab=outreach ou /missions | sequence_auto_pause | action |
  * | CandidateCommentsTab (mention)                    | mention               | … vous a mentionné                   | /pipeline?candidate=…     | —                     | action  |
  * | process-agent-tasks (fin de tâche)                | success               | Scoring terminé — …                  | /missions/…?tab=pipeline  | agent_background_task | action  |
  * | process-agent-tasks (abandon de tâche)            | error                 | Tâche de fond interrompue — …        | /missions/…?tab=pipeline  | agent_background_task | action  |
@@ -32,6 +37,10 @@
  * Écrivains : supabase/functions (from('notifications').insert), src/ (même
  * appel) et supabase/migrations (INSERT INTO public.notifications).
  *
+ * Compte déconnecté : écrit sur account_disconnected / account_error, et sur
+ * account_status_updated au passage de OK vers CREDENTIALS, ERROR ou
+ * PERMISSIONS (une seule fois par panne, pas à chaque statut répété).
+ *
  * Limites connues : aucune écriture n'émet aujourd'hui de notification
  * d'invitation (les invitations partent par email) ; un scoring terminé sans
  * profil scoré reste classé 'action', faute de compteur dans metadata.
@@ -47,8 +56,13 @@ export interface ClassifiableNotification {
 }
 
 // Types qui demandent une action quel que soit l'écrivain : mention, compte
-// LinkedIn à reconnecter, erreur (fin d'essai, rattachement échoué, tâche interrompue).
-const ACTION_TYPES = new Set(['mention', 'linkedin_disconnected', 'error']);
+// LinkedIn à reconnecter, erreur (fin d'essai, rattachement échoué, tâche
+// interrompue, séquence mise en pause automatiquement), et 'action' :
+// séquence arrêtée par un événement extérieur (rebond d'e-mail, rendez-vous
+// pris), à vérifier par le recruteur.
+// Une réponse par e-mail reste un new_message : groupReplies la regroupe sur
+// l'id de la notification quand metadata.chat_id manque (sidebarSignals.ts).
+const ACTION_TYPES = new Set(['mention', 'linkedin_disconnected', 'error', 'action']);
 
 const metadataSource = (metadata: unknown): string | null => {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;

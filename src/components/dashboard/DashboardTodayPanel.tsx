@@ -83,8 +83,9 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
 
   // Entretiens du jour, lus avec leurs détails (candidat, mission, animateur).
+  // Entretiens seuls : les envois du jour arrivent par scheduledMessages.
   const today = useMemo(() => startOfDay(new Date()), []);
-  const { data: todayEvents = [] } = useCalendarEvents({ from: today, days: 1 });
+  const { data: todayEvents = [], isError: todayEventsError } = useCalendarEvents({ from: today, days: 1, outreach: false });
 
   // Entretiens que j'anime dans l'organisation active, lus comme la barre
   // latérale : le calendrier, lui, montre ceux de toute l'équipe. Tant que la
@@ -174,6 +175,12 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
       }
     >
       <div className="p-2">
+        {/* Entretiens non lus : pas de « journée vide » trompeuse */}
+        {todayEventsError && !loading && !error && (
+          <p role="alert" className="px-2 py-1.5 text-xs text-danger">
+            Les entretiens du jour n'ont pas pu être chargés.
+          </p>
+        )}
         {loading ? (
           <div className="space-y-2 p-1" role="status" aria-label="Chargement de la journée">
             {[1, 2, 3].map((i) => (
@@ -190,7 +197,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
             onRetry={onRetry}
           />
         ) : combined.length === 0 ? (
-          <EmptyState
+          todayEventsError ? null : <EmptyState
             variant="compact"
             className="border-0"
             icon={CalendarDays}
@@ -322,12 +329,19 @@ const TodayItem: React.FC<{
   const msg = item.payload as ScheduledMessage;
   const isInmail = msg.type === 'inmail';
   const recipientName = msg.recipientName || 'Profil LinkedIn';
-  const subtitle =
+  // Étape reportée par la limite LinkedIn ou en cours d'envoi : le statut réel
+  // passe en tête du sous-titre, pour ne pas la lire comme un envoi normal.
+  const pendingStatusLabel =
+    !isDone && msg.type === 'sequence' && (msg.status === 'quota_blocked' || msg.status === 'sending')
+      ? msg.statusLabel || null
+      : null;
+  const baseSubtitle =
     isInmail && msg.subject
       ? msg.subject
       : msg.sequenceName
         ? `${msg.sequenceName} · étape ${(msg.stepOrder || 0) + 1}`
         : msg.recipientHeadline;
+  const subtitle = pendingStatusLabel ? `${pendingStatusLabel} · ${baseSubtitle}` : baseSubtitle;
 
   return (
     <li className={cn('flex items-center gap-3 rounded-lg p-2.5', isDone && 'opacity-60')}>

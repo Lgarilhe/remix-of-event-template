@@ -6,7 +6,7 @@
  * (deleteOrg fait le ménage en cascade des données rattachées).
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { E2E } from './env';
+import { E2E, authStorageKey } from './env';
 
 export type OrgType = 'enterprise' | 'agency' | 'freelance';
 export type OrgRole = 'owner' | 'admin' | 'member' | 'collaborator';
@@ -269,4 +269,30 @@ export async function signIn(email: string, password: string) {
   const { data, error } = await anon.auth.signInWithPassword({ email, password });
   if (error || !data.session) throw new Error(`signIn: ${error?.message}`);
   return data.session;
+}
+
+/**
+ * storageState Playwright d'un user créé à la volée (membre, collaborateur) :
+ * même forme que writeStorageState de global.setup.ts, sans fichier.
+ * À passer à `browser.newContext({ storageState })`.
+ */
+export async function storageStateForUser(user: TestUser) {
+  const session = await signIn(user.email, user.password);
+  return {
+    cookies: [],
+    origins: [
+      {
+        origin: new URL(E2E.baseUrl).origin,
+        localStorage: [{ name: authStorageKey(), value: JSON.stringify(session) }],
+      },
+    ],
+  };
+}
+
+/** Abonnement actif sur un plan payant (activation des séquences, reprises). */
+export async function setOrgPlan(orgId: string, planId = 'cabinet'): Promise<void> {
+  const { error } = await admin()
+    .from('organization_subscriptions')
+    .upsert({ organization_id: orgId, plan_id: planId, status: 'active' }, { onConflict: 'organization_id' });
+  if (error) throw new Error(`setOrgPlan: ${error.message}`);
 }

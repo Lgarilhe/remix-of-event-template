@@ -33,22 +33,26 @@ const scope = [
 
 // ---------------------------------------------------------------- D-30
 test('D-30 — la création enregistre expéditeurs et garde-fous, comme la modification', () => {
-  const settings = list.slice(list.indexOf('const sequenceSettings'), list.indexOf('let targetSequenceId'));
-  for (const column of ['stop_conditions', 'sender_accounts', 'rotation_mode', 'multi_sender_enabled']) {
-    assert.match(settings, new RegExp(`${column}:`), `${column} doit partir à l'enregistrement`);
-  }
+  // Revue design : l'audit a posé le même correctif en ligne (SEQ-019), sans objet
+  // `sequenceSettings` : les mêmes colonnes, lues dans l'éditeur, partent à la
+  // création et à la modification.
   const insert = list.slice(list.indexOf(".from('outreach_sequences')\n          .insert({"), list.indexOf('if (createError)'));
-  assert.match(insert, /\.\.\.sequenceSettings/, 'la création doit écrire les mêmes réglages que la modification');
   const update = list.slice(list.indexOf('.update({\n            name: sequence.name'), list.indexOf('if (updateError)'));
-  assert.match(update, /\.\.\.sequenceSettings/);
+  assert.ok(insert.length > 0 && update.length > 0, 'création et modification introuvables');
+  const fields = { stop_conditions: 'stopConditions', sender_accounts: 'senderAccounts', rotation_mode: 'rotationMode', multi_sender_enabled: 'multiSenderEnabled' };
+  for (const [column, field] of Object.entries(fields)) {
+    assert.match(insert, new RegExp(`${column}: sequence\\.${field}\\b`), `la création doit écrire ${column}`);
+    assert.match(update, new RegExp(`${column}: sequence\\.${field}\\b`), `la modification doit écrire ${column}`);
+  }
 });
 
 test('D-30 — une séquence rouverte garde ses réglages (plus de remise à zéro à l’enregistrement)', () => {
   const edit = list.slice(list.indexOf('const handleEdit'), list.indexOf('const handleCreateNew'));
-  assert.match(edit, /stopConditions: seq\.stop_conditions/);
+  // Revue design : relecture de l'audit (SEQ-019), avec les valeurs que l'éditeur affiche par défaut.
+  assert.match(edit, /stopConditions: \{ \.\.\.DEFAULT_STOP_CONDITIONS, \.\.\.\(seq\.stop_conditions \?\? \{\}\) \}/);
   assert.match(edit, /senderAccounts: seq\.sender_accounts/);
   assert.match(edit, /rotationMode: seq\.rotation_mode/);
-  assert.match(edit, /multiSenderEnabled: seq\.multi_sender_enabled/);
+  assert.match(edit, /multiSenderEnabled: !!seq\.multi_sender_enabled/);
 });
 
 // ---------------------------------------------------------------- D-31, D-33, D-72
@@ -57,7 +61,7 @@ test('D-31 — « Retour » et Échap passent par la même garde', () => {
   assert.match(builder, /onClick=\{requestClose\}/, '« Retour » doit demander avant de fermer');
   // Échap passe par la garde, sauf quand une liste de suggestions ouverte l'a déjà prise.
   assert.match(builder, /onEscapeKeyDown=\{\(event\) => \{[^}]*if \(event\.defaultPrevented\) return;\s*event\.preventDefault\(\);\s*requestClose\(\);/);
-  assert.match(builder, /aria-label="Retour"/, 'la flèche seule sur téléphone doit avoir un nom');
+  assert.match(builder, /aria-label="Retour à la liste"/, 'la flèche seule sur téléphone doit avoir un nom');
 });
 
 test('D-33 — l’éditeur est un Dialog plein écran, sans portail maison ni z-[4000]', () => {
@@ -76,15 +80,15 @@ test('D-32 — l’en-tête d’étape est un bouton de Collapsible, utilisable 
 });
 
 // ---------------------------------------------------------------- D-34
-test('D-34 — une nouvelle séquence n’est active que si l’on choisit de l’activer', () => {
-  assert.match(builder, /isActive: false,/, 'séquence vierge inactive');
-  assert.match(builder, /isActive: isNewSequence \? activate && canActivate : sequence\.isActive/);
-  assert.match(builder, /Enregistrer et activer/);
-  assert.match(builder, / sans activer/);
-  assert.doesNotMatch(selector, /isActive: true/, 'un modèle ou une copie ne crée pas une séquence active');
+test('D-34 — un seul « Enregistrer » ; l’activation suit l’offre (décision SEQ-154 de l’audit)', () => {
+  // L'audit des séquences a tranché : une nouvelle séquence est créée active,
+  // sauf si l'offre interdit l'envoi (seq-audit-f1b, SEQ-154).
+  assert.match(builder, /const EMPTY_SEQUENCE: Sequence = \{ name: '', description: '', steps: \[\], isActive: true \};/);
+  assert.doesNotMatch(builder, /Enregistrer et activer| sans activer/, 'un seul bouton d’enregistrement');
   assert.doesNotMatch(builder, /toast\.success\('Séquence enregistrée'\)/, 'un seul toast de succès, posé par la liste');
   assert.doesNotMatch(builder, /description: err instanceof Error \? err\.message/, 'pas de message technique brut');
-  const topSave = builder.slice(builder.indexOf("onClick={() => handleSave(false)}") - 400, builder.indexOf("onClick={() => handleSave(false)}"));
+  const save = "onClick={() => { void handleSave(); }}";
+  const topSave = builder.slice(builder.indexOf(save) - 400, builder.indexOf(save));
   assert.doesNotMatch(topSave, /disabled=\{isSaving \|\| !sequence\.name\.trim\(\)/, 'le bouton ne se grise plus en silence');
 });
 
@@ -117,7 +121,8 @@ test('D-36 — aperçu neutre et une seule syntaxe de variables', () => {
     assert.doesNotMatch(src, /Laurent|Garilhe|L\.G\./, `${rel} : nom du fondateur`);
     assert.doesNotMatch(src, /\{\{firstName\}\}/, `${rel} : syntaxe que le moteur ne lit pas`);
   }
-  assert.match(builder, /previewMessageTemplate\(/);
+  // Aperçu : les valeurs d'exemple et les variables que le moteur remplit réellement (audit, SEQ-063).
+  assert.match(builder, /renderTemplatePreview\(/);
 });
 
 // ---------------------------------------------------------------- D-38, D-39
@@ -125,7 +130,7 @@ test('D-38 — boutons icône nommés, libellés reliés, interrupteurs nommés'
   assert.match(builder, /aria-label=\{`Supprimer l'étape \$\{stepNumber\}/);
   assert.match(builder, /aria-label=\{`Supprimer la variante \$\{v\.variantGroup\}`\}/);
   assert.match(builder, /aria-label="Fermer le choix d'étape"/);
-  assert.match(builder, /<Label htmlFor=\{fieldId\('days'\)\}/);
+  assert.match(builder, /<Label htmlFor=\{fieldId\('delay-days'\)\}/);
   assert.match(builder, /<Switch id=\{fieldId\('ai'\)\}/);
   assert.match(builder, /<Switch id=\{fieldId\('unsubscribe'\)\}/);
   assert.match(code('src/components/outreach/sequence/nodes/WorkflowStepNode.tsx'), /aria-label=\{`Supprimer l'étape/);
@@ -185,15 +190,19 @@ test('D-22 — un seul chargement, en squelette de tableau', () => {
   assert.match(list, /<ErrorState/, 'une panne ne s’affiche pas comme une liste vide');
 });
 
-test('D-23 — barre d’outils en français, « Avancer les envois » expliqué', () => {
-  assert.match(list, /Avancer les envois/);
-  assert.match(list, /sauf les invitations LinkedIn/);
+test('D-23 — barre d’outils en français, « Envoyer les actions du jour » expliqué', () => {
+  // Revue design : l'action de l'audit (SEQ-001, texte exigé par l'e2e) remplace
+  // « Avancer les envois » ; son aide, au survol et dans le menu, dit ce qui ne part pas.
+  assert.match(list, /'Envoyer les actions du jour'/);
+  assert.match(list, /const nudgeHelp = [^;]*sauf les invitations LinkedIn/);
+  assert.equal((list.match(/\{nudgeHelp\}/g) || []).length, 2, 'aide au survol et dans le menu du téléphone');
   assert.match(list, /Statistiques/);
   assert.match(list, /aria-label="Plus d'actions"/);
 });
 
 test('D-24, D-26 — une ligne par séquence, le même menu nommé partout', () => {
-  assert.match(list, /aria-label=\{`Actions de la séquence « \$\{seq\.name\} »`\}/);
+  // Revue design : nom exact attendu par l'e2e (seq-ui-1.spec.ts), sans guillemets.
+  assert.match(list, /aria-label=\{`Actions de la séquence \$\{seq\.name\}`\}/);
   assert.match(list, /Enregistrer comme modèle/);
   assert.doesNotMatch(list, /addSuffix: false/, 'la date se lit « il y a … » partout');
   assert.doesNotMatch(list, /SEQUENCE_EMOJIS/);
@@ -201,9 +210,15 @@ test('D-24, D-26 — une ligne par séquence, le même menu nommé partout', () 
   assert.equal((list.match(/<DropdownMenuContent align="end">/g) || []).length, 1, 'un seul menu de ligne, pour téléphone et ordinateur');
 });
 
-test('D-25 — interrupteur nommé, désactivé et expliqué sans abonnement', () => {
-  assert.match(list, /aria-label=\{`Activer la séquence « \$\{seq\.name\} »`\}/);
-  assert.match(list, /disabled=\{activationBlocked\}/);
+test('D-25 — interrupteur nommé, cliquable et expliqué sans abonnement', () => {
+  // Revue design : noms exacts de l'e2e ; sur l'offre gratuite, l'interrupteur reste
+  // cliquable et le refus s'explique par un toast (décision de l'audit, seq-ui-1.spec.ts).
+  // Il n'est grisé que pendant l'appel ou la lecture de l'abonnement, et renvoie au bandeau de l'offre.
+  assert.match(list, /aria-label=\{seq\.is_active \? `Mettre en pause la séquence \$\{seq\.name\}` : `Activer la séquence \$\{seq\.name\}`\}/);
+  assert.match(list, /disabled=\{togglingId === seq\.id \|\| activationWaitsForPlan\(seq\)\}/);
+  assert.match(list, /toast\.error\("L'envoi de séquences nécessite un abonnement", \{\s*action: \{ label: 'Voir les plans', onClick: \(\) => navigate\('\/pricing'\) \},/);
+  assert.match(list, /aria-describedby=\{activationBlocked \? planNoticeId : undefined\}/);
+  assert.match(list, /<span id=\{planNoticeId\}>Votre offre ne permet pas d'envoyer des séquences/);
   assert.match(list, /Voir les offres/);
   assert.doesNotMatch(list, /scale-90/);
 });

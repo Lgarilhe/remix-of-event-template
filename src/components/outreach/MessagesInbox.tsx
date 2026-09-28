@@ -14,9 +14,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, GitBranch, Link2 } from 'lucide-react';
+import { ChevronRight, GitBranch, Link2, RefreshCw } from 'lucide-react';
 import { LinkedInAccount } from '@/pages/Outreach';
-import { useMessagesInbox } from '@/hooks/useMessagesInbox';
+import { useMessagesInbox, type InboxSequenceOption } from '@/hooks/useMessagesInbox';
 import { useMessageActions } from '@/hooks/useMessageActions';
 import { useEdgeFunctionWarmup } from '@/hooks/useEdgeFunctionWarmup';
 import { useAutoPrefetchAnalyses } from '@/hooks/useAutoPrefetchAnalyses';
@@ -26,11 +26,14 @@ import { MessageView } from './inbox/MessageView';
 import { AddToPipelineModal } from './AddToPipelineModal';
 import { SequenceEnrollModal } from './SequenceEnrollModal';
 import type { LinkedInProfile } from './types';
-import { getCurrentCandidateProfile, getChatAvatar } from '@/hooks/useMessagesInboxHelpers';
+import { toast } from 'sonner';
+import { getCurrentCandidateProfile, getChatAvatar, getChatJobInfo } from '@/hooks/useMessagesInboxHelpers';
+import { normalizeNetworkDistance } from '@/lib/sequenceCompatibility';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
-import { EmptyState } from '@/components/layout';
+import { EmptyState, ErrorState } from '@/components/layout';
 import {
   Dialog,
   DialogContent,
@@ -113,10 +116,25 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
 
   // Séquence choisie, pas encore engagée. Le choix ouvre la préparation, il
-  // n'inscrit personne (audit UX du 09/09/2026, constat UX05).
-  const [pendingSequence, setPendingSequence] = useState<
-    { id: string; name: string; steps: unknown[] } | null
-  >(null);
+  // n'inscrit personne (audit UX du 09/09/2026, constat UX05). Ses étapes
+  // complètes sont chargées avec la liste : la préparation montre les messages.
+  const [pendingSequence, setPendingSequence] = useState<InboxSequenceOption | null>(null);
+  // Mission de rattachement de l'inscription ('' = sans mission).
+  const [selectedMissionId, setSelectedMissionId] = useState('');
+
+  // Mission liée au candidat (inscription existante), présélectionnée à
+  // l'ouverture du dialogue de choix.
+  const linkedMissionId = useMemo(() => {
+    const chat = inbox.selectedChat;
+    if (!chat) return '';
+    const jobId = getChatJobInfo(chat, inbox.enrollmentsMap)?.job_id;
+    if (!jobId) return '';
+    return inbox.activeMissions.find(m => m.id === jobId || m.job_id === jobId)?.id ?? '';
+  }, [inbox.selectedChat, inbox.enrollmentsMap, inbox.activeMissions]);
+  useEffect(() => {
+    if (inbox.showSequenceSelect) setSelectedMissionId(linkedMissionId);
+  }, [inbox.showSequenceSelect, linkedMissionId]);
+  const selectedMission = inbox.activeMissions.find(m => m.id === selectedMissionId) ?? null;
 
   // Le candidat de la conversation, au format attendu par la préparation
   // d'inscription partagée avec le sourcing.
@@ -131,11 +149,35 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
       profile_url: candidateProfile.linkedinUrl,
       public_profile_url: candidateProfile.linkedinUrl,
       profile_picture_url: getChatAvatar(chat) || undefined,
-      // Distance inconnue depuis une conversation : la vérification de
-      // compatibilité la traite comme non renseignée, donc sans blocage abusif.
-      network_distance: (attendee as { network_distance?: unknown })?.network_distance,
+      // Distance du participant quand le fournisseur la donne ; sinon
+      // inconnue (pas de blocage, un avertissement si la séquence invite).
+      network_distance: attendee?.specifics?.network_distance ?? attendee?.network_distance ?? undefined,
     } as unknown as LinkedInProfile;
   }, [inbox.selectedChat, candidateProfile]);
+
+  // Relation non vérifiée et séquence avec invitation : si le candidat est déjà
+  // en relation, le moteur saute l'invitation et envoie les messages suivants.
+  const enrollNotice = useMemo(() => {
+    if (!pendingSequence || !enrollProfile) return null;
+    const distanceKnown = normalizeNetworkDistance(enrollProfile.network_distance) != null;
+    const hasInvitation = pendingSequence.steps.some(
+      (s: { action_type?: string; actionType?: string }) => (s.action_type || s.actionType) === 'connection_request',
+    );
+    return !distanceKnown && hasInvitation
+      ? "Relation LinkedIn non vérifiée : si vous êtes déjà en relation, l'invitation sera sautée."
+      : null;
+  }, [pendingSequence, enrollProfile]);
+
+  // Choisir n'inscrit pas : on ouvre la préparation, avec les étapes complètes
+  // (messages compris). Une séquence vide n'ouvre rien.
+  const handleChooseSequence = (sequence: InboxSequenceOption) => {
+    if (sequence.steps.length === 0) {
+      toast.error("Cette séquence ne contient aucune étape. Ajoutez au moins une étape avant d'inscrire des candidats.");
+      return;
+    }
+    setPendingSequence(sequence);
+    inbox.setShowSequenceSelect(false);
+  };
 
   const handleDeleteChat = async (chatId: string) => {
     const success = await deleteChat(chatId);
@@ -242,6 +284,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
             }}
             onAddToPipeline={inbox.handleAddToPipeline}
             onEnrollInSequence={inbox.handleEnrollInSequence}
+            onEnrollmentsChanged={inbox.fetchEnrollments}
             onScheduleCall={inbox.handleScheduleCall}
             calendlyLink={inbox.calendlyLink}
             onAddReaction={handleAddReaction}
@@ -277,7 +320,39 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
                 : "Vous verrez les messages et les avertissements avant d'inscrire le candidat."}
             </DialogDescription>
           </DialogHeader>
-          {inbox.sequences.length === 0 ? (
+          {/* Mission de rattachement : contexte donné à l'IA et suivi dans le
+              pipeline de la mission. « Sans mission » ne bloque rien. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="inbox-enroll-mission">Mission</Label>
+            <select
+              id="inbox-enroll-mission"
+              value={selectedMissionId}
+              onChange={(e) => setSelectedMissionId(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 max-md:h-11"
+            >
+              <option value="">Sans mission</option>
+              {inbox.activeMissions.map((mission) => (
+                <option key={mission.id} value={mission.id}>{mission.name}</option>
+              ))}
+            </select>
+          </div>
+          {inbox.sequencesStatus === 'error' ? (
+            <ErrorState
+              variant="compact"
+              title="Impossible de charger les séquences."
+              description="Vérifiez votre connexion, puis réessayez."
+              action={
+                <Button variant="primary" size="sm" onClick={() => void inbox.fetchSequences()}>
+                  <RefreshCw aria-hidden="true" />
+                  Réessayer
+                </Button>
+              }
+            />
+          ) : inbox.sequences.length === 0 && inbox.sequencesStatus !== 'ready' ? (
+            <div className="flex justify-center py-6">
+              <Spinner label="Chargement des séquences" />
+            </div>
+          ) : inbox.sequences.length === 0 ? (
             <EmptyState
               variant="compact"
               icon={GitBranch}
@@ -300,11 +375,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => {
-                        // Choisir n'inscrit pas : on ouvre la préparation.
-                        setPendingSequence(sequence);
-                        inbox.setShowSequenceSelect(false);
-                      }}
+                      onClick={() => handleChooseSequence(sequence)}
                       className="h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left font-normal"
                     >
                       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground-secondary">
@@ -313,7 +384,7 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-foreground">{sequence.name}</span>
                         <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                          {plural(sequence.steps.length, 'étape')}
+                          {plural(sequence.stepCount, 'étape')}
                           {channels.map((channel) => (
                             <ChannelIcon key={channel} channel={channel} size="sm" />
                           ))}
@@ -341,6 +412,8 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { selectedAccount: strin
           sequence={pendingSequence}
           profiles={[enrollProfile]}
           accountId={selectedAccount}
+          job={selectedMission ? { id: selectedMission.id, title: selectedMission.name } : null}
+          notice={enrollNotice}
           onSuccess={() => {
             setPendingSequence(null);
             inbox.fetchEnrollments();

@@ -50,7 +50,7 @@ const POLICY_TOOLS: PolicyTool[] = [
   { name: 'update_mission_brief', label: 'Modifier le brief mission', autoEligible: true },
   { name: 'regenerate_search_filters', label: 'Régénérer les filtres LinkedIn', autoEligible: true },
   { name: 'apply_search_filters_to_mission', label: 'Appliquer les filtres de recherche', autoEligible: true },
-  { name: 'enroll_in_sequence', label: 'Enrôler dans une séquence', autoEligible: true },
+  { name: 'enroll_in_sequence', label: 'Inscrire dans une séquence', autoEligible: true },
   { name: 'create_sequence', label: 'Créer une séquence', autoEligible: true },
   { name: 'pause_sequence', label: 'Mettre en pause une séquence', autoEligible: true },
   { name: 'resume_sequence', label: 'Reprendre une séquence', autoEligible: true },

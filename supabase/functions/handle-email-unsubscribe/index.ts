@@ -81,6 +81,19 @@ Deno.serve(async (req) => {
   }
 
   if (tokenRecord.used_at) {
+    // Jeton déjà utilisé : l'adresse doit être en liste de suppression. Avant
+    // le correctif d'ordre ci-dessous, un échec d'écriture pouvait consommer
+    // le jeton sans suppression ; on la répare ici sans écraser une raison
+    // existante (rebond, plainte).
+    const { error: healError } = await supabase
+      .from('suppressed_emails')
+      .upsert(
+        { email: tokenRecord.email.toLowerCase(), reason: 'unsubscribe' },
+        { onConflict: 'email', ignoreDuplicates: true },
+      )
+    if (healError) {
+      console.error('Failed to ensure suppression for used token', { error: healError })
+    }
     return jsonResponse({ valid: false, reason: 'already_unsubscribed' })
   }
 
@@ -90,25 +103,10 @@ Deno.serve(async (req) => {
   }
 
   // POST: Process the unsubscribe
-  // Atomic check-and-update to avoid TOCTOU race
-  const { data: updated, error: updateError } = await supabase
-    .from('email_unsubscribe_tokens')
-    .update({ used_at: new Date().toISOString() })
-    .eq('token', token)
-    .is('used_at', null)
-    .select()
-    .maybeSingle()
-
-  if (updateError) {
-    console.error('Failed to mark token as used', { error: updateError, token })
-    return jsonResponse({ error: 'Failed to process unsubscribe' }, 500)
-  }
-
-  if (!updated) {
-    return jsonResponse({ success: false, reason: 'already_unsubscribed' })
-  }
-
-  // Add email to suppressed list (upsert to handle duplicates)
+  // 1. Liste de suppression D'ABORD (upsert idempotent) : si l'écriture
+  // échoue, le jeton reste valide et le candidat peut réessayer. Dans l'ordre
+  // inverse, le jeton était consommé et l'adresse continuait de recevoir des
+  // e-mails (« Déjà désinscrit » au nouvel essai).
   const { error: suppressError } = await supabase
     .from('suppressed_emails')
     .upsert(
@@ -122,6 +120,20 @@ Deno.serve(async (req) => {
       email: tokenRecord.email,
     })
     return jsonResponse({ error: 'Failed to process unsubscribe' }, 500)
+  }
+
+  // 2. Puis le jeton marqué utilisé. Deux POST concurrents : l'upsert étant
+  // idempotent, les deux aboutissent à la même désinscription.
+  const { error: updateError } = await supabase
+    .from('email_unsubscribe_tokens')
+    .update({ used_at: new Date().toISOString() })
+    .eq('token', token)
+    .is('used_at', null)
+
+  if (updateError) {
+    // La désinscription est effective (adresse en suppression) ; seul le
+    // marquage du jeton a échoué, un nouveau clic la confirmerait à nouveau.
+    console.error('Failed to mark token as used (unsubscribe already effective)', { error: updateError })
   }
 
   console.log('Email unsubscribed', { email: tokenRecord.email })

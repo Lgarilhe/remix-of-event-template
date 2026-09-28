@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Braces } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { VARIABLE_EXAMPLE } from './messageTypeUtils';
+import { findUnknownTemplateVariables, renderTemplatePreview } from './sequenceGraph';
 
 interface Variable {
   code: string;
@@ -24,26 +24,20 @@ interface VariableGroup {
   variables: Variable[];
 }
 
-// Exemples : les mêmes que l'aperçu du message (messageTypeUtils, revue design D-36).
+// Uniquement des variables que le moteur remplit à l'envoi (liste des clés dans
+// sequenceGraph.ts). Ville, passage IA et signature n'y sont pas : elles étaient
+// retirées du message envoyé. La signature d'un e-mail se choisit sur l'étape.
+// Exemples : les mêmes que l'aperçu du message (renderTemplatePreview, revue design D-36).
 const CANDIDATE_VARIABLES: Variable[] = [
-  { code: '{{first_name}}', label: 'Prénom', example: VARIABLE_EXAMPLE.first_name },
-  { code: '{{last_name}}', label: 'Nom', example: VARIABLE_EXAMPLE.last_name },
-  { code: '{{company}}', label: 'Entreprise', example: VARIABLE_EXAMPLE.company },
-  { code: '{{job_title}}', label: 'Poste', example: VARIABLE_EXAMPLE.job_title },
-  { code: '{{city}}', label: 'Ville', example: VARIABLE_EXAMPLE.city },
+  { code: '{{first_name}}', label: 'Prénom', example: renderTemplatePreview('{{first_name}}') },
+  { code: '{{last_name}}', label: 'Nom', example: renderTemplatePreview('{{last_name}}') },
+  { code: '{{company}}', label: 'Entreprise', example: renderTemplatePreview('{{company}}') },
+  { code: '{{job_title}}', label: 'Poste', example: renderTemplatePreview('{{job_title}}') },
 ];
 
 const RECRUITER_VARIABLES: Variable[] = [
   { code: '{{sender_name}}', label: 'Votre prénom', example: 'Jean' },
-  { code: '{{calendly_link}}', label: 'Lien Calendly', example: 'calendly.com/…' },
-];
-
-const EMAIL_ONLY_VARIABLES: Variable[] = [
-  { code: '{{signature}}', label: "Signature de l'e-mail", example: 'Votre signature' },
-];
-
-const AI_VARIABLES: Variable[] = [
-  { code: '{{ai_snippet}}', label: "Passage rédigé par l'IA", example: "À l'envoi" },
+  { code: '{{calendly_link}}', label: 'Lien d\'agenda', example: 'calendly.com/…' },
 ];
 
 interface VariableInserterProps {
@@ -53,8 +47,6 @@ interface VariableInserterProps {
   onInsert: (newValue: string) => void;
   /** Current value of the field */
   currentValue: string;
-  /** Show email-only variables */
-  showEmailVariables?: boolean;
   /** Champ visé (« l'objet », « le message »), pour le nom du bouton. */
   fieldLabel?: string;
   className?: string;
@@ -64,7 +56,6 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
   targetRef,
   onInsert,
   currentValue,
-  showEmailVariables = false,
   fieldLabel,
   className,
 }) => {
@@ -91,8 +82,6 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
   const groups: VariableGroup[] = [
     { label: 'Candidat', variables: CANDIDATE_VARIABLES },
     { label: 'Vous', variables: RECRUITER_VARIABLES },
-    ...(showEmailVariables ? [{ label: 'E-mail', variables: EMAIL_ONLY_VARIABLES }] : []),
-    { label: 'IA', variables: AI_VARIABLES },
   ];
 
   return (
@@ -133,5 +122,21 @@ export const VariableInserter: React.FC<VariableInserterProps> = ({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+};
+
+/**
+ * Variables que le moteur ne sait pas remplir : elles seraient retirées du
+ * message envoyé. Affiché sous le champ, avant l'enregistrement.
+ */
+export const UnknownVariablesNotice: React.FC<{ text: string; customKeys?: string[] }> = ({ text, customKeys = [] }) => {
+  const unknown = findUnknownTemplateVariables(text, customKeys);
+  if (unknown.length === 0) return null;
+  return (
+    <p className="mt-1 text-xs text-warning">
+      {unknown.length > 1
+        ? `${unknown.join(', ')} ne seront pas remplacées à l'envoi : elles seront supprimées du message.`
+        : `${unknown[0]} ne sera pas remplacée à l'envoi : elle sera supprimée du message.`}
+    </p>
   );
 };

@@ -101,6 +101,12 @@ const SUBSCRIPTION_REQUIRED_REASON = "Abonnement requis pour l'envoi de séquenc
  * Reprend les inscriptions mises en pause faute d'abonnement (plan gratuit)
  * dès que l'organisation a un plan payant : statut actif, raison effacée, et
  * la dernière exécution annulée pour cette raison est replanifiée.
+ *
+ * Séquence désactivée (décision D1) : jamais de réactivation. L'inscription
+ * reste en pause avec pause_reason 'sequence_inactive' : la réactivation de la
+ * séquence la reprendra (resume_enrollments). Un update PostgREST ne filtre
+ * pas sur une table jointe : lecture d'abord (avec la séquence), écritures
+ * par id ensuite.
  */
 async function resumeSubscriptionPausedEnrollments(adminClient: any, orgId: string): Promise<void> {
   try {
@@ -111,36 +117,91 @@ async function resumeSubscriptionPausedEnrollments(adminClient: any, orgId: stri
       .eq("organization_id", orgId)
       .maybeSingle();
     if (error || !data) return;
-    const { data: resumed, error: resumeError } = await adminClient
-      .from("sequence_enrollments")
-      .update({ status: "active", pause_reason: null, updated_at: nowIso })
-      .eq("organization_id", orgId)
-      .eq("status", "paused")
-      .eq("pause_reason", "subscription_required")
-      .select("id");
-    if (resumeError) {
-      console.warn(`[stripe-webhook] resume after subscription failed for org ${orgId}:`, resumeError);
-      return;
+    const activeIds: string[] = [];
+    const inactiveIds: string[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data: paused, error: lookupError } = await adminClient
+        .from("sequence_enrollments")
+        .select("id, sequence:outreach_sequences(is_active)")
+        .eq("organization_id", orgId)
+        .eq("status", "paused")
+        .eq("pause_reason", "subscription_required")
+        .order("id")
+        .range(from, from + PAGE - 1);
+      if (lookupError) {
+        console.warn(`[stripe-webhook] resume lookup after subscription failed for org ${orgId}:`, lookupError);
+        return;
+      }
+      const rows = (paused ?? []) as Array<{ id: string; sequence: { is_active: boolean | null } | Array<{ is_active: boolean | null }> | null }>;
+      for (const row of rows) {
+        const seq = Array.isArray(row.sequence) ? row.sequence[0] : row.sequence;
+        // Séquence illisible : traitée comme désactivée (échec fermé).
+        if (seq?.is_active === true) activeIds.push(row.id);
+        else inactiveIds.push(row.id);
+      }
+      if (rows.length < PAGE) break;
     }
-    for (const row of (resumed ?? []) as Array<{ id: string }>) {
+
+    const resumed: string[] = [];
+    for (let i = 0; i < activeIds.length; i += 100) {
+      const { data: rows, error: resumeError } = await adminClient
+        .from("sequence_enrollments")
+        .update({ status: "active", pause_reason: null, updated_at: nowIso })
+        .in("id", activeIds.slice(i, i + 100))
+        .eq("organization_id", orgId)
+        .eq("status", "paused")
+        .eq("pause_reason", "subscription_required")
+        .select("id");
+      if (resumeError) {
+        console.warn(`[stripe-webhook] resume after subscription failed for org ${orgId}:`, resumeError);
+        continue;
+      }
+      for (const row of (rows ?? []) as Array<{ id: string }>) resumed.push(row.id);
+    }
+
+    let relabeled = 0;
+    for (let i = 0; i < inactiveIds.length; i += 100) {
+      const { data: rows, error: relabelError } = await adminClient
+        .from("sequence_enrollments")
+        .update({ pause_reason: "sequence_inactive", updated_at: nowIso })
+        .in("id", inactiveIds.slice(i, i + 100))
+        .eq("organization_id", orgId)
+        .eq("status", "paused")
+        .eq("pause_reason", "subscription_required")
+        .select("id");
+      if (relabelError) {
+        console.warn(`[stripe-webhook] relabel to sequence_inactive failed for org ${orgId}:`, relabelError);
+        continue;
+      }
+      relabeled += (rows ?? []).length;
+    }
+
+    // Réarmement seulement pour les inscriptions réellement reprises, à
+    // max(date prévue, maintenant + 1 min) : une relance prévue plus tard ne
+    // part pas à la souscription.
+    const minDateMs = Date.now() + 60_000;
+    for (const enrollmentId of resumed) {
       const { data: cancelled } = await adminClient
         .from("sequence_step_executions")
-        .select("id")
-        .eq("enrollment_id", row.id)
+        .select("id, scheduled_at")
+        .eq("enrollment_id", enrollmentId)
         .eq("status", "cancelled")
         .eq("skip_reason", SUBSCRIPTION_REQUIRED_REASON)
         .order("step_order", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (!cancelled?.id) continue;
+      const plannedMs = cancelled.scheduled_at ? new Date(cancelled.scheduled_at).getTime() : 0;
+      const scheduledAt = new Date(Math.max(Number.isNaN(plannedMs) ? 0 : plannedMs, minDateMs)).toISOString();
       await adminClient
         .from("sequence_step_executions")
-        .update({ status: "scheduled", skip_reason: null, scheduled_at: nowIso, updated_at: nowIso })
+        .update({ status: "scheduled", skip_reason: null, scheduled_at: scheduledAt, updated_at: nowIso })
         .eq("id", cancelled.id)
         .eq("status", "cancelled");
     }
-    if ((resumed ?? []).length > 0) {
-      console.log(`[stripe-webhook] ${(resumed ?? []).length} enrollment(s) resumed for org ${orgId} after subscription`);
+    if (resumed.length > 0 || relabeled > 0) {
+      console.log(`[stripe-webhook] ${resumed.length} enrollment(s) resumed, ${relabeled} left paused (sequence inactive) for org ${orgId} after subscription`);
     }
   } catch (e) {
     console.warn(`[stripe-webhook] resume after subscription failed (non-blocking) for org ${orgId}:`, e);

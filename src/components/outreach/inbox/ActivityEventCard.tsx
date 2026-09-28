@@ -2,10 +2,12 @@
  * ActivityEventCard — événement de la frise d'une conversation : étape de
  * séquence exécutée, rendez-vous pris, appel téléphonique.
  *
- * Les étapes et leurs statuts viennent du catalogue des séquences : jamais un
- * identifiant technique (« connection_request »), jamais un message d'erreur
- * brut (revue design D-01). Icônes neutres ; l'appel prend l'icône du canal
- * (ChannelIcon), sans couleur propre (D-16, D-65).
+ * Une étape prend le même titre que dans la fiche candidat (dictionnaire
+ * partagé src/lib/sequenceActionLabels.ts) : « InMail envoyé », « InMail :
+ * échec », « Invitation : étape sautée ». Jamais un identifiant technique
+ * (« connection_request »), jamais un message d'erreur brut : raisons et
+ * erreurs sont traduites (revue design D-01). Icônes neutres ; l'appel prend
+ * l'icône du canal (ChannelIcon), sans couleur propre (D-16, D-65).
  */
 
 import React from 'react';
@@ -15,7 +17,15 @@ import { ActivityEvent } from '@/hooks/useProfileActivity';
 import { formatMessageTime } from '@/hooks/useMessagesInboxHelpers';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { ExecutionStatusBadge, SequenceActionIcon } from '@/components/outreach/SequenceBadges';
-import { sequenceActionLabel, skipReasonLabel } from '@/lib/sequenceCatalog';
+import { STEP_TYPE_LABELS, stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
+import { sequenceActionLabel } from '@/lib/sequenceCatalog';
+import { formatSequenceError, formatSkipReason } from '@/lib/sequenceErrorMessages';
+import {
+  isInternalSequenceAction,
+  sequenceExecutionStatusMention,
+  sequenceExecutionTitle,
+} from '@/lib/sequenceActionLabels';
+import { cn } from '@/lib/utils';
 
 /** Durée d'appel : « 45 s », « 3 min », « 3 min 20 s ». */
 function formatDuration(seconds: number): string {
@@ -24,6 +34,24 @@ function formatDuration(seconds: number): string {
   const s = seconds % 60;
   return s > 0 ? `${m} min ${s} s` : `${m} min`;
 }
+
+/**
+ * Titre d'une étape de séquence exécutée, identique à la fiche candidat :
+ * « InMail envoyé », « InMail : échec », « Invitation : étape sautée ». Une
+ * étape interne (attente, vérification) prend le nom de son type dans
+ * l'éditeur de séquence, suivi de son statut s'il n'est pas « faite ».
+ */
+function sequenceStepTitle(actionType: string, status: string): string {
+  if (!isInternalSequenceAction(actionType)) return sequenceExecutionTitle(actionType, status);
+  // Sans nom dans l'éditeur (attente d'un événement), celui du catalogue :
+  // jamais l'identifiant technique.
+  const name = actionType in STEP_TYPE_LABELS ? stepTypeLabel(actionType) : sequenceActionLabel(actionType);
+  const mention = sequenceExecutionStatusMention(status);
+  return mention ? `${name} : ${mention.toLowerCase()}` : name;
+}
+
+/** Réaction du candidat à un envoi : le titre dit « envoyé », le badge précise. */
+const REACTION_STATUSES = new Set(['opened', 'clicked', 'replied']);
 
 const Separator = () => (
   <span aria-hidden="true" className="text-muted-foreground">
@@ -38,6 +66,7 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
 
   let icon: React.ReactNode;
   let label: React.ReactNode;
+  let stepFailed = false;
   const details: React.ReactNode[] = [];
 
   if (isCall) {
@@ -61,17 +90,22 @@ export const ActivityEventCard: React.FC<{ event: ActivityEvent }> = ({ event })
     if (event.eventName) details.push(event.eventName);
   } else {
     icon = <SequenceActionIcon type={event.actionType} className="text-muted-foreground" />;
-    label = sequenceActionLabel(event.actionType);
-    const reason = event.status === 'skipped' ? skipReasonLabel(event.skipReason) : null;
-    details.push(<ExecutionStatusBadge key="status" status={event.status} className="px-1.5 py-0 text-2xs" />);
-    if (reason) details.push(reason);
+    // Étape non partie : le statut fait partie du titre (« Invitation : échec »),
+    // jamais présentée comme envoyée.
+    label = sequenceStepTitle(event.actionType, event.status);
+    stepFailed = event.status === 'failed' || event.status === 'bounced';
+    if (REACTION_STATUSES.has(event.status)) {
+      details.push(<ExecutionStatusBadge key="status" status={event.status} className="px-1.5 py-0 text-2xs" />);
+    }
+    if (event.status === 'skipped' && event.skipReason) details.push(formatSkipReason(event.skipReason));
+    if (event.status === 'failed' && event.errorMessage) details.push(formatSequenceError(event.errorMessage));
   }
 
   return (
     <div className="my-2 flex justify-center">
       <div className="inline-flex max-w-[85%] flex-wrap items-center justify-center gap-x-1.5 gap-y-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-foreground-secondary">
         {icon}
-        <span className="font-medium text-foreground">{label}</span>
+        <span className={cn('font-medium', stepFailed ? 'text-danger' : 'text-foreground')}>{label}</span>
         {details.map((detail, i) => (
           <React.Fragment key={i}>
             <Separator />

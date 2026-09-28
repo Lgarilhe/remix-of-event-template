@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 import { Button } from '@/components/ui/button';
 import { Check, AlertCircle, Info, Users, Layers, Shield, Eye } from 'lucide-react';
 
@@ -20,7 +21,7 @@ interface SequenceWizardStepperProps {
   validationErrors: Map<WizardStep, string[]>;
 }
 
-const problemsLabel = (count: number) => `${count} problème${count > 1 ? 's' : ''}`;
+const problemsLabel = (count: number) => `${plural(count, 'point')} à corriger`;
 
 /** Pastille d'une étape : numéro, coche ou alerte ; l'état est aussi écrit à côté. */
 function StepMarker({ index, isCurrent, isDone, hasErrors }: { index: number; isCurrent: boolean; isDone: boolean; hasErrors: boolean }) {
@@ -60,7 +61,7 @@ export const SequenceWizardStepper: React.FC<SequenceWizardStepperProps> = ({
   const progress = (currentIndex / Math.max(WIZARD_STEPS.length - 1, 1)) * 100;
 
   return (
-    <nav className="relative" aria-label="Étapes de l'assistant">
+    <nav className="relative" aria-label="Étapes de création de la séquence">
       {/* Ligne de progression */}
       <div className="absolute bottom-5 left-5 top-5 w-px bg-border" aria-hidden="true">
         <div className="w-px bg-foreground transition-[height] duration-200 ease-out" style={{ height: `${progress}%` }} />
@@ -114,7 +115,7 @@ export const SequenceWizardStepperCompact: React.FC<SequenceWizardStepperProps &
   validationErrors,
   className,
 }) => (
-  <nav aria-label="Étapes de l'assistant" className={className}>
+  <nav aria-label="Étapes de création de la séquence" className={className}>
     <ol className="flex items-center gap-1">
       {WIZARD_STEPS.map((step, index) => {
         const isCurrent = currentStep === step.id;

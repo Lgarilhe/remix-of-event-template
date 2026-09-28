@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useId } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,16 +10,20 @@ import { Spinner } from '@/components/ui/spinner';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ErrorState } from '@/components/layout/ErrorState';
-import { Plus, Trash2, Users, Mail, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Users, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
-import { useOrganization } from '@/hooks/useOrganization';
+import { useMultiSenderTeam } from './useMultiSenderTeam';
 
 export interface SenderAccount {
   account_id: string;
-  email: string;
+  /** Ancien champ, plus écrit : la rotation n'envoie que depuis des comptes LinkedIn. */
+  email?: string;
   daily_limit: number;
+  /** Nom affiché (« LinkedIn · Théo Martin »), ignoré par le moteur. */
+  label?: string;
+  /** Canal du compte : la rotation ne sert qu'aux étapes LinkedIn. */
+  channel?: 'linkedin';
 }
 
 interface MultiSenderSettingsProps {
@@ -32,6 +35,12 @@ interface MultiSenderSettingsProps {
   onRotationModeChange: (mode: string) => void;
 }
 
+/** Nom d'un expéditeur : nom du membre, sinon nom du compte LinkedIn. */
+function senderLabelFor(member: { displayName: string; linkedInAccountName: string | null }): string {
+  if (member.displayName && member.displayName !== 'Membre') return member.displayName;
+  return member.linkedInAccountName || member.displayName || 'Membre';
+}
+
 export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   enabled,
   onEnabledChange,
@@ -40,66 +49,13 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   rotationMode,
   onRotationModeChange,
 }) => {
-  const { organizationId } = useOrganization();
   const [showPickerModal, setShowPickerModal] = useState(false);
   const baseId = useId();
 
-  // Fetch team members with their linked accounts
-  const { data: teamMembers = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ['multi-sender-team', organizationId],
-    queryFn: async () => {
-      if (!organizationId) return [];
-
-      const [membersRes, linkedInRes, emailRes] = await Promise.all([
-        supabase
-          .from('organization_members')
-          .select('user_id, role')
-          .eq('organization_id', organizationId),
-        supabase
-          .from('member_linkedin_accounts')
-          .select('user_id, linkedin_account_id, linkedin_account_name')
-          .eq('organization_id', organizationId),
-        supabase
-          .from('member_email_accounts')
-          .select('user_id, email_account_id, email_address')
-          .eq('organization_id', organizationId),
-      ]);
-
-      if (membersRes.error) throw membersRes.error;
-      const members = membersRes.data || [];
-
-      const userIds = members.map(m => m.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, display_name')
-        .in('user_id', userIds);
-
-      const profileMap = new Map((profiles || []).map(p => [p.user_id, p as { user_id: string; display_name: string | null }]));
-      const linkedInMap = new Map((linkedInRes.data || []).map(l => [l.user_id, l]));
-      const emailMap = new Map((emailRes.data || []).map(e => [e.user_id, e]));
-
-      return members.map(m => {
-        const profile = profileMap.get(m.user_id);
-        const linkedin = linkedInMap.get(m.user_id);
-        const email = emailMap.get(m.user_id);
-        const displayName = profile?.display_name || 'Membre';
-        return {
-          userId: m.user_id,
-          role: m.role,
-          displayName,
-          email: email?.email_address || '',
-          avatarUrl: '',
-          hasLinkedIn: !!linkedin,
-          linkedInAccountId: linkedin?.linkedin_account_id || null,
-          linkedInAccountName: linkedin?.linkedin_account_name || null,
-          hasEmail: !!email,
-          emailAccountId: email?.email_account_id || null,
-        };
-      });
-    },
-    enabled: !!organizationId && showPickerModal,
-    staleTime: 30_000,
-  });
+  // Équipe chargée dès que la rotation est active : chaque expéditeur, libellé
+  // ou pas, est comparé aux comptes reliés. Un libellé recopié d'une autre
+  // séquence ne prouve pas que le compte est encore relié à l'équipe.
+  const { data: teamMembers = [], isLoading, isError, isSuccess, refetch } = useMultiSenderTeam(showPickerModal || enabled);
 
   const existingSenderUserIds = useMemo(() => {
     const ids = new Set<string>();
@@ -113,21 +69,42 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
   }, [senderAccounts, teamMembers]);
 
   const handleSelectMember = (member: typeof teamMembers[number]) => {
-    // Un expéditeur doit être un compte d'envoi. Le repli sur userId plaçait un
-    // identifiant d'utilisateur là où le moteur attend un identifiant de compte
-    // (assigned_sender_id) : tous les envois de ce sender échouaient (BUG-023).
-    // La liste désactive déjà ces membres ; ce garde-fou empêche la valeur
-    // d'entrer en base par un autre chemin.
-    const accountId = member.linkedInAccountId || member.emailAccountId;
+    // Un expéditeur doit être un compte LinkedIn : la rotation ne sert qu'aux
+    // étapes LinkedIn, et un compte e-mail y faisait échouer invitations et
+    // messages. Le repli sur userId plaçait un identifiant d'utilisateur là où
+    // le moteur attend un identifiant de compte (BUG-023). La liste désactive
+    // déjà ces membres ; ce garde-fou empêche la valeur d'entrer par un autre chemin.
+    const accountId = member.linkedInAccountId;
     if (!accountId) {
-      toast.error("Ce membre n'a relié aucun compte LinkedIn ni e-mail");
+      toast.error('Ce membre n\'a pas de compte LinkedIn connecté');
       return;
     }
     onSenderAccountsChange([
       ...senderAccounts,
-      { account_id: accountId, email: member.email, daily_limit: 50 },
+      { account_id: accountId, daily_limit: 50, label: senderLabelFor(member), channel: 'linkedin' },
     ]);
     setShowPickerModal(false);
+  };
+
+  /**
+   * Ligne d'un expéditeur, d'après les comptes reliés de l'équipe. Le libellé
+   * enregistré ne sert qu'à l'affichage : un compte absent de l'équipe (copie
+   * d'une séquence d'une autre organisation, membre parti) est signalé.
+   */
+  const describeSender = (sender: SenderAccount): { title: string; kind: 'linkedin' | 'email' | 'unknown' | 'pending' } => {
+    const viaLinkedIn = teamMembers.find(m => m.linkedInAccountId === sender.account_id);
+    if (viaLinkedIn) return { title: `LinkedIn · ${sender.label || senderLabelFor(viaLinkedIn)}`, kind: 'linkedin' };
+    const viaEmail = teamMembers.find(m => m.emailAccountId === sender.account_id);
+    if (viaEmail) return { title: `E-mail · ${viaEmail.email || viaEmail.displayName}`, kind: 'email' };
+    // Équipe pas encore lue (ou lecture en échec) : aucun avertissement hasardeux.
+    if (!isSuccess) return { title: sender.label ? `LinkedIn · ${sender.label}` : sender.email || 'Expéditeur enregistré', kind: 'pending' };
+    if (sender.label) return { title: `LinkedIn · ${sender.label}`, kind: 'unknown' };
+    return { title: sender.email ? `E-mail · ${sender.email}` : 'Compte introuvable dans l\'équipe', kind: sender.email ? 'email' : 'unknown' };
+  };
+
+  const SENDER_WARNINGS: Record<string, string> = {
+    email: 'Compte e-mail : la rotation n\'envoie que depuis des comptes LinkedIn et ne l\'utilise pas. Retirez-le.',
+    unknown: 'Ce compte n\'est plus relié à un membre de l\'équipe : la rotation ne l\'utilise pas. Retirez-le.',
   };
 
   const handleRemove = (acctId: string) => {
@@ -149,7 +126,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
             Plusieurs expéditeurs
           </Label>
           <p className="mt-1 text-xs text-muted-foreground">
-            Les envois sont répartis entre plusieurs comptes de l'équipe.
+            Les nouveaux candidats sont répartis entre les comptes LinkedIn de plusieurs membres de l'équipe.
           </p>
         </div>
         <Switch id={switchId} checked={enabled} onCheckedChange={onEnabledChange} />
@@ -159,52 +136,68 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
         <div className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5">
           {/* Expéditeurs choisis */}
           {senderAccounts.length > 0 ? (
-            <ul className="space-y-2" aria-label="Expéditeurs de la séquence">
-              {senderAccounts.map(sender => {
-                const limitId = `${baseId}-limit-${sender.account_id}`;
-                const senderName = sender.email || 'ce compte';
-                return (
-                  <li key={sender.account_id} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                      <Mail className="h-4 w-4" aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">{sender.email || 'Compte sans adresse'}</p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <label htmlFor={limitId} className="sr-only">
-                          {`Limite d'envois par jour pour ${senderName}`}
-                        </label>
-                        <Input
-                          id={limitId}
-                          type="number"
-                          min={1}
-                          max={200}
-                          value={sender.daily_limit}
-                          onChange={(e) => handleDailyLimitChange(sender.account_id, parseInt(e.target.value) || 50)}
-                          className="h-7 w-16 px-2 text-xs"
-                        />
-                        <span className="text-xs text-muted-foreground" aria-hidden="true">envois par jour</span>
+            <div className="space-y-2">
+              <ul className="space-y-2" aria-label="Expéditeurs de la séquence">
+                {senderAccounts.map(sender => {
+                  const { title, kind } = describeSender(sender);
+                  const warning = SENDER_WARNINGS[kind];
+                  const limitId = `${baseId}-limit-${sender.account_id}`;
+                  return (
+                    <li key={sender.account_id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                        {kind === 'linkedin'
+                          ? <ChannelIcon channel="linkedin" size="sm" decorative />
+                          : kind === 'email'
+                            ? <ChannelIcon channel="email" size="sm" decorative />
+                            : <Users className="h-4 w-4" aria-hidden="true" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{title}</p>
+                        {warning && (
+                          <p className="mt-0.5 flex items-start gap-1 text-xs text-warning">
+                            <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                            {warning}
+                          </p>
+                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Label htmlFor={limitId} className="text-xs font-normal text-muted-foreground">
+                            Plus de nouveaux candidats au-delà de
+                          </Label>
+                          <Input
+                            id={limitId}
+                            type="number"
+                            min={1}
+                            max={200}
+                            value={sender.daily_limit}
+                            onChange={(e) => handleDailyLimitChange(sender.account_id, parseInt(e.target.value) || 50)}
+                            className="h-7 w-16 px-2 text-xs"
+                          />
+                          <span className="text-xs text-muted-foreground">actions LinkedIn par jour</span>
+                        </div>
                       </div>
-                    </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => handleRemove(sender.account_id)}
-                          className="shrink-0 text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
-                          aria-label={`Retirer l'expéditeur ${senderName}`}
-                        >
-                          <Trash2 aria-hidden="true" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Retirer</TooltipContent>
-                    </Tooltip>
-                  </li>
-                );
-              })}
-            </ul>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => handleRemove(sender.account_id)}
+                            className="shrink-0 text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
+                            aria-label={`Retirer ${title}`}
+                          >
+                            <Trash2 aria-hidden="true" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Retirer cet expéditeur</TooltipContent>
+                      </Tooltip>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                Chaque nouveau candidat est attribué à un expéditeur, qui envoie ensuite toute sa séquence. Un expéditeur qui a atteint ce nombre d'actions (invitations, messages et InMails) dans la journée ne reçoit plus de nouveaux candidats jusqu'au lendemain. Quand tous les expéditeurs l'ont atteint, les nouveaux candidats attendent le lendemain. Les plafonds d'envoi LinkedIn restent ceux du compte (Paramètres, Équipe).
+              </p>
+            </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border py-6 text-center">
               <Users className="mx-auto mb-2 h-5 w-5 text-muted-foreground" aria-hidden="true" />
@@ -223,9 +216,9 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
             Ajouter un expéditeur
           </Button>
 
-          {/* Répartition des envois */}
+          {/* Répartition des nouveaux candidats */}
           <div>
-            <Label htmlFor={rotationId} className="text-xs text-muted-foreground">Répartition des envois</Label>
+            <Label htmlFor={rotationId} className="text-xs text-muted-foreground">Répartition des nouveaux candidats</Label>
             <Select value={rotationMode} onValueChange={onRotationModeChange}>
               <SelectTrigger id={rotationId} className="mt-1.5">
                 <SelectValue />
@@ -233,7 +226,7 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
               <SelectContent>
                 <SelectItem value="round_robin">À tour de rôle</SelectItem>
                 <SelectItem value="random">Au hasard</SelectItem>
-                <SelectItem value="least_used">Au compte le moins sollicité</SelectItem>
+                <SelectItem value="least_used">Le moins sollicité</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -242,8 +235,8 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
           <Dialog open={showPickerModal} onOpenChange={setShowPickerModal}>
             <DialogContent className="max-w-md gap-0 p-0">
               <DialogHeader className="border-b border-border px-5 pb-4 pt-5">
-                <DialogTitle>Ajouter un expéditeur</DialogTitle>
-                <DialogDescription>Choisissez un membre de l'équipe qui a relié un compte d'envoi.</DialogDescription>
+                <DialogTitle>Choisir un expéditeur</DialogTitle>
+                <DialogDescription>Choisissez un membre de l'équipe qui a relié son compte LinkedIn.</DialogDescription>
               </DialogHeader>
               <div className="max-h-80 overflow-y-auto p-1">
                 {isLoading ? (
@@ -268,8 +261,8 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                   <ul>
                     {teamMembers.map(member => {
                       const alreadyAdded = existingSenderUserIds.has(member.userId);
-                      const hasAnyAccount = member.hasLinkedIn || member.hasEmail;
-                      const disabled = alreadyAdded || !hasAnyAccount;
+                      // Seul un compte LinkedIn peut entrer dans la rotation.
+                      const disabled = alreadyAdded || !member.hasLinkedIn;
 
                       return (
                         <li key={member.userId}>
@@ -288,17 +281,17 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                             </Avatar>
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-medium text-foreground">{member.displayName}</span>
-                              {member.email && (
-                                <span className="mt-0.5 block truncate text-xs text-muted-foreground">{member.email}</span>
+                              {member.linkedInAccountName && (
+                                <span className="mt-0.5 block truncate text-xs text-muted-foreground">LinkedIn · {member.linkedInAccountName}</span>
                               )}
                             </span>
                             <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                              {member.hasLinkedIn && <ChannelIcon channel="linkedin" size="sm" />}
-                              {member.hasEmail && <ChannelIcon channel="email" size="sm" />}
-                              {!hasAnyAccount && (
+                              {member.hasLinkedIn ? (
+                                <ChannelIcon channel="linkedin" size="sm" />
+                              ) : (
                                 <Badge variant="muted">
                                   <AlertCircle className="h-3 w-3" aria-hidden="true" />
-                                  Aucun compte
+                                  Pas de compte LinkedIn
                                 </Badge>
                               )}
                               {alreadyAdded && <Badge variant="muted">Déjà ajouté</Badge>}
@@ -310,9 +303,9 @@ export const MultiSenderSettings: React.FC<MultiSenderSettingsProps> = ({
                   </ul>
                 )}
               </div>
-              {!isLoading && !isError && teamMembers.some(m => !m.hasLinkedIn && !m.hasEmail) && (
+              {!isLoading && !isError && teamMembers.some(m => !m.hasLinkedIn) && (
                 <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-                  Un membre sans compte LinkedIn ni e-mail relié ne peut pas envoyer : il doit d'abord connecter un compte dans ses paramètres.
+                  Un membre sans compte LinkedIn relié ne peut pas envoyer : il doit d'abord connecter son compte dans ses paramètres.
                 </p>
               )}
             </DialogContent>

@@ -8,6 +8,9 @@
  * 1. Candidates with no activity for > 24 months
  * 2. Coaching audio recordings older than 6 months (keeps transcript)
  * 3. Refused/withdrawn candidates after 12 months
+ * 4. Closed sequence enrollments (and their step executions, by cascade) and
+ *    finished InMails with no activity for > 24 months — never active or
+ *    paused enrollments, never pending InMails
  *
  * Logs all deletions for audit trail.
  */
@@ -45,6 +48,8 @@ Deno.serve(async (req) => {
       candidates_purged: 0,
       audio_purged: 0,
       refused_purged: 0,
+      sequence_enrollments_purged: 0,
+      inmails_purged: 0,
       errors: [] as string[],
     };
 
@@ -166,6 +171,77 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       stats.errors.push(`audio purge: ${e}`);
+    }
+
+    // ── 4. Sequence data after 24 months (SEQ-116) ─────────────────
+    // Même durée que les candidats inactifs (étape 1). Les inscriptions closes
+    // portent nom, titre, adresse, téléphone du candidat ; leurs exécutions
+    // (textes envoyés) suivent par ON DELETE CASCADE. Jamais une inscription
+    // active ou en pause, jamais un InMail encore à envoyer.
+    const CLOSED_ENROLLMENT_STATUSES = ["replied", "completed", "bounced", "cancelled", "stopped"];
+    const FINISHED_INMAIL_STATUSES = ["sent", "replied", "failed", "cancelled"];
+    try {
+      const { data: closedEnrollments, error: closedError } = await adminClient
+        .from("sequence_enrollments")
+        .select("id")
+        .in("status", CLOSED_ENROLLMENT_STATUSES)
+        .lt("updated_at", cutoff24m.toISOString())
+        .limit(500);
+      if (closedError) {
+        stats.errors.push(`closed enrollments query: ${closedError.message}`);
+      } else {
+        const ids = (closedEnrollments ?? []).map((e: { id: string }) => e.id);
+        for (let i = 0; i < ids.length; i += 100) {
+          const { data: deleted, error: deleteError } = await adminClient
+            .from("sequence_enrollments")
+            .delete()
+            .in("id", ids.slice(i, i + 100))
+            .in("status", CLOSED_ENROLLMENT_STATUSES)
+            .select("id");
+          if (deleteError) {
+            stats.errors.push(`delete closed enrollments: ${deleteError.message}`);
+            break;
+          }
+          stats.sequence_enrollments_purged += (deleted ?? []).length;
+        }
+        if (stats.sequence_enrollments_purged > 0) {
+          console.log(`[rgpd-purge] Purged ${stats.sequence_enrollments_purged} closed sequence enrollments (> 24 months)`);
+        }
+      }
+    } catch (e) {
+      stats.errors.push(`sequence enrollments purge: ${e}`);
+    }
+
+    try {
+      const { data: oldInmails, error: inmailError } = await adminClient
+        .from("inmail_queue")
+        .select("id")
+        .in("status", FINISHED_INMAIL_STATUSES)
+        .lt("updated_at", cutoff24m.toISOString())
+        .limit(500);
+      if (inmailError) {
+        stats.errors.push(`finished inmails query: ${inmailError.message}`);
+      } else {
+        const ids = (oldInmails ?? []).map((m: { id: string }) => m.id);
+        for (let i = 0; i < ids.length; i += 100) {
+          const { data: deleted, error: deleteError } = await adminClient
+            .from("inmail_queue")
+            .delete()
+            .in("id", ids.slice(i, i + 100))
+            .in("status", FINISHED_INMAIL_STATUSES)
+            .select("id");
+          if (deleteError) {
+            stats.errors.push(`delete finished inmails: ${deleteError.message}`);
+            break;
+          }
+          stats.inmails_purged += (deleted ?? []).length;
+        }
+        if (stats.inmails_purged > 0) {
+          console.log(`[rgpd-purge] Purged ${stats.inmails_purged} finished InMails (> 24 months)`);
+        }
+      }
+    } catch (e) {
+      stats.errors.push(`inmails purge: ${e}`);
     }
 
     // ── Summary ─────────────────────────────────────────────────────

@@ -1,27 +1,41 @@
 /**
  * Chantier design, lot 6 : catalogue des séquences et table des canaux.
  *
- * Aucun identifiant technique ne s'affiche (D-01, D-56, D-58), un statut a un
- * seul libellé et un seul ton (D-55), un canal a un seul nom (D-66). Les
- * modules purs sont transpilés en mémoire par esbuild (patron de
- * notification-kinds.test.mjs).
+ * Aucun identifiant technique ne s'affiche (D-01, D-58), un statut a un seul
+ * libellé et un seul ton (D-55), un canal a un seul nom (D-66). Les libellés
+ * sont ceux de l'audit des séquences (sequenceLabels.ts,
+ * sequenceErrorMessages.ts). Le catalogue est empaqueté par esbuild (il
+ * importe ces tables), la table des canaux transpilée en mémoire.
  *
  * Lancer : node --test tests/ux/lot6-catalogue.test.mjs
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { transformSync } from 'esbuild';
+import { fileURLToPath } from 'node:url';
+import { buildSync, transformSync } from 'esbuild';
 
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
+const asModule = (code) => import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
-const load = async (rel) => {
-  const { code } = transformSync(read(rel), { loader: 'ts', format: 'esm' });
-  return import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const load = (rel) => asModule(transformSync(read(rel), { loader: 'ts', format: 'esm' }).code);
+
+const bundle = (rel) => {
+  const { outputFiles } = buildSync({
+    entryPoints: [fileURLToPath(new URL(`../../${rel}`, import.meta.url))],
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'node',
+    logLevel: 'silent',
+  });
+  return asModule(outputFiles[0].text);
 };
 
-const catalog = await load('src/lib/sequenceCatalog.ts');
+const catalog = await bundle('src/lib/sequenceCatalog.ts');
 const channels = await load('src/lib/channels.ts');
+const labels = await load('src/lib/sequenceLabels.ts');
+const messages = await load('src/lib/sequenceErrorMessages.ts');
 
 test('D-01 : chaque type d’étape du moteur d’envoi a un libellé en français', () => {
   // Types écrits par l'éditeur et traités par process-sequences.
@@ -40,7 +54,7 @@ test('D-01 : chaque type d’étape du moteur d’envoi a un libellé en frança
 test('D-01 : les anciennes clés « send_* » et une clé inconnue restent lisibles', () => {
   assert.equal(catalog.sequenceActionLabel('send_connection'), 'Invitation LinkedIn');
   assert.equal(catalog.sequenceActionLabel('send_inmail'), 'InMail');
-  assert.equal(catalog.sequenceActionLabel('visit_profile'), 'Visite du profil');
+  assert.equal(catalog.sequenceActionLabel('visit_profile'), 'Visite de profil');
   assert.equal(catalog.sequenceActionLabel('nouvelle_action'), 'Étape de séquence');
   assert.equal(catalog.sequenceActionLabel(null), 'Étape de séquence');
 });
@@ -60,22 +74,20 @@ test('D-55 : un statut, un libellé et un ton de badge connu', () => {
   assert.equal(catalog.enrollmentStatusMeta('inconnu').label, 'Statut inconnu');
 });
 
-test('D-56 : les raisons d’arrêt sont traduites, jamais affichées telles qu’enregistrées', () => {
-  const cases = {
-    'Stoppé depuis Inbox': 'Arrêtée à la main',
-    'Reply detected via webhook': 'Le candidat a répondu',
-    'Timeout 3d (no reply)': "Délai d'attente dépassé",
-    'No phone number — WhatsApp skipped': 'Pas de numéro de téléphone',
-    'Email bounced (NDR)': 'E-mail non distribué',
-    'Enrollment became paused before send (last-call check)': "Inscription arrêtée avant l'envoi",
-    'texte inconnu': 'Étape non exécutée',
-  };
-  for (const [raw, label] of Object.entries(cases)) {
-    assert.equal(catalog.skipReasonLabel(raw), label, raw);
+test('D-55 : un seul vocabulaire, celui de l’audit des séquences', () => {
+  for (const [key, meta] of Object.entries(catalog.ENROLLMENT_STATUSES)) {
+    assert.equal(meta.label, labels.ENROLLMENT_STATUS_LABELS[key], `inscription ${key}`);
   }
-  assert.equal(catalog.skipReasonLabel(null), null);
-  assert.equal(catalog.pauseReasonLabel('account_disconnected'), 'Compte LinkedIn déconnecté');
-  assert.equal(catalog.pauseReasonLabel('manual'), null);
+  for (const [key, meta] of Object.entries(catalog.EXECUTION_STATUSES)) {
+    assert.equal(meta.label, messages.EXECUTION_STATUS_LABELS[key], `étape ${key}`);
+  }
+  for (const [key, meta] of Object.entries(catalog.SEQUENCE_ACTIONS)) {
+    const source = key === 'wait_until_connected' ? 'wait_connection' : key;
+    assert.equal(meta.label, messages.ACTION_TYPE_LABELS[source], `action ${key}`);
+  }
+  // Les raisons de pause et de saut n'ont qu'une table : pausedLabel et formatSkipReason.
+  assert.equal(catalog.pauseReasonLabel, undefined);
+  assert.equal(catalog.skipReasonLabel, undefined);
 });
 
 test('D-66 : quatre canaux, un nom chacun, et le canal d’un compte', () => {

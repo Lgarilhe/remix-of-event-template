@@ -18,6 +18,7 @@ import { WorkflowStepNode } from './nodes/WorkflowStepNode';
 import { WorkflowAddNode } from './nodes/WorkflowAddNode';
 import { WorkflowBranchLabelNode } from './nodes/WorkflowBranchLabelNode';
 import { AnimatedEdge } from './edges/AnimatedEdge';
+import { branchStepIds, engineNextStepId } from './sequenceGraph';
 import { useAppTheme } from '@/lib/theme';
 
 const nodeTypes: NodeTypes = {
@@ -60,25 +61,6 @@ const getBranchChain = (startId: string | undefined, all: SequenceStep[]): Seque
   return chain;
 };
 
-const getAllBranchStepIds = (all: SequenceStep[]): Set<string> => {
-  const ids = new Set<string>();
-  const walk = (id: string | undefined, v: Set<string>) => {
-    if (!id || id === '__end__' || v.has(id)) return;
-    v.add(id); ids.add(id);
-    const s = all.find(x => x.id === id);
-    if (s?.nextStepId) walk(s.nextStepId, v);
-    if (s?.ifTrueGotoStep) walk(s.ifTrueGotoStep, v);
-    if (s?.ifFalseGotoStep) walk(s.ifFalseGotoStep, v);
-  };
-  for (const s of all) {
-    if (s.actionType === 'check_connection') {
-      const v = new Set<string>();
-      if (s.ifTrueGotoStep) walk(s.ifTrueGotoStep, v);
-      if (s.ifFalseGotoStep) walk(s.ifFalseGotoStep, v);
-    }
-  }
-  return ids;
-};
 
 // ── Colour palette ──
 // Arêtes neutres : les branches se distinguent par leur étiquette (« Connecté »,
@@ -94,11 +76,11 @@ const ARIA_LABELS = {
   'node.a11yDescription.keyboardDisabled': 'Appuyez sur Entrée ou Espace pour sélectionner cette étape.',
   'node.a11yDescription.ariaLiveMessage': () => 'Étape déplacée.',
   'edge.a11yDescription.default': 'Liaison entre deux étapes.',
-  'controls.ariaLabel': 'Zoom du déroulé',
+  'controls.ariaLabel': 'Zoom du parcours',
   'controls.zoomIn.ariaLabel': 'Agrandir',
   'controls.zoomOut.ariaLabel': 'Réduire',
   'controls.fitView.ariaLabel': "Ajuster à l'écran",
-  'controls.interactive.ariaLabel': 'Verrouiller le déroulé',
+  'controls.interactive.ariaLabel': 'Verrouiller le parcours',
   'minimap.ariaLabel': "Vue d'ensemble",
   'handle.ariaLabel': 'Point de liaison',
 };
@@ -153,6 +135,9 @@ const sanitizeGraph = ({ nodes, edges }: WorkflowGraph): WorkflowGraph => {
   };
 };
 
+// Boutons « + » : seul le bouton interne est atteignable au clavier.
+const ADD_NODE_FLAGS = { selectable: false, focusable: false, draggable: false } as const;
+
 // ── Layout builder ──
 function buildLayout(
   steps: SequenceStep[],
@@ -162,10 +147,10 @@ function buildLayout(
 ): WorkflowGraph {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-  const branchIds = getAllBranchStepIds(steps);
+  const branchIds = branchStepIds(steps);
 
   if (steps.length === 0) {
-    nodes.push({ id: 'add-root', type: 'addNode', position: { x: 0, y: 0 }, data: { onClick: () => onAddStep() } });
+    nodes.push({ id: 'add-root', type: 'addNode', position: { x: 0, y: 0 }, data: { onClick: () => onAddStep() }, ...ADD_NODE_FLAGS });
     return { nodes, edges };
   }
 
@@ -175,27 +160,30 @@ function buildLayout(
   let y = 0;
 
   mainSteps.forEach((step, idx) => {
-    const stepIndex = steps.findIndex(s => s.id === step.id);
-
     nodes.push({
       id: step.id,
       type: 'stepNode',
       position: { x: mainX, y },
+      // Sélection tenue par l'éditeur (clic : onNodeClick, clavier : handleKeyDown).
+      selected: selectedStepId === step.id,
       data: {
-        step, index: stepIndex, allSteps: steps,
+        step, allSteps: steps,
         isSelected: selectedStepId === step.id,
-        canRemove: steps.length > 1,
+        // La dernière étape se supprime aussi : on repart alors d'une séquence vide.
+        canRemove: true,
         onRemove: () => onRemoveStep(step.id),
       },
     });
 
-    // Edge from previous main step
-    if (idx > 0) {
-      const prev = mainSteps[idx - 1];
-      if (prev.actionType !== 'check_connection') {
+    // Arête vers l'étape que le moteur jouera vraiment après celle-ci
+    // (« Étape suivante », sinon ordre suivant si rien ne la vise). Une chaîne
+    // rompue n'est plus dessinée comme reliée.
+    if (step.actionType !== 'check_connection') {
+      const nextId = engineNextStepId(step, steps);
+      if (nextId) {
         edges.push({
-          id: `e-${prev.id}-${step.id}`,
-          source: prev.id, target: step.id,
+          id: `e-${step.id}-${nextId}`,
+          source: step.id, target: nextId,
           type: 'animated',
           style: { stroke: EDGE_DEFAULT },
           markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: EDGE_DEFAULT },
@@ -230,12 +218,12 @@ function buildLayout(
 
       let tY = branchStartY;
       trueBranch.forEach((bs, bi) => {
-        const bsi = steps.findIndex(s => s.id === bs.id);
         nodes.push({
           id: bs.id, type: 'stepNode',
           position: { x: trueX, y: tY },
+          selected: selectedStepId === bs.id,
           data: {
-            step: bs, index: bsi, allSteps: steps,
+            step: bs, allSteps: steps,
             isSelected: selectedStepId === bs.id, canRemove: true,
             onRemove: () => onRemoveStep(bs.id), compact: true,
           },
@@ -260,6 +248,7 @@ function buildLayout(
           }),
           variant: 'true',
         },
+        ...ADD_NODE_FLAGS,
       });
       const trueLastId = trueBranch.length > 0 ? trueBranch[trueBranch.length - 1].id : trueLabelId;
       edges.push({
@@ -286,12 +275,12 @@ function buildLayout(
 
       let fY = branchStartY;
       falseBranch.forEach((bs, bi) => {
-        const bsi = steps.findIndex(s => s.id === bs.id);
         nodes.push({
           id: bs.id, type: 'stepNode',
           position: { x: falseX, y: fY },
+          selected: selectedStepId === bs.id,
           data: {
-            step: bs, index: bsi, allSteps: steps,
+            step: bs, allSteps: steps,
             isSelected: selectedStepId === bs.id, canRemove: true,
             onRemove: () => onRemoveStep(bs.id), compact: true,
           },
@@ -315,6 +304,7 @@ function buildLayout(
           }),
           variant: 'false',
         },
+        ...ADD_NODE_FLAGS,
       });
       const falseLastId = falseBranch.length > 0 ? falseBranch[falseBranch.length - 1].id : falseLabelId;
       edges.push({
@@ -336,6 +326,7 @@ function buildLayout(
       id: addId, type: 'addNode',
       position: { x: -ADD_SIZE / 2, y },
       data: { onClick: () => onAddStep() },
+      ...ADD_NODE_FLAGS,
     });
     edges.push({
       id: `e-${lastMain.id}-${addId}`, source: lastMain.id, target: addId,
@@ -375,8 +366,18 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     }
   }, [onStepClick]);
 
+  // Entrée ou Espace sur une étape focalisée ouvre ses réglages (onNodeClick ne
+  // part qu'à la souris). On écoute la touche et non onSelectionChange : la
+  // sélection posée par l'éditeur relançait onSelectionChange, et l'éditeur
+  // basculait sans fin entre deux étapes.
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const stepId = (event.target as HTMLElement).closest('.react-flow__node')?.getAttribute('data-id');
+    if (stepId && steps.some(s => s.id === stepId)) onStepClick(stepId);
+  }, [onStepClick, steps]);
+
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full" onKeyDown={handleKeyDown}>
       <ReactFlow
         colorMode={theme}
         nodes={nodes}
@@ -384,6 +385,9 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        // Mise en page calculée : un nœud déplacé revenait à sa place.
+        nodesDraggable={false}
+        nodesConnectable={false}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionLineType={ConnectionLineType.SmoothStep}

@@ -17,8 +17,10 @@
  */
 
 import React, { useId, useMemo, useState } from 'react';
-import type { SequenceStepPreview, StepConfigOverride } from '@/hooks/useEnrollmentPreview';
-import { ArrowDown, Clock, CornerDownRight, Info, Pencil, RotateCcw } from 'lucide-react';
+import { hasBranching, type SequenceStepPreview, type StepConfigOverride } from '@/hooks/useEnrollmentPreview';
+import { unsupportedStepNotice } from '@/components/outreach/sequence/sequenceGraph';
+import { isClosedChannelStep } from '@/lib/sequenceCompatibility';
+import { ArrowDown, Clock, CornerDownRight, GitBranch, Info, Pencil, RotateCcw } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -172,7 +174,19 @@ export function SequenceTreeView({ steps, renderStep, getStepConfig, setStepConf
     }
   }
 
-  return <div className="space-y-2">{items}</div>;
+  return (
+    <div className="space-y-2">
+      {hasBranching(sortedSteps) && (
+        <div className="flex items-start gap-2 rounded-xl border border-info/25 bg-info-muted px-3 py-2 text-xs text-foreground" role="note">
+          <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info" aria-hidden="true" />
+          <span>
+            Cette séquence contient des embranchements. L'aperçu les montre à la suite, un seul chemin sera suivi pour chaque candidat.
+          </span>
+        </div>
+      )}
+      {items}
+    </div>
+  );
 }
 
 // ─── Numéro d'une étape, le même sur toutes les cartes ─────────────────
@@ -203,10 +217,16 @@ function ActionCard({
   }
 
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-3">
-      <StepNumber index={index} />
-      <span className="sr-only">Étape {index + 1} : </span>
-      <SequenceActionLabel type={step.actionType} className="text-sm font-medium text-foreground" />
+    <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <div className="flex items-center gap-2.5">
+        <StepNumber index={index} />
+        <span className="sr-only">Étape {index + 1} : </span>
+        <SequenceActionLabel type={step.actionType} className="text-sm font-medium text-foreground" />
+      </div>
+      {/* Canal fermé (D2) : l'étape est sautée, rien ne part. */}
+      {isClosedChannelStep(step.actionType) && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{unsupportedStepNotice(step.actionType)}</p>
+      )}
     </div>
   );
 }
@@ -359,9 +379,9 @@ function FallbackHint() {
 
 // ─── SimpleConnector — flèche entre 2 actions consécutives ───────────
 // Le délai « +5 j 2 h » s'ouvre en fenêtre pour être modifié avant l'étape
-// suivante, pour cette inscription seulement. L'override est stocké côté
-// hook (puis tracking_data sur sequence_enrollments) : la séquence n'est
-// pas modifiée.
+// suivante, pour tous les candidats de cette inscription. L'override est
+// stocké côté hook (puis tracking_data de chaque inscription) : la séquence
+// n'est pas modifiée.
 
 function SimpleConnector({
   stepId, delayDays, delayHours, override, onChange,
@@ -402,7 +422,7 @@ function SimpleConnector({
               type="button"
               variant="ghost"
               size="xs"
-              aria-label={`Délai avant l'étape suivante : ${text}${isOverridden ? ' (modifié)' : ''}. Modifier pour cette inscription`}
+              aria-label={`Délai avant l'étape suivante : ${text}${isOverridden ? ' (modifié)' : ''}. Modifier pour tous les candidats de cette inscription`}
               className={cn('gap-1 px-2 tabular-nums max-md:h-11', isOverridden ? 'text-brand' : 'text-muted-foreground')}
             >
               {text}
@@ -436,7 +456,11 @@ function InitialDelayChip({
     override !== undefined &&
     (override.delayDays !== undefined || override.delayHours !== undefined);
 
-  const text = effDays || effHours ? `Démarre dans ${formatStepDelay(effDays, effHours)}` : 'Démarre dès l\'inscription';
+  // Délai compact « 1j 2h » : c'est le texte que lit le parcours e2e du délai
+  // modifié (seq-ui-2, « démarre dans 1j »), dans le nom du bouton.
+  const delay = [effDays ? `${effDays}j` : '', effHours ? `${effHours}h` : ''].filter(Boolean).join(' ');
+  const start = delay ? `démarre dans ${delay}` : 'démarre dès l\'inscription';
+  const text = start.charAt(0).toUpperCase() + start.slice(1);
 
   if (!onChange) {
     // Pas d'éditeur → simple texte
@@ -459,7 +483,7 @@ function InitialDelayChip({
           type="button"
           variant="outline"
           size="xs"
-          aria-label={`${text}${isOverridden ? ' (modifié)' : ''}. Modifier pour cette inscription`}
+          aria-label={`Délai avant la première étape : ${start}${isOverridden ? ' (modifié)' : ''}. Modifier pour tous les candidats de cette inscription`}
           className={cn('gap-1.5 max-md:h-11', isOverridden ? 'text-brand' : 'text-muted-foreground')}
         >
           <Clock className="!size-3" aria-hidden="true" />
@@ -528,7 +552,7 @@ function DelayEditor({
         <div className="space-y-1">
           <p className="text-sm font-semibold text-foreground">{title || 'Délai avant cette étape'}</p>
           <p className="text-xs leading-snug text-muted-foreground">
-            Modifiez le délai pour cette inscription uniquement. La séquence n'est pas modifiée.
+            Modifiez le délai pour <span className="font-medium text-foreground">tous les candidats de cette inscription</span>. La séquence elle-même n'est pas modifiée.
           </p>
         </div>
 
@@ -620,7 +644,7 @@ function TimeoutEditor({
         type="button"
         variant="outline"
         size="xs"
-        aria-label={`${text}${isOverridden ? ' (modifié)' : ''}. Modifier pour cette inscription`}
+        aria-label={`${text}${isOverridden ? ' (modifié)' : ''}. Modifier pour tous les candidats de cette inscription`}
         className={cn('gap-1.5 max-md:h-11', isOverridden ? 'text-brand' : 'text-muted-foreground')}
       >
         <Clock className="!size-3" aria-hidden="true" />
@@ -675,7 +699,7 @@ function TimeoutEditorPopover({
         <div className="space-y-1">
           <p className="text-sm font-semibold text-foreground">Délai maximal</p>
           <p className="text-xs leading-snug text-muted-foreground">
-            Nombre de jours d'attente avant de passer à la branche alternative (par exemple l'InMail si l'invitation n'est pas acceptée).
+            Nombre de jours d'attente avant de passer à l'autre chemin (par exemple l'InMail si l'invitation n'est pas acceptée), pour tous les candidats de cette inscription.
           </p>
         </div>
 
@@ -762,7 +786,8 @@ function getBranches(actionType: string): {
         main: { label: 'Si la condition est remplie' },
         alt: {
           label: 'Sinon',
-          placeholder: 'Aucune suite définie pour ce cas dans la séquence.',
+          // L'autre chemin est rendu plus bas, dans l'ordre des étapes.
+          placeholder: "L'autre chemin de la condition est montré à la suite ; un seul chemin sera suivi pour chaque candidat.",
         },
       };
     default:

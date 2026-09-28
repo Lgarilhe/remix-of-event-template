@@ -2,9 +2,10 @@
  * Chantier design, lot 6d : suivi des séquences (inscriptions, journal,
  * diagnostic, statistiques) et InMail (groupé, message unitaire, éditeur).
  *
- * - skipReasonLabel (src/lib/sequenceCatalog.ts), empaqueté par buildSync (alias
- *   @/ résolus par tsconfig.app.json) : aucune raison écrite par le moteur
- *   d'envoi ne s'affiche telle qu'enregistrée (D-56) ;
+ * - formatSkipReason (src/lib/sequenceErrorMessages.ts, lue par le catalogue
+ *   unifié), empaquetée par buildSync (alias @/ résolus par tsconfig.app.json) :
+ *   aucune raison technique écrite par le moteur d'envoi ne s'affiche telle
+ *   qu'enregistrée (D-56) ;
  * - écrans : inspection de source (statuts et étapes du socle, registre calme,
  *   confirmations, vocabulaire, jetons).
  *
@@ -23,8 +24,10 @@ const read = (rel) => readFileSync(new URL(rel, ROOT), 'utf8');
 /** Code sans commentaires : les commentaires citent parfois ce qu'on bannit. */
 const code = (rel) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
 
+// Revue design : skipReasonLabel n'existe plus ; le catalogue unifié lit les
+// raisons de saut avec formatSkipReason, la fonction de l'audit.
 const { outputFiles } = buildSync({
-  entryPoints: [join(ROOT_PATH, 'src/lib/sequenceCatalog.ts')],
+  entryPoints: [join(ROOT_PATH, 'src/lib/sequenceErrorMessages.ts')],
   bundle: true,
   write: false,
   format: 'esm',
@@ -32,7 +35,7 @@ const { outputFiles } = buildSync({
   logLevel: 'silent',
   tsconfig: join(ROOT_PATH, 'tsconfig.app.json'),
 });
-const { skipReasonLabel } = await import(
+const { formatSkipReason, formatSequenceError } = await import(
   `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`
 );
 
@@ -48,45 +51,62 @@ const single = code(`${OUTREACH}/OutreachMessageModal.tsx`);
 const FILES = { panel, journal, editModal, diagnostic, analytics, bulk, editor, single };
 
 test('D-56 : les raisons écrites par le moteur d’envoi sont traduites', () => {
+  // Revue design : libellés de formatSkipReason (audit), repris par le catalogue unifié.
   const cases = {
-    'No email — channel skipped': "Pas d'adresse e-mail",
-    'No phone number — WhatsApp skipped': 'Pas de numéro de téléphone',
-    'Reply detected via webhook': 'Le candidat a répondu',
-    'Stoppé depuis Inbox': 'Arrêtée à la main',
-    'Compte LinkedIn déconnecté, reprise automatique à la reconnexion': 'Compte LinkedIn déconnecté : reprise à la reconnexion',
-    "Abonnement requis pour l'envoi de séquences": 'Abonnement requis',
-    'Stop condition: link clicked': 'Le candidat a cliqué sur le lien',
-    'Stop condition: meeting booked (Calendly)': 'Rendez-vous pris',
-    'Hors plage horaire autorisée (8h–19h Europe/Paris). Action différée.': "Hors de vos horaires d'envoi : envoi différé",
-    'Quota InMail épuisé': 'Crédits InMail épuisés',
-    'Quota check unavailable (HTTP 503)': "Limites d'envoi non vérifiées : envoi différé",
-    'raison inconnue': 'Étape non exécutée',
+    'No email — channel skipped': "Pas d'adresse e-mail, étape passée",
+    'No phone number — WhatsApp skipped': 'Pas de numéro de téléphone, étape passée',
+    'Reply detected via webhook': 'Réponse détectée',
+    'Stoppé depuis Inbox': 'Candidat mis en pause',
+    'Stop condition: link clicked': 'Arrêt : le candidat a cliqué sur le lien',
+    'Stop condition: meeting booked (Calendly)': 'Arrêt : un rendez-vous a été pris',
+    'Hors plage horaire autorisée (8h–19h Europe/Paris). Action différée.': "Reporté : en dehors des horaires d'envoi",
+    'Quota check unavailable (HTTP 503)': 'Reporté : vérification des limites indisponible',
+    'raison inconnue': 'Étape non envoyée',
   };
   for (const [raw, label] of Object.entries(cases)) {
-    assert.equal(skipReasonLabel(raw), label, raw);
+    assert.equal(formatSkipReason(raw), label, raw);
   }
-  assert.equal(skipReasonLabel(null), null);
+  // Revue design : une raison que le moteur écrit déjà en français se lit telle
+  // quelle (décision de l'audit) ; le moteur écrit « Crédits InMail épuisés ».
+  for (const raw of [
+    'Compte LinkedIn déconnecté, reprise automatique à la reconnexion',
+    "Abonnement requis pour l'envoi de séquences",
+    'Crédits InMail épuisés',
+  ]) {
+    assert.equal(formatSkipReason(raw), raw, raw);
+  }
+  // « Quota InMail épuisé » est un message d'erreur, pas une raison de saut : même vocabulaire.
+  assert.match(formatSequenceError('Quota InMail épuisé'), /^Crédits InMail épuisés/);
+  assert.equal(formatSkipReason(null), '');
 });
 
 test('D-54, D-55 : statuts et étapes viennent du socle, sans table locale ni aplat saturé', () => {
   for (const [name, src] of Object.entries({ panel, journal })) {
     assert.doesNotMatch(src, /statusConfig|executionStatusConfig|actionTypeConfig/, `${name} : table locale`);
-    assert.match(src, /ExecutionStatusBadge/, `${name} : badge d'exécution du socle`);
+    // Revue design : libellé de la fonction partagée de l'audit, ton du catalogue.
+    assert.match(src, /<Badge variant=\{executionStatusMeta\([^)]*\)\.tone\}>\s*\{execution(?:Status)?Label\(/, `${name} : statut d'exécution du socle`);
     assert.match(src, /SequenceActionIcon/, `${name} : icône d'étape du socle`);
     assert.doesNotMatch(src, /text-(?:info|success|warning)-foreground/, `${name} : texte blanc de statut`);
   }
-  assert.match(panel, /EnrollmentStatusBadge status=\{enrollment\.status\} pauseReason=\{enrollment\.pause_reason\}/);
+  assert.match(panel, /const executionLabel = \(status: string\) => \(status === 'pending' \? 'À venir' : executionStatusLabel\(status\)\);/);
+  // Revue design : statut d'inscription lu par les fonctions de l'audit (pausedLabel
+  // pour une pause, comme EnrollmentStatusBadge), peint avec le ton du catalogue.
+  assert.match(panel, /Object\.entries\(ENROLLMENT_STATUSES\)\.map\(\(\[status, meta\]\) => \[status, \{ tone: meta\.tone \}\]\)/);
+  assert.match(panel, /const statusLabel = enrollment\.status === 'paused'\s*\? pausedLabel\(enrollment\.pause_reason\)\s*: enrollmentStatusLabel\(enrollment\.status\);/);
+  assert.match(panel, /<Badge variant=\{status\.tone\}>\{statusLabel\}<\/Badge>/);
   assert.match(analytics, /EnrollmentStatusBadge/, 'répartition des inscriptions : mêmes libellés');
 });
 
 test('D-56 : plus d’identifiant brut ni de « Workflow »', () => {
   assert.doesNotMatch(panel, /Workflow/);
-  assert.match(panel, /Déroulé/);
+  // Revue design : le titre reste « Parcours », texte attendu par l'e2e
+  // (sequences-enrollments.spec.ts) ; raisons et types lus par les fonctions de l'audit.
+  assert.match(panel, />\s*Parcours\s*</);
   assert.doesNotMatch(panel, /label: step\.action_type|exec\.skip_reason\}/, 'raison ou type affiché tel quel');
-  assert.match(panel, /skipReasonLabel\(exec\.skip_reason\)/);
-  assert.match(journal, /skipReasonLabel\(exec\.skip_reason\)/);
+  assert.match(panel, /formatSkipReason\(exec\.skip_reason\)/);
+  assert.match(journal, /formatSkipReason\(exec\.skip_reason\)/);
   assert.doesNotMatch(analytics, /action_type\.replace/, 'type d’étape bricolé en texte');
-  assert.match(analytics, /sequenceActionLabel\(s\.action_type\)/);
+  assert.match(analytics, /stepTypeLabel\(s\.action_type\)/);
 });
 
 test('D-57 : registre calme (pas de capitales, actions sur Button, arrêt groupé confirmé)', () => {
@@ -95,7 +115,10 @@ test('D-57 : registre calme (pas de capitales, actions sur Button, arrêt group�
     assert.doesNotMatch(src, /rounded-(?:none|2xl|3xl)\b/, `${name} : rayon hors système`);
   }
   assert.doesNotMatch(panel, /<button\b/, 'panneau : boutons du kit seulement');
-  assert.match(panel, /<Button[^>]*>\s*Traiter maintenant/s);
+  // Revue design : « Traiter maintenant » n'existe plus (audit SEQ-001) : le panneau
+  // n'avance plus rien, un bandeau dit quand partent les étapes en retard.
+  assert.doesNotMatch(panel, /Traiter maintenant|nudge_sequences/);
+  assert.match(panel, /Elles partiront au prochain passage, pendant vos heures d’envoi\./);
   assert.match(panel, /setConfirmAction\(\{ type: 'bulkStop' \}\)/, 'arrêt groupé derrière la confirmation');
   assert.doesNotMatch(panel, /calc\(100vh/, 'hauteur de liste par flex');
   assert.doesNotMatch(panel, /BrutalLoader/, 'squelette, pas de phrases simulées');
@@ -110,10 +133,13 @@ test('D-59 : diagnostic en mots de recruteur, un seul seuil', () => {
   for (const word of [/pg_cron/, /Pipeline (?:actif|silencieux)/, /\bcron\s(?:a|est)/, /sans run/, /\bban\b/, /<code/, /\bVérifie\b|\bvérifie les\b|\btu approches\b/]) {
     assert.doesNotMatch(diagnostic, word, String(word));
   }
-  assert.match(diagnostic, /const SILENCE_THRESHOLD_MIN = 10;/);
-  assert.match(diagnostic, /SILENCE_THRESHOLD_MIN \* 60 \* 1000/, 'le code lit le seuil');
-  assert.match(diagnostic, /dans les \{SILENCE_THRESHOLD_MIN\} dernières minutes/, 'l’aide cite le même seuil');
-  assert.match(diagnostic, /Relancer les envois maintenant/);
+  // Revue design : seuil de l'audit (SEQ-170, 12 minutes), défini une fois, lu par
+  // le code et cité par l'aide ; plus de bouton de relance (SEQ-001, lecture seule).
+  assert.match(diagnostic, /const HEALTHY_DELAY_MS = 12 \* 60 \* 1000;/);
+  assert.match(diagnostic, /const HEALTHY_DELAY_MIN = HEALTHY_DELAY_MS \/ 60_000;/);
+  assert.match(diagnostic, /Date\.now\(\) - lastCronRunAt\.getTime\(\) < HEALTHY_DELAY_MS/, 'le code lit le seuil');
+  assert.match(diagnostic, /dans les \{HEALTHY_DELAY_MIN\} dernières minutes/, 'l’aide cite le même seuil');
+  assert.doesNotMatch(diagnostic, /Relancer les envois maintenant|invokeEdgeFunction/, 'plus de bouton de relance');
 });
 
 test('D-60 : légende de la couleur réelle, blocs après chargement, titre « Statistiques : »', () => {

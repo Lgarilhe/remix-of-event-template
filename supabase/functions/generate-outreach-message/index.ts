@@ -43,6 +43,8 @@ interface CandidateHistoryData {
 }
 
 interface JobData {
+  /** Identifiant de la mission (« project:{uuid} » pour un job synthétique du sourcing). */
+  id?: string;
   title: string;
   client?: { name: string; sector: string } | null;
   skills?: string[];
@@ -437,7 +439,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers: corsHeaders });
     }
     const _body = await req.json();
-    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig, sequenceContext, messageTemplate, subjectTemplate } = _body as {
+    const { profile, job, tone = "professional", senderName, candidateStatus = "to_evaluate", accountId, profileId, candidateHistory, customInstructions, calendlyLink, candidateLinkedInUrl, outreachConfig: bodyOutreachConfig, missionId, sequenceContext, messageTemplate, subjectTemplate } = _body as {
       profile: ProfileData;
       job: JobData;
       tone?: "professional" | "casual" | "enthusiastic";
@@ -464,6 +466,9 @@ Deno.serve(async (req) => {
         anonymize_client?: boolean;
         anonymized_alias?: string;
       };
+      /** Mission (sourcing_projects.id ou job_id, préfixe « project: » accepté) :
+       *  sa configuration d'approche est relue quand outreachConfig est absent. */
+      missionId?: string;
       /** Contexte de séquence : si présent, on utilise le shared module
        *  computeMessageTypeContext pour piquer le bon ton (PREMIER MESSAGE
        *  vs RELANCE 1 vs INMAIL DE RELANCE etc.). Sans ça on génère par
@@ -552,6 +557,51 @@ Deno.serve(async (req) => {
       modelId: _aiParams.modelId,
     });
     if (!gate.ok) return creditGateResponse(gate, corsHeaders);
+
+    // Organisation vérifiée de l'appelant (membre de son organisation active) :
+    // son nom porte l'identité de l'expéditeur (SEQ-097, jamais « Konekt »), et
+    // la mission n'est relue que dans cette organisation (SEQ-051).
+    let verifiedOrgId: string | null = null;
+    let organizationName = '';
+    if (orgId) {
+      try {
+        // Même contrôle que verifyOrgMembership (require-auth.ts), sur ce client.
+        const { data: membership, error: memberError } = await svc.from('organization_members')
+          .select('id').eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+        if (memberError) console.warn('[generate-outreach-message] membership check failed:', memberError.message);
+        if (membership) {
+          verifiedOrgId = orgId;
+          const { data: orgRow, error: orgError } = await svc.from('organizations').select('name').eq('id', orgId).maybeSingle();
+          if (orgError) console.warn('[generate-outreach-message] organization name read failed:', orgError.message);
+          organizationName = String((orgRow as { name?: string | null } | null)?.name || '').trim();
+        }
+      } catch (e) {
+        console.warn('[generate-outreach-message] organization check failed:', e);
+      }
+    }
+
+    // SEQ-051 : configuration d'approche absente du body mais mission connue →
+    // relue sur la mission (job_details.outreach_config), pour que le mode
+    // interne ou cabinet et l'anonymisation du client s'appliquent toujours.
+    let outreachConfig: typeof bodyOutreachConfig = bodyOutreachConfig;
+    if (!outreachConfig && verifiedOrgId) {
+      const { normalizeMissionId } = await import('../_shared/outreach-context.ts');
+      const missionKey = normalizeMissionId(missionId ?? job?.id);
+      if (missionKey) {
+        try {
+          const base = svc.from('sourcing_projects').select('job_details').eq('organization_id', verifiedOrgId);
+          const { data: mission, error: missionError } = await (missionKey.kind === 'uuid'
+            ? base.or(`id.eq.${missionKey.id},job_id.eq.${missionKey.id}`)
+            : base.eq('job_id', missionKey.id)
+          ).limit(1).maybeSingle();
+          if (missionError) console.warn('[generate-outreach-message] mission outreach_config read failed:', missionError.message);
+          const cfg = ((mission as { job_details?: Record<string, unknown> | null } | null)?.job_details)?.outreach_config;
+          if (cfg && typeof cfg === 'object') outreachConfig = cfg as typeof bodyOutreachConfig;
+        } catch (e) {
+          console.warn('[generate-outreach-message] mission outreach_config read failed:', e);
+        }
+      }
+    }
 
     // Load AI context (Settings → Contexte IA) for prompt injection
     const aiContext = await loadAndBuildAiContext(svc, { userId, orgId });
@@ -684,6 +734,7 @@ Accroche + présentation + CTA.`
           outreachConfig as any,
           clientName,
           senderName || 'Recruteur',
+          organizationName || null,
         );
       } catch (e) {
         console.warn('[generate-outreach-message] outreach-context import failed:', e);

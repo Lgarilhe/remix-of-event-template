@@ -1,9 +1,10 @@
-import React, { useId, useState } from 'react';
+import React, { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ATSCandidate } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { plural } from '@/lib/plural';
 import { ATSDraggableCard } from './ATSDraggableCard';
 
 interface ATSDroppableColumnProps {
@@ -40,7 +41,6 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
   selectedIds,
   onToggleSelect,
 }) => {
-  const headingId = useId();
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
   const { setNodeRef } = useDroppable({
@@ -56,14 +56,14 @@ export const ATSDroppableColumn: React.FC<ATSDroppableColumnProps> = ({
   return (
     <section
       ref={setNodeRef}
-      aria-labelledby={headingId}
+      aria-label={`Colonne ${stage.label}, ${plural(candidates.length, 'candidat')}`}
       className={cn(
         'flex w-[280px] shrink-0 flex-col rounded-xl border transition-colors duration-150',
         isOver ? 'border-brand bg-muted' : 'border-border bg-card',
       )}
     >
       <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
-        <h2 id={headingId} className="truncate text-sm font-semibold text-foreground">
+        <h2 className="truncate text-sm font-semibold text-foreground">
           {stage.label}
         </h2>
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

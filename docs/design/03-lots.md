@@ -120,7 +120,7 @@ Constats : D-01 à D-03, D-30 à D-32, D-44 à D-46, D-54 (P1) ; D-05 à D-20, D
 
 Remis : D-21, D-28 (onglet Outreach), D-52 (bouton « Séquence » des résultats), D-61 (fiche), D-63 (invitations de l'onglet mission) à la refonte mission ; D-64 (webhooks) aux Paramètres.
 
-Socle commun, posé avant les écrans : `src/lib/channels.ts` et `ChannelIcon` (nom, logo ou icône d'un canal), `src/lib/sequenceCatalog.ts` et `SequenceBadges` (libellé et icône de chaque étape, statut d'une inscription ou d'une exécution, raison d'arrêt, tons de message). Test `tests/ux/lot6-catalogue.test.mjs`.
+Socle commun, posé avant les écrans : `src/lib/channels.ts` et `ChannelIcon` (nom, logo ou icône d'un canal), `src/lib/sequenceCatalog.ts` et `SequenceBadges` (libellé et icône de chaque étape, statut d'une inscription ou d'une exécution, tons de message). Depuis la fusion de l'audit des séquences, le catalogue prend ses libellés dans `sequenceLabels.ts` et `sequenceErrorMessages.ts` et n'y ajoute que le canal, la nature et le ton ; une raison de pause se lit avec `pausedLabel`, une raison de saut avec `formatSkipReason`. Test `tests/ux/lot6-catalogue.test.mjs`.
 
 Fait (messagerie, D-01 à D-20) :
 
@@ -137,10 +137,10 @@ Fait (messagerie, D-01 à D-20) :
 
 Fait (liste et éditeur de séquences, D-22 à D-43) :
 
-- Liste : un squelette, une erreur avec « Réessayer », un vide avec son action ; « Nouvelle séquence » en principal, « Avancer les envois » (ancien « Envoyer tout ») avec une infobulle exacte, menu « Plus d'actions » ; colonnes Inscrits, Statuts, Créée ; icônes des canaux au lieu d'émoji ; même menu sur téléphone et ordinateur (D-22 partiel, D-23 à D-26).
-- Interrupteur nommé ; sans abonnement, désactivé avec un bandeau « Voir les offres » (D-25). Bandeau de sélection et inscription par clic retirés : rien ne les alimentait (D-27).
+- Liste : un squelette, une erreur avec « Réessayer », un vide avec son action ; « Nouvelle séquence » en principal, « Envoyer les actions du jour » (ancien « Envoyer tout », texte de l'audit) avec une infobulle exacte, menu « Plus d'actions » ; colonnes Inscrits, Statuts, Créée ; icônes des canaux au lieu d'émoji ; même menu sur téléphone et ordinateur (D-22 partiel, D-23 à D-26).
+- Interrupteur nommé ; sans abonnement, il reste cliquable et dit pourquoi l'activation est refusée, sous un bandeau « Voir les offres » (D-25, comportement de l'audit). Bandeau de sélection et inscription par clic retirés : rien ne les alimentait (D-27).
 - Éditeur : expéditeurs et garde-fous écrits à la création comme à la modification, et relus à l'ouverture ; « Quitter sans enregistrer ? » dès qu'un champ change ; en-têtes d'étape en `Collapsible` ; fenêtre plein écran sur le `Dialog` Radix (D-30 à D-33).
-- « Enregistrer sans activer » et « Enregistrer et activer » distincts ; une nouvelle séquence reste inactive sauf choix contraire ; le bouton reste actif et montre ce qui manque (D-34).
+- Un seul bouton « Enregistrer » : une nouvelle séquence est créée active, sauf si l'offre interdit l'envoi (décision SEQ-154 de l'audit, qui remplace les deux boutons du design) ; le bouton reste actif et montre ce qui manque (D-34).
 - Étapes, canevas et nœuds sur le catalogue, sans couleur de statut ni agrandissement ; canevas au thème de l'application ; la touche Suppr n'efface plus le dessin d'un nœud en gardant l'étape (D-35, D-42).
 - Aperçu sur un exemple neutre (Marie Dupont, Cabinet Horizon), une seule syntaxe `{{first_name}}` (D-36) ; encarts en `Banner` (D-37) ; contrôles icône nommés, cibles de 44 px au doigt, assistant en ligne sous 1 024 px (D-38, D-39) ; glossaire français, rayons du kit (D-40, D-41, D-43).
 - Nouveau `src/components/ui/save-status.tsx` (« Enregistré », « Enregistrement… », « Modifications non enregistrées », « Échec de l'enregistrement »). Test `tests/ux/lot6b-sequences.test.mjs`.
@@ -148,8 +148,8 @@ Fait (liste et éditeur de séquences, D-22 à D-43) :
 Fait (suivi et InMail, D-54 à D-60, D-62) :
 
 - Badges d'exécution teintés, lisibles dans les deux thèmes ; un statut, un libellé, un ton, dans le panneau des inscriptions comme dans les statistiques (D-54, D-55).
-- Étapes par leur libellé, « Déroulé », raisons d'arrêt traduites, pause expliquée (D-56) ; tuiles du kit, « Traiter maintenant » en bouton, arrêt groupé derrière une `AlertDialog` (D-57) ; journal sur le catalogue (D-58).
-- Diagnostic en mots de recruteur, un seul seuil de retard (10 minutes, le moteur passe toutes les 5 minutes) (D-59) ; statistiques avec légende de la couleur réelle des barres, titre « Statistiques : {nom} » (D-60).
+- Étapes par leur libellé, « Parcours » (nom de l'audit), raisons d'arrêt traduites, pause expliquée (D-56) ; tuiles du kit, arrêt groupé derrière une `AlertDialog` ; « Traiter maintenant » retiré par l'audit (D-57) ; journal sur le catalogue (D-58).
+- Diagnostic en mots de recruteur, un seul seuil de retard, celui de l'audit (12 minutes), sans bouton de relance (D-59) ; statistiques avec légende de la couleur réelle des barres, titre « Statistiques : {nom} » (D-60).
 - InMail : annulation des envois en attente confirmée, bouton principal monochrome, ton en `SegmentedControl`, couleur LinkedIn réservée au logo (D-62).
 - Chaque panneau a son squelette, son erreur avec « Réessayer » et son vide rédigé ; les délais annoncés sont ceux du moteur (« dans les 5 minutes »). Test `tests/ux/lot6d-suivi.test.mjs`.
 
@@ -160,11 +160,13 @@ Fait (inscription et préparation, D-44 à D-53) :
 - Fermer avec du travail en cours demande confirmation et dit ce qui est gardé. Les aperçus et les retouches restent en mémoire pendant la session (jamais dans le navigateur), par séquence, mission, compte d'envoi et candidat ; un aperçu n'est repris que si son étape n'a pas changé. La génération groupée n'écrase plus les retouches et s'arrête à la fermeture (D-46).
 - Vocabulaire : inscrire, aperçu, étape, « Présélectionner sans message », crédits en toutes lettres ; moyens de contact manquants écrits (« sans e-mail ») ; canaux par `ChannelIcon`, étapes par le catalogue (D-47 à D-49).
 - En-tête du candidat à plat, `ScoreBadge`, badge fixe « Ouvert aux opportunités » ; la recommandation brute (« STRONG_MATCH ») n'est plus affichée ; plus de framer-motion (D-50, D-69).
-- Casse de phrase, rayons du système ; une panne d'inscription propose « Réessayer » ; le toast d'échec de planification dit que le moteur reprend seul ces inscriptions ; la fenêtre simple ne déborde plus à droite (D-51).
+- Casse de phrase, rayons du système ; une panne d'inscription propose « Réessayer » ; un échec de planification retire les inscriptions créées et le dit (comportement de l'audit) ; la fenêtre simple ne déborde plus à droite (D-51).
 - `Checkbox` et `SegmentedControl` du kit (D-53) ; la préparation est un `Dialog` avec titre, piège de focus et Échap qui passe par la confirmation, sans `z-[4000]` (D-33, D-72).
 - Test `tests/ux/lot6c-preparation.test.mjs`.
 
 Reste pour le lot 6 : les 30 émojis du sélecteur de l'éditeur InMail, contenu inséré dans le message, à trancher au lot 10.
+
+Fusion de l'audit des séquences (PR #251, 28/09) : 43 fichiers modifiés des deux côtés. Le comportement de l'audit fait foi (moteur, gardes, reprises, pauses, décisions produit), le design est réappliqué par-dessus : composants du kit, jetons, rédaction. Les textes que les tests de parcours de l'audit cliquent sont gardés, sauf trois corrigés avec leur test : « Étape 3 : Message LinkedIn » au lieu du tiret long, « Choisir une étape » au lieu de « Sélectionner... », « Non pris en charge » avec une icône au lieu du symbole. Les raccourcis de la préparation restent ceux du design : ceux de l'audit ne se déclenchaient jamais dans la fenêtre. L'aperçu des messages passe par `renderTemplatePreview` de l'audit, avec l'exemple neutre du design. Les contrôles de l'audit qui lisaient l'ancien balisage sont ré-ancrés sur celui du design, sans retirer de vérification de comportement.
 
 ### Lot 7 · Pipeline global, scorecard, coaching, assistant IA, page Agents
 
@@ -298,7 +300,8 @@ Existants, à employer partout (les deux sessions) :
 | Canal (nom, logo ou icône) | `src/lib/channels.ts`, `ChannelIcon` (`src/components/ui/ChannelIcon.tsx`, lot 6) |
 | Score d'un candidat | `ScoreBadge` (`src/components/ui/score-badge.tsx`), barème `src/lib/scoreScale.ts` (lot 7) |
 | Décision sur un candidat, recommandation de l'IA, type d'entretien | `src/lib/verdicts.ts` (lot 7) |
-| Étape, statut, raison d'arrêt d'une séquence ; délai d'une étape ; canaux d'une séquence | `src/lib/sequenceCatalog.ts` (`formatStepDelay`, `sequenceChannels`) ; `SequenceActionIcon`, `SequenceActionLabel`, `EnrollmentStatusBadge`, `ExecutionStatusBadge` (`src/components/outreach/SequenceBadges.tsx`, lot 6) |
+| Étape et statut d'une séquence (canal, nature, ton) ; délai d'une étape ; canaux d'une séquence | `src/lib/sequenceCatalog.ts` (`formatStepDelay`, `sequenceChannels`, libellés de `sequenceLabels.ts` et `sequenceErrorMessages.ts`) ; `SequenceActionIcon`, `SequenceActionLabel`, `EnrollmentStatusBadge`, `ExecutionStatusBadge` (`src/components/outreach/SequenceBadges.tsx`, lot 6) |
+| Raison de pause ou de saut d'une étape de séquence | `pausedLabel`, `pauseReasonHint` (`src/lib/sequenceLabels.ts`), `formatSkipReason` (`src/lib/sequenceErrorMessages.ts`), audit des séquences |
 | Nombre accordé (« 3 candidats ») | `plural` (`src/lib/plural.ts`) |
 | Temps écoulé (« il y a 3 h ») | `timeAgo` (`src/lib/relativeTime.ts`), variante `compact` pour les listes serrées |
 | Définition ou précision derrière un « i » | `InfoHint` (`src/components/ui/info-hint.tsx`), jamais une infobulle au survol seule |

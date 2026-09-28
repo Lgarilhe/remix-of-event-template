@@ -1,8 +1,12 @@
 /**
- * Catalogue des séquences : libellés des étapes, des statuts d'inscription et
- * d'exécution, des raisons de pause et d'arrêt. Une seule table pour la
- * messagerie, l'éditeur, la préparation, le suivi et le journal (revue design
- * D-01, D-49, D-55, D-56, D-58).
+ * Catalogue des séquences : canal, nature et ton de badge des étapes et des
+ * statuts, pour la messagerie, l'éditeur, la préparation, le suivi et le
+ * journal (revue design D-01, D-49, D-55, D-58).
+ *
+ * Les libellés sont ceux de l'audit des séquences (`sequenceLabels.ts`,
+ * `sequenceErrorMessages.ts`) : une étape ou un statut porte le même mot
+ * partout. Une raison de pause se lit avec `pausedLabel`, une raison de saut
+ * avec `formatSkipReason`.
  *
  * Un identifiant technique (« connection_request », « replied ») ne s'affiche
  * jamais : une valeur inconnue prend un libellé générique.
@@ -12,6 +16,8 @@
  */
 
 import type { Channel } from './channels';
+import { ENROLLMENT_STATUS_LABELS } from './sequenceLabels';
+import { ACTION_TYPE_LABELS, EXECUTION_STATUS_LABELS } from './sequenceErrorMessages';
 
 // ─── Étapes ──────────────────────────────────────────────────────────────
 
@@ -26,20 +32,20 @@ export interface SequenceActionMeta {
 
 /** Clés écrites par l'éditeur (`SequenceBuilder`) et lues par le moteur d'envoi. */
 export const SEQUENCE_ACTIONS: Record<string, SequenceActionMeta> = {
-  connection_request: { label: 'Invitation LinkedIn', channel: 'linkedin', kind: 'action' },
-  message: { label: 'Message LinkedIn', channel: 'linkedin', kind: 'action' },
-  smart_message: { label: 'Message LinkedIn (IA)', channel: 'linkedin', kind: 'action' },
-  inmail: { label: 'InMail', channel: 'linkedin', kind: 'action' },
-  profile_visit: { label: 'Visite du profil', channel: 'linkedin', kind: 'action' },
-  email: { label: 'E-mail', channel: 'email', kind: 'action' },
-  whatsapp_message: { label: 'Message WhatsApp', channel: 'whatsapp', kind: 'action' },
-  check_connection: { label: 'Vérifier la connexion', channel: 'linkedin', kind: 'condition' },
-  condition_branch: { label: 'Condition', channel: null, kind: 'condition' },
-  wait_connection: { label: "Attendre l'acceptation", channel: 'linkedin', kind: 'wait' },
-  wait_until_connected: { label: "Attendre l'acceptation", channel: 'linkedin', kind: 'wait' },
-  wait_reply: { label: 'Attendre la réponse', channel: null, kind: 'wait' },
-  wait_profile_visit: { label: 'Attendre une visite en retour', channel: 'linkedin', kind: 'wait' },
-  wait_for_event: { label: 'Attendre un événement', channel: null, kind: 'wait' },
+  connection_request: { label: ACTION_TYPE_LABELS.connection_request, channel: 'linkedin', kind: 'action' },
+  message: { label: ACTION_TYPE_LABELS.message, channel: 'linkedin', kind: 'action' },
+  smart_message: { label: ACTION_TYPE_LABELS.smart_message, channel: 'linkedin', kind: 'action' },
+  inmail: { label: ACTION_TYPE_LABELS.inmail, channel: 'linkedin', kind: 'action' },
+  profile_visit: { label: ACTION_TYPE_LABELS.profile_visit, channel: 'linkedin', kind: 'action' },
+  email: { label: ACTION_TYPE_LABELS.email, channel: 'email', kind: 'action' },
+  whatsapp_message: { label: ACTION_TYPE_LABELS.whatsapp_message, channel: 'whatsapp', kind: 'action' },
+  check_connection: { label: ACTION_TYPE_LABELS.check_connection, channel: 'linkedin', kind: 'condition' },
+  condition_branch: { label: ACTION_TYPE_LABELS.condition_branch, channel: null, kind: 'condition' },
+  wait_connection: { label: ACTION_TYPE_LABELS.wait_connection, channel: 'linkedin', kind: 'wait' },
+  wait_until_connected: { label: ACTION_TYPE_LABELS.wait_connection, channel: 'linkedin', kind: 'wait' },
+  wait_reply: { label: ACTION_TYPE_LABELS.wait_reply, channel: null, kind: 'wait' },
+  wait_profile_visit: { label: ACTION_TYPE_LABELS.wait_profile_visit, channel: 'linkedin', kind: 'wait' },
+  wait_for_event: { label: ACTION_TYPE_LABELS.wait_for_event, channel: null, kind: 'wait' },
 };
 
 /** Anciennes clés encore présentes dans l'historique. */
@@ -108,32 +114,29 @@ export interface StatusMeta {
 
 /** Statut d'une inscription (`sequence_enrollments.status`). */
 export const ENROLLMENT_STATUSES: Record<string, StatusMeta> = {
-  active: { label: 'En cours', tone: 'info' },
-  paused: { label: 'En pause', tone: 'warning' },
-  replied: { label: 'A répondu', tone: 'success' },
-  booked: { label: 'Rendez-vous pris', tone: 'success' },
-  completed: { label: 'Terminée', tone: 'muted' },
-  stopped: { label: 'Arrêtée', tone: 'muted' },
-  cancelled: { label: 'Annulée', tone: 'muted' },
-  bounced: { label: 'Non distribuée', tone: 'danger' },
+  active: { label: ENROLLMENT_STATUS_LABELS.active, tone: 'info' },
+  paused: { label: ENROLLMENT_STATUS_LABELS.paused, tone: 'warning' },
+  replied: { label: ENROLLMENT_STATUS_LABELS.replied, tone: 'success' },
+  completed: { label: ENROLLMENT_STATUS_LABELS.completed, tone: 'muted' },
+  stopped: { label: ENROLLMENT_STATUS_LABELS.stopped, tone: 'muted' },
+  cancelled: { label: ENROLLMENT_STATUS_LABELS.cancelled, tone: 'muted' },
+  bounced: { label: ENROLLMENT_STATUS_LABELS.bounced, tone: 'danger' },
 };
 
 /** Statut d'une étape exécutée ou prévue (`sequence_step_executions.status`). */
 export const EXECUTION_STATUSES: Record<string, StatusMeta> = {
-  pending: { label: 'À venir', tone: 'muted' },
-  scheduled: { label: 'Planifiée', tone: 'info' },
-  sending: { label: 'Envoi en cours', tone: 'info' },
-  waiting_event: { label: 'En attente', tone: 'muted' },
-  quota_blocked: { label: 'Limite atteinte', tone: 'warning' },
-  sent: { label: 'Envoyée', tone: 'success' },
-  executed: { label: 'Faite', tone: 'success' },
-  opened: { label: 'Ouverte', tone: 'success' },
-  clicked: { label: 'Lien cliqué', tone: 'success' },
-  replied: { label: 'Réponse reçue', tone: 'success' },
-  skipped: { label: 'Ignorée', tone: 'muted' },
-  cancelled: { label: 'Annulée', tone: 'muted' },
-  failed: { label: 'En échec', tone: 'danger' },
-  bounced: { label: 'Non distribuée', tone: 'danger' },
+  scheduled: { label: EXECUTION_STATUS_LABELS.scheduled, tone: 'info' },
+  sending: { label: EXECUTION_STATUS_LABELS.sending, tone: 'info' },
+  waiting_event: { label: EXECUTION_STATUS_LABELS.waiting_event, tone: 'muted' },
+  quota_blocked: { label: EXECUTION_STATUS_LABELS.quota_blocked, tone: 'warning' },
+  sent: { label: EXECUTION_STATUS_LABELS.sent, tone: 'success' },
+  opened: { label: EXECUTION_STATUS_LABELS.opened, tone: 'success' },
+  clicked: { label: EXECUTION_STATUS_LABELS.clicked, tone: 'success' },
+  replied: { label: EXECUTION_STATUS_LABELS.replied, tone: 'success' },
+  skipped: { label: EXECUTION_STATUS_LABELS.skipped, tone: 'muted' },
+  cancelled: { label: EXECUTION_STATUS_LABELS.cancelled, tone: 'muted' },
+  failed: { label: EXECUTION_STATUS_LABELS.failed, tone: 'danger' },
+  bounced: { label: EXECUTION_STATUS_LABELS.bounced, tone: 'danger' },
 };
 
 const UNKNOWN_STATUS: StatusMeta = { label: 'Statut inconnu', tone: 'muted' };
@@ -144,65 +147,6 @@ export function enrollmentStatusMeta(status: string | null | undefined): StatusM
 
 export function executionStatusMeta(status: string | null | undefined): StatusMeta {
   return (status && EXECUTION_STATUSES[status]) || UNKNOWN_STATUS;
-}
-
-// ─── Raisons ─────────────────────────────────────────────────────────────
-
-/**
- * Raison d'une pause (`sequence_enrollments.pause_reason`). Une pause à la
- * main (`manual`) n'a pas besoin d'explication : pas de libellé.
- */
-export const PAUSE_REASONS: Record<string, string> = {
-  account_disconnected: 'Compte LinkedIn déconnecté',
-  quota_reached: "Limite d'envois atteinte",
-  subscription_required: 'Abonnement requis',
-};
-
-export function pauseReasonLabel(reason: string | null | undefined): string | null {
-  if (!reason) return null;
-  return PAUSE_REASONS[reason] ?? null;
-}
-
-/**
- * Raison d'une étape ignorée ou annulée (`skip_reason`, texte libre écrit par
- * le moteur d'envoi, en anglais ou en français selon l'endroit). Traduite à
- * l'affichage ; un texte inconnu garde un libellé générique plutôt que la
- * phrase technique.
- */
-const SKIP_REASON_RULES: [RegExp, string][] = [
-  [/compte linkedin déconnecté/i, 'Compte LinkedIn déconnecté : reprise à la reconnexion'],
-  [/abonnement requis/i, 'Abonnement requis'],
-  [/stop condition: link clicked/i, 'Le candidat a cliqué sur le lien'],
-  [/stop condition: unsubscribed/i, 'Le candidat s’est désinscrit'],
-  [/stop condition: meeting booked/i, 'Rendez-vous pris'],
-  [/hors plage horaire/i, "Hors de vos horaires d'envoi : envoi différé"],
-  [/quota inmail épuisé/i, 'Crédits InMail épuisés'],
-  [/contrôle de quota|quota check/i, "Limites d'envoi non vérifiées : envoi différé"],
-  [/quota|plafond/i, "Limite d'envois atteinte : envoi différé"],
-  [/reply detected|réponse marquée|marqué comme répondu/i, 'Le candidat a répondu'],
-  [/calendly booking/i, 'Rendez-vous pris'],
-  [/^timeout/i, "Délai d'attente dépassé"],
-  [/^condition/i, 'Condition non remplie'],
-  [/no phone number/i, 'Pas de numéro de téléphone'],
-  [/no email/i, "Pas d'adresse e-mail"],
-  [/no linkedin account|compte linkedin dissocié/i, 'Aucun compte LinkedIn relié'],
-  [/bloqué le compte linkedin/i, 'Le candidat a bloqué le compte LinkedIn'],
-  [/bounced/i, 'E-mail non distribué'],
-  [/liste de suppression/i, 'Adresse désinscrite ou bloquée'],
-  [/high failure rate/i, "Mise en pause après plusieurs échecs"],
-  [/no_previous_message/i, 'Aucun message précédent à relancer'],
-  [/^type d'/i, 'Étape non prise en charge'],
-  [/sautée par le recruteur/i, 'Étape passée à la main'],
-  [/arrêt manuel|annulé manuellement|stoppé depuis inbox|arrêt groupé/i, 'Arrêtée à la main'],
-  [/enrollment became|enrollment inactive|sequence missing/i, "Inscription arrêtée avant l'envoi"],
-];
-
-export function skipReasonLabel(reason: string | null | undefined): string | null {
-  if (!reason) return null;
-  for (const [pattern, label] of SKIP_REASON_RULES) {
-    if (pattern.test(reason)) return label;
-  }
-  return 'Étape non exécutée';
 }
 
 // ─── Tons ────────────────────────────────────────────────────────────────

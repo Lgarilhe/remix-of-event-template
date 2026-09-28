@@ -305,11 +305,24 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* Échec d'une nouvelle lecture : les événements du dernier chargement
+          réussi restent affichés, signalés comme possiblement incomplets. */}
+      {!isLoading && isError && rawEvents.length > 0 && (
+        <ErrorState
+          variant="compact"
+          className="mb-4"
+          title="Impossible de mettre à jour l'agenda"
+          description="Les événements affichés datent du dernier chargement réussi et peuvent être incomplets."
+          onRetry={() => refetch()}
+          retrying={isFetching}
+        />
+      )}
+
       {isLoading ? (
         <div role="status" aria-label="Chargement de l'agenda">
           <Skeleton className="h-[440px] rounded-xl" />
         </div>
-      ) : isError ? (
+      ) : isError && rawEvents.length === 0 ? (
         <ErrorState
           title="Impossible de charger l'agenda"
           description="Vérifiez votre connexion, puis réessayez. Vos entretiens ne sont pas perdus."

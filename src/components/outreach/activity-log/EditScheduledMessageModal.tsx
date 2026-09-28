@@ -16,6 +16,7 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { sequenceWriteRefusal } from '@/lib/sequenceErrorMessages';
 
 interface EditScheduledMessageModalProps {
   isOpen: boolean;
@@ -32,6 +33,11 @@ interface EditScheduledMessageModalProps {
     };
     enrollment?: {
       profile_name: string | null;
+    };
+    /** Texte affiché dans le Journal (modification, aperçu validé à l'inscription ou modèle). */
+    preview?: {
+      message: string | null;
+      subject: string | null;
     };
   } | null;
   onSaved: () => void;
@@ -51,25 +57,33 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
   const helpId = useId();
 
   const actionType = execution?.step?.action_type;
-  const needsSubject = actionType === 'inmail';
+  // Un e-mail a un objet comme un InMail : sans ce champ, l'enregistrement
+  // écrivait final_subject = null et l'objet personnalisé était perdu.
+  const needsSubject = actionType === 'inmail' || actionType === 'email';
 
   useEffect(() => {
     if (execution) {
-      setSubject(execution.final_subject || execution.step?.subject_template || '');
-      setMessage(execution.final_message || execution.step?.message_template || '');
+      // Même valeur que celle affichée dans le Journal : on corrige le message
+      // qui partira, pas le modèle de l'étape.
+      setSubject(
+        execution.final_subject || execution.preview?.subject || execution.step?.subject_template || '',
+      );
+      setMessage(
+        execution.final_message || execution.preview?.message || execution.step?.message_template || '',
+      );
     }
   }, [execution]);
 
   const handleSave = async () => {
     if (!execution) return;
-    
+
     if (!message.trim()) {
-      toast.error('Écrivez le message avant de l’enregistrer.');
+      toast.error('Le message ne peut pas être vide');
       return;
     }
 
     if (needsSubject && !subject.trim()) {
-      toast.error('Ajoutez un objet : un InMail part toujours avec un objet.');
+      toast.error("L'objet ne peut pas être vide pour un InMail ou un e-mail");
       return;
     }
 
@@ -92,18 +106,20 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
       if (error) throw error;
 
       if (!updated || updated.length === 0) {
-        toast.error("Ce message est déjà en cours d'envoi ou envoyé : il ne peut plus être modifié.");
+        toast.error("Ce message est déjà en cours d'envoi ou envoyé : modification impossible.");
         onSaved();
         onClose();
         return;
       }
 
-      toast.success('Message modifié : la nouvelle version partira à l’heure prévue.');
+      toast.success('Message mis à jour', { description: 'La nouvelle version partira à l’heure prévue.' });
       onSaved();
       onClose();
     } catch (err) {
       console.error('Error updating message:', err);
-      toast.error("Le message n'a pas pu être enregistré. Réessayez.");
+      // Refus de la base (étape déjà partie, plus programmée…) : sa raison en
+      // français plutôt qu'un « réessayez » qui échouerait encore.
+      toast.error(sequenceWriteRefusal(err) ?? "La modification n'a pas été enregistrée. Réessayez.");
     } finally {
       setSaving(false);
     }
@@ -125,7 +141,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Subject (for InMail) */}
+          {/* Objet (InMail et e-mail) */}
           {needsSubject && (
             <div className="space-y-2">
               <Label htmlFor={subjectId}>Objet</Label>
@@ -150,7 +166,7 @@ export const EditScheduledMessageModal: React.FC<EditScheduledMessageModalProps>
               className="resize-none"
             />
             <p id={helpId} className="text-xs text-muted-foreground">
-              Les variables comme {'{{first_name}}'} sont remplacées à l'envoi.
+              Les variables comme {'{{first_name}}'} ou {'{{prenom}}'} sont remplacées à l'envoi.
             </p>
           </div>
         </div>

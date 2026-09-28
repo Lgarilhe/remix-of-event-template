@@ -31,7 +31,7 @@ import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { cn } from '@/lib/utils';
 import { sequenceActionLabel, formatStepDelay } from '@/lib/sequenceCatalog';
 import {
-  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, ListChecks, Pencil, RefreshCw, Search,
+  AlertCircle, AlertTriangle, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Info, ListChecks, Pencil, RefreshCw, Search,
 } from 'lucide-react';
 import { SequenceActionLabel } from './SequenceBadges';
 import { CandidateSidebarCard } from './enrollment-preview/CandidateSidebarCard';
@@ -42,12 +42,36 @@ import { HistoryPopover } from './enrollment-preview/HistoryPopover';
 import { DynamicSummaryBanner } from './enrollment-preview/DynamicSummaryBanner';
 import { CandidateStatesMap, CandidateState } from './enrollment-preview/types';
 import { useOrganization } from '@/hooks/useOrganization';
+import type { Json } from '@/integrations/supabase/types';
 import {
   findRecentEnrollments,
   formatRecentContactLabel,
   RECENT_CONTACT_WINDOW_DAYS,
   type RecentEnrollment,
 } from '@/lib/enrollmentDuplicates';
+import { CLOSED_CHANNEL_ACTION_TYPES, checkProfilesCompat, isClosedChannelStep, pickFirstStep } from '@/lib/sequenceCompatibility';
+import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
+import { OTHER_MEMBER_ACCOUNT_MESSAGE, useSendingAccount } from './enrollment-preview/useSendingAccount';
+import { enrollmentRowFields } from './enrollment-preview/enrollmentRowFields';
+import {
+  alreadyInSequenceLabel,
+  alreadyPassedLabel,
+  classifyExistingEnrollment,
+  dedupeProfilesByIdentity,
+  DUPLICATE_CHECK_FAILED_MESSAGE,
+  enrollFailureMessage,
+  enrollmentRefusalOf,
+  findBlockingSequenceEnrollments,
+  firstActionSummary,
+  formerPassageLabel,
+  isOtherMemberAccountError,
+  markCandidatesMessaged,
+  NO_LINKEDIN_ACCOUNT_DESCRIPTION,
+  NO_LINKEDIN_ACCOUNT_TITLE,
+  samePersonRefusedLabel,
+  sequenceInactiveReason,
+} from './enrollment-preview/enrollmentHelpers';
+import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
 import { plural } from '@/lib/plural';
 
 // ── Types ──
@@ -63,6 +87,8 @@ interface EnrollmentPreviewModalProps {
   profiles: LinkedInProfile[];
   accountId: string;
   job?: { id: string; title: string; client?: any; skills?: string[]; description?: string; location?: string; accompagnement?: string[] } | null;
+  /** Avertissement propre au point d'entrée (ex. relation LinkedIn non vérifiée depuis la messagerie). */
+  notice?: string | null;
   onSuccess: () => void;
 }
 
@@ -120,10 +146,86 @@ function mapSteps(rawSteps: any[]): SequenceStepPreview[] {
     timeoutBranchStepId: s.timeout_branch_step_id || s.timeoutBranchStepId || null,
     parentStepId: s.parent_step_id || s.parentStepId || null,
     branch: s.branch || null,
+    // Embranchements suivis par le moteur (vérification oui / non, chaînage) :
+    // l'aperçu les signale et l'IA ne mélange pas les deux chemins.
+    ifTrueGotoStep: s.if_true_goto_step || s.ifTrueGotoStep || null,
+    ifFalseGotoStep: s.if_false_goto_step || s.ifFalseGotoStep || null,
+    nextStepId: s.next_step_id || s.nextStepId || null,
   })).sort((a, b) => a.stepOrder - b.stepOrder);
 }
 
 const MESSAGE_ACTIONS = ['message', 'inmail', 'smart_message', 'email', 'connection_request', 'whatsapp_message'];
+
+/**
+ * Étape dont le message est préparé ici. Un canal fermé (e-mail, WhatsApp, D2)
+ * est sauté par le moteur : pas de carte d'aperçu, l'arbre le montre compact.
+ */
+function isPreviewedMessageStep(step: SequenceStepPreview): boolean {
+  return MESSAGE_ACTIONS.includes(step.actionType)
+    && !isClosedChannelStep(step.actionType)
+    && !!step.messageTemplate?.trim();
+}
+
+/**
+ * Affiche {{calendly_link}} (ou {{lien_calendly}}) comme une pastille : le
+ * moteur y met le lien d'agenda de la mission à l'envoi. Le texte enregistré
+ * dans les messages de l'inscription garde la variable telle quelle.
+ */
+function renderSendTimeVariables(text: string): React.ReactNode {
+  const segments = text.split(/\{\{\s*(?:calendly_link|lien_calendly)\b[^}]*\}\}/gi);
+  if (segments.length === 1) return text;
+  return segments.flatMap((segment, i) => (i === 0 ? [segment] : [
+    <span
+      key={`agenda-${i}`}
+      className="inline-flex items-center gap-1 rounded-full border border-info/25 bg-info-muted px-1.5 py-px align-baseline text-2xs font-medium text-info"
+    >
+      <CalendarClock className="h-3 w-3" aria-hidden="true" />
+      Lien d'agenda, ajouté à l'envoi
+    </span>,
+    segment,
+  ]));
+}
+
+/** « Inscription 12 sur 50… » pendant la boucle, « Inscription… » avant le premier candidat. */
+function enrollProgressLabel(progress: { done: number; total: number } | null): string {
+  return progress ? `Inscription ${progress.done} sur ${progress.total}…` : 'Inscription…';
+}
+
+/**
+ * Titre du bandeau de compatibilité (candidats exclus ou inclus quand même).
+ * Bloquent : un candidat injoignable, et un candidat déjà en relation quand la
+ * séquence ne contient que l'invitation. Déjà en relation avec des messages
+ * après l'invitation : simple avertissement (invitation sautée, suite envoyée).
+ * Autonome (sans import) : les tests l'évaluent seule.
+ */
+function compatHeadline(blockers: { issue: string | null }[], included: boolean): string {
+  const n = blockers.length;
+  const many = n > 1;
+  const reason = blockers.every(r => r.issue === 'too_far')
+    ? ` : hors de votre réseau LinkedIn, seul un InMail peut ${many ? 'les ' : "l'"}atteindre`
+    : blockers.every(r => r.issue === 'connection_only_already_connected')
+      ? " : déjà en relation, et la séquence ne contient qu'une invitation"
+      : '';
+  const outcome = included
+    ? (many ? 'Ils seront inscrits quand même.' : 'Il sera inscrit quand même.')
+    : (many ? "Ils sont exclus de l'inscription." : "Il est exclu de l'inscription.");
+  return `${n} candidat${many ? 's' : ''} ne ${many ? 'peuvent' : 'peut'} pas suivre cette séquence${reason}. ${outcome}`;
+}
+
+interface EnrollResults {
+  success: number;
+  /** Déjà dans la séquence (en cours ou en pause). */
+  skipped: number;
+  /** Déjà passés par la séquence (terminée, réponse, arrêtée) : à reprendre depuis le suivi. */
+  alreadyPassed: number;
+  /** Refusés par la base, par nom : profil effacé (décision 12). */
+  gdprErased: string[];
+  /** Refusés par la base, par nom : même personne dans la séquence sous un autre identifiant (décision 21). */
+  samePerson: string[];
+  /** Inscrits, déjà passés par la séquence il y a plus de 90 jours sous un autre identifiant (décision 23). */
+  formerPassages: number;
+  errors: string[];
+}
 
 // ── Component ──
 
@@ -134,6 +236,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   profiles,
   accountId,
   job,
+  notice,
   onSuccess,
 }) => {
   const { organizationId, isAdmin } = useOrganization();
@@ -142,27 +245,25 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const isBulk = profiles.length > 10;
   const candidateIds = useMemo(() => profiles.map(profile => profile.id), [profiles]);
   const firstProfileId = candidateIds[0] ?? '';
-
-  // Aperçus conservés pour la session : même séquence, même mission, même
-  // compte d'envoi (revue design D-46).
-  const sessionKey = `${sequence.id}|${job?.id ?? ''}|${accountId}`;
-  const {
-    previews, messageSteps, hasMessageSteps, hasAiSteps,
-    generatedCount, totalToGenerate, isBulkGenerating,
-    estimatedCredits, creditsPerMessage, candidateAnalysis,
-    getPreview, generateForCandidateById, regenerateStep,
-    editMessage, generateAll, cancelBulkGeneration, getMessageOverrides, discardSessionPreviews,
-    getStepConfig, setStepConfig, getStepConfigOverrides,
-  } = useEnrollmentPreview({ steps, profiles, job, accountId, sessionKey });
+  const hasSendableMessage = useMemo(() => steps.some(isPreviewedMessageStep), [steps]);
+  // Compte d'envoi affiché près du bouton ; déconnecté ou relié à un collègue,
+  // il bloque l'inscription (liaison stricte).
+  const sendingAccount = useSendingAccount(accountId);
 
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>(firstProfileId);
   const [mode, setMode] = useState<'preview' | 'summary'>(
-    !hasMessageSteps ? 'summary' : (isBulk ? 'summary' : 'preview')
+    !hasSendableMessage ? 'summary' : (isBulk ? 'summary' : 'preview')
   );
   const [editingSteps, setEditingSteps] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [isEnrolling, setIsEnrolling] = useState(false);
-  const [enrollResults, setEnrollResults] = useState<{ success: number; skipped: number; errors: string[] } | null>(null);
+  const [isShortlisting, setIsShortlisting] = useState(false);
+  // « Inscription {done} sur {total}… » pendant la boucle d'inscription.
+  const [enrollProgress, setEnrollProgress] = useState<{ done: number; total: number } | null>(null);
+  // Tant qu'une écriture est en cours, la fenêtre ne se ferme pas : la fermer
+  // n'arrêterait pas les inscriptions et le bilan serait perdu.
+  const isBusy = isEnrolling || isShortlisting;
+  const [enrollResults, setEnrollResults] = useState<EnrollResults | null>(null);
   const [page, setPage] = useState(0);
   const [mobilePane, setMobilePane] = useState<'list' | 'preview'>('preview');
   const pageSize = 10;
@@ -231,35 +332,37 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     });
   }, [getCandidateState]);
 
-  // ── Anti-doublon organisation (90 jours) ──
-  // Candidats déjà contactés par un membre (toute séquence, tout compte) :
-  // signalés et exclus de l'inscription, sauf dérogation cochée par un
-  // propriétaire ou administrateur. null = vérification pas encore aboutie.
+  // ── Anti-doublon organisation ──
+  // Candidats déjà contactés par un membre (séquence encore vivante, contact
+  // des 90 derniers jours, InMail groupé) : signalés et exclus de
+  // l'inscription, sauf dérogation cochée par un propriétaire ou
+  // administrateur. null = vérification pas encore aboutie ; en cas d'échec,
+  // un bandeau bloquant propose de réessayer (jamais de Map vide inventée).
   const [recentEnrollments, setRecentEnrollments] = useState<Map<string, RecentEnrollment> | null>(null);
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicateCheckFailed, setDuplicateCheckFailed] = useState(false);
+  const [duplicateCheckAttempt, setDuplicateCheckAttempt] = useState(0);
   const [enrollDuplicatesAnyway, setEnrollDuplicatesAnyway] = useState(false);
   const profilesKey = useMemo(() => profiles.map(p => p.id).join('|'), [profiles]);
   useEffect(() => {
     if (!isOpen || !organizationId) return;
     let cancelled = false;
     setRecentEnrollments(null);
+    setDuplicateCheckFailed(false);
     setEnrollDuplicatesAnyway(false);
     setIsCheckingDuplicates(true);
     findRecentEnrollments(supabase, organizationId, profiles)
       .then(map => { if (!cancelled) setRecentEnrollments(map); })
       .catch(err => {
         console.warn('[EnrollmentPreviewModal] recent enrollments check failed:', err);
-        if (!cancelled) {
-          toast.warning('Vérification des contacts récents impossible', {
-            description: 'Les candidats déjà contactés ne seront pas signalés.',
-          });
-          setRecentEnrollments(new Map());
-        }
+        if (!cancelled) setDuplicateCheckFailed(true);
       })
       .finally(() => { if (!cancelled) setIsCheckingDuplicates(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, organizationId, profilesKey]);
+  }, [isOpen, organizationId, profilesKey, duplicateCheckAttempt]);
+  // L'inscription attend la fin de la vérification des contacts récents.
+  const duplicatesUnchecked = !recentEnrollments;
 
   const allowDuplicates = isAdmin && enrollDuplicatesAnyway;
   const duplicateProfiles = useMemo(() =>
@@ -268,13 +371,75 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       : [],
     [profiles, recentEnrollments, getCandidateState]);
 
-  // Active profiles (not removed, not skipped, not recently contacted unless override)
+  // ── Compatibilité candidat / séquence ──
+  // Même contrôle que l'inscription simple : un candidat hors réseau ne peut
+  // être joint que par InMail, un candidat déjà en relation ne reçoit rien
+  // d'une séquence qui n'a que l'invitation (exclus par défaut, « Inclure
+  // quand même ») ; déjà en relation avec une suite : averti (invitation sautée).
+  const compat = useMemo(() => checkProfilesCompat(profiles, sequence.steps), [profiles, sequence.steps]);
+  const incompatibleIds = useMemo(() => new Set(compat.blockers.map(r => r.profile.id)), [compat.blockers]);
+  const [includeIncompatible, setIncludeIncompatible] = useState(false);
+  const includeIncompatibleId = useId();
+
+  // Active profiles (not removed, not skipped, compatible unless included,
+  // not recently contacted unless override)
   const activeProfiles = useMemo(() =>
     profiles.filter(p => {
       const s = getCandidateState(p.id);
       if (s.removed || s.skipped) return false;
+      if (!includeIncompatible && incompatibleIds.has(p.id)) return false;
       return allowDuplicates || !recentEnrollments?.has(p.id);
-    }), [profiles, getCandidateState, candidateStates, recentEnrollments, allowDuplicates]);
+    }), [profiles, getCandidateState, candidateStates, recentEnrollments, allowDuplicates, includeIncompatible, incompatibleIds]);
+
+  // Raison d'exclusion de chaque candidat encore affiché : pastille sur sa
+  // carte et détail du compteur (un seul chiffre, issu de activeProfiles).
+  const exclusionByCandidate = useMemo(() => {
+    const map = new Map<string, { label: string; title: string }>();
+    for (const p of profiles) {
+      const s = getCandidateState(p.id);
+      if (s.removed || s.skipped) continue;
+      if (!includeIncompatible && incompatibleIds.has(p.id)) {
+        const reason = compat.blockers.find(r => r.profile.id === p.id)?.message;
+        map.set(p.id, { label: 'Incompatible, exclu', title: reason || 'Ne peut pas suivre cette séquence' });
+        continue;
+      }
+      const recent = allowDuplicates ? undefined : recentEnrollments?.get(p.id);
+      if (recent) map.set(p.id, { label: 'Déjà contacté, exclu', title: formatRecentContactLabel(recent) });
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles, candidateStates, includeIncompatible, incompatibleIds, compat.blockers, allowDuplicates, recentEnrollments]);
+  const excludedCounts = useMemo(() => {
+    let duplicates = 0;
+    let incompatible = 0;
+    exclusionByCandidate.forEach(e => {
+      if (e.label.startsWith('Déjà contacté')) duplicates++;
+      else incompatible++;
+    });
+    return { duplicates, incompatible };
+  }, [exclusionByCandidate]);
+
+  // Aperçus conservés pour la session : même séquence, même mission, même
+  // compte d'envoi (revue design D-46). La génération groupée, son compteur et
+  // l'estimation de crédits ne visent que les candidats qui seront inscrits
+  // (activeProfiles).
+  const sessionKey = `${sequence.id}|${job?.id ?? ''}|${accountId}`;
+  const {
+    previews, messageSteps, hasMessageSteps, hasAiSteps,
+    generatedCount, totalToGenerate, isBulkGenerating,
+    estimatedCredits, creditsPerMessage, candidateAnalysis,
+    getPreview, generateForCandidateById, regenerateStep,
+    editMessage, generateAll, cancelBulkGeneration, getMessageOverrides, discardSessionPreviews,
+    getStepConfig, setStepConfig, getStepConfigOverrides,
+  } = useEnrollmentPreview({ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey });
+
+  // « Première action : …, dès maintenant / dans 2 jours, pendant vos heures
+  // d'envoi » : première étape planifiée et son délai effectif (délai modifié
+  // pour cette inscription compris), repris dans le toast de fin.
+  const firstAction = useMemo(
+    () => firstActionSummary(sequence.steps, getStepConfigOverrides()),
+    [sequence.steps, getStepConfigOverrides],
+  );
 
   useEffect(() => {
     if (!candidateIds.length) {
@@ -351,16 +516,36 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       });
       return;
     }
+    if (!accountId) {
+      toast.error(NO_LINKEDIN_ACCOUNT_TITLE, { description: NO_LINKEDIN_ACCOUNT_DESCRIPTION });
+      return;
+    }
+    if (sendingAccount.blockReason) {
+      toast.error(sendingAccount.blockReason);
+      return;
+    }
 
     setIsEnrolling(true);
     setEnrollResults(null);
-    const results = { success: 0, skipped: 0, errors: [] as string[] };
-    const enrolledIds: string[] = [];
+    setEnrollProgress(null);
+    const results: EnrollResults = { success: 0, skipped: 0, alreadyPassed: 0, gdprErased: [], samePerson: [], formerPassages: 0, errors: [] };
+    // Candidats réellement inscrits : leur statut pipeline passe à « contacté ».
+    const enrolledProfiles: LinkedInProfile[] = [];
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || '00000000-0000-0000-0000-000000000000';
-      const firstStep = sequence.steps.find((s: any) => (s.step_order ?? s.stepOrder) === 0) || sequence.steps[0];
+      if (!user) {
+        toast.error('Session expirée : reconnectez-vous, puis réessayez.');
+        return;
+      }
+      const userId = user.id;
+
+      // Séquence désactivée entre l'ouverture du menu et le clic : refus.
+      const inactiveReason = await sequenceInactiveReason(supabase, sequence.id);
+      if (inactiveReason) {
+        toast.error(inactiveReason);
+        return;
+      }
 
       // 🔧 Normalise job.id : depuis le flow Sourcing, useLinkedInSearch
       // génère des jobs synthétiques avec id="project:{uuid}". Si on
@@ -379,34 +564,46 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       if (!recent) {
         recent = await findRecentEnrollments(supabase, organizationId, profiles);
         setRecentEnrollments(recent);
+        setDuplicateCheckFailed(false);
       }
-      const enrollSet = allowDuplicates
+      // Même personne sélectionnée sous deux identifiants : une seule
+      // inscription, les autres comptées « déjà dans cette séquence ».
+      const { unique: enrollSet, duplicates } = dedupeProfilesByIdentity(allowDuplicates
         ? activeProfiles
-        : activeProfiles.filter(p => !recent.has(p.id));
+        : activeProfiles.filter(p => !recent.has(p.id)));
+      results.skipped += duplicates;
       if (enrollSet.length === 0) {
         toast.error(
           activeProfiles.length === 0
             ? 'Aucun candidat à inscrire'
-            : 'Tous les candidats ont déjà été contactés récemment par votre organisation',
+            : 'Tous les candidats ont déjà été contactés par votre organisation',
         );
         return;
       }
 
-      for (const profile of enrollSet) {
+      for (let index = 0; index < enrollSet.length; index++) {
+        const profile = enrollSet[index];
+        setEnrollProgress({ done: index + 1, total: enrollSet.length });
         try {
-          // Pré-check pour info uniquement. La race fenêtre entre SELECT et
-          // INSERT est gérée plus bas via UPSERT + ignoreDuplicates (la
-          // contrainte DB UNIQUE(sequence_id, profile_id) est la vraie source
-          // de vérité).
-          const { data: existing } = await supabase
-            .from('sequence_enrollments')
-            .select('id, status')
-            .eq('sequence_id', sequence.id)
-            .eq('profile_id', profile.id)
-            .in('status', ['active', 'completed', 'replied'])
-            .maybeSingle();
+          // Pré-contrôle : la contrainte DB UNIQUE(sequence_id, profile_id)
+          // est inconditionnelle, toute ligne existante empêche l'inscription ;
+          // sous un autre identifiant du candidat ou son slug public, une
+          // inscription en cours ou en pause l'empêche aussi, dérogation
+          // comprise (SEQ-046), et une inscription close depuis moins de 90
+          // jours (décision 21) ; au-delà, il est inscrit avec un avertissement
+          // (décision 23).
+          // On distingue « déjà dans la séquence » (en cours, en pause) de
+          // « déjà passé par la séquence » (terminée, réponse, arrêtée), à
+          // reprendre depuis le suivi. La race fenêtre entre SELECT et INSERT
+          // est gérée plus bas via UPSERT + ignoreDuplicates.
+          const matches = await findBlockingSequenceEnrollments(supabase, sequence.id, [profile]);
+          const existing = matches.blocking.get(profile.id);
 
-          if (existing) { results.skipped++; continue; }
+          if (existing) {
+            if (classifyExistingEnrollment(existing.status) === 'in_sequence') results.skipped++;
+            else results.alreadyPassed++;
+            continue;
+          }
 
           const networkDist = profile.network_distance;
           const normalizedDistance = networkDist === 1 || networkDist === '1' || networkDist === 'DISTANCE_1'
@@ -425,7 +622,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
 
           // Construit tracking_data uniquement si on a au moins un override
           // (sinon on laisse la colonne null pour rester clean).
-          const trackingData: Record<string, unknown> = {};
+          const trackingData: Record<string, Json> = {};
           if (Object.keys(overrides).length > 0) {
             trackingData.message_overrides = overrides;
           }
@@ -450,6 +647,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               current_step_order: 0,
               status: 'active',
               network_distance: normalizedDistance,
+              ...enrollmentRowFields(profile),
               ...(Object.keys(trackingData).length > 0 ? { tracking_data: trackingData } : {}),
             }, {
               onConflict: 'sequence_id,profile_id',
@@ -466,6 +664,10 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             continue;
           }
 
+          // Première étape tirée pour CE candidat : un test A/B en première
+          // position répartit les variantes comme le moteur (pondération
+          // variant_weight) au lieu de n'envoyer que la première ligne.
+          const { step: firstStep, variantAssigned } = pickFirstStep(sequence.steps);
           if (firstStep) {
             const stepId = firstStep.id;
             // Applique l'override de timing s'il existe pour le 1er step.
@@ -490,6 +692,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                 step_order: firstStep.step_order ?? firstStep.stepOrder ?? 0,
                 scheduled_at: scheduledAt.toISOString(),
                 status: 'scheduled',
+                variant_assigned: variantAssigned,
                 organization_id: organizationId, // RLS multi-tenant
               });
 
@@ -500,55 +703,86 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             // compter un faux succès (audit 2026-07, Frontend H2).
             if (execError) {
               console.error('[EnrollmentPreviewModal] first execution insert failed:', execError);
-              results.errors.push(`${profile.name} : le premier envoi n'a pas pu être planifié`);
-              await supabase.from('sequence_enrollments').delete().eq('id', enrollment.id);
+              // Retrait vérifié (.select) : un refus silencieux laisserait une
+              // inscription active sans étape, jamais reprise par le moteur.
+              const { data: removed } = await supabase
+                .from('sequence_enrollments')
+                .delete()
+                .eq('id', enrollment.id)
+                .select('id');
+              results.errors.push(removed?.length
+                ? `${profile.name} : les étapes n'ont pas pu être planifiées, candidat non inscrit.`
+                : `${profile.name} : les étapes n'ont pas pu être planifiées et l'inscription n'a pas pu être retirée. Retirez-la depuis le suivi de la séquence.`);
               continue;
             }
           }
 
           results.success++;
-          enrolledIds.push(profile.id);
-
-          if (normalizedJobId) {
-            await supabase
-              .from('job_candidate_status')
-              .upsert({
-                job_id: normalizedJobId,
-                candidate_id: profile.id,
-                candidate_name: profile.name || null,
-                candidate_headline: profile.headline || null,
-                linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
-                status: 'messaged',
-                created_by: userId,
-                organization_id: organizationId, // RLS multi-tenant
-              }, { onConflict: 'job_id,candidate_id,created_by' });
-          }
-        } catch (err: any) {
-          console.error('[EnrollmentPreviewModal] enrollment failed:', err);
-          results.errors.push(`${profile.name} : inscription impossible`);
+          if (matches.formerPassages.has(profile.id)) results.formerPassages++;
+          enrolledProfiles.push(profile);
+        } catch (err) {
+          // Refus de la base (SEQ-043) : compte relié à un autre membre. Tous
+          // les candidats suivants échoueraient pareil : on arrête la boucle.
+          if (isOtherMemberAccountError(err)) throw err;
+          // Refus propres à ce candidat (profil effacé, même personne dans la
+          // séquence) : comptés à part, les suivants restent inscriptibles.
+          const refusal = enrollmentRefusalOf(err);
+          if (refusal === 'gdpr_erased') { results.gdprErased.push(profile.name || 'Candidat sans nom'); continue; }
+          if (refusal === 'same_person') { results.samePerson.push(profile.name || 'Candidat sans nom'); continue; }
+          // Détail technique en console seulement : jamais le message brut de
+          // la base (« new row violates row-level security policy… »).
+          console.error('[EnrollmentPreviewModal] enrollment failed for', profile.id, err);
+          results.errors.push(enrollFailureMessage(profile.name));
         }
       }
 
+      // Statut pipeline « contacté », sans rétrograder un candidat déjà
+      // contacté, shortlisté ou qui a répondu (non bloquant).
+      if (job?.id && enrolledProfiles.length > 0) {
+        await markCandidatesMessaged(supabase, {
+          rawJobId: job.id,
+          userId,
+          organizationId,
+          profiles: enrolledProfiles,
+        });
+      }
+
       // Les candidats inscrits n'ont plus besoin de leurs aperçus.
+      const enrolledIds = enrolledProfiles.map(p => p.id);
       discardSessionPreviews(enrolledIds);
       setEnrollResults(results);
       if (results.success > 0) {
-        toast.success(`${plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans « ${sequence.name} »`);
+        toast.success(`${plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence`, {
+          description: firstAction ?? undefined,
+        });
       }
-      if (results.skipped > 0) {
-        toast.info(`${plural(results.skipped, 'candidat déjà inscrit', 'candidats déjà inscrits')} dans cette séquence`);
+      if (results.errors.length > 0) {
+        const e = results.errors.length;
+        toast.error(`${e} inscription${e > 1 ? 's' : ''} en échec`, {
+          description: 'Le détail est affiché dans la fenêtre.',
+        });
       }
+      if (results.gdprErased.length > 0) toast.warning(gdprErasedEnrollLabel(results.gdprErased.length), { description: refusedCandidatesLabel(results.gdprErased) });
+      if (results.samePerson.length > 0) toast.warning(samePersonRefusedLabel(results.samePerson.length), { description: refusedCandidatesLabel(results.samePerson) });
+      if (results.formerPassages > 0) toast.warning(formerPassageLabel(results.formerPassages));
+      if (results.alreadyPassed > 0) toast.info(alreadyPassedLabel(results.alreadyPassed));
+      if (results.skipped > 0) toast.info(alreadyInSequenceLabel(results.skipped));
     } catch (err) {
       console.error('[EnrollmentPreviewModal] Bulk enrollment failed:', err);
-      toast.error("L'inscription n'a pas abouti", {
-        description: 'Vérifiez votre connexion, puis réessayez.',
+      // Compte relié à un autre membre : réessayer échouerait de la même façon.
+      toast.error('Inscription impossible', {
+        description: isOtherMemberAccountError(err) ? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support.',
       });
     } finally {
       setIsEnrolling(false);
+      setEnrollProgress(null);
     }
   };
 
   // ── Shortlist without message ──
+  // Une seule écriture groupée, relue (.select) : le nombre annoncé est celui
+  // des lignes réellement enregistrées. Un candidat déjà contacté ou qui a
+  // répondu garde son statut (jamais rétrogradé en « shortlisté »).
   const handleShortlist = async () => {
     if (!job?.id) {
       toast.error('Aucune mission associée à ces candidats', {
@@ -556,47 +790,100 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       });
       return;
     }
-    setIsEnrolling(true);
+    if (!organizationId) {
+      toast.error("Votre organisation n'a pas pu être identifiée", {
+        description: 'Rechargez la page ou reconnectez votre compte.',
+      });
+      return;
+    }
+    if (activeProfiles.length === 0) return;
+    setIsShortlisting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || '00000000-0000-0000-0000-000000000000';
-      let count = 0;
+      if (!user) {
+        toast.error('Session expirée : reconnectez-vous, puis réessayez.');
+        return;
+      }
+      const userId = user.id;
 
       // Idem normalisation : "project:{uuid}" → uuid
       const normalizedJobId = job.id.startsWith('project:')
         ? job.id.slice('project:'.length)
         : job.id;
 
-      for (const profile of activeProfiles) {
-        await supabase
+      const { data: existingRows, error: readError } = await supabase
+        .from('job_candidate_status')
+        .select('candidate_id, status')
+        .eq('job_id', normalizedJobId)
+        .eq('created_by', userId)
+        .in('candidate_id', activeProfiles.map(p => p.id));
+      if (readError) throw readError;
+      const alreadyContacted = new Set(
+        (existingRows ?? [])
+          .filter(r => r.status === 'messaged' || r.status === 'replied')
+          .map(r => r.candidate_id),
+      );
+
+      const rows = activeProfiles
+        .filter(profile => !alreadyContacted.has(profile.id))
+        .map(profile => ({
+          job_id: normalizedJobId,
+          candidate_id: profile.id,
+          candidate_name: profile.name || null,
+          candidate_headline: profile.headline || null,
+          linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
+          status: 'shortlisted',
+          created_by: userId,
+          organization_id: organizationId, // requis par RLS org_members_all
+        }));
+
+      let saved = 0;
+      if (rows.length > 0) {
+        const { data: written, error: writeError } = await supabase
           .from('job_candidate_status')
-          .upsert({
-            job_id: normalizedJobId,
-            candidate_id: profile.id,
-            candidate_name: profile.name || null,
-            candidate_headline: profile.headline || null,
-            linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
-            status: 'shortlisted',
-            created_by: userId,
-          }, { onConflict: 'job_id,candidate_id,created_by' });
-        count++;
+          .upsert(rows, { onConflict: 'job_id,candidate_id,created_by' })
+          .select('candidate_id');
+        if (writeError) throw writeError;
+        saved = written?.length ?? 0;
       }
 
-      toast.success(`${plural(count, 'candidat présélectionné', 'candidats présélectionnés')}`);
+      if (rows.length > 0 && saved === 0) {
+        // Rien d'enregistré (refus silencieux) : la fenêtre reste ouverte.
+        toast.error("Ajout impossible : aucun candidat n'a été enregistré.");
+        return;
+      }
+      const failed = rows.length - saved;
+      if (saved > 0) {
+        const added = plural(saved, 'candidat présélectionné', 'candidats présélectionnés');
+        if (failed > 0) {
+          toast.warning(added, {
+            description: `${failed} candidat${failed > 1 ? 's' : ''} n'${failed > 1 ? 'ont' : 'a'} pas pu être enregistré${failed > 1 ? 's' : ''}.`,
+          });
+        } else {
+          toast.success(added);
+        }
+      }
+      if (alreadyContacted.size > 0) {
+        toast.info(`${plural(alreadyContacted.size, 'candidat déjà contacté', 'candidats déjà contactés')} : statut conservé`);
+      }
       onSuccess();
     } catch (err) {
       console.error('[EnrollmentPreviewModal] Shortlist failed:', err);
-      toast.error("La présélection n'a pas abouti", {
-        description: 'Vérifiez votre connexion, puis réessayez.',
-      });
+      toast.error("Ajout impossible : aucun candidat n'a été enregistré.");
     } finally {
-      setIsEnrolling(false);
+      setIsShortlisting(false);
     }
   };
 
   const handleClose = () => {
-    if (enrollResults?.success) onSuccess();
-    else onClose();
+    // Jamais de fermeture pendant une écriture : la boucle d'inscription
+    // continuerait et le bilan serait perdu.
+    if (isBusy) return;
+    if (enrollResults?.success) {
+      onSuccess();
+      return;
+    }
+    onClose();
   };
 
   // ── Fermeture (revue design D-46) ──
@@ -615,8 +902,10 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const delayChanges = Object.keys(getStepConfigOverrides()).length;
   const hasWorkInProgress = previewStats.kept > 0 || delayChanges > 0 || isBulkGenerating;
 
+  // Croix, Échap et « Annuler » passent tous par ici.
   const requestClose = () => {
-    if (enrollResults || isEnrolling) {
+    if (isBusy) return;
+    if (enrollResults) {
       handleClose();
       return;
     }
@@ -628,8 +917,10 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   };
 
   const confirmClose = () => {
-    cancelBulkGeneration();
     setConfirmCloseOpen(false);
+    // Même garde que handleClose : jamais de fermeture pendant une inscription.
+    if (isBusy) return;
+    cancelBulkGeneration();
     onClose();
   };
 
@@ -643,13 +934,13 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     () => profiles.filter(p => !getCandidateState(p.id).removed),
     [profiles, getCandidateState],
   );
-  const readyCount = listedProfiles.filter(p => messageSteps.every(s => isReady(p.id, s.stepId))).length;
-  // La génération groupée passe sur tous les candidats de la préparation.
-  const bulkMissingAi = profiles.reduce(
+  // Comme la génération groupée : seulement les candidats qui seront inscrits.
+  const readyCount = activeProfiles.filter(p => messageSteps.every(s => isReady(p.id, s.stepId))).length;
+  const bulkMissingAi = activeProfiles.reduce(
     (sum, p) => sum + messageSteps.filter(s => s.useAiPersonalization && !isReady(p.id, s.stepId)).length,
     0,
   );
-  const bulkMissingCandidates = profiles.filter(p => messageSteps.some(s => !isReady(p.id, s.stepId))).length;
+  const bulkMissingCandidates = activeProfiles.filter(p => messageSteps.some(s => !isReady(p.id, s.stepId))).length;
 
   // ── Clavier de la liste des candidats (revue design D-44) ──
   const listRef = useRef<HTMLDivElement>(null);
@@ -683,6 +974,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   }, [focusRequest, filteredProfiles, page, pageSize]);
 
   const handleListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Pendant une inscription, la sélection ne bouge plus.
+    if (isBusy) return;
     const action = listShortcut(e);
     if (!action) return;
     const id = (e.target as HTMLElement).dataset.candidateId as string;
@@ -713,6 +1006,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const enrollLabel = activeProfiles.length > 0
     ? `Inscrire ${plural(activeProfiles.length, 'candidat')}`
     : 'Aucun candidat à inscrire';
+  const compatListed = [...compat.blockers, ...compat.warnings];
 
   return (
     <>
@@ -722,7 +1016,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           // Grand espace de travail : un clic sur la marge ne ferme pas.
           onInteractOutside={(e) => e.preventDefault()}
           // Focus d'arrivée : la ligne du candidat affiché, là où les
-          // raccourcis de la liste s'appliquent ; sinon la fenêtre elle-même.
+          // raccourcis de la liste s'appliquent ; sinon la fenêtre elle-même
+          // (jamais la croix : Entrée ne doit pas fermer la préparation).
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             const row = listRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
@@ -735,7 +1030,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
               <p className="eyebrow hidden sm:block">Inscription en séquence</p>
               <DialogTitle className="truncate">{sequence.name}</DialogTitle>
               <DialogDescription className="text-xs tabular-nums">
-                {plural(activeProfiles.length, 'candidat')} à inscrire · {plural(sequence.steps.length, 'étape')}
+                {plural(activeProfiles.length, 'candidat')} · {plural(sequence.steps.length, 'étape')}
               </DialogDescription>
             </div>
             {hasMessageSteps && !enrollResults && (
@@ -756,18 +1051,36 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             <DynamicSummaryBanner
               profiles={profiles}
               states={candidateStates}
-              enrollCount={activeProfiles.length}
+              activeProfiles={activeProfiles}
+              duplicateExcludedCount={excludedCounts.duplicates}
+              incompatibleExcludedCount={excludedCounts.incompatible}
               readyCount={readyCount}
             />
           )}
 
-          {/* Anti-doublon organisation : contactés dans les 90 derniers jours par
-              un membre, toute séquence et tout compte. Exclus par défaut ;
-              dérogation réservée aux propriétaires et administrateurs. */}
+          {/* Anti-doublon organisation : contactés par un membre (séquence en
+              cours, ou contact ces 90 derniers jours), toute séquence et tout
+              compte. Exclus par défaut ; dérogation réservée aux propriétaires
+              et administrateurs. */}
           {!enrollResults && isCheckingDuplicates && (
-            <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground sm:px-6">
+            <div role="status" className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground sm:px-6">
               <Spinner size="sm" label="Vérification en cours" />
-              Vérification des contacts récents de votre organisation…
+              Vérification des contacts récents de l'organisation
+            </div>
+          )}
+          {!enrollResults && duplicateCheckFailed && !isCheckingDuplicates && (
+            <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-danger/25 bg-danger-muted px-4 py-2 sm:px-6">
+              <AlertCircle className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
+              <p className="min-w-0 flex-1 text-sm text-foreground">{DUPLICATE_CHECK_FAILED_MESSAGE}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="shrink-0 max-md:h-11"
+                onClick={() => setDuplicateCheckAttempt(a => a + 1)}
+              >
+                Réessayer
+              </Button>
             </div>
           )}
           {!enrollResults && recentEnrollments && duplicateProfiles.length > 0 && (
@@ -780,11 +1093,59 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             />
           )}
 
+          {!enrollResults && notice && (
+            <div role="note" className="flex shrink-0 items-start gap-2 border-b border-warning/25 bg-warning-muted px-4 py-2.5 sm:px-6">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <p className="text-sm text-foreground">{notice}</p>
+            </div>
+          )}
+
+          {/* Compatibilité : candidats qui ne peuvent pas suivre cette séquence
+              (hors réseau sans InMail, déjà en relation avec une invitation
+              seule), exclus par défaut, « Inclure quand même » pour les garder ;
+              avertissements (déjà en relation : invitation sautée, messages
+              suivants envoyés) sans exclusion. */}
+          {!enrollResults && compatListed.length > 0 && (
+            <div role="status" className="shrink-0 border-b border-warning/25 bg-warning-muted px-4 py-2.5 sm:px-6">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <p className="text-sm font-medium text-foreground">
+                    {compat.blockers.length > 0
+                      ? compatHeadline(compat.blockers, includeIncompatible)
+                      : `${plural(compat.warnings.length, 'candidat')} avec un avertissement`}
+                  </p>
+                  <ul className="max-h-16 space-y-0.5 overflow-y-auto text-xs text-foreground-secondary">
+                    {compatListed.slice(0, 5).map(r => (
+                      <li key={r.profile.id} className="break-words">
+                        <span className="font-medium text-foreground">{r.profile.name}</span>
+                        {' : '}{r.message}
+                      </li>
+                    ))}
+                    {compatListed.length > 5 && <li>et {plural(compatListed.length - 5, 'autre')}</li>}
+                  </ul>
+                  {compat.blockers.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={includeIncompatibleId}
+                        checked={includeIncompatible}
+                        onCheckedChange={checked => setIncludeIncompatible(checked === true)}
+                      />
+                      <Label htmlFor={includeIncompatibleId} className="cursor-pointer text-xs font-normal text-foreground max-md:py-3">
+                        Inclure quand même ({compat.blockers.length})
+                      </Label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Corps */}
           <div className="flex min-h-0 flex-1 overflow-hidden">
             {enrollResults ? (
               <div className="flex flex-1 items-center justify-center overflow-y-auto p-6 sm:p-8">
-                <EnrollmentResults results={enrollResults} onClose={handleClose} />
+                <EnrollmentResults results={enrollResults} firstAction={firstAction} onClose={handleClose} />
               </div>
             ) : mode === 'summary' ? (
               <div className="flex-1 overflow-y-auto">
@@ -795,6 +1156,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                   estimatedCredits={estimatedCredits}
                   hasAiSteps={hasAiSteps}
                   hasMessageSteps={hasMessageSteps}
+                  firstAction={firstAction}
                   onSwitchToPreview={() => setMode('preview')}
                 />
               </div>
@@ -881,6 +1243,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                                       allGenerated={allGenerated}
                                       hasEdits={hasEdits}
                                       state={state}
+                                      exclusion={exclusionByCandidate.get(p.id) ?? null}
                                       score={cachedScore?.score}
                                       shortcutsHelpId={shortcutsHelpId}
                                       onSelect={() => handleSelectCandidate(p.id)}
@@ -952,8 +1315,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                   'min-h-0 flex-1 flex-col overflow-hidden',
                   !isSingle && mobilePane === 'list' ? 'hidden sm:flex' : 'flex',
                 )}>
-                  {/* Génération groupée : bouton secondaire, coût annoncé avant l'action */}
-                  {!isSingle && hasAiSteps && (
+                  {/* Génération groupée : bouton secondaire, coût annoncé avant
+                      l'action, sur les seuls candidats qui seront inscrits. */}
+                  {!isSingle && hasAiSteps && activeProfiles.length > 0 && (
                     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2.5 sm:px-6">
                       {isBulkGenerating ? (
                         <>
@@ -971,20 +1335,24 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                             Arrêter la génération
                           </Button>
                         </>
-                      ) : bulkMissingCandidates > 0 ? (
+                      ) : (
                         <>
+                          {/* Toujours proposé : relancé quand tout est prêt, il ne
+                              régénère rien (les aperçus prêts ou retouchés sont gardés). */}
                           <Button variant="outline" size="sm" onClick={() => generateAll(3)} className="max-md:h-11">
                             Générer tous les aperçus
                           </Button>
-                          <span className="text-xs tabular-nums text-muted-foreground">
-                            {creditsLabel(bulkMissingAi * creditsPerMessage)} pour {plural(bulkMissingCandidates, 'candidat')}
-                          </span>
+                          {bulkMissingCandidates > 0 ? (
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {creditsLabel(bulkMissingAi * creditsPerMessage)} pour {plural(bulkMissingCandidates, 'candidat')}
+                            </span>
+                          ) : (
+                            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-success" aria-hidden="true" />
+                              Les aperçus de tous les candidats à inscrire sont prêts.
+                            </p>
+                          )}
                         </>
-                      ) : (
-                        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-success" aria-hidden="true" />
-                          Les aperçus de tous les candidats sont prêts.
-                        </p>
                       )}
                     </div>
                   )}
@@ -1011,14 +1379,15 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                           {/* Vue arborescente : décisions à filet pointillé et
                               branches libellées ; les étapes message gardent leur
                               carte complète (aperçu), les autres sont compactes.
-                              Délais et délais maximaux se modifient pour cette
-                              inscription (override stocké côté hook). */}
+                              Délais et délais maximaux se modifient pour tous les
+                              candidats de cette inscription (override stocké
+                              côté hook). */}
                           <SequenceTreeView
                             steps={steps}
                             getStepConfig={getStepConfig}
                             setStepConfig={setStepConfig}
                             renderStep={(step, idx) => {
-                              const isMessageStep = MESSAGE_ACTIONS.includes(step.actionType) && !!step.messageTemplate?.trim();
+                              const isMessageStep = isPreviewedMessageStep(step);
                               if (!isMessageStep) {
                                 return null; // tree view rend ses propres cards pour non-message
                               }
@@ -1055,33 +1424,43 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
             )}
           </div>
 
-          {/* Actions : une seule principale, monochrome (revue design D-45) */}
+          {/* Actions : compte d'envoi, puis une seule action principale,
+              monochrome (revue design D-45). */}
           {!enrollResults && (
-            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <Button variant="ghost" onClick={requestClose} className="max-md:h-11">
-                Annuler
-              </Button>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
-                {job?.id && (
+            <div className="shrink-0 space-y-2 border-t border-border px-4 py-3 sm:px-6">
+              <SendingAccountNotice state={sendingAccount} />
+              {isEnrolling && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  Inscription en cours, ne fermez pas cette fenêtre.
+                </p>
+              )}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="ghost" onClick={requestClose} disabled={isBusy} className="max-md:h-11">
+                  Annuler
+                </Button>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                  {job?.id && (
+                    <Button
+                      variant="outline"
+                      onClick={handleShortlist}
+                      loading={isShortlisting}
+                      disabled={isBusy || activeProfiles.length === 0}
+                      className="max-md:h-11"
+                    >
+                      {!isShortlisting && <ListChecks aria-hidden="true" />}
+                      Présélectionner sans message
+                    </Button>
+                  )}
                   <Button
-                    variant="outline"
-                    onClick={handleShortlist}
-                    disabled={isEnrolling || activeProfiles.length === 0}
+                    variant="primary"
+                    onClick={handleEnroll}
+                    loading={isEnrolling}
+                    disabled={isBusy || activeProfiles.length === 0 || duplicatesUnchecked || !!sendingAccount.blockReason}
                     className="max-md:h-11"
                   >
-                    <ListChecks aria-hidden="true" />
-                    Présélectionner sans message
+                    {isEnrolling ? enrollProgressLabel(enrollProgress) : enrollLabel}
                   </Button>
-                )}
-                <Button
-                  variant="primary"
-                  onClick={handleEnroll}
-                  loading={isEnrolling}
-                  disabled={activeProfiles.length === 0}
-                  className="max-md:h-11"
-                >
-                  {isEnrolling ? 'Inscription en cours…' : enrollLabel}
-                </Button>
+                </div>
               </div>
             </div>
           )}
@@ -1129,7 +1508,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Candidats déjà contactés par l'organisation ces 90 derniers jours. */
+/** Candidats déjà contactés par l'organisation (séquence en cours, ou contact récent). */
 function DuplicatesNotice({
   duplicates, recentEnrollments, isAdmin, enrollAnyway, onEnrollAnywayChange,
 }: {
@@ -1147,7 +1526,7 @@ function DuplicatesNotice({
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
         <div className="min-w-0 flex-1 space-y-1.5">
           <p className="text-sm font-medium text-foreground">
-            {count > 1 ? `${count} candidats déjà contactés` : '1 candidat déjà contacté'} par votre organisation ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours
+            {count > 1 ? `${count} candidats déjà contactés` : '1 candidat déjà contacté'} par votre organisation (séquence en cours, ou contact ces {RECENT_CONTACT_WINDOW_DAYS} derniers jours)
           </p>
           <ul className="max-h-16 space-y-0.5 overflow-y-auto text-xs text-foreground-secondary">
             {duplicates.slice(0, 5).map(p => {
@@ -1243,6 +1622,16 @@ function MessageStepCard({
   const cost = step.useAiPersonalization ? creditsLabel(creditsPerMessage) : 'aucun crédit';
   const label = sequenceActionLabel(step.actionType);
   const message = (preview?.message || '').replace(/<br\s*\/?>/gi, '\n');
+  // Un aperçu en échec reste modifiable et régénérable : le texte affiché
+  // n'est pas celui qui partira tant qu'il n'est ni généré ni modifié.
+  const hasContent = !!(preview?.isGenerated || preview?.isEdited || preview?.error);
+  const generationFailed = !!preview?.error && !preview?.isGenerated;
+  // Régénérer un message modifié à la main remplace la modification : confirmation.
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
+  const handleRegenerateClick = () => {
+    if (preview?.isEdited) setConfirmRegenerate(true);
+    else onRegenerate();
+  };
 
   return (
     <article aria-label={`Étape ${index + 1} : ${label}`} className="rounded-xl border border-border bg-card">
@@ -1252,32 +1641,35 @@ function MessageStepCard({
         {step.useAiPersonalization && step.actionType !== 'smart_message' && (
           <Badge variant="muted" className="px-1.5 py-0 text-3xs">Personnalisé par l'IA</Badge>
         )}
-        {preview?.isEdited && <Badge variant="outline" className="px-1.5 py-0 text-3xs">Retouché</Badge>}
-        {preview?.isGenerated && (
+        {preview?.isEdited && <Badge variant="outline" className="px-1.5 py-0 text-3xs">Modifié</Badge>}
+        {hasContent && !preview?.isGenerating && (
           <div className="ml-auto flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`Régénérer cette étape (${cost})`}
-                  onClick={onRegenerate}
-                  className="text-muted-foreground max-md:h-11 max-md:w-11"
-                >
-                  <RefreshCw aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Régénérer cette étape ({cost})</TooltipContent>
-            </Tooltip>
+            {/* En échec, « Réessayer » est dans l'avis ci-dessous. */}
+            {!generationFailed && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`Régénérer ce message (${cost})`}
+                    onClick={handleRegenerateClick}
+                    className="text-muted-foreground max-md:h-11 max-md:w-11"
+                  >
+                    <RefreshCw aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Régénérer ce message ({cost})</TooltipContent>
+              </Tooltip>
+            )}
             <Button
               variant="ghost"
               size="xs"
-              aria-pressed={isEditing}
+              aria-label={isEditing ? 'Voir le message' : 'Modifier le message'}
               onClick={onToggleEdit}
               className={cn('max-md:h-11', isEditing ? 'bg-accent text-foreground' : 'text-muted-foreground')}
             >
               <Pencil aria-hidden="true" />
-              Modifier
+              {isEditing ? 'Voir' : 'Modifier'}
             </Button>
           </div>
         )}
@@ -1292,13 +1684,14 @@ function MessageStepCard({
             <Skeleton className="h-4 w-5/6" />
             <Skeleton className="h-4 w-2/3" />
           </div>
-        ) : preview?.isGenerated || preview?.error ? (
+        ) : hasContent ? (
           <div className="space-y-4">
             {preview.error && (
               <div role="alert" className="flex flex-wrap items-start gap-2 rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-xs text-foreground">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
                 <p className="min-w-0 flex-1">{preview.error}</p>
-                <Button variant="outline" size="xs" onClick={onGenerate} className="max-md:h-11">
+                <Button variant="outline" size="xs" onClick={handleRegenerateClick} className="max-md:h-11">
+                  <RefreshCw aria-hidden="true" />
                   Réessayer
                 </Button>
               </div>
@@ -1345,7 +1738,9 @@ function MessageStepCard({
               ) : (
                 <>
                   {step.actionType === 'email' && <p className="eyebrow">Message</p>}
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{message}</p>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                    {renderSendTimeVariables((preview?.message || '').replace(/<br\s*\/?>/gi, '\n'))}
+                  </p>
                 </>
               )}
             </div>
@@ -1364,18 +1759,42 @@ function MessageStepCard({
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-5 text-center">
             <p className="text-sm text-muted-foreground">Aperçu pas encore généré pour ce candidat.</p>
             <Button variant="outline" size="sm" onClick={onGenerate} className="max-md:h-11">
-              Générer l'aperçu de cette étape
+              {step.useAiPersonalization ? "Générer l'aperçu de ce message" : "Voir l'aperçu (gratuit)"}
             </Button>
-            <p className="text-xs text-muted-foreground">{cost}</p>
+            {/* Coût annoncé seulement pour une étape personnalisée par l'IA. */}
+            {step.useAiPersonalization && <p className="text-xs text-muted-foreground">{cost}</p>}
           </div>
         )}
       </div>
+
+      <AlertDialog open={confirmRegenerate} onOpenChange={setConfirmRegenerate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remplacer votre modification ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Le message que vous avez modifié sera remplacé par une nouvelle version générée. Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Garder ma version</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setConfirmRegenerate(false);
+                onRegenerate();
+              }}
+            >
+              Régénérer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </article>
   );
 }
 
 function SummaryMode({
-  activeProfiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, onSwitchToPreview,
+  activeProfiles, steps, candidateAnalysis, estimatedCredits, hasAiSteps, hasMessageSteps, firstAction, onSwitchToPreview,
 }: {
   activeProfiles: LinkedInProfile[];
   steps: SequenceStepPreview[];
@@ -1383,10 +1802,17 @@ function SummaryMode({
   estimatedCredits: number;
   hasAiSteps: boolean;
   hasMessageSteps: boolean;
+  firstAction: string | null;
   onSwitchToPreview: () => void;
 }) {
-  const emailSteps = steps.filter(s => s.actionType === 'email');
-  const whatsappSteps = steps.filter(s => s.actionType === 'whatsapp_message');
+  // Canaux fermés (D2) : leurs étapes sont sautées même avec une adresse ou
+  // un numéro, donc aucun appel à l'enrichissement payant, un seul avis. Les
+  // blocs d'enrichissement reviennent d'eux-mêmes à la réouverture du canal.
+  const emailSteps = steps.filter(s => s.actionType === 'email' && !isClosedChannelStep(s.actionType));
+  const whatsappSteps = steps.filter(s => s.actionType === 'whatsapp_message' && !isClosedChannelStep(s.actionType));
+  const closedChannels = CLOSED_CHANNEL_ACTION_TYPES
+    .filter(t => steps.some(s => s.actionType === t))
+    .map(t => (t === 'email' ? 'e-mail' : 'WhatsApp'));
   const stepsTitleId = useId();
 
   return (
@@ -1398,6 +1824,20 @@ function SummaryMode({
           {plural(activeProfiles.length, 'candidat sélectionné', 'candidats sélectionnés')} pour une séquence de {plural(steps.length, 'étape')}
         </p>
       </div>
+
+      {firstAction && (
+        <p className="flex items-start gap-2 rounded-xl border border-border px-3 py-2.5 text-sm text-foreground">
+          <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span>{firstAction}</span>
+        </p>
+      )}
+
+      {closedChannels.length > 0 && (
+        <p role="note" className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-muted px-3 py-2.5 text-sm text-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+          <span>Les étapes {closedChannels.join(' et ')} ne partent pas encore : elles seront sautées.</span>
+        </p>
+      )}
 
       <ul className="divide-y divide-border rounded-xl border border-border">
         <SummaryRow channel="linkedin" label="Joignables sur LinkedIn" count={activeProfiles.length} />
@@ -1490,42 +1930,53 @@ function SummaryRow({ channel, label, count }: { channel: 'linkedin' | 'email'; 
   );
 }
 
-function EnrollmentResults({ results, onClose }: { results: { success: number; skipped: number; errors: string[] }; onClose: () => void }) {
+function EnrollmentResults({ results, firstAction, onClose }: { results: EnrollResults; firstAction: string | null; onClose: () => void }) {
+  // Icône, couleur et titre selon le bilan : jamais de coche verte quand
+  // personne n'a été inscrit, jamais de succès plein sur un échec partiel.
   const failed = results.errors.length;
-  const title = results.success > 0
-    ? 'Inscription terminée'
-    : failed > 0
-      ? "L'inscription n'a pas abouti"
-      : 'Aucun nouveau candidat inscrit';
+  const attempted = results.success + failed;
+  const outcome: 'success' | 'partial' | 'failure' | 'none' =
+    results.success > 0 && failed === 0 ? 'success'
+      : results.success > 0 ? 'partial'
+      : failed > 0 ? 'failure'
+      : 'none';
+  const inscribed = plural(results.success, 'candidat inscrit', 'candidats inscrits');
+  const title = outcome === 'success'
+    ? inscribed
+    : outcome === 'partial'
+      ? `${inscribed} sur ${attempted}`
+      : outcome === 'failure'
+        ? 'Aucun candidat inscrit'
+        : 'Aucune nouvelle inscription';
 
   return (
     <div className="w-full max-w-md space-y-5 text-center">
       <span
         className={cn(
           'mx-auto grid h-12 w-12 place-items-center rounded-full',
-          results.success > 0 ? 'bg-success-muted text-success' : failed > 0 ? 'bg-danger-muted text-danger' : 'bg-muted text-muted-foreground',
+          outcome === 'success' ? 'bg-success-muted text-success'
+            : outcome === 'partial' ? 'bg-warning-muted text-warning'
+            : outcome === 'failure' ? 'bg-danger-muted text-danger'
+            : 'bg-muted text-muted-foreground',
         )}
         aria-hidden="true"
       >
-        {results.success > 0 ? <CheckCircle2 className="h-6 w-6" /> : failed > 0 ? <AlertTriangle className="h-6 w-6" /> : <Info className="h-6 w-6" />}
+        {outcome === 'success'
+          ? <CheckCircle2 className="h-6 w-6" />
+          : outcome === 'partial'
+            ? <AlertTriangle className="h-6 w-6" />
+            : outcome === 'failure' ? <AlertCircle className="h-6 w-6" /> : <Info className="h-6 w-6" />}
       </span>
       <div className="space-y-1.5" role="status">
         <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-        {results.success > 0 && (
-          <p className="text-sm text-foreground">
-            {plural(results.success, 'candidat inscrit', 'candidats inscrits')} dans la séquence
-          </p>
-        )}
-        {results.skipped > 0 && (
-          <p className="text-sm text-muted-foreground">
-            {plural(results.skipped, 'candidat déjà inscrit', 'candidats déjà inscrits')}, sans nouvelle inscription
-          </p>
+        {results.success > 0 && firstAction && (
+          <p className="text-sm text-muted-foreground">{firstAction}</p>
         )}
       </div>
       {failed > 0 && (
         <div className="space-y-1.5 rounded-xl border border-danger/25 bg-danger-muted p-3 text-left">
           <p className="text-sm font-medium text-foreground">
-            {failed > 1 ? `${failed} inscriptions n'ont pas abouti` : "1 inscription n'a pas abouti"}
+            {plural(failed, 'inscription')} en échec
           </p>
           <ul className="space-y-0.5 text-xs text-foreground-secondary">
             {results.errors.map((err, i) => (
@@ -1536,6 +1987,46 @@ function EnrollmentResults({ results, onClose }: { results: { success: number; s
             Rouvrez la préparation pour relancer leur inscription : leurs aperçus sont conservés.
           </p>
         </div>
+      )}
+      {(results.skipped > 0 || results.alreadyPassed > 0 || results.samePerson.length > 0 || results.gdprErased.length > 0 || results.formerPassages > 0) && (
+        <ul className="space-y-2 text-left text-sm">
+          {results.skipped > 0 && (
+            <li className="flex items-start gap-2 text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{alreadyInSequenceLabel(results.skipped)}</span>
+            </li>
+          )}
+          {results.alreadyPassed > 0 && (
+            <li className="flex items-start gap-2 text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{alreadyPassedLabel(results.alreadyPassed)}</span>
+            </li>
+          )}
+          {results.samePerson.length > 0 && (
+            <li className="flex items-start gap-2 text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block">{samePersonRefusedLabel(results.samePerson.length)}</span>
+                <span className="block text-xs">{refusedCandidatesLabel(results.samePerson)}</span>
+              </span>
+            </li>
+          )}
+          {results.gdprErased.length > 0 && (
+            <li className="flex items-start gap-2 text-foreground">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block">{gdprErasedEnrollLabel(results.gdprErased.length)}</span>
+                <span className="block text-xs text-foreground-secondary">{refusedCandidatesLabel(results.gdprErased)}</span>
+              </span>
+            </li>
+          )}
+          {results.formerPassages > 0 && (
+            <li className="flex items-start gap-2 text-foreground">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+              <span role="note">{formerPassageLabel(results.formerPassages)}</span>
+            </li>
+          )}
+        </ul>
       )}
       <Button variant="primary" onClick={onClose} autoFocus>
         Fermer

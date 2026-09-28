@@ -9,16 +9,12 @@ type AddNodeData = {
   variant?: 'true' | 'false';
 };
 
-const LABELS = {
-  true: 'Ajouter une étape à la branche Connecté',
-  false: 'Ajouter une étape à la branche Non connecté',
-  none: 'Ajouter une étape',
-} as const;
-
-/** Bouton « + » du déroulé : neutre, nommé, sans agrandissement au survol. */
+/**
+ * Bouton « + » du parcours : neutre, sans agrandissement au survol. Son nom
+ * précise la branche pour qui ne voit pas le canevas.
+ */
 export const WorkflowAddNode = memo(({ data }: NodeProps) => {
   const { onClick, variant } = data as unknown as AddNodeData;
-  const label = LABELS[variant ?? 'none'];
 
   return (
     <>
@@ -30,13 +26,17 @@ export const WorkflowAddNode = memo(({ data }: NodeProps) => {
             variant="outline"
             size="icon"
             onClick={(e) => { e.stopPropagation(); onClick(); }}
-            aria-label={label}
+            aria-label={variant === 'true'
+              ? 'Ajouter une étape à la branche Connecté'
+              : variant === 'false'
+                ? 'Ajouter une étape à la branche Non connecté'
+                : 'Ajouter une étape'}
             className="rounded-full border-dashed border-border-strong bg-background text-muted-foreground hover:text-foreground"
           >
             <Plus aria-hidden="true" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
+        <TooltipContent>Ajouter une étape</TooltipContent>
       </Tooltip>
     </>
   );

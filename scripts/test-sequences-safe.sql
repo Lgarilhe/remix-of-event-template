@@ -5,13 +5,21 @@
 -- Il utilise des steps EMAIL (pas LinkedIn) → l'envoi échouera proprement
 -- car aucun compte email n'est connecté dans l'environnement de test.
 --
--- Exécuter dans Supabase SQL Editor, puis appeler process-sequences.
+-- ⚠️ RÉSERVÉ À UNE BASE LOCALE (supabase start). Jamais en production ni en
+-- recette partagée : le script crée des séquences et des inscriptions ACTIVES
+-- dans l'organisation choisie, que le moteur traite ensuite (crédits IA de
+-- cette organisation consommés).
+-- Renseigner v_org_id (organisation de test de la base locale) en tête du bloc
+-- DO : sans elle, le script s'arrête sans rien écrire. Le nettoyage ne touche
+-- que cette organisation.
+--
+-- Puis appeler process-sequences (base locale).
 -- ============================================================================
 
--- Variables : on récupère la première org et son owner
+-- Variables : organisation explicite et un de ses membres
 DO $$
 DECLARE
-  v_org_id uuid;
+  v_org_id uuid := NULL;  -- ⚠️ À RENSEIGNER : organisation de test de la base locale
   v_user_id uuid;
   v_seq_id uuid;
   v_step1_id uuid;
@@ -24,12 +32,17 @@ DECLARE
   v_exec1_id uuid;
   v_exec2_id uuid;
 BEGIN
-  -- Récupérer l'org et le user
-  SELECT id INTO v_org_id FROM organizations LIMIT 1;
+  -- Organisation explicite (jamais « la première venue ») et un de ses membres
+  IF v_org_id IS NULL THEN
+    RAISE EXCEPTION 'Renseignez v_org_id (organisation de test d''une base locale) en tête du script';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = v_org_id) THEN
+    RAISE EXCEPTION 'Organisation % introuvable dans cette base', v_org_id;
+  END IF;
   SELECT user_id INTO v_user_id FROM organization_members WHERE organization_id = v_org_id LIMIT 1;
 
-  IF v_org_id IS NULL OR v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Aucune organisation ou membre trouvé. Impossible de tester.';
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Aucun membre dans l''organisation %. Impossible de tester.', v_org_id;
   END IF;
 
   RAISE NOTICE '=== TEST SÉQUENCES ===';

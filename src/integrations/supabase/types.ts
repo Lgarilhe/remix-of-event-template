@@ -5552,6 +5552,7 @@ export type Database = {
           delay_days: number
           delay_hours: number
           delay_minutes: number | null
+          ends_sequence: boolean
           id: string
           if_false_goto_step: string | null
           if_true_goto_step: string | null
@@ -5589,6 +5590,7 @@ export type Database = {
           delay_days?: number
           delay_hours?: number
           delay_minutes?: number | null
+          ends_sequence?: boolean
           id?: string
           if_false_goto_step?: string | null
           if_true_goto_step?: string | null
@@ -5626,6 +5628,7 @@ export type Database = {
           delay_days?: number
           delay_hours?: number
           delay_minutes?: number | null
+          ends_sequence?: boolean
           id?: string
           if_false_goto_step?: string | null
           if_true_goto_step?: string | null
@@ -6317,6 +6320,24 @@ export type Database = {
         Args: { payload: Json; queue_name: string }
         Returns: number
       }
+      find_recent_org_contacts: {
+        Args: {
+          p_org: string
+          p_since: string
+          p_slugs: string[]
+          p_values: string[]
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          profile_id: string
+          profile_url: string | null
+          provider_id: string | null
+          resolved_profile_id: string | null
+          sequence_id: string
+          status: string
+        }[]
+      }
       get_base_konekt_state: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -6461,6 +6482,15 @@ export type Database = {
           untreated: number
         }[]
       }
+      get_sequence_enrollment_counts: {
+        Args: { p_sequence_ids: string[] }
+        Returns: {
+          count: number
+          pause_reason: string | null
+          sequence_id: string
+          status: string
+        }[]
+      }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       get_vivier_candidates: {
         Args: {
@@ -6602,6 +6632,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      increment_sequence_analytics: {
+        Args: { p_field: string; p_increment?: number; p_sequence_id: string }
+        Returns: undefined
+      }
       invoke_process_email_queue: { Args: never; Returns: undefined }
       invoke_process_enrichment_queue: { Args: never; Returns: undefined }
       invoke_process_inmail_queue: { Args: never; Returns: undefined }
@@ -6615,6 +6649,10 @@ export type Database = {
         Returns: undefined
       }
       invoke_resolve_pedigree_directory: { Args: never; Returns: undefined }
+      is_active_org_collaborator: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
       is_marketplace_partner: {
         Args: { _user_id: string }
         Returns: boolean
@@ -6768,6 +6806,53 @@ export type Database = {
           p_publish?: boolean
         }
         Returns: Json
+      }
+      save_sequence_steps: {
+        Args: { p_sequence_id: string; p_steps: Json }
+        Returns: {
+          action_type: string
+          ai_personalization_prompt: string | null
+          ai_personalization_source: string | null
+          ai_tone: string | null
+          bcc_emails: string[] | null
+          branch: string | null
+          cc_emails: string[] | null
+          condition_type: string | null
+          condition_value: string | null
+          created_at: string
+          delay_days: number
+          delay_hours: number
+          delay_minutes: number | null
+          ends_sequence: boolean
+          id: string
+          if_false_goto_step: string | null
+          if_true_goto_step: string | null
+          include_unsubscribe: boolean | null
+          message_template: string | null
+          next_step_id: string | null
+          organization_id: string | null
+          parent_step_id: string | null
+          preferred_hour_end: number | null
+          preferred_hour_start: number | null
+          sender_id: string | null
+          sequence_id: string
+          signature_id: string | null
+          step_channel: string | null
+          step_order: number
+          subject_template: string | null
+          timeout_branch_step_id: string | null
+          timeout_days: number | null
+          use_ai_personalization: boolean
+          variant_group: string | null
+          variant_weight: number | null
+          wait_for_event: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "sequence_steps"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       set_base_konekt_enabled: {
         Args: { p_enabled: boolean; p_organization_id: string }

@@ -53,6 +53,7 @@ import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { enrollmentProfileFilter } from '@/lib/enrollmentDuplicates';
 import { Chat, Message, SequenceEnrollmentInfo, JobData, ActiveMissionLite } from '@/hooks/useMessagesInbox';
 import { ChannelIcon, detectChannel } from '@/components/ui/ChannelIcon';
 import { channelLabel } from '@/lib/channels';
@@ -114,6 +115,8 @@ interface MessageViewProps {
   onAddToPipeline: (jobId?: string, jobTitle?: string) => void;
   /** Ouvre le choix de la séquence, puis la préparation partagée (D-02). */
   onEnrollInSequence: () => void;
+  /** Recharge les inscriptions de la messagerie (badges, liste) après une mise en pause. */
+  onEnrollmentsChanged?: () => void;
   onScheduleCall: () => void;
   calendlyLink?: string | null;
   onAddReaction?: (messageId: string, reaction: string) => Promise<boolean>;
@@ -165,6 +168,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
   onSuggestionClick,
   onAddToPipeline,
   onEnrollInSequence,
+  onEnrollmentsChanged,
   onScheduleCall,
   calendlyLink,
   onAddReaction,
@@ -400,24 +404,59 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const [summary, setSummary] = useState<SummarizeResult | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
 
-  // Arrêter la séquence depuis la messagerie : quand on reprend l'échange à la
-  // main, les relances automatiques encore programmées sont annulées. Les
-  // inscriptions actives du profil passent en pause (raison « manual ») et
-  // leurs étapes programmées sont annulées.
+  // Mise en pause depuis la messagerie : quand on reprend l'échange à la main,
+  // les relances automatiques ne partent plus. Les inscriptions actives du
+  // candidat sont lues à l'ouverture de la conversation (pas dans la carte des
+  // 500 dernières inscriptions, ni déduites du statut d'une mission).
   const [stopSeqConfirm, setStopSeqConfirm] = useState(false);
   const [stoppingSeq, setStoppingSeq] = useState(false);
   const [seqStoppedLocal, setSeqStoppedLocal] = useState(false);
+  const [activeEnrollments, setActiveEnrollments] = useState<Array<{ id: string; current_step_order: number | null }>>([]);
+  const [activeEnrollmentsKey, setActiveEnrollmentsKey] = useState(0);
 
-  // Nouvelle conversation : l'arrêt affiché ne concerne que la précédente
+  // Nouvelle conversation : la pause affichée ne concerne que la précédente
   useEffect(() => {
     setSeqStoppedLocal(false);
   }, [selectedChat?.id]);
 
+  const chatProfileId = selectedChat ? getAttendeeProfileId(selectedChat) : null;
+  useEffect(() => {
+    if (!chatProfileId) {
+      setActiveEnrollments([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      // Identifiant de la messagerie (ACo...) : une inscription faite depuis
+      // Recruiter porte un autre profile_id (AE...), retrouvée par provider_id
+      // ou resolved_profile_id.
+      const { data, error } = await supabase
+        .from('sequence_enrollments')
+        .select('id, current_step_order')
+        .or(enrollmentProfileFilter(chatProfileId))
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        // Lecture impossible : pas d'action de pause (on n'invente pas d'inscription).
+        console.warn('[MessageView] active enrollments lookup failed:', error);
+        setActiveEnrollments([]);
+        return;
+      }
+      setActiveEnrollments(data ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [chatProfileId, activeEnrollmentsKey]);
+  const hasActiveEnrollment = activeEnrollments.length > 0 && !seqStoppedLocal;
+
+  // Mise en pause (contrat de pause) : seules les inscriptions changent de
+  // statut ; les étapes programmées gardent leur date et le moteur les ignore
+  // tant que l'inscription n'est pas reprise.
   const handleStopSequence = async () => {
     if (!selectedChat) return;
     const profileId = getAttendeeProfileId(selectedChat);
     if (!profileId) {
-      toast.error('Profil du candidat introuvable', { description: "La séquence n'a pas été arrêtée." });
+      toast.error('Profil du candidat introuvable', { description: "La séquence n'a pas été mise en pause." });
       return;
     }
     setStoppingSeq(true);
@@ -425,40 +464,53 @@ export const MessageView: React.FC<MessageViewProps> = ({
       const { data: active, error: fetchErr } = await supabase
         .from('sequence_enrollments')
         .select('id')
-        .eq('profile_id', profileId)
+        .or(enrollmentProfileFilter(profileId))
         .eq('status', 'active')
         .order('created_at', { ascending: false });
       if (fetchErr) throw fetchErr;
       const ids = (active || []).map(e => e.id);
       if (ids.length === 0) {
         toast.info('Aucune séquence en cours pour ce candidat');
-        setStopSeqConfirm(false);
+        setActiveEnrollmentsKey(k => k + 1);
         return;
       }
-      // Pause toutes les inscriptions actives (cas rare où il y en aurait plusieurs)
-      const { error: pauseErr } = await supabase
+      // Toutes les inscriptions actives (cas rare où il y en aurait plusieurs),
+      // relues pour détecter un refus silencieux (0 ligne).
+      const { data: paused, error: pauseErr } = await supabase
         .from('sequence_enrollments')
         .update({ status: 'paused', pause_reason: 'manual' })
-        .in('id', ids);
+        .in('id', ids)
+        .eq('status', 'active')
+        .select('id');
       if (pauseErr) throw pauseErr;
-      // Cancel les executions schedulées
-      await supabase
-        .from('sequence_step_executions')
-        .update({ status: 'cancelled', skip_reason: 'Stoppé depuis Inbox' })
-        .in('enrollment_id', ids)
-        .eq('status', 'scheduled');
+      const pausedCount = paused?.length ?? 0;
+      if (pausedCount === 0) {
+        toast.error('Mise en pause impossible', { description: "La séquence n'a pas été mise en pause. Réessayez." });
+        return;
+      }
       setSeqStoppedLocal(true);
-      toast.success(ids.length > 1 ? `${ids.length} séquences arrêtées` : 'Séquence arrêtée');
+      setActiveEnrollmentsKey(k => k + 1);
+      onEnrollmentsChanged?.();
+      const name = getChatDisplayName(selectedChat) || 'Le candidat';
+      if (pausedCount < ids.length) {
+        toast.warning(`${pausedCount} séquence${pausedCount > 1 ? 's' : ''} sur ${ids.length} mise${pausedCount > 1 ? 's' : ''} en pause`, {
+          description: 'Les autres n’ont pas pu être mises en pause. Réessayez.',
+        });
+      } else {
+        toast.success(`${name} est en pause`, {
+          description: 'Aucune relance ne partira tant que vous ne reprenez pas la séquence.',
+        });
+      }
     } catch (err) {
-      console.error('[MessageView] stopSequence error:', err);
-      toast.error("La séquence n'a pas été arrêtée", { description: 'Réessayez dans un instant.' });
+      console.error('[MessageView] pause sequence error:', err);
+      toast.error('Mise en pause impossible', { description: 'Réessayez dans un instant.' });
     } finally {
       setStoppingSeq(false);
       setStopSeqConfirm(false);
     }
   };
 
-  /** Rechargement demandé : la première tentative lit le cache ; à vide, le
+  /** Wrapper du re-fetch : la première tentative lit le cache ; à vide, le
       parent enchaîne une synchronisation de l'historique (10 à 30 s). */
   const handleRefetch = async () => {
     if (!onRefetchMessages) return;
@@ -624,33 +676,41 @@ export const MessageView: React.FC<MessageViewProps> = ({
   const subject = getChatSubject(selectedChat);
   const channel = detectChannel(selectedChat.account_type);
 
-  // Statut de l'inscription : « A répondu » dès qu'une réponse est notée sur
-  // une inscription encore active ; « En pause » juste après un arrêt.
-  const enrollmentStatus = jobInfo
-    ? seqStoppedLocal
-      ? 'paused'
-      : jobInfo.status === 'active' && jobInfo.replied_at
-        ? 'replied'
-        : jobInfo.status
-    : null;
+  // Statut de l'inscription : « En pause » juste après une mise en pause ;
+  // « En cours » pour une inscription active lue à l'ouverture ; sinon la
+  // dernière inscription connue du candidat, « A répondu » dès qu'une réponse
+  // est notée sur une inscription encore active.
+  const enrollmentStatus = seqStoppedLocal
+    ? 'paused'
+    : hasActiveEnrollment
+      ? 'active'
+      : jobInfo
+        ? jobInfo.status === 'active' && jobInfo.replied_at
+          ? 'replied'
+          : jobInfo.status
+        : null;
   const enrollmentPauseReason = seqStoppedLocal ? 'manual' : jobInfo?.pause_reason ?? null;
-  const canStopSequence = !!jobInfo && jobInfo.status === 'active' && !seqStoppedLocal;
+  // Mise en pause seulement si une inscription ACTIVE du candidat a été lue en
+  // base (jamais d'après le statut d'une mission, ni d'une mission déduite).
+  const canStopSequence = hasActiveEnrollment;
+  const activeStepOrder = hasActiveEnrollment ? activeEnrollments[0]?.current_step_order ?? null : null;
   const isSnoozedOrArchived = chatStatus.isSnoozed(selectedChat.id) || chatStatus.isArchived(selectedChat.id);
 
-  // Contexte de la mission, quand l'inscription le donne
+  // Contexte de la mission, quand l'inscription le donne ; l'étape vient de
+  // l'inscription active lue à l'ouverture.
   const contextItems: React.ReactNode[] = [];
+  if (jobInfo?.job_title) {
+    contextItems.push(
+      <span key="title" className="inline-flex min-w-0 items-center gap-1 text-foreground-secondary">
+        <Briefcase className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="truncate">{jobInfo.job_title}</span>
+      </span>,
+    );
+  }
+  if (activeStepOrder != null) {
+    contextItems.push(<span key="step">Étape {activeStepOrder + 1}</span>);
+  }
   if (jobInfo) {
-    if (jobInfo.job_title) {
-      contextItems.push(
-        <span key="title" className="inline-flex min-w-0 items-center gap-1 text-foreground-secondary">
-          <Briefcase className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span className="truncate">{jobInfo.job_title}</span>
-        </span>,
-      );
-    }
-    if (canStopSequence && jobInfo.current_step_order != null) {
-      contextItems.push(<span key="step">Étape {jobInfo.current_step_order + 1}</span>);
-    }
     const config = jobInfo.outreach_config;
     if (config?.recruitment_mode) {
       contextItems.push(
@@ -847,12 +907,9 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 {canStopSequence && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className={cn(MENU_ITEM, 'text-destructive focus:text-destructive')}
-                      onSelect={() => setStopSeqConfirm(true)}
-                    >
+                    <DropdownMenuItem className={MENU_ITEM} onSelect={() => setStopSeqConfirm(true)}>
                       <CircleStop className="mr-2 h-4 w-4" aria-hidden="true" />
-                      Arrêter la séquence
+                      Mettre la séquence en pause
                     </DropdownMenuItem>
                   </>
                 )}
@@ -1273,25 +1330,32 @@ export const MessageView: React.FC<MessageViewProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Arrêter la séquence */}
+      {/* Mettre la séquence en pause */}
       <AlertDialog open={stopSeqConfirm} onOpenChange={(open) => !open && setStopSeqConfirm(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Arrêter la séquence ?</AlertDialogTitle>
+            <AlertDialogTitle>Mettre la séquence en pause ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Les actions programmées pour {displayName} (relances, InMails, e-mails) seront annulées. Vous pourrez
-              reprendre la séquence depuis l'onglet Outreach de la mission.
+              {displayName || 'Ce candidat'} ne recevra plus de messages de la séquence tant que vous ne la reprenez pas.
+              Vous pourrez la reprendre depuis le suivi de la séquence.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction disabled={stoppingSeq} onClick={handleStopSequence}>
+            <AlertDialogAction
+              disabled={stoppingSeq}
+              onClick={(e) => {
+                // La fenêtre reste ouverte pendant l'écriture ; elle se ferme à la fin.
+                e.preventDefault();
+                void handleStopSequence();
+              }}
+            >
               {stoppingSeq ? (
                 <Loader2 className="animate-spin" aria-hidden="true" />
               ) : (
                 <CircleStop aria-hidden="true" />
               )}
-              Arrêter la séquence
+              Mettre en pause
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

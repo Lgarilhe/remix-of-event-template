@@ -6,12 +6,13 @@ import { useAgent } from '@/contexts/AgentContext';
 import { CandidateDetailModal } from './CandidateDetailModal';
 import { ATSCandidate, useATSData } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
+import { computeJobSequenceStats, responseRatePercent, type JobSequenceStat } from '@/lib/jobSequenceStats';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/layout';
+import { EmptyState, ErrorState } from '@/components/layout';
 import { SCORE_THRESHOLDS } from '@/lib/scoreScale';
 import {
   Briefcase, Building2, MapPin, FileText, CalendarDays, X,
@@ -48,13 +49,7 @@ interface JobInfo {
   companyDescription: string | null;
 }
 
-interface SequenceStat {
-  id: string;
-  name: string;
-  enrolledCount: number;
-  sentCount: number;
-  repliedCount: number;
-}
+type SequenceStat = JobSequenceStat;
 
 interface JobDetailSheetProps {
   jobId: string | null;
@@ -126,6 +121,8 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   // Sequences tab
   const [sequences, setSequences] = useState<SequenceStat[]>([]);
   const [seqLoading, setSeqLoading] = useState(false);
+  const [seqError, setSeqError] = useState(false);
+  const [seqAttempt, setSeqAttempt] = useState(0);
 
   // IA tab
   const { openAgent } = useAgent();
@@ -215,32 +212,29 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   /* ─── load sequences ─── */
   useEffect(() => {
     if (!jobId || !open || tab !== 'sequences') return;
+    let cancelled = false;
     const load = async () => {
       setSeqLoading(true);
-      const { data: enrollments } = await supabase
+      setSeqError(false);
+      // Réponses sur le statut de l'inscription ; envois sur les étapes
+      // réellement parties (calcul dans src/lib/jobSequenceStats.ts).
+      const { data: enrollments, error } = await supabase
         .from('sequence_enrollments')
-        .select('id, sequence_id, status, connection_status, outreach_sequences (id, name)')
+        .select('id, sequence_id, status, outreach_sequences (id, name), sequence_step_executions (status, sequence_steps (action_type))')
         .eq('job_id', jobId);
-
-      if (enrollments && enrollments.length > 0) {
-        const map = new Map<string, SequenceStat>();
-        enrollments.forEach((e: any) => {
-          const seqId = e.sequence_id;
-          const seqName = e.outreach_sequences?.name || 'Sans nom';
-          if (!map.has(seqId)) map.set(seqId, { id: seqId, name: seqName, enrolledCount: 0, sentCount: 0, repliedCount: 0 });
-          const stat = map.get(seqId)!;
-          stat.enrolledCount++;
-          if (e.status === 'active' || e.status === 'completed') stat.sentCount++;
-          if (e.connection_status === 'replied') stat.repliedCount++;
-        });
-        setSequences(Array.from(map.values()));
-      } else {
+      if (cancelled) return;
+      if (error) {
+        console.error('[JobDetailSheet] séquences du poste indisponibles:', error);
+        setSeqError(true);
         setSequences([]);
+      } else {
+        setSequences(computeJobSequenceStats(enrollments ?? []));
       }
       setSeqLoading(false);
     };
-    load();
-  }, [jobId, open, tab]);
+    void load();
+    return () => { cancelled = true; };
+  }, [jobId, open, tab, seqAttempt]);
 
   /* ─── load RAG count ─── */
   useEffect(() => {
@@ -357,7 +351,12 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
                       />
                     </TabsContent>
                     <TabsContent value="sequences" className="mt-0">
-                      <SequencesTab sequences={sequences} loading={seqLoading} />
+                      <SequencesTab
+                        sequences={sequences}
+                        loading={seqLoading}
+                        error={seqError}
+                        onRetry={() => setSeqAttempt((n) => n + 1)}
+                      />
                     </TabsContent>
                     <TabsContent value="ia" className="mt-0">
                       <IATab jobId={jobId} ragCount={ragCount} scoreSummary={scoreSummary} openAgent={openAgent} />
@@ -540,12 +539,33 @@ function CandidatsTab({
 /* ════════════════════════════════════════
    Tab: Séquences
    ════════════════════════════════════════ */
-function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loading: boolean }) {
+function SequencesTab({
+  sequences,
+  loading,
+  error,
+  onRetry,
+}: {
+  sequences: SequenceStat[];
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+}) {
   if (loading) {
     return (
       <div className="flex justify-center py-12">
         <Spinner label="Chargement des séquences" />
       </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        variant="compact"
+        title="Impossible de charger les séquences de ce poste."
+        description="Vérifiez votre connexion, puis réessayez."
+        onRetry={onRetry}
+      />
     );
   }
 
@@ -556,7 +576,7 @@ function SequencesTab({ sequences, loading }: { sequences: SequenceStat[]; loadi
   return (
     <div className="space-y-3">
       {sequences.map(seq => {
-        const responseRate = seq.sentCount > 0 ? Math.round((seq.repliedCount / seq.sentCount) * 100) : 0;
+        const responseRate = responseRatePercent(seq);
         return (
           <div key={seq.id} className="rounded-xl border border-border bg-card p-3">
             <p className="mb-2 text-sm font-semibold text-foreground">{seq.name}</p>

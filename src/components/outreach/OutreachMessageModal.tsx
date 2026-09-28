@@ -197,6 +197,9 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         },
         tone,
         senderName: senderName.trim() || undefined,
+        // Le serveur relit outreach_config de la mission (anonymisation du client)
+        // quand le front ne le transmet pas.
+        missionId: job.id || undefined,
         accountId: selectedAccount || undefined,
         profileId: candidateProviderId || undefined,
         candidateHistory: candidateHistory || undefined,
@@ -293,25 +296,34 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       setMessageSent(true);
       toast.success(`${isFirstDegree ? 'Message envoyé' : 'InMail envoyé'} à ${profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim()}`);
       
-      // Track in inmail_queue so candidate appears in ATS
+      // Suivi de l'envoi dans inmail_queue (pipeline, statistiques de réponse).
+      // La policy n'accepte que la ligne 'sent' de l'appelant dans son
+      // organisation : sans organization_id, l'insert était refusé en silence
+      // (supabase-js ne lève pas, l'erreur n'était pas lue).
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from('inmail_queue').insert({
-            account_id: selectedAccount,
-            recipient_profile_id: recipientId,
-            recipient_name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
-            recipient_headline: profile.headline || null,
-            subject: subject || '(Message direct)',
-            message: plainMessage,
-            status: 'sent',
-            sent_at: new Date().toISOString(),
-            created_by: user.id,
-            network_distance: isFirstDegree ? 1 : (typeof networkDistance === 'number' ? networkDistance : 2),
-          });
-        }
+        if (!user || !organizationId) throw new Error('Session ou organisation introuvable');
+        const { error: trackError } = await supabase.from('inmail_queue').insert({
+          organization_id: organizationId,
+          account_id: selectedAccount,
+          recipient_profile_id: recipientId,
+          recipient_name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+          recipient_headline: profile.headline || null,
+          subject: subject || '(Message direct)',
+          message: plainMessage,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          created_by: user.id,
+          network_distance: isFirstDegree ? 1 : (typeof networkDistance === 'number' ? networkDistance : 2),
+        });
+        if (trackError) throw trackError;
       } catch (trackErr) {
         console.error('Error tracking message in ATS:', trackErr);
+        // Le message est parti : on ne l'annonce pas comme un échec, mais le
+        // suivi manquant se voit (candidat absent du pipeline sinon sans explication).
+        toast.warning("Le message est parti, mais son suivi n'a pas été enregistré", {
+          description: "Ce candidat n'apparaîtra pas dans le pipeline pour cet envoi.",
+        });
       }
 
       // Étape kanban 'Contacté' sur les lignes déjà suivies, sans rétrograder

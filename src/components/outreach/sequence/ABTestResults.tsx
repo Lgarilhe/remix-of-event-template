@@ -1,14 +1,7 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { FlaskConical, Star } from 'lucide-react';
-
-interface VariantResult {
-  variant: string;
-  sent: number;
-  opened: number;
-  clicked: number;
-  replied: number;
-}
+import type { VariantResult } from '@/lib/sequenceErrorMessages';
 
 interface ABTestResultsProps {
   results: VariantResult[];
@@ -17,7 +10,9 @@ interface ABTestResultsProps {
 export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
   if (results.length === 0) return null;
 
-  // Find the winner (highest reply rate)
+  // Comptage cumulatif fait en amont (aggregateVariantResults) : envoyés ⊇
+  // ouverts ⊇ cliqués, réponse lue sur l'inscription du candidat.
+  // Gagnant : meilleur taux de réponse.
   const withRates = results.map(r => ({
     ...r,
     replyRate: r.sent > 0 ? (r.replied / r.sent) * 100 : 0,
@@ -73,6 +68,10 @@ export const ABTestResults: React.FC<ABTestResultsProps> = ({ results }) => {
           </tbody>
         </table>
       </div>
+      <p className="border-t border-border px-3 py-2 text-2xs text-muted-foreground">
+        Ouvertures et clics : e-mail uniquement. Une réponse est attribuée à la variante reçue par le candidat,
+        quelle que soit l'étape à laquelle il a répondu.
+      </p>
     </div>
   );
 };

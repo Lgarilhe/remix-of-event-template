@@ -425,9 +425,14 @@ Deno.serve(async (req) => {
 
     // Fetch org_id for RAG
     let orgId: string | null = null;
+    // Prénom de l'appelant (celui qui répond), pour le rôle d'expéditeur du
+    // contexte d'approche : jamais le nom du candidat.
+    let callerFirstName: string | null = null;
     try {
-      const { data: profileRow } = await svc.from('profiles').select('active_organization_id').eq('user_id', userId).maybeSingle();
+      const { data: profileRow } = await svc.from('profiles').select('active_organization_id, display_name').eq('user_id', userId).maybeSingle();
       orgId = profileRow?.active_organization_id || null;
+      const displayName = String(profileRow?.display_name || '').trim();
+      callerFirstName = displayName ? (displayName.split(/\s+/)[0] || displayName) : null;
     } catch (e) {
       console.warn('[generate-reply-suggestions] Could not fetch org_id:', e);
     }
@@ -582,11 +587,29 @@ Ne propose AUCUNE mission ou opportunité. Propose uniquement de garder le conta
     let outreachContextBlock = '';
     if (context.outreachConfig && (context.outreachConfig.recruitment_mode || context.outreachConfig.sender_role || context.outreachConfig.anonymize_client)) {
       try {
+        // Nom de l'organisation vérifiée de l'appelant (membre de son
+        // organisation active) : identité de l'expéditeur, jamais « Konekt » (SEQ-097).
+        let organizationName: string | null = null;
+        if (orgId) {
+          const { data: membership, error: memberError } = await svc.from('organization_members')
+            .select('id').eq('user_id', userId).eq('organization_id', orgId).maybeSingle();
+          if (memberError) console.warn('[generate-reply-suggestions] membership check failed:', memberError.message);
+          if (membership) {
+            const { data: orgRow, error: orgError } = await svc.from('organizations').select('name').eq('id', orgId).maybeSingle();
+            if (orgError) console.warn('[generate-reply-suggestions] organization name read failed:', orgError.message);
+            organizationName = String((orgRow as { name?: string | null } | null)?.name || '').trim() || null;
+          }
+        }
         const { buildOutreachContext } = await import('../_shared/outreach-context.ts');
         outreachContextBlock = '\n' + buildOutreachContext(
           context.outreachConfig as any,
-          context.outreachClientName || jobData?.client?.name,
-          context.candidateName || 'le recruteur',
+          // context.jobData : `jobData` seul n'existait pas dans ce bloc, l'erreur
+          // levée supprimait tout le contexte d'approche sans nom de client.
+          context.outreachClientName || context.jobData?.client?.name,
+          // Expéditeur = l'appelant qui répond (context.candidateName est le
+          // candidat : il devenait « RÔLE EXPÉDITEUR : Jean Dupont, CTO »).
+          callerFirstName,
+          organizationName,
         );
       } catch (e) {
         console.warn('[generate-reply-suggestions] outreach-context import failed:', e);

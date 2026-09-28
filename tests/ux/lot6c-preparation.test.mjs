@@ -79,12 +79,15 @@ test('D-46 : les aperçus générés et les retouches sont conservés pour la se
   assert.doesNotMatch(hook, /localStorage|sessionStorage/, 'aucune donnée de candidat écrite dans le navigateur');
   assert.match(hook, /useState<PreviewMap>\(\(\) => restoreFromSession\(sessionKey, steps, profiles\)\)/);
   assert.match(hook, /signatures\.get\(stepId\) === entry\.signature/, 'une étape modifiée depuis ne reprend pas un vieil aperçu');
-  assert.match(preparation, /useEnrollmentPreview\(\{ steps, profiles, job, accountId, sessionKey \}\)/);
+  // Revue design : l'appel porte aussi les candidats visés de l'audit (SEQ-045) : les incompatibles exclus ne sont ni générés ni comptés.
+  assert.match(preparation, /useEnrollmentPreview\(\{ steps, profiles, targetProfiles: activeProfiles, job, accountId, sessionKey \}\)/);
   assert.match(preparation, /discardSessionPreviews\(enrolledIds\)/, 'les candidats inscrits libèrent leurs aperçus');
 });
 
 test('D-46 : la génération groupée n’écrase jamais une retouche', () => {
-  assert.match(hook, /if \(existing && \(existing\.isGenerated \|\| existing\.isEdited\)\) continue;/);
+  // Revue design : garde stricte de l'audit (SEQ-021), relue à chaque étape : un aperçu retouché, généré ou en cours n'est jamais régénéré.
+  assert.match(hook, /const current = previewsRef\.current\.get\(profile\.id\)\?\.get\(step\.stepId\);/);
+  assert.match(hook, /if \(existing && \(existing\.isEdited \|\| existing\.isGenerated \|\| existing\.isGenerating\)\) \{\s*if \(current && \(current\.isEdited \|\| current\.isGenerated\)\) localPreviews\.set\(step\.stepId, current\);\s*continue;\s*\}/);
   assert.doesNotMatch(hook, /existing\?\.isGenerated && !existing\.isEdited/);
 });
 
@@ -135,7 +138,9 @@ test('D-51 : fenêtre simple au registre du kit', () => {
   assert.doesNotMatch(simple, /uppercase|rounded-lg"|bg-background border-border/);
   assert.match(simple, /Rechargez la page ou reconnectez votre compte/);
   assert.doesNotMatch(simple, /Traiter les séquences/, 'le toast ne renvoie plus vers un bouton absent');
-  assert.match(simple, /La planification sera reprise automatiquement/);
+  // Revue design : l'échec de planification suit l'audit (SEQ-129) : inscriptions retirées et bilan d'échec ; la reprise dans l'heure n'est annoncée que si le retrait échoue.
+  assert.match(simple, /L'inscription a échoué : aucune étape n'a pu être planifiée\. Aucun message ne partira\. Réessayez\./);
+  assert.match(simple, /Des inscriptions ont été créées sans étape ; elles démarreront dans l'heure\./);
 });
 
 // ---------------------------------------------------------------- D-53

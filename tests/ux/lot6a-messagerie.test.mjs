@@ -43,12 +43,13 @@ const FILES = {
 const src = Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, code(rel)]));
 
 // ---------------------------------------------------------------- D-01
-test('D-01 : la frise d’activité passe par le catalogue des séquences', () => {
-  assert.match(src.activity, /sequenceActionLabel\(event\.actionType\)/);
+test('D-01 : la frise d’activité passe par les tables partagées des séquences', () => {
+  assert.match(src.activity, /sequenceExecutionTitle\(actionType, status\)/, 'même titre que la fiche candidat');
   assert.match(src.activity, /<SequenceActionIcon type=\{event\.actionType\}/);
   assert.match(src.activity, /<ExecutionStatusBadge/);
-  assert.match(src.activity, /skipReasonLabel\(event\.skipReason\)/, 'une raison d’arrêt se traduit');
-  assert.doesNotMatch(src.activity, /label: event\.actionType|\{event\.actionType\}<|event\.errorMessage/, 'jamais d’identifiant ni d’erreur brute');
+  assert.match(src.activity, /formatSkipReason\(event\.skipReason\)/, 'une raison d’arrêt se traduit');
+  assert.match(src.activity, /formatSequenceError\(event\.errorMessage\)/, 'une erreur se traduit');
+  assert.doesNotMatch(src.activity, /label: event\.actionType|\{event\.actionType\}<|\{event\.errorMessage\}/, 'jamais d’identifiant ni d’erreur brute');
   assert.doesNotMatch(src.activity, /send_connection|send_message|onClick=/, 'plus de table locale ni de div cliquable');
 });
 
@@ -113,8 +114,10 @@ test('D-08 : une mission déduite se dit « probable », jamais supposée par d�
   assert.doesNotMatch(src.view, /activeMissions\.length === 1 \? activeMissions\[0\]/, 'plus de repli sur la seule mission active');
   assert.match(src.view, /Mission probable : /);
   assert.doesNotMatch(src.view, /Hors séquence/);
+  // La pause ne concerne qu'une inscription réelle, relue en base à l'ouverture de la conversation.
+  assert.match(src.view, /const hasActiveEnrollment = activeEnrollments\.length > 0/);
   const stop = src.view.match(/const canStopSequence = ([^;]+);/);
-  assert.ok(stop && /jobInfo/.test(stop[1]) && !/inferredMission|displayContext/.test(stop[1]), 'l’arrêt ne concerne qu’une inscription réelle');
+  assert.ok(stop && /hasActiveEnrollment/.test(stop[1]) && !/inferredMission|displayContext/.test(stop[1]), 'l’arrêt ne concerne qu’une inscription réelle');
 });
 
 // ---------------------------------------------------------------- D-09

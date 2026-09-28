@@ -1,5 +1,27 @@
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect, useMemo, useId } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { supabase } from '@/integrations/supabase/client';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
+import { useSubscriptionState } from '@/hooks/useSubscriptionState';
+import { hasPlanFeature } from '@/lib/featureGates';
+import { UpgradePrompt } from '@/components/ui/UpgradePrompt';
+import { Spinner } from '@/components/ui/spinner';
+import { normalizeNetworkDistance } from '@/lib/sequenceCompatibility';
+import {
+  findRecentEnrollments,
+  formatRecentContactLabel,
+  RECENT_CONTACT_WINDOW_DAYS,
+  type RecentEnrollment,
+} from '@/lib/enrollmentDuplicates';
+import { SEQUENCES_PLAN_REQUIRED_MESSAGE } from './enrollment-preview/enrollmentHelpers';
+import {
+  DISCONNECTED_ACCOUNT_MESSAGE,
+  NO_ACCOUNT_MESSAGE,
+  OTHER_MEMBER_ACCOUNT_MESSAGE,
+  useSendingAccount,
+} from './enrollment-preview/useSendingAccount';
+import { SendingAccountNotice } from './enrollment-preview/SendingAccountNotice';
 import { executionStatusMeta, MESSAGE_TONES, type MessageTone } from '@/lib/sequenceCatalog';
 import { formatSequenceError } from '@/lib/sequenceErrorMessages';
 import {
@@ -31,8 +53,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { EmptyState, ErrorState } from '@/components/layout';
-import { 
-  Clock, 
+import { useMissionOutreachConfig, useSenderFirstName } from '@/hooks/useEnrollmentPreview';
+import {
+  Clock,
   PenLine,
   ChevronLeft,
   ChevronRight,
@@ -87,6 +110,29 @@ interface QueueStats {
   cancelled: number;
 }
 
+/** Rythme réel de la file (process-inmail-queue) : plages de l'utilisateur, jours ouvrés, 1 à 2 minutes. */
+const SEND_PACE_TEXT = "Envoi pendant vos heures d'envoi, les jours ouvrés, 1 à 2 minutes entre chaque InMail.";
+const INMAIL_DUPLICATE_CHECK_FAILED_MESSAGE =
+  'Impossible de vérifier les contacts récents de votre organisation. Réessayez avant de planifier.';
+/** Décision 24 : la file refuse tout candidat déjà contacté, InMail groupé ou séquence, sans dérogation (process-inmail-queue). */
+const RECENT_CONTACT_REFUSED_MESSAGE =
+  `Sans dérogation possible : la file InMail refuse tout candidat inscrit en séquence ou contacté par votre organisation ces ${RECENT_CONTACT_WINDOW_DAYS} derniers jours, séquence arrêtée comprise.`;
+/** Refus du compte d'envoi (liaison stricte), formulés pour l'InMail groupé. */
+const INMAIL_ACCOUNT_BLOCK_MESSAGES: Record<string, string> = {
+  [NO_ACCOUNT_MESSAGE]: "Aucun compte LinkedIn n'est sélectionné. Connectez votre compte avant d'envoyer des InMails.",
+  [OTHER_MEMBER_ACCOUNT_MESSAGE]: "Ce compte LinkedIn est relié à un autre membre de l'équipe. Envoyez les InMails depuis votre propre compte.",
+  [DISCONNECTED_ACCOUNT_MESSAGE]: "Votre compte LinkedIn est déconnecté. Reconnectez-le avant d'envoyer des InMails.",
+};
+
+/** Distance LinkedIn envoyée à la file : 1 = déjà en relation (message gratuit), 2, 3, sinon inconnue. */
+function queueNetworkDistance(r: Recipient): number | null {
+  const normalized = normalizeNetworkDistance(r.network_distance ?? r.profile?.network_distance);
+  if (normalized === 'FIRST_DEGREE') return 1;
+  if (normalized === 'SECOND_DEGREE') return 2;
+  if (normalized === 'THIRD_DEGREE') return 3;
+  return null;
+}
+
 interface QueueItem {
   id: string;
   recipient_name: string | null;
@@ -121,13 +167,72 @@ const QueueStatusBadge: React.FC<{ status: string }> = ({ status }) => (
 export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   isOpen,
   onClose,
-  recipients,
+  recipients: allRecipients,
   accountId,
   selectedJob,
 }) => {
+  const { organizationId } = useOrganization();
+  const { user } = useAuthReady();
+  // Compte d'envoi (liaison stricte, comme les inscriptions) : chacun envoie
+  // depuis son propre compte relié. Relié à un collègue, déconnecté ou absent,
+  // il bloque la génération et la planification.
+  const sendingAccount = useSendingAccount(accountId);
+  const accountBlockReason = sendingAccount.blockReason
+    ? INMAIL_ACCOUNT_BLOCK_MESSAGES[sendingAccount.blockReason] ?? sendingAccount.blockReason
+    : null;
+  const sendingAccountState = { ...sendingAccount, blockReason: accountBlockReason };
+  // Abonnement : sans plan autorisant l'envoi, rien ne partirait. Tant que
+  // l'état n'est pas lu, on ne bloque pas (le serveur refuse aussi la file).
+  const { state: subscriptionState, effectivePlanId } = useSubscriptionState();
+  const canSendInMails = !subscriptionState || hasPlanFeature(effectivePlanId, 'sequences_send');
+
+  // Anti-doublon organisation, comme les inscriptions en séquence : candidats
+  // en séquence chez un collègue, contactés ces 90 derniers jours ou ayant déjà
+  // un InMail groupé programmé ou envoyé. Toujours exclus : la file les refuse
+  // sans dérogation (décision 24), aucune génération payée pour rien.
+  // null = pas encore vérifié.
+  const [recentContacts, setRecentContacts] = useState<Map<string, RecentEnrollment> | null>(null);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicateCheckFailed, setDuplicateCheckFailed] = useState(false);
+  const [duplicateCheckAttempt, setDuplicateCheckAttempt] = useState(0);
+  const allRecipientsKey = allRecipients.map(r => r.id).join(',');
+  useEffect(() => {
+    if (!isOpen || !organizationId) return;
+    let cancelled = false;
+    setRecentContacts(null);
+    setDuplicateCheckFailed(false);
+    setIsCheckingDuplicates(true);
+    findRecentEnrollments(supabase, organizationId, allRecipients.map(r => ({
+      id: r.id,
+      provider_id: r.profile?.provider_id ?? (r.profile_id !== r.id ? r.profile_id : undefined),
+      public_identifier: r.profile?.public_identifier,
+      profile_url: r.profile?.profile_url,
+      public_profile_url: r.profile?.public_profile_url,
+    })))
+      .then(map => { if (!cancelled) setRecentContacts(map); })
+      .catch(err => {
+        console.warn('[BulkInMailModal] recent contacts check failed:', err);
+        if (!cancelled) setDuplicateCheckFailed(true);
+      })
+      .finally(() => { if (!cancelled) setIsCheckingDuplicates(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, organizationId, allRecipientsKey, duplicateCheckAttempt]);
+  const duplicateRecipients = useMemo(
+    () => (recentContacts ? allRecipients.filter(r => recentContacts.has(r.id)) : []),
+    [allRecipients, recentContacts],
+  );
+  // Destinataires réellement visés : génération, crédits, planification.
+  const recipients = useMemo(
+    () => (!recentContacts ? allRecipients : allRecipients.filter(r => !recentContacts.has(r.id))),
+    [allRecipients, recentContacts],
+  );
+  // La génération et la planification attendent la fin de la vérification.
+  const duplicatesUnchecked = !recentContacts;
+
   // Tab state: 'compose' or 'queue'
   const [activeTab, setActiveTab] = useState<'compose' | 'queue'>('compose');
-  
+
   // AI generation state
   const [generatedMessages, setGeneratedMessages] = useState<Record<string, GeneratedMessage>>({});
   const [isGenerating, setIsGenerating] = useState(false);
@@ -136,50 +241,77 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   const [senderName, setSenderName] = useState(() => {
     return localStorage.getItem('outreach_sender_name') || '';
   });
-  
+
   // Current message editing
   const [currentRecipientIndex, setCurrentRecipientIndex] = useState(0);
   const [editingSubject, setEditingSubject] = useState('');
   const [editingMessage, setEditingMessage] = useState('');
-  
+
   // Queue state
   const [isQueueing, setIsQueueing] = useState(false);
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
+
+  // Confirmations : fermeture avec une saisie non reportée, mise en file
+  // (déclenche des envois) et annulation des envois en attente.
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+  const [confirmQueueOpen, setConfirmQueueOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   const senderId = useId();
-  const subjectId = useId();
-  const messageId = useId();
+
+  // Réglages d'approche de la mission (mode interne ou cabinet, rôle de
+  // l'expéditeur, anonymisation du client) : même lecture que l'aperçu de
+  // séquence. Sans eux, la génération cite le vrai nom d'un client à anonymiser.
+  const {
+    outreachConfig,
+    missionClientName,
+    status: missionConfigStatus,
+    retry: retryMissionConfig,
+  } = useMissionOutreachConfig(selectedJob?.id);
+  // Prénom de l'expéditeur par défaut (profil), si le champ signature est vide.
+  const defaultSenderName = useSenderFirstName();
+  const effectiveSenderName = senderName.trim() || defaultSenderName;
 
   // InMail balance from real API
   const { balance, isLoading: isLoadingBalance, error: balanceError, refetch: refetchBalance, hasCredits, getCredits } = useInMailBalance(accountId);
-  
-  // Recruiter credits (primary for InMails)
+
+  // Recruiter credits (primary for InMails). Un destinataire déjà en relation
+  // reçoit un message gratuit (process-inmail-queue, network_distance 1) : il
+  // ne consomme pas de crédit. Les soldes Sales Navigator ou Premium ne sont
+  // pas additionnés : l'envoi passe par l'API Recruiter.
   const recruiterCredits = getCredits('recruiter');
-  const creditsNeeded = recipients.length;
-  const hasEnoughCredits = hasCredits('recruiter', creditsNeeded);
+  // Avant la génération (et pendant) : estimation sur tous les destinataires
+  // visés. Une fois les messages générés : seuls ceux qui ont un message seront
+  // planifiés, les crédits requis portent sur eux.
+  const withMessage = recipients.filter(r => generatedMessages[r.id]);
+  const billedRecipients = withMessage.length > 0 && !isGenerating ? withMessage : recipients;
+  const freeMessageCount = billedRecipients.filter(r => queueNetworkDistance(r) === 1).length;
+  const paidInMailCount = billedRecipients.length - freeMessageCount;
+  const creditsNeeded = paidInMailCount;
+  const hasEnoughCredits = creditsNeeded === 0 || hasCredits('recruiter', creditsNeeded);
+  const creditsBreakdown = `${paidInMailCount} InMail${paidInMailCount > 1 ? 's' : ''} payant${paidInMailCount > 1 ? 's' : ''}, ${freeMessageCount} message${freeMessageCount > 1 ? 's' : ''} gratuit${freeMessageCount > 1 ? 's' : ''} (déjà en relation)`;
   const isNearLimit = recruiterCredits > 0 && recruiterCredits <= 20; // Warning when less than 20 credits
 
   // Get user's timezone
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  
+
   // Current recipient
   const currentRecipient = recipients[currentRecipientIndex];
   const currentMessage = currentRecipient ? generatedMessages[currentRecipient.id] : null;
-  
+
   // Count how many messages are ready - only count messages for CURRENT recipients
   const currentRecipientIds = new Set(recipients.map(r => r.id));
   const readyCount = Object.keys(generatedMessages).filter(id => currentRecipientIds.has(id)).length;
   const hasGeneratedMessages = readyCount > 0 && !isGenerating;
   const allGenerated = readyCount === recipients.length;
-
-  const hasUnsavedEdit = !!currentMessage && (
+  // Saisie du destinataire affiché pas encore reportée dans les messages.
+  const hasUnsavedEdit = !!(currentRecipient && currentMessage && (
     editingSubject !== currentMessage.subject ||
     editingMessage !== currentMessage.message
-  );
+  ));
 
   // Save sender name to localStorage
   const handleSenderNameChange = (name: string) => {
@@ -197,6 +329,18 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       setEditingMessage('');
     }
   }, [currentRecipientIndex, currentMessage]);
+
+  // Compteurs de la file par comptage en base (toute la file de l'utilisateur),
+  // pas sur les 100 dernières lignes renvoyées par l'action « status ».
+  const countQueue = async (userId: string, statuses: string[]): Promise<number> => {
+    const { count, error } = await supabase
+      .from('inmail_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('created_by', userId)
+      .in('status', statuses);
+    if (error) throw error;
+    return count ?? 0;
+  };
 
   // Fetch queue status
   const fetchQueueStatus = async () => {
@@ -218,13 +362,36 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     } finally {
       setQueueLoading(false);
     }
+    const userId = user?.id;
+    if (!userId) return;
+    try {
+      const [pending, sending, sent, failed, cancelled] = await Promise.all([
+        countQueue(userId, ['pending', 'scheduled']),
+        countQueue(userId, ['sending']),
+        countQueue(userId, ['sent']),
+        countQueue(userId, ['failed']),
+        countQueue(userId, ['cancelled']),
+      ]);
+      setQueueStats({ pending: 0, scheduled: pending, sending, sent, failed, cancelled });
+    } catch (err) {
+      // Comptage indisponible : on garde les compteurs de l'action « status ».
+      console.warn('[BulkInMailModal] queue count failed:', err);
+    }
   };
 
-  // Reset state when recipients change (new selection)
+  // Reset state when the selection changes (not when the duplicate check
+  // narrows the recipients: generated messages stay).
   useEffect(() => {
     setGeneratedMessages({});
     setCurrentRecipientIndex(0);
-  }, [recipients.map(r => r.id).join(',')]);
+  }, [allRecipientsKey]);
+
+  // Destinataires retirés (anti-doublon) : l'index affiché reste valide.
+  useEffect(() => {
+    if (currentRecipientIndex > 0 && currentRecipientIndex >= recipients.length) {
+      setCurrentRecipientIndex(Math.max(0, recipients.length - 1));
+    }
+  }, [currentRecipientIndex, recipients.length]);
 
   useEffect(() => {
     if (isOpen) {
@@ -241,12 +408,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         headline: recipient.headline,
       };
     }
-    
+
     const workExperience = profile.work_experience || [];
     const currentJob = workExperience.find(exp => !exp.end) || workExperience[0];
     const pastJobs = workExperience.filter(exp => exp.end).slice(0, 3);
     const education = profile.education || [];
-    
+
     // Calculate years of experience
     const calcYearsOfExperience = (): number | undefined => {
       const years = workExperience
@@ -257,7 +424,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
       if (eduYears.length > 0) return new Date().getFullYear() - Math.max(...eduYears);
       return undefined;
     };
-    
+
     return {
       name: recipient.name,
       headline: recipient.headline || profile.headline,
@@ -278,15 +445,15 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   // Generate message for a single recipient
   const generateMessageForRecipient = async (recipient: Recipient) => {
     if (!selectedJob) return null;
-    
+
     try {
       const profileData = buildProfileData(recipient);
-      
+
       const { data, error } = await invokeEdgeFunction<{ subject?: string; message?: string }>('generate-outreach-message', {
-        profile: profileData, 
+        profile: profileData,
         job: {
           title: selectedJob.title,
-          client: selectedJob.client,
+          client: selectedJob.client || (missionClientName ? { name: missionClientName } : undefined),
           skills: selectedJob.skills || [],
           description: selectedJob.description,
           location: selectedJob.location,
@@ -294,12 +461,20 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           accompagnement: selectedJob.accompagnement || [],
         },
         tone,
-        senderName: senderName.trim() || undefined,
+        senderName: effectiveSenderName || undefined,
+        accountId,
+        profileId: recipient.profile?.provider_id || recipient.profile_id,
         candidateLinkedInUrl: recipient.profile?.public_profile_url || recipient.profile?.profile_url || undefined,
+        // Mode interne ou cabinet, rôle de l'expéditeur et anonymisation du
+        // client, comme l'aperçu de séquence (useEnrollmentPreview).
+        outreachConfig: outreachConfig || undefined,
+        // Mission (préfixe « project: » accepté) : le serveur relit ses
+        // réglages d'approche quand outreachConfig est absent (SEQ-051).
+        missionId: selectedJob.id || undefined,
       });
 
       if (error) throw error;
-      
+
       return {
         subject: data?.subject || `Opportunité ${selectedJob.title}`,
         message: data?.message || '',
@@ -314,47 +489,70 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
   // Generate all messages
   const handleGenerateAll = async () => {
+    if (!canSendInMails) {
+      toast.error(SEQUENCES_PLAN_REQUIRED_MESSAGE);
+      return;
+    }
+    if (accountBlockReason) {
+      toast.error(accountBlockReason);
+      return;
+    }
+    if (duplicatesUnchecked) {
+      toast.error(INMAIL_DUPLICATE_CHECK_FAILED_MESSAGE);
+      return;
+    }
+    if (recipients.length === 0) {
+      toast.error('Aucun candidat à contacter : tous ont déjà été contactés par votre organisation.');
+      return;
+    }
     if (!selectedJob) {
       toast.error('Choisissez un poste pour générer les messages.');
       return;
     }
-    
+    if (missionConfigStatus === 'loading' || missionConfigStatus === 'error') {
+      toast.error('Réglages d’approche de la mission indisponibles : réessayez dans un instant.');
+      return;
+    }
+
     setIsGenerating(true);
     setGeneratingIndex(0);
-    
+
     const newMessages: Record<string, GeneratedMessage> = {};
-    
+
     for (let i = 0; i < recipients.length; i++) {
       setGeneratingIndex(i);
       const recipient = recipients[i];
       const message = await generateMessageForRecipient(recipient);
-      
+
       if (message) {
         newMessages[recipient.id] = message;
         // Update state progressively for UI feedback
         setGeneratedMessages(prev => ({ ...prev, [recipient.id]: message }));
       }
     }
-    
+
     setIsGenerating(false);
     setCurrentRecipientIndex(0); // Reset to first recipient to show editor
     const generated = Object.keys(newMessages).length;
-    if (generated === recipients.length) {
-      toast.success(`${plural(generated, 'message généré', 'messages générés')} : relisez-les avant de planifier l'envoi.`);
-    } else if (generated > 0) {
-      toast.warning(`${generated} messages générés sur ${recipients.length} : régénérez les messages manquants avant de planifier.`);
-    } else {
+    const failedCount = recipients.length - generated;
+    if (generated === 0) {
       toast.error("Aucun message n'a pu être généré. Réessayez dans un instant.");
+    } else if (failedCount > 0) {
+      toast.warning(`${generated} message${generated > 1 ? 's' : ''} généré${generated > 1 ? 's' : ''} sur ${recipients.length}. ${failedCount} ${failedCount > 1 ? 'ont' : 'a'} échoué.`, {
+        description: failedCount > 1 ? 'Ces candidats ne seront pas planifiés.' : 'Ce candidat ne sera pas planifié.',
+      });
+    } else {
+      toast.success(`${plural(generated, 'message généré', 'messages générés')} : relisez-les avant de planifier l'envoi.`);
     }
   };
 
   // Regenerate current message
   const handleRegenerateMessage = async () => {
     if (!currentRecipient) return;
-    
+
     setIsGenerating(true);
     const message = await generateMessageForRecipient(currentRecipient);
-    
+
     if (message) {
       setGeneratedMessages(prev => ({ ...prev, [currentRecipient.id]: message }));
       setEditingSubject(message.subject);
@@ -362,14 +560,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     } else {
       toast.error(`Le message de ${currentRecipient.name} n'a pas pu être régénéré. Réessayez.`);
     }
-    
+
     setIsGenerating(false);
   };
 
   // Save edited message
   const handleSaveEdit = () => {
     if (!currentRecipient) return;
-    
+
     setGeneratedMessages(prev => ({
       ...prev,
       [currentRecipient.id]: {
@@ -379,7 +577,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         isEdited: true,
       }
     }));
-    
+
     toast.success(`Modifications enregistrées pour ${currentRecipient.name}`);
   };
 
@@ -389,7 +587,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     if (hasUnsavedEdit) {
       handleSaveEdit();
     }
-    
+
     if (direction === 'prev' && currentRecipientIndex > 0) {
       setCurrentRecipientIndex(i => i - 1);
     } else if (direction === 'next' && currentRecipientIndex < recipients.length - 1) {
@@ -399,101 +597,146 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
   // Queue all messages
   const handleQueueAll = async () => {
+    if (!canSendInMails) {
+      toast.error(SEQUENCES_PLAN_REQUIRED_MESSAGE);
+      return;
+    }
+    if (accountBlockReason) {
+      toast.error(accountBlockReason);
+      return;
+    }
+    if (duplicatesUnchecked) {
+      toast.error(INMAIL_DUPLICATE_CHECK_FAILED_MESSAGE);
+      return;
+    }
     if (readyCount === 0) {
       toast.error("Générez d'abord les messages.");
       return;
     }
-    
+
     // Check credit availability before queueing
     if (!hasEnoughCredits) {
-      toast.error(`Crédits InMail insuffisants : ${recruiterCredits} restants pour ${creditsNeeded} candidats.`);
+      toast.error(`Crédits InMail insuffisants (${recruiterCredits} restants, ${creditsNeeded} requis)`);
       return;
     }
-    
+
+    // La saisie en cours du destinataire affiché est reportée ici, de façon
+    // synchrone : setGeneratedMessages (via « Enregistrer ») est asynchrone et
+    // la version d'origine partait si l'on planifiait sans enregistrer.
+    const messages: Record<string, GeneratedMessage> = hasUnsavedEdit && currentRecipient && currentMessage
+      ? {
+          ...generatedMessages,
+          [currentRecipient.id]: {
+            ...currentMessage,
+            subject: editingSubject,
+            message: editingMessage,
+            isEdited: true,
+          },
+        }
+      : generatedMessages;
+    if (messages !== generatedMessages) setGeneratedMessages(messages);
+
     setIsQueueing(true);
-    
+
     try {
       const items = recipients
-        .filter(r => generatedMessages[r.id])
+        .filter(r => messages[r.id])
         .map(r => {
-          // Parse network_distance - can be number or string like "DISTANCE_2"
-          let networkDistance: number | null = null;
-          if (typeof r.network_distance === 'number') {
-            networkDistance = r.network_distance;
-          } else if (typeof r.network_distance === 'string') {
-            const match = r.network_distance.match(/(\d+)/);
-            networkDistance = match ? parseInt(match[1], 10) : null;
-          } else if (r.profile?.network_distance) {
-            // Fallback to profile data
-            if (typeof r.profile.network_distance === 'number') {
-              networkDistance = r.profile.network_distance;
-            } else if (typeof r.profile.network_distance === 'string') {
-              const match = r.profile.network_distance.match(/(\d+)/);
-              networkDistance = match ? parseInt(match[1], 10) : null;
-            }
-          }
-          
+          // Même lecture que le décompte des crédits : 1 = déjà en relation,
+          // message gratuit côté file (« FIRST_DEGREE », « DISTANCE_1 », 1).
+          const networkDistance = queueNetworkDistance(r);
+
           return {
             account_id: accountId,
             recipient_profile_id: r.profile_id,
+            // URL publique : la file rapproche les inscriptions par slug et lit
+            // le registre global des effacements (décision 14).
+            recipient_profile_url: r.profile?.public_profile_url || r.profile?.profile_url || null,
             recipient_name: r.name,
             recipient_headline: r.headline,
-            subject: generatedMessages[r.id].subject,
-            message: generatedMessages[r.id].message,
+            subject: messages[r.id].subject,
+            message: messages[r.id].message,
             network_distance: networkDistance,
           };
         });
 
-      const { data, error } = await invokeEdgeFunction<{ queued?: number }>('process-inmail-queue', {
+      const { data, error } = await invokeEdgeFunction<{ queued?: number; skipped_duplicates?: number; skipped_erased?: number; message?: string }>('process-inmail-queue', {
         action: 'queue',
         items,
         user_timezone: userTimezone,
       });
 
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'queue');
+      if (error || !data?.success) {
+        // Refus serveur (abonnement requis, compte non autorisé…) : son
+        // message en français, jamais un jeton technique.
+        console.error('Error queueing InMails:', error ?? data);
+        toast.error('Aucun InMail n’a été planifié', {
+          description: data?.message || (error?.status === 403 ? error.message : 'La planification n’a pas abouti. Réessayez.'),
+        });
+        return;
+      }
 
       // Refetch balance after queueing to update credits display
       refetchBalance();
-      
-      const queued = data.queued || 0;
-      toast.success(`${plural(queued, 'InMail planifié', 'InMails planifiés')} : envoi pendant vos horaires d'envoi.`);
+
+      const queued = data.queued ?? 0;
+      const skippedDuplicates = data.skipped_duplicates ?? 0;
+      // Candidats effacés (RGPD) : refusés par la file, comptés à part des doublons.
+      const skippedErased = data.skipped_erased ?? 0;
+      const exclusions = [
+        skippedDuplicates > 0
+          ? `${skippedDuplicates} candidat${skippedDuplicates > 1 ? 's' : ''} déjà contacté${skippedDuplicates > 1 ? 's' : ''} par votre organisation, exclu${skippedDuplicates > 1 ? 's' : ''}.`
+          : null,
+        skippedErased > 0
+          ? `${skippedErased} candidat${skippedErased > 1 ? 's' : ''} ayant demandé l'effacement de ${skippedErased > 1 ? 'leurs' : 'ses'} données, exclu${skippedErased > 1 ? 's' : ''}.`
+          : null,
+      ].filter(Boolean).join(' ');
+      if (queued === 0) {
+        // Rien en file : les messages restent affichés pour réessayer.
+        toast.error('Aucun InMail n’a été planifié', {
+          description: skippedDuplicates > 0 && skippedErased === 0
+            ? `Ces candidats ont déjà un InMail en file ou ont été contactés par votre organisation ces ${RECENT_CONTACT_WINDOW_DAYS} derniers jours.`
+            : exclusions || 'Réessayez.',
+        });
+        return;
+      }
+      if (queued < items.length) {
+        toast.warning(`${queued} InMail${queued > 1 ? 's' : ''} planifié${queued > 1 ? 's' : ''} sur ${items.length}`, {
+          description: exclusions || 'Consultez la file d’attente pour vérifier les envois prévus.',
+        });
+      } else {
+        toast.success(`${queued} InMail${queued > 1 ? 's' : ''} planifié${queued > 1 ? 's' : ''} pour envoi`);
+      }
       setGeneratedMessages({});
       setActiveTab('queue');
       fetchQueueStatus();
     } catch (err) {
       console.error('Error queueing InMails:', err);
-      toast.error("Les InMails n'ont pas pu être planifiés. Réessayez.");
+      toast.error('Aucun InMail n’a été planifié', { description: 'La planification n’a pas abouti. Réessayez.' });
     } finally {
       setIsQueueing(false);
     }
   };
 
-  const pendingIds = queueItems
-    .filter(item => ['pending', 'scheduled'].includes(item.status))
-    .map(item => item.id);
-
-  // Cancel pending items
+  // Cancel pending items : toute la file en attente de l'utilisateur (pas
+  // seulement les 100 lignes affichées), le serveur renvoie le nombre réel.
   const handleCancelPending = async () => {
-    if (pendingIds.length === 0) {
-      toast.info('Aucun InMail en attente à annuler.');
-      return;
-    }
-
     try {
       const { data, error } = await invokeEdgeFunction<{ cancelled?: number }>('process-inmail-queue', {
-        action: 'cancel', item_ids: pendingIds,
+        action: 'cancel',
       });
 
-      if (error) throw error;
-      const cancelled = data?.cancelled || 0;
-      toast.success(cancelled > 0
-        ? `${plural(cancelled, 'InMail annulé', 'InMails annulés')} : ${cancelled > 1 ? 'ils ne partiront pas' : 'il ne partira pas'}.`
-        : 'Aucun InMail annulé : ils étaient déjà partis.');
+      if (error || !data?.success) throw error ?? new Error('cancel failed');
+      const cancelled = data?.cancelled ?? 0;
+      if (cancelled === 0) {
+        toast.info('Aucun InMail n’a été annulé : ils étaient peut-être déjà en cours d’envoi.');
+      } else {
+        toast.success(`${plural(cancelled, 'InMail annulé', 'InMails annulés')} : ${cancelled > 1 ? 'ils ne partiront pas' : 'il ne partira pas'}.`);
+      }
       fetchQueueStatus();
     } catch (err) {
       console.error('Error cancelling InMails:', err);
-      toast.error("Les envois n'ont pas pu être annulés. Réessayez.");
+      toast.error('Annulation impossible', { description: 'Vos InMails en attente n’ont pas été annulés. Réessayez.' });
     }
   };
 
@@ -514,14 +757,14 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     }
   };
 
-  const totalInQueue = queueStats ? 
+  const totalInQueue = queueStats ?
     queueStats.pending + queueStats.scheduled + queueStats.sending : 0;
-
-  const timezoneCity = (userTimezone.split('/')[1] || userTimezone).replace(/_/g, ' ');
+  // InMails pas encore envoyés, toute la file de l'utilisateur (comptage en base).
+  const pendingCount = queueStats ? queueStats.pending + queueStats.scheduled : 0;
 
   const queueCounters = queueStats
     ? [
-        { label: 'Planifiés', value: queueStats.pending + queueStats.scheduled },
+        { label: 'Planifiés', value: pendingCount },
         { label: "En cours d'envoi", value: queueStats.sending },
         { label: 'Envoyés', value: queueStats.sent },
         { label: 'En échec', value: queueStats.failed, danger: queueStats.failed > 0 },
@@ -536,9 +779,28 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
     setCurrentRecipientIndex(index);
   };
 
+  // Fermeture : une saisie non reportée demande confirmation (AlertDialog).
+  const requestClose = () => {
+    if (isQueueing) return;
+    if (activeTab === 'compose' && hasUnsavedEdit) {
+      setConfirmCloseOpen(true);
+      return;
+    }
+    onClose();
+  };
+
+  const discardEditAndClose = () => {
+    if (currentMessage) {
+      setEditingSubject(currentMessage.subject);
+      setEditingMessage(currentMessage.message);
+    }
+    setConfirmCloseOpen(false);
+    onClose();
+  };
+
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) requestClose(); }}>
       <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
         <div className="shrink-0 border-b border-border px-6 py-4 pr-14">
           <DialogHeader>
@@ -547,9 +809,13 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 <ChannelIcon channel="linkedin" size="sm" />
               </span>
               <div className="flex min-w-0 flex-col gap-0.5 text-left">
-                <DialogTitle>InMail groupé</DialogTitle>
+                {/* Nom de la fonction, comme le bouton qui l'ouvre (« Envoyer un InMail groupé ») ;
+                    le titre reste celui que lisent les parcours e2e. */}
+                <p className="eyebrow">InMail groupé</p>
+                <DialogTitle>InMails personnalisés</DialogTitle>
                 <DialogDescription>
-                  Un message personnalisé par l'IA Konekt pour {recipients.length > 1 ? `chacun des ${recipients.length} candidats` : 'le candidat'}, à relire avant l'envoi.
+                  Messages rédigés par l'IA Konekt pour {plural(recipients.length, 'candidat')}
+                  {recipients.length !== allRecipients.length && ` sur ${allRecipients.length}`}
                 </DialogDescription>
               </div>
             </div>
@@ -561,7 +827,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
             <TabsList className="w-full">
               <TabsTrigger value="compose" className="flex-1 gap-2">
                 <PenLine className="h-3.5 w-3.5" aria-hidden="true" />
-                Rédaction ({readyCount} sur {recipients.length})
+                Composer ({readyCount} sur {recipients.length})
               </TabsTrigger>
               <TabsTrigger value="queue" className="flex-1 gap-2">
                 <Clock className="h-3.5 w-3.5" aria-hidden="true" />
@@ -572,6 +838,49 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
           {/* Rédaction */}
           <TabsContent value="compose" className="mt-0 min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+            {/* Plan gratuit : rien ne partirait, on le dit avant toute génération. */}
+            {!canSendInMails && (
+              <UpgradePrompt title="InMails" description={SEQUENCES_PLAN_REQUIRED_MESSAGE} className="mt-4" />
+            )}
+            {/* Anti-doublon organisation */}
+            {isCheckingDuplicates && (
+              <p role="status" className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                <Spinner size="sm" label="Vérification en cours" />
+                Vérification des contacts récents de l'organisation
+              </p>
+            )}
+            {duplicateCheckFailed && !isCheckingDuplicates && (
+              <div role="alert" className="mt-3 flex items-center gap-2 rounded-lg bg-danger-muted p-3 text-sm text-danger">
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1">{INMAIL_DUPLICATE_CHECK_FAILED_MESSAGE}</span>
+                <Button variant="outline" size="xs" className="max-md:h-11" onClick={() => setDuplicateCheckAttempt(a => a + 1)}>
+                  Réessayer
+                </Button>
+              </div>
+            )}
+            {recentContacts && duplicateRecipients.length > 0 && (
+              <div className="mt-3 space-y-2 rounded-lg border border-warning/25 bg-warning-muted p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+                  {duplicateRecipients.length} candidat{duplicateRecipients.length > 1 ? 's' : ''} déjà contacté{duplicateRecipients.length > 1 ? 's' : ''} par votre organisation, exclu{duplicateRecipients.length > 1 ? 's' : ''}
+                </p>
+                <ul className="max-h-20 space-y-0.5 overflow-y-auto text-xs text-foreground-secondary">
+                  {duplicateRecipients.slice(0, 5).map(r => {
+                    const entry = recentContacts.get(r.id);
+                    return (
+                      <li key={r.id} className="truncate">
+                        <span className="font-medium text-foreground">{r.name}</span>
+                        {' : '}{entry ? formatRecentContactLabel(entry) : 'Déjà contacté'}
+                      </li>
+                    );
+                  })}
+                  {duplicateRecipients.length > 5 && (
+                    <li>et {plural(duplicateRecipients.length - 5, 'autre')}</li>
+                  )}
+                </ul>
+                <p className="text-xs text-foreground-secondary">{RECENT_CONTACT_REFUSED_MESSAGE}</p>
+              </div>
+            )}
             {!selectedJob ? (
               <EmptyState
                 className="mt-4"
@@ -614,7 +923,10 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                     </Tooltip>
                   </div>
                 </div>
-                  
+
+                {/* Crédits requis : seuls les destinataires hors relation consomment un InMail. */}
+                <p className="text-xs text-muted-foreground">{creditsBreakdown}</p>
+
                 {/* Crédits insuffisants */}
                 {!hasEnoughCredits && (
                   <div role="alert" className="flex items-start gap-2 rounded-lg bg-danger-muted p-3 text-sm text-danger">
@@ -622,8 +934,20 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                     <span>
                       {balanceError
                         ? "Le solde de crédits InMail n'a pas pu être lu. Actualisez le solde, puis réessayez."
-                        : `Crédits InMail insuffisants : ${recruiterCredits} restants pour ${creditsNeeded} candidats.`}
+                        : `Crédits insuffisants (${recruiterCredits} restants, ${creditsNeeded} requis)`}
                     </span>
+                  </div>
+                )}
+
+                {/* Réglages d'approche de la mission illisibles : pas de
+                    génération, le nom d'un client à anonymiser pourrait sortir. */}
+                {missionConfigStatus === 'error' && (
+                  <div role="alert" className="flex items-center gap-2 rounded-lg bg-danger-muted p-3 text-sm text-danger">
+                    <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="flex-1">Impossible de lire les réglages d’approche de la mission.</span>
+                    <Button variant="outline" size="xs" className="max-md:h-11" onClick={retryMissionConfig}>
+                      Réessayer
+                    </Button>
                   </div>
                 )}
 
@@ -637,7 +961,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                       id={senderId}
                       value={senderName}
                       onChange={(e) => handleSenderNameChange(e.target.value)}
-                      placeholder="Ex. : Camille"
+                      placeholder={defaultSenderName ? `Par défaut : ${defaultSenderName}` : 'Ex. : Camille'}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -658,15 +982,17 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   variant="primary"
                   size="lg"
                   onClick={handleGenerateAll}
-                  disabled={!hasEnoughCredits}
-                  loading={isGenerating}
+                  disabled={isGenerating || !hasEnoughCredits || !canSendInMails || !!accountBlockReason || duplicatesUnchecked || recipients.length === 0 || missionConfigStatus === 'loading' || missionConfigStatus === 'error'}
+                  loading={isGenerating || missionConfigStatus === 'loading'}
                   className="w-full"
                 >
                   {isGenerating
                     ? `Génération ${generatingIndex + 1} sur ${recipients.length}…`
                     : !hasEnoughCredits
-                      ? 'Crédits InMail insuffisants'
-                      : recipients.length > 1 ? `Générer les ${recipients.length} messages` : 'Générer le message'}
+                      ? 'Crédits insuffisants'
+                      : missionConfigStatus === 'loading'
+                        ? 'Chargement des réglages de la mission…'
+                        : <>Générer {recipients.length} message{recipients.length > 1 ? 's' : ''}</>}
                 </Button>
 
                 {/* Progression de la génération */}
@@ -687,7 +1013,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                 )}
 
                 <p className="text-center text-xs text-muted-foreground">
-                  Envoi pendant vos horaires d'envoi (de 8 h à 19 h par défaut, heure de {timezoneCity}), avec quelques minutes entre deux InMails.
+                  {SEND_PACE_TEXT}
                 </p>
               </div>
             ) : (
@@ -755,12 +1081,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   </div>
                 )}
 
-                {/* Objet et message */}
+                {/* Objet et message (identifiants fixes : repères des parcours de bout en bout) */}
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor={subjectId} className="text-xs font-medium text-muted-foreground">Objet</Label>
+                    <Label htmlFor="subject" className="text-xs font-medium text-muted-foreground">Objet</Label>
                     <Input
-                      id={subjectId}
+                      id="subject"
                       value={editingSubject}
                       onChange={(e) => setEditingSubject(e.target.value)}
                       placeholder="Objet de l'InMail"
@@ -769,7 +1095,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
 
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <Label htmlFor={messageId} className="text-xs font-medium text-muted-foreground">Message</Label>
+                      <Label htmlFor="message" className="text-xs font-medium text-muted-foreground">Message</Label>
                       {hasUnsavedEdit && (
                         <Button size="xs" variant="ghost" onClick={handleSaveEdit} className="max-md:h-11">
                           <Check aria-hidden="true" />
@@ -778,7 +1104,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                       )}
                     </div>
                     <InMailTextEditor
-                      id={messageId}
+                      id="message"
                       value={editingMessage}
                       onChange={setEditingMessage}
                       placeholder="Le message d'approche"
@@ -874,6 +1200,12 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   </dl>
                 )}
 
+                {queueItems.length >= 100 && (
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Les 100 derniers InMails sont listés ; les compteurs portent sur toute votre file.
+                  </p>
+                )}
+
                 <ScrollArea className="min-h-0 flex-1">
                   {queueItems.length === 0 ? (
                     <EmptyState
@@ -905,7 +1237,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
                   )}
                 </ScrollArea>
 
-                {pendingIds.length > 0 && (
+                {/* Toute la file en attente de l'utilisateur (comptage en base). */}
+                {pendingCount > 0 && (
                   <div className="mt-3 flex justify-end">
                     <Button
                       variant="outline"
@@ -922,48 +1255,97 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
           </TabsContent>
         </Tabs>
 
-        {/* Pied : même fond que le corps, un filet pour séparer */}
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border px-6 py-3">
-          <Button variant="outline" onClick={onClose}>
-            Fermer
-          </Button>
-
-          {activeTab === 'compose' && hasGeneratedMessages && (
-            <Button
-              variant="primary"
-              onClick={handleQueueAll}
-              disabled={readyCount === 0}
-              loading={isQueueing}
-            >
-              {!isQueueing && <Send aria-hidden="true" />}
-              {readyCount > 1 ? `Planifier les ${readyCount} InMails` : "Planifier l'InMail"}
-              {!allGenerated && readyCount > 0 && <span className="sr-only"> (sur {recipients.length} candidats)</span>}
+        {/* Pied : compte d'envoi, puis les actions ; même fond que le corps, un filet pour séparer */}
+        <div className="shrink-0 space-y-2 border-t border-border px-6 py-3">
+          {/* Compte d'envoi : les InMails partent de ce compte et consomment ses crédits. */}
+          {activeTab === 'compose' && <SendingAccountNotice state={sendingAccountState} />}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={requestClose} disabled={isQueueing}>
+              Fermer
             </Button>
-          )}
+
+            {activeTab === 'compose' && hasGeneratedMessages && (
+              <Button
+                variant="primary"
+                onClick={() => setConfirmQueueOpen(true)}
+                disabled={isQueueing || readyCount === 0 || !canSendInMails || !!accountBlockReason || duplicatesUnchecked}
+                loading={isQueueing}
+              >
+                {!isQueueing && <Send aria-hidden="true" />}
+                Planifier {readyCount} InMail{readyCount > 1 ? 's' : ''}
+                {!allGenerated && readyCount > 0 && <span className="sr-only"> (sur {recipients.length} candidats)</span>}
+              </Button>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
 
+    {/* Fermeture avec une saisie non reportée */}
+    <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Vos modifications ne sont pas enregistrées</AlertDialogTitle>
+          <AlertDialogDescription>
+            Le message de {currentRecipient?.name || 'ce candidat'} a été modifié. Fermer quand même ? Vos modifications seront perdues.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Continuer la modification</AlertDialogCancel>
+          <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={discardEditAndClose}>
+            Fermer sans enregistrer
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Mise en file : déclenche des envois */}
+    <AlertDialog open={confirmQueueOpen} onOpenChange={setConfirmQueueOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Planifier {readyCount} InMail{readyCount > 1 ? 's' : ''} ?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {sendingAccount.name
+              ? `Envoyés depuis le compte LinkedIn de ${sendingAccount.name}. `
+              : 'Envoyés depuis le compte LinkedIn sélectionné. '}
+            {SEND_PACE_TEXT} {creditsBreakdown} : chaque InMail payant consomme un crédit.{hasUnsavedEdit ? ' La modification en cours du message affiché sera prise en compte.' : ''}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              setConfirmQueueOpen(false);
+              void handleQueueAll();
+            }}
+          >
+            Planifier
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Annulation des envois en attente */}
     <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {pendingIds.length > 1 ? `Annuler les ${pendingIds.length} InMails en attente ?` : "Annuler l'InMail en attente ?"}
+            Annuler {pendingCount} InMail{pendingCount > 1 ? 's' : ''} en attente ?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {pendingIds.length > 1 ? 'Ils ne partiront pas.' : 'Il ne partira pas.'} Les InMails déjà envoyés ou en cours d'envoi ne sont pas concernés. Cette action est irréversible.
+            Tous vos InMails programmés et pas encore envoyés seront annulés, y compris ceux d'autres sélections. Cette action est irréversible.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Garder les envois</AlertDialogCancel>
+          <AlertDialogCancel>Garder</AlertDialogCancel>
           <AlertDialogAction
-            className="bg-destructive"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={() => {
               setConfirmCancel(false);
-              handleCancelPending();
+              void handleCancelPending();
             }}
           >
-            {pendingIds.length > 1 ? 'Annuler les envois' : "Annuler l'envoi"}
+            {pendingCount > 1 ? 'Annuler les envois' : "Annuler l'envoi"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

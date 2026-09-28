@@ -1,8 +1,10 @@
 /**
  * Affichage commun des séquences : icône d'une étape, badge de statut d'une
- * inscription ou d'une étape. Libellés et tons viennent de
- * `src/lib/sequenceCatalog.ts` ; un même statut se peint de la même façon dans
- * la messagerie, le suivi, le journal et la fiche candidat (revue design D-55).
+ * inscription ou d'une étape. Tons et libellés viennent de
+ * `src/lib/sequenceCatalog.ts`, qui reprend les libellés de l'audit des
+ * séquences (`sequenceLabels.ts`) ; un même statut se peint de la même façon
+ * dans la messagerie, le suivi, le journal et la fiche candidat (revue design
+ * D-55).
  *
  * Les icônes restent neutres : la couleur d'un canal est portée par son logo
  * (`ChannelIcon`), jamais par l'étape.
@@ -27,10 +29,10 @@ import {
   enrollmentStatusMeta,
   executionStatusMeta,
   normalizeActionType,
-  pauseReasonLabel,
   sequenceActionLabel,
   sequenceActionMeta,
 } from '@/lib/sequenceCatalog';
+import { pausedLabel } from '@/lib/sequenceLabels';
 
 const ACTION_ICONS: Record<string, React.ElementType> = {
   connection_request: UserPlus,
@@ -67,7 +69,7 @@ export function SequenceActionLabel({ type, className }: { type: string | null |
   );
 }
 
-/** Statut d'une inscription ; une pause dit sa raison quand elle est connue. */
+/** Statut d'une inscription ; une pause dit sa raison quand elle est connue (« En pause (limite d’envoi atteinte) »). */
 export function EnrollmentStatusBadge({
   status,
   pauseReason,
@@ -78,10 +80,9 @@ export function EnrollmentStatusBadge({
   className?: string;
 }) {
   const meta = enrollmentStatusMeta(status);
-  const reason = status === 'paused' ? pauseReasonLabel(pauseReason) : null;
   return (
     <Badge variant={meta.tone} className={className}>
-      {reason ? `${meta.label} (${reason.charAt(0).toLowerCase()}${reason.slice(1)})` : meta.label}
+      {status === 'paused' ? pausedLabel(pauseReason) : meta.label}
     </Badge>
   );
 }
