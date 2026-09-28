@@ -34,11 +34,12 @@
 
 | v1 (reçu par `unipile-webhook`) | v2 | Statut Konekt |
 |---|---|---|
-| `new_relation` | `relation.new` + `relation.request.accept` | ✅ aliasé (ce commit) |
+| `new_relation` | `relation.new` (`relation.request.accept` retiré par Unipile, absent du SDK 2.48.0) | ✅ aliasé |
 | `message_received` / `new_message` | `message.new` | ✅ aliasé |
 | `mail_received` / `new_email` | `email.new` | ✅ aliasé |
 | `account_connected` (hosted auth, state dans `name`) | `account.add` / `account.reconnect` (state dans champ `state`) | ✅ aliasé + fallback `state` |
-| `account_status_updated` (status dans payload) | `account.status.running` / `.paused` (status dans le NOM de l'event) | ✅ aliasé, status injecté (`running`→`OK`, `paused`→`PAUSED`) |
+| `account_status_updated` (status dans payload) | `account.status.running` / `.degraded` / `.partial` (status dans le NOM de l'event ; `.paused` retiré par Unipile) | ✅ aliasé, status imposé par le nom (`running`→`OK`, `degraded`→`DEGRADED`, `partial`→`PARTIAL`) |
+| — | `account.locked` / `account.unlocked` (drapeau `is_locked`) | ✅ handlers dédiés : `LOCKED` sans écraser `CREDENTIALS`/`ERROR`, retour à `OK` seulement depuis `LOCKED` (2026-09-24) |
 | `account_disconnected` | `account.status.disconnected`, `account.remove` | ✅ aliasé |
 | `account_error` | `account.status.errored` | ✅ aliasé |
 | `mail_opened` (email_tracking) | `tracking.open` | ⚠️ non traité (tombe en `default` log — comme en v1) |
