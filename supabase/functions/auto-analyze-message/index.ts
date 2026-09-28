@@ -24,151 +24,36 @@ const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get
 const AUTO_ANALYZE_MODEL = "claude-sonnet-4-6";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// Notion : aucun secret de la plateforme (décision 16, C1 R1). Seules la clé
-// et les bases que l'organisation a reliées dans ses réglages sont utilisées.
 interface OrgCreds {
   unipileApiKey: string | undefined;
   unipileDsn: string | undefined;
-  notionApiKey: string | null;   // null : rien n'est écrit dans Notion
-  candidatsDbId: string | null;
-  shortlistDbId: string | null;
 }
 
 async function resolveOrgCredentials(organizationId?: string): Promise<OrgCreds> {
   const result: OrgCreds = {
     unipileApiKey: ENV_UNIPILE_API_KEY,
     unipileDsn: ENV_UNIPILE_DSN,
-    notionApiKey: null,
-    candidatsDbId: null,
-    shortlistDbId: null,
   };
   if (!organizationId) return result;
   try {
-    const { resolveUnipileCredentials, resolveNotionCredentials } = await import("../_shared/resolve-org-credentials.ts");
+    const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
     const uCreds = await resolveUnipileCredentials(organizationId, supabase);
     if (uCreds) {
       result.unipileApiKey = uCreds.apiKey;
       result.unipileDsn = uCreds.dsn.replace(/^https?:\/\//, '');
     }
-    const nCreds = await resolveNotionCredentials(organizationId, supabase);
-    if (nCreds) {
-      result.notionApiKey = nCreds.apiKey;
-      result.candidatsDbId = nCreds.candidatsDbId;
-      result.shortlistDbId = nCreds.shortlistDbId;
-    }
   } catch (e) {
-    console.warn('[auto-analyze] Org credential resolution failed (LinkedIn: env, Notion: none):', e);
+    console.warn('[auto-analyze] Org credential resolution failed (LinkedIn: env):', e);
   }
   return result;
 }
-// ─── Intent → Notion property mapping ─────────────────────────────
-// Candidats DB uses "Etat" (select): Pré-qualif à planifier, Répondu, En attente de réponse, Message à envoyer
-// Shortlist DB uses "Etape" (select): Pressenti, Contacté, Pré-qualif, Pas intéressé, Pas pertinent, En attente, etc.
-const INTENT_TO_CANDIDAT_ETAT: Record<string, string> = {
-  'interested': 'Pré-qualif à planifier',
-  'wants_call': 'Pré-qualif à planifier',
-  'needs_info': 'Répondu',
-  'timing_issue': 'Répondu',
-};
-
-const INTENT_TO_SHORTLIST_ETAPE: Record<string, string> = {
-  'interested': 'Pré-qualif',
-  'wants_call': 'Pré-qualif',
-  'not_interested': 'Pas intéressé',
-  'already_placed': 'Pas pertinent',
-  'timing_issue': 'En attente',
-};
+// Intents qui déclenchent la mise à jour du statut et de la catégorie de conversation
+const STATUS_UPDATE_INTENTS = new Set<string>([
+  'interested', 'wants_call', 'needs_info', 'timing_issue', 'not_interested', 'already_placed',
+]);
 
 // Minimum confidence to trigger auto-update
 const MIN_CONFIDENCE = 60;
-
-// ─── Notion helpers ───────────────────────────────────────────────
-async function notionQuery(databaseId: string, filter: Record<string, unknown>, creds: OrgCreds) {
-  const response = await fetchWithTimeout(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${creds.notionApiKey}`,
-      'Notion-Version': '2022-06-28',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ filter, page_size: 1 }),
-  });
-  if (!response.ok) return null;
-  return response.json();
-}
-
-async function updateNotionPage(pageId: string, properties: Record<string, unknown>, creds: OrgCreds) {
-  const response = await fetchWithTimeout(`https://api.notion.com/v1/pages/${pageId}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${creds.notionApiKey}`,
-      'Notion-Version': '2022-06-28',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ properties }),
-  });
-  if (!response.ok) {
-    console.error('[auto-analyze] Notion update error:', await response.text());
-  }
-  return response.ok;
-}
-
-async function findCandidateInNotion(name: string, creds: OrgCreds, linkedinUrl?: string): Promise<string | null> {
-  const dbId = creds.candidatsDbId;
-  if (!creds.notionApiKey || !dbId) return null;
-
-  // Try LinkedIn URL first
-  if (linkedinUrl) {
-    const result = await notionQuery(dbId, {
-      property: 'URL Linkedin',
-      url: { equals: linkedinUrl },
-    }, creds);
-    if (result?.results?.[0]?.id) return result.results[0].id;
-  }
-
-  // Fallback to name
-  if (name) {
-    const result = await notionQuery(dbId, {
-      property: 'Nom',
-      title: { equals: name },
-    }, creds);
-    if (result?.results?.[0]?.id) return result.results[0].id;
-  }
-  return null;
-}
-
-async function findShortlistsForCandidate(candidateId: string, creds: OrgCreds): Promise<Array<{ id: string; jobTitle?: string }>> {
-  const dbId = creds.shortlistDbId;
-  if (!creds.notionApiKey || !dbId) return [];
-
-  const result = await notionQuery(dbId, {
-    property: 'Candidats',
-    relation: { contains: candidateId },
-  }, creds);
-  if (!result?.results) return [];
-
-  // Fetch all shortlists, not just the first one
-  const response = await fetchWithTimeout(`https://api.notion.com/v1/databases/${dbId}/query`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${creds.notionApiKey}`,
-      'Notion-Version': '2022-06-28',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      filter: { property: 'Candidats', relation: { contains: candidateId } },
-      page_size: 10,
-    }),
-  });
-  if (!response.ok) return [];
-  const data = await response.json();
-
-  return (data.results || []).map((r: Record<string, unknown>) => ({
-    id: r.id as string,
-    jobTitle: ((r as Record<string, unknown>).properties as Record<string, unknown>)?.['Nom']
-      ? 'shortlist' : undefined,
-  }));
-}
 
 // ─── Unipile helpers ──────────────────────────────────────────────
 async function fetchChatMessages(chatId: string, accountId: string, creds: OrgCreds): Promise<Array<{ text: string; is_sender: boolean; timestamp?: string }>> {
@@ -381,7 +266,7 @@ Deno.serve(async (req) => {
       console.warn("[auto-analyze-message] Failed to load settle-credits:", e);
     }
 
-    // Resolve org-specific credentials (Unipile + Notion) pour l'org du compte
+    // Resolve org-specific credentials (Unipile) pour l'org du compte
     // (résolue/vérifiée ci-dessus), jamais l'organization_id brut du body.
     const creds = await resolveOrgCredentials(accountOrgId);
 
@@ -473,14 +358,11 @@ Deno.serve(async (req) => {
     console.log(`[auto-analyze] Intent: ${analysis.intent} (${analysis.confidence}%) - ${analysis.summary}`);
 
     // 3. Check if we should update (confidence threshold + mappable intent)
-    const candidatEtat = INTENT_TO_CANDIDAT_ETAT[analysis.intent];
-    const shortlistEtape = INTENT_TO_SHORTLIST_ETAPE[analysis.intent];
-    
     // Intent non mappé ou confiance insuffisante : on saute les mises à jour de
     // statut (étapes 4-6) mais on poursuit l'analyse complète + cache (étape 7)
     // et le décompte de crédits — sinon ces chats n'ont jamais de cache et le
     // front les rejoue à chaque montage.
-    const skipStatusUpdates = (!candidatEtat && !shortlistEtape) || analysis.confidence < MIN_CONFIDENCE;
+    const skipStatusUpdates = !STATUS_UPDATE_INTENTS.has(analysis.intent) || analysis.confidence < MIN_CONFIDENCE;
     if (skipStatusUpdates) {
       console.log(`[auto-analyze] No status update: intent=${analysis.intent}, confidence=${analysis.confidence}`);
     }
@@ -533,36 +415,6 @@ Deno.serve(async (req) => {
             .eq('organization_id', accountOrgId);
         }
         console.log(`[auto-analyze] Updated ${statusRecords.length} job_candidate_status records to "${appStatus}" (pipeline: ${pipelineStage})`);
-      }
-    }
-
-    // 5. Update Notion (Candidat "Etat" + Shortlist "Etape")
-    if (!skipStatusUpdates && creds.notionApiKey && creds.candidatsDbId) {
-      const notionCandidateId = await findCandidateInNotion(candidateName, creds, profileUrl);
-
-      if (notionCandidateId) {
-        // Update candidate "Etat" (select type) if mapped
-        if (candidatEtat) {
-          await updateNotionPage(notionCandidateId, {
-            'Etat': { select: { name: candidatEtat } },
-          }, creds);
-          console.log(`[auto-analyze] Updated Notion candidate Etat → "${candidatEtat}"`);
-        }
-
-        // Update all related shortlists "Etape" (select type) if mapped
-        if (shortlistEtape) {
-          const shortlists = await findShortlistsForCandidate(notionCandidateId, creds);
-          for (const sl of shortlists) {
-            await updateNotionPage(sl.id, {
-              'Etape': { select: { name: shortlistEtape } },
-            }, creds);
-          }
-          if (shortlists.length > 0) {
-            console.log(`[auto-analyze] Updated ${shortlists.length} Notion shortlists Etape → "${shortlistEtape}"`);
-          }
-        }
-      } else {
-        console.log(`[auto-analyze] Candidate not found in Notion: ${candidateName}`);
       }
     }
 
@@ -635,32 +487,6 @@ Deno.serve(async (req) => {
         recipientHeadline: chatDetails.attendeeHeadline,
         messages: messages.map(m => ({ text: m.text, is_sender: m.is_sender, timestamp: m.timestamp })),
       };
-
-      // Fetch available jobs from Notion for job matching.
-      // fetch-notion-jobs n'accepte qu'un JWT user (+ organization_id + appartenance) :
-      // on relaie le JWT de l'appelant quand il y en a un ; en appel service_role
-      // (webhook) on saute cette étape — availableJobs est optionnel.
-      if (userId && accountOrgId) {
-        try {
-          const notionJobsRes = await fetchWithTimeout(`${supabaseUrl2}/functions/v1/fetch-notion-jobs`, {
-            method: 'POST',
-            headers: {
-              'Authorization': authHeader!,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ organization_id: accountOrgId }),
-          }, 10000);
-          if (notionJobsRes.ok) {
-            const notionJobsData = await notionJobsRes.json();
-            const jobs = notionJobsData?.jobs || [];
-            if (jobs.length > 0) {
-              analysisContext.availableJobs = jobs.slice(0, 15);
-            }
-          }
-        } catch (e) {
-          console.warn('[auto-analyze] Failed to fetch jobs for cache:', e);
-        }
-      }
 
       // Call analyze-response and AWAIT the result (Haiku, timeout interne 55 s ;
       // on garde 50 s ici pour rester sous les 60 s de la plateforme).
@@ -769,8 +595,6 @@ Deno.serve(async (req) => {
       analysis,
       cacheWritten,
       skipped: skipStatusUpdates ? 'low_confidence_or_neutral' : null,
-      updatedCandidatEtat: skipStatusUpdates ? null : (candidatEtat || null),
-      updatedShortlistEtape: skipStatusUpdates ? null : (shortlistEtape || null),
       updatedChatCategory: skipStatusUpdates ? null : (chatCategory || null),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

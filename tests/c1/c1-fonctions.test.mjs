@@ -3,8 +3,10 @@
  *
  * Même forme que tests/agent et tests/ux : lecture du source et assertions sur
  * les motifs, sans navigateur, sans base ni runtime Deno. Couvre R1 (partiel :
- * process-sequences reporté), R2, R3 (points 2 et 3), R4 (fonction edge), R8
- * et R11 (send-team-invitation, e-mail d'invitation de mission).
+ * process-sequences et calendly-webhook reportés ; renforcé par le retrait de
+ * Notion hors connexion de l'assistant, 2026-09-28), R2, R3 (points 2 et 3),
+ * R4 (fonction edge), R8 et R11 (send-team-invitation, e-mail d'invitation de
+ * mission).
  *
  * Lancer : node --test tests/c1/c1-fonctions.test.mjs
  * C1_ROOT=<dossier> relit un autre arbre (ex. une extraction de HEAD) : c'est
@@ -44,7 +46,6 @@ const FORBIDDEN_IN_UI = /Unipile|Apollo|People Data Labs|\bPDL\b|Anthropic|Claud
 
 const AUTO_ANALYZE = 'supabase/functions/auto-analyze-message/index.ts';
 const ADD_TO_SHORTLIST = 'supabase/functions/add-to-shortlist/index.ts';
-const RESOLVE_CREDS = 'supabase/functions/_shared/resolve-org-credentials.ts';
 const SUBMIT_APP = 'supabase/functions/submit-application/index.ts';
 const SCORE = 'supabase/functions/score-profile-job/index.ts';
 const WORKER = 'supabase/functions/process-agent-tasks/index.ts';
@@ -54,47 +55,143 @@ const TEAM_INVITE = 'supabase/functions/send-team-invitation/index.ts';
 const PORTAL = 'supabase/functions/client-portal-data/index.ts';
 const MISSION_EMAIL = 'supabase/functions/_shared/transactional-email-templates/mission-invitation.tsx';
 
-// ─── R1 : aucun secret Notion de la plateforme (décision 16) ────────────────
+// ─── R1 : plus de Notion hors connexion de l'assistant (décision 16) ────────
+//
+// Étape 1 du retrait (2026-09-28) : l'ancienne synchro Notion par clé API sort
+// du code. Restent visés : l'API REST de Notion, les secrets de la plateforme
+// NOTION_API_KEY et NOTION_<BASE>_DB_ID, les colonnes notion_* de
+// organization_integrations, job_candidate_status et qualification_sessions
+// (encore en base jusqu'à l'étape 2). La connexion Notion de l'assistant passe
+// par mcp.notion.com : ses secrets (NOTION_TOKEN_ENCRYPTION_KEY,
+// NOTION_ALLOWED_RETURN_ORIGINS) et ses tables OAuth ne sont pas visés.
 
-// NOTION_API_KEY et NOTION_<BASE>_DB_ID. Les secrets de la connexion Notion
-// de l'assistant (NOTION_TOKEN_ENCRYPTION_KEY, NOTION_ALLOWED_RETURN_ORIGINS)
-// ne sont pas visés.
-const PLATFORM_NOTION_SECRET = /Deno\.env\.get\(\s*['"`]NOTION_(?:API_KEY|[A-Z]+_DB_ID)['"`]/;
-// Reporté : process-sequences, réservé à une autre session. Neutralisé en
-// production par le retrait des secrets. Retirer l'exception dès que son code
-// n'en lit plus.
-const DEFERRED = new Set(['supabase/functions/process-sequences/index.ts']);
+const NOTION_REST_API = /api\.notion\.com/;
+const PLATFORM_NOTION_SECRET = /NOTION_(?:API_KEY|[A-Z]+_DB_ID)/;
+const LEGACY_NOTION_COLUMN =
+  /\bnotion_(?:api_key(?:_hint)?|connected|candidats_db_id|shortlist_db_id|postes_db_id|candidate_id|shortlist_id|synced_at|api_cache)\b/;
+// Seuls fichiers autorisés à citer un identifiant notion_* : ceux de la
+// connexion Notion de l'assistant (tables OAuth, paramètres de retour).
+const MCP_FILES = new Set([
+  'supabase/functions/notion-mcp-oauth/index.ts',
+  'supabase/functions/_shared/notion-mcp-connection.ts',
+  'supabase/functions/_shared/notion-secret-crypto.ts',
+  'supabase/functions/_shared/notion-oauth-policy.mjs',
+  'supabase/functions/_shared/connector-selection.mjs',
+]);
+// Reportés (DEFERRED) : process-sequences et calendly-webhook, réservés à une
+// autre session qui les réécrit. Neutralisés en production par le retrait des
+// secrets puis des colonnes (étape 2). Retirer chaque exception dès que son
+// code ne lit plus Notion.
+const DEFERRED_DIRS = ['supabase/functions/process-sequences/', 'supabase/functions/calendly-webhook/'];
+const isDeferred = (f) => DEFERRED_DIRS.some((d) => f.startsWith(d));
+// Secrets Notion de la plateforme : seul process-sequences en lit encore.
+// calendly-webhook n'en lit aucun et reste contrôlé.
+const SECRET_DEFERRED_DIRS = ['supabase/functions/process-sequences/'];
+const isSecretDeferred = (f) => SECRET_DEFERRED_DIRS.some((d) => f.startsWith(d));
 
-test('R1 : aucune fonction ne lit les secrets Notion de la plateforme', () => {
+// Les cinq fonctions de l'ancienne synchro, supprimées le 2026-09-28.
+const REMOVED_NOTION_FUNCTIONS = [
+  'fetch-notion-jobs',
+  'fetch-notion-candidates',
+  'update-notion-job',
+  'notify-notion',
+  'update-candidate-stage',
+];
+
+test("R1 : aucune fonction n'appelle l'API REST de Notion ni ne lit ses secrets de plateforme", () => {
   const offenders = listSources('supabase/functions')
-    .filter((f) => !DEFERRED.has(f))
-    .filter((f) => PLATFORM_NOTION_SECRET.test(read(f)));
+    .flatMap((f) => {
+      const src = read(f);
+      return [
+        ...(!isDeferred(f) && NOTION_REST_API.test(src) ? [`${f} : api.notion.com`] : []),
+        ...(!isSecretDeferred(f) && PLATFORM_NOTION_SECRET.test(src) ? [`${f} : ${src.match(PLATFORM_NOTION_SECRET)[0]}`] : []),
+      ];
+    });
   assert.deepEqual(offenders, []);
 });
 
-test("R1 : resolveNotionCredentials ne se replie jamais sur l'environnement", () => {
-  const body = fnBody(read(RESOLVE_CREDS), 'export async function resolveNotionCredentials(');
-  assert.doesNotMatch(body, /Deno\.env/);
-  assert.match(body, /if \(!organizationId\) return null;/);
+test("R1 : aucune fonction ne lit ni n'écrit une colonne notion_* de l'ancienne synchro", () => {
+  const offenders = listSources('supabase/functions')
+    .filter((f) => !isDeferred(f))
+    .flatMap((f) => {
+      const src = read(f);
+      const legacy = src.match(LEGACY_NOTION_COLUMN);
+      if (legacy) return [`${f} : ${legacy[0]}`];
+      // Hors connexion de l'assistant, aucun identifiant notion_* du tout.
+      const any = MCP_FILES.has(f) ? null : src.match(/\bnotion_[a-z]\w*/);
+      return any ? [`${f} : ${any[0]}`] : [];
+    });
+  assert.deepEqual(offenders, []);
 });
 
-test("R1 : auto-analyze-message n'écrit dans Notion qu'avec la clé et la base de l'organisation", () => {
-  const src = read(AUTO_ANALYZE);
-  const creds = fnBody(src, 'async function resolveOrgCredentials(');
-  assert.match(creds, /notionApiKey: null,/);
-  assert.match(creds, /candidatsDbId: null,/);
-  assert.match(creds, /shortlistDbId: null,/);
-  for (const sig of ['async function findCandidateInNotion(', 'async function findShortlistsForCandidate(']) {
-    assert.match(fnBody(src, sig), /if \(!creds\.notionApiKey \|\| !dbId\) return/, sig);
+// Carte Notion retirée des Paramètres › Outils : elle ne lit que
+// notion_connected et l'indice de la clé, et n'écrit que le retrait de la clé,
+// jusqu'à la suppression des colonnes (étape 2).
+const KEY_REMOVAL_FILES = new Set([
+  'src/components/settings/IntegrationsSettings.tsx',
+  'src/hooks/useOrganizationIntegrations.ts',
+]);
+const KEY_REMOVAL_COLUMNS = new Set(['notion_api_key', 'notion_connected']);
+
+test('R1 : le front ne lit ni n\'écrit plus de colonne notion_* de l\'ancienne synchro', () => {
+  // types.ts est généré depuis le schéma : il garde les colonnes jusqu'à l'étape 2.
+  const legacyAll = new RegExp(LEGACY_NOTION_COLUMN.source, 'g');
+  const offenders = listSources('src')
+    .filter((f) => f !== 'src/integrations/supabase/types.ts')
+    .flatMap((f) => {
+      const hits = read(f).match(legacyAll) ?? [];
+      const allowed = KEY_REMOVAL_FILES.has(f) ? KEY_REMOVAL_COLUMNS : new Set();
+      return [...new Set(hits.filter((h) => !allowed.has(h)))].map((h) => `${f} : ${h}`);
+    });
+  assert.deepEqual(offenders, []);
+});
+
+test("R1 : les cinq fonctions de l'ancienne synchro Notion sont supprimées, config.toml compris", () => {
+  const config = read('supabase/config.toml');
+  for (const name of REMOVED_NOTION_FUNCTIONS) {
+    assert.ok(!existsSync(join(ROOT, 'supabase/functions', name)), `supabase/functions/${name} existe encore`);
+    assert.ok(!config.includes(`[functions.${name}]`), `section [functions.${name}] encore dans config.toml`);
   }
-  assert.match(src, /if \(!skipStatusUpdates && creds\.notionApiKey && creds\.candidatsDbId\)/);
+  // La connexion Notion de l'assistant reste.
+  assert.ok(existsSync(join(ROOT, 'supabase/functions/notion-mcp-oauth/index.ts')));
+  assert.ok(config.includes('[functions.notion-mcp-oauth]'));
 });
 
-test("R1 : add-to-shortlist exige la clé et les deux bases de l'organisation", () => {
-  const body = fnBody(read(ADD_TO_SHORTLIST), 'async function resolveOrgCredentials(');
-  assert.doesNotMatch(body, /Deno\.env/);
-  assert.match(body, /!data\.notion_candidats_db_id/);
-  assert.match(body, /!data\.notion_shortlist_db_id/);
+test('R1 : plus aucun appel aux fonctions retirées ni à resolveNotionCredentials', () => {
+  const names = REMOVED_NOTION_FUNCTIONS.join('|');
+  // Un nom entre guillemets (invokeEdgeFunction, functions.invoke) ou dans une
+  // URL functions/v1/ ; un commentaire qui cite le nom ne compte pas.
+  const call = new RegExp(`['"\`](?:${names})['"\`]|functions/v1/(?:${names})\\b`);
+  const offenders = [...listSources('src'), ...listSources('supabase/functions'), ...listSources('e2e')]
+    .flatMap((f) => {
+      const src = read(f);
+      const hit = src.match(call) ?? src.match(/\bresolveNotionCredentials\b/);
+      return hit ? [`${f} : ${hit[0]}`] : [];
+    });
+  assert.deepEqual(offenders, []);
+});
+
+test("R1 : add-to-shortlist ne pose que le statut Konekt, pour une organisation de l'appelant", () => {
+  const src = read(ADD_TO_SHORTLIST);
+  const tables = [...src.matchAll(/\.from\('([a-z_]+)'\)/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(tables)].sort(), ['job_candidate_status', 'organization_members']);
+  const iMember = src.indexOf(".from('organization_members')");
+  const iRequired = src.indexOf("if (!data.organization_id) throw");
+  const iSync = src.indexOf('await syncCandidateStatus(');
+  assert.ok(iMember > 0 && iRequired > iMember && iSync > iRequired, 'appartenance et organisation vérifiées avant toute écriture');
+  assert.match(src.slice(iMember, iRequired), /status: 403/);
+  assert.match(src, /JSON\.stringify\(\{ success: true, \.\.\.\(alreadyExists \? \{ alreadyExists: true \} : \{\}\) \}\)/);
+  // « Contacté » ne rétrograde jamais un candidat plus avancé.
+  assert.match(src, /const CONTACT_OVERWRITABLE_STAGES = new Set<string>\(\['Nouveau', 'Contacté'\]\);/);
+  assert.match(src, /const CONTACT_LOCKED_STATUSES = new Set<string>\(\['replied', 'dismissed'\]\);/);
+  assert.match(src, /const isShortlistIntent = input\.etape !== 'Contacté';/);
+  // « Shortlister » non plus, et réutilise la ligne déjà suivie (job_id avec ou
+  // sans préfixe project:) au lieu d'en créer une seconde.
+  assert.match(src, /const SHORTLIST_OVERWRITABLE_STAGES = new Set<string>\(\['Nouveau', 'Contacté', 'Répondu'\]\);/);
+  assert.match(src, /const SHORTLIST_LOCKED_STATUSES = new Set<string>\(\['shortlisted', 'dismissed'\]\);/);
+  const iLookup = src.indexOf(".in('job_id', [normalizedJobId, `project:${normalizedJobId}`])");
+  assert.ok(iLookup > 0 && iLookup < src.indexOf('.upsert('), 'ligne existante cherchée avant l’upsert');
+  assert.match(src, /isShortlistIntent\s*\? canOverwriteWithShortlist\(r\.pipeline_stage, r\.status\)/);
 });
 
 // ─── R1 (arbitrage) : auto-analyze-message borné à l'organisation du compte ──

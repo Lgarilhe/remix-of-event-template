@@ -188,10 +188,10 @@ Fait (pipeline global, `/pipeline`) :
 - Déplacement groupé : un toast avec le nombre exact, les échecs comptés et « Annuler » ; les candidats en échec restent cochés ; tout échec remet l'état précédent. Chaque écriture est relue (E-23).
 - Provenance en mots (« Mission », « Séquence », « InMail ») au lieu du badge « PIPELINE » ; filtre « Avec rappel » ; Rappels dans un `Sheet` (E-18, E-20).
 - Tableau : nom en bouton qui ouvre la fiche, tri annoncé (`aria-sort`), liens nommés ; chronologie datée, atteignable au clavier ; analyse aux métriques renommées, barres monochromes avec valeur écrite et définitions (E-25 à E-27).
-- Shortlist client sur les primitives du kit, « Taux de placement » distinct du « Taux de réussite » (E-28 partiel).
+- Shortlist client (E-28) : sans objet depuis le retrait de Notion le 28/09, l'onglet et ses composants ont été supprimés.
 - Squelettes à la forme de chaque vue, `ErrorState` avec « Réessayer », plus de « Failed to load data » (E-44). Test `tests/ux/lot7a-pipeline.test.mjs`.
 
-Reste pour le pipeline : une colonne à la fois avec sélecteur d'étape sur téléphone (E-21) ; la fusion de la shortlist dans le pipeline, décision produit (E-28) ; les gabarits communs de candidat et un avatar neutre unique (E-43) ; le module d'étapes commun, qui attend la décision sur la table d'étapes (E-01) : aujourd'hui une étape de mission inconnue s'affiche « Nouveau » dans le pipeline global.
+Reste pour le pipeline : une colonne à la fois avec sélecteur d'étape sur téléphone (E-21) ; les gabarits communs de candidat et un avatar neutre unique (E-43) ; le module d'étapes commun, qui attend la décision sur la table d'étapes (E-01) : aujourd'hui une étape de mission inconnue s'affiche « Nouveau » dans le pipeline global.
 
 Fait (assistant, page Agents, IA en ligne, sheet de poste) :
 

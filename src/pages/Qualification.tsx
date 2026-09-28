@@ -20,7 +20,6 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { cn } from '@/lib/utils';
 import { aiRecommendationMeta } from '@/lib/verdicts';
 import { Section } from '@/components/layout/Section';
@@ -285,33 +284,13 @@ export default function Qualification() {
         setSaveState('saved');
         retryRef.current = null;
         if (kind === 'notes') return;
-
-        // Report du verdict sur l'étape du candidat (go et no_go seulement).
-        if ((current.verdict === 'go' || current.verdict === 'no_go') && session.candidate_profile_id && session.job_id) {
-          const stage = current.verdict === 'go' ? 'Qualifié' : 'Rejeté';
-          const { data: sync, error: syncError } = await invokeEdgeFunction('update-candidate-stage', {
-            candidateId: session.candidate_profile_id,
-            jobId: session.job_id,
-            stage,
-            status: stage,
-          });
-          if (syncError || !sync?.success) {
-            console.warn('[Qualification] étape du candidat non mise à jour :', syncError ?? sync?.error);
-            const pipelinePath = session.project_id ? `/missions/${session.project_id}?tab=pipeline` : '/pipeline';
-            toast.warning(
-              "Qualification enregistrée, mais l'étape du candidat n'a pas été mise à jour. Modifiez-la depuis le pipeline.",
-              { action: { label: 'Ouvrir le pipeline', onClick: () => navigate(pipelinePath) } },
-            );
-            return;
-          }
-        }
         toast.success('Qualification enregistrée');
       };
       const chained = queueRef.current.then(run, run);
       queueRef.current = chained.catch(() => undefined);
       return chained;
     },
-    [id, navigate],
+    [id],
   );
 
   // Notes : enregistrement automatique 10 s après la dernière frappe.

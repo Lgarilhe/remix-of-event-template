@@ -1,28 +1,22 @@
 /**
- * AddToPipelineModal — ajouter le candidat d'une conversation au pipeline d'un
- * poste publié (shortlist).
+ * AddToPipelineModal — ajouter le candidat d'une conversation au pipeline
+ * d'une mission active de l'organisation (shortlist).
  *
- * Revue design D-19 : bouton principal monochrome, poste choisi en accent
+ * Revue design D-19 : bouton principal monochrome, mission choisie en accent
  * (sélection), toasts sans emoji qui disent ce qui a été fait ; une panne de
- * chargement des postes s'affiche avec « Réessayer », jamais comme une liste
- * vide.
+ * chargement des missions s'affiche avec « Réessayer », jamais comme une
+ * liste vide.
  */
 
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState, useEffect, useId, useMemo } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useSourcingProjects, type SourcingProject } from '@/hooks/useSourcingProjects';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -36,23 +30,10 @@ import {
   Briefcase,
   Building2,
   Search,
-  MapPin,
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-interface JobData {
-  id: string;
-  title: string;
-  client?: { id: string; name: string; sector: string } | null;
-  skills: string[];
-  seniority?: string;
-  location?: string;
-  remote?: string;
-  contractType?: string;
-  entity?: string;
-}
 
 interface CandidateProfile {
   name: string;
@@ -69,8 +50,6 @@ interface AddToPipelineModalProps {
   onSuccess?: () => void;
 }
 
-const ENTITIES = ['Konekt', 'Autre'];
-
 export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   open,
   onOpenChange,
@@ -78,25 +57,20 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
   preSelectedJobId,
   onSuccess,
 }) => {
-  const [jobs, setJobs] = useState<JobData[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const { organizationId } = useOrganization();
+  const { projects, isLoading: loading, isError: loadFailed, refetch } = useSourcingProjects('mission');
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedJob, setSelectedJob] = useState<JobData | null>(null);
+  const [selectedJob, setSelectedJob] = useState<SourcingProject | null>(null);
   const jobsLabelId = useId();
   const searchId = useId();
-  const entityId = useId();
 
-  // Form fields
-  const [entity, setEntity] = useState('Konekt');
+  // Missions actives de l'organisation
+  const jobs = useMemo(() => projects.filter(p => p.status === 'active'), [projects]);
 
-  // Fetch jobs when modal opens
-  useEffect(() => {
-    if (open) {
-      fetchJobs();
-    }
-  }, [open]);
+  const reloadMissions = () => {
+    void refetch();
+  };
 
   // Auto-select job if preSelectedJobId is provided
   useEffect(() => {
@@ -108,68 +82,35 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
     }
   }, [preSelectedJobId, jobs]);
 
-  const fetchJobs = async () => {
-    setLoading(true);
-    setLoadFailed(false);
-    try {
-      const response = await invokeEdgeFunction('fetch-notion-jobs', {
-        status: 'Publié',
-      });
-
-      if (response.error) throw response.error;
-
-      if ((response.data as any)?.jobs) {
-        setJobs(((response.data as any).jobs).map((job: any) => ({
-          id: job.id,
-          title: job.title || 'Poste',
-          client: job.client,
-          skills: job.skills || [],
-          seniority: job.seniority,
-          location: job.location,
-          remote: job.remote,
-          contractType: job.contractType,
-          entity: job.entity,
-        })));
-      }
-    } catch (error) {
-      console.error('Error fetching jobs:', error);
-      setLoadFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
   const filteredJobs = jobs.filter(job => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     return (
-      job.title.toLowerCase().includes(query) ||
-      job.client?.name.toLowerCase().includes(query) ||
-      job.location?.toLowerCase().includes(query) ||
-      job.skills.some(s => s.toLowerCase().includes(query))
+      job.name.toLowerCase().includes(query) ||
+      job.job_title?.toLowerCase().includes(query) ||
+      job.client_name?.toLowerCase().includes(query)
     );
   });
 
   const handleSubmit = async () => {
     if (!selectedJob) {
-      toast.error('Choisissez un poste', { description: 'Le candidat est ajouté au pipeline du poste choisi.' });
+      toast.error('Choisissez une mission', { description: 'Le candidat est ajouté au pipeline de la mission choisie.' });
+      return;
+    }
+    if (!organizationId) {
+      toast.error('Organisation en cours de chargement', { description: 'Réessayez dans un instant.' });
       return;
     }
 
     setSubmitting(true);
     try {
-      const response = await invokeEdgeFunction('add-to-shortlist', {
+      const response = await invokeEdgeFunction<{ alreadyExists?: boolean }>('add-to-shortlist', {
+        organization_id: organizationId,
         name: candidate.name,
         headline: candidate.headline,
         linkedinUrl: candidate.linkedinUrl,
         linkedinId: candidate.linkedinId,
         jobId: selectedJob.id,
-        jobTitle: selectedJob.title,
-        clientName: selectedJob.client?.name,
-        clientId: selectedJob.client?.id,
-        entity: entity,
-        source: 'linkedin_inbox',
       });
 
       if (response.error) throw response.error;
@@ -184,14 +125,12 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
       };
       if (response.data?.alreadyExists) {
         toast.success('Candidat déjà dans le pipeline', {
-          description: `${candidate.name} figure déjà dans la shortlist du poste « ${selectedJob.title} ».`,
+          description: `${candidate.name} est déjà suivi sur la mission « ${selectedJob.name} », son étape n'a pas changé.`,
           action: viewPipeline,
         });
       } else {
         toast.success('Candidat ajouté au pipeline', {
-          description: selectedJob.client?.name
-            ? `${candidate.name} rejoint la shortlist du poste « ${selectedJob.title} » chez ${selectedJob.client.name}.`
-            : `${candidate.name} rejoint la shortlist du poste « ${selectedJob.title} ».`,
+          description: `${candidate.name} rejoint la shortlist de la mission « ${selectedJob.name} ».`,
           action: viewPipeline,
         });
       }
@@ -208,12 +147,8 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
     }
   };
 
-  const handleJobSelect = (job: JobData) => {
+  const handleJobSelect = (job: SourcingProject) => {
     setSelectedJob(job);
-    // Auto-fill entity if job has one
-    if (job.entity) {
-      setEntity(job.entity);
-    }
   };
 
   return (
@@ -222,24 +157,24 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
         <DialogHeader>
           <DialogTitle>Ajouter au pipeline</DialogTitle>
           <DialogDescription>
-            Choisissez le poste pour lequel {candidate.name} rejoint la shortlist.
+            Choisissez la mission pour laquelle {candidate.name} rejoint la shortlist.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-1 flex-col gap-4 overflow-hidden py-2">
-          {/* Poste */}
+          {/* Mission */}
           <div className="space-y-2">
             <p id={jobsLabelId} className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Briefcase className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              Poste
+              Mission
             </p>
 
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Label htmlFor={searchId} className="sr-only">Rechercher un poste</Label>
+              <Label htmlFor={searchId} className="sr-only">Rechercher une mission</Label>
               <Input
                 id={searchId}
-                placeholder="Intitulé, client, ville ou compétence"
+                placeholder="Mission, poste ou client"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -248,7 +183,7 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
 
             <ScrollArea className="h-48 rounded-lg border border-border">
               {loading ? (
-                <div className="space-y-2 p-3" role="status" aria-label="Chargement des postes">
+                <div className="space-y-2 p-3" role="status" aria-label="Chargement des missions">
                   <Skeleton className="h-16 w-full rounded-lg" />
                   <Skeleton className="h-16 w-full rounded-lg" />
                   <Skeleton className="h-16 w-full rounded-lg" />
@@ -257,9 +192,9 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
                 <div className="p-3">
                   <ErrorState
                     variant="compact"
-                    title="Impossible de charger les postes"
+                    title="Impossible de charger les missions"
                     description="Vérifiez votre connexion, puis réessayez."
-                    onRetry={fetchJobs}
+                    onRetry={reloadMissions}
                   />
                 </div>
               ) : filteredJobs.length === 0 ? (
@@ -267,11 +202,11 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
                   <EmptyState
                     variant="compact"
                     icon={Briefcase}
-                    title={searchQuery.trim() ? 'Aucun poste ne correspond' : 'Aucun poste publié'}
+                    title={searchQuery.trim() ? 'Aucune mission ne correspond' : 'Aucune mission active'}
                     description={
                       searchQuery.trim()
                         ? 'Modifiez la recherche pour élargir la liste.'
-                        : 'Les postes publiés apparaissent ici dès leur mise en ligne.'
+                        : 'Les missions actives de votre organisation apparaissent ici.'
                     }
                   />
                 </div>
@@ -294,26 +229,11 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
                         >
                           <span className="flex items-start justify-between gap-2">
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium text-foreground">{job.title}</span>
-                              {job.client?.name && (
+                              <span className="block truncate text-sm font-medium text-foreground">{job.name}</span>
+                              {job.client_name && (
                                 <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                                   <Building2 className="h-3 w-3" aria-hidden="true" />
-                                  {job.client.name}
-                                </span>
-                              )}
-                              {(job.location || job.contractType) && (
-                                <span className="mt-1 flex flex-wrap items-center gap-2">
-                                  {job.location && (
-                                    <Badge variant="muted" className="px-1.5 py-0 text-2xs">
-                                      <MapPin className="h-3 w-3" aria-hidden="true" />
-                                      {job.location}
-                                    </Badge>
-                                  )}
-                                  {job.contractType && (
-                                    <Badge variant="outline" className="px-1.5 py-0 text-2xs">
-                                      {job.contractType}
-                                    </Badge>
-                                  )}
+                                  {job.client_name}
                                 </span>
                               )}
                             </span>
@@ -326,24 +246,6 @@ export const AddToPipelineModal: React.FC<AddToPipelineModalProps> = ({
                 </ul>
               )}
             </ScrollArea>
-          </div>
-
-          {/* Entité */}
-          <div className="space-y-1.5">
-            <Label htmlFor={entityId} className="flex items-center gap-1 text-sm">
-              <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              Entité
-            </Label>
-            <Select value={entity} onValueChange={setEntity}>
-              <SelectTrigger id={entityId} className="h-9">
-                <SelectValue placeholder="Choisir une entité" />
-              </SelectTrigger>
-              <SelectContent>
-                {ENTITIES.map((e) => (
-                  <SelectItem key={e} value={e}>{e}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
 

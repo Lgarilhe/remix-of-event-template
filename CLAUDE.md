@@ -265,15 +265,15 @@ Email transactionnel: send-transactional-email, process-email-queue, handle-emai
 Enrichment & sociétés: enrich-company, enrich-candidate-contact, get-enrichment-status, process-enrichment-queue,
                     resolve-pedigree-directory, refresh-pedigree-by-funding-stage
 LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks
-Missions / pipeline: add-to-shortlist, update-candidate-stage, submit-application (neutralisée au lot C1 : répond 410, à supprimer en prod), client-portal-data,
-                    accept-mission-invitation, accept-invitation, send-team-invitation
-Notion:             fetch-notion-candidates, fetch-notion-jobs, notify-notion, update-notion-job, notion-mcp-oauth
+Missions / pipeline: add-to-shortlist, submit-application (neutralisée au lot C1 : répond 410, à supprimer en prod), client-portal-data,
+                    accept-mission-invitation, accept-invitation, send-team-invitation, marketplace-admin
+Notion:             notion-mcp-oauth (connexion Notion de l'assistant)
 Autres intégrations: stripe-webhook, create-checkout-session, create-portal-session, aircall-webhook, calendly-webhook,
                     setup-calendly-webhook, backfill-calendly
 Extension Chrome:   extension-token, extension-quick-add, extension-pipeline-status
 RGPD / données:     export-org-data, rgpd-erase-contact, rgpd-purge
 ```
-74 fonctions (2026-09-06, create-portal-session ajoutée par le lot P0-C). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin. Liste à jour : `ls supabase/functions/`.
+70 fonctions (2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
 
 ---
 
@@ -288,12 +288,12 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 ### CRITICAL — à setter absolument, sinon fonctionnalités core cassées
 | Secret | Utilisé par (principales) |
 |--------|---------------------------|
-| `ANTHROPIC_API_KEY` | **tous les appels AI** — le helper `_shared/call-claude.ts` est l'unique passerelle vers les LLM depuis la migration Lovable → Anthropic direct (2026-04-21). Ancien Lovable Gateway Gemini remplacé par Claude Haiku 4.5. Lu par 23 fonctions (2026-09-06) : ai-chat-completion, analyze-response, auto-analyze-message, auto-categorize-chats, detect-profile-fraud, enrich-company, fetch-notion-jobs, generate-call-report, generate-client-competitors, generate-outreach-message, generate-reply-suggestions, generate-scorecard, generate-search-filters, ingest-user-file, live-coach, nl-filter-edit, process-sequences, refine-search-filters, retrieve-context, score-profile-job, search-agent-chat, sequence-send-email, text-action ; plus agent-tool-action et process-scheduled-actions via `_shared/agent-tools-mutations.ts` (import dynamique de call-claude.ts) |
-| `OPENAI_API_KEY` | fetch-notion-jobs, generate-embedding, ingest-context, ingest-user-file, retrieve-context (embeddings seulement) |
+| `ANTHROPIC_API_KEY` | **tous les appels AI** — le helper `_shared/call-claude.ts` est l'unique passerelle vers les LLM depuis la migration Lovable → Anthropic direct (2026-04-21). Ancien Lovable Gateway Gemini remplacé par Claude Haiku 4.5. Lu par 22 fonctions (2026-09-28) : ai-chat-completion, analyze-response, auto-analyze-message, auto-categorize-chats, detect-profile-fraud, enrich-company, generate-call-report, generate-client-competitors, generate-outreach-message, generate-reply-suggestions, generate-scorecard, generate-search-filters, ingest-user-file, live-coach, nl-filter-edit, process-sequences, refine-search-filters, retrieve-context, score-profile-job, search-agent-chat, sequence-send-email, text-action ; plus agent-tool-action et process-scheduled-actions via `_shared/agent-tools-mutations.ts` (import dynamique de call-claude.ts) |
+| `OPENAI_API_KEY` | generate-embedding, ingest-context, ingest-user-file, retrieve-context (embeddings seulement) |
 | `UNIPILE_API_KEY` + `UNIPILE_DSN` | unipile-accounts, unipile-search, unipile-webhook, unipile-manage-webhooks + toutes les fonctions qui touchent LinkedIn (~15 au total) |
 | `SB_SECRET_KEY` | clé service-role « nouveau format » : lue en priorité par `_shared/require-auth.ts` et par quasiment toutes les fonctions (`Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`). Si absente, repli sur `SUPABASE_SERVICE_ROLE_KEY` auto-provisionnée |
 | `ALLOWED_ORIGINS` | `_shared/cors.ts` (allowlist CORS, séparée par des virgules ; défaut = prod Vercel + localhost si absente) |
-| `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | **À retirer (décision 16, lot C1)** : plus aucun repli sur ces secrets de la plateforme, seule la clé Notion reliée par l'organisation est utilisée. Encore lus par process-sequences, en cours de réécriture par une autre branche |
+| `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | **À retirer (décision 16)** : la synchro Notion par clé API est sortie du code le 2026-09-28, seule la connexion Notion de l'assistant reste. Plus aucune fonction ne lit ces secrets, sauf process-sequences (réservé, en réécriture par une autre branche) : `NOTION_API_KEY`, `NOTION_CANDIDATS_DB_ID` et `NOTION_SHORTLIST_DB_ID`. À retirer dès que process-sequences est nettoyé. `NOTION_POSTES_DB_ID` n'est plus lu du tout |
 | `STRIPE_SECRET_KEY` | create-checkout-session, create-portal-session, stripe-webhook (relecture des abonnements) |
 | `RESEND_API_KEY` | process-email-queue (envoi emails via Resend API) |
 

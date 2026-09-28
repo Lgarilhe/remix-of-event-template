@@ -644,7 +644,6 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             score: detailCandidate.score,
             recommendation: detailCandidate.recommendation,
             tags: (detailCandidate as ProjectCandidate & { tags?: string[] }).tags || [],
-            notionShortlistId: (detailCandidate as ProjectCandidate & { notion_shortlist_id?: string | null }).notion_shortlist_id ?? null,
             linkedinProfileData: (detailCandidate as ProjectCandidate & { linkedin_profile_data?: unknown }).linkedin_profile_data,
           } as ATSCandidate}
           onClose={() => setDetailCandidate(null)}

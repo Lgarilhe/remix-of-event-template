@@ -197,21 +197,27 @@ const frontCatalog = read('src/types/aiCredits.ts');
 const extraLabels = (() => {
   const start = credits.indexOf('const HISTORY_EXTRA_LABELS');
   const body = credits.slice(start, credits.indexOf('\n};', start));
-  return Object.fromEntries([...body.matchAll(/^\s*([a-z0-9_]+):\s*'([^']+)'/gm)].map((m) => [m[1], m[2]]));
+  return Object.fromEntries(
+    [...body.matchAll(/^\s*([a-z0-9_]+):\s*'((?:[^'\\]|\\.)+)'/gm)].map((m) => [m[1], m[2].replace(/\\'/g, "'")]),
+  );
 })();
 
 test('R8 — catalogues front et serveur identiques', () => {
   const front = catalogKeys(frontCatalog);
   const server = catalogKeys(read('supabase/functions/_shared/ai-config.ts'));
-  assert.ok(front.length >= 40, `catalogue front incomplet (${front.length})`);
+  // 39 depuis le retrait de notion_job_skills (Notion hors connexion de l'assistant, 2026-09-28).
+  assert.ok(front.length >= 39, `catalogue front incomplet (${front.length})`);
   assert.deepEqual(front, server);
+  assert.ok(!front.includes('notion_job_skills'), 'notion_job_skills a quitté les deux catalogues');
+  // Ses débits passés restent lisibles dans l'historique.
+  assert.equal(extraLabels.notion_job_skills, "Compétences extraites d'un poste");
 });
 
 test('R8 — aucun libellé d\'action ne cite un fournisseur', () => {
   const start = frontCatalog.indexOf('export const ACTION_COSTS');
   const body = frontCatalog.slice(start, frontCatalog.indexOf('\n};', start));
   const labels = [...body.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(labels.length >= 40);
+  assert.ok(labels.length >= 39);
   for (const label of [...labels, ...Object.values(extraLabels)]) {
     assert.doesNotMatch(label, VENDORS, label);
   }

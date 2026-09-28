@@ -29,8 +29,8 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ATSCandidate } from '@/hooks/useATSData';
-import { useNotionJobs } from '@/hooks/useNotionJobs';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
+import { CONTRACT_TYPE_LABELS, type JobDetails } from '@/types/jobDetails';
 import { aiRecommendationMeta, hiringVerdictMeta } from '@/lib/verdicts';
 import { cn } from '@/lib/utils';
 
@@ -78,6 +78,18 @@ function PageSkeleton() {
   );
 }
 
+/** Détails du poste affichés dans la colonne « Mission », lus dans sourcing_projects.job_details. */
+interface JobSidebarDetails {
+  title: string | null;
+  client: { name: string } | null;
+  location: string | null;
+  seniority: string | null;
+  contractType: string | null;
+  remote: boolean;
+  mustHave: string[];
+  description: string | null;
+}
+
 export default function ScorecardFullPage() {
   const { candidateId } = useParams<{ candidateId: string }>();
   const [searchParams] = useSearchParams();
@@ -97,7 +109,7 @@ export default function ScorecardFullPage() {
   const [quickEval, setQuickEval] = useState<ScorecardSummary | null>(null);
   const [recording, setRecording] = useState(false);
 
-  const { data: notionJobs } = useNotionJobs();
+  const [jobDetails, setJobDetails] = useState<JobSidebarDetails | null>(null);
 
   useEffect(() => {
     if (!candidateId) {
@@ -150,18 +162,38 @@ export default function ScorecardFullPage() {
         tags: data.tags || [],
       };
 
-      if (data.job_id) {
-        const { data: proj } = await supabase
+      let job: JobSidebarDetails | null = null;
+      if (data.project_id || data.job_id) {
+        // Mission par project_id (rempli depuis les deux formes de job_id),
+        // job_id en repli pour les anciennes missions.
+        const projQuery = supabase
           .from('sourcing_projects')
-          .select('job_title')
-          .eq('job_id', data.job_id)
+          .select('job_title, client_name, description, job_details');
+        const { data: proj } = await (data.project_id
+          ? projQuery.eq('id', data.project_id)
+          : projQuery.eq('job_id', data.job_id))
           .limit(1)
           .maybeSingle();
         if (proj?.job_title) c.jobTitle = proj.job_title;
+        if (proj) {
+          const jd: JobDetails = (proj.job_details as JobDetails | null) ?? {};
+          const clientName = jd.client?.name || proj.client_name;
+          job = {
+            title: jd.title || proj.job_title || null,
+            client: clientName ? { name: clientName } : null,
+            location: jd.location || null,
+            seniority: jd.seniority || null,
+            contractType: jd.contract_type ? (CONTRACT_TYPE_LABELS[jd.contract_type] || jd.contract_type) : null,
+            remote: jd.remote_policy === 'full_remote',
+            mustHave: jd.skills_must_have || [],
+            description: jd.mission_description || jd.context || proj.description || null,
+          };
+        }
       }
 
       if (cancelled) return;
       setCandidate(c);
+      setJobDetails(job);
       setLoadState('ready');
     };
     load().catch((err) => {
@@ -231,11 +263,6 @@ export default function ScorecardFullPage() {
     };
   }, [candidate]);
 
-  const jobDetails = useMemo(() => {
-    if (!candidate?.jobId) return null;
-    return notionJobs?.find((j) => j.id === candidate.jobId) || null;
-  }, [candidate?.jobId, notionJobs]);
-
   const goBack = useCallback(() => {
     // Ouverte dans un nouvel onglet ou par un lien direct : pas de page précédente dans l'application.
     if (location.key !== 'default') navigate(-1);
@@ -298,8 +325,7 @@ export default function ScorecardFullPage() {
   const verdict = hiringVerdictMeta(quickEval?.recommendation);
   const aiReco = aiRecommendationMeta(candidate.recommendation);
   const years = enrichedProfile?.yearsOfExperience;
-  const mustHave = (jobDetails as unknown as { mustHave?: unknown } | null)?.mustHave;
-  const mustHaveList = Array.isArray(mustHave) ? (mustHave as string[]) : [];
+  const mustHaveList = jobDetails?.mustHave ?? [];
 
   const progressBar = (className: string) => (
     <div

@@ -4,18 +4,16 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { Job } from '@/types/jobs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Loader2, Target, X, Wand2, Search, Sparkles, RefreshCw, ChevronDown, Check } from 'lucide-react';
+import { Loader2, Target, X, Wand2, Search, Sparkles, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useNotionJobs } from '@/hooks/useNotionJobs';
+import { useMissionJobs } from '@/hooks/useMissionJobs';
 
-// Re-export useNotionJobs as useJobs for backward compatibility
-export const useJobs = useNotionJobs;
+// Liste des postes du sélecteur : les missions en cours de l'organisation
+export const useJobs = useMissionJobs;
 
 interface JobSelectorProps {
   selectedJob: Job | null;
@@ -47,38 +45,8 @@ export interface GeneratedFilters {
   open_to_work: boolean;
 }
 
-// Hook to force refresh jobs from Notion
-export const useRefreshJobs = () => {
-  const queryClient = useQueryClient();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const refresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      const { data, error } = await invokeEdgeFunction<{ jobs?: Job[] }>('fetch-notion-jobs', { all: true, refresh: true });
-      
-      if (error) throw error;
-      if (!data?.success) throw new Error('Failed to refresh jobs');
-      
-      // Update React Query cache with fresh data (both possible query keys)
-      queryClient.setQueryData(['notion-jobs-all'], data.jobs || []);
-      const orgKeys = queryClient.getQueryCache().findAll({ queryKey: ['notion-jobs'] });
-      orgKeys.forEach(q => queryClient.setQueryData(q.queryKey, data.jobs || []));
-      toast.success(`${data.jobs?.length || 0} postes synchronisés depuis Notion`);
-    } catch (err) {
-      console.error('Failed to refresh jobs:', err);
-      toast.error('Erreur lors de la synchronisation');
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [queryClient]);
-
-  return { refresh, isRefreshing };
-};
-
 export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChange, onAutoFillFilters }) => {
   const { data: jobs = [], isLoading: loading } = useJobs();
-  const { refresh: refreshJobs, isRefreshing } = useRefreshJobs();
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -204,7 +172,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       <div className="border border-border bg-background p-3 space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-sm">🎯</span>
-          <span className="text-xs font-bold text-foreground uppercase tracking-wider">Scoring Job</span>
+          <span className="text-xs font-bold text-foreground uppercase tracking-wider">Mission</span>
         </div>
         <Skeleton className="h-9 w-full" />
       </div>
@@ -216,27 +184,9 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
       <div className="flex items-center gap-2">
         <span className="text-sm">🎯</span>
         <label className="text-xs font-bold text-foreground uppercase tracking-wider">
-          Scoring Job
+          Mission
         </label>
         <div className="ml-auto flex items-center gap-1">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={refreshJobs}
-                  disabled={isRefreshing}
-                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                >
-                  <RefreshCw className={cn('w-3.5 h-3.5', isRefreshing && 'animate-spin')} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">Synchroniser avec Notion</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
           {selectedJob && (
             <Button
               variant="ghost"
@@ -256,7 +206,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
           onChange={(e) => handleChange(e.target.value)}
           className="flex h-9 w-full items-center border border-border bg-background px-3 py-2 text-sm focus:outline-none"
         >
-          <option value="none">Pas de scoring job</option>
+          <option value="none">Aucune mission</option>
           {jobs.map((job) => (
             <option key={job.id} value={job.id}>
               {job.title}{job.client?.name ? ` — ${job.client.name}` : ''}
@@ -291,7 +241,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                 )}
               </div>
             ) : (
-              <span className="text-muted-foreground">Sélectionner un poste…</span>
+              <span className="text-muted-foreground">Sélectionner une mission…</span>
             )}
             <ChevronDown className={cn("h-4 w-4 opacity-50 shrink-0 ml-2 transition-transform", popoverOpen && "rotate-180")} />
           </button>
@@ -305,7 +255,7 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <Input
-                    placeholder="Rechercher un poste..."
+                    placeholder="Rechercher une mission..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-8 h-8 text-sm border-border rounded-lg"
@@ -334,12 +284,12 @@ export const JobSelector: React.FC<JobSelectorProps> = ({ selectedJob, onJobChan
                   ) : (
                     <span className="w-3.5 shrink-0" />
                   )}
-                  <span className="text-muted-foreground">Aucun poste</span>
+                  <span className="text-muted-foreground">Aucune mission</span>
                 </button>
 
                 {filteredJobs.length === 0 && searchQuery && (
                   <div className="p-4 text-center text-sm text-muted-foreground">
-                    Aucun poste trouvé pour « {searchQuery} »
+                    Aucune mission trouvée pour « {searchQuery} »
                   </div>
                 )}
 

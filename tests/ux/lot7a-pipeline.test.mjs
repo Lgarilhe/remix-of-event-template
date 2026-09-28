@@ -14,7 +14,8 @@
  *   - un seul toast pour un déplacement groupé, échecs comptés, retour
  *     arrière sur échec (E-23) ;
  *   - en-tête, vues, indicateurs et état vide du registre calme (E-14, E-24) ;
- *   - tableau, chronologie, analyse, shortlist client (E-25 à E-28) ;
+ *   - tableau, chronologie, analyse (E-25 à E-27 ; la shortlist client,
+ *     E-28, est partie avec Notion) ;
  *   - une lecture en échec s'affiche comme une erreur (E-44) ; texte (E-46 à E-53).
  *
  * `useATSData` est chargé en mémoire, ses dépendances d'exécution (base,
@@ -104,13 +105,6 @@ const PERIMETER = [
   'src/components/ats/ATSTableSkeleton.tsx',
   'src/components/ats/BulkActionsBar.tsx',
   'src/components/ats/RemindersSidebar.tsx',
-  'src/components/candidates/CandidatePipeline.tsx',
-  'src/components/candidates/DroppableColumn.tsx',
-  'src/components/candidates/DraggableCandidateCard.tsx',
-  'src/components/candidates/CandidateFilters.tsx',
-  'src/components/candidates/PipelineStats.tsx',
-  'src/components/candidates/CandidateList.tsx',
-  'src/components/candidates/CandidateCard.tsx',
 ];
 
 /** Littéraux de chaîne et textes JSX, sans commentaires ni chemins d'import. */
@@ -202,17 +196,14 @@ test('E-21 : Rappels en panneau latéral, « Déplacer vers… » sur chaque car
   assert.match(REMINDERS, /w-full max-w-none/, 'plein écran sous 768 px');
   assert.match(CARD, /Déplacer \$\{candidate\.name\} vers une autre étape/);
   assert.match(CARD, /DropdownMenuRadioGroup/);
-  assert.match(read('src/components/candidates/DraggableCandidateCard.tsx'), /Déplacer \$\{name\} vers une autre étape/);
 });
 
 test('E-22 : glisser-déposer au clavier, en français', () => {
-  for (const [name, src] of [['pipeline', KANBAN], ['shortlist', read('src/components/candidates/CandidatePipeline.tsx')]]) {
-    assert.match(src, /useSensor\(KeyboardSensor/, `${name} : KeyboardSensor absent`);
-    assert.match(src, /screenReaderInstructions: SCREEN_READER_INSTRUCTIONS/, `${name} : consignes`);
-    assert.match(src, /saisi, dans la colonne/, `${name} : annonce de saisie`);
-    assert.match(src, /déposé dans \$\{stageLabel\(over\.id\)\}/, `${name} : annonce de dépôt`);
-    assert.doesNotMatch(src, /To pick up|Picked up/);
-  }
+  assert.match(KANBAN, /useSensor\(KeyboardSensor/, 'KeyboardSensor absent');
+  assert.match(KANBAN, /screenReaderInstructions: SCREEN_READER_INSTRUCTIONS/, 'consignes');
+  assert.match(KANBAN, /saisi, dans la colonne/, 'annonce de saisie');
+  assert.match(KANBAN, /déposé dans \$\{stageLabel\(over\.id\)\}/, 'annonce de dépôt');
+  assert.doesNotMatch(KANBAN, /To pick up|Picked up/);
   assert.match(read('src/components/ats/ATSDraggableCard.tsx'), /roleDescription: 'carte déplaçable'/);
   // Case de sélection visible au focus.
   assert.match(CARD, /focus-visible:opacity-100/);
@@ -232,7 +223,7 @@ test('E-14, E-24 : en-tête, vues et état vide du registre calme', () => {
   assert.equal(existsSync(join(ROOT, 'src/components/ui/AnimatedFunnel.tsx')), false);
   assert.doesNotMatch(PAGE, /AnimatedFunnel|-3d\.webp|Sync…|animate-pulse/);
   assert.match(PAGE, /title="Pipeline \| Konekt"/);
-  for (const label of ['Colonnes', 'Tableau', 'Chronologie', 'Analyse', 'Shortlist client']) {
+  for (const label of ['Colonnes', 'Tableau', 'Chronologie', 'Analyse']) {
     assert.ok(PAGE.includes(`label: '${label}'`), `vue « ${label} » absente`);
   }
   assert.match(PAGE, /Aucun candidat pour l'instant/);
@@ -266,17 +257,6 @@ test('E-27 : analyse nommée selon ce qu’elle mesure, barres monochromes', () 
   assert.doesNotMatch(ANALYTICS, /Taux de win|Cycle moyen|Temps moyen|bg-gradient|emerald/);
   assert.match(ANALYTICS, /bg-muted-foreground/);
   assert.match(ANALYTICS, /export const ATSPipelineAnalyticsSkeleton/);
-});
-
-test('E-28 : shortlist client sur les primitives et le registre calme', () => {
-  const column = read('src/components/candidates/DroppableColumn.tsx');
-  assert.match(column, /rounded-xl/);
-  assert.match(column, /Voir plus \(\{remainingCount\}\)/);
-  assert.doesNotMatch(column, /uppercase|restants/);
-  assert.match(read('src/components/candidates/CandidateFilters.tsx'), /FilterPill/);
-  const card = read('src/components/candidates/DraggableCandidateCard.tsx');
-  assert.doesNotMatch(card, /green-700|purple-700|brand-purple/);
-  assert.match(card, /aria-expanded=\{isExpanded\}/);
 });
 
 test('E-44 : une lecture en échec s’affiche comme une erreur', () => {

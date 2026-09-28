@@ -219,8 +219,6 @@ export function useFilteredResults({
           case 'messaged':
             return status?.status === 'messaged' || status?.status === 'replied';
           case 'shortlisted':
-            // Le match shortlist Notion est appliqué en aval (SearchResultsPanel,
-            // displayResults) — même mécanique que le filtre 'known'.
             return status?.status === 'shortlisted';
           case 'dismissed':
             return status?.status === 'dismissed';

@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LinkedInFiltersState, LinkedInApiType, API_TYPE_OPTIONS } from '@/components/outreach/types';
 import { LinkedInAccount } from '@/pages/Outreach';
 import { LinkedInFilters } from '@/components/outreach/LinkedInFilters';
-import { JobSelector, GeneratedFilters, useJobs } from '@/components/outreach/JobSelector';
+import { JobSelector, GeneratedFilters } from '@/components/outreach/JobSelector';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useBaseKonektState } from '@/hooks/useBaseKonekt';
 import { BaseKonektDialog } from './BaseKonektDialog';
@@ -122,7 +122,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   // Détail complet (autocomplete LinkedIn, booléen, spotlights…) replié par
   // défaut en contexte mission : les facettes couvrent l'essentiel.
   const [advancedOpen, setAdvancedOpen] = useState(!activeProject);
-  const { data: allJobs = [] } = useJobs();
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
   // Base Konekt : état lisible par tous les membres (RPC get_base_konekt_state),
   // pas seulement par les administrateurs.
@@ -140,15 +139,6 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       onSearchSourceChange?.('linkedin');
     }
   }, [baseKonektLoading, baseKonektUsable, searchSource, onSearchSourceChange]);
-
-  const handleApplyPresetJob = useCallback((jobId: string | null, _jobTitle: string | null) => {
-    if (jobId) {
-      const foundJob = allJobs.find(j => j.id === jobId);
-      if (foundJob) {
-        onJobChange(foundJob);
-      }
-    }
-  }, [allJobs, onJobChange]);
 
   const selectedAccountData = accounts.find(a => a.id === selectedAccount);
   const hasPremiumLicense = subscriptions?.recruiter || subscriptions?.sales_navigator;
@@ -639,7 +629,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             ) : (
               <Search className="w-4 h-4 mr-2" />
             )}
-            {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez un poste' : 'Rechercher'}
+            {loading ? 'Recherche...' : !selectedJob ? 'Sélectionnez une mission' : 'Rechercher'}
           </Button>
           <Button
             variant="outline"

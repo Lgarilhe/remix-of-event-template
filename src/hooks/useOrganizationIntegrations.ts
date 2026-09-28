@@ -6,17 +6,12 @@ import { toast } from 'sonner';
 /**
  * Projection publique de organization_integrations (vue organization_integrations_public).
  * Les secrets ne sont JAMAIS renvoyés au navigateur : seules les clés saisies par le client
- * (Notion / Calendly / Airtable / Aircall) exposent un suffixe masqué `*_hint` ("••••abcd").
+ * (Calendly / Airtable / Aircall) exposent un suffixe masqué `*_hint` ("••••abcd").
  * Les clés provisionnées par Konekt n'apparaissent pas du tout.
  */
 export interface OrganizationIntegrations {
   id: string;
   organization_id: string;
-  notion_postes_db_id: string | null;
-  notion_candidats_db_id: string | null;
-  notion_shortlist_db_id: string | null;
-  notion_connected: boolean;
-  notion_api_key_hint: string | null;
   calendly_connected: boolean;
   calendly_api_key_hint: string | null;
   unipile_connected: boolean;
@@ -32,7 +27,7 @@ export interface OrganizationIntegrations {
 
 /** Champs secrets saisis par le client — écrits uniquement via la RPC set_integration_secret. */
 const SECRET_FIELDS: readonly string[] = [
-  'notion_api_key',
+  'notion_api_key', // retrait seulement (carte Notion retirée)
   'calendly_api_key',
   'airtable_api_key',
   'aircall_api_token',

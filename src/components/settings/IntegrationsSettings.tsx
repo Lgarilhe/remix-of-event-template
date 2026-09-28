@@ -61,17 +61,17 @@ interface IntegrationConfig {
 }
 
 const INTEGRATIONS: IntegrationConfig[] = [
+  // Notion par clé API : retiré, la carte reste visible tant qu'une clé est
+  // enregistrée pour pouvoir la retirer (jusqu'à la suppression des colonnes).
   {
     id: 'notion',
     name: 'Notion',
-    description: 'Synchronisation des postes, candidats et shortlists avec vos bases Notion.',
+    description: 'Synchronisation par clé API retirée. Retirez la clé pour arrêter toute écriture dans vos bases Notion.',
     logoSrc: notionLogo,
     connectedKey: 'notion_connected',
+    retired: true,
     fields: [
       { key: 'notion_api_key', label: 'Clé API Notion', placeholder: 'ntn_...', secret: true },
-      { key: 'notion_postes_db_id', label: 'ID base Postes', placeholder: 'xxxxxxxx-xxxx-...' },
-      { key: 'notion_candidats_db_id', label: 'ID base Candidats', placeholder: 'xxxxxxxx-xxxx-...' },
-      { key: 'notion_shortlist_db_id', label: 'ID base Shortlist', placeholder: 'xxxxxxxx-xxxx-...' },
     ],
   },
   {

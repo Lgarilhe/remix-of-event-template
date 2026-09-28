@@ -429,16 +429,6 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "fast",
     category: "sourcing",
   },
-  notion_job_skills: {
-    action: "notion_job_skills",
-    label: "Compétences extraites d'un poste",
-    floor: 1,
-    // Un seul appel groupé pour tous les postes absents du cache de
-    // compétences, donc rarement rejoué.
-    typicalTokens: 6_000,
-    routingTier: "fast",
-    category: "sourcing",
-  },
   // ─── Enrichment de contact (Better Contact) ─────────────────────────────
   // Pas de tokens consommés (c'est un appel API externe, pas Anthropic).
   // Le floor est le coût réel facturé à l'user, calculateTokenCredits avec

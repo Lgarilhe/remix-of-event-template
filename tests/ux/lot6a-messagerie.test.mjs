@@ -124,7 +124,7 @@ test('D-09 : erreur avec « Réessayer », vide filtré, compte à relier', () =
   assert.match(src.sidebar, /<ErrorState[\s\S]*?onRetry=\{onRefresh\}/);
   assert.match(src.sidebar, /Effacer les filtres/);
   assert.match(src.inbox, /to="\/settings\/account\/connections"/);
-  assert.match(src.pipeline, /<ErrorState[\s\S]*?onRetry=\{fetchJobs\}/, 'les postes aussi : une panne n’est pas une liste vide');
+  assert.match(src.pipeline, /<ErrorState[\s\S]*?onRetry=\{reloadMissions\}/, 'les missions aussi : une panne n’est pas une liste vide');
 });
 
 // ---------------------------------------------------------------- D-10

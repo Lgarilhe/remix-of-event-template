@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json, Tables } from '@/integrations/supabase/types';
-import { invokeEdgeFunction, isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
+import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { HIRING_VERDICTS, INTERVIEW_TYPES, hiringVerdictMeta, interviewTypeLabel } from '@/lib/verdicts';
 import { cn } from '@/lib/utils';
@@ -580,19 +580,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
           jobContext.evaluationWeights = jd.evaluation_weights;
         }
       }
-
-      try {
-        const { data: notionData } = await invokeEdgeFunction<{
-          job?: { description?: string; criteria?: unknown; skills?: unknown };
-        }>('fetch-notion-jobs', {
-          jobId: candidate.jobId,
-        });
-        if (notionData?.job) {
-          jobContext.description = notionData.job.description || jobContext.description;
-          jobContext.requirements = notionData.job.criteria;
-          jobContext.skills = notionData.job.skills;
-        }
-      } catch { /* facultatif */ }
     }
 
     // Étapes du process de la mission, pour situer l'entretien.

@@ -46,7 +46,7 @@ La session « Audit complet du dépôt » refond l'expérience mission, la barre
 | 4 | Tableau de bord | fait |
 | 5 | Tâches et agenda | fait |
 | 6 | Messagerie et séquences | fait |
-| 7 | Pipeline global, scorecard, coaching, assistant IA | fait (restent des décisions produit : table d'étapes, shortlist) |
+| 7 | Pipeline global, scorecard, coaching, assistant IA | fait (reste une décision produit : la table d'étapes) |
 | 8 | Pages publiques et portails | fait |
 | 9 | Onboarding, invitation, qualification, marketplace | fait |
 | 10 | Passe texte | fait pour les zones du chantier (restent les espaces insécables et les zones des autres sessions) |
