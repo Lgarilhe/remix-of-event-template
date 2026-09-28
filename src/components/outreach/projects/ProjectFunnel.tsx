@@ -51,7 +51,7 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
       value: shortlisted,
       pct: shortlistedPct,
       icon: UserCheck,
-      color: 'hsl(var(--skalr-purple))',
+      color: 'hsl(var(--brand))',
       bgLight: 'bg-brand-purple/10',
     },
   ];
@@ -140,12 +140,12 @@ export const ProjectFunnel: React.FC<ProjectFunnelProps> = ({
           </p>
           <p className="text-xs text-info-foreground/80 font-medium">Taux de contact</p>
         </div>
-        <div className="bg-gradient-to-br from-violet-50 to-violet-100/50 rounded-xl p-4 text-center border border-violet-100">
-          <UserCheck className="w-5 h-5 text-violet-600 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-violet-700">
+        <div className="bg-brand/10 rounded-xl p-4 text-center border border-brand/20">
+          <UserCheck className="w-5 h-5 text-brand mx-auto mb-2" />
+          <p className="text-2xl font-bold text-brand">
             {shortlistedPct.toFixed(0)}%
           </p>
-          <p className="text-xs text-violet-600/80 font-medium">Taux shortlist</p>
+          <p className="text-xs text-brand font-medium">Taux shortlist</p>
         </div>
         <div className="bg-gradient-to-br from-success/10 to-success/20 rounded-xl p-4 text-center border border-success/20">
           <Target className="w-5 h-5 text-success-foreground mx-auto mb-2" />

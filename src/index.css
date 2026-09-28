@@ -4,7 +4,7 @@
 /* cache-bust: v3 */
 
 /* Konekt Design System : registre calme, neutres chauds (teinte 40°), un seul
-   accent indigo rationné. Référence : docs/design/01-direction.md.
+   accent bleu-vert rationné. Référence : docs/design/01-direction.md.
    Toutes les couleurs en triplets HSL (consommés par hsl(var(--x) / alpha)).
    Thème par défaut : sombre (:root). Thème clair : classe .light sur <html>.
 */
@@ -36,12 +36,12 @@
     --primary-foreground: 40 3% 11%;
 
     /* ── Accent de marque (focus, sélection, signaux, progression) ── */
-    --brand: 248 54% 72%;
-    --brand-foreground: 250 28% 12%;
-    --brand-hover: 248 58% 78%;
-    --brand-press: 248 48% 66%;
+    --brand: 179 32% 62%;
+    --brand-foreground: 180 25% 10%;
+    --brand-hover: 179 36% 70%;
+    --brand-press: 179 30% 56%;
     /* Aplat qui porte du texte blanc (6,9:1). */
-    --brand-solid: 248 42% 50%;
+    --brand-solid: 181 34% 29%;
     --brand-solid-foreground: 0 0% 100%;
 
     /* ── Filets et focus ──
@@ -58,7 +58,7 @@
     --input: 0 0% 100% / 36%;
     --input-hsl: 0 0% 100%;
     --input-alpha: 0.36;
-    --ring: 248 54% 72%;
+    --ring: 179 32% 62%;
 
     --radius: 0.5rem;
 
@@ -72,7 +72,7 @@
     --sidebar-border: 0 0% 100% / 8%;
     --sidebar-border-hsl: 0 0% 100%;
     --sidebar-border-alpha: 0.08;
-    --sidebar-ring: 248 54% 72%;
+    --sidebar-ring: 179 32% 62%;
 
     /* ── Statuts : couleur d'encre (texte, icône, filet), texte sur aplat, teinte de fond ── */
     --status-success: 145 55% 50%;
@@ -178,11 +178,11 @@
     --primary: 40 6% 12%;
     --primary-foreground: 0 0% 98%;
 
-    --brand: 248 45% 58%;
+    --brand: 181 34% 33%;
     --brand-foreground: 0 0% 100%;
-    --brand-hover: 248 45% 52%;
-    --brand-press: 248 45% 46%;
-    --brand-solid: 248 42% 50%;
+    --brand-hover: 181 34% 28%;
+    --brand-press: 181 34% 24%;
+    --brand-solid: 181 34% 29%;
     --brand-solid-foreground: 0 0% 100%;
 
     --border: 40 8% 90%;
@@ -195,7 +195,7 @@
     --input-hsl: 40 3% 53%;
     --input-alpha: 1;
     --k-hairline-hover: hsl(40 8% 88%);
-    --ring: 248 45% 58%;
+    --ring: 181 34% 33%;
 
     --sidebar-background: 40 8% 96%;
     --sidebar-foreground: 40 5% 30%;
@@ -206,7 +206,7 @@
     --sidebar-border: 40 8% 90%;
     --sidebar-border-hsl: 40 8% 90%;
     --sidebar-border-alpha: 1;
-    --sidebar-ring: 248 45% 58%;
+    --sidebar-ring: 181 34% 33%;
 
     --status-success: 145 63% 30%;
     --status-success-foreground: 0 0% 100%;

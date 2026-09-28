@@ -32,7 +32,7 @@ export const BatchScoringStats: React.FC<BatchScoringStatsProps> = ({ stats, dur
       </div>
       <div className="flex items-center gap-4 text-xs text-muted-foreground pl-6 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <Brain className="w-3 h-3 text-purple-400" />
+          <Brain className="w-3 h-3 text-brand" />
           <span>{stats.llmCalled} scorés par l'IA</span>
         </div>
         <div className="flex items-center gap-1.5">

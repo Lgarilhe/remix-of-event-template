@@ -58,15 +58,18 @@ Pas d'opacité sur un jeton de texte (`text-muted-foreground/60`, `text-foregrou
 
 ### L'accent
 
-Un seul accent, indigo désaturé, rationné à quatre usages : le focus clavier, la sélection (case cochée, interrupteur, onglet actif), les signaux qui demandent l'attention (compteur de non-lus, pastille de nouveauté, priorité) et la progression. Le bouton principal n'est pas en accent : il est monochrome.
+Un seul accent, bleu-vert désaturé (choisi le 28/09/2026 à la place de l'indigo, pour s'accorder aux illustrations), rationné à quatre usages : le focus clavier, la sélection (case cochée, interrupteur, onglet actif), les signaux qui demandent l'attention (compteur de non-lus, pastille de nouveauté, priorité) et la progression. Le bouton principal n'est pas en accent : il est monochrome.
 
 | Jeton | Rôle | Sombre | Clair |
 |---|---|---|---|
-| `--brand` | anneau de focus, texte et icônes d'accent | `248 54% 72%` (#9b91de) | `248 45% 58%` (#7164c4) |
-| `--brand-foreground` | texte posé sur un aplat `brand` | `250 28% 12%` | `0 0% 100%` |
-| `--brand-solid` | aplat qui porte du texte blanc | `248 42% 50%` | `248 42% 50%` |
+| `--brand` | anneau de focus, texte et icônes d'accent | `179 32% 62%` (#7fbdbc) | `181 34% 33%` (#387071) |
+| `--brand-foreground` | texte posé sur un aplat `brand` | `180 25% 10%` | `0 0% 100%` |
+| `--brand-hover` / `--brand-press` | survol et appui | `179 36% 70%` / `179 30% 56%` | `181 34% 28%` / `181 34% 24%` |
+| `--brand-solid` | aplat qui porte du texte blanc | `181 34% 29%` (#316263) | `181 34% 29%` |
 
-L'anneau de focus passe de blanc 25 % (2,3:1 sur le fond, insuffisant) à `brand` plein (6,1:1 en sombre, 4,7:1 en clair).
+Contrastes vérifiés : `brand` dépasse 5,9:1 sur toutes les surfaces sombres (fond, carte, menu, `muted`, survol, barre latérale) et 4,8:1 sur toutes les surfaces claires ; le texte sur aplat `brand` atteint 7,9:1 en sombre et 5,7:1 en clair ; le blanc sur `brand-solid` 6,9:1. L'anneau de focus est `brand` plein.
+
+L'ancienne classe `brand-purple` (palette Skalr) est rabattue sur `brand` : ses usages restants prennent le bleu-vert.
 
 ### Les statuts
 

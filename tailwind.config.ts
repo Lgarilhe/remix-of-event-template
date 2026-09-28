@@ -135,8 +135,9 @@ export default {
   				foreground: 'hsl(var(--status-info-foreground))',
   				muted: 'hsl(var(--status-info-muted))',
   			},
-  			// brand : l'accent indigo unique, rationné (focus, sélection, signaux, progression).
+  			// brand : l'accent bleu-vert unique, rationné (focus, sélection, signaux, progression).
   			// purple, pink, blue, cyan, green : ancienne palette Skalr, à ne plus employer.
+  			// purple est rabattu sur l'accent : ses anciens usages prennent le bleu-vert.
   			brand: {
   				DEFAULT: 'hsl(var(--brand))',
   				foreground: 'hsl(var(--brand-foreground))',
@@ -144,7 +145,7 @@ export default {
   				press: 'hsl(var(--brand-press))',
   				solid: 'hsl(var(--brand-solid))',
   				'solid-foreground': 'hsl(var(--brand-solid-foreground))',
-  				purple: 'hsl(var(--skalr-purple))',
+  				purple: 'hsl(var(--brand))',
   				pink: 'hsl(var(--skalr-pink))',
   				blue: 'hsl(var(--skalr-blue))',
   				cyan: 'hsl(var(--skalr-cyan))',
