@@ -239,6 +239,22 @@ Interface :
 
 Les autres questions relevées par les lots sont tranchées par les correctifs (garde rendez-vous par slug exact, pipeline mis à jour par tous les chemins, clés étrangères des modèles alignées sur la production) ou de simple forme (code 403 ou 404 d'un refus, titre du menu sur l'offre gratuite).
 
+### Fusion du lot C1 et passages finaux (28 septembre)
+
+La branche a reçu `main` avec le lot C1 (réparations des fuites entre organisations) et le retrait du code Notion. Trois conséquences pour les séquences :
+
+- Les quatre migrations du chantier sont renumérotées après celle de C1, déjà en production (voir « Mise en production », point 0).
+- Dans l'ordre d'origine, le balayage R7 de C1 aurait supprimé toute la policy de lecture des inscriptions posée par B6, parce qu'elle citait l'équipe de mission : plus aucun utilisateur connecté n'aurait lu ses inscriptions. La clause d'équipe est retirée et B6 passe après C1.
+- Un collaborateur ne lit plus par la base les séquences des missions de son équipe ni leurs candidats, et un partenaire d'une autre organisation ne voit ni ne duplique plus une séquence de la mission. Cinq tests d'interface sont réécrits : ils vérifient l'absence de ces séquences et, sur une séquence du collaborateur, qu'il n'agit toujours pas sur les candidats d'un collègue.
+
+Résultats sur l'état fusionné, stack locale :
+
+- Suite complète, premier passage : 439 tests d'API réussis et 1 ignoré ; 132 tests d'interface réussis, 4 ignorés, 5 échecs (les cinq tests ci-dessus), 3 non lancés à leur suite.
+- Après leur réécriture : les trois fichiers concernés, 40 tests sur 40 ; puis second passage complet, 439 tests d'API réussis et 1 ignoré, 140 tests d'interface réussis, 4 ignorés (conditions d'environnement ou `fixme` antérieurs), aucun échec.
+- 15 fichiers d'audit SQL verts sur une base neuve où les 278 migrations rejouent, les quatre audits de C1 compris.
+- Tests UX 840, agent 40, C1 42, Deno 172 ; tsc 24 erreurs (25 sur `main`) ; build OK.
+- CI de la pull request (CI et E2E) verte sur l'état fusionné.
+
 ### Ce que cette vague ne couvre pas
 
 - 266 comportements de gravité moyenne et 71 mineurs, sans test de bout en bout.
@@ -252,6 +268,7 @@ Les autres questions relevées par les lots sont tranchées par les correctifs (
 - Brancher la synchronisation Notion sur les identifiants propres de chaque organisation (SEQ-007).
 - Faire tourner dans la CI les tests qui exigent le moteur : le workflow e2e n'y sert pas les edge functions, et ces tests s'ignorent d'eux-mêmes sans la stack locale (`e2e/local-stack/README.md`). Les audits SQL des séquences, eux, tournent désormais dans la CI.
 - Couvrir les comportements moyens et les 18 zones restantes.
+- Accès du collaborateur aux séquences des missions de son équipe : retiré par le lot C1, à redéfinir au lot C2. Les chemins serveur qui l'autorisent encore à inscrire dans une séquence d'une mission de son équipe (assistant, `process-sequences`) sont à aligner sur la décision.
 - Tester en préversion avec un vrai compte LinkedIn, sur quelques candidats internes, avant toute ouverture commerciale.
 - Nettoyage des tests : les organisations de test restent en base, le déclencheur `prevent_last_owner_removal` bloque la suppression de leur propriétaire (déjà le cas avant l'audit).
 - Libellé de l'onglet de mission « Outreach » : laissé tel quel, le renommer touche la navigation de toute l'application.
