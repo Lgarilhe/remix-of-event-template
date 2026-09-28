@@ -32,17 +32,25 @@ export interface PartnerState {
   can_request: boolean;
 }
 
+/**
+ * Champs du poste envoyés à un partenaire par get_open_hunt_missions (C1, R6) :
+ * la liste blanche de la carte, jamais le poste entier ni le nom du client.
+ */
+export type OpenHuntMissionJob = Pick<
+  JobDetails,
+  'title' | 'contract_type' | 'location' | 'remote_policy' | 'seniority' | 'skills_must_have'
+>;
+
 export interface OpenHuntMission {
   id: string;
+  /** Intitulé public : titre du poste, sinon libellé neutre ; jamais le nom interne de la mission. */
   name: string;
-  client_name: string | null;
-  job_details: JobDetails | null;
+  job_details: OpenHuntMissionJob | null;
   hunt_bounty_percent: number | null;
   hunt_max_recruiters: number | null;
   hunt_deadline: string | null;
   hunt_status: string;
   created_at: string;
-  organization_id: string;
   organization_name: string | null;
   accepted_count: number;
   my_application_status: HuntApplicationStatus | null;
@@ -55,8 +63,8 @@ export interface MyHuntApplication {
   message: string | null;
   created_at: string;
   responded_at: string | null;
+  /** Même intitulé public que la carte des missions ouvertes. */
   mission_name: string;
-  client_name: string | null;
   job_title: string | null;
   hunt_bounty_percent: number | null;
   hunt_status: string | null;

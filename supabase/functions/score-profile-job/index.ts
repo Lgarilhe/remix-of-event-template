@@ -2446,15 +2446,21 @@ function isDegradedResult(result: ScoringResult): boolean {
   return result.skippedLLM === true && result.hardFilterPassed !== false;
 }
 
+// C1 (R8) : le cache est lu et écrit par organisation. Sans organisation
+// connue, ni lecture ni écriture : jamais la notation d'une autre organisation
+// sur le même identifiant de poste.
 async function getCachedScore(
   supabase: SupabaseClient,
   candidateId: string,
   jobId: string,
+  organizationId: string | null,
 ): Promise<ScoringResult | null> {
+  if (!organizationId) return null;
   try {
     const { data, error } = await supabase
       .from("match_scores")
       .select("scoring_result, created_at")
+      .eq("organization_id", organizationId)
       .eq("candidate_id", candidateId)
       .eq("job_id", jobId)
       .maybeSingle();
@@ -2483,17 +2489,19 @@ async function setCachedScore(
   candidateId: string,
   jobId: string,
   result: ScoringResult,
+  organizationId: string | null,
 ): Promise<void> {
   try {
     // 1. Cache in match_scores (for fast lookup) — sauf résultat dégradé :
     // on ne fige pas 48h un score sans passe IA, et on n'écrase pas un
     // éventuel score complet déjà caché (ex: deep scoring dont le LLM a
     // échoué, qui écraserait le score quick complet).
-    if (!isDegradedResult(result)) {
+    if (!isDegradedResult(result) && organizationId) {
       await supabase.from("match_scores").upsert(
         {
           candidate_id: candidateId,
           job_id: jobId,
+          organization_id: organizationId,
           score: result.finalScore,
           confidence: result.confidenceScore,
           scoring_result: result,
@@ -2504,11 +2512,18 @@ async function setCachedScore(
     }
 
     // 2. Also update job_candidate_status with scoring data (for pipeline view)
-    await syncJobCandidateStatus(supabase, candidateId, jobId, result);
+    await syncJobCandidateStatus(supabase, candidateId, jobId, result, organizationId);
   } catch (err) {
     console.error("[cache] Write error:", err);
   }
 }
+
+// Statuts que la notation peut encore réécrire (C1, R8) : profil trouvé, non
+// traité ou déjà noté. Contacté, a répondu, retenu, en entretien, intéressé,
+// qualification… et écarté ne sont jamais réécrits : seule la note change.
+// Au lot 0b, la notation cesse d'écrire le statut.
+const AI_REWRITABLE_STATUSES = ['new', 'discovered', 'untreated', 'scored'];
+const AI_REWRITABLE_IN = `(${AI_REWRITABLE_STATUSES.join(',')})`;
 
 /**
  * Réécrit job_candidate_status avec le résultat de scoring (vue pipeline).
@@ -2517,16 +2532,24 @@ async function setCachedScore(
  * ligne job_candidate_status a score NULL (ré-ajout au pipeline, ligne d'un
  * autre membre de l'équipe sur la même mission…). Sans cette réécriture, le
  * worker de fond (process-agent-tasks) re-sélectionnait ces lignes à l'infini.
+ * C1, R8 : limité à l'organisation de l'appelant. Deux mises à jour sur des
+ * lignes disjointes (chaque ligne n'est touchée qu'une fois, déclencheurs
+ * compris) : note et statut sur les lignes encore au stade de la notation,
+ * note seule sur les autres.
  */
 async function syncJobCandidateStatus(
   supabase: SupabaseClient,
   candidateId: string,
   jobId: string,
   result: ScoringResult,
+  organizationId: string | null,
 ): Promise<void> {
+  if (!organizationId) {
+    console.warn('[jcs-sync] organisation inconnue : aucune ligne réécrite');
+    return;
+  }
   try {
-    const status = result.finalScore >= 60 ? 'scored' : 'dismissed';
-    await supabase.from("job_candidate_status").update({
+    const note = {
       score: result.finalScore,
       recommendation: result.recommendation,
       scoring_details: {
@@ -2543,9 +2566,31 @@ async function syncJobCandidateStatus(
         hardFilterPassed: result.hardFilterPassed,
         scoringDepth: result.scoringDepth,
       },
-      status,
       updated_at: new Date().toISOString(),
-    }).eq('candidate_id', candidateId).eq('job_id', jobId);
+    };
+    const status = result.finalScore >= 60 ? 'scored' : 'dismissed';
+
+    // Ordre voulu : la note seule d'abord. Dans l'ordre inverse, une ligne que
+    // la première mise à jour passe en « dismissed » serait reprise par la
+    // seconde (deux passages, déclencheurs doublés).
+    // 1. Lignes dont le statut est décidé ailleurs (status est NOT NULL) :
+    //    la note seule, le statut ne bouge pas.
+    const { error: noteError } = await supabase.from("job_candidate_status")
+      .update(note)
+      .eq('organization_id', organizationId)
+      .eq('candidate_id', candidateId)
+      .eq('job_id', jobId)
+      .not('status', 'in', AI_REWRITABLE_IN);
+    if (noteError) console.error("[jcs-sync] Note write error:", noteError.message);
+
+    // 2. Lignes encore au stade de la notation : note et statut.
+    const { error: rewritableError } = await supabase.from("job_candidate_status")
+      .update({ ...note, status })
+      .eq('organization_id', organizationId)
+      .eq('candidate_id', candidateId)
+      .eq('job_id', jobId)
+      .in('status', AI_REWRITABLE_STATUSES);
+    if (rewritableError) console.error("[jcs-sync] Status write error:", rewritableError.message);
   } catch (err) {
     console.error("[jcs-sync] Write error:", err);
   }
@@ -3195,6 +3240,47 @@ Deno.serve(async (req) => {
         resolvedUnipile = { apiKey: envKey, dsn: `https://${envDsn.replace(/^https?:\/\//, '')}` };
       }
     }
+
+    // C1 (R8) : un poste de mission (« project:<uuid> » ou l'uuid de la
+    // mission) ne se note que depuis l'organisation de la mission, ou par un
+    // membre de son équipe. Sans ce contrôle, un membre d'une autre
+    // organisation lisait et remplissait le cache de notation de ce poste.
+    // Un identifiant sans mission (poste Notion) passe : cache et écritures
+    // restent bornés à l'organisation de l'appelant.
+    const JOB_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const rawJobProjectId = job.id.startsWith("project:") ? job.id.slice("project:".length) : job.id;
+    const jobProjectId = JOB_UUID_RE.test(rawJobProjectId) ? rawJobProjectId : null;
+    if (jobProjectId) {
+      const { data: jobProject, error: jobProjectError } = await supabase
+        .from("sourcing_projects")
+        .select("organization_id")
+        .eq("id", jobProjectId)
+        .maybeSingle();
+      if (jobProjectError) {
+        console.error("[score-profile-job] Mission lookup failed:", jobProjectError.message);
+        return new Response(JSON.stringify({ error: "Internal server error" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (jobProject && jobProject.organization_id !== resolvedOrgId) {
+        const { data: teamRows } = effectiveUserId
+          ? await supabase
+            .from("mission_team")
+            .select("id")
+            .eq("project_id", jobProjectId)
+            .eq("user_id", effectiveUserId)
+            .limit(1)
+          : { data: null };
+        if (!teamRows || teamRows.length === 0) {
+          return new Response(JSON.stringify({ error: "Forbidden" }), {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
     let enrichmentCtx: EnrichmentContext | null = null;
 
     if (accountId && resolvedUnipile) {
@@ -3264,7 +3350,7 @@ Deno.serve(async (req) => {
 
       // Mode deep : on ignore le cache (le but est justement de re-scorer avec
       // le profil complet fraîchement récupéré).
-      const cached = isDeepScoring ? null : await getCachedScore(supabase, candidateId, job.id);
+      const cached = isDeepScoring ? null : await getCachedScore(supabase, candidateId, job.id, resolvedOrgId);
       if (cached) {
         console.log(`[cache] HIT for ${p.name} → score=${cached.finalScore}`);
         return { profile: p, startTime, cached, needsLLM: false };
@@ -3295,7 +3381,7 @@ Deno.serve(async (req) => {
           processingTimeMs: Date.now() - startTime,
           tokensUsed: null,
         };
-        await setCachedScore(supabase, candidateId, job.id, koResult);
+        await setCachedScore(supabase, candidateId, job.id, koResult, resolvedOrgId);
         return { profile: p, startTime, hardFilterResult: { passed: false, result: koResult }, needsLLM: false };
       }
 
@@ -3346,7 +3432,7 @@ Deno.serve(async (req) => {
             servedResults.push({ ...ps.cached, profile_id: ps.profile.id });
             // Même resynchronisation que le chemin nominal : la ligne du
             // demandeur peut avoir score NULL alors que le cache est frais.
-            await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached);
+            await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
           } else if (ps.hardFilterResult?.result) {
             servedResults.push({ ...ps.hardFilterResult.result, profile_id: ps.profile.id });
             servedHardFiltered++;
@@ -3558,7 +3644,7 @@ Deno.serve(async (req) => {
       // boucle sur ces profils.
       if (ps.cached) {
         results.push({ ...ps.cached, profile_id: ps.profile.id });
-        await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached);
+        await syncJobCandidateStatus(supabase, ps.profile.id, job.id, ps.cached, resolvedOrgId);
         continue;
       }
 
@@ -3605,7 +3691,7 @@ Deno.serve(async (req) => {
             tokensUsed: llmResult.tokensUsed,
             skipReason: llmResult.mustHaveDetails,
           };
-          await setCachedScore(supabase, ps.profile.id, job.id, koResult);
+          await setCachedScore(supabase, ps.profile.id, job.id, koResult, resolvedOrgId);
           results.push(koResult);
           hardFilteredCount++;
           continue;
@@ -3772,7 +3858,7 @@ Deno.serve(async (req) => {
         tokensUsed: llmResult?.tokensUsed ?? null,
       };
 
-      await setCachedScore(supabase, ps.profile.id, job.id, result);
+      await setCachedScore(supabase, ps.profile.id, job.id, result, resolvedOrgId);
       results.push(result);
     }
 

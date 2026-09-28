@@ -3,6 +3,8 @@
  * entreprise. Deux groupes : les missions proposées aux recruteurs et celles
  * encore en préparation. Chaque ligne montre les candidatures en attente et
  * les recruteurs acceptés.
+ * Gel de la Marketplace (décision 17) : aucune mission n'y entre ; seules
+ * celles déjà proposées restent listées, les brouillons ne le sont plus.
  */
 
 import React, { useId, useMemo } from 'react';
@@ -15,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { huntStatusLabel, huntStatusVariant, formatDate } from './huntLabels';
 import { ErrorBox } from './ErrorBox';
 import { RowsSkeleton } from './MarketplaceSkeleton';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 
 const OPEN_STATUSES = new Set(['published', 'in_progress', 'filled', 'cancelled']);
 
@@ -92,11 +95,17 @@ export const EnterpriseHuntMissions: React.FC = () => {
           <EmptyState
             icon={Target}
             title="Aucune mission publiée"
-            description="Activez le mode chasse dans la configuration d'une mission, puis publiez-la pour la proposer aux recruteurs partenaires."
+            description={
+              MARKETPLACE_FROZEN
+                ? "La publication de missions sur la Marketplace n'est pas encore disponible."
+                : "Activez le mode chasse dans la configuration d'une mission, puis publiez-la pour la proposer aux recruteurs partenaires."
+            }
             action={
-              <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
-                <Link to="/missions">Ouvrir mes missions</Link>
-              </Button>
+              MARKETPLACE_FROZEN ? undefined : (
+                <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
+                  <Link to="/missions">Ouvrir mes missions</Link>
+                </Button>
+              )
             }
           />
         ) : (
@@ -108,7 +117,7 @@ export const EnterpriseHuntMissions: React.FC = () => {
         )}
       </section>
 
-      {drafts.length > 0 && (
+      {drafts.length > 0 && !MARKETPLACE_FROZEN && (
         <section aria-labelledby={draftsId}>
           <h2 id={draftsId} className="eyebrow mb-3">En préparation</h2>
           <ul className="divide-y divide-border rounded-xl border border-border bg-card">

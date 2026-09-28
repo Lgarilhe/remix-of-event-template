@@ -2,6 +2,8 @@
  * PlatformAdminPanel : « Administration du cercle », visible des seuls
  * identifiants listés dans KONEKT_PLATFORM_ADMIN_USER_IDS (edge function
  * marketplace-admin, action whoami). Valide ou suspend une organisation.
+ * Gel de la Marketplace (décision 17) : plus de validation jusqu'au lot P2,
+ * les demandes restent en attente ; la suspension reste possible.
  */
 
 import React, { useId, useState } from 'react';
@@ -20,6 +22,7 @@ import {
 import { orgTypeLabel, formatDate } from './huntLabels';
 import { ErrorBox } from './ErrorBox';
 import { RowsSkeleton } from './MarketplaceSkeleton';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 
 const PARTNER_STATUS: Record<string, { label: string; variant: 'muted' | 'warning' | 'success' | 'danger' }> = {
   inactive: { label: 'Inactif', variant: 'muted' },
@@ -57,6 +60,12 @@ export const PlatformAdminPanel: React.FC = () => {
           <p className="mt-0.5 text-sm text-muted-foreground">
             Demandes d'adhésion des cabinets et indépendants. Visible de l'équipe Konekt seulement.
           </p>
+          {MARKETPLACE_FROZEN && (
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              La validation des partenaires n'est pas encore disponible : les demandes restent en attente
+              jusqu'à l'ouverture de la Marketplace.
+            </p>
+          )}
         </div>
         <Button variant="outline" size="sm" onClick={() => { refresh().catch(() => undefined); }} disabled={isLoading} className="min-h-11 md:min-h-0">
           <RefreshCw aria-hidden="true" />
@@ -112,7 +121,7 @@ export const PlatformAdminPanel: React.FC = () => {
                     <TableCell className="text-right text-sm tabular-nums">{p.member_count}</TableCell>
                     <TableCell className="text-right">
                       <div className="inline-flex items-center gap-2">
-                        {p.status !== 'active' && (
+                        {p.status !== 'active' && !MARKETPLACE_FROZEN && (
                           <Button
                             variant="outline"
                             size="xs"

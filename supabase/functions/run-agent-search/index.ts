@@ -148,6 +148,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Conversation de l'assistant : son auteur seul (R3), y compris sans
+    // organisation (aucun contrôle jusqu'ici dans ce cas).
+    if (conv.created_by !== user.id) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Verify user belongs to the conversation's organization
     if (conv.organization_id) {
       const { data: membership, error: membershipError } = await supabase
@@ -258,11 +266,14 @@ Deno.serve(async (req) => {
     }
 
     // 1b. Load cached scores from match_scores for this job
+    // C1 (R8) : cache lu dans l'organisation de la conversation seulement,
+    // jamais la notation d'une autre organisation sur le même identifiant.
     const cachedScores = new Map<string, any>();
-    if (jobId) {
+    if (jobId && orgId) {
       const { data: scores } = await supabase
         .from("match_scores")
         .select("candidate_id, score, scoring_result")
+        .eq("organization_id", orgId)
         .eq("job_id", jobId);
       
       if (scores) {

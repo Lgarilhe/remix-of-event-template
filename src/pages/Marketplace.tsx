@@ -7,6 +7,9 @@
  *   - entreprise : ses missions publiées et leurs candidatures ;
  *   - organisation sans type : message neutre.
  * En bas, le panneau d'administration du cercle pour l'équipe Konekt.
+ *
+ * Gel de la Marketplace (décision 17, jusqu'au lot P2) : un cabinet ou un
+ * indépendant ne voit que son adhésion et son état, partenaire actif compris.
  */
 
 import React from 'react';
@@ -23,6 +26,7 @@ import { PartnerMarketplace } from '@/components/marketplace/PartnerMarketplace'
 import { PartnerMissionsSection } from '@/components/marketplace/PartnerMissionsSection';
 import { EnterpriseHuntMissions } from '@/components/marketplace/EnterpriseHuntMissions';
 import { PlatformAdminPanel } from '@/components/marketplace/PlatformAdminPanel';
+import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 
 export default function Marketplace() {
   const { orgType, isLoading: orgLoading } = useOrganization();
@@ -35,7 +39,7 @@ export default function Marketplace() {
   const subtitle = isEnterprise
     ? 'Vos missions proposées aux recruteurs partenaires'
     : isRecruiterOrg
-      ? (isPartner ? 'Missions confiées par les entreprises' : 'Cercle de recruteurs partenaires')
+      ? (isPartner && !MARKETPLACE_FROZEN ? 'Missions confiées par les entreprises' : 'Cercle de recruteurs partenaires')
       : 'Missions en mode chasse';
 
   let body: React.ReactNode;
@@ -47,9 +51,11 @@ export default function Marketplace() {
     );
   } else if (isEnterprise) {
     body = <EnterpriseHuntMissions />;
-  } else if (isRecruiterOrg && isPartner) {
+  } else if (isRecruiterOrg && isPartner && !MARKETPLACE_FROZEN) {
     body = <PartnerMarketplace />;
-  } else if (isRecruiterOrg && isSuspended) {
+  } else if (isRecruiterOrg && (isPartner || isSuspended)) {
+    // Suspendu, ou partenaire actif pendant le gel : la carte d'adhésion, et
+    // les missions déjà confiées, qui restent aussi dans Missions.
     body = (
       <div className="space-y-6">
         <div className="max-w-2xl">

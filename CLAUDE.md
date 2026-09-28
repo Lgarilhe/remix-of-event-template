@@ -216,6 +216,7 @@ RPC (SECURITY DEFINER, authenticated) : `get_subscription_state(org)` (plan effe
 expire un essai échu à la lecture), `get_org_contact_usage(org)` (contacts inclus utilisés / forfait),
 `get_linkedin_quota_status(account)` (compteurs jour/semaine, facteur de montée en charge via `linkedin_ramp_factor`).
 Cron : `expire-subscription-trials` (horaire) → `expire_subscription_trials()`.
+`client_portal_candidates(token)` (lot C1 : seule lecture des candidats du portail client, retenus et au-delà de l'organisation du lien ; service_role seulement, appelée par client-portal-data). Tout lien de portail expire (90 jours par défaut, `expires_at` NOT NULL).
 `get_org_member_emails(org)` (e-mails de auth.users des membres ; appelant owner/admin/member de l'org, jamais collaborator ni anon) :
 `profiles` n'a pas de colonne `email` ni `avatar_url`, ne jamais les demander.
 
@@ -264,7 +265,7 @@ Email transactionnel: send-transactional-email, process-email-queue, handle-emai
 Enrichment & sociétés: enrich-company, enrich-candidate-contact, get-enrichment-status, process-enrichment-queue,
                     resolve-pedigree-directory, refresh-pedigree-by-funding-stage
 LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks
-Missions / pipeline: add-to-shortlist, update-candidate-stage, submit-application, client-portal-data,
+Missions / pipeline: add-to-shortlist, update-candidate-stage, submit-application (neutralisée au lot C1 : répond 410, à supprimer en prod), client-portal-data,
                     accept-mission-invitation, accept-invitation, send-team-invitation
 Notion:             fetch-notion-candidates, fetch-notion-jobs, notify-notion, update-notion-job, notion-mcp-oauth
 Autres intégrations: stripe-webhook, create-checkout-session, create-portal-session, aircall-webhook, calendly-webhook,
@@ -292,7 +293,7 @@ ou CLI : `supabase secrets set --project-ref crckfywoyjxkawathdff KEY=value`.
 | `UNIPILE_API_KEY` + `UNIPILE_DSN` | unipile-accounts, unipile-search, unipile-webhook, unipile-manage-webhooks + toutes les fonctions qui touchent LinkedIn (~15 au total) |
 | `SB_SECRET_KEY` | clé service-role « nouveau format » : lue en priorité par `_shared/require-auth.ts` et par quasiment toutes les fonctions (`Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`). Si absente, repli sur `SUPABASE_SERVICE_ROLE_KEY` auto-provisionnée |
 | `ALLOWED_ORIGINS` | `_shared/cors.ts` (allowlist CORS, séparée par des virgules ; défaut = prod Vercel + localhost si absente) |
-| `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | add-to-shortlist, submit-application, process-sequences, auto-analyze-message, `_shared/resolve-org-credentials.ts` (repli env) |
+| `NOTION_API_KEY` + `NOTION_CANDIDATS_DB_ID` + `NOTION_POSTES_DB_ID` + `NOTION_SHORTLIST_DB_ID` | **À retirer (décision 16, lot C1)** : plus aucun repli sur ces secrets de la plateforme, seule la clé Notion reliée par l'organisation est utilisée. Encore lus par process-sequences, en cours de réécriture par une autre branche |
 | `STRIPE_SECRET_KEY` | create-checkout-session, create-portal-session, stripe-webhook (relecture des abonnements) |
 | `RESEND_API_KEY` | process-email-queue (envoi emails via Resend API) |
 
@@ -466,8 +467,16 @@ Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `sr
 
 ### Écritures sur `organizations` — passer par `updateOrganization`
 `src/lib/organizationUpdate.ts` relit la ligne écrite : sans `.select()`, un refus RLS répond « succès » sur 0 ligne. Côté base (lot 1 des Paramètres, migration 20260923095813) : une seule policy UPDATE `admins_update` (owner/admin) et le trigger `organizations_update_guard`. L'admin modifie `name`, `logo_url`, `website`, `ai_context` ; tout le reste (`org_type`, `agency_permissions`, `ai_model_default`…) reste au propriétaire (HINT `ORG_OWNER_ONLY`). Passage en `freelance` refusé s'il reste un autre membre ou une invitation en attente (HINT `ORG_FREELANCE_NOT_SOLO`). Bucket `org-logos` : écriture owner/admin dans le dossier `{organization_id}/`, un nom de fichier unique par envoi.
-Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
+Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, et ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
 Dans un audit, ne jamais appeler sous `SET ROLE anon` ou `authenticated` une fonction refusée à ce rôle : dans l'image Postgres locale (17.6.1.106), supautils ajoute un indice au refus et le serveur tombe (signal 11, e2e du 24 au 26/09). Contrôler le droit avec `has_function_privilege`, et le refus réel par l'API (`curl …/rest/v1/rpc/<fonction>` avec la clé anon, voir `e2e.yml`).
+
+### Règles posées par le lot C1 (réparations des fuites, 2026-09)
+- Toute fonction SECURITY DEFINER nouvelle révoque EXECUTE à PUBLIC et à anon (anon seulement pour une liste blanche justifiée dans `rls_and_definer_audit.sql`), sinon cet audit échoue. anon n'écrit plus dans aucune table du schéma public, sauf INSERT sur `contact_submissions` ; une table nouvelle ne lui donne rien.
+- Conversations de l'assistant (`agent_conversations`, `agent_messages`) : leur auteur seul. Les actions (`agent_tool_executions`) : l'auteur, plus la lecture par propriétaire et administrateurs (Journal). search-agent-chat et run-agent-search refusent qui n'est pas l'auteur.
+- Une ligne `job_candidate_status` ou `outreach_sequences` ne porte que la mission de sa propre organisation (policies RESTRICTIVE `mission_same_org_*`) ; les compteurs de mission (`recompute_mission_stats`) ne comptent que les lignes de l'organisation de la mission. Plus aucune policy d'équipe de mission (`mission_team`) hors de la mission, de ses étapes et de l'équipe.
+- Toute écriture serveur sur les lignes candidat filtre par organisation (score-profile-job, process-agent-tasks, auto-analyze-message), et le cache `match_scores` est lu et écrit par organisation.
+- Marketplace gelée jusqu'au lot P2 (décision 17) : `MARKETPLACE_FROZEN` dans `src/lib/marketplaceFreeze.ts`, refus serveur avec le HINT `MARKETPLACE_FROZEN` (publication, validation de partenaire, marketplace-admin). Rôle « Collaborateur » gelé jusqu'au lot C2 : refusé sur `organization_invitations` (HINT `COLLABORATOR_FROZEN`), retiré des écrans et de l'outil d'invitation de l'assistant.
+- Garde-fous statiques : `npm run test:c1` (`tests/c1/`), joués par la CI de PR.
 
 ### État et liaison LinkedIn
 Une seule lecture de l'état : `src/lib/linkedinStatus.ts` (liaison stricte par `user_id` via `member_linkedin_accounts`, jamais le compte d'un collègue). Relier et dissocier passent par `unipile-accounts` (`claim_linkedin_account`, `unlink_linkedin_account`), pas par un upsert/delete du navigateur (RLS owner/admin). « Dissocier » ne ferme pas la session chez le prestataire : il retire la liaison et arrête les envois du compte (inscriptions en pause `manual`, étapes et InMails programmés annulés, compte retiré des rotations multi-expéditeurs).

@@ -55,6 +55,15 @@ Deno.serve(async (req) => {
     if (!ALLOWED_INVITE_ROLES.includes(normalizedRole)) {
       throw new Error("Rôle d'invitation invalide");
     }
+    // C1 (R11) : « collaborator » est aujourd'hui un membre complet de
+    // l'organisation (lecture, écriture et suppression de tout), pas un accès
+    // restreint. Refusé à l'invitation, renvoi compris, jusqu'au lot C2 ;
+    // l'écran ne le propose plus.
+    if (normalizedRole === "collaborator") {
+      throw new Error(
+        "Le rôle Collaborateur n'est pas encore disponible. Invitez cette personne comme membre ou administrateur.",
+      );
+    }
     const isResend = Boolean(resend);
 
     const { data: callerMembership } = await supabase

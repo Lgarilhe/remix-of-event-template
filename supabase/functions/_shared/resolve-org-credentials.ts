@@ -1,6 +1,7 @@
 /**
  * Shared credential resolver for multi-tenant edge functions.
- * Reads per-org credentials from organization_integrations, falls back to Deno.env.
+ * Reads per-org credentials from organization_integrations, falls back to Deno.env,
+ * sauf Notion : aucun repli sur les secrets de la plateforme (décision 16, C1 R1).
  *
  * Usage:
  *   import { resolveUnipileCredentials, resolveNotionCredentials, resolveApolloCredentials, resolveCoresignalCredentials, resolveAnthropicCredentials } from '../_shared/resolve-org-credentials.ts';
@@ -150,54 +151,48 @@ export async function resolveUnipileCredentials(
 }
 
 // ─── Notion ──────────────────────────────────────────────────────────────────
+//
+// Décision 16 (C1, R1) : plus aucun repli sur les secrets Notion de la
+// plateforme (NOTION_API_KEY, NOTION_*_DB_ID). Seule la clé que l'organisation
+// a reliée (notion_connected + notion_api_key) est rendue ; sans elle, null :
+// rien n'est écrit dans Notion.
 
 export async function resolveNotionCredentials(
   organizationId?: string | null,
   supabaseClient?: SupabaseClient
 ): Promise<NotionCredentials | null> {
-  if (organizationId) {
-    const cached = cacheGet(notionCache, organizationId);
-    if (cached !== undefined) return cached;
+  if (!organizationId) return null;
 
-    try {
-      const sb = supabaseClient ?? getServiceClient();
-      const { data, error } = await sb
-        .from("organization_integrations")
-        .select("notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_postes_db_id, notion_connected")
-        .eq("organization_id", organizationId)
-        .single();
+  const cached = cacheGet(notionCache, organizationId);
+  if (cached !== undefined) return cached;
 
-      if (data?.notion_connected && data?.notion_api_key) {
-        const creds: NotionCredentials = {
-          apiKey: data.notion_api_key,
-          candidatsDbId: data.notion_candidats_db_id || null,
-          shortlistDbId: data.notion_shortlist_db_id || null,
-          postesDbId: data.notion_postes_db_id || null,
-        };
-        console.log(`[resolve-creds] Using org-specific Notion credentials for org ${organizationId}`);
-        cacheSet(notionCache, organizationId, creds);
-        return creds;
-      }
-      if (!error || isNoRowError(error)) {
-        cacheSet(notionCache, organizationId, null);
-      } else {
-        console.warn(`[resolve-creds] Transient error resolving Notion creds (not cached):`, error);
-      }
-    } catch (e) {
-      console.warn(`[resolve-creds] Failed to resolve org Notion credentials (not cached):`, e);
+  try {
+    const sb = supabaseClient ?? getServiceClient();
+    const { data, error } = await sb
+      .from("organization_integrations")
+      .select("notion_api_key, notion_candidats_db_id, notion_shortlist_db_id, notion_postes_db_id, notion_connected")
+      .eq("organization_id", organizationId)
+      .single();
+
+    if (data?.notion_connected && data?.notion_api_key) {
+      const creds: NotionCredentials = {
+        apiKey: data.notion_api_key,
+        candidatsDbId: data.notion_candidats_db_id || null,
+        shortlistDbId: data.notion_shortlist_db_id || null,
+        postesDbId: data.notion_postes_db_id || null,
+      };
+      console.log(`[resolve-creds] Using org-specific Notion credentials for org ${organizationId}`);
+      cacheSet(notionCache, organizationId, creds);
+      return creds;
     }
+    if (!error || isNoRowError(error)) {
+      cacheSet(notionCache, organizationId, null);
+    } else {
+      console.warn(`[resolve-creds] Transient error resolving Notion creds (not cached):`, error);
+    }
+  } catch (e) {
+    console.warn(`[resolve-creds] Failed to resolve org Notion credentials (not cached):`, e);
   }
-
-  const envKey = Deno.env.get("NOTION_API_KEY");
-  if (envKey) {
-    return {
-      apiKey: envKey,
-      candidatsDbId: Deno.env.get("NOTION_CANDIDATS_DB_ID") || null,
-      shortlistDbId: Deno.env.get("NOTION_SHORTLIST_DB_ID") || null,
-      postesDbId: Deno.env.get("NOTION_POSTES_DB_ID") || null,
-    };
-  }
-
   return null;
 }
 

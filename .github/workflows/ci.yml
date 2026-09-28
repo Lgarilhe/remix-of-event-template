@@ -38,6 +38,10 @@ jobs:
           node-version: 20
       - name: Agent security regression tests
         run: npm run test:agent
+      # Lot C1 : garde-fous statiques des fonctions (secrets Notion de la
+      # plateforme, filtres d'organisation, portail client, rôle Collaborateur).
+      - name: C1 regression tests (fonctions)
+        run: node --test tests/c1/c1-fonctions.test.mjs
 
   migrations:
     name: Migrations (versions uniques)
@@ -67,6 +71,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Lot C1 : garde-fous statiques du front (gel de la Marketplace, textes,
+      # expiration des liens de portail). Ce test lit les sources avec esbuild.
+      - name: C1 regression tests (front)
+        run: node --test tests/c1/c1-front.test.mjs
       - name: Vite production build
         run: npx vite build
 

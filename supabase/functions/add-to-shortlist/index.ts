@@ -43,7 +43,12 @@ async function resolveOrgCredentials(orgId: string): Promise<NotionCreds | null>
     .eq('organization_id', orgId)
     .single();
 
-  if (!data?.notion_connected || !data.notion_api_key) {
+  // Décision 16 (C1, R1) : la clé ET les deux bases viennent de l'organisation.
+  // Plus de repli sur les bases Notion de la plateforme (NOTION_*_DB_ID) : une
+  // configuration incomplète n'écrit rien dans Notion (le statut Konekt est
+  // quand même posé par la branche !creds du gestionnaire).
+  if (!data?.notion_connected || !data.notion_api_key
+      || !data.notion_candidats_db_id || !data.notion_shortlist_db_id) {
     console.warn('[add-to-shortlist] Notion not configured for org', orgId, '— skipping');
     return null;
   }
@@ -51,8 +56,8 @@ async function resolveOrgCredentials(orgId: string): Promise<NotionCreds | null>
   console.log('[add-to-shortlist] Using org-specific Notion credentials');
   return {
     notionApiKey: data.notion_api_key,
-    candidatsDatabaseId: data.notion_candidats_db_id || Deno.env.get("NOTION_CANDIDATS_DB_ID")!,
-    shortlistDatabaseId: data.notion_shortlist_db_id || Deno.env.get("NOTION_SHORTLIST_DB_ID")!,
+    candidatsDatabaseId: data.notion_candidats_db_id,
+    shortlistDatabaseId: data.notion_shortlist_db_id,
   };
 }
 

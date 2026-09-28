@@ -56,7 +56,8 @@ export const InviteMemberForm = ({ onInvite, isLoading }: InviteMemberFormProps)
             <SelectContent>
               <SelectItem value="admin">Admin</SelectItem>
               <SelectItem value="member">Membre</SelectItem>
-              <SelectItem value="collaborator">Collaborateur externe</SelectItem>
+              {/* Pas de « Collaborateur » jusqu'au lot C2 : ce rôle est un membre
+                  complet de l'organisation, pas un accès restreint (C1, R11). */}
             </SelectContent>
           </Select>
         </div>

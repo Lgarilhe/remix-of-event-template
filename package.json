@@ -17,6 +17,7 @@
     "test:e2e:api": "playwright test --project=api",
     "test:e2e:report": "playwright show-report",
     "test:ux": "node --test tests/ux/*.test.mjs",
+    "test:c1": "node --test tests/c1/*.test.mjs",
     "audit:ux": "node scripts/audit-ux/inventory.mjs",
     "audit:design": "node scripts/design/ratchet.mjs --details"
   },

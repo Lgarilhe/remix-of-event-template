@@ -17,9 +17,6 @@ const corsHeaders = {
 const ENV_UNIPILE_API_KEY = Deno.env.get("UNIPILE_API_KEY");
 const ENV_UNIPILE_DSN = Deno.env.get("UNIPILE_DSN");
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-const ENV_NOTION_API_KEY = Deno.env.get("NOTION_API_KEY");
-const ENV_CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
-const ENV_SHORTLIST_DATABASE_ID = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
 // Modèle réellement appelé pour la détection d'intent : facturé tel quel
@@ -27,21 +24,23 @@ const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get
 const AUTO_ANALYZE_MODEL = "claude-sonnet-4-6";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+// Notion : aucun secret de la plateforme (décision 16, C1 R1). Seules la clé
+// et les bases que l'organisation a reliées dans ses réglages sont utilisées.
 interface OrgCreds {
   unipileApiKey: string | undefined;
   unipileDsn: string | undefined;
-  notionApiKey: string | undefined;
-  candidatsDbId: string;
-  shortlistDbId: string;
+  notionApiKey: string | null;   // null : rien n'est écrit dans Notion
+  candidatsDbId: string | null;
+  shortlistDbId: string | null;
 }
 
 async function resolveOrgCredentials(organizationId?: string): Promise<OrgCreds> {
   const result: OrgCreds = {
     unipileApiKey: ENV_UNIPILE_API_KEY,
     unipileDsn: ENV_UNIPILE_DSN,
-    notionApiKey: ENV_NOTION_API_KEY,
-    candidatsDbId: ENV_CANDIDATS_DATABASE_ID,
-    shortlistDbId: ENV_SHORTLIST_DATABASE_ID,
+    notionApiKey: null,
+    candidatsDbId: null,
+    shortlistDbId: null,
   };
   if (!organizationId) return result;
   try {
@@ -54,11 +53,11 @@ async function resolveOrgCredentials(organizationId?: string): Promise<OrgCreds>
     const nCreds = await resolveNotionCredentials(organizationId, supabase);
     if (nCreds) {
       result.notionApiKey = nCreds.apiKey;
-      if (nCreds.candidatsDbId) result.candidatsDbId = nCreds.candidatsDbId;
-      if (nCreds.shortlistDbId) result.shortlistDbId = nCreds.shortlistDbId;
+      result.candidatsDbId = nCreds.candidatsDbId;
+      result.shortlistDbId = nCreds.shortlistDbId;
     }
   } catch (e) {
-    console.warn('[auto-analyze] Org credential resolution failed, using env:', e);
+    console.warn('[auto-analyze] Org credential resolution failed (LinkedIn: env, Notion: none):', e);
   }
   return result;
 }
@@ -115,9 +114,12 @@ async function updateNotionPage(pageId: string, properties: Record<string, unkno
 }
 
 async function findCandidateInNotion(name: string, creds: OrgCreds, linkedinUrl?: string): Promise<string | null> {
+  const dbId = creds.candidatsDbId;
+  if (!creds.notionApiKey || !dbId) return null;
+
   // Try LinkedIn URL first
   if (linkedinUrl) {
-    const result = await notionQuery(creds.candidatsDbId, {
+    const result = await notionQuery(dbId, {
       property: 'URL Linkedin',
       url: { equals: linkedinUrl },
     }, creds);
@@ -126,7 +128,7 @@ async function findCandidateInNotion(name: string, creds: OrgCreds, linkedinUrl?
 
   // Fallback to name
   if (name) {
-    const result = await notionQuery(creds.candidatsDbId, {
+    const result = await notionQuery(dbId, {
       property: 'Nom',
       title: { equals: name },
     }, creds);
@@ -136,14 +138,17 @@ async function findCandidateInNotion(name: string, creds: OrgCreds, linkedinUrl?
 }
 
 async function findShortlistsForCandidate(candidateId: string, creds: OrgCreds): Promise<Array<{ id: string; jobTitle?: string }>> {
-  const result = await notionQuery(creds.shortlistDbId, {
+  const dbId = creds.shortlistDbId;
+  if (!creds.notionApiKey || !dbId) return [];
+
+  const result = await notionQuery(dbId, {
     property: 'Candidats',
     relation: { contains: candidateId },
   }, creds);
   if (!result?.results) return [];
 
   // Fetch all shortlists, not just the first one
-  const response = await fetchWithTimeout(`https://api.notion.com/v1/databases/${creds.shortlistDbId}/query`, {
+  const response = await fetchWithTimeout(`https://api.notion.com/v1/databases/${dbId}/query`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${creds.notionApiKey}`,
@@ -481,13 +486,19 @@ Deno.serve(async (req) => {
     }
 
     // 4. Update app DB (job_candidate_status)
+    //
+    // C1 (R1, R4) : seulement les lignes de l'organisation du compte (clé de
+    // service, la RLS ne filtre rien) ; sans organisation résolue, rien n'est
+    // écrit. Une ligne dont l'étape est posée au-delà de « Contacté » garde son
+    // statut et son étape : seule la synthèse de l'analyse y est notée.
 
     const candidateId = sender_id || chatDetails.attendeeProviderId;
     
-    if (!skipStatusUpdates && candidateId) {
+    if (!skipStatusUpdates && candidateId && accountOrgId) {
       const { data: statusRecords } = await supabase
         .from('job_candidate_status')
         .select('id, job_id, status, pipeline_stage')
+        .eq('organization_id', accountOrgId)
         .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
         .in('status', ['messaged', 'shortlisted', 'scored', 'replied'])
         .limit(10);
@@ -505,29 +516,28 @@ Deno.serve(async (req) => {
           : 'Répondu';
 
         for (const record of statusRecords) {
-          // Only update pipeline_stage if it's not already more advanced
-          const advancedStages = ['Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'];
-          const shouldUpdatePipeline = !record.pipeline_stage || 
-            record.pipeline_stage === 'Nouveau' || 
-            record.pipeline_stage === 'Contacté' ||
-            (!advancedStages.includes(record.pipeline_stage) && record.pipeline_stage !== 'Perdu');
+          // Statut et étape ne sont réécrits que sans étape, ou en « Nouveau »
+          // ou « Contacté ». Toute autre étape (Pressenti, étape d'entretien,
+          // hired, Perdu…) est une décision du recruteur : on n'y touche pas.
+          const stage = (record.pipeline_stage ?? '').trim();
+          const isEarlyStage = stage === '' || stage === 'Nouveau' || stage === 'Contacté';
 
           await supabase
             .from('job_candidate_status')
             .update({ 
-              status: appStatus,
+              ...(isEarlyStage ? { status: appStatus, pipeline_stage: pipelineStage } : {}),
               recommendation: analysis.summary,
-              ...(shouldUpdatePipeline ? { pipeline_stage: pipelineStage } : {}),
               updated_at: new Date().toISOString(),
             })
-            .eq('id', record.id);
+            .eq('id', record.id)
+            .eq('organization_id', accountOrgId);
         }
         console.log(`[auto-analyze] Updated ${statusRecords.length} job_candidate_status records to "${appStatus}" (pipeline: ${pipelineStage})`);
       }
     }
 
     // 5. Update Notion (Candidat "Etat" + Shortlist "Etape")
-    if (!skipStatusUpdates && creds.notionApiKey) {
+    if (!skipStatusUpdates && creds.notionApiKey && creds.candidatsDbId) {
       const notionCandidateId = await findCandidateInNotion(candidateName, creds, profileUrl);
 
       if (notionCandidateId) {
@@ -575,10 +585,13 @@ Deno.serve(async (req) => {
 
       let userIds: string[] = existingEntries?.map((e: any) => e.created_by) || [];
       
-      if (userIds.length === 0 && candidateId) {
+      // Repli sur l'auteur d'une ligne candidat : de l'organisation du compte
+      // seulement (C1, R1), jamais d'une autre organisation qui suit ce profil.
+      if (userIds.length === 0 && candidateId && accountOrgId) {
         const { data: statusRecs } = await supabase
           .from('job_candidate_status')
           .select('created_by')
+          .eq('organization_id', accountOrgId)
           .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
           .limit(1);
         userIds = statusRecs?.map((r: any) => r.created_by) || [];
