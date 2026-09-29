@@ -13,6 +13,10 @@
  * Revue design (lot 12, présentation seulement) : paliers nommés (A-18), texte
  * sans opacité, épingle et chevron en Button du kit (A-53). Une vue verrouillée
  * reste une ligne native (aria-disabled, message au clic).
+ *
+ * Nouvelle page mission (prop beta, interrupteur allumé) : le clic ouvre le
+ * dernier écran relevé, jamais de verrou ; ni chevron ni liste des vues (la
+ * page a ses trois onglets).
  */
 import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -21,6 +25,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { computeReadiness, type ReadinessInput } from '@/hooks/useMissionReadiness';
 import { useCloseMobileSidebar } from '@/hooks/sidebar/useCloseMobileSidebar';
+import { missionV3PathFromVisit } from '@/lib/missionBeta';
 import { MISSION_PHASES, type MissionViewId } from '@/lib/missionViews';
 import {
   DEFAULT_BLOCKER_MESSAGE,
@@ -51,6 +56,8 @@ export interface MissionNavRowProps {
   /** Faux au plafond d'épingles (sans effet sur le retrait). */
   canPinMore: boolean;
   onTogglePin: (item: MissionNavItem, pinned: boolean) => void;
+  /** Nouvelle page mission : cible par écran, sans verrou, sans chevron. Défaut : non. */
+  beta?: boolean;
 }
 
 /** Classes ajoutées au Button du kit (taille icon-xs) : 44 px sur téléphone, 28 px sur ordinateur. */
@@ -67,13 +74,16 @@ export function MissionNavRow({
   pinned,
   canPinMore,
   onTogglePin,
+  beta = false,
 }: MissionNavRowProps) {
   const closeMobile = useCloseMobileSidebar();
   const [expanded, setExpanded] = useState(false);
   const viewsId = useId();
 
   const readiness = useMemo(() => computeReadiness(readinessInput), [readinessInput]);
-  const target = resolveOpenTarget({ projectId: item.id, lastView, readiness });
+  const target = beta
+    ? { path: missionV3PathFromVisit(item.id, lastView), blocker: null }
+    : resolveOpenTarget({ projectId: item.id, lastView, readiness });
 
   const pinCapped = !pinned && !canPinMore;
   const pinLabel = pinned ? `Retirer ${item.name} des épinglées` : `Épingler ${item.name}`;
@@ -150,24 +160,26 @@ export function MissionNavRow({
           pinButton
         )}
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          aria-controls={expanded ? viewsId : undefined}
-          aria-label={`Afficher les vues de ${item.name}`}
-          className={ICON_BUTTON_CLASS}
-        >
-          <ChevronRight
-            aria-hidden="true"
-            className={cn('transition-transform', expanded && 'rotate-90')}
-          />
-        </Button>
+        {!beta && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-controls={expanded ? viewsId : undefined}
+            aria-label={`Afficher les vues de ${item.name}`}
+            className={ICON_BUTTON_CLASS}
+          >
+            <ChevronRight
+              aria-hidden="true"
+              className={cn('transition-transform', expanded && 'rotate-90')}
+            />
+          </Button>
+        )}
       </div>
 
-      {expanded && (
+      {!beta && expanded && (
         <div id={viewsId} className="mb-1 ml-4 border-l border-sidebar-border pl-2">
           {MISSION_PHASES.map((phase) => (
             <div key={phase.id} className="pt-1">

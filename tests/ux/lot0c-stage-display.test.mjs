@@ -196,10 +196,7 @@ test('0c : colonnes et titres du /pipeline, clés de ATS_STAGES inchangées', ()
   }
 });
 
-test('0c : ancien GENERAL_STAGE_LABEL de useATSData gardé provisoirement, mêmes valeurs', () => {
-  const src = code('src/hooks/useATSData.ts');
-  assert.match(src, /import \{ ATS_COLUMN_BY_STAGE \} from '@\/lib\/stageDisplay';/);
-  assert.match(src, /export const GENERAL_STAGE_LABEL: Readonly<Record<string, string>> = ATS_COLUMN_BY_STAGE;/);
+test('0c : clés du /pipeline par étape générale (ATS_COLUMN_BY_STAGE)', () => {
   assert.deepEqual({ ...ATS_COLUMN_BY_STAGE }, {
     to_sort: 'Nouveau', retained: 'Pressenti', contacted: 'Contacté', replied: 'Répondu',
     interviewing: 'ITW en cours', hired: 'Gagné', rejected: 'Perdu',

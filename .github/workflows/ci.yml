@@ -52,6 +52,11 @@ jobs:
       # l'assistant, purge RGPD en compte seulement), un bloc par sous-lot.
       - name: Lot 0c regression tests (lectures)
         run: node --test tests/c1/lot0c-lectures.test.mjs
+      # Refonte mission, lots 1 et 2 : nouvelle page mission derrière
+      # l'interrupteur (route, redirections en effet, ancienne page intacte,
+      # aucune écriture directe de l'étape, jamais ouverts exclus, textes).
+      - name: Lots 1 et 2 regression tests (nouvelle page mission)
+        run: node --test tests/c1/lot12-mission-v3.test.mjs
 
   migrations:
     name: Migrations (versions uniques)
@@ -85,6 +90,11 @@ jobs:
       # expiration des liens de portail). Ce test lit les sources avec esbuild.
       - name: C1 regression tests (front)
         run: node --test tests/c1/c1-front.test.mjs
+      # Refonte mission, lots 1 et 2 : interrupteur et correspondance des
+      # adresses (src/lib/missionBeta.ts), règles de la nouvelle page. Ce test
+      # empaquette les modules avec esbuild.
+      - name: Lots 1 et 2 tests (interrupteur de la nouvelle page mission)
+        run: node --test tests/ux/lot12-mission-beta.test.mjs
       - name: Vite production build
         run: npx vite build
 

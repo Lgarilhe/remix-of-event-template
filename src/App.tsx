@@ -35,7 +35,8 @@ const ScorecardFullPage = lazy(() => import("./pages/ScorecardFullPage"));
 const CandidatePortal = lazy(() => import("./pages/CandidatePortal"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Settings = lazy(() => import("./pages/Settings"));
-const MissionWorkspace = lazy(() => import("./pages/MissionWorkspace"));
+// Mission (/missions/:id et ses écrans) : ancienne ou nouvelle page selon l'interrupteur (src/pages/MissionEntry.tsx).
+const MissionEntry = lazy(() => import("./pages/MissionEntry"));
 const Inbox = lazy(() => import("./pages/Inbox"));
 const SourcingSearches = lazy(() => import("./pages/SourcingSearches"));
 const SourcingSearchPage = lazy(() => import("./pages/SourcingSearch"));
@@ -165,7 +166,7 @@ const AppContent = () => {
           {/* Authenticated routes — with sidebar layout */}
           <Route path="/candidates" element={<Navigate to="/pipeline" replace />} />
           <Route path="/missions" element={<ProtectedRoute><OrganizationGuard><AppLayout><Outreach /></AppLayout></OrganizationGuard></ProtectedRoute>} />
-          <Route path="/missions/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionWorkspace /></AppLayout></OrganizationGuard></ProtectedRoute>} />
+          <Route path="/missions/:id/*" element={<ProtectedRoute><OrganizationGuard><AppLayout><MissionEntry /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           {/* Recherche autonome (sourcing sans mission) */}
           <Route path="/sourcing" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearches /></AppLayout></OrganizationGuard></ProtectedRoute>} />
           <Route path="/sourcing/:id" element={<ProtectedRoute><OrganizationGuard><AppLayout><SourcingSearchPage /></AppLayout></OrganizationGuard></ProtectedRoute>} />

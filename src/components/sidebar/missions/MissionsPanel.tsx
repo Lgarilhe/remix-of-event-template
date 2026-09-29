@@ -12,11 +12,13 @@ import { useEffect, useMemo } from 'react';
 import { matchPath, useLocation } from 'react-router-dom';
 import { Columns3, Search } from 'lucide-react';
 import { hasFeature } from '@/lib/featureGates';
+import { missionIdFromPath, readMissionV3Location, screenToVisitView } from '@/lib/missionBeta';
 import { parseMissionView } from '@/lib/missionViews';
 import { canPin, hasNewProfiles, toMissionNavItem, type MissionNavItem } from '@/lib/sidebarMissions';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMyMissions, useOpenMissionProject } from '@/hooks/sidebar/useMyMissions';
 import { useMissionVisits } from '@/hooks/sidebar/useMissionVisits';
+import { useMissionBeta } from '@/hooks/useMissionBeta';
 import { SidebarSection } from '@/components/sidebar/SidebarSection';
 import { SidebarRow } from '@/components/sidebar/SidebarRow';
 import { MissionNavRow } from './MissionNavRow';
@@ -26,8 +28,15 @@ export function MissionsPanel() {
   const { pathname, search } = useLocation();
   const { orgType, organizationId } = useOrganization();
 
-  const openId = matchPath('/missions/:id', pathname)?.params.id ?? null;
-  const currentView = parseMissionView(new URLSearchParams(search).get('tab'));
+  // Nouvelle page mission (interrupteur allumé) : mission et écran lus dans le
+  // chemin, écran nommé dans le vocabulaire des vues relevées.
+  const beta = useMissionBeta();
+  const openId = beta
+    ? missionIdFromPath(pathname)
+    : matchPath('/missions/:id', pathname)?.params.id ?? null;
+  const currentView = beta
+    ? screenToVisitView(readMissionV3Location(pathname, search)?.screen ?? 'pipeline')
+    : parseMissionView(new URLSearchParams(search).get('tab'));
 
   const missions = useMyMissions({ enabled: true, withPins: true, openMissionId: openId });
   const { data: openProject, isFetching: openFetching } = useOpenMissionProject(openId);
@@ -73,6 +82,7 @@ export function MissionsPanel() {
       pinned={pinnedSet.has(item.id)}
       canPinMore={canPinMore}
       onTogglePin={onTogglePin}
+      beta={beta}
     />
   );
 
