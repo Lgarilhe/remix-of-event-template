@@ -224,7 +224,8 @@ test('0b-4 : le module n\'envoie que l\'origine user', () => {
 test('0b-4 : setCandidateStage envoie la cible et lit la réponse', async () => {
   const step = '4a1b2c3d-0000-4000-8000-000000000003';
   const calls = scriptRpc(() => ({
-    data: { id: 'r1', changed: true, result: 'updated', general_stage: 'interviewing', process_step_id: step },
+    data: { id: 'r1', changed: true, result: 'updated', general_stage: 'interviewing', process_step_id: step,
+            stage_entered_at: '2026-09-29T11:28:27.123456+00:00' },
     error: null,
   }));
   const out = await setCandidateStage('r1', { stage: 'interviewing', processStepId: step });
@@ -232,7 +233,9 @@ test('0b-4 : setCandidateStage envoie la cible et lit la réponse', async () => 
   assert.equal(calls[0].fn, 'set_candidate_stage');
   assert.deepEqual(JSON.parse(JSON.stringify(calls[0].args)),
     { p_id: 'r1', p_stage: 'interviewing', p_source: 'user', p_process_step_id: step });
-  assert.deepEqual(out, { ok: true, id: 'r1', changed: true, result: 'updated', generalStage: 'interviewing', processStepId: step });
+  // Lot 0c : date d'entrée gardée en chaîne, à la microseconde (annulation).
+  assert.deepEqual(out, { ok: true, id: 'r1', changed: true, result: 'updated', generalStage: 'interviewing', processStepId: step,
+    stageEnteredAt: '2026-09-29T11:28:27.123456+00:00' });
 
   const calls2 = scriptRpc(() => ({ data: { id: 'r2', changed: false, result: 'unchanged', general_stage: 'hired' }, error: null }));
   await setCandidateStage('r2', ATS_LABEL_TO_STAGE['Gagné']);

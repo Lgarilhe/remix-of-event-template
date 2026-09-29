@@ -67,6 +67,12 @@ export type StageOutcome =
       result: StageRowResult;
       generalStage: GeneralStage | null;
       processStepId: string | null;
+      /**
+       * Date d'entrée dans l'étape, chaîne rendue par la base (précision à la
+       * microseconde, jamais repassée par Date : l'annulation la compare telle
+       * quelle). null si la base ne l'a pas rendue.
+       */
+      stageEnteredAt: string | null;
     }
   | ({ ok: false } & StageError);
 
@@ -76,6 +82,8 @@ export interface StageBatchRow {
   result: StageRowResult;
   generalStage: GeneralStage | null;
   processStepId: string | null;
+  /** Date d'entrée dans l'étape, chaîne de la base ; null pour une ligne skipped ou refusée. */
+  stageEnteredAt: string | null;
   /** Refus par ligne (result = 'error') : indice et code de la base. */
   hint: string | null;
   code: string | null;
@@ -134,6 +142,9 @@ export const LEGACY_LABELS_BY_STAGE: Readonly<Record<GeneralStage, readonly stri
 /**
  * Colonne du kanban de mission (MissionPipeline.tsx : colonnes fixes, colonnes
  * d'étapes d'entretien par identifiant, colonne Écarté) vers la cible.
+ * « interviewing » (lot 0c) : colonne En entretien d'une mission sans étapes
+ * d'entretien ; sur une mission qui en a, la base refuse (STAGE_STEP_REQUIRED).
+ * Chemin inverse : missionColumnOf (src/lib/stageDisplay.ts).
  */
 export function missionColumnToStage(key: string, stepIds: ReadonlySet<string>): StageTarget {
   if (stepIds.has(key)) return { stage: 'interviewing', processStepId: key };
@@ -147,6 +158,8 @@ export function missionColumnToStage(key: string, stepIds: ReadonlySet<string>):
       return { stage: 'replied' };
     case 'shortlisted':
       return { stage: 'retained' };
+    case 'interviewing':
+      return { stage: 'interviewing' };
     case 'hired':
       return { stage: 'hired' };
     case 'dismissed':
@@ -217,6 +230,7 @@ function toRow(raw: Json, fallbackId: string): StageBatchRow {
     result,
     generalStage: isGeneralStage(raw.general_stage) ? raw.general_stage : null,
     processStepId: str(raw.process_step_id),
+    stageEnteredAt: str(raw.stage_entered_at),
     hint: result === 'error' ? str(raw.hint) : null,
     code: result === 'error' ? str(raw.code) : null,
   };
@@ -253,6 +267,7 @@ export async function setCandidateStage(id: string, t: StageTarget): Promise<Sta
       result: row.result,
       generalStage: row.generalStage,
       processStepId: row.processStepId,
+      stageEnteredAt: row.stageEnteredAt,
     };
   } catch (e) {
     return { ok: false, ...toError(e) };
