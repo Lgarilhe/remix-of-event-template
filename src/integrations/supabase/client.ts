@@ -5,6 +5,11 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+// Marqueur de build (vite.config.ts, define). Même clé que l'en-tête par défaut
+// de supabase-js 2.75.1 : il le remplace, sans en-tête nouveau pour le CORS.
+declare const __KONEKT_BUILD__: string | undefined;
+const KONEKT_BUILD = typeof __KONEKT_BUILD__ === 'string' ? __KONEKT_BUILD__ : 'dev';
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
@@ -13,5 +18,8 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
+  global: {
+    headers: { 'X-Client-Info': `supabase-js-web/2.75.1 konekt/${KONEKT_BUILD}` },
+  },
 });

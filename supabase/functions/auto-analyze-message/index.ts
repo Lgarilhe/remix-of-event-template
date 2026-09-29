@@ -1,6 +1,8 @@
 // Deno.serve used directly
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
+import { candidateRef, recordInbound, recordReplySummary, type CandidateRef } from "../_shared/candidate-stage-events.ts";
+import { isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -47,7 +49,8 @@ async function resolveOrgCredentials(organizationId?: string): Promise<OrgCreds>
   }
   return result;
 }
-// Intents qui déclenchent la mise à jour du statut et de la catégorie de conversation
+// Intents qui déclenchent la mise à jour de la catégorie de conversation
+// (l'étape du candidat n'est plus écrite ici depuis le lot 0b-2a).
 const STATUS_UPDATE_INTENTS = new Set<string>([
   'interested', 'wants_call', 'needs_info', 'timing_issue', 'not_interested', 'already_placed',
 ]);
@@ -92,15 +95,96 @@ async function fetchChatDetails(chatId: string, creds: OrgCreds): Promise<{ atte
 
   const attendees = data.attendees || [];
   const candidate = attendees.find((a: Record<string, unknown>) => !a.is_self);
+  // Conversation à deux : l'identifiant LinkedIn du candidat est aussi porté
+  // par la conversation (le navigateur n'envoie en sender_id que l'identifiant
+  // du participant chez le prestataire).
+  const chatAttendeeProviderId = typeof data.attendee_provider_id === 'string' ? data.attendee_provider_id : undefined;
 
-  if (!candidate) return {};
+  if (!candidate) return chatAttendeeProviderId ? { attendeeProviderId: chatAttendeeProviderId } : {};
 
   return {
     attendeeName: candidate.display_name || candidate.name || 'Inconnu',
     attendeeHeadline: candidate.headline,
     attendeeProfileUrl: candidate.profile_url,
-    attendeeProviderId: candidate.provider_id,
+    attendeeProviderId: candidate.provider_id || chatAttendeeProviderId,
   };
+}
+
+/** Date ISO du dernier message du candidat (is_sender faux), jamais dans le futur ; null si absente ou illisible. */
+function lastCandidateMessageAt(messages: Array<{ is_sender: boolean; timestamp?: string }>): string | null {
+  const last = [...messages].reverse().find((m) => !m.is_sender);
+  const at = last?.timestamp ? Date.parse(last.timestamp) : NaN;
+  return Number.isFinite(at) ? new Date(Math.min(at, Date.now())).toISOString() : null;
+}
+
+/**
+ * Réponse déjà enregistrée sur cette conversation (webhook ou rattrapage
+ * précédent) : un lien de l'organisation a reçu une réception à cette date ou
+ * après. Une nouvelle analyse du même fil ne rejoue alors pas l'étape (un
+ * déplacement manuel fait depuis reste en place). Lecture impossible : false.
+ */
+async function replyAlreadyRecorded(organizationId: string, accountId: string, chatId: string, at: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('mission_conversations')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('account_id', accountId)
+    .eq('chat_id', chatId)
+    .gte('last_inbound_at', at)
+    .limit(1);
+  if (error) {
+    console.warn('[auto-analyze] Conversation links unreadable:', error.message);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Écriture sur les lignes du candidat admise dans cette organisation (mêmes
+ * gardes que la réponse au webhook) : candidat non effacé (RGPD) ; compte
+ * relié à plusieurs organisations (état hérité), conversation ou candidat
+ * déjà lié à une mission de l'organisation sur ce compte. Lecture impossible :
+ * refus (échec fermé), journalisé.
+ */
+async function stageWriteAllowed(organizationId: string, accountId: string, chatId: string, candidate: CandidateRef): Promise<boolean> {
+  try {
+    if (await isCandidateErasedForOrg(supabase, {
+      organizationId,
+      linkedinIds: candidate.ids,
+      linkedinUrl: candidate.profile_url ?? (candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null),
+    })) {
+      console.log('[auto-analyze] Stage writes skipped: candidate erased');
+      return false;
+    }
+    const { data: accountOrgs, error: accountOrgsError } = await supabase
+      .from('member_linkedin_accounts')
+      .select('organization_id')
+      .eq('linkedin_account_id', accountId);
+    if (accountOrgsError) throw accountOrgsError;
+    const orgCount = new Set(((accountOrgs ?? []) as Array<{ organization_id: string | null }>)
+      .map((r) => r.organization_id).filter(Boolean)).size;
+    if (orgCount <= 1) return true;
+    const safe = (v: string) => v.replace(/[^a-zA-Z0-9_\-:]/g, '');
+    const ids = candidate.ids.map(safe).filter(Boolean);
+    const filters = [`chat_id.eq.${safe(chatId)}`,
+      ...(ids.length > 0 ? [`candidate_id.in.(${ids.join(',')})`, `candidate_ids.ov.{${ids.join(',')}}`] : [])];
+    const { data: links, error: linksError } = await supabase
+      .from('mission_conversations')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .eq('account_id', accountId)
+      .or(filters.join(','))
+      .limit(1);
+    if (linksError) throw linksError;
+    if ((links ?? []).length === 0) {
+      console.log('[auto-analyze] Stage writes skipped: shared account, no link on it');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn('[auto-analyze] Stage writes skipped: guard unreadable:', e instanceof Error ? e.message : e);
+    return false;
+  }
 }
 
 // ─── AI Analysis (lightweight) ────────────────────────────────────
@@ -213,6 +297,9 @@ Deno.serve(async (req) => {
     }
 
     const { chat_id, account_id, sender_id, organization_id } = _body;
+    // Réponse déjà portée par le webhook dans chaque organisation admise : pas
+    // de rattrapage. Lu seulement sur un appel interne (clé de service).
+    const stageRecorded = isServiceRole && _body?.stage_recorded === true;
 
     // Autorisation (appels JWT uniquement — service_role a userId=null et reste
     // bypass, par design pour les appels internes). Les appelants ne passent
@@ -319,6 +406,49 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Refonte mission, lot 0b-2a (S4) : l'analyse n'écrit plus l'étape du
+    // candidat. Candidat de la conversation : identifiant LinkedIn du
+    // participant, sender_id, URL de profil.
+    const stageCandidate = candidateRef({
+      ids: [chatDetails.attendeeProviderId, sender_id],
+      profileUrl: typeof profileUrl === 'string' ? profileUrl : null,
+    });
+    const hasStageCandidate = stageCandidate.ids.length > 0 || !!stageCandidate.slug;
+    // Candidat effacé (RGPD) ou organisation sans lien sur un compte partagé :
+    // ni rattrapage ni résumé (mêmes gardes qu'au webhook).
+    const stageAllowed = !!accountOrgId && hasStageCandidate
+      && await stageWriteAllowed(accountOrgId, account_id, chat_id, stageCandidate);
+
+    // Rattrapage borné de la réponse, avant l'analyse et quel qu'en soit le
+    // sort : « A répondu » dans la mission de la conversation, à la date du
+    // dernier message du candidat ; rien si ce message précède le premier
+    // contact dans la mission (p_received_at), ni si cette réponse est déjà
+    // enregistrée. Organisation du compte seulement. Au mieux : un échec est
+    // journalisé.
+    const lastCandidateAt = lastCandidateMessageAt(messages);
+    if (stageRecorded) {
+      console.log('[auto-analyze] Reply catch-up skipped: stage recorded by the webhook');
+    } else if (!lastCandidateAt) {
+      console.log('[auto-analyze] Reply catch-up skipped: candidate message without date');
+    } else if (accountOrgId && stageAllowed) {
+      if (await replyAlreadyRecorded(accountOrgId, account_id, chat_id, lastCandidateAt)) {
+        console.log('[auto-analyze] Reply catch-up skipped: reply already recorded');
+      } else {
+        const inbound = await recordInbound(supabase, {
+          organizationId: accountOrgId,
+          accountId: account_id,
+          candidate: stageCandidate,
+          chatId: chat_id,
+          receivedAt: lastCandidateAt,
+        });
+        if (!inbound.ok) {
+          console.error('[auto-analyze] Reply catch-up failed:', inbound.fn, inbound.kind, inbound.error);
+        } else {
+          console.log(`[auto-analyze] Reply catch-up: ${inbound.data.project_id ?? 'no mission'}${'reason' in inbound.data && inbound.data.reason ? ` (${inbound.data.reason})` : ''}`);
+        }
+      }
+    }
+
     // 2b. Analyze intent with Claude (lightweight call)
     //
     // Refus avant l'appel, placé après les deux sorties qui ne consomment rien
@@ -358,8 +488,8 @@ Deno.serve(async (req) => {
     console.log(`[auto-analyze] Intent: ${analysis.intent} (${analysis.confidence}%) - ${analysis.summary}`);
 
     // 3. Check if we should update (confidence threshold + mappable intent)
-    // Intent non mappé ou confiance insuffisante : on saute les mises à jour de
-    // statut (étapes 4-6) mais on poursuit l'analyse complète + cache (étape 7)
+    // Intent non mappé ou confiance insuffisante : on saute la catégorie de
+    // conversation (étape 6) mais on poursuit l'analyse complète + cache (étape 7)
     // et le décompte de crédits — sinon ces chats n'ont jamais de cache et le
     // front les rejoue à chaque montage.
     const skipStatusUpdates = !STATUS_UPDATE_INTENTS.has(analysis.intent) || analysis.confidence < MIN_CONFIDENCE;
@@ -367,54 +497,24 @@ Deno.serve(async (req) => {
       console.log(`[auto-analyze] No status update: intent=${analysis.intent}, confidence=${analysis.confidence}`);
     }
 
-    // 4. Update app DB (job_candidate_status)
-    //
-    // C1 (R1, R4) : seulement les lignes de l'organisation du compte (clé de
-    // service, la RLS ne filtre rien) ; sans organisation résolue, rien n'est
-    // écrit. Une ligne dont l'étape est posée au-delà de « Contacté » garde son
-    // statut et son étape : seule la synthèse de l'analyse y est notée.
-
+    // 4. Résumé de la réponse (lot 0b-2a, S4) : reply_summary sur les lignes à
+    // « Contacté » ou au-delà de la mission de la conversation, dans
+    // l'organisation du compte. Plus aucune écriture de statut, d'étape ni de
+    // recommendation. Au mieux : un échec est journalisé.
     const candidateId = sender_id || chatDetails.attendeeProviderId;
-    
-    if (!skipStatusUpdates && candidateId && accountOrgId) {
-      const { data: statusRecords } = await supabase
-        .from('job_candidate_status')
-        .select('id, job_id, status, pipeline_stage')
-        .eq('organization_id', accountOrgId)
-        .or(`candidate_id.eq.${candidateId}${profileUrl ? `,linkedin_profile_url.eq.${profileUrl}` : ''}`)
-        .in('status', ['messaged', 'shortlisted', 'scored', 'replied'])
-        .limit(10);
 
-      if (statusRecords && statusRecords.length > 0) {
-        const appStatus = analysis.intent === 'interested' || analysis.intent === 'wants_call' 
-          ? 'interested' 
-          : analysis.intent === 'not_interested' || analysis.intent === 'already_placed'
-            ? 'not_interested'
-            : 'replied';
-
-        // Also update pipeline_stage to stay in sync
-        const pipelineStage = appStatus === 'interested' ? 'Répondu' 
-          : appStatus === 'not_interested' ? 'Répondu'
-          : 'Répondu';
-
-        for (const record of statusRecords) {
-          // Statut et étape ne sont réécrits que sans étape, ou en « Nouveau »
-          // ou « Contacté ». Toute autre étape (Pressenti, étape d'entretien,
-          // hired, Perdu…) est une décision du recruteur : on n'y touche pas.
-          const stage = (record.pipeline_stage ?? '').trim();
-          const isEarlyStage = stage === '' || stage === 'Nouveau' || stage === 'Contacté';
-
-          await supabase
-            .from('job_candidate_status')
-            .update({ 
-              ...(isEarlyStage ? { status: appStatus, pipeline_stage: pipelineStage } : {}),
-              recommendation: analysis.summary,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', record.id)
-            .eq('organization_id', accountOrgId);
-        }
-        console.log(`[auto-analyze] Updated ${statusRecords.length} job_candidate_status records to "${appStatus}" (pipeline: ${pipelineStage})`);
+    if (accountOrgId && stageAllowed) {
+      const summaryRes = await recordReplySummary(supabase, {
+        organizationId: accountOrgId,
+        accountId: account_id,
+        chatId: chat_id,
+        candidate: stageCandidate,
+        summary: analysis.summary,
+      });
+      if (!summaryRes.ok) {
+        console.error('[auto-analyze] Reply summary failed:', summaryRes.fn, summaryRes.kind, summaryRes.error);
+      } else {
+        console.log(`[auto-analyze] Reply summary: ${summaryRes.data.updated} row(s) in mission ${summaryRes.data.project_id ?? 'none'}`);
       }
     }
 

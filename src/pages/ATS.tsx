@@ -50,6 +50,17 @@ const parseView = (value: string | null): PipelineView =>
 
 const STAGE_KEYS = new Set(ATS_STAGES.map((s) => s.key));
 
+/** Identifiant d'une étape d'entretien (pipeline_stage d'une ligne en entretien). */
+const PROCESS_STEP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Colonne du pipeline global pour une étape brute. */
+function displayStage(stage: string): string {
+  if (STAGE_KEYS.has(stage)) return stage;
+  if (PROCESS_STEP_ID.test(stage)) return 'ITW en cours';
+  if (stage === 'hired') return 'Gagné';
+  return 'Nouveau';
+}
+
 const EMPTY_FILTERS: ATSFiltersValue = { search: '', stage: [], source: [], job: [], tag: [], hasReminder: false };
 
 export default function ATS() {
@@ -98,8 +109,14 @@ export default function ATS() {
   // Étape affichée : une étape que le pipeline global ne connaît pas (clé d'une
   // mission) se range dans « Nouveau », comme sa colonne, dans toutes les vues de
   // la page, au lieu d'afficher la clé brute (en attendant le module d'étapes, E-01).
+  // Deux exceptions (lot 0b) : l'identifiant d'une étape d'entretien de la mission
+  // s'affiche « ITW en cours » et « hired » s'affiche « Gagné ». L'étape brute reste
+  // dans `candidates` (annulation d'un déplacement groupé).
   const pipelineCandidates = useMemo(
-    () => candidates.map((c) => (STAGE_KEYS.has(c.stage) ? c : { ...c, stage: 'Nouveau' })),
+    () => candidates.map((c) => {
+      const stage = displayStage(c.stage);
+      return stage === c.stage ? c : { ...c, stage };
+    }),
     [candidates],
   );
 

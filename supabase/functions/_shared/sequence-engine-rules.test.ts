@@ -189,23 +189,7 @@ Deno.test('§8 : « répondu » sur une inscription terminée n\'arrête que les
 
 // ─── Correctifs du lot moteur (tests e2e des 20 lots) ───────────────────────
 
-import { executionsSinceReEnroll, linkedinProfileSlug, replyPipelinePatch, REPLY_PIPELINE_STATUSES } from './sequence-engine-rules.ts';
-
-Deno.test('SEQ-221 : la réponse passe « replied » la ligne écrite à l\'inscription (« messaged »)', () => {
-  strictEqual(REPLY_PIPELINE_STATUSES.includes('messaged'), true);
-  for (const s of ['contacted', 'shortlisted', 'scored', 'new', 'discovered', 'untreated']) strictEqual(REPLY_PIPELINE_STATUSES.includes(s), true);
-  // Jamais une ligne déjà plus loin dans le processus.
-  for (const s of ['replied', 'interested', 'qualification', 'dismissed']) strictEqual(REPLY_PIPELINE_STATUSES.includes(s), false);
-});
-
-Deno.test('SEQ-221 : étape vide, « Nouveau » ou « Contacté » passe « Répondu », une étape plus avancée est gardée', () => {
-  deepStrictEqual(replyPipelinePatch(null), { status: 'replied', pipeline_stage: 'Répondu' });
-  deepStrictEqual(replyPipelinePatch(''), { status: 'replied', pipeline_stage: 'Répondu' });
-  deepStrictEqual(replyPipelinePatch('Nouveau'), { status: 'replied', pipeline_stage: 'Répondu' });
-  deepStrictEqual(replyPipelinePatch('Contacté'), { status: 'replied', pipeline_stage: 'Répondu' });
-  deepStrictEqual(replyPipelinePatch('Pré-qualif'), { status: 'replied' });
-  deepStrictEqual(replyPipelinePatch('Pressenti'), { status: 'replied' });
-});
+import { executionsSinceReEnroll, linkedinProfileSlug } from './sequence-engine-rules.ts';
 
 Deno.test('SEQ-008 : slug exact du profil, variantes d\'écriture admises', () => {
   strictEqual(linkedinProfileSlug('https://www.linkedin.com/in/camille'), 'camille');
@@ -257,4 +241,32 @@ Deno.test('SEQ-029 / SEQ-220 : un message parti avant la relance compte toujours
   strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([deliveredCancelled, failedAfter], reEnrolledAt)), false);
   // Sans aucun envoi avant la relance, l'échec postérieur clôt toujours.
   strictEqual(shouldCloseForNoPreviousMessage(executionsSinceReEnroll([cancelledAtReply, failedAfter], reEnrolledAt)), true);
+});
+
+// ─── Refonte mission, lot 0b-2a (S13) ───────────────────────────────────────
+
+import { missionSendKind } from './sequence-engine-rules.ts';
+
+Deno.test('S13 : envoi LinkedIn enregistré sur la mission, avec son type', () => {
+  strictEqual(missionSendKind('message', { needsInMail: false }), 'message');
+  strictEqual(missionSendKind('smart_message', { needsInMail: false }), 'message');
+  strictEqual(missionSendKind('smart_message', { needsInMail: true }), 'inmail');
+  strictEqual(missionSendKind('inmail', { needsInMail: true }), 'inmail');
+  // InMail vers une relation directe : parti en message.
+  strictEqual(missionSendKind('inmail', { needsInMail: false }), 'message');
+  // Invitation, avec ou sans note.
+  strictEqual(missionSendKind('connection_request', {}), 'invitation');
+});
+
+Deno.test('S13 : rien d\'enregistré sans envoi LinkedIn au candidat', () => {
+  // Canaux fermés (D2).
+  strictEqual(missionSendKind('email', {}), null);
+  strictEqual(missionSendKind('whatsapp_message', {}), null);
+  // Actions sans envoi visible.
+  for (const t of ['profile_visit', 'check_connection', 'wait_connection', 'wait_reply', 'condition_branch']) {
+    strictEqual(missionSendKind(t, {}), null, t);
+  }
+  // Saut signalé par l'action.
+  strictEqual(missionSendKind('message', { skipped: 'already_sent' }), null);
+  strictEqual(missionSendKind('connection_request', { skipReason: 'Déjà en relation' }), null);
 });

@@ -64,17 +64,27 @@ const bounce = fnBody(webhook, 'async function handleBounce(');
 
 // ------------------------------------------------------------------ SEQ-006
 test('SEQ-006 — réponse : pipeline mis à jour dans l’organisation et la mission de l’inscription seulement, échec fermé', () => {
-  const mark = fnBody(webhook, 'async function markCandidateRepliedInPipeline(');
-  assert.match(mark, /if \(!organizationId\) \{[\s\S]*?return;/, 'sans organisation : aucune mise à jour');
-  assert.match(mark, /\.eq\('candidate_id', candidateId\)\s*\.eq\('organization_id', organizationId\)/);
-  // Mission de l'inscription (même borne que le moteur) : les autres missions
-  // du candidat restent inchangées. L'appel sans mission passait « Répondu »
-  // toutes les missions de l'organisation.
-  assert.match(mark, /const jcsJobIds = missionJobIds\(jobId\);\s*if \(jcsJobIds\) jcsQuery = jcsQuery\.in\('job_id', jcsJobIds\);/);
-  // L'ancien repli ajoutait le filtre SEULEMENT si l'organisation était connue.
-  assert.doesNotMatch(webhook, /if \([^)]*organization_id\)\s*jcsQuery = jcsQuery\.eq\('organization_id'/);
-  assert.match(newMessage, /markCandidateRepliedInPipeline\(supabase, enrollment\.organization_id, enrollment\.profile_id, enrollment\.job_id\)/);
-  assert.match(newMail, /markCandidateRepliedInPipeline\(supabase, enrollment\.organization_id, enrollment\.profile_id, enrollment\.job_id\)/);
+  // Lot 0b-2a : le webhook n'écrit plus job_candidate_status lui-même. L'étape
+  // passe par record_candidate_inbound (SQL), borné à une organisation et à la
+  // seule mission résolue (conversation, profil, inscription, lignes contactées).
+  assert.doesNotMatch(webhook, /markCandidateRepliedInPipeline/, 'ancienne écriture directe retirée');
+  assert.doesNotMatch(webhook, /\.from\('job_candidate_status'\)/, 'aucune écriture directe du pipeline');
+  // LinkedIn : un appel par organisation (compte relié et contacts rattachés),
+  // jamais sans organisation ; inscriptions de CETTE organisation seulement.
+  const stage = sliceBetween(newMessage, 'const stageOrgIds = ', 'if (failures.length > 0)');
+  assert.match(stage, /\.filter\(\(org\): org is string => !!org\)/, 'organisation vide écartée');
+  assert.match(stage, /for \(const orgId of stageOrgIds\) \{[\s\S]*?const inbound = await recordInbound\(supabase, \{\s*organizationId: orgId,/);
+  // Candidat effacé (RGPD) dans l'organisation : aucune étape ; registre illisible : rejeu.
+  const guard = stage.slice(stage.indexOf('for (const orgId of stageOrgIds)'), stage.indexOf('const inbound = await recordInbound('));
+  assert.match(guard, /if \(await stageErasedFor\(supabase, orgId, stageCandidate\)\) \{[\s\S]*?continue;/);
+  assert.match(guard, /\} catch \(e\) \{[\s\S]*?stageFailures\.push\(/);
+  assert.match(stage, /enrollmentIds: anchorRows\.filter\(\(e\) => e\.organization_id === orgId\)\.map\(\(e\) => e\.id\)/);
+  // Décision 9 : seule une erreur transitoire fait rejouer.
+  assert.match(stage, /if \(inbound\.kind === 'transient'\) stageFailures\.push\(/);
+  // E-mail : mission de l'inscription d'abord, jamais sans organisation ;
+  // erreur transitoire retentée une fois (le rejeu ne retrouve plus l'inscription close).
+  assert.match(newMail, /if \(!enrollment\.organization_id\) \{\s*console\.warn\([^)]*\);\s*\} else \{\s*const recordMailReply = \(\) => recordInbound\(supabase, \{\s*organizationId: enrollment\.organization_id as string,/);
+  assert.match(newMail, /enrollmentIds: \[enrollment\.id\],\s*enrollmentFirst: true,/);
 });
 
 // ------------------------------------------------------------------ SEQ-008

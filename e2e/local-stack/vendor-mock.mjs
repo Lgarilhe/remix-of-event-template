@@ -14,6 +14,9 @@
 //   POST /__mode { "<account_id>": { "routes": [
 //     { "method": "POST", "path": "^/api/v1/chats$", "status": 500, "body": {...}, "delay_ms": 0, "times": 1 }
 //   ] } }
+// `url` à la place de `path` : expression sur le chemin et la chaîne de requête.
+// Réponse de l'IA sans la clé "*" : { "<account_id>": { "ai_markers": { "<marqueur>": "<texte>" } } },
+// rendue à tout appel à l'IA dont la requête contient le marqueur.
 import http from 'node:http';
 
 let log = [];
@@ -61,7 +64,11 @@ http.createServer((req, res) => {
     const mode = { ...(modes['*'] ?? {}), ...(account_id ? modes[account_id] ?? {} : {}) };
 
     const routes = [...((account_id && modes[account_id]?.routes) || []), ...(modes['*']?.routes || [])];
-    const route = routes.find((r) => (!r.method || r.method === req.method) && new RegExp(r.path).test(p)
+    // `url` (au lieu de `path`) : expression appliquée au chemin suivi de la chaîne
+    // de requête, pour distinguer les appels d'identifiants propres à une
+    // organisation (unipile_dsn « unipile.mock?account_id=X&e2e= » : tout arrive sur « / »).
+    const route = routes.find((r) => (!r.method || r.method === req.method)
+      && (r.url !== undefined ? new RegExp(r.url).test(p + url.search) : new RegExp(r.path).test(p))
       && (r.times === undefined || r.times > 0));
     if (route) {
       if (route.times !== undefined) route.times -= 1;
@@ -77,11 +84,15 @@ http.createServer((req, res) => {
     }
     n += 1;
     let m;
-    // IA
+    // IA. Réponse par marqueur : un test pose { "<compte>": { "ai_markers": { "<marqueur>": "<texte>" } } }
+    // et place le marqueur dans ce qu'il fait lire à l'IA (message, profil). Aucun
+    // appel à l'IA ne porte de compte : sans marqueur, seule la clé '*' s'appliquerait.
     if (req.method === 'POST' && p === '/v1/messages') {
+      const marked = Object.values(modes).flatMap((m) => Object.entries(m?.ai_markers ?? {}))
+        .find(([marker]) => marker && raw.includes(marker));
       return send(res, 200, {
         id: `msg_ai_${n}`, type: 'message', role: 'assistant', model: body?.model ?? 'mock',
-        content: [{ type: 'text', text: mode.ai_text ?? 'Bonjour, votre parcours m’intéresse. Seriez-vous ouvert à un échange ?' }],
+        content: [{ type: 'text', text: marked ? marked[1] : mode.ai_text ?? 'Bonjour, votre parcours m’intéresse. Seriez-vous ouvert à un échange ?' }],
         stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 10 },
       });
     }

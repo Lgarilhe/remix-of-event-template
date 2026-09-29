@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 import { cancelScheduledInMails, MEETING_INMAIL_CANCEL_REASON } from "../_shared/candidate-reply-closure.ts";
+import { candidateRef, recordMeeting, resolveMeetingMission, type CandidateRef } from "../_shared/candidate-stage-events.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -206,6 +207,13 @@ Deno.serve(async (req) => {
       updated_at?: string;
     };
     let candidateMatch: CandidateMatch | null = null;
+    // Mission du rendez-vous (lot 0b-2a, décision 12) : la même sert à la
+    // séance et à l'étape. null : aucune ou plusieurs sans lien.
+    let meetingProjectId: string | null = null;
+    let meetingCandidate: CandidateRef | null = null;
+    // Étape non écrite : ambiguous_mission (aucune mission ou plusieurs sans
+    // lien) ou error (refus métier, fonction absente).
+    let stageSkippedReason: string | null = null;
 
     // Validate LinkedIn URL (must be a real profile URL, not just "LinkedIn")
     const isValidLinkedinUrl = candidateLinkedinUrl && /^https?:\/\/(www\.)?linkedin\.com\/in\/.+/i.test(candidateLinkedinUrl);
@@ -257,6 +265,32 @@ Deno.serve(async (req) => {
         const orgMatches = matches.filter((m) => m.organization_id === bookingOrgId);
         orgMatches.sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
         candidateMatch = orgMatches[0] ?? null;
+
+        // Mission du rendez-vous, résolue avant la séance (conversation, profil,
+        // inscription, lignes contactées, sinon seule mission qui suit le
+        // candidat). Trouvée : la ligne retenue devient la plus récente de
+        // cette mission. Échec (même transitoire) : séance comme avant sur la
+        // ligne la plus récente, aucune étape ; jamais bloquant, la séance,
+        // l'arrêt des séquences et l'annulation des InMails passent.
+        meetingCandidate = candidateRef({
+          ids: orgMatches.map((m) => m.candidate_id),
+          slug: candidateSlug,
+          profileUrl: candidateLinkedinUrl,
+        });
+        const resolved = await resolveMeetingMission(supabase, { organizationId: bookingOrgId, candidate: meetingCandidate });
+        if (!resolved.ok) {
+          console.error('[calendly-webhook] resolve_meeting_mission:', resolved.kind, resolved.error);
+          stageSkippedReason = 'error';
+        } else if (resolved.data) {
+          meetingProjectId = resolved.data.project_id;
+          const inMission = orgMatches.filter((m) => m.project_id === meetingProjectId);
+          if (inMission.length > 0) candidateMatch = inMission[0];
+          console.log(`[calendly-webhook] Meeting mission ${meetingProjectId} (${resolved.data.via})`);
+        }
+        if (!meetingProjectId && !stageSkippedReason) {
+          stageSkippedReason = 'ambiguous_mission';
+          console.warn('[calendly-webhook] ambiguous_mission: no single mission for this candidate — session as before, no stage written');
+        }
       }
     }
 
@@ -265,12 +299,20 @@ Deno.serve(async (req) => {
     let clientName: string | null = null;
     let projectId: string | null = null;
 
-    if (candidateMatch?.project_id) {
-      projectId = candidateMatch.project_id;
+    // Séance dans la mission du rendez-vous ; sans mission, celle de la ligne
+    // la plus récente de l'organisation (comme avant).
+    const sessionProjectId: string | null = meetingProjectId ?? candidateMatch?.project_id ?? null;
+    // Poste de la ligne retenue, seulement s'il est dans la mission de la séance.
+    const sessionJobId: string | null = meetingProjectId && candidateMatch?.project_id !== meetingProjectId
+      ? null
+      : (candidateMatch?.job_id || null);
+
+    if (sessionProjectId) {
+      projectId = sessionProjectId;
       const { data: project } = await supabase
         .from('sourcing_projects')
         .select('job_title, client_name')
-        .eq('id', candidateMatch.project_id)
+        .eq('id', sessionProjectId)
         .single();
       if (project) {
         jobTitle = project.job_title;
@@ -290,6 +332,28 @@ Deno.serve(async (req) => {
         status: 422,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Étape du candidat (lot 0b-2a, S5) : entretien en origine system dans la
+    // mission du rendez-vous, sur sa première étape d'entretien, sinon « ITW
+    // en cours » ; un écarté reste écarté. Sans mission : aucune étape. Non
+    // bloquant, comme l'ancienne écriture : un échec (même transitoire) est
+    // journalisé (stage_skipped: 'error') et n'empêche ni la séance, ni
+    // l'arrêt des séquences, ni l'annulation des InMails. Pas de rejeu :
+    // calendly_event_id n'est pas unique en production, un rejeu doublerait
+    // la séance.
+    if (meetingProjectId && candidateOrgId && meetingCandidate) {
+      const meeting = await recordMeeting(supabase, {
+        organizationId: candidateOrgId,
+        projectId: meetingProjectId,
+        candidate: meetingCandidate,
+      });
+      if (!meeting.ok) {
+        console.error('[calendly-webhook] record_candidate_meeting:', meeting.kind, meeting.error);
+        stageSkippedReason = 'error';
+      } else if (meeting.data.project_id) {
+        console.log(`[calendly-webhook] Meeting stage: ${meeting.data.rows.length} row(s) in mission ${meeting.data.project_id}`);
+      }
     }
 
     // Build scoring summary from existing scoring_details
@@ -320,7 +384,7 @@ Deno.serve(async (req) => {
         candidate_name: candidateMatch?.candidate_name || inviteeName,
         candidate_headline: candidateMatch?.candidate_headline || null,
         candidate_profile_id: candidateMatch?.candidate_id || null,
-        job_id: candidateMatch?.job_id || null,
+        job_id: sessionJobId,
         job_title: jobTitle,
         client_name: clientName,
         project_id: projectId,
@@ -338,22 +402,6 @@ Deno.serve(async (req) => {
     }
 
     console.log('[calendly-webhook] Created qualification session:', session.id);
-
-    // Update candidate status to 'qualification' + pipeline_stage if matched
-    if (candidateMatch?.candidate_id && candidateMatch?.job_id && candidateOrgId) {
-      await supabase
-        .from('job_candidate_status')
-        .update({ 
-          status: 'qualification', 
-          pipeline_stage: 'Pré-qualif',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('candidate_id', candidateMatch.candidate_id)
-        .eq('job_id', candidateMatch.job_id)
-        .eq('organization_id', candidateOrgId);
-      
-      console.log('[calendly-webhook] Updated candidate status to qualification + Pré-qualif');
-    }
 
     // Arrêt des séquences du candidat (rendez-vous = objectif atteint).
     // SEQ-008 / SEQ-112 : jamais sans filtre de profil, toujours dans
@@ -639,6 +687,7 @@ Deno.serve(async (req) => {
       sequences_stopped: sequencesStopped,
       inmails_cancelled: inmailsCancelled,
       ...(stopSkippedReason ? { sequences_stop_skipped: stopSkippedReason } : {}),
+      ...(stageSkippedReason ? { stage_skipped: stageSkippedReason } : {}),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

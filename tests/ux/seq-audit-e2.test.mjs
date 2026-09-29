@@ -51,11 +51,13 @@ test('SEQ-006 — check_replies : pipeline « Répondu » borné à l\'organisat
   assert.ok(checkReplies, 'handleCheckReplies introuvable');
   assert.doesNotMatch(checkReplies, /\.from\('job_candidate_status'\)/, 'plus de mise à jour non bornée de job_candidate_status');
   assert.match(checkReplies, /await markCandidateRepliedInPipeline\(supabase, enrollment\)/);
-  // Le helper partagé filtre l'organisation (échec fermé) et la mission.
+  // Le helper partagé (lot 0b-2a : record_candidate_inbound) borne à
+  // l'organisation (échec fermé) et à la mission de l'inscription d'abord.
   const helper = slice(engine, 'async function markCandidateRepliedInPipeline', 'async function recordEmailStepSent');
-  assert.match(helper, /\.eq\('organization_id', jcsOrgId\)/);
-  assert.match(helper, /missionJobIds\(/);
-  assert.match(helper, /if \(enrollment\.profile_id && jcsOrgId\)/, 'organisation inconnue : aucune mise à jour');
+  assert.doesNotMatch(helper, /\.from\('job_candidate_status'\)/);
+  assert.match(helper, /if \(!orgId\) \{[\s\S]*?return;/, 'organisation inconnue : aucune mise à jour');
+  assert.match(helper, /recordInbound\(supabase, \{\s*organizationId: orgId,/);
+  assert.match(helper, /enrollmentFirst: true/);
   // Repli de l'organisation sur la séquence : jointure dans la sélection.
   assert.match(checkReplies, /sequence:outreach_sequences\(organization_id\)/);
 });

@@ -24,6 +24,7 @@ import {
   addMember,
   admin,
   deleteOrg,
+  seedCandidateRowFromLegacy,
   seedLinkedInAccount,
   signIn,
   type SeededStep,
@@ -109,13 +110,14 @@ async function setIntegration(orgId: string, patch: Record<string, unknown>) {
   if (error) throw new Error(`organization_integrations: ${error.message}`);
 }
 
+// Refonte mission, lot 0b : ligne rattachée à une mission (nouvelle par appel), étape
+// dérivée de l'ancien couple et posée par set_candidate_stage.
 async function jcs(orgId: string, createdBy: string, candidateId: string, o: Record<string, unknown> = {}) {
-  const { data, error } = await admin().from('job_candidate_status').insert({
-    job_id: `job_meeting_${rand()}`, candidate_id: candidateId, created_by: createdBy, organization_id: orgId,
-    candidate_name: 'Camille Martin', status: 'contacted', pipeline_stage: 'Contacté', ...o,
-  }).select('id').single();
-  if (error || !data) throw new Error(`jcs: ${error?.message}`);
-  return data.id as string;
+  const { status = 'contacted', pipeline_stage = 'Contacté', ...extra } = o as { status?: string; pipeline_stage?: string | null };
+  const { id } = await seedCandidateRowFromLegacy({
+    orgId, createdBy, candidateId, status, pipelineStage: pipeline_stage, extra: { candidate_name: 'Camille Martin', ...extra },
+  });
+  return id;
 }
 
 // ─── Lectures ───────────────────────────────────────────────────────────────

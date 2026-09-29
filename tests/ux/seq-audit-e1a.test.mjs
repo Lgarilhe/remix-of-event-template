@@ -136,12 +136,17 @@ test('SEQ-006 — réponse avant envoi : job_candidate_status borné à l\'organ
   // Lot E1b : la mise à jour bornée est partagée avec « Marquer comme répondu »
   // (markCandidateRepliedInPipeline), appelée par la vérification avant envoi.
   assert.match(loop, /if \(closed\.changed\) await markCandidateRepliedInPipeline\(supabase, enrollment\)/);
+  // Lot 0b-2a : plus d'écriture directe ; record_candidate_inbound (SQL) borne
+  // à l'organisation de l'inscription (échec fermé si inconnue) et à la mission
+  // de l'inscription d'abord.
   const jcs = sliceBetween(engine, 'async function markCandidateRepliedInPipeline', '\n}\n');
-  assert.doesNotMatch(jcs, /if \(jcsOrgId\) jcsQuery = jcsQuery\.eq\('organization_id'/, 'ancien filtre optionnel');
-  assert.match(jcs, /if \(enrollment\.profile_id && jcsOrgId\)/);
-  assert.match(jcs, /\.eq\('organization_id', jcsOrgId\)/);
-  assert.match(jcs, /missionJobIds\(enrollment\.job_id/);
-  assert.match(jcs, /\.in\('job_id', jcsJobIds\)/);
+  assert.doesNotMatch(jcs, /\.from\('job_candidate_status'\)/, 'aucune écriture directe du pipeline');
+  assert.match(jcs, /const orgId = enrollmentOrganizationId\(enrollment\);\s*if \(!orgId\) \{[\s\S]*?return;\s*\}/);
+  assert.match(jcs, /recordInbound\(supabase, \{\s*organizationId: orgId,/);
+  assert.match(jcs, /enrollmentIds: \[enrollment\.id\],\s*enrollmentFirst: true,/);
+  const org = sliceBetween(engine, 'function enrollmentOrganizationId(', '\n}\n');
+  assert.match(org, /enrollment\.organization_id/);
+  assert.match(org, /\.sequence as [^)]*\)\?\.organization_id/, 'repli sur l\'organisation de la séquence');
 });
 
 // ---------------------------------------------------------------- SEQ-007

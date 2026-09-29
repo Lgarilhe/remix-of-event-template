@@ -25,9 +25,12 @@ import { E2E } from '../helpers/env';
 import {
   addMember,
   admin,
+  candidateRowState,
   createOrg,
   deleteOrg,
+  seedCandidateRow,
   seedLinkedInAccount,
+  seedMission,
   seedSequence,
   signIn,
   type SeededStep,
@@ -241,18 +244,6 @@ async function memberWithAccount(org: TestOrg, role: 'member' | 'admin' = 'membe
   const accountId = await seedLinkedInAccount(org.orgId, user.userId, `acc_${rand()}`, 'OK');
   return { user, accountId };
 }
-async function jcs(orgId: string, createdBy: string, candidateId: string, o: Record<string, unknown> = {}) {
-  const { data, error } = await admin().from('job_candidate_status').insert({
-    job_id: `job_e2e_${rand()}`, candidate_id: candidateId, created_by: createdBy, organization_id: orgId,
-    candidate_name: 'Camille Martin', status: 'contacted', pipeline_stage: 'Contacté', ...o,
-  }).select('id').single();
-  if (error || !data) throw new Error(`jcs: ${error?.message}`);
-  return data.id as string;
-}
-async function jcsRow(id: string) {
-  const { data } = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('id', id).single();
-  return data as { status: string; pipeline_stage: string | null };
-}
 async function stepsWithTemplates(org: TestOrg, createdBy: string, steps: Array<{ action_type: string; template?: string; delay_days?: number; wait_for_event?: string }>) {
   const seeded = await seedSequence(org.orgId, createdBy, steps.map((s) => ({
     action_type: s.action_type, delay_days: s.delay_days ?? 0, wait_for_event: s.wait_for_event ?? null,
@@ -323,26 +314,35 @@ test.describe('Réponse du candidat', () => {
     expect(await sentTexts(accountId), 'aucun message au candidat qui a répondu').toEqual([]);
   });
 
-  // reponse-pipeline-organisation (SEQ-006)
-  test('@critical la réponse passe le pipeline « Répondu » dans l’organisation de l’inscription seulement ; étape avancée et autre organisation intactes', async () => {
+  // reponse-pipeline-organisation (SEQ-006, refonte mission lot 0b)
+  test('@critical la réponse passe « A répondu » dans la mission de l’inscription seulement ; étape avancée, autre mission et autre organisation intactes', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E inbound pipeline A');
     const other = track(await createOrg('agency', 'E2E inbound pipeline B'));
+    const member = await addMember(org.orgId, 'member', 'inbound');
+    orgsToDelete.find((o) => o.org.orgId === org.orgId)?.extra.push(member);
+    const mission = await seedMission(org.orgId, org.owner.userId);
+    const otherMission = await seedMission(org.orgId, org.owner.userId);
+    const otherOrgMission = await seedMission(other.orgId, other.owner.userId);
     const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour']);
+    await admin().from('outreach_sequences').update({ project_id: mission }).eq('id', sequenceId);
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId);
-    const contacted = await jcs(org.orgId, org.owner.userId, profileId, { status: 'contacted', pipeline_stage: 'Contacté' });
-    const emptyStage = await jcs(org.orgId, org.owner.userId, profileId, { status: 'messaged', pipeline_stage: null });
-    const advanced = await jcs(org.orgId, org.owner.userId, profileId, { status: 'contacted', pipeline_stage: 'Entretien' });
-    const otherOrg = await jcs(other.orgId, other.owner.userId, profileId, { status: 'contacted', pipeline_stage: 'Contacté' });
-    const otherOrgNew = await jcs(other.orgId, other.owner.userId, profileId, { status: 'messaged', pipeline_stage: 'Nouveau' });
+    const row = (createdBy: string, missionId: string, stage: 'contacted' | 'interviewing', orgId = org.orgId) =>
+      seedCandidateRow({ orgId, createdBy, candidateId: profileId, missionId, stage });
+    const contacted = await row(org.owner.userId, mission, 'contacted');
+    const advanced = await row(member.userId, mission, 'interviewing');
+    const otherMissionRow = await row(org.owner.userId, otherMission, 'contacted');
+    const otherOrgRow = await row(other.owner.userId, otherOrgMission, 'contacted', other.orgId);
 
     await webhook(replyFrom(accountId, profileId));
 
     expect((await enr(enrollmentId)).status).toBe('replied');
-    expect(await jcsRow(contacted)).toEqual({ status: 'replied', pipeline_stage: 'Répondu' });
-    expect(await jcsRow(emptyStage)).toEqual({ status: 'replied', pipeline_stage: 'Répondu' });
-    expect(await jcsRow(advanced), 'étape avancée gardée').toEqual({ status: 'replied', pipeline_stage: 'Entretien' });
-    expect(await jcsRow(otherOrg), 'autre organisation intacte').toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
-    expect(await jcsRow(otherOrgNew), 'autre organisation intacte').toEqual({ status: 'messaged', pipeline_stage: 'Nouveau' });
+    const replied = await candidateRowState(contacted.id);
+    expect({ stage: replied.general_stage, status: replied.status, pipeline_stage: replied.pipeline_stage, source: replied.decision_source })
+      .toEqual({ stage: 'replied', status: 'replied', pipeline_stage: 'Répondu', source: 'system' });
+    expect(replied.replied_at).not.toBeNull();
+    expect((await candidateRowState(advanced.id)).general_stage, 'étape avancée gardée').toBe('interviewing');
+    expect((await candidateRowState(otherMissionRow.id)).general_stage, 'autre mission intacte').toBe('contacted');
+    expect((await candidateRowState(otherOrgRow.id)).general_stage, 'autre organisation intacte').toBe('contacted');
   });
 
   // reponse-arrete-soeurs (SEQ-212)
@@ -586,7 +586,9 @@ test.describe('Réponse du candidat', () => {
 
     const attendeeCalls = (await mockCalls()).filter((c) => c.method === 'GET' && /\/chats\/[^/]+\/attendees$/.test(c.path));
     expect(attendeeCalls.filter((c) => c.path.includes(chatTheirs)), 'is_sender faux : aucun appel des participants').toHaveLength(0);
-    expect(attendeeCalls.filter((c) => c.path.includes(chatMine)), 'is_sender vrai : aucun appel des participants').toHaveLength(0);
+    // Lot 0b (message propre, décision 5) : conversation sans lien, participants
+    // lus une seule fois pour reconnaître le candidat ; aucune clôture.
+    expect(attendeeCalls.filter((c) => c.path.includes(chatMine)), 'is_sender vrai : participants lus une fois (message propre)').toHaveLength(1);
     expect(attendeeCalls.filter((c) => c.path.includes(chatUnknown)), 'is_sender absent : participants demandés').toHaveLength(1);
   });
 
@@ -879,7 +881,10 @@ test.describe('Rendez-vous Calendly', () => {
       const seq = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance']);
       const e = await enroll(org, seq.sequenceId, org.owner.userId, accountId, { profile_id: profileId, profile_url: url, current_step_order: 1 });
       const execId = await schedule(org, e.enrollmentId, seq.steps[1], { scheduled_at: minutesFromNow(DAY) });
-      const jcsId = await jcs(org.orgId, org.owner.userId, profileId, { linkedin_profile_url: url });
+      // Refonte mission, lot 0b : ligne rattachée à une mission, seule portée d'une étape écrite.
+      const { id: jcsId } = await seedCandidateRow({
+        orgId: org.orgId, createdBy: org.owner.userId, candidateId: profileId, stage: 'contacted', extra: { linkedin_profile_url: url },
+      });
       orgs.push({ org, accountId, enrollmentId: e.enrollmentId, execId, jcsId });
     }
     return { slug, orgs };
@@ -893,7 +898,7 @@ test.describe('Rendez-vous Calendly', () => {
     for (const o of orgs) {
       expect((await enr(o.enrollmentId)).status, 'inscription intacte').toBe('active');
       expect((await exec(o.execId)).status).toBe('scheduled');
-      expect(await jcsRow(o.jcsId)).toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
+      expect((await candidateRowState(o.jcsId)).general_stage, 'étape intacte').toBe('contacted');
       expect(await notificationsOf(o.org.orgId), 'aucune notification').toEqual([]);
     }
   }
@@ -935,12 +940,15 @@ test.describe('Rendez-vous Calendly', () => {
     expect(closed.status, 'organisation reliée : inscription close').toBe('completed');
     expect(closed.tracking_data?.completion_reason).toBe('meeting_booked');
     expect((await exec(b.execId)).status).toBe('cancelled');
-    expect(await jcsRow(b.jcsId)).toEqual({ status: 'qualification', pipeline_stage: 'Pré-qualif' });
+    // Lot 0b (décision 12) : entretien en origine system, « ITW en cours » (mission sans étape d'entretien).
+    const booked = await candidateRowState(b.jcsId);
+    expect({ stage: booked.general_stage, step: booked.process_step_id, pipeline_stage: booked.pipeline_stage, source: booked.decision_source })
+      .toEqual({ stage: 'interviewing', step: null, pipeline_stage: 'ITW en cours', source: 'system' });
     expect((await notificationsOf(b.org.orgId, 'action')).length).toBe(1);
 
     expect((await enr(a.enrollmentId)).status, 'autre organisation intacte').toBe('active');
     expect((await exec(a.execId)).status).toBe('scheduled');
-    expect(await jcsRow(a.jcsId)).toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
+    expect((await candidateRowState(a.jcsId)).general_stage, 'autre organisation : étape intacte').toBe('contacted');
     expect(await notificationsOf(a.org.orgId)).toEqual([]);
   });
 });

@@ -20,7 +20,7 @@
  */
 import { createHash } from 'node:crypto';
 import { test, expect } from '@playwright/test';
-import { addMember, admin, createOrg, deleteOrg, seedLinkedInAccount, signIn, type TestOrg, type TestUser } from '../helpers/supabase-admin';
+import { addMember, admin, createOrg, deleteOrg, seedCandidateRow, seedLinkedInAccount, signIn, type TestOrg, type TestUser } from '../helpers/supabase-admin';
 import {
   ENGINE_SKIP_REASON,
   callFunction,
@@ -152,11 +152,11 @@ test.describe('Décision 14 : candidat effacé refusé dès la mise en file InMa
     // Fiche du pipeline : seule trace de l'URL, l'InMail ne la porte pas.
     const byCard = { id: newProfileId(), slug: `jules-fiche-${rand()}` };
     await registerErasure(`https://www.linkedin.com/in/${byCard.slug}`);
-    const { error: cardErr } = await admin().from('job_candidate_status').insert({
-      job_id: `e2e-job-${rand()}`, candidate_id: byCard.id, created_by: org.owner.userId, organization_id: org.orgId,
-      status: 'shortlisted', linkedin_profile_url: `https://www.linkedin.com/in/${byCard.slug}`,
+    // Refonte mission, lot 0b : fiche rattachée à une mission, Retenu par set_candidate_stage.
+    await seedCandidateRow({
+      orgId: org.orgId, createdBy: org.owner.userId, candidateId: byCard.id, stage: 'retained',
+      extra: { linkedin_profile_url: `https://www.linkedin.com/in/${byCard.slug}` },
     });
-    if (cardErr) throw new Error(`job_candidate_status: ${cardErr.message}`);
     const control = { id: newProfileId(), url: `https://www.linkedin.com/in/lea-temoin-${rand()}` };
 
     const res = await queue(await token(org.owner), accountId, [

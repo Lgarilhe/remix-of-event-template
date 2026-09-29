@@ -347,8 +347,9 @@ export interface GdprErasureResult {
  * durable tracking_data.gdpr_erased_at (D5 : ni reprise ni relance),
  * ses InMails programmés sont annulés, l'adresse rejoint suppressed_emails
  * (reason 'unsubscribe'), puis nom, titre, adresse, téléphone et textes
- * envoyés sont effacés des lignes de séquence. Le succès n'est renvoyé
- * qu'une fois toutes ces écritures faites ; chaque étape est rejouable.
+ * envoyés sont effacés des lignes de séquence. Ses liens conversation–mission
+ * sont supprimés et ses résumés de réponse effacés (lot 0b). Le succès n'est
+ * renvoyé qu'une fois toutes ces écritures faites ; chaque étape est rejouable.
  */
 export async function recordGdprErasure(
   supabase: SupabaseClient,
@@ -560,7 +561,74 @@ export async function recordGdprErasure(
     if (error) return fail('suppression des enrichissements (e-mail)', error);
   }
 
+  // 9. Liens conversation–mission et résumés de réponse (lot 0b), dans le
+  //    périmètre. Le déclencheur mission_conversations_gdpr_erase (marqueur
+  //    de l'étape 3 bis) ne couvre que les candidats inscrits en séquence ;
+  //    ici, tout candidat, message manuel compris. Il est reconnu par ses
+  //    identifiants LinkedIn (inscriptions, lignes du pipeline trouvées par
+  //    l'URL de profil), par son slug ou par ces lignes elles-mêmes.
+  const candidateIds = new Set<string>(recipientIds);
+  if (slug) candidateIds.add(slug);
+  const pipelineRowIds: string[] = [];
+  for (const lookup of lookups.filter((l) => !l.byEmail)) {
+    let query = supabase
+      .from('job_candidate_status')
+      .select('id, candidate_id')
+      .ilike('linkedin_profile_url', lookup.pattern)
+      .limit(1000);
+    if (orgId) query = query.eq('organization_id', orgId);
+    const { data, error } = await query;
+    if (error) return fail('lecture des lignes du pipeline', error);
+    for (const row of (data ?? []) as Array<{ id: string; candidate_id: string | null }>) {
+      pipelineRowIds.push(row.id);
+      const candidateId = row.candidate_id?.trim();
+      if (candidateId && candidateId.length <= 512) candidateIds.add(candidateId);
+    }
+  }
+  // reply_summary seul : ni l'étape ni le couple status / pipeline_stage.
+  for (let i = 0; i < pipelineRowIds.length; i += 100) {
+    const { error } = await supabase
+      .from('job_candidate_status')
+      .update({ reply_summary: null })
+      .in('id', pipelineRowIds.slice(i, i + 100))
+      .not('reply_summary', 'is', null);
+    if (error) return fail('effacement des résumés de réponse', error);
+  }
+  const knownIds = [...candidateIds];
+  for (let i = 0; i < knownIds.length; i += 100) {
+    const batch = knownIds.slice(i, i + 100);
+    let clear = supabase
+      .from('job_candidate_status')
+      .update({ reply_summary: null })
+      .in('candidate_id', batch)
+      .not('reply_summary', 'is', null);
+    if (orgId) clear = clear.eq('organization_id', orgId);
+    const { error: clearError } = await clear;
+    if (clearError) return fail('effacement des résumés de réponse', clearError);
+
+    let byId = supabase.from('mission_conversations').delete().in('candidate_id', batch);
+    if (orgId) byId = byId.eq('organization_id', orgId);
+    const { error: byIdError } = await byId;
+    if (byIdError) return fail('suppression des liens de conversation', byIdError);
+
+    let byAltId = supabase.from('mission_conversations').delete().overlaps('candidate_ids', textArrayLiteral(batch));
+    if (orgId) byAltId = byAltId.eq('organization_id', orgId);
+    const { error: byAltIdError } = await byAltId;
+    if (byAltIdError) return fail('suppression des liens de conversation', byAltIdError);
+  }
+  if (slug) {
+    let bySlug = supabase.from('mission_conversations').delete().eq('candidate_slug', slug);
+    if (orgId) bySlug = bySlug.eq('organization_id', orgId);
+    const { error } = await bySlug;
+    if (error) return fail('suppression des liens de conversation', error);
+  }
+
   return { ...result, success: true };
+}
+
+/** Littéral text[] pour un filtre PostgREST (ov) : chaque valeur entre guillemets. */
+function textArrayLiteral(values: string[]): string {
+  return `{${values.map((v) => `"${v.replace(/(["\\])/g, '\\$1')}"`).join(',')}}`;
 }
 
 /**

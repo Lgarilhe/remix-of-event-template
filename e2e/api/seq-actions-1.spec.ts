@@ -24,6 +24,7 @@ import {
   createConfirmedUser,
   createOrg,
   deleteOrg,
+  seedCandidateRow,
   seedLinkedInAccount,
   seedMission,
   seedSequence,
@@ -347,17 +348,16 @@ test.describe('@critical « Marquer comme répondu » sur une inscription active
     const e2 = await enroll(a, seq2.sequenceId, a.owner.userId, `acc_${rand()}`, { profile_id: profileId, status: 'paused', pause_reason: 'manual' });
     const e3 = await enroll(b, seqB.sequenceId, b.owner.userId, `acc_${rand()}`, { profile_id: profileId });
 
+    // Refonte mission, lot 0b : lignes « Contacté » posées par set_candidate_stage.
     const jcs = async (orgId: string, jobId: string, createdBy: string) => {
-      const { data, error } = await admin().from('job_candidate_status').insert({
-        job_id: jobId, candidate_id: profileId, status: 'contacted', created_by: createdBy, organization_id: orgId,
-      }).select('id').single();
-      if (error) throw new Error(`job_candidate_status: ${error.message}`);
-      cleanups.push(() => admin().from('job_candidate_status').delete().eq('id', data!.id));
-      return data!.id as string;
+      const { id } = await seedCandidateRow({ orgId, createdBy, candidateId: profileId, missionId: jobId, stage: 'contacted' });
+      cleanups.push(() => admin().from('job_candidate_status').delete().eq('id', id));
+      return id;
     };
     const jcsA1 = await jcs(a.orgId, job1, a.owner.userId);
     const jcsA2 = await jcs(a.orgId, job2, a.owner.userId);
-    const jcsB1 = await jcs(b.orgId, job1, b.owner.userId);
+    // Organisation B : sa propre mission (une ligne ne porte que la mission de son organisation, C1).
+    const jcsB1 = await jcs(b.orgId, await seedMission(b.orgId, b.owner.userId), b.owner.userId);
 
     const analytics = async () => {
       const { data } = await admin().from('sequence_analytics').select('replies_received').eq('sequence_id', seq1.sequenceId);
@@ -391,8 +391,8 @@ test.describe('@critical « Marquer comme répondu » sur une inscription active
     expect((await enrRow(e3.enrollmentId)).status, 'l’autre organisation n’est pas touchée').toBe('active');
     expect((await execRow(e3Exec)).status).toBe('scheduled');
 
-    const { data: jcsRows } = await admin().from('job_candidate_status').select('id, status').in('id', [jcsA1, jcsA2, jcsB1]);
-    const statusOf = (id: string) => (jcsRows ?? []).find((r: { id: string }) => r.id === id)?.status;
+    const { data: jcsRows } = await admin().from('job_candidate_status').select('id, general_stage').in('id', [jcsA1, jcsA2, jcsB1]);
+    const statusOf = (id: string) => (jcsRows ?? []).find((r: { id: string }) => r.id === id)?.general_stage;
     expect(statusOf(jcsA1), 'pipeline de la mission passé « Répondu »').toBe('replied');
     expect(statusOf(jcsA2), 'autre mission de l’organisation intacte').toBe('contacted');
     expect(statusOf(jcsB1), 'autre organisation intacte').toBe('contacted');

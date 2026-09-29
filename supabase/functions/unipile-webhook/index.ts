@@ -7,9 +7,9 @@ import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 import { stopLinkedInAccountSending } from "../_shared/linkedin-sending-stop.ts";
 import { resumeDate } from "../_shared/sequence-resume.ts";
 import { inReplyToCandidates } from "../_shared/sequence-email-policy.mjs";
-import { missionJobIds } from "../_shared/sequence-engine-rules.ts";
 import {
   cancelScheduledInMails,
+  candidateSlugs,
   closeSiblingEnrollments,
   closedContactEnd,
   lateReplyEnrollments,
@@ -17,6 +17,8 @@ import {
   replySiblingScope,
   type ReplyAnchor,
 } from "../_shared/candidate-reply-closure.ts";
+import { candidateRef, recordInbound, recordOwnMessage, type CandidateRef } from "../_shared/candidate-stage-events.ts";
+import { isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -107,58 +109,6 @@ const OPEN_ENROLLMENT_STATUSES = ['active', 'paused'];
  * l'organisation où tout s'arrête (SEQ-212, _shared/candidate-reply-closure.ts).
  */
 const REPLY_CLOSED_ENROLLMENT_STATUSES = ['replied', 'completed'];
-
-/**
- * Passe le candidat « Répondu » dans le pipeline de SON organisation et de la
- * mission de l'inscription (SEQ-006, même borne que le moteur : les autres
- * missions où il est suivi restent inchangées ; inscription sans mission :
- * toute l'organisation). Échec fermé : sans organisation connue, aucune mise
- * à jour (l'ancien repli sans filtre écrivait dans le pipeline de toutes les
- * organisations qui suivent ce profil). Non bloquant.
- */
-async function markCandidateRepliedInPipeline(
-  supabase: SupabaseClient,
-  organizationId: string | null | undefined,
-  candidateId: string | null | undefined,
-  jobId: string | null | undefined,
-): Promise<void> {
-  if (!candidateId) return;
-  if (!organizationId) {
-    console.warn('[unipile-webhook] job_candidate_status not updated: enrollment without organization');
-    return;
-  }
-  let jcsQuery = supabase
-    .from('job_candidate_status')
-    .select('id, pipeline_stage')
-    .eq('candidate_id', candidateId)
-    .eq('organization_id', organizationId)
-    .in('status', ['contacted', 'shortlisted', 'scored', 'new', 'messaged', 'discovered', 'untreated']);
-  const jcsJobIds = missionJobIds(jobId);
-  if (jcsJobIds) jcsQuery = jcsQuery.in('job_id', jcsJobIds);
-  const { data: jcsRows, error } = await jcsQuery;
-  if (error) {
-    console.warn('[unipile-webhook] job_candidate_status lookup failed:', error);
-    return;
-  }
-  for (const row of (jcsRows ?? []) as Array<{ id: string; pipeline_stage: string | null }>) {
-    const shouldUpdatePipeline = !row.pipeline_stage ||
-      row.pipeline_stage === 'Nouveau' ||
-      row.pipeline_stage === 'Contacté';
-    const { error: updateError } = await supabase
-      .from('job_candidate_status')
-      .update({
-        status: 'replied',
-        ...(shouldUpdatePipeline ? { pipeline_stage: 'Répondu' } : {}),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id)
-      .eq('organization_id', organizationId);
-    if (updateError) console.warn('[unipile-webhook] job_candidate_status update failed:', updateError);
-  }
-  if ((jcsRows ?? []).length > 0) {
-    console.log(`[unipile-webhook] Updated ${(jcsRows ?? []).length} job_candidate_status → replied`);
-  }
-}
 
 /** Mission (outreach_sequences.project_id) de chaque séquence, pour les liens des notifications. */
 async function loadSequenceProjects(supabase: SupabaseClient, sequenceIds: string[]): Promise<Map<string, string>> {
@@ -1267,6 +1217,186 @@ async function markChatNotificationsRead(
   }
 }
 
+/** Participant d'une conversation, tel que le rend GET /chats/{id}/attendees. */
+interface ChatAttendee {
+  is_self?: unknown;
+  role?: unknown;
+  provider_id?: unknown;
+  public_identifier?: unknown;
+  profile_url?: unknown;
+  name?: unknown;
+  specifics?: { public_identifier?: unknown } | null;
+}
+
+const textOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
+/**
+ * Candidat d'une conversation à deux : le seul participant qui n'est pas le
+ * compte. Aucun ou plusieurs (conversation de groupe) : null, pour ne jamais
+ * attribuer un message au mauvais candidat.
+ */
+function otherParticipantRef(attendees: unknown[]): CandidateRef | null {
+  const others = attendees.filter((a): a is ChatAttendee => {
+    if (!a || typeof a !== 'object') return false;
+    const att = a as ChatAttendee;
+    return !(att.is_self === true || att.is_self === 1 || att.role === 'self');
+  });
+  if (others.length !== 1) return null;
+  const other = others[0];
+  const ref = candidateRef({
+    ids: [textOrNull(other.provider_id)],
+    slug: textOrNull(other.public_identifier) ?? textOrNull(other.specifics?.public_identifier),
+    profileUrl: textOrNull(other.profile_url),
+    name: textOrNull(other.name),
+  });
+  return ref.ids.length > 0 || ref.slug ? ref : null;
+}
+
+/** Autre participant d'une conversation, lu auprès du prestataire ; null si illisible. */
+async function fetchChatOtherParticipant(
+  uCreds: { apiKey: string; dsn: string },
+  chatId: string,
+): Promise<CandidateRef | null> {
+  try {
+    const res = await fetchWithTimeout(`${uCreds.dsn}/api/v1/chats/${encodeURIComponent(chatId)}/attendees`, {
+      headers: { 'X-API-KEY': uCreds.apiKey },
+    });
+    if (!res.ok) {
+      await res.text(); // consume body
+      console.warn(`[unipile-webhook] Own message: chat attendees unavailable (status ${res.status})`);
+      return null;
+    }
+    const body = await res.json();
+    const attendees = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
+    return otherParticipantRef(attendees);
+  } catch (e) {
+    console.warn('[unipile-webhook] Own message: chat attendees lookup failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Candidat effacé (RGPD, D5) dans cette organisation : son étape n'est plus
+ * écrite, comme ses inscriptions ne changent plus. Lecture impossible : levée
+ * (l'appelant décide : rejeu pour une réponse, rien pour un message propre).
+ */
+async function stageErasedFor(supabase: SupabaseClient, organizationId: string, candidate: CandidateRef): Promise<boolean> {
+  return await isCandidateErasedForOrg(supabase, {
+    organizationId,
+    linkedinIds: candidate.ids,
+    linkedinUrl: candidate.profile_url ?? (candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null),
+  });
+}
+
+/**
+ * Conversation ou candidat déjà lié à une mission de cette organisation sur
+ * ce compte (mission_conversations). Sert au compte relié à plusieurs
+ * organisations (état hérité, antérieur à prevent_linkedin_account_cross_tenant).
+ * Lecture impossible : levée.
+ */
+async function missionLinkOnAccount(
+  supabase: SupabaseClient,
+  organizationId: string,
+  accountId: string,
+  chatId: string | null | undefined,
+  candidateIds: string[],
+): Promise<boolean> {
+  const ids = candidateIds.map(sanitizeFilterId).filter(Boolean);
+  const filters = [
+    ...(chatId ? [`chat_id.eq.${sanitizeFilterId(chatId)}`] : []),
+    ...(ids.length > 0 ? [`candidate_id.in.(${ids.join(',')})`, `candidate_ids.ov.{${ids.join(',')}}`] : []),
+  ];
+  if (filters.length === 0) return false;
+  const { data, error } = await supabase
+    .from('mission_conversations')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('account_id', accountId)
+    .or(filters.join(','))
+    .limit(1);
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Message écrit depuis le compte du recruteur, dans Konekt ou hors Konekt
+ * (plan 0b, décision 5 et section 4.2) : record_own_message dans chaque
+ * organisation reliée au compte. Écho d'un envoi Konekt ou note d'invitation :
+ * rien ; conversation déjà rattachée : « Contacté » pour un candidat Retenu
+ * dans la mission de ce lien seulement ; sinon Retenu dans une seule mission :
+ * « Contacté ». Candidat inconnu (format new_message) et conversation sans
+ * lien : ses participants sont lus une fois, puis second appel. Compte relié
+ * à plusieurs organisations : seules celles où la conversation ou le candidat
+ * est déjà lié sur ce compte sont écrites (jamais U-I7), comme pour la
+ * réponse. Non bloquant : aucune erreur ne remonte, le webhook répond 200.
+ */
+async function handleOwnMessage(
+  supabase: SupabaseClient,
+  uCreds: { apiKey: string; dsn: string },
+  accountId: string | undefined,
+  chatId: string | undefined,
+  messageId: string | null,
+  otherParticipant: CandidateRef | null,
+): Promise<void> {
+  if (!accountId) return;
+  try {
+    const { data: rows, error } = await supabase
+      .from('member_linkedin_accounts')
+      .select('organization_id')
+      .eq('linkedin_account_id', accountId);
+    if (error) {
+      console.warn('[unipile-webhook] Own message: linked organizations lookup failed:', error);
+      return;
+    }
+    const orgIds = [...new Set(((rows ?? []) as Array<{ organization_id: string | null }>)
+      .map((r) => r.organization_id)
+      .filter((org): org is string => !!org))];
+    // undefined : participants pas encore lus (une seule lecture pour toutes les organisations).
+    let fetched: CandidateRef | null | undefined;
+    const sharedAccount = orgIds.length > 1;
+    for (const organizationId of orgIds) {
+      const call = (candidate: CandidateRef | null) => recordOwnMessage(supabase, {
+        organizationId, accountId, chatId: chatId ?? null, messageId, candidate,
+      });
+      // Candidat effacé (RGPD) dans cette organisation : rien n'est écrit.
+      const erased = async (candidate: CandidateRef) => {
+        try {
+          return await stageErasedFor(supabase, organizationId, candidate);
+        } catch (e) {
+          console.warn('[unipile-webhook] Own message: erasure check failed, nothing recorded:', e);
+          return true;
+        }
+      };
+      if (sharedAccount) {
+        try {
+          let linked = await missionLinkOnAccount(supabase, organizationId, accountId, chatId, otherParticipant?.ids ?? []);
+          if (!linked && !otherParticipant && chatId) {
+            if (fetched === undefined) fetched = await fetchChatOtherParticipant(uCreds, chatId);
+            if (fetched) linked = await missionLinkOnAccount(supabase, organizationId, accountId, chatId, fetched.ids);
+          }
+          if (!linked) {
+            console.log(`[unipile-webhook] Own message in org ${organizationId}: shared account, no link on it`);
+            continue;
+          }
+        } catch (e) {
+          console.warn('[unipile-webhook] Own message: conversation links unreadable, nothing recorded:', e);
+          continue;
+        }
+      }
+      if (otherParticipant && await erased(otherParticipant)) continue;
+      let result = await call(otherParticipant);
+      if (result.ok && result.data.result === 'no_candidate' && !otherParticipant && chatId) {
+        if (fetched === undefined) fetched = await fetchChatOtherParticipant(uCreds, chatId);
+        if (fetched && !(await erased(fetched))) result = await call(fetched);
+      }
+      if (result.ok) console.log(`[unipile-webhook] Own message in org ${organizationId}: ${result.data.result}`);
+      else console.error('[unipile-webhook] Own message: stage not recorded:', result.fn, result.kind, result.error);
+    }
+  } catch (e) {
+    console.warn('[unipile-webhook] Own message: stage update failed (non-blocking):', e);
+  }
+}
+
 async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload, uCreds: { apiKey: string; dsn: string }, eventKey: string) {
   const { account_id, data } = payload;
   
@@ -1279,6 +1409,8 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   let isSenderSelf: boolean | undefined;
   let senderAttendeeId: string | undefined;
   let needsAttendeeVerification = false;
+  // Identifiant du message (même source que la clé de dédoublonnage) : écho d'un envoi Konekt.
+  let messageId: string | null = payload.message_id || null;
 
   if (payload.sender && payload.chat_id) {
     // message_received format (flat)
@@ -1298,6 +1430,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     // new_message format (nested)
     console.log('[unipile-webhook] Processing new_message format');
     const message = data.message as { 
+      id?: string;
       sender_id?: string; 
       attendee_provider_id?: string;
       sender?: { provider_id?: string; id?: string };
@@ -1313,6 +1446,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     isSenderSelf = message?.is_sender === true || message?.is_sender_self === true ? true : 
                    message?.is_sender === false || message?.is_sender_self === false ? false : undefined;
     senderAttendeeId = message?.sender_attendee_id;
+    messageId = messageId || message?.id || null;
   } else {
     console.log('[unipile-webhook] handleNewMessage: Unrecognized payload format, keys:', Object.keys(payload));
     return;
@@ -1321,6 +1455,8 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   // Skip if this is a message WE sent
   if (isSenderSelf === true) {
     await markChatNotificationsRead(supabase, account_id, chatId);
+    // Candidat inconnu ici : celui de la conversation liée, sinon ses participants.
+    await handleOwnMessage(supabase, uCreds, account_id, chatId, messageId, null);
     console.log('[unipile-webhook] Skipping - this is our own sent message');
     return;
   }
@@ -1351,7 +1487,9 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
           if (ownIds.includes(senderAttendeeId)) {
             // Format v1 (message_received) : c'est ici qu'une réponse envoyée
             // depuis LinkedIn (mobile par exemple) est reconnue comme la nôtre.
+            // C'est aussi la forme de l'écho de notre note d'invitation.
             await markChatNotificationsRead(supabase, account_id, chatId);
+            await handleOwnMessage(supabase, uCreds, account_id, chatId, messageId, otherParticipantRef(attendeeList));
             console.log('[unipile-webhook] Skipping - sender is our own attendee');
             return;
           }
@@ -1537,9 +1675,9 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     // l'inscription était déjà close (aucune ligne changée) : elle est alors
     // terminale et ne doit plus rien avoir en attente (rejeu idempotent).
     // Un échec est remonté (500, rejeu) sans sauter le compte de la réponse
-    // ni le pipeline de la clôture effective : le rejeu ne retrouve plus
-    // l'inscription parmi les ouvertes, et les étapes restées en attente ne
-    // partent jamais (contrôle avant envoi du moteur, SEQ-189).
+    // de la clôture effective : le rejeu ne retrouve plus l'inscription parmi
+    // les ouvertes, et les étapes restées en attente ne partent jamais
+    // (contrôle avant envoi du moteur, SEQ-189).
     const { error: cancelError } = await supabase
       .from('sequence_step_executions')
       .update({
@@ -1561,9 +1699,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     });
 
     console.log('[unipile-webhook] Enrollment', enrollment.id, 'marked as replied');
-
-    // Pipeline « Répondu » dans l'organisation et la mission de l'inscription seulement.
-    await markCandidateRepliedInPipeline(supabase, enrollment.organization_id, enrollment.profile_id, enrollment.job_id);
+    // Étape du candidat : plus bas, pour tout message du candidat (rejeu compris).
   };
   if (enrollments.length === 0) {
     console.log('[unipile-webhook] No open enrollments found for sender:', senderId);
@@ -1627,7 +1763,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   }
 
   // Décision 8 : la plus récente inscription close de ce compte, si elle est
-  // terminée, passe « A répondu » (réponse comptée, pipeline mis à jour),
+  // terminée, passe « A répondu » (réponse comptée),
   // comme « Marquer comme répondu ». Clôture conditionnée à 'completed'.
   for (const enrollment of lateReplyEnrollments(closedAnchors)) await recordReply(enrollment, ['completed']);
 
@@ -1722,6 +1858,75 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     accountInMailsFailed = true;
   }
 
+  // Étape du candidat (plan 0b, section 3) : pour tout message confirmé du
+  // candidat, avec ou sans inscription, record_candidate_inbound dans chaque
+  // organisation du compte et de ses contacts rattachés. Seule la mission
+  // résolue change (conversation, profil, inscription, lignes contactées :
+  // décision 3). Décision 9 : erreur transitoire → rejeu (500), levé après les
+  // notifications ; refus métier ou fonction absente → journal seul. Le rejeu
+  // refait l'appel sans effet.
+  const { data: memberRows, error: membersReadError } = await supabase
+    .from('member_linkedin_accounts')
+    .select('user_id, organization_id')
+    .eq('linkedin_account_id', account_id);
+  if (membersReadError) failures.push(membersReadError);
+  const linkedMembers = (memberRows ?? []) as Array<{ user_id: string; organization_id: string | null }>;
+  const stageCandidate = candidateRef({ ids: candidate.ids, slug: candidateSlugs(candidate.slugs)[0] ?? null });
+  const stageOrgIds = [...new Set([...linkedMembers.map((m) => m.organization_id), ...anchorsByOrg.keys()]
+    .filter((org): org is string => !!org))];
+  const missionByOrg = new Map<string, string>();
+  const stageFailures: Error[] = [];
+  // Compte relié à plusieurs organisations (état hérité, antérieur à
+  // prevent_linkedin_account_cross_tenant) : une organisation sans contact
+  // rattaché sur ce compte (inscription, InMail) n'est écrite que si la
+  // conversation ou le candidat y est déjà lié à une mission sur ce compte.
+  // Sinon ses lignes contactées depuis un autre compte ne deviennent pas la
+  // cible d'une réponse reçue ici.
+  const sharedAccount = new Set(linkedMembers.map((m) => m.organization_id).filter(Boolean)).size > 1;
+  const linkedOnAccount = (orgId: string): Promise<boolean> =>
+    missionLinkOnAccount(supabase, orgId, account_id, chatId, stageCandidate.ids);
+  for (const orgId of stageOrgIds) {
+    if (sharedAccount && !anchorsByOrg.has(orgId)) {
+      try {
+        if (!(await linkedOnAccount(orgId))) {
+          console.log(`[unipile-webhook] Reply stage skipped in org ${orgId}: shared account, no contact on it`);
+          continue;
+        }
+      } catch (e) {
+        console.error('[unipile-webhook] Reply stage: conversation links unreadable:', e);
+        stageFailures.push(e instanceof Error ? e : new Error(String(e)));
+        continue;
+      }
+    }
+    // Candidat effacé (RGPD) dans cette organisation : aucune étape (D5).
+    // Registre illisible : rejeu, comme une erreur transitoire.
+    try {
+      if (await stageErasedFor(supabase, orgId, stageCandidate)) {
+        console.log(`[unipile-webhook] Reply stage skipped in org ${orgId}: candidate erased`);
+        continue;
+      }
+    } catch (e) {
+      console.error('[unipile-webhook] Reply stage: erasure check failed:', e);
+      stageFailures.push(e instanceof Error ? e : new Error(String(e)));
+      continue;
+    }
+    const inbound = await recordInbound(supabase, {
+      organizationId: orgId,
+      accountId: account_id,
+      candidate: stageCandidate,
+      chatId: chatId ?? null,
+      enrollmentIds: anchorRows.filter((e) => e.organization_id === orgId).map((e) => e.id),
+    });
+    if (inbound.ok) {
+      if (inbound.data.project_id) missionByOrg.set(orgId, inbound.data.project_id);
+      console.log(`[unipile-webhook] Reply stage in org ${orgId}:`,
+        inbound.data.project_id ?? ('reason' in inbound.data ? inbound.data.reason : null));
+      continue;
+    }
+    console.error('[unipile-webhook] Reply stage not recorded:', inbound.fn, inbound.kind, inbound.error);
+    if (inbound.kind === 'transient') stageFailures.push(new Error(`${inbound.fn}: ${inbound.error.message}`));
+  }
+
   if (failures.length > 0) {
     console.error(`[unipile-webhook] new_message: ${failures.length} write(s) failed:`, failures[0]);
     if (stopFailedOrgs.size > 0 || accountInMailsFailed) {
@@ -1753,11 +1958,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   const senderName = payload.sender?.attendee_name 
     || (data?.message as any)?.sender?.name 
     || senderId || 'Quelqu\'un';
-
-  const { data: linkedMembers } = await supabase
-    .from('member_linkedin_accounts')
-    .select('user_id, organization_id')
-    .eq('linkedin_account_id', account_id);
+  // Membres reliés au compte : lus plus haut (étape du candidat).
 
   // Candidat déjà sorti de la séquence (a déjà répondu, séquence terminée) :
   // aucune inscription ouverte, mais c'est bien un candidat. Lecture seule,
@@ -1811,14 +2012,34 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     }
   }
 
+  // Rejeu après une écriture de l'étape en échec transitoire (levée plus bas,
+  // après les notifications) : la notification du premier passage n'est pas
+  // doublée. Lecture impossible : notification envoyée (doublon plutôt qu'oubli).
+  const alreadyNotified = new Set<string>();
+  if (linkedMembers.length > 0) {
+    const { data: notified, error: notifiedError } = await supabase
+      .from('notifications')
+      .select('user_id, organization_id')
+      .eq('type', 'new_message')
+      .eq('metadata->>event_key', eventKey)
+      .in('user_id', [...new Set(linkedMembers.map((m) => m.user_id))]);
+    if (notifiedError) console.warn('[unipile-webhook] Replayed notification lookup failed:', notifiedError);
+    for (const n of (notified ?? []) as Array<{ user_id: string; organization_id: string | null }>) {
+      alreadyNotified.add(`${n.user_id}:${n.organization_id}`);
+    }
+  }
+
   if (linkedMembers && linkedMembers.length > 0) {
     for (const member of linkedMembers) {
+      if (alreadyNotified.has(`${member.user_id}:${member.organization_id}`)) continue;
       // Inscriptions de l'org du destinataire uniquement (même compte LinkedIn
       // rattaché à plusieurs orgs), comme pour job_candidate_status plus haut.
       const memberEnrollments = notifEnrollments.filter(e => !e.organization_id || e.organization_id === member.organization_id);
       const primary = memberEnrollments[0];
       const candidateName = primary?.profile_name || senderName;
-      const projectId = primary ? projectBySequence.get(primary.sequence_id) : undefined;
+      // Mission de la séquence, sinon celle résolue pour l'étape (décision 17).
+      const projectId = (primary ? projectBySequence.get(primary.sequence_id) : undefined)
+        ?? (member.organization_id ? missionByOrg.get(member.organization_id) : undefined);
       const metadata: Record<string, unknown> = {
         ...(chatId ? { chat_id: chatId } : {}),
         is_candidate: !!primary,
@@ -1828,8 +2049,9 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
           sequence_id: primary.sequence_id,
           profile_name: primary.profile_name ?? null,
           profile_headline: primary.profile_headline ?? null,
-          ...(projectId ? { project_id: projectId } : {}),
         } : {}),
+        ...(projectId ? { project_id: projectId } : {}),
+        event_key: eventKey,
       };
       await supabase
         .from('notifications')
@@ -1860,62 +2082,79 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
     }
   }
 
-  // ── Trigger auto-analysis for intent detection & status update ──
-  if (chatId) {
-    console.log(`[unipile-webhook] Triggering auto-analyze for chat: ${chatId}`);
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    // Clé service-role (auto-analyze-message rejette la clé anon en 401) +
-    // organization_id du compte (linkedMembers chargé ci-dessus) pour les créds
-    // par org et l'imputation des crédits.
-    const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
-    const autoAnalyzeOrgId = linkedMembers?.[0]?.organization_id ?? null;
+  // Analyse et indexation : une fois par événement, au premier passage qui
+  // atteint les notifications, même si l'étape du candidat doit être rejouée
+  // (un échec persistant de l'étape ne les perd pas). Au rejeu, la
+  // notification existe déjà : pas de seconde analyse facturée. Sans membre
+  // relié (rien pour repérer le rejeu) : au passage réussi seulement.
+  const firstPass = linkedMembers.length > 0 ? alreadyNotified.size === 0 : stageFailures.length === 0;
+  if (firstPass) {
+    // ── Trigger auto-analysis for intent detection & status update ──
+    if (chatId) {
+      console.log(`[unipile-webhook] Triggering auto-analyze for chat: ${chatId}`);
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      // Clé service-role (auto-analyze-message rejette la clé anon en 401) +
+      // organization_id du compte (linkedMembers chargé ci-dessus) pour les créds
+      // par org et l'imputation des crédits.
+      const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
+      const autoAnalyzeOrgId = linkedMembers?.[0]?.organization_id ?? null;
     
-    // Fire-and-forget: don't await to keep webhook fast. Timeout 55 s :
-    // auto-analyze attend désormais analyze-response (jusqu'à ~50 s).
-    fetchWithTimeout(`${supabaseUrl}/functions/v1/auto-analyze-message`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        chat_id: chatId,
-        account_id: account_id,
-        sender_id: senderId,
-        organization_id: autoAnalyzeOrgId,
-      }),
-    }, 55000).then(res => {
-      console.log(`[unipile-webhook] Auto-analyze triggered: ${res.status}`);
-    }).catch(err => {
-      console.error('[unipile-webhook] Auto-analyze trigger failed:', err);
-    });
+      // Fire-and-forget: don't await to keep webhook fast. Timeout 55 s :
+      // auto-analyze attend désormais analyze-response (jusqu'à ~50 s).
+      fetchWithTimeout(`${supabaseUrl}/functions/v1/auto-analyze-message`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          account_id: account_id,
+          sender_id: senderId,
+          organization_id: autoAnalyzeOrgId,
+          // Étape écrite dans chaque organisation admise : pas de rattrapage.
+          stage_recorded: stageFailures.length === 0,
+        }),
+      }, 55000).then(res => {
+        console.log(`[unipile-webhook] Auto-analyze triggered: ${res.status}`);
+      }).catch(err => {
+        console.error('[unipile-webhook] Auto-analyze trigger failed:', err);
+      });
+    }
+
+    // ── Fire-and-forget RAG ingestion (conversation message) ──
+    if (senderId && chatId) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
+      const orgId = linkedMembers?.[0]?.organization_id;
+      if (supabaseUrl && serviceKey && orgId) {
+        const senderName = payload.sender?.attendee_name
+          || (data?.message as any)?.sender?.name
+          || senderId;
+        await fetchWithTimeout(`${supabaseUrl}/functions/v1/ingest-context`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            organization_id: orgId,
+            entity_type: 'candidate',
+            entity_id: senderId,
+            chunks: [{
+              chunk_type: 'conversation',
+              content: `Message reçu de ${senderName} (chat ${chatId})`,
+              source_table: 'unipile_conversations',
+              metadata: { chat_id: chatId, account_id: account_id, date: new Date().toISOString() },
+            }],
+          }),
+        }).catch(err => console.warn('[unipile-webhook] RAG ingest failed (non-blocking):', err));
+      }
+    }
   }
 
-  // ── Fire-and-forget RAG ingestion (conversation message) ──
-  if (senderId && chatId) {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
-    const orgId = linkedMembers?.[0]?.organization_id;
-    if (supabaseUrl && serviceKey && orgId) {
-      const senderName = payload.sender?.attendee_name
-        || (data?.message as any)?.sender?.name
-        || senderId;
-      await fetchWithTimeout(`${supabaseUrl}/functions/v1/ingest-context`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          organization_id: orgId,
-          entity_type: 'candidate',
-          entity_id: senderId,
-          chunks: [{
-            chunk_type: 'conversation',
-            content: `Message reçu de ${senderName} (chat ${chatId})`,
-            source_table: 'unipile_conversations',
-            metadata: { chat_id: chatId, account_id: account_id, date: new Date().toISOString() },
-          }],
-        }),
-      }).catch(err => console.warn('[unipile-webhook] RAG ingest failed (non-blocking):', err));
-    }
+  // Étape du candidat en échec transitoire (décision 9) : rejeu (500), après
+  // les notifications, l'analyse et l'indexation.
+  if (stageFailures.length > 0) {
+    console.error(`[unipile-webhook] new_message: ${stageFailures.length} reply stage write(s) failed, event will be retried:`, stageFailures[0]);
+    throw stageFailures[0];
   }
 }
 
@@ -2044,7 +2283,8 @@ async function findOpenEnrollmentsByEmail(
  *   2. Sinon, l'adresse de l'expéditeur (from_attendee.identifier) est
  *      comparée à email_used, dans l'organisation de la boîte qui reçoit.
  *   3. Inscriptions actives OU en pause : clôture 'replied', étapes en
- *      attente annulées, réponse comptée une fois, pipeline « Répondu »,
+ *      attente annulées, réponse comptée une fois, étape « A répondu »
+ *      dans la mission de l'inscription,
  *      recruteur prévenu, inscriptions du même candidat sur les autres
  *      comptes de l'organisation arrêtées.
  *
@@ -2164,6 +2404,8 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
   // 3. Clôture 'replied' (active ou en pause) + étapes en attente annulées.
   const failures: unknown[] = [];
   const closed: MailEnrollment[] = [];
+  // Mission où l'étape du candidat a été écrite, pour la notification (décision 17).
+  const missionByEnrollment = new Map<string, string>();
   for (const enrollment of enrollments) {
     const nowIso = new Date().toISOString();
     const { data: changed, error: updErr } = await supabase
@@ -2208,9 +2450,35 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
       p_field: 'replies_received',
     });
 
-    // Pipeline « Répondu » (SEQ-211, comme le canal LinkedIn ; « Pré-qualif »
-    // est l'étape d'une prise de rendez-vous), organisation et mission de l'inscription seulement.
-    await markCandidateRepliedInPipeline(supabase, enrollment.organization_id, enrollment.profile_id, enrollment.job_id);
+    // Étape du candidat (plan 0b, décision 4) : réponse vue par l'inscription,
+    // sans conversation, donc la mission de l'inscription d'abord ; une ligne
+    // À trier ou Retenu ne passe « A répondu » que si un envoi Konekt y est
+    // prouvé (décision 13). Le rejeu ne retrouve plus l'inscription close et
+    // ne referait pas l'écriture : une erreur transitoire est retentée une
+    // fois ici, puis journalisée sans 500 (résiduel, plan 0b section 11).
+    // Refus métier ou fonction absente : journal seul.
+    if (!enrollment.organization_id) {
+      console.warn('[unipile-webhook][mail] Reply stage not recorded: enrollment without organization');
+    } else {
+      const recordMailReply = () => recordInbound(supabase, {
+        organizationId: enrollment.organization_id as string,
+        accountId: null,
+        candidate: candidateRef({
+          ids: [enrollment.profile_id, enrollment.provider_id, enrollment.resolved_profile_id],
+          profileUrl: enrollment.profile_url,
+        }),
+        chatId: null,
+        enrollmentIds: [enrollment.id],
+        enrollmentFirst: true,
+      });
+      let inbound = await recordMailReply();
+      if (!inbound.ok && inbound.kind === 'transient') inbound = await recordMailReply();
+      if (inbound.ok) {
+        if (inbound.data.project_id) missionByEnrollment.set(enrollment.id, inbound.data.project_id);
+      } else {
+        console.error('[unipile-webhook][mail] Reply stage not recorded:', inbound.fn, inbound.kind, inbound.error);
+      }
+    }
 
     console.log('[unipile-webhook][mail] Enrollment', enrollment.id, 'marked replied (email)');
   }
@@ -2267,7 +2535,7 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
       }
       const notifications = [...byOwner.values()].map((rows) => {
         const primary = rows[0];
-        const projectId = projectBySequence.get(primary.sequence_id);
+        const projectId = projectBySequence.get(primary.sequence_id) ?? missionByEnrollment.get(primary.id);
         const candidateName = primary.profile_name || from_attendee?.display_name || senderEmail;
         return {
           user_id: primary.created_by,

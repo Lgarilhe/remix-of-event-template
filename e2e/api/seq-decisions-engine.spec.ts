@@ -27,8 +27,11 @@ import { E2E } from '../helpers/env';
 import {
   addMember,
   admin,
+  candidateRowState,
   deleteOrg,
+  seedCandidateRow,
   seedLinkedInAccount,
+  seedMission,
   signIn,
   type SeededStep,
   type TestOrg,
@@ -633,7 +636,9 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
       await mock(account, { routes: [chatListRoute(chat.id), candidateReplyRoute(chat.path, daysAgo(Math.max(completedDaysAgo - 1, 0.5)))] });
       return e;
     };
-    const recent = await completedFixture(0, accRecent, 3);
+    // Refonte mission, lot 0b : la réponse n'écrit que dans la mission de l'inscription.
+    const mission = await seedMission(org.orgId, users[0].userId);
+    const recent = await completedFixture(0, accRecent, 3, { job_id: `project:${mission}` });
     const old = await completedFixture(1, accOld, 20);
     const meeting = await completedFixture(2, accMeeting, 2, { tracking_data: { completion_reason: 'meeting_booked' } });
 
@@ -650,11 +655,9 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
     ]);
     const later = await enroll(org, laterSeq.sequenceId, users[3].userId, accSibling, { profile_id: recent.profileId, created_at: daysAgo(1), current_step_order: 1 });
     const laterExec = await schedule(org, later.enrollmentId, laterSeq.steps[1], { scheduled_at: minutesFromNow(2 * 24 * 60) });
-    const { data: jcsRow, error: jcsErr } = await admin().from('job_candidate_status').insert({
-      job_id: `job_dec_${rand()}`, candidate_id: recent.profileId, created_by: users[0].userId, organization_id: org.orgId,
-      candidate_name: 'Camille Martin', status: 'contacted', pipeline_stage: 'Contacté',
-    }).select('id').single();
-    expect(jcsErr).toBeNull();
+    const jcsRow = await seedCandidateRow({
+      orgId: org.orgId, createdBy: users[0].userId, candidateId: recent.profileId, missionId: mission, stage: 'contacted',
+    });
 
     await checkRepliesUntilExamined(recent.enrollmentId);
 
@@ -663,8 +666,9 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
     expect(r.replied_at).not.toBeNull();
     const { data: stats } = await admin().from('sequence_analytics').select('replies_received').eq('sequence_id', seq.sequenceId);
     expect(((stats ?? []) as Array<{ replies_received: number | null }>).reduce((s, x) => s + (x.replies_received ?? 0), 0), 'réponse comptée une fois').toBe(1);
-    const { data: jcsAfter } = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('id', (jcsRow as { id: string }).id).single();
-    expect(jcsAfter).toEqual({ status: 'replied', pipeline_stage: 'Répondu' });
+    const jcsAfter = await candidateRowState(jcsRow.id);
+    expect({ general_stage: jcsAfter.general_stage, status: jcsAfter.status, pipeline_stage: jcsAfter.pipeline_stage, decision_source: jcsAfter.decision_source })
+      .toEqual({ general_stage: 'replied', status: 'replied', pipeline_stage: 'Répondu', decision_source: 'system' });
     expect((await enrollmentFull(earlier.enrollmentId)).status, 'inscription créée avant la fin : arrêtée').toBe('stopped');
     expect((await execRow(earlierExec)).status).toBe('cancelled');
     expect((await enrollmentFull(later.enrollmentId)).status, 'prise de contact démarrée après la fin : intacte').toBe('active');
@@ -725,8 +729,11 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
       { action_type: 'message', message_template: 'Nouvelle approche' },
       { action_type: 'message', message_template: 'Nouvelle relance', delay_days: 5 },
     ]);
-    const jobOld = `job_dec_${rand()}`;
-    const jobNew = `job_dec_${rand()}`;
+    // Refonte mission, lot 0b : deux missions de l'organisation.
+    const missionOld = await seedMission(org.orgId, users[0].userId);
+    const missionNew = await seedMission(org.orgId, users[0].userId);
+    const jobOld = `project:${missionOld}`;
+    const jobNew = `project:${missionNew}`;
 
     // Compte X : E1 (mission M1) terminée il y a 5 jours ; E2 (mission M2), même candidat reconnu par le slug exact
     // de son adresse sous un identifiant Recruiter, créée ensuite et déjà « répondu » par le webhook.
@@ -737,11 +744,9 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
       status: 'replied', replied_at: daysAgo(1), created_at: daysAgo(4), current_step_order: 1,
     });
     await schedule(org, e2.enrollmentId, newSeq.steps[0], { status: 'sent', scheduled_at: daysAgo(3), executed_at: daysAgo(3) });
-    const { data: jcsRow, error: jcsErr } = await admin().from('job_candidate_status').insert({
-      job_id: jobOld, candidate_id: e1.profileId, created_by: users[0].userId, organization_id: org.orgId,
-      candidate_name: 'Camille Martin', status: 'contacted', pipeline_stage: 'Contacté',
-    }).select('id').single();
-    expect(jcsErr).toBeNull();
+    const jcsRow = await seedCandidateRow({
+      orgId: org.orgId, createdBy: users[0].userId, candidateId: e1.profileId, missionId: missionOld, stage: 'contacted',
+    });
 
     // Compte Y : E3 terminée ; E4 du même candidat (identifiant résolu) encore active, un message parti.
     const e3 = await completedWithReply(org, oldSeq, users[1].userId, accY, 5);
@@ -770,8 +775,7 @@ test.describe('Décision 9 : scrutation de secours des inscriptions terminées r
     expect((await execRow(e4Next)).status).toBe('cancelled');
     expect(await repliesCounted(oldSeq.sequenceId), 'aucune réponse comptée sur l’ancienne séquence').toBe(0);
     expect(await repliesCounted(newSeq.sequenceId), 'réponse comptée une fois, sur l’inscription ouverte').toBe(1);
-    const { data: jcsAfter } = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('id', (jcsRow as { id: string }).id).single();
-    expect(jcsAfter, 'mission M1 : pipeline intact').toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
+    expect((await candidateRowState(jcsRow.id)).general_stage, 'mission M1 : pipeline intact').toBe('contacted');
   });
 });
 

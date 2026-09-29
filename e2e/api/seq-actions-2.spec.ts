@@ -32,8 +32,10 @@ import { E2E } from '../helpers/env';
 import {
   addMember,
   admin,
+  candidateRowState,
   createOrg,
   deleteOrg,
+  seedCandidateRow,
   seedLinkedInAccount,
   seedMission,
   signIn,
@@ -495,16 +497,17 @@ test.describe('Reprises et relances serveur', () => {
     const other = await createOrg('agency', 'E2E A2 Marquer répondu autre');
     track(other);
     const { sequenceId, steps } = await messageSequence(org, org.owner.userId, ['Bonjour', 'Relance']);
+    // Refonte mission, lot 0b : séquence et ligne rattachées à une mission.
+    const mission = await seedMission(org.orgId, org.owner.userId);
+    await admin().from('outreach_sequences').update({ project_id: mission }).eq('id', sequenceId);
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
     await schedule(org, enrollmentId, steps[0], {
       status: 'sent', scheduled_at: minutesFromNow(-2 * DAY), executed_at: minutesFromNow(-2 * DAY),
     });
     const followUp = await schedule(org, enrollmentId, steps[1], { scheduled_at: minutesFromNow(DAY) });
-    const { error: jcsErr } = await admin().from('job_candidate_status').insert({
-      organization_id: org.orgId, created_by: org.owner.userId, candidate_id: profileId,
-      candidate_name: 'Camille Martin', job_id: `job_${rand()}`, status: 'contacted', pipeline_stage: 'Contacté',
+    const { id: jcsId } = await seedCandidateRow({
+      orgId: org.orgId, createdBy: org.owner.userId, candidateId: profileId, missionId: mission, stage: 'contacted',
     });
-    if (jcsErr) throw new Error(`job_candidate_status: ${jcsErr.message}`);
 
     const ownerToken = await tokenOf(org.owner);
     const otherToken = await tokenOf(other.owner);
@@ -532,14 +535,14 @@ test.describe('Reprises et relances serveur', () => {
     // Aucune écriture.
     expect((await enrollmentFull(enrollmentId))).toMatchObject({ status: 'active', replied_at: null });
     expect((await executionsOf(enrollmentId)).find((e) => e.id === followUp)?.status).toBe('scheduled');
-    const { data: jcs } = await admin().from('job_candidate_status').select('status').eq('organization_id', org.orgId).eq('candidate_id', profileId);
-    expect(jcs?.[0]?.status, 'pipeline inchangé').toBe('contacted');
+    expect((await candidateRowState(jcsId)).general_stage, 'pipeline inchangé').toBe('contacted');
 
     // Contrôle positif : le propriétaire marque la réponse.
     const ok = await processSequences(ownerToken, { action: 'mark_replied', enrollment_id: enrollmentId });
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
     expect(ok.body.changed).toBe(true);
     expect((await enrollmentFull(enrollmentId)).status).toBe('replied');
+    expect((await candidateRowState(jcsId)).general_stage, 'réponse dans la mission de l’inscription').toBe('replied');
   });
 
 });
