@@ -288,6 +288,16 @@ export function normalizeMissionJobId(rawJobId: string | null | undefined): stri
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Mission d'un poste pour les envois (project_id, lot 0b) : l'identifiant sans
+ * le préfixe « project: », seulement s'il a la forme d'un uuid. Sinon
+ * undefined : rien n'est envoyé, le serveur résout la mission.
+ */
+export function missionIdOfJob(rawJobId: string | null | undefined): string | undefined {
+  const id = normalizeMissionJobId(rawJobId);
+  return id && UUID_RE.test(id) ? id : undefined;
+}
+
+/**
  * Lit outreach_config et le nom du client de la mission liée au poste. Partagé
  * par l'aperçu d'inscription et l'InMail groupé : sans ces réglages, la
  * génération retombe sur le mode cabinet et n'anonymise pas le client.

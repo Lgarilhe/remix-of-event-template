@@ -1242,6 +1242,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             .filter(Boolean) as any[]}
           accountId={selectedAccount}
           selectedJob={selectedJob}
+          projectId={activeProject?.id}
         />
       )}
     </div>

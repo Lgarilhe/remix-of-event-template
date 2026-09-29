@@ -36,6 +36,7 @@ import { ManualContactsEditor } from './candidate-detail/ManualContactsEditor';
 import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { getCandidateContacts, type CandidateContacts } from '@/lib/candidateContacts';
 import { toast } from 'sonner';
 
@@ -393,6 +394,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           accountId={fullProfile.accountId || undefined}
           profileId={candidate.candidateId}
           profileName={candidate.name}
+          projectId={missionIdOfJob(candidate.jobId)}
         />
       ),
     },

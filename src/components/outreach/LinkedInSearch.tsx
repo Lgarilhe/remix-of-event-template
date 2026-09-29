@@ -730,8 +730,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // Handle sequence enrollment success. Pas de toast ici : la fenêtre
   // d'inscription (ou « Ajouter à la shortlist sans message ») a déjà donné le
-  // bilan exact. On recharge les statuts (« Contacté ») et les badges « En
-  // séquence », dont les lectures ne passent pas par React Query.
+  // bilan exact. L'inscription n'écrit rien dans le pipeline : « Contacté »
+  // est posé par le serveur au premier envoi réel. On recharge les statuts
+  // (« Retenu » de la shortlist sans message) et les badges « En séquence »,
+  // dont les lectures ne passent pas par React Query.
   const handleSequenceEnrollSuccess = useCallback(() => {
     search.setSelectedProfiles(new Set());
     queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });

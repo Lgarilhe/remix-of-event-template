@@ -8,8 +8,10 @@
  * l'organisation et à la mission), SEQ-221 (« Marquer comme répondu » met à
  * jour le pipeline).
  *
- * Données comme à l'inscription réelle : job_candidate_status en « messaged »
- * (markCandidatesMessaged), étape de pipeline « Contacté ». Chaque ligne de
+ * Données d'un candidat contacté amorcées à la main : job_candidate_status en
+ * « messaged », étape de pipeline « Contacté ». Depuis le lot 0b-2b, le serveur
+ * pose « Contacté » au premier envoi (status 'messaged', general_stage
+ * 'contacted', pipeline_stage laissé vide). Chaque ligne de
  * pipeline porte un nom distinct (suffixe M1 / M2) pour reconnaître sa carte au
  * kanban, qui affiche une carte par ligne.
  *

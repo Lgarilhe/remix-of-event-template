@@ -35,6 +35,8 @@ interface CardExpandedContentProps {
   selectedJob?: Job | null;
   jobScore?: JobMatchResult;
   accountId?: string;
+  /** Mission des envois du fil de messages (uuid), passée à CardMessageThread. */
+  projectId?: string;
   candidateStatus?: { status: string; score?: number | null; recommendation?: string | null; updated_at?: string } | null;
   airtableMatch?: any;
   historyData?: any;
@@ -71,6 +73,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   profile,
   profileData,
   accountId,
+  projectId,
   onOpenMessage,
   onMessageSent,
   onProfileTreated,
@@ -278,6 +281,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
             accountId={accountId}
             profileId={profile.id}
             profileName={fullName}
+            projectId={projectId}
             onMessageSent={onMessageSent}
             onProfileTreated={onProfileTreated}
           />

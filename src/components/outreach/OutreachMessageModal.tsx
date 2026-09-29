@@ -4,11 +4,11 @@ import { LinkedInProfile } from './types';
 import { getYear } from './dateUtils';
 import { Job } from '@/types/jobs';
 import { supabase } from '@/integrations/supabase/client';
-import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
 import { invokeUnipile } from '@/lib/invokeUnipile';
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { useOrganization } from '@/hooks/useOrganization';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import {
   Dialog,
   DialogContent,
@@ -49,6 +49,9 @@ interface OutreachMessageModalProps {
   onMessageSent?: () => void | Promise<void>;
   candidateHistory?: CandidateHistoryForPrompt | null;
   calendlyLink?: string | null;
+  /** Mission de l'envoi (uuid). Prioritaire sur l'id du poste, qui n'est pas
+   *  celui de la mission pour une mission ancienne (job_id hérité). */
+  projectId?: string;
 }
 
 type Tone = MessageTone;
@@ -62,6 +65,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
   onMessageSent,
   candidateHistory,
   calendlyLink,
+  projectId,
 }) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -273,11 +277,19 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
       const networkDist = profile.network_distance || profileAny.specifics?.network_distance;
       const isFirstDegree = networkDist === 'DISTANCE_1' || networkDist === 1;
       
+      // Mission de l'envoi (lot 0b) : le serveur y pose « Contacté » au vrai
+      // envoi. Sans mission reconnue, il la résout lui-même.
+      const recipientProfileUrl = profile.public_profile_url
+        || profile.profile_url
+        || profileAny.linkedin_url
+        || undefined;
       const { data } = await invokeUnipile({
         body: {
           action: 'send_message',
           account_id: selectedAccount,
           recipient_id: recipientId,
+          recipient_profile_url: recipientProfileUrl,
+          project_id: missionIdOfJob(projectId) ?? missionIdOfJob(job.id),
           message: plainMessage,
           subject: !isFirstDegree ? subject : undefined,
           is_inmail: !isFirstDegree,
@@ -326,30 +338,7 @@ export const OutreachMessageModal: React.FC<OutreachMessageModalProps> = ({
         });
       }
 
-      // Étape kanban 'Contacté' sur les lignes déjà suivies, sans rétrograder
-      // un candidat plus avancé (add-to-shortlist ne pose que le statut Konekt)
-      if (organizationId) {
-        try {
-          const linkedinUrl = profile.public_profile_url 
-            || profile.profile_url 
-            || (profile as any).linkedin_url
-            || undefined;
-
-          await invokeEdgeFunction('add-to-shortlist', {
-            organization_id: organizationId,
-            name: buildProfileData().name,
-            headline: profile.headline,
-            linkedinUrl,
-            jobId: job.id,
-            etape: 'Contacté',
-          });
-        } catch (stageErr) {
-          console.error('Error setting pipeline stage:', stageErr);
-          // Non-blocking — don't fail the message send
-        }
-      }
-      
-      // Notify parent that message was sent (await to ensure DB upsert completes)
+      // Notify parent that message was sent
       await onMessageSent?.();
       
       // Close modal after short delay
