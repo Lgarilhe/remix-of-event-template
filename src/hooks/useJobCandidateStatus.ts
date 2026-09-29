@@ -38,6 +38,43 @@ const EMPTY_STATUS_STATE: StatusState = {
   treatedIds: new Set(),
 };
 
+// Lot 0b (N10, N11) : enregistrer une note n'écrit plus le statut dans
+// l'upsert, qui en cas de conflit réécrirait celui d'un candidat contacté,
+// retenu ou écarté. Seuls les profils pas encore traités passent ensuite à
+// « scored », ce qui ne change pas leur étape.
+const SCORABLE_STATUSES = ['new', 'discovered', 'untreated'];
+const STATUS_UPDATE_CHUNK = 100;
+
+// Statut encore au stade de la notation (absent, à trier ou déjà noté).
+function isScoringStatus(status: string | null | undefined): boolean {
+  return !status || status === 'scored' || SCORABLE_STATUSES.includes(status);
+}
+
+// Lève l'erreur : l'appelant n'annonce pas « scored » si la base ne l'a pas.
+async function markScored(ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += STATUS_UPDATE_CHUNK) {
+    const { error } = await supabase
+      .from('job_candidate_status')
+      .update({ status: 'scored' })
+      .in('id', ids.slice(i, i + STATUS_UPDATE_CHUNK))
+      .in('status', SCORABLE_STATUSES);
+    if (error) throw error;
+  }
+}
+
+// État local après une note, même règle que la base. Le statut local (fusion
+// des deux formes de job_id) est gardé s'il est au-delà de la notation : la
+// ligne écrite peut n'être que la ligne du Sourcing d'un candidat contacté.
+// Sinon, statut relu en base, « scored » s'il est encore au stade de la notation.
+function statusAfterScore(
+  local: string | null | undefined,
+  saved: string | null | undefined,
+): CandidateStatus {
+  if (!isScoringStatus(local)) return local as CandidateStatus;
+  const status = saved ?? local;
+  return (isScoringStatus(status) ? 'scored' : status) as CandidateStatus;
+}
+
 export function useJobCandidateStatus(jobId: string | null) {
   const [statusState, setStatusState] = useState<StatusState>(EMPTY_STATUS_STATE);
   const { statuses, dismissedIds, treatedIds } = statusState;
@@ -136,6 +173,9 @@ export function useJobCandidateStatus(jobId: string | null) {
           : [existing as any, s];
         statusMap.set(s.candidate_id, {
           ...base,
+          // Une note récente ne masque pas un statut plus avancé de l'autre ligne
+          // (la note n'écrit plus le statut, lot 0b).
+          status: isScoringStatus(base.status) && !isScoringStatus(other.status) ? other.status : base.status,
           score: base.score ?? other.score,
           recommendation: base.recommendation ?? other.recommendation,
           scoring_details: base.scoring_details ?? other.scoring_details,
@@ -465,7 +505,8 @@ export function useJobCandidateStatus(jobId: string | null) {
     }
   }, [jobId]);
 
-  // Save score for a candidate (without changing status to dismissed)
+  // Save score for a candidate (le statut n'est changé que pour un profil pas
+  // encore traité, voir markScored)
   const saveScore = useCallback(async (
     candidateId: string,
     candidateData: {
@@ -474,6 +515,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       profileUrl?: string;
       score: number;
       recommendation: string;
+      skipReason?: string;
       scoringDetails?: any;
       linkedinProfileData?: any;
     }
@@ -485,11 +527,10 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (!user) return;
 
       const existing = statuses.get(candidateId);
-      // Don't overwrite a higher-priority status (messaged, replied, shortlisted)
-      const currentStatus = existing?.status;
-      const keepStatus = currentStatus && ['messaged', 'replied', 'shortlisted'].includes(currentStatus);
 
-      const { error } = await supabase
+      // Note seule, sans statut. skip_reason seulement si présent : une raison
+      // posée ailleurs n'est pas effacée par une nouvelle note.
+      const { data: saved, error } = await supabase
         .from('job_candidate_status')
         .upsert({
           job_id: jobId,
@@ -497,34 +538,38 @@ export function useJobCandidateStatus(jobId: string | null) {
           linkedin_profile_url: candidateData.profileUrl || existing?.linkedin_profile_url || null,
           candidate_name: candidateData.name || existing?.candidate_name || null,
           candidate_headline: candidateData.headline || existing?.candidate_headline || null,
-          status: keepStatus ? currentStatus : 'scored',
           score: candidateData.score,
           recommendation: candidateData.recommendation,
+          ...(candidateData.skipReason ? { skip_reason: candidateData.skipReason } : {}),
           scoring_details: candidateData.scoringDetails || null,
           linkedin_profile_data: candidateData.linkedinProfileData || null,
            created_by: user.id,
            organization_id: organizationId,
         }, {
           onConflict: 'job_id,candidate_id,created_by'
-        });
+        })
+        .select('id, status');
 
       if (error) throw error;
+
+      await markScored((saved ?? []).map(row => row.id));
+      const nextStatus = statusAfterScore(existing?.status, saved?.[0]?.status);
 
       // Update local state
       setTreatedIds(prev => new Set([...prev, candidateId]));
       setStatuses(prev => {
         const next = new Map(prev);
         next.set(candidateId, {
-          id: existing?.id || '',
+          id: saved?.[0]?.id || existing?.id || '',
           job_id: jobId,
           candidate_id: candidateId,
           linkedin_profile_url: candidateData.profileUrl || existing?.linkedin_profile_url || null,
           candidate_name: candidateData.name || existing?.candidate_name || null,
           candidate_headline: candidateData.headline || existing?.candidate_headline || null,
-          status: (keepStatus ? currentStatus : 'scored') as CandidateStatus,
+          status: nextStatus,
           score: candidateData.score,
           recommendation: candidateData.recommendation,
-          skip_reason: null,
+          skip_reason: candidateData.skipReason || existing?.skip_reason || null,
           created_by: user.id,
           created_at: existing?.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -536,7 +581,7 @@ export function useJobCandidateStatus(jobId: string | null) {
     }
   }, [jobId, statuses]);
 
-  // Batch save scores for multiple candidates
+  // Batch save scores for multiple candidates (même règle que saveScore)
   const batchSaveScores = useCallback(async (
     candidates: Array<{
       id: string;
@@ -545,6 +590,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       profileUrl?: string;
       score: number;
       recommendation: string;
+      skipReason?: string;
       scoringDetails?: any;
       linkedinProfileData?: any;
     }>
@@ -555,51 +601,71 @@ export function useJobCandidateStatus(jobId: string | null) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const records = candidates.map(c => {
+      // Un upsert groupé ne peut pas toucher deux fois la même ligne.
+      const uniqueCandidates = Array.from(
+        new Map(candidates.map(c => [c.id, c])).values()
+      );
+
+      const toRecord = (c: typeof uniqueCandidates[number]) => {
         const existing = statuses.get(c.id);
-        const keepStatus = existing?.status && ['messaged', 'replied', 'shortlisted'].includes(existing.status);
         return {
           job_id: jobId,
           candidate_id: c.id,
           linkedin_profile_url: c.profileUrl || existing?.linkedin_profile_url || null,
           candidate_name: c.name || existing?.candidate_name || null,
           candidate_headline: c.headline || existing?.candidate_headline || null,
-          status: keepStatus ? existing.status : 'scored',
           score: c.score,
           recommendation: c.recommendation,
+          ...(c.skipReason ? { skip_reason: c.skipReason } : {}),
           scoring_details: c.scoringDetails || null,
           linkedin_profile_data: c.linkedinProfileData || null,
            created_by: user.id,
            organization_id: organizationId,
         };
-      });
+      };
 
-      const { error } = await supabase
-        .from('job_candidate_status')
-        .upsert(records, {
-          onConflict: 'job_id,candidate_id,created_by'
-        });
+      // Note seule, sans statut. Deux envois, avec et sans raison : dans un
+      // upsert groupé, une colonne absente d'une ligne serait mise à NULL.
+      const groups = [
+        uniqueCandidates.filter(c => c.skipReason),
+        uniqueCandidates.filter(c => !c.skipReason),
+      ].filter(group => group.length > 0);
+      const savedRows = new Map<string, { id: string; status: string }>();
+      for (const group of groups) {
+        const { data: saved, error } = await supabase
+          .from('job_candidate_status')
+          .upsert(group.map(toRecord), {
+            onConflict: 'job_id,candidate_id,created_by'
+          })
+          .select('id, candidate_id, status');
 
-      if (error) throw error;
+        if (error) throw error;
+        // Juste après l'upsert du groupe : un échec du groupe suivant ne laisse
+        // pas celui-ci à « new ».
+        await markScored((saved ?? []).map(row => row.id));
+        for (const row of saved ?? []) {
+          savedRows.set(row.candidate_id, { id: row.id, status: row.status });
+        }
+      }
 
       // Update local state
       const newTreated = new Set(treatedIds);
       const newStatuses = new Map(statuses);
-      candidates.forEach(c => {
+      uniqueCandidates.forEach(c => {
         newTreated.add(c.id);
         const existing = newStatuses.get(c.id);
-        const keepStatus = existing?.status && ['messaged', 'replied', 'shortlisted'].includes(existing.status);
+        const saved = savedRows.get(c.id);
         newStatuses.set(c.id, {
-          id: existing?.id || '',
+          id: saved?.id || existing?.id || '',
           job_id: jobId,
           candidate_id: c.id,
           linkedin_profile_url: c.profileUrl || existing?.linkedin_profile_url || null,
           candidate_name: c.name || existing?.candidate_name || null,
           candidate_headline: c.headline || existing?.candidate_headline || null,
-          status: (keepStatus ? existing.status : 'scored') as CandidateStatus,
+          status: statusAfterScore(existing?.status, saved?.status),
           score: c.score,
           recommendation: c.recommendation,
-          skip_reason: null,
+          skip_reason: c.skipReason || existing?.skip_reason || null,
           created_by: user.id,
           created_at: existing?.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),

@@ -2521,7 +2521,8 @@ async function setCachedScore(
 // Statuts que la notation peut encore réécrire (C1, R8) : profil trouvé, non
 // traité ou déjà noté. Contacté, a répondu, retenu, en entretien, intéressé,
 // qualification… et écarté ne sont jamais réécrits : seule la note change.
-// Au lot 0b, la notation cesse d'écrire le statut.
+// Depuis le lot 0b, la notation n'écarte plus personne : ces statuts passent
+// à « scored », ce qui ne change pas l'étape du candidat.
 const AI_REWRITABLE_STATUSES = ['new', 'discovered', 'untreated', 'scored'];
 const AI_REWRITABLE_IN = `(${AI_REWRITABLE_STATUSES.join(',')})`;
 
@@ -2534,8 +2535,9 @@ const AI_REWRITABLE_IN = `(${AI_REWRITABLE_STATUSES.join(',')})`;
  * worker de fond (process-agent-tasks) re-sélectionnait ces lignes à l'infini.
  * C1, R8 : limité à l'organisation de l'appelant. Deux mises à jour sur des
  * lignes disjointes (chaque ligne n'est touchée qu'une fois, déclencheurs
- * compris) : note et statut sur les lignes encore au stade de la notation,
- * note seule sur les autres.
+ * compris) : note et statut « scored » sur les lignes encore au stade de la
+ * notation, note seule sur les autres. Lot 0b : jamais d'écart ni d'étape ;
+ * une note basse reste une suggestion (recommendation, score, skip_reason).
  */
 async function syncJobCandidateStatus(
   supabase: SupabaseClient,
@@ -2568,11 +2570,9 @@ async function syncJobCandidateStatus(
       },
       updated_at: new Date().toISOString(),
     };
-    const status = result.finalScore >= 60 ? 'scored' : 'dismissed';
+    // Lot 0b : la notation ne décide plus l'écart, quel que soit le score.
+    const status = 'scored';
 
-    // Ordre voulu : la note seule d'abord. Dans l'ordre inverse, une ligne que
-    // la première mise à jour passe en « dismissed » serait reprise par la
-    // seconde (deux passages, déclencheurs doublés).
     // 1. Lignes dont le statut est décidé ailleurs (status est NOT NULL) :
     //    la note seule, le statut ne bouge pas.
     const { error: noteError } = await supabase.from("job_candidate_status")
@@ -2583,9 +2583,12 @@ async function syncJobCandidateStatus(
       .not('status', 'in', AI_REWRITABLE_IN);
     if (noteError) console.error("[jcs-sync] Note write error:", noteError.message);
 
-    // 2. Lignes encore au stade de la notation : note et statut.
+    // 2. Lignes encore au stade de la notation (new, discovered, untreated,
+    //    scored) : note et statut « scored », étape inchangée. La raison d'une
+    //    suggestion d'écart (must-have non satisfait) n'est écrite qu'ici : sur
+    //    les autres lignes, skip_reason est celle de l'utilisateur.
     const { error: rewritableError } = await supabase.from("job_candidate_status")
-      .update({ ...note, status })
+      .update({ ...note, status, ...(result.skipReason ? { skip_reason: result.skipReason } : {}) })
       .eq('organization_id', organizationId)
       .eq('candidate_id', candidateId)
       .eq('job_id', jobId)

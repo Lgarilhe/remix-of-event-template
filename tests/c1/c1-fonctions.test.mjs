@@ -311,6 +311,8 @@ test('R8 : la notation ne réécrit que les lignes de son organisation, statut f
   const withStatus = body.indexOf(".in('status', AI_REWRITABLE_STATUSES)");
   assert.ok(noteOnly > 0 && withStatus > 0, 'deux mises à jour disjointes attendues');
   assert.ok(noteOnly < withStatus, 'la note seule d\'abord : sinon une ligne passée en dismissed serait reprise');
+  // Lot 0b : la notation n'écarte plus personne.
+  assert.doesNotMatch(body, /'dismissed'/, 'aucun « dismissed » écrit par la notation');
   const list = src.match(/const AI_REWRITABLE_STATUSES = \[([^\]]*)\]/);
   assert.ok(list, 'AI_REWRITABLE_STATUSES introuvable');
   for (const s of ['messaged', 'replied', 'shortlisted', 'dismissed', 'interested', 'not_interested', 'qualification', 'contacted']) {
