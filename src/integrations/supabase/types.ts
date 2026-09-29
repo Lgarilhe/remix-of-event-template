@@ -2902,6 +2902,7 @@ export type Database = {
           message: string
           network_distance: number | null
           organization_id: string | null
+          project_id: string | null
           recipient_headline: string | null
           recipient_name: string | null
           recipient_profile_id: string
@@ -2921,6 +2922,7 @@ export type Database = {
           message: string
           network_distance?: number | null
           organization_id?: string | null
+          project_id?: string | null
           recipient_headline?: string | null
           recipient_name?: string | null
           recipient_profile_id: string
@@ -2940,6 +2942,7 @@ export type Database = {
           message?: string
           network_distance?: number | null
           organization_id?: string | null
+          project_id?: string | null
           recipient_headline?: string | null
           recipient_name?: string | null
           recipient_profile_id?: string
@@ -2956,6 +2959,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inmail_queue_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
             referencedColumns: ["id"]
           },
         ]
@@ -3020,6 +3030,66 @@ export type Database = {
           id?: string
           message_id?: string | null
           role?: string
+        }
+        Relationships: []
+      }
+      jcs_direct_write_log: {
+        Row: {
+          client_info: string | null
+          db_role: string | null
+          id: number
+          logged_at: string
+          new_general_stage: string | null
+          new_pipeline_stage: string | null
+          new_status: string | null
+          old_general_stage: string | null
+          old_pipeline_stage: string | null
+          old_status: string | null
+          op: string
+          organization_id: string | null
+          project_id: string | null
+          referer: string | null
+          request_path: string | null
+          row_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          client_info?: string | null
+          db_role?: string | null
+          id?: never
+          logged_at?: string
+          new_general_stage?: string | null
+          new_pipeline_stage?: string | null
+          new_status?: string | null
+          old_general_stage?: string | null
+          old_pipeline_stage?: string | null
+          old_status?: string | null
+          op: string
+          organization_id?: string | null
+          project_id?: string | null
+          referer?: string | null
+          request_path?: string | null
+          row_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          client_info?: string | null
+          db_role?: string | null
+          id?: never
+          logged_at?: string
+          new_general_stage?: string | null
+          new_pipeline_stage?: string | null
+          new_status?: string | null
+          old_general_stage?: string | null
+          old_pipeline_stage?: string | null
+          old_status?: string | null
+          op?: string
+          organization_id?: string | null
+          project_id?: string | null
+          referer?: string | null
+          request_path?: string | null
+          row_id?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -3691,6 +3761,97 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mission_conversations: {
+        Row: {
+          account_id: string
+          candidate_id: string
+          candidate_ids: string[]
+          candidate_slug: string | null
+          chat_id: string | null
+          created_at: string
+          created_by: string | null
+          enrollment_id: string | null
+          first_outbound_at: string | null
+          id: string
+          last_inbound_at: string | null
+          last_mission_send_at: string | null
+          last_outbound_at: string | null
+          last_outbound_message_id: string | null
+          last_send_kind: string | null
+          organization_id: string
+          outbound_pending_at: string | null
+          project_id: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          candidate_id: string
+          candidate_ids?: string[]
+          candidate_slug?: string | null
+          chat_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          enrollment_id?: string | null
+          first_outbound_at?: string | null
+          id?: string
+          last_inbound_at?: string | null
+          last_mission_send_at?: string | null
+          last_outbound_at?: string | null
+          last_outbound_message_id?: string | null
+          last_send_kind?: string | null
+          organization_id: string
+          outbound_pending_at?: string | null
+          project_id: string
+          source: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          candidate_id?: string
+          candidate_ids?: string[]
+          candidate_slug?: string | null
+          chat_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          enrollment_id?: string | null
+          first_outbound_at?: string | null
+          id?: string
+          last_inbound_at?: string | null
+          last_mission_send_at?: string | null
+          last_outbound_at?: string | null
+          last_outbound_message_id?: string | null
+          last_send_kind?: string | null
+          organization_id?: string
+          outbound_pending_at?: string | null
+          project_id?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mission_conversations_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mission_conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mission_conversations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
             referencedColumns: ["id"]
           },
         ]
@@ -6319,6 +6480,21 @@ export type Database = {
         Args: { p_organization_id: string; p_updates: Json }
         Returns: undefined
       }
+      apply_mission_candidate_stage: {
+        Args: {
+          p_candidate: Json
+          p_create_by?: string
+          p_from_stages?: string[]
+          p_legacy_stage?: string
+          p_only_created_by?: string
+          p_organization_id: string
+          p_process_step_id?: string
+          p_project_id: string
+          p_source: string
+          p_stage: string
+        }
+        Returns: Json
+      }
       apply_to_hunt_mission: {
         Args: { p_message: string | null; p_project_id: string }
         Returns: string
@@ -6337,6 +6513,27 @@ export type Database = {
         Args: { _organization_id: string }
         Returns: boolean
       }
+      candidate_enrollment_ids: {
+        Args: {
+          p_account_id: string
+          p_candidate: Json
+          p_organization_id: string
+        }
+        Returns: string[]
+      }
+      candidate_mission_sends: {
+        Args: {
+          p_candidate: Json
+          p_organization_id: string
+          p_project_id: string
+        }
+        Returns: {
+          first_send_at: string
+          last_send_at: string
+        }[]
+      }
+      candidate_ref_ids: { Args: { p_candidate: Json }; Returns: string[] }
+      candidate_ref_slug: { Args: { p_candidate: Json }; Returns: string }
       check_linkedin_action_quota: {
         Args: {
           p_account_id: string
@@ -6383,6 +6580,10 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      enrollment_mission_id: {
+        Args: { p_enrollment_id: string }
+        Returns: string
       }
       find_recent_org_contacts: {
         Args: {
@@ -6744,6 +6945,8 @@ export type Database = {
           doc: string
         }[]
       }
+      jcs_stage_write_mode: { Args: never; Returns: string }
+      linkedin_url_slug: { Args: { p_url: string }; Returns: string }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -6774,9 +6977,65 @@ export type Database = {
         }
         Returns: string
       }
+      record_candidate_inbound: {
+        Args: {
+          p_account_id: string
+          p_candidate: Json
+          p_chat_id?: string
+          p_enrollment_first?: boolean
+          p_enrollment_ids?: string[]
+          p_organization_id: string
+          p_received_at?: string
+        }
+        Returns: Json
+      }
+      record_candidate_meeting: {
+        Args: {
+          p_candidate: Json
+          p_organization_id: string
+          p_project_id: string
+        }
+        Returns: Json
+      }
+      record_candidate_outbound: {
+        Args: {
+          p_account_id: string
+          p_candidate: Json
+          p_chat_id?: string
+          p_created_by?: string
+          p_enrollment_id?: string
+          p_message_id?: string
+          p_organization_id: string
+          p_pending?: boolean
+          p_project_id?: string
+          p_send_kind?: string
+          p_source: string
+        }
+        Returns: Json
+      }
       record_cron_heartbeat: {
         Args: { p_error?: string; p_job_name: string; p_status?: string }
         Returns: undefined
+      }
+      record_own_message: {
+        Args: {
+          p_account_id: string
+          p_candidate?: Json
+          p_chat_id: string
+          p_message_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      record_reply_summary: {
+        Args: {
+          p_account_id: string
+          p_candidate: Json
+          p_chat_id: string
+          p_organization_id: string
+          p_summary: string
+        }
+        Returns: Json
       }
       record_webhook_event: {
         Args: {
@@ -6804,6 +7063,26 @@ export type Database = {
       reserve_base_konekt_included: {
         Args: { p_action: string; p_organization_id: string; p_user_id: string }
         Returns: string
+      }
+      resolve_conversation_mission: {
+        Args: {
+          p_account_id: string
+          p_candidate: Json
+          p_chat_id: string
+          p_enrollment_ids?: string[]
+          p_organization_id: string
+        }
+        Returns: {
+          project_id: string
+          via: string
+        }[]
+      }
+      resolve_meeting_mission: {
+        Args: { p_candidate: Json; p_organization_id: string }
+        Returns: {
+          project_id: string
+          via: string
+        }[]
       }
       respond_to_hunt_application: {
         Args: { p_application_id: string; p_decision: string }
@@ -6922,12 +7201,42 @@ export type Database = {
         Args: { p_enabled: boolean; p_organization_id: string }
         Returns: Json
       }
+      set_candidate_stages: {
+        Args: {
+          p_from_stages?: string[]
+          p_ids: string[]
+          p_legacy_stage?: string
+          p_organization_id?: string
+          p_process_step_id?: string
+          p_source: string
+          p_stage: string
+        }
+        Returns: Json
+      }
       set_hunt_mission_status: {
         Args: { p_project_id: string; p_status: string }
         Returns: Json
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      touch_mission_conversation: {
+        Args: {
+          p_account_id: string
+          p_at?: string
+          p_chat_id: string
+          p_created_by: string
+          p_enrollment_id: string
+          p_event: string
+          p_ids: string[]
+          p_message_id?: string
+          p_organization_id: string
+          p_project_id: string
+          p_send_kind?: string
+          p_slug: string
+          p_source: string
+        }
+        Returns: string
+      }
       unaccent: { Args: { "": string }; Returns: string }
       validate_marketplace_partner: {
         Args: { p_organization_id: string }

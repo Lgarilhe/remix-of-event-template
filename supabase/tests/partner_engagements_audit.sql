@@ -205,10 +205,12 @@ BEGIN
   -- 3 bis. P1 ne rattache pas une ligne de sa propre organisation à la
   --        mission de E, ni par project_id, ni par job_id seul (le
   --        déclencheur resolve_jcs_project_id complète project_id). Une
-  --        ligne hors mission reste permise.
+  --        ligne hors mission reste permise. Insertions sans statut : une
+  --        ligne Retenu serait refusée par la garde du lot 0b (mode refus)
+  --        avant la RLS, qui est le contrôle visé ici.
   BEGIN
-    INSERT INTO public.job_candidate_status (candidate_id, job_id, project_id, organization_id, created_by, status)
-    VALUES ('P1-INJ-1', 'project:' || proj_e::text, proj_e, org_p1, u_p1, 'shortlisted');
+    INSERT INTO public.job_candidate_status (candidate_id, job_id, project_id, organization_id, created_by)
+    VALUES ('P1-INJ-1', 'project:' || proj_e::text, proj_e, org_p1, u_p1);
     failures := failures || '[3 bis. P1 rattache une ligne à la mission de E par project_id] ';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   WHEN OTHERS THEN
@@ -217,8 +219,8 @@ BEGIN
     END IF;
   END;
   BEGIN
-    INSERT INTO public.job_candidate_status (candidate_id, job_id, organization_id, created_by, status)
-    VALUES ('P1-INJ-2', 'project:' || proj_e::text, org_p1, u_p1, 'shortlisted');
+    INSERT INTO public.job_candidate_status (candidate_id, job_id, organization_id, created_by)
+    VALUES ('P1-INJ-2', 'project:' || proj_e::text, org_p1, u_p1);
     failures := failures || '[3 bis. P1 rattache une ligne à la mission de E par job_id] ';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   WHEN OTHERS THEN
@@ -236,8 +238,8 @@ BEGIN
   -- E : acceptée ou refusée, elle ne doit pas compter dans les chiffres de E
   -- (contrôle stats_total_found plus bas).
   BEGIN
-    INSERT INTO public.job_candidate_status (candidate_id, job_id, project_id, organization_id, created_by, status)
-    VALUES ('P1-INJ-3', 'project:' || proj_e::text, proj_p1, org_p1, u_p1, 'shortlisted');
+    INSERT INTO public.job_candidate_status (candidate_id, job_id, project_id, organization_id, created_by)
+    VALUES ('P1-INJ-3', 'project:' || proj_e::text, proj_p1, org_p1, u_p1);
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   WHEN OTHERS THEN
     IF SQLERRM NOT ILIKE '%row-level security%' THEN
@@ -473,8 +475,9 @@ BEGIN
     IF n <> 3 THEN failures := failures || format('[13. get_mission_team_profiles rend %s membre(s) à M, attendu 3] ', n); END IF;
   EXCEPTION WHEN OTHERS THEN failures := failures || format('[13. get_mission_team_profiles par M : %s] ', SQLERRM);
   END;
+  -- Écriture sans changement d'étape : l'étape ne s'écrit plus en direct (garde du lot 0b).
   BEGIN
-    UPDATE public.job_candidate_status SET pipeline_stage = 'shortlisted'
+    UPDATE public.job_candidate_status SET tags = '{audit}'
     WHERE organization_id = org_e AND project_id = proj_e AND candidate_id = 'PE-CAND-1';
     GET DIAGNOSTICS n = ROW_COUNT;
     IF n <> 1 THEN failures := failures || format('[13. M modifie %s ligne(s), attendu 1] ', n); END IF;

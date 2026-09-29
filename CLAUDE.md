@@ -214,6 +214,23 @@ job_candidate_status       — un candidat dans une mission : note et étape. Mo
                              modifie jamais status ni pipeline_stage.
                              Compteurs stats_* de la mission : sur status, par project_id et organisation de la mission,
                              jusqu'au lot 0c (passage à general_stage avec get_project_stats).
+                             Garde stage_write_guard (lot 0b), en observation : une écriture directe qui change l'étape
+                             dérivée (jeton authenticated, service_role ou anon, ou SET ROLE) est journalisée dans
+                             jcs_direct_write_log (rôle, utilisateur, ligne, couples, x-client-info ; fermé à anon et
+                             authenticated). Passent sans trace : set_candidate_stage(s), insertion À trier, note, changement
+                             de mission au couple intact, replace_process_steps, contextes sans jeton (migration, psql, cron).
+                             Mode : jcs_stage_write_mode() (off, observe, refuse). Le refus (HINT STAGE_DIRECT_WRITE) viendra
+                             au lot 0b-5. Arrêt d'urgence neutre : ALTER TABLE public.job_candidate_status DISABLE TRIGGER
+                             stage_write_guard; puis un fichier de migration qui repose le mode voulu (règle 1).
+mission_conversations      : lien entre une conversation LinkedIn et une mission (lot 0b). Une ligne par organisation,
+                             mission, compte et candidat (candidate_id, candidate_ids, candidate_slug, chat_id). Écrite par
+                             le serveur seulement (fonctions record_*), lue par les membres de l'organisation (un collaborateur :
+                             ses liens seulement, comme ses inscriptions). Les dates ne reculent jamais. last_mission_send_at
+                             (dernier envoi attribué à la mission) choisit la mission d'une réponse sur un fil partagé. Reprise :
+                             un lien par inscription existante (source backfill). Effacement RGPD : le déclencheur
+                             mission_conversations_gdpr_erase supprime les liens du candidat dans l'organisation quand une
+                             inscription reçoit tracking_data.gdpr_erased_at.
+inmail_queue               : .project_id (lot 0b), mission de l'InMail programmé, pour « Contacté » et le lien à l'envoi.
 outreach_sequences         — message sequences
 sequence_enrollments       — candidates in sequences (.pause_reason : manual, account_disconnected, quota_reached, subscription_required,
                              sequence_inactive, auto_paused, send_failed, blocked_by_candidate ; jamais NULL pour une pause ;
@@ -253,6 +270,19 @@ organisation est introuvable (STAGE_ROW_NOT_FOUND). Trois origines :
 Réponse jsonb : `changed`, `result` (updated, unchanged, kept, not_contacted), étape, étape d'entretien, date et origine.
 `candidate_stage_from_legacy(status, pipeline_stage, step_id)` : correspondance pure de l'ancien couple vers l'étape, commune
 au déclencheur, à la reprise et à `set_candidate_stage`.
+`set_candidate_stages(p_ids, p_stage, p_source, p_organization_id, p_process_step_id, p_legacy_stage, p_from_stages)` (lot 0b,
+SECURITY INVOKER, authenticated et service_role) : `set_candidate_stage` sur 200 lignes au plus (HINT STAGE_BATCH_TOO_LARGE),
+un résultat par ligne. `p_from_stages` : étapes de départ admises, les autres lignes rendent `skipped`. Seuls les refus 22023
+et P0002 sont rendus par ligne ; toute autre erreur annule l'appel.
+Fonctions serveur du lot 0b (SECURITY INVOKER, service_role seulement, jamais authenticated : l'organisation vient de
+l'appelant) : `record_candidate_outbound` (envoi : lien, puis « Contacté » en origine system, ligne créée si un créateur est
+donné), `record_candidate_inbound` (réponse : mission de la conversation, sinon du profil, de l'inscription ou des lignes
+contactées ; « Contacté » puis « A répondu » si un envoi Konekt est prouvé dans la mission ; `p_received_at` pour un
+rattrapage, rien avant le premier contact), `record_own_message` (message écrit depuis le compte du recruteur : écho d'un envoi,
+note d'invitation, fil rattaché, sinon Retenu dans une seule mission), `record_reply_summary`, `resolve_meeting_mission` et
+`record_candidate_meeting` (rendez-vous : première étape d'entretien, ou ITW en cours). Aides : `resolve_conversation_mission`,
+`candidate_mission_sends`, `apply_mission_candidate_stage`, `touch_mission_conversation`, `enrollment_mission_id`,
+`candidate_enrollment_ids`. Refus métier : 22023 ou P0002, HINT `STAGE_*`, `MISSION_*` ou `LINK_*`.
 
 ### Key Hooks
 ```
@@ -502,7 +532,7 @@ Matrice par type d'organisation (`enterprise` / `agency` / `freelance`) dans `sr
 
 ### Écritures sur `organizations` — passer par `updateOrganization`
 `src/lib/organizationUpdate.ts` relit la ligne écrite : sans `.select()`, un refus RLS répond « succès » sur 0 ligne. Côté base (lot 1 des Paramètres, migration 20260923095813) : une seule policy UPDATE `admins_update` (owner/admin) et le trigger `organizations_update_guard`. L'admin modifie `name`, `logo_url`, `website`, `ai_context` ; tout le reste (`org_type`, `agency_permissions`, `ai_model_default`…) reste au propriétaire (HINT `ORG_OWNER_ONLY`). Passage en `freelance` refusé s'il reste un autre membre ou une invitation en attente (HINT `ORG_FREELANCE_NOT_SOLO`). Bucket `org-logos` : écriture owner/admin dans le dossier `{organization_id}/`, un nom de fichier unique par envoi.
-Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`, et pour les séquences `seq_db_audit.sql`, `seq_scheduled_1_audit.sql`, `seq_steps_1_audit.sql`, `seq_engine_1_audit.sql`, `seq_identity_audit.sql`, `seq_decisions_db_audit.sql`, et pour le modèle des étapes candidat (refonte mission, lot 0a) `candidate_stage_model_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
+Audits SQL rejoués par la CI e2e (base neuve) : `supabase/tests/rls_two_orgs_audit.sql`, `org_writes_audit.sql`, `org_member_emails_audit.sql`, `member_quotas_self_service.sql`, `job_favorites_audit.sql`, ceux du lot C1 : `assistant_conversations_audit.sql`, `client_portal_audit.sql`, `partner_engagements_audit.sql`, `rls_and_definer_audit.sql`, et pour les séquences `seq_db_audit.sql`, `seq_scheduled_1_audit.sql`, `seq_steps_1_audit.sql`, `seq_engine_1_audit.sql`, `seq_identity_audit.sql`, `seq_decisions_db_audit.sql`, et pour le modèle des étapes candidat (refonte mission, lot 0a) `candidate_stage_model_audit.sql`, puis pour les écrivains du lot 0b `candidate_stage_writers_audit.sql`. `org_logos_storage_audit.sql` se lance à la main (tables internes du stockage).
 Dans un audit, ne jamais appeler sous `SET ROLE anon` ou `authenticated` une fonction refusée à ce rôle : dans l'image Postgres locale (17.6.1.106), supautils ajoute un indice au refus et le serveur tombe (signal 11, e2e du 24 au 26/09). Contrôler le droit avec `has_function_privilege`, et le refus réel par l'API (`curl …/rest/v1/rpc/<fonction>` avec la clé anon, voir `e2e.yml`).
 
 ### Règles posées par le lot C1 (réparations des fuites, 2026-09)
