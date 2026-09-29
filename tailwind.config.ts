@@ -302,6 +302,72 @@ export default {
   					transform: 'translateX(100%)'
   				}
   			},
+  			// Pièces d'une illustration (src/components/ui/illustration.tsx) : l'état de
+  			// départ vient des variables --illu-*, la place est l'état du dessin fixe, la
+  			// sortie d'une boucle vaut l'état de départ sauf --illu-x2, --illu-y2, --illu-r2.
+  			'illu-enter': {
+  				from: {
+  					opacity: 'var(--illu-o, 0)',
+  					transform: 'translate(var(--illu-x, 0), var(--illu-y, 0)) rotate(var(--illu-r, 0deg)) scale(var(--illu-s, 1))'
+  				},
+  				to: {
+  					opacity: '1',
+  					transform: 'none'
+  				}
+  			},
+  			// Entrée, pause à sa place, sortie.
+  			'illu-loop': {
+  				'0%': {
+  					opacity: 'var(--illu-o, 0)',
+  					transform: 'translate(var(--illu-x, 0), var(--illu-y, 0)) rotate(var(--illu-r, 0deg)) scale(var(--illu-s, 1))'
+  				},
+  				'20%, 80%': {
+  					opacity: '1',
+  					transform: 'none'
+  				},
+  				'100%': {
+  					opacity: 'var(--illu-o, 0)',
+  					transform: 'translate(var(--illu-x2, var(--illu-x, 0)), var(--illu-y2, var(--illu-y, 0))) rotate(var(--illu-r2, var(--illu-r, 0deg))) scale(var(--illu-s, 1))'
+  				}
+  			},
+  			// Passage continu, sans pause.
+  			'illu-drift': {
+  				'0%': {
+  					opacity: 'var(--illu-o, 0)',
+  					transform: 'translate(var(--illu-x, 0), var(--illu-y, 0))'
+  				},
+  				'50%': {
+  					opacity: '1',
+  					transform: 'none'
+  				},
+  				'100%': {
+  					opacity: 'var(--illu-o, 0)',
+  					transform: 'translate(var(--illu-x2, var(--illu-x, 0)), var(--illu-y2, var(--illu-y, 0)))'
+  				}
+  			},
+  			// Tracé de gauche à droite, pause, effacement.
+  			'illu-draw': {
+  				'0%': {
+  					clipPath: 'inset(0 100% 0 0)',
+  					opacity: '1'
+  				},
+  				'20%, 80%': {
+  					clipPath: 'inset(0 var(--illu-draw-to, 0%) 0 0)',
+  					opacity: '1'
+  				},
+  				'100%': {
+  					clipPath: 'inset(0 var(--illu-draw-to, 0%) 0 0)',
+  					opacity: '0'
+  				}
+  			},
+  			'illu-float': {
+  				'0%, 100%': {
+  					transform: 'translateY(0)'
+  				},
+  				'50%': {
+  					transform: 'translateY(-3%)'
+  				}
+  			},
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
@@ -312,6 +378,13 @@ export default {
   			'slide-in-left': 'slide-in-left 0.25s ease-out',
   			'scroll-left': 'scroll-left 40s linear infinite',
   			'scroll-left-fast': 'scroll-left 110s linear infinite',
+  			// Illustrations : entrée jouée une fois, puis boucles (décision du propriétaire, 29/09).
+  			// fill both : état de départ pendant l'attente, place finale après une entrée.
+  			'illu-enter': 'illu-enter var(--illu-duration, 700ms) var(--illu-ease, cubic-bezier(0.22, 1, 0.36, 1)) var(--illu-delay, 0ms) both',
+  			'illu-loop': 'illu-loop var(--illu-duration, 3600ms) var(--illu-ease, cubic-bezier(0.22, 1, 0.36, 1)) var(--illu-delay, 0ms) infinite both',
+  			'illu-drift': 'illu-drift var(--illu-duration, 3200ms) var(--illu-ease, cubic-bezier(0.45, 0, 0.55, 1)) var(--illu-delay, 0ms) infinite both',
+  			'illu-draw': 'illu-draw var(--illu-duration, 3600ms) var(--illu-ease, cubic-bezier(0.22, 1, 0.36, 1)) var(--illu-delay, 0ms) infinite both',
+  			'illu-settle': 'illu-enter var(--illu-duration, 500ms) var(--illu-ease, cubic-bezier(0.22, 1, 0.36, 1)) var(--illu-delay, 0ms) both, illu-float 4s cubic-bezier(0.45, 0, 0.55, 1) var(--illu-duration, 500ms) infinite',
   		},
   		boxShadow: {
   			'2xs': 'var(--shadow-2xs)',
