@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Link2Off, RefreshCw, SearchX, WifiOff, type LucideIcon } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import { KonektLogo } from '@/components/KonektLogo';
 import { Button } from '@/components/ui/button';
-import { IconTile } from '@/components/ui/IconTile';
+import { Illustration, type IllustrationName } from '@/components/ui/illustration';
 import { withPreviewAccessToken } from '@/lib/previewToken';
 import { cn } from '@/lib/utils';
 
@@ -16,10 +16,11 @@ import { cn } from '@/lib/utils';
  */
 export type PublicDeadEndKind = 'link' | 'missing' | 'network';
 
-const ICONS: Record<PublicDeadEndKind, LucideIcon> = {
-  link: Link2Off,
-  missing: SearchX,
-  network: WifiOff,
+/** Panneau indicateur pour un lien ou une page perdus, prise débranchée pour une panne. */
+const ILLUSTRATIONS: Record<PublicDeadEndKind, IllustrationName> = {
+  link: 'orientation',
+  missing: 'orientation',
+  network: 'connexion',
 };
 
 interface PublicDeadEndProps {
@@ -57,7 +58,7 @@ export function PublicDeadEnd({ kind, title, description, onRetry, retrying = fa
           role={isError ? 'alert' : undefined}
           className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center sm:p-8"
         >
-          <IconTile icon={ICONS[kind]} tone={isError ? 'destructive' : 'default'} size="lg" className="mx-auto mb-4" />
+          <Illustration name={ILLUSTRATIONS[kind]} size="lg" className="mx-auto mb-5" />
           <h1 className="text-lg font-semibold text-foreground">{title}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{description}</p>
           {(onRetry || action) && (

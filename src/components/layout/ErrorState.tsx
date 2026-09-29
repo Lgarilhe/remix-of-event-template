@@ -17,6 +17,7 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Illustration, type IllustrationName } from '@/components/ui/illustration';
 import { cn } from '@/lib/utils';
 
 export interface ErrorStateProps {
@@ -34,6 +35,8 @@ export interface ErrorStateProps {
   action?: React.ReactNode;
   /** page : plein écran ; default : carte ; compact : ligne dans une liste ou un panneau. */
   variant?: 'page' | 'default' | 'compact';
+  /** Dessin à la place de l'icône d'alerte (panne de connexion, page introuvable), hors variante compacte. */
+  illustration?: IllustrationName;
   className?: string;
 }
 
@@ -46,6 +49,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   retryLabel = 'Réessayer',
   action,
   variant = 'default',
+  illustration,
   className,
 }) => {
   const compact = variant === 'compact';
@@ -79,14 +83,18 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
         variant !== 'page' && className,
       )}
     >
-      <span
-        className={cn(
-          'grid shrink-0 place-items-center rounded-lg bg-danger-muted text-danger',
-          compact ? 'h-8 w-8' : 'mx-auto mb-3 h-10 w-10',
-        )}
-      >
-        <AlertTriangle className={compact ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
-      </span>
+      {illustration && !compact ? (
+        <Illustration name={illustration} size={variant === 'page' ? 'lg' : 'md'} className="mx-auto mb-4" />
+      ) : (
+        <span
+          className={cn(
+            'grid shrink-0 place-items-center rounded-lg bg-danger-muted text-danger',
+            compact ? 'h-8 w-8' : 'mx-auto mb-3 h-10 w-10',
+          )}
+        >
+          <AlertTriangle className={compact ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <p className={cn('font-semibold text-foreground', compact ? 'text-sm' : 'text-md')}>{title}</p>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}

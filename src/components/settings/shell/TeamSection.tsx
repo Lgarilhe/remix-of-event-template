@@ -74,8 +74,8 @@ export function TeamSection() {
       {isAdmin && !isCollaborator && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
-              <UserPlus className="w-4 h-4" />
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <UserPlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               Invitations
             </CardTitle>
           </CardHeader>

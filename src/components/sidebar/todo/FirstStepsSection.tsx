@@ -5,7 +5,8 @@
  * - Finie : quand toutes les étapes sont cochées, FIRST_STEPS_DONE_KEY vaut '1' ;
  *   aux chargements suivants la section n'est pas rendue du tout, ni lignes
  *   grises ni lectures (la clé est lue avant tout rendu de chargement).
- * - Étape faite : coche verte, texte grisé, non cliquable. Étape à faire : lien.
+ * - Étape faite : coche verte (jeton success, lot 12, A-19), texte grisé, non
+ *   cliquable. Étape à faire : lien.
  */
 import { useEffect } from 'react';
 import {
@@ -18,6 +19,8 @@ import {
   UserPlus,
   type LucideIcon,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useFirstSteps, useFirstStepsFlag } from '@/hooks/sidebar/useFirstSteps';
@@ -28,6 +31,7 @@ import {
 } from '@/lib/firstSteps';
 import { SidebarSection } from '../SidebarSection';
 import { SidebarRow } from '../SidebarRow';
+import { SIDEBAR_GHOST_CLASS } from '../sidebarButtonClass';
 
 const STEP_LABELS: Record<FirstStepId, string> = {
   create_mission: 'Créer une première mission',
@@ -74,10 +78,11 @@ function stepTarget(id: FirstStepId, ctx: TargetContext): string {
   }
 }
 
-const HIDE_BUTTON_CLASS =
-  'inline-flex items-center justify-center rounded-md px-2 min-h-11 md:min-h-7 text-[12px] font-medium ' +
-  'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60 ' +
-  'outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring';
+/** Classes ajoutées au Button du kit (taille xs) : 44 px sur téléphone, 28 px sur ordinateur. */
+const HIDE_BUTTON_CLASS = cn(
+  SIDEBAR_GHOST_CLASS,
+  'rounded-md px-2 min-h-11 md:min-h-7 text-xs font-medium text-muted-foreground',
+);
 
 export function FirstStepsSection() {
   const { organizationId, orgType } = useOrganization();
@@ -115,13 +120,20 @@ function FirstStepsContent({ onHide, onAllDone }: FirstStepsContentProps) {
   const headerAction = (
     <>
       {status === 'ok' && steps.length > 0 && (
-        <span className="px-1 text-[11px] tabular-nums text-muted-foreground">
+        <span className="px-1 text-2xs tabular-nums text-muted-foreground">
           {doneCount} sur {steps.length}
         </span>
       )}
-      <button type="button" onClick={onHide} aria-label="Masquer les premiers pas" className={HIDE_BUTTON_CLASS}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        onClick={onHide}
+        aria-label="Masquer les premiers pas"
+        className={HIDE_BUTTON_CLASS}
+      >
         Masquer
-      </button>
+      </Button>
     </>
   );
 
@@ -142,7 +154,7 @@ function FirstStepsContent({ onHide, onAllDone }: FirstStepsContentProps) {
           return (
             <SidebarRow
               key={step.id}
-              leading={<CheckCircle2 className="text-green-600 dark:text-green-500" />}
+              leading={<CheckCircle2 className="text-success" />}
               title={STEP_LABELS[step.id]}
               muted
             />

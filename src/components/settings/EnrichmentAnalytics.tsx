@@ -23,8 +23,11 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { useEnrichmentPermission, formatResetDay } from '@/hooks/useEnrichmentPermission';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { StatGrid, StatTile } from '@/components/layout/StatTile';
 import { ErrorBox } from '@/components/marketplace/ErrorBox';
-import { Mail, Phone, TrendingUp, Loader2, Sparkles, BarChart3, Check, X, Package } from 'lucide-react';
+import { plural } from '@/lib/plural';
+import { Mail, Phone, TrendingUp, Contact, BarChart3, Check, X, Package } from 'lucide-react';
 
 interface EnrichmentRow {
   contact_email: string | null;
@@ -175,11 +178,11 @@ export const EnrichmentAnalytics: React.FC = () => {
   // incluse » s'affichaient un instant sur un plan qui inclut des contacts.
   if (isLoading || recentLoading || usageLoading) {
     return (
-      <Card className="p-6">
-        <div className="flex items-center justify-center py-8 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
-          Chargement des statistiques d'enrichissement de contact…
-        </div>
+      <Card className="p-6 space-y-4">
+        <p role="status" className="sr-only">Chargement des statistiques d'enrichissement de contact…</p>
+        <Skeleton className="h-4 w-56" aria-hidden="true" />
+        <Skeleton className="h-16 w-full rounded-lg" aria-hidden="true" />
+        <Skeleton className="h-20 w-full rounded-lg" aria-hidden="true" />
       </Card>
     );
   }
@@ -202,9 +205,12 @@ export const EnrichmentAnalytics: React.FC = () => {
 
   return (
     <Card className="p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <Sparkles className="w-5 h-5 text-foreground" />
-        <h3 className="text-base font-bold">Enrichissement de contact</h3>
+      {/* Revue design (F-01, F-22) : titre de carte commun, plus d'étincelle (réservée à une génération IA). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Contact className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          Enrichissement de contact
+        </h3>
         <span className="text-xs text-muted-foreground">30 derniers jours</span>
       </div>
 
@@ -212,23 +218,23 @@ export const EnrichmentAnalytics: React.FC = () => {
       <div className="border border-border rounded-lg p-3 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Package className="w-3.5 h-3.5" />
-            <span>Forfait du mois (1 par email, 10 par mobile)</span>
+            <Package className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>Forfait du mois (1 par e-mail, 10 par mobile)</span>
           </div>
-          <div className="text-sm font-bold tabular-nums text-foreground">
+          <div className="text-sm font-semibold tabular-nums text-foreground">
             {includedUsed} / {includedMonthly}
-            {resetDay && <span className="text-xs font-normal text-muted-foreground ml-1.5">(reset le {resetDay})</span>}
+            {resetDay && <span className="text-xs font-normal text-muted-foreground ml-1.5">(remise à zéro le {resetDay})</span>}
           </div>
         </div>
         {includedMonthly > 0 ? (
-          <div className="bg-muted rounded-full h-1.5 overflow-hidden">
+          <div className="bg-muted rounded-full h-1.5 overflow-hidden" aria-hidden="true">
             <div
-              className={`h-full transition-all ${includedPct >= 100 ? 'bg-destructive' : 'bg-foreground'}`}
+              className={`h-full transition-all ${includedPct >= 100 ? 'bg-danger' : 'bg-foreground'}`}
               style={{ width: `${includedPct}%` }}
             />
           </div>
         ) : (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Aucune unité incluse dans votre forfait actuel : les enrichissements de contact sont facturés en crédits.
           </p>
         )}
@@ -241,54 +247,36 @@ export const EnrichmentAnalytics: React.FC = () => {
         </p>
       ) : (
         <>
-          {/* KPIs principaux */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="border border-border rounded-lg p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <BarChart3 className="w-3 h-3" />
-                <span>Total</span>
-              </div>
-              <div className="text-2xl font-bold tabular-nums text-foreground">
-                {stats.totalEnrichments}
-              </div>
-            </div>
-            <div className="border border-border rounded-lg p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Mail className="w-3 h-3 text-info" />
-                <span>Emails trouvés</span>
-              </div>
-              <div className="text-2xl font-bold tabular-nums text-foreground">
-                {stats.emailsFound}
-                <span className="text-sm text-muted-foreground ml-1.5">({stats.emailHitRate}%)</span>
-              </div>
-            </div>
-            <div className="border border-border rounded-lg p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Phone className="w-3 h-3 text-warning" />
-                <span>Téléphones trouvés</span>
-              </div>
-              <div className="text-2xl font-bold tabular-nums text-foreground">
-                {stats.phonesFound}
-                <span className="text-sm text-muted-foreground ml-1.5">({stats.phoneHitRate}%)</span>
-              </div>
-            </div>
-            <div className="border border-border rounded-lg p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <TrendingUp className="w-3 h-3" />
-                <span>Crédits hors forfait</span>
-              </div>
-              <div className="text-2xl font-bold tabular-nums text-foreground">
-                {stats.totalCreditsUsed}
-              </div>
-            </div>
-          </div>
+          {/* KPIs principaux : tuiles du kit, icônes neutres (la couleur est réservée aux signaux). */}
+          <StatGrid cols={{ base: 2, md: 4 }}>
+            <StatTile className="rounded-lg p-3" label="Total" icon={BarChart3} value={stats.totalEnrichments} />
+            <StatTile
+              className="rounded-lg p-3"
+              label="E-mails trouvés"
+              icon={Mail}
+              value={stats.emailsFound}
+              trailing={<span className="text-sm text-muted-foreground tabular-nums">{stats.emailHitRate}&nbsp;%</span>}
+            />
+            <StatTile
+              className="rounded-lg p-3"
+              label="Téléphones trouvés"
+              icon={Phone}
+              value={stats.phonesFound}
+              trailing={<span className="text-sm text-muted-foreground tabular-nums">{stats.phoneHitRate}&nbsp;%</span>}
+            />
+            <StatTile className="rounded-lg p-3" label="Crédits hors forfait" icon={TrendingUp} value={stats.totalCreditsUsed} />
+          </StatGrid>
 
           {/* Graphique simple : barres 30 jours */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+            <h4 className="mb-2 text-xs font-semibold text-muted-foreground">
               Activité quotidienne
             </h4>
-            <div className="flex items-end gap-0.5 h-20 border-b border-border">
+            <div
+              role="img"
+              aria-label={`Enrichissements par jour sur 30 jours : ${plural(stats.totalEnrichments, 'enrichissement')} au total, ${maxDailyCount} au plus en une journée.`}
+              className="flex items-end gap-0.5 h-20 border-b border-border"
+            >
               {stats.dailyBuckets.map(({ date, count }) => {
                 const heightPct = (count / maxDailyCount) * 100;
                 const isToday = date === new Date().toISOString().split('T')[0];
@@ -304,7 +292,7 @@ export const EnrichmentAnalytics: React.FC = () => {
                 );
               })}
             </div>
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+            <div className="mt-1 flex justify-between text-2xs text-muted-foreground" aria-hidden="true">
               <span>Il y a 30 jours</span>
               <span>Aujourd'hui</span>
             </div>
@@ -315,16 +303,16 @@ export const EnrichmentAnalytics: React.FC = () => {
       {/* Derniers enrichissements */}
       {recent && recent.length > 0 && (
         <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+          <h4 className="mb-2 text-xs font-semibold text-muted-foreground">
             Derniers enrichissements
           </h4>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                <tr className="text-left text-xs text-muted-foreground border-b border-border">
                   <th className="py-1.5 pr-3 font-semibold">Candidat</th>
                   <th className="py-1.5 pr-3 font-semibold">Date</th>
-                  <th className="py-1.5 pr-3 font-semibold">Email</th>
+                  <th className="py-1.5 pr-3 font-semibold">E-mail</th>
                   <th className="py-1.5 pr-3 font-semibold">Téléphone</th>
                   <th className="py-1.5 pr-3 font-semibold">Facturation</th>
                   <th className="py-1.5 font-semibold">Demandeur</th>
@@ -339,7 +327,7 @@ export const EnrichmentAnalytics: React.FC = () => {
                       ? 'Erreur'
                       : row.included
                         ? 'Inclus'
-                        : `${row.credits_consumed || 0} crédit${(row.credits_consumed || 0) > 1 ? 's' : ''}`;
+                        : plural(row.credits_consumed || 0, 'crédit');
                   return (
                     <tr key={row.id} className="border-b border-border/60 last:border-0">
                       <td className="py-1.5 pr-3 text-foreground font-medium max-w-[180px] truncate" title={rowName(row)}>

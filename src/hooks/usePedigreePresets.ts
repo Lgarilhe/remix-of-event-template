@@ -17,6 +17,8 @@ export function usePedigreePresets() {
   const { organizationId } = useOrganization();
   const [presets, setPresets] = useState<ClientPedigreePreset[]>([]);
   const [loading, setLoading] = useState(false);
+  // Lecture échouée : l'écran le dit au lieu d'afficher « Aucun ICP ».
+  const [loadError, setLoadError] = useState(false);
 
   const fetchPresets = useCallback(async () => {
     if (!organizationId) {
@@ -24,6 +26,7 @@ export function usePedigreePresets() {
       return;
     }
     setLoading(true);
+    setLoadError(false);
     try {
       const { data, error } = await (supabase
         .from('client_pedigree_presets' as never)
@@ -34,6 +37,7 @@ export function usePedigreePresets() {
       setPresets((data || []) as ClientPedigreePreset[]);
     } catch (err) {
       console.error('[usePedigreePresets] fetch error:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -54,7 +58,7 @@ export function usePedigreePresets() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        toast.error('Non connecté');
+        toast.error('Votre session a expiré. Reconnectez-vous, puis réessayez.');
         return null;
       }
       const { data, error } = await (supabase
@@ -74,7 +78,7 @@ export function usePedigreePresets() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur inconnue';
       console.error('[usePedigreePresets] create error:', err);
-      toast.error(`Erreur lors de la création : ${message}`);
+      toast.error('L’ICP n’a pas été créé', { description: message });
       return null;
     }
   }, [organizationId]);
@@ -98,12 +102,12 @@ export function usePedigreePresets() {
         .eq('organization_id', organizationId) as unknown as Promise<{ error: { message: string } | null }>);
       if (error) throw error;
       setPresets(prev => prev.map(p => p.id === id ? { ...p, ...patch, updated_at: new Date().toISOString() } as ClientPedigreePreset : p));
-      toast.success('ICP mis à jour');
+      toast.success('ICP enregistré');
       return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur inconnue';
       console.error('[usePedigreePresets] update error:', err);
-      toast.error(`Erreur lors de la mise à jour : ${message}`);
+      toast.error('L’ICP n’a pas été enregistré', { description: message });
       return false;
     }
   }, [organizationId]);
@@ -123,7 +127,7 @@ export function usePedigreePresets() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur inconnue';
       console.error('[usePedigreePresets] delete error:', err);
-      toast.error(`Erreur lors de la suppression : ${message}`);
+      toast.error('L’ICP n’a pas été supprimé', { description: message });
       return false;
     }
   }, [organizationId]);
@@ -146,6 +150,7 @@ export function usePedigreePresets() {
   return {
     presets,
     loading,
+    isError: loadError,
     refresh: fetchPresets,
     createPreset,
     updatePreset,

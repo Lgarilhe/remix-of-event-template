@@ -662,7 +662,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
     return (
       <div className="grid h-full place-items-center bg-background p-6">
         <EmptyState
-          icon={MessageSquare}
+          illustration="conversation"
           title="Sélectionnez une conversation"
           description="Vos messages LinkedIn et vos InMails s'affichent ici."
           className="w-full max-w-sm"

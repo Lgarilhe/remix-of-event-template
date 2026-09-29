@@ -6,9 +6,11 @@
  * 4. Récentes : les 8 plus récentes hors À valider et En cours (exclusion par
  *    identifiant), puis « Toutes les conversations », toujours affiché.
  * Si les trois sections sont chargées et vides, une phrase d'invite ; le
- * bouton du haut suffit (D32).
+ * bouton du haut suffit (D32). Bouton principal du kit, monochrome (lot 12).
  */
 import { Sparkles, SquarePen } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useAgent } from '@/contexts/AgentContext';
 import { useAgentSignals, type AgentConversationItem } from '@/hooks/sidebar/useAgentSignals';
 import { useAssistantRecent } from '@/hooks/sidebar/useAssistantRecent';
@@ -18,6 +20,7 @@ import { formatShortTime } from '@/lib/sidebarSignals';
 import { ApprovalsSection } from '../todo/ApprovalsSection';
 import { SidebarSection } from '../SidebarSection';
 import { SidebarRow } from '../SidebarRow';
+import { SIDEBAR_FOCUS_CLASS } from '../sidebarButtonClass';
 
 /** Récentes affichées au plus. */
 const RECENT_LIMIT = 8;
@@ -76,18 +79,20 @@ export function AssistantPanel() {
   return (
     <div className="flex flex-col gap-1">
       <div className="pb-1">
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={startNew}
-          className="mx-1 flex w-[calc(100%-0.5rem)] items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-semibold text-primary-foreground min-h-11 md:min-h-8 transition-colors hover:bg-primary/90 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          className={cn(SIDEBAR_FOCUS_CLASS, 'mx-1 flex gap-1.5 min-h-11 md:min-h-8')}
         >
-          <SquarePen aria-hidden="true" className="h-4 w-4" />
+          <SquarePen aria-hidden="true" />
           Nouvelle conversation
-        </button>
+        </Button>
       </div>
 
       {allEmpty && (
-        <p className="px-3 py-2 text-[12px] text-muted-foreground">
+        <p className="px-3 py-2 text-xs text-muted-foreground">
           Posez une question à l'assistant ou confiez-lui une recherche.
         </p>
       )}

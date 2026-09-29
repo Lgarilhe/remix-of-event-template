@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Shield, Save, RotateCcw, Info, Loader2, Lock, CheckCircle2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SaveStatus, type SaveState } from '@/components/ui/save-status';
+import { Shield, RotateCcw, Lock, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import {
   useMemberQuotas,
@@ -29,6 +31,9 @@ import { ErrorBox } from '@/components/marketplace/ErrorBox';
  * Libre-service (migration 20260906193347) : tout membre modifie ses horaires
  * et son fuseau ; les plafonds restent réservés aux propriétaires et
  * administrateurs (trigger member_quotas_self_service_guard côté serveur).
+ *
+ * Lot 12 du chantier design : fuseaux affichés par leur ville (F-25), bouton
+ * « Enregistrer » et état d'enregistrement (F-09), encart de protections neutre (F-14).
  */
 
 /** Mécanismes réels de protection, mêmes chiffres que _shared/linkedin-quotas.ts et process-sequences. */
@@ -42,6 +47,41 @@ const PROTECTION_MECHANISMS = [
   'Anti-doublon dans votre organisation : un candidat déjà contacté au cours des 90 derniers jours, en séquence ou par InMail groupé, est signalé et écarté par défaut au moment de l’inscription à une séquence ou de la planification d’un InMail groupé.',
 ];
 
+/** Fuseaux proposés : ville en français ; l'identifiant IANA reste la valeur enregistrée (F-25). */
+const TIME_ZONES: { value: string; city: string }[] = [
+  { value: 'Europe/Paris', city: 'Paris' },
+  { value: 'Europe/London', city: 'Londres' },
+  { value: 'Europe/Brussels', city: 'Bruxelles' },
+  { value: 'Europe/Zurich', city: 'Zurich' },
+  { value: 'America/New_York', city: 'New York' },
+  { value: 'America/Los_Angeles', city: 'Los Angeles' },
+];
+
+/** Décalage UTC du fuseau aujourd'hui (« UTC+2 »), null si le navigateur ne sait pas le dire. */
+function utcOffset(timeZone: string): string | null {
+  try {
+    const part = new Intl.DateTimeFormat('fr-FR', { timeZone, timeZoneName: 'shortOffset' })
+      .formatToParts(new Date())
+      .find((p) => p.type === 'timeZoneName');
+    return part?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** « Paris (UTC+2) » : jamais l'identifiant technique à l'écran. Fuseau hors liste : sa ville. */
+function timeZoneLabel(timeZone: string): string {
+  const known = TIME_ZONES.find((z) => z.value === timeZone);
+  const city = known?.city ?? (timeZone.split('/').pop() || timeZone).replace(/_/g, ' ');
+  const offset = utcOffset(timeZone);
+  return offset ? `${city} (${offset})` : city;
+}
+
+/** Nom d'un fuseau à l'écran, repris par la carte « Plafonds du jour ». */
+export function TimeZoneName({ timeZone }: { timeZone: string }) {
+  return <>{timeZoneLabel(timeZone)}</>;
+}
+
 export const LinkedInSafetySettings = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const { getQuotaForUser, upsertQuota, isSaving, isLoading, isError, refetch } = useMemberQuotas();
@@ -52,6 +92,7 @@ export const LinkedInSafetySettings = () => {
   const [maxActionsPerDay, setMaxActionsPerDay] = useState<number>(DEFAULT_QUOTAS.max_actions_per_day);
   const [timezone, setTimezone] = useState<string>(DEFAULT_QUOTAS.timezone);
   const [dirty, setDirty] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
 
   // Get current user id
   useEffect(() => {
@@ -72,6 +113,7 @@ export const LinkedInSafetySettings = () => {
     setMaxActionsPerDay(savedCap);
     setTimezone(savedTz);
     setDirty(false);
+    setSaveFailed(false);
   }, [savedStart, savedEnd, savedCap, savedTz]);
 
   const hoursValid = endHour > startHour;
@@ -80,6 +122,7 @@ export const LinkedInSafetySettings = () => {
 
   const handleSave = () => {
     if (!userId || !hoursValid || !capValid) return;
+    setSaveFailed(false);
     upsertQuota({
       userId,
       quotas: {
@@ -92,8 +135,9 @@ export const LinkedInSafetySettings = () => {
       },
     }, {
       // « Enregistrer » ne se grise qu'après un succès : sur erreur, il reste
-      // actif pour réessayer.
+      // actif pour réessayer, et l'état le dit.
       onSuccess: () => setDirty(false),
+      onError: () => setSaveFailed(true),
     });
   };
 
@@ -109,42 +153,49 @@ export const LinkedInSafetySettings = () => {
   // start: 0..23, end: 1..24
   const startOptions = hours.slice(0, 24);
   const endOptions = hours.slice(1, 25);
+  // Un fuseau enregistré hors de la liste (réglé par l'assistant) reste choisi et lisible.
+  const zoneOptions = TIME_ZONES.some((z) => z.value === timezone)
+    ? TIME_ZONES.map((z) => z.value)
+    : [...TIME_ZONES.map((z) => z.value), timezone];
+  const saveState: SaveState = isSaving ? 'saving' : saveFailed ? 'error' : dirty ? 'unsaved' : 'saved';
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Shield className="w-5 h-5 text-primary" aria-hidden="true" />
-          Plages & limites de sécurité
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <Shield className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          Plages horaires et limites
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="p-3 bg-success/5 border border-success/30 rounded space-y-2">
+        <p className="text-sm text-muted-foreground">
+          Choisissez les heures pendant lesquelles votre compte LinkedIn peut envoyer des messages, des invitations
+          et des InMails depuis Konekt, et combien d'actions par jour au plus.{' '}
+          <strong className="font-medium text-foreground">Indispensable si le même compte LinkedIn sert aussi à un autre outil</strong> :
+          réservez des plages séparées et plafonnez le volume cumulé.
+        </p>
+
+        <div className="space-y-2 rounded-lg bg-muted p-3">
           <p className="text-xs font-semibold text-foreground">Comment Konekt protège votre compte LinkedIn</p>
           <ul className="space-y-1.5">
             {PROTECTION_MECHANISMS.map((mechanism) => (
-              <li key={mechanism} className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed">
-                <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" aria-hidden="true" />
+              <li key={mechanism} className="flex items-start gap-2 text-xs leading-relaxed text-foreground-secondary">
+                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span>{mechanism}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <div className="flex items-start gap-2 p-2.5 bg-info/5 border border-info/30 rounded text-xs text-foreground">
-          <Info className="w-3.5 h-3.5 text-info shrink-0 mt-0.5" aria-hidden="true" />
-          <p className="leading-relaxed text-muted-foreground">
-            Définissez sur quelles heures votre compte LinkedIn peut envoyer des messages, des invitations
-            et des InMails depuis Konekt, et combien d'actions par jour au maximum.
-            <strong className="text-foreground"> Indispensable si le même compte LinkedIn est aussi utilisé par un autre outil</strong> :
-            réservez des plages séparées et capez le volume cumulé.
-          </p>
-        </div>
-
         {isLoading ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-            Chargement…
+          <div role="status" className="space-y-3">
+            <div className="grid grid-cols-2 gap-3" aria-hidden="true">
+              <Skeleton className="h-9" />
+              <Skeleton className="h-9" />
+            </div>
+            <Skeleton className="h-9" aria-hidden="true" />
+            <Skeleton className="h-9 w-32" aria-hidden="true" />
+            <span className="sr-only">Chargement de vos plages horaires et limites…</span>
           </div>
         ) : isError ? (
           // Lecture ratée : ni champ ni « Enregistrer », sinon l'enregistrement
@@ -178,7 +229,13 @@ export const LinkedInSafetySettings = () => {
                   value={String(endHour)}
                   onValueChange={(v) => { setEndHour(parseInt(v, 10)); setDirty(true); }}
                 >
-                  <SelectTrigger id="end-hour"><SelectValue /></SelectTrigger>
+                  <SelectTrigger
+                    id="end-hour"
+                    aria-invalid={!hoursValid}
+                    aria-describedby={hoursValid ? undefined : 'end-hour-erreur'}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent className="max-h-[70vh]">
                     {endOptions.map(h => (
                       <SelectItem key={h} value={String(h)}>{String(h).padStart(2, '0')}:00</SelectItem>
@@ -189,7 +246,7 @@ export const LinkedInSafetySettings = () => {
             </div>
 
             {!hoursValid && (
-              <p className="text-xs text-destructive">L'heure de fin doit être après l'heure de début.</p>
+              <p id="end-hour-erreur" className="text-xs text-danger">L'heure de fin doit être après l'heure de début.</p>
             )}
 
             <div className="space-y-1.5">
@@ -200,20 +257,17 @@ export const LinkedInSafetySettings = () => {
               >
                 <SelectTrigger id="timezone"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Europe/Paris">Europe/Paris</SelectItem>
-                  <SelectItem value="Europe/London">Europe/London</SelectItem>
-                  <SelectItem value="Europe/Brussels">Europe/Brussels</SelectItem>
-                  <SelectItem value="Europe/Zurich">Europe/Zurich</SelectItem>
-                  <SelectItem value="America/New_York">America/New_York</SelectItem>
-                  <SelectItem value="America/Los_Angeles">America/Los_Angeles</SelectItem>
+                  {zoneOptions.map((zone) => (
+                    <SelectItem key={zone} value={zone}>{timeZoneLabel(zone)}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="max-actions" className="text-xs font-medium flex items-center gap-1.5">
-                Cap d'actions visibles / jour
-                {!isAdmin && <Lock className="w-3 h-3 text-muted-foreground" aria-hidden="true" />}
+              <Label htmlFor="max-actions" className="flex items-center gap-1.5 text-xs font-medium">
+                Plafond d'actions visibles par jour
+                {!isAdmin && <Lock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />}
               </Label>
               <Input
                 id="max-actions"
@@ -222,48 +276,52 @@ export const LinkedInSafetySettings = () => {
                 max={MAX_ACTIONS_PER_DAY_MAX}
                 value={maxActionsPerDay}
                 disabled={!isAdmin}
+                aria-invalid={!capValid}
+                aria-describedby={capValid ? 'max-actions-aide' : 'max-actions-erreur max-actions-aide'}
                 onChange={(e) => {
                   const v = parseInt(e.target.value, 10);
                   setMaxActionsPerDay(Number.isFinite(v) ? v : 0);
                   setDirty(true);
                 }}
               />
+              {!capValid && (
+                <p id="max-actions-erreur" className="text-xs text-danger">Valeur entre {MAX_ACTIONS_PER_DAY_MIN} et {MAX_ACTIONS_PER_DAY_MAX}.</p>
+              )}
               {isAdmin ? (
-                <p className="text-xs text-muted-foreground">
-                  Total cumulé messages + invitations + InMails par jour.
-                  Recommandé : 60-80 si le compte est partagé avec un autre outil, 100 max si Konekt est seul.
+                <p id="max-actions-aide" className="text-xs text-muted-foreground">
+                  Total cumulé des messages, invitations et InMails par jour.
+                  Recommandé : 60 à 80 si le compte sert aussi à un autre outil, 100 au plus si Konekt est seul.
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  Les plafonds sont définis par les propriétaires et administrateurs de l'organisation.
+                <p id="max-actions-aide" className="text-xs text-muted-foreground">
+                  Les plafonds sont fixés par les propriétaires et administrateurs de l'organisation.
                   Vous pouvez ajuster vos horaires et votre fuseau horaire.
                 </p>
               )}
-              {!capValid && (
-                <p className="text-xs text-destructive">Valeur entre {MAX_ACTIONS_PER_DAY_MIN} et {MAX_ACTIONS_PER_DAY_MAX}.</p>
-              )}
             </div>
 
-            <div className="flex gap-2 pt-1">
+            <div className="flex flex-wrap items-center gap-2 pt-1">
               <Button
-                onClick={handleSave}
-                disabled={!dirty || !hoursValid || !capValid || isSaving || !userId}
+                variant="primary"
                 size="sm"
-                className="gap-1.5"
+                onClick={handleSave}
+                loading={isSaving}
+                disabled={!dirty || !hoursValid || !capValid || !userId}
+                className="max-md:h-11"
               >
-                {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> : <Save className="w-3.5 h-3.5" aria-hidden="true" />}
                 Enregistrer
               </Button>
               <Button
                 variant="outline"
-                onClick={handleReset}
                 size="sm"
-                className="gap-1.5"
+                onClick={handleReset}
                 disabled={isSaving}
+                className="max-md:h-11"
               >
-                <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-                Valeurs par défaut
+                <RotateCcw aria-hidden="true" />
+                Rétablir les valeurs par défaut
               </Button>
+              <SaveStatus state={saveState} className="sm:ml-auto" />
             </div>
           </>
         )}

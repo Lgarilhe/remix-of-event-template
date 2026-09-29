@@ -157,7 +157,12 @@ test('L3-11 — extension masquée sans jeton actif, sauf demande explicite', ()
   const ext = read('src/components/settings/ExtensionTokens.tsx');
   assert.ok(ext.includes('revealWhenEmpty'));
   assert.ok(ext.includes('if (!revealed) return null;'));
-  assert.ok(ext.includes('if (revealedRef.current) toast.error('), 'pas de toast pour une carte cachée');
+  // Revue design : une lecture ratée s'affiche dans la carte (ErrorState et « Réessayer »,
+  // lot 12, F-06), plus par un toast. Même garantie : une carte cachée ne signale rien.
+  const failBranch = between(ext, 'if (error || !data?.success) {', 'return;');
+  assert.ok(failBranch.includes('setLoadError(true)'), 'échec de lecture signalé dans la carte');
+  assert.ok(!failBranch.includes('toast.'), 'pas de toast pour une carte cachée');
+  assert.ok(ext.indexOf('<ErrorState') > ext.indexOf('if (!revealed) return null;'), 'erreur montrée dans la carte révélée seulement');
   const iList = ext.indexOf('const list = data.tokens || [];');
   assert.ok(iList >= 0, 'liste des jetons introuvable');
   assert.ok(ext.indexOf('setRevealed(true)', iList) > iList, 'un jeton actif révèle la carte');

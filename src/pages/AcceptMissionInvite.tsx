@@ -11,13 +11,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Check, Clock, Link2Off, LogIn, UserX } from 'lucide-react';
+import { LogIn, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { SEOHead } from '@/components/SEOHead';
 import { KonektLogo } from '@/components/KonektLogo';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { Button } from '@/components/ui/button';
 import { IconTile } from '@/components/ui/IconTile';
+import { Illustration, type IllustrationName } from '@/components/ui/illustration';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { withPreviewAccessToken } from '@/lib/previewToken';
@@ -57,15 +58,21 @@ function outcomeOf(result: AcceptMissionInvitationResult): Outcome {
 const ACTION_CLASS = 'min-h-11 w-full sm:min-h-0 sm:w-auto';
 
 const InviteCard: React.FC<{
-  icon: LucideIcon;
-  tone: 'default' | 'success' | 'warning';
+  /** Icône (issues sans illustration) ou dessin (réussite, lien perdu). */
+  icon?: LucideIcon;
+  illustration?: IllustrationName;
+  tone?: 'default' | 'success' | 'warning';
   title: string;
   children: React.ReactNode;
   actions: React.ReactNode;
-}> = ({ icon, tone, title, children, actions }) => (
-  // Même anatomie que ErrorState (tuile de 40 px, titre de 14 px) : les issues se lisent comme une famille.
+}> = ({ icon, illustration, tone = 'default', title, children, actions }) => (
+  // Même anatomie que ErrorState (tuile de 40 px ou dessin, titre de 14 px) : les issues se lisent comme une famille.
   <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center">
-    <IconTile icon={icon} tone={tone} className="mx-auto mb-3 h-10 w-10" iconClassName="h-5 w-5" aria-hidden="true" />
+    {illustration ? (
+      <Illustration name={illustration} className="mx-auto mb-4" />
+    ) : icon ? (
+      <IconTile icon={icon} tone={tone} className="mx-auto mb-3 h-10 w-10" iconClassName="h-5 w-5" aria-hidden="true" />
+    ) : null}
     <h2 className="text-md font-semibold text-foreground">{title}</h2>
     <div className="mt-1 space-y-2 text-sm text-muted-foreground">{children}</div>
     <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">{actions}</div>
@@ -135,8 +142,7 @@ export default function AcceptMissionInvite() {
   } else if (outcome.kind === 'success') {
     content = (
       <InviteCard
-        icon={Check}
-        tone="success"
+        illustration="valide"
         title="Invitation acceptée"
         actions={
           <Button asChild variant="primary" className={ACTION_CLASS}>
@@ -155,7 +161,7 @@ export default function AcceptMissionInvite() {
     );
   } else if (outcome.kind === 'expired') {
     content = (
-      <InviteCard icon={Clock} tone="warning" title="Invitation expirée" actions={backToMissions}>
+      <InviteCard illustration="orientation" title="Invitation expirée" actions={backToMissions}>
         <p>Ce lien n'est plus valable. Demandez au recruteur qui vous a invité de vous envoyer une nouvelle invitation.</p>
       </InviteCard>
     );
@@ -172,8 +178,7 @@ export default function AcceptMissionInvite() {
   } else if (outcome.kind === 'invalid') {
     content = (
       <InviteCard
-        icon={Link2Off}
-        tone="default"
+        illustration="orientation"
         title="Invitation introuvable"
         actions={
           <Button asChild variant="primary" className={ACTION_CLASS}>
@@ -205,6 +210,7 @@ export default function AcceptMissionInvite() {
     content = (
       <ErrorState
         className="w-full max-w-md"
+        illustration="connexion"
         title="L'invitation n'a pas pu être acceptée"
         description="Le serveur n'a pas répondu. Vérifiez votre connexion, puis réessayez."
         onRetry={() => setAttempt((n) => n + 1)}

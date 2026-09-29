@@ -189,6 +189,28 @@ Chaque écran qui charge des données prévoit quatre états :
 - Erreur : ce qui a échoué en mots simples, et un bouton « Réessayer ». Une erreur ne s'affiche jamais comme un état vide.
 - Succès : un toast qui dit ce qui a été fait, avec le nombre exact d'éléments traités.
 
+### Illustrations
+
+Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent (série du 28/09/2026). Composant `Illustration` (`src/components/ui/illustration.tsx`), fichiers WebP dans `src/assets/illustrations` (15 à 45 Ko, chargés à la demande). `EmptyState` et `ErrorState` les prennent par l'option `illustration`.
+
+- Une illustration par écran au plus, à la place de l'icône d'un état vide, d'une panne ou d'une issue (invitation, lien, page introuvable). Jamais dans une liste, une carte serrée, un bouton, un toast ni la barre latérale (présente sur chaque écran) ; une panne compacte garde son icône.
+- Décorative : le titre dit ce qui se passe, l'image n'a pas de texte alternatif.
+- Fixe : ni animation en boucle ni entrée animée.
+- Une situation, un dessin :
+
+| Dessin | Situation |
+|---|---|
+| `cafe` | rien à faire : journée ou semaine libre |
+| `conversation` | aucune conversation, avec un candidat ou l'assistant |
+| `envoi` | aucune séquence, envoi parti |
+| `taches` | aucune tâche, premiers pas |
+| `valide` | invitation acceptée, inscription réussie |
+| `connexion` | panne de connexion, compte LinkedIn non relié ou déconnecté |
+| `orientation` | page introuvable, lien expiré ou invalide |
+| `recherche` | aucun candidat, recherche sans résultat |
+| `brief` | poste à décrire |
+| `dossier` | aucune mission, aucun document |
+
 ## 9. Texte
 
 - Vouvoiement partout, y compris dans les écrans de l'IA Konekt.

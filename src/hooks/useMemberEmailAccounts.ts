@@ -19,7 +19,7 @@ export function useMemberEmailAccounts() {
   const { organizationId } = useOrganization();
   const queryClient = useQueryClient();
 
-  const { data: mappings = [], isLoading } = useQuery({
+  const { data: mappings = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['member-email-accounts', organizationId],
     queryFn: async () => {
       const { data, error } = await (supabase
@@ -54,13 +54,13 @@ export function useMemberEmailAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['member-email-accounts'] });
-      toast.success('Compte email associé');
+      toast.success('Compte e-mail associé');
     },
     onError: (err: Error) => {
       if (err.message?.includes('duplicate') || err.message?.includes('unique')) {
-        toast.error('Ce compte email est déjà associé à un autre membre');
+        toast.error('Ce compte e-mail est déjà associé à un autre membre');
       } else {
-        toast.error("Erreur lors de l'association");
+        toast.error("Le compte e-mail n'a pas été associé", { description: 'Réessayez dans un instant.' });
       }
     },
   });
@@ -75,9 +75,9 @@ export function useMemberEmailAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['member-email-accounts'] });
-      toast.success('Association email retirée');
+      toast.success('Compte e-mail dissocié');
     },
-    onError: () => toast.error('Erreur lors de la suppression'),
+    onError: () => toast.error("Le compte e-mail n'a pas été dissocié", { description: 'Réessayez dans un instant.' }),
   });
 
   const getMappingForUser = (userId: string) =>
@@ -92,6 +92,9 @@ export function useMemberEmailAccounts() {
   return {
     mappings,
     isLoading,
+    /** Lecture des associations en échec : ni « relié » ni « non relié » ne sont sûrs. */
+    isError,
+    refetch,
     linkAccount: linkAccount.mutate,
     unlinkAccount: unlinkAccount.mutate,
     isLinking: linkAccount.isPending,

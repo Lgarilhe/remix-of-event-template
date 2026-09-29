@@ -36,7 +36,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   className,
 }) => {
   return (
-    // flex-1 plutôt que min-h-screen : sous l'en-tête de 48 px, min-h-screen faisait défiler toute page courte.
+    // flex-1 plutôt que min-h-screen : sous l'en-tête de 48 px (téléphone), min-h-screen faisait défiler toute page courte.
     <div className="flex-1 bg-background">
       <div className={cn('py-6 pb-8', !noAnimation && 'animate-in fade-in-0 slide-in-from-bottom-1 duration-300', className)}>
         <div className={cn(

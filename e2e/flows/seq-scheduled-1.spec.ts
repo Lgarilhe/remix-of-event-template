@@ -93,7 +93,7 @@ async function openJournalAsOrg(browser: Browser, user: TestUser): Promise<Page>
   contexts.push(context);
   const page = await context.newPage();
   await page.goto('/settings/account/journal', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: 'Actions IA' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: 'Journal de l’assistant' })).toBeVisible({ timeout: 30_000 });
   // Portée « Toute l'organisation » (administrateur et propriétaire seulement).
   await page.getByRole('combobox').filter({ hasText: 'Mes actions' }).click();
   await page.getByRole('option', { name: "Toute l'organisation" }).click();

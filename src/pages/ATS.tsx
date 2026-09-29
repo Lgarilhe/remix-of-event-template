@@ -10,7 +10,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BarChart3, Bell, Columns3, History, RefreshCw, Rows3, SearchX, Users } from 'lucide-react';
+import { BarChart3, Bell, Columns3, History, RefreshCw, Rows3, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { SEOHead } from '@/components/SEOHead';
 import { EmptyState, ErrorState, PageHeader, PageLayout } from '@/components/layout';
@@ -279,7 +279,7 @@ export default function ATS() {
     if (!hasCandidates) {
       return (
         <EmptyState
-          icon={Users}
+          illustration="recherche"
           title="Aucun candidat pour l'instant"
           description="Les candidats apparaissent ici dès que vous les ajoutez à une mission ou que vous les contactez."
           action={

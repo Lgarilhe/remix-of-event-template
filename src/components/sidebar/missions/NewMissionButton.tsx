@@ -2,12 +2,16 @@
  * « Nouvelle mission » en tête de l'onglet Missions (D14, §3.7). Au plafond de
  * la formule, le bouton cède la place à l'encart gris MissionQuotaNotice : le
  * plafond est annoncé d'emblée, jamais refusé après le clic.
+ * Bouton principal du kit, monochrome (lot 12, A-53) ; 44 px sur téléphone.
  */
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
 import { useCloseMobileSidebar } from '@/hooks/sidebar/useCloseMobileSidebar';
 import { MissionQuotaNotice } from '@/components/missions/MissionQuotaNotice';
+import { SIDEBAR_FOCUS_CLASS } from '../sidebarButtonClass';
 
 export function NewMissionButton() {
   const navigate = useNavigate();
@@ -19,16 +23,18 @@ export function NewMissionButton() {
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="primary"
+      size="sm"
       onClick={() => {
         closeMobile();
         navigate('/missions?create=brief');
       }}
-      className="mx-1 flex w-[calc(100%-0.5rem)] items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-semibold text-primary-foreground min-h-11 md:min-h-8 transition-colors hover:bg-primary/90 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      className={cn(SIDEBAR_FOCUS_CLASS, 'mx-1 flex gap-1.5 min-h-11 md:min-h-8')}
     >
-      <Plus aria-hidden="true" className="h-4 w-4" />
+      <Plus aria-hidden="true" />
       Nouvelle mission
-    </button>
+    </Button>
   );
 }

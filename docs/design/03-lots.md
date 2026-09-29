@@ -15,8 +15,9 @@ Le chantier avance par lots. Un lot couvre le socle ou une famille d'écrans, se
 | Onboarding, acceptation d'invitation, qualification, marketplace | chantier design | 9 |
 | Textes de toutes les zones du chantier | chantier design | 10 |
 | Liste et espace mission, recherche, pipeline de mission, fiche candidat | « Audit complet du dépôt » (refonte mission) | |
-| Paramètres | « Audit complet du dépôt » | |
-| Barre latérale et en-tête | « Audit complet du dépôt » | |
+| Paramètres | chantier design (repris le 28 septembre) | 12 |
+| Barre latérale et en-tête | chantier design (repris le 28 septembre) | 12 |
+| Illustrations des états vides, pannes et réussites | chantier design | 12 |
 
 Le chantier design ne modifie pas les écrans de l'autre session. Quand un composant partagé l'oblige à toucher un fichier de cette zone (une chaîne de marque, une classe sans CSS), le changement reste d'une ligne et figure dans la note de coordination du lot.
 
@@ -271,13 +272,67 @@ Fait (zones du chantier) :
 Reste :
 
 - Espace insécable avant « : » et « ? » : posée dans les fichiers repris aux lots 7 à 9. Ailleurs, environ 600 espaces simples dans 129 fichiers (le compte inclut des ternaires) ; conversion en masse écartée, pour un effet rare (une coupure de ligne juste avant la ponctuation). La règle vaut pour tout texte nouveau.
-- À transmettre aux autres sessions : brief, création, process et configuration de mission ; recherche, filtres et résultats ; Paramètres (modèles de messages écrits « template », connexion Notion, extension) ; fiche candidat (CV, contacts, aperçu, séquences) ; tutoriel du pipeline de mission (« funnel », « board ») ; libellés de priorité du brief avec émojis (`src/types/jobDetails.ts`) ; textes des hooks lus seulement par ces zones (`useMessageTemplates`, `useInvitationsReceived`, `useOrganization`, `useCandidateEnrollments`, `SequenceEnrollButton`).
+- À transmettre aux autres sessions : brief, création, process et configuration de mission ; recherche, filtres et résultats ; fiche candidat (CV, contacts, aperçu, séquences) ; tutoriel du pipeline de mission (« funnel », « board ») ; libellés de priorité du brief avec émojis (`src/types/jobDetails.ts`) ; textes des hooks lus seulement par ces zones (`useInvitationsReceived`, `useOrganization`, `useCandidateEnrollments`, `SequenceEnrollButton`). Les Paramètres et `useMessageTemplates` sont repris au lot 12.
 
 ### Lot 11 · Nettoyage
 
 Après la fusion de la refonte mission : suppression du code mort (G-19), des jetons `--k-*` et `--skalr-*` devenus sans lecteur, des variantes de bouton en double. Le faire plus tôt casserait du code que l'autre session n'a pas encore fusionné.
 
 Code mort déjà repéré : le composant `LinkedInAccountManager` (seule sa fonction `applySubscriptionOverrides` est encore importée), `ICPList` et `ICPFormModal` (jamais montés), `.landing-sky-gradient` et les variables `--landing-*` de `src/index.css` (sans lecteur depuis le lot 8), une image inutilisée (`skalr-logo-concept-3.webp`) et dix icônes 3D déjà orphelines sur `main` (`src/assets/icon-{bell,billing,building,credits,dashboard,integrations,job,profile,settings,team}-3d.{png,webp}`), à retirer après la fusion des sessions en cours. Les six icônes 3D du pipeline et de l'onboarding sont supprimées (lots 7 et 9). `ProxyConfigPanel` n'est plus monté que dans les Paramètres.
+
+### Lot 12 · Paramètres, barre latérale, illustrations (fait)
+
+Repris par le chantier design le 28 septembre, avec l'accord du propriétaire : après la fusion des lots 1 à 10, 91 % de l'ancien design restant se trouvait hors des zones du chantier, dont les Paramètres et la barre latérale, où la refonte mission ne travaille pas. Périmètre : `/settings` (coquille et deux portes), barre latérale et en-tête, `WebhookManager`, et les états vides et pannes des écrans du chantier pour les illustrations.
+
+12a, Paramètres « Mon compte » (constats F de l'annexe pour ces écrans) :
+
+- Une anatomie de titre de carte (13 px, graisse 600, casse de phrase, icône discrète), l'action à droite du titre ; en-tête de page du kit ; item actif du rail lisible sans opacité (F-01, F-03, F-04, F-05).
+- Journal de l'assistant : un seul en-tête, « Rafraîchir » dans la barre de filtres, noms d'actions sans « RAG », « CRM » ni « Outreach », état vide distinct selon qu'il n'existe rien ou que les filtres masquent tout (F-02, F-20).
+- Lectures ratées affichées en erreur avec « Réessayer » : journal, e-mail (liste et association), extension (F-06).
+- État du compte LinkedIn tiré de l'état réel, jamais du statut enregistré sur la liaison ; ligne empilée et boutons de 44 px sur téléphone (F-07, F-08).
+- Un verbe, « Enregistrer », et le statut d'enregistrement du kit (F-09).
+- Extension Chrome : le dialogue d'installation pour développeurs est retiré, la carte annonce l'extension à sa publication et garde la gestion des jetons (F-10).
+- Vouvoiement, libellés reliés, actions visibles sans survol, rayons et avatars ronds, plus de glyphe ni d'étincelles, fuseaux lisibles (« Paris (UTC+2) ») (F-11, F-12, F-14, F-15, F-17 à F-19, F-22, F-25).
+- Confirmation avant de dissocier l'adresse e-mail (F-21).
+- Toasts des hooks en français (`useAiContext`, `useMemberEmailAccounts`, `useMemberQuotas`, `useMessageTemplates`, `usePedigreePresets`) et variables des modèles de message (`templatePlaceholders`).
+
+12b, Paramètres « Mon organisation » et notifications en temps réel :
+
+- Même anatomie de carte, tailles nommées, plus de capitales (F-01, F-05).
+- Règles de l'assistant, connecteurs, Base Konekt, historique des crédits, notifications et ICP : squelette puis erreur avec « Réessayer », jamais des valeurs par défaut ni une liste vide (F-06).
+- Type d'organisation et rôle d'un membre : confirmation qui dit la conséquence, écriture après accord ; réglages immédiats marqués « Enregistré » sur la ligne (F-09).
+- Couleur réservée aux signaux (pastille et mot), consommation neutre, note RGPD des ICP en jetons de statut (F-13, F-14).
+- Libellés reliés, boutons icône nommés, en-têtes repliables du kit ; rôle lisible en entier et actions sous l'identité sur téléphone (F-15, F-16).
+- Vocabulaire : « organisation », « jetons », « centimes le crédit », « Résumé du matin » ; coût par action en français (`src/types/aiCredits.ts`) ; un seul nom par outil de l'assistant dans la carte d'approbation, les politiques et le journal (F-20).
+- Annuler une invitation passe par une confirmation (F-21) ; crayon pour modifier le site (F-22) ; « Outils reliés » titre l'ancre `#outils`, limites du plan en grille qui se replie (F-23, partiel) ; « Ajouter une intégration » en menu du kit (F-24) ; comptes LinkedIn de l'organisation en mots (F-25).
+- Notifications en temps réel (ex-webhooks) : noms métier, pastille et mot, suppression confirmée, erreur de lecture au lieu d'un faux « 3 manquants » (D-64).
+- Plus de `BrutalLoader` ; une forme de confirmation destructive (F-66).
+
+12c, barre latérale et en-tête :
+
+- Plus de bande d'en-tête vide sur ordinateur : le bouton qui replie la barre passe dans son en-tête (même nom, Ctrl B), la bande reste sur téléphone (A-01).
+- Cibles de 44 px sur téléphone (A-03, A-20) ; plus de texte à 9 ou 9,5 px (A-18) ; coche des premiers pas en `text-success` (A-19).
+- Un seul chiffre coloré, celui d'À traiter, dans l'accent ; crédits en français, avec chargement et panne (A-21).
+- Aide contextuelle : « Vidéo du tutoriel » ne s'affiche que sur la page qui a une vidéo (`tutorialForRoute`, A-15).
+- Boutons du kit sauf les quatre contrôles de ligne (21 boutons faits main avant, 4 après), anneau de focus partout, titres de section en casse de phrase (A-16, A-17, A-53, A-54 pour ces fichiers).
+
+12d, illustrations :
+
+- Dix dessins (encre sur papier crème, accent bleu-vert) passés de 1 Mo en PNG à 15 à 45 Ko en WebP ; composant `Illustration`, décoratif, fixe, chargé à la demande, place réservée (`src/components/ui/illustration.tsx`).
+- Branché par `EmptyState` et `ErrorState` (`illustration="…"`), l'impasse publique (`PublicDeadEnd`) et la page introuvable. Placements : Tâches, Agenda, tableau de bord (rien de prévu), pipeline global, Agents, séquences, messagerie (aucun compte, aucune conversation choisie), acceptation d'invitation, Paramètres (aucun compte LinkedIn). Jamais dans la barre latérale, qui partage l'écran avec la page.
+- Règles et correspondance des dessins : `01-direction.md`, § Illustrations.
+
+Changements de comportement : confirmations ajoutées (type d'organisation, rôle, annulation d'invitation, suppression d'une notification, dissociation de l'adresse e-mail) ; le toast de succès des politiques devient « Enregistré » sur la ligne ; « Rafraîchir » des comptes LinkedIn de l'organisation recharge la liste affichée (il passait l'événement du clic en paramètre) ; une signature dont l'enregistrement échoue garde sa fenêtre ouverte ; la vidéo du tutoriel n'est proposée que sur le pipeline de mission.
+
+Tests : `tests/ux/lot12a-parametres-compte.test.mjs`, `lot12b-parametres-organisation.test.mjs`, `lot12c-barre-laterale.test.mjs`, `lot12d-illustrations.test.mjs`.
+
+Reste :
+
+- F-23, proposition non faite : l'export RGPD dans Général (« Données de l'organisation ») ; la Base Konekt répartie (interrupteur dans les Règles de l'assistant, recherches incluses dans « Limites du plan ») ; des jauges d'usage dans « Limites du plan » (missions, crédits, contacts). Touche les ancres et les anciens onglets (`sections.tsx`, `settingsRoutes.ts`).
+- Le coût par action liste quatre actions sans appelant (`filter_assistant_msg`, `nurturing_analysis`, `vivier_enrichment`, `scorecard_chat`) : à retirer des deux catalogues au lot 11.
+- Deux textes serveur attendent le prochain changement de `supabase/functions/_shared/`, pour ne pas redéployer les 70 fonctions pour un libellé : le miroir des libellés de crédits (`ai-config.ts`, jamais affiché) et « digest matinal » de l'e-mail quotidien (`transactional-email-templates/daily-digest.tsx`), à écrire « résumé du matin ».
+- Kit : zone de 44 px de l'interrupteur (`ui/switch.tsx`) ; titre de `EmptyState` toujours en `h3` ; `shadow-sm` de `ui/card.tsx`, que la direction réserve aux éléments flottants ; variante explicite pour `AlertDialogAction` au lieu de la classe `bg-destructive` ; `ErrorBox` à sortir de `components/marketplace`.
+- Pour la refonte mission : `Illustration` pour ses écrans (recherche, brief, dossier) ; la page gagne 48 px sur ordinateur, que `lg:h-[calc(100dvh-5rem)]` de `LinkedInSearch` peut reprendre.
 
 ## Composants partagés
 
@@ -307,6 +362,7 @@ Existants, à employer partout (les deux sessions) :
 | Définition ou précision derrière un « i » | `InfoHint` (`src/components/ui/info-hint.tsx`), jamais une infobulle au survol seule |
 | Fenêtre plein écran (éditeur) | `DialogContent variant="fullscreen"` (`src/components/ui/dialog.tsx`) |
 | Statut d'enregistrement | `SaveStatus` (`src/components/ui/save-status.tsx`, lot 6) |
+| Dessin d'un état vide, d'une panne ou d'une réussite | `Illustration` (`src/components/ui/illustration.tsx`, lot 12), par `EmptyState` et `ErrorState` (`illustration="…"`) |
 
 Règles de calque : voile et fenêtre au calque `z-modal` pour `Dialog`, `AlertDialog`, `Sheet` et `Drawer` ; une confirmation ouverte depuis une autre fenêtre se pose au-dessus par l'ordre d'ouverture et voile ce qui est dessous. `aria-modal` est posé par le kit.
 

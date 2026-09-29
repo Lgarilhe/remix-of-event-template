@@ -2,7 +2,8 @@
  * EmptyState : état vide commun (docs/design/01-direction.md, § 8).
  *
  * Une phrase qui dit pourquoi c'est vide, et l'action qui remplit l'écran.
- * `src/components/ui/EmptyState.tsx` s'appuie sur ce composant.
+ * `src/components/ui/EmptyState.tsx` s'appuie sur ce composant. L'état vide
+ * d'une page peut porter une illustration à la place de l'icône (§ Illustrations).
  *
  * Usage :
  *   <EmptyState
@@ -15,10 +16,13 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { Illustration, type IllustrationName } from '@/components/ui/illustration';
 
 export interface EmptyStateProps {
   /** Composant d'icône (lucide) ou élément déjà rendu */
   icon?: React.ElementType | React.ReactNode;
+  /** Dessin à la place de l'icône, pour l'état vide d'une page ou d'une vue entière. */
+  illustration?: IllustrationName;
   title: string;
   description?: React.ReactNode;
   /** Action principale (bouton, lien) */
@@ -50,6 +54,7 @@ function renderIcon(icon: EmptyStateProps['icon'], compact: boolean) {
 
 export const EmptyState: React.FC<EmptyStateProps> = React.memo(({
   icon,
+  illustration,
   title,
   description,
   action,
@@ -67,7 +72,11 @@ export const EmptyState: React.FC<EmptyStateProps> = React.memo(({
       )}
       role="status"
     >
-      {renderIcon(icon, compact)}
+      {illustration ? (
+        <Illustration name={illustration} size={compact ? 'sm' : 'md'} className="mb-4" />
+      ) : (
+        renderIcon(icon, compact)
+      )}
       <h3 className={cn('font-semibold text-foreground', compact ? 'text-sm' : 'text-md')}>{title}</h3>
       {description && (
         <p className={cn('mt-1 max-w-md text-muted-foreground', compact ? 'text-xs' : 'text-sm')}>{description}</p>

@@ -247,7 +247,9 @@ test('B6P-5 : FIRST_STEPS_DONE_KEY lue avant tout rendu de chargement', () => {
   assert.match(section, /if \(finished\) onAllDone\(\);/);
   assert.match(section, /\[finished, onAllDone\]/);
   // Étape faite : coche verte, non cliquable.
-  assert.match(section, /<CheckCircle2 className="text-green-600/);
+  // Revue design : le vert passe par le jeton de statut success (lot 12, A-19),
+  // plus par une couleur brute ni une variante dark: morte.
+  assert.match(section, /<CheckCircle2 className="text-success"/);
 });
 
 test('B6P-5 : la section n\'exporte que son composant', () => {

@@ -287,7 +287,10 @@ test('B-C13 — queryState : hors ligne, chargement, erreur, données gardées',
 
 // ---------------------------------------------------------------- B-C14
 test('B-C14 — en-tête : chiffre sur le bouton du menu, téléphone seulement', () => {
-  for (const needle of ['useTodoSignal', 'isMobile', 'aria-describedby']) {
+  // Revue design : la bande d'en-tête n'existe plus que sur téléphone (lot 12, A-01).
+  // md:hidden la masque sur ordinateur sans attendre la mesure de l'écran, à la
+  // place du test isMobile qui choisissait le bouton : même règle, téléphone seulement.
+  for (const needle of ['useTodoSignal', 'md:hidden', 'aria-describedby']) {
     assert.ok(appHeader.includes(needle), `AppHeader.tsx : ${needle} absent`);
   }
   assert.doesNotMatch(appHeader, /NotificationDropdown/);
