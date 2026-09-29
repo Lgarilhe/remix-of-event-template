@@ -170,7 +170,7 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--k-text-muted)] mr-0.5">Exemples</span>
+        <span className="text-xs text-muted-foreground mr-0.5">Exemples</span>
         {EXAMPLES.map(ex => (
           <button
             key={ex}

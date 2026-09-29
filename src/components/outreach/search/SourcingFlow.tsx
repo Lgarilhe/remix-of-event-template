@@ -264,7 +264,7 @@ const StepIcon: React.FC<{ state: 'wait' | 'active' | 'done' }> = ({ state }) =>
 export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips }) => {
   const steps: { title: string; state: 'wait' | 'active' | 'done'; meta?: string }[] = [
     { title: 'Analyse de la demande + brief mission', state: 'done' },
-    { title: 'Extraction des filtres', state: stage === 'analyze' ? 'active' : 'done', meta: stage !== 'analyze' ? `${chips.length} filtres — éditables juste après` : undefined },
+    { title: 'Extraction des filtres', state: stage === 'analyze' ? 'active' : 'done', meta: stage !== 'analyze' ? `${chips.length} filtres, modifiables juste après` : undefined },
     { title: 'Recherche des profils', state: stage === 'search' ? 'active' : 'wait' },
   ];
   return (
@@ -296,7 +296,7 @@ export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips }) =
                         style={{ animationDelay: `${Math.min(k, 8) * 50}ms`, animationFillMode: 'backwards' }}
                       >
                         {c.must && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)]" />}
-                        <span className="font-mono text-[9px] uppercase tracking-wide text-[var(--k-text-muted)]">{c.field}</span>
+                        <span className="text-2xs text-muted-foreground">{c.field}</span>
                         {c.label}
                       </span>
                     ))}
@@ -676,7 +676,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         try {
           item = await resolveParam(type, v);
           if (!item) { toast.error(`${noun} « ${v} » introuvable`); return; }
-        } catch { toast.error(`Résolution impossible — réessaie`); return; }
+        } catch { toast.error('Résolution impossible. Réessayez.'); return; }
         finally { setResolving(false); }
       } else {
         item = { id: v, name: v };
@@ -742,7 +742,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 if (e.key === 'Enter') { e.preventDefault(); submitFollowUp(); }
                 if (e.key === 'Escape') { setFuOpen(false); setFuValue(''); }
               }}
-              placeholder="Affiner en une phrase — ex. « ajoute anglais courant, retire Lyon » (⏎ · esc)"
+              placeholder="Affiner en une phrase, par exemple « ajoutez anglais courant, retirez Lyon » (Entrée pour valider)"
               className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[13px] text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)]"
             />
             {fuLoading
@@ -761,7 +761,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
               type="button"
               data-chip-seg
               onClick={() => chip.canCycle && cycleWeight(chip.key)}
-              title={chip.canCycle ? `${weightLabel[chip.weight]} — clic pour basculer` : chip.field}
+              title={chip.canCycle ? `${weightLabel[chip.weight]}, cliquez pour basculer` : chip.field}
               className={cn(
                 'inline-flex items-center gap-1.5 px-2 py-1',
                 chip.op && 'border-r border-[var(--k-hairline)]',
@@ -791,7 +791,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 type="button"
                 data-chip-seg
                 onClick={() => setOpenKey(openKey === `${chip.key}@scope` ? null : `${chip.key}@scope`)}
-                title="Portée — poste/entreprise actuel(le), passé(e)…"
+                title="Portée : poste ou entreprise actuel(le), passé(e)…"
                 className="inline-flex items-center gap-0.5 px-1.5 py-1 border-l border-[var(--k-hairline)] text-[11px] font-normal text-[var(--k-text-muted)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text-2)]"
               >
                 {chip.scopeLabel}
@@ -810,7 +810,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             {/* Popover portée */}
             {openKey === `${chip.key}@scope` && (chip.key === 'poste' || chip.key === 'boite') && (
               <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
-                <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Portée</div>
+                <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">Portée</div>
                 {(chip.key === 'poste' ? ROLE_SCOPE_OPTIONS : COMPANY_SCOPE_OPTIONS).map(opt => {
                   const current = chip.key === 'poste' ? filters.role[0]?.scope : filters.company_keywords[0]?.scope;
                   return (
@@ -831,7 +831,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             {/* Popover valeurs */}
             {openKey === chip.key && (
               <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[240px] max-w-[310px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
-                <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">{chip.field} — valeurs</div>
+                <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">{chip.field} : valeurs</div>
                 {chip.key === 'exp' ? (
                   <div className="flex items-center gap-1.5 px-2 pb-1.5 text-xs text-[var(--k-text-muted)]">
                     <input type="number" min={0} max={50} value={filters.calculated_experience_min ?? ''} placeholder="min"
@@ -945,7 +945,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                     ))}
                     <input
                       autoFocus
-                      placeholder={resolving ? 'Résolution…' : 'Ajouter — ⏎'}
+                      placeholder={resolving ? 'Résolution…' : 'Ajouter puis Entrée'}
                       disabled={resolving}
                       onKeyDown={e => {
                         if (e.key === 'Enter') {
@@ -1005,7 +1005,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             <div data-chip-pop className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
               {addField === null ? (
                 <>
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">Ajouter un filtre</div>
+                  <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">Ajouter un filtre</div>
                   {ADDABLE_FIELDS.filter(fd => {
                     // Aligné sur ce que le payload honore réellement par licence :
                     // contact = recruiting_activity (Recruiter only), ancienneté =
@@ -1058,7 +1058,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 </div>
               ) : (addField === 'seniorite' || addField === 'langue' || addField === 'taille') ? (
                 <>
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">
+                  <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">
                     {addField === 'seniorite' ? 'Séniorité' : addField === 'taille' ? "Taille d'entreprise" : 'Langue du profil'}
                   </div>
                   {(addField === 'seniorite' ? SENIORITY_LEVELS : addField === 'taille' ? COMPANY_HEADCOUNT_OPTIONS : PROFILE_LANGUAGES).map(opt => {
@@ -1084,12 +1084,12 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
                 </>
               ) : (
                 <>
-                  <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)] px-2 pt-1 pb-1.5">
+                  <div className="text-xs text-muted-foreground px-2 pt-1 pb-1.5">
                     {ADDABLE_FIELDS.find(fd => fd.key === addField)?.label}
                   </div>
                   <input
                     autoFocus
-                    placeholder={resolving ? 'Résolution…' : 'Valeur — ⏎'}
+                    placeholder={resolving ? 'Résolution…' : 'Valeur puis Entrée'}
                     disabled={resolving}
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
@@ -1111,7 +1111,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         <button
           type="button"
           onClick={() => setFuOpen(o => !o)}
-          title="Affiner en une phrase — l'IA la traduit en chips visibles"
+          title="Affiner en une phrase : l'IA la traduit en filtres visibles"
           className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--k-hairline)] px-2.5 py-1 text-xs font-medium text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors"
         >
           <AiBurst className="w-3 h-3" />

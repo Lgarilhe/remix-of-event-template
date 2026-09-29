@@ -66,7 +66,7 @@ const Chip: React.FC<{
     )}
   >
     {must && <span className="w-[5px] h-[5px] rounded-full bg-[var(--k-accent)] shrink-0" aria-label="Obligatoire" />}
-    {exclude && <span className="font-mono text-[9px] uppercase tracking-wide text-[var(--k-text-muted)]">Exclure</span>}
+    {exclude && <span className="text-2xs text-muted-foreground">Exclure</span>}
     <span className="max-w-[180px] truncate">{label}</span>
     <button
       type="button"
@@ -126,7 +126,7 @@ const FacetRow: React.FC<{ icon: React.ReactNode; label: string; children: React
   <div className="grid grid-cols-[72px_1fr] gap-2.5 items-start">
     <div className="flex items-center gap-1.5 pt-[5px] text-[var(--k-text-muted)]">
       {icon}
-      <span className="text-[11px] font-semibold uppercase tracking-[0.05em]">{label}</span>
+      <span className="text-xs font-medium">{label}</span>
     </div>
     <div className="flex flex-wrap gap-1.5 min-w-0">{children}</div>
   </div>
@@ -245,7 +245,7 @@ export const FilterFacets: React.FC<FilterFacetsProps> = ({
   return (
     <div className="rounded-xl border border-[var(--k-hairline)] bg-[var(--k-surface-2)] p-3">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--k-text-muted)]">
+        <h3 className="text-xs font-medium text-muted-foreground">
           Filtres · éditables
         </h3>
         {hasAny && onClearAll && (

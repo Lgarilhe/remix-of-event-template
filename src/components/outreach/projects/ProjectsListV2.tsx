@@ -1,37 +1,38 @@
 /**
- * ProjectsListV2 — Liste des missions refondue (cohérente avec la DA v2).
+ * ProjectsListV2 : liste des missions (/missions), au langage de la nouvelle
+ * page mission (docs/design/01-direction.md).
  *
- * Tri narratif :
- *   ⚡ Demandent ton attention   (réponses à traiter, briefs incomplets, sourcing en attente)
- *   📍 En cours                  (missions actives normales)
- *   📦 Terminées / archivées     (collapsable)
+ * Deux groupes, chacun trié par dernière activité réelle (la plus récente de
+ * updated_at et de la dernière entrée d'un candidat dans une étape) :
+ *   En cours                 missions actives et en pause
+ *   Terminées, archivées     repliable
  *
- * Header avec titre Outfit + KPI strip + CTA gradient Skalr.
- * Cards de mission avec :
- *   - Next-step explicite (bouton ciblé)
- *   - Status pill colorée
- *   - KPIs inline (Sourcés / Contactés / Réponses)
- *   - Hover lift subtil
- *
- * Réutilise tous les hooks existants — aucun changement métier.
+ * Une ligne par mission : nom, poste, client et lieu du brief, puis les
+ * effectifs « en ce moment » sous le nom de l'étape (À trier, Contacté,
+ * A répondu, En entretien), les mêmes que les colonnes du Pipeline, et
+ * « N profils trouvés » (jamais ouverts, au Sourcing). Chiffres lus dans
+ * get_mission_stage_counts (useMissionStageCounts) : jamais de zéro inventé,
+ * un tiret tant qu'ils manquent. Aucune prochaine étape calculée ici (lot 3).
  */
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Plus, Search, Sparkles, Briefcase, MapPin, Building2, MoreVertical,
-  Play, Pause, CheckCircle, Archive, Trash2, ArrowRight, ChevronDown,
-  ChevronUp, Zap, MessageSquare, FileText, AlertCircle,
+  Plus, Search, MoreHorizontal, Play, Pause, CheckCircle, Archive, Trash2,
+  ChevronRight, RefreshCw,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
-import { useMultipleProjectStats, ProjectStats } from '@/hooks/useProjectStats';
 import { UnifiedProject, toUnifiedProjects } from '@/types/projects';
-import { useOrganization } from '@/hooks/useOrganization';
+import { useMissionStageCounts, type MissionStageCounts } from '@/hooks/useMissionStageCounts';
+import { GENERAL_STAGE_LABEL, missionActivityAt } from '@/lib/stageDisplay';
+import { plural } from '@/lib/plural';
+import { timeAgo } from '@/lib/relativeTime';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/layout/PageHeader';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -42,307 +43,201 @@ import {
 } from '@/components/ui/alert-dialog';
 import { CreateMissionV2 } from '@/components/missions/v2/CreateMissionV2';
 import { EmptyMissionState } from '@/components/missions/EmptyMissionState';
-import { Pill } from '@/components/missions/v2/Pill';
 import { PartnerMissionsSection } from '@/components/marketplace/PartnerMissionsSection';
 import { MissionQuotaNotice } from '@/components/missions/MissionQuotaNotice';
 import { missionQuotaMessage } from '@/lib/sidebarMissions';
 import { toast } from 'sonner';
 
-// ── Types ──
+// ── Statuts ──
 
-const STATUS_CONFIG: Record<string, {
-  label: string; color: string; icon: typeof Play;
-}> = {
-  active: { label: 'Actif', color: 'hsl(var(--status-success))', icon: Play },
-  paused: { label: 'En pause', color: 'hsl(var(--status-warning))', icon: Pause },
-  completed: { label: 'Terminé', color: 'hsl(var(--status-info))', icon: CheckCircle },
-  archived: { label: 'Archivé', color: 'hsl(var(--muted-foreground))', icon: Archive },
+const STATUS_LABEL: Record<string, string> = {
+  active: 'Active',
+  paused: 'En pause',
+  completed: 'Terminée',
+  archived: 'Archivée',
 };
 
-// ── Next-step computation per project ──
+/** Groupe « En cours » : missions actives et en pause. */
+const isOngoing = (status: SourcingProject['status']) => status === 'active' || status === 'paused';
 
-interface NextStep {
-  label: string;
-  cta: string;
-  targetTab: string;
-  urgency: 'high' | 'medium' | 'low';
-  icon: typeof FileText;
-}
+// ── Effectifs affichés, dans l'ordre du Pipeline ──
 
-function computeNextStep(
-  project: UnifiedProject,
-  stats: ProjectStats,
-): NextStep | null {
-  const sp = project.sourcingProject;
-  const filtersOk = sp.filters_snapshot && Object.keys(sp.filters_snapshot).length > 0;
-  const briefOk = !!(sp.job_details as any)?.title;
+const COUNT_COLUMNS: ReadonlyArray<{ label: string; of: (c: MissionStageCounts) => number }> = [
+  { label: GENERAL_STAGE_LABEL.to_sort, of: (c) => c.toSort },
+  { label: GENERAL_STAGE_LABEL.contacted, of: (c) => c.contacted },
+  { label: GENERAL_STAGE_LABEL.replied, of: (c) => c.replied },
+  { label: GENERAL_STAGE_LABEL.interviewing, of: (c) => c.interviewing },
+];
 
-  // Réponses non traitées = urgent
-  if (stats.shortlisted > 0 && stats.untreated >= 1) {
-    return {
-      label: `${stats.untreated} candidat${stats.untreated > 1 ? 's' : ''} sourcé${stats.untreated > 1 ? 's' : ''} non contacté${stats.untreated > 1 ? 's' : ''}`,
-      cta: 'Contacter',
-      targetTab: 'outreach',
-      urgency: 'high',
-      icon: MessageSquare,
-    };
-  }
-  // Brief incomplet
-  if (!briefOk) {
-    return {
-      label: 'Brief incomplet',
-      cta: 'Compléter',
-      targetTab: 'brief',
-      urgency: 'high',
-      icon: FileText,
-    };
-  }
-  // Brief OK mais pas de filtres → analyse IA à lancer
-  if (!filtersOk) {
-    return {
-      label: 'Filtres à générer',
-      cta: 'Analyser le brief',
-      targetTab: 'brief',
-      urgency: 'medium',
-      icon: Sparkles,
-    };
-  }
-  // Filtres OK, mais pas encore de sourcing
-  if (stats.total === 0) {
-    return {
-      label: 'Sourcing en attente',
-      cta: 'Lancer le sourcing',
-      targetTab: 'sourcing',
-      urgency: 'medium',
-      icon: Search,
-    };
-  }
-  // Candidats sourcés mais pas messagés
-  if (stats.total > 0 && stats.messaged === 0) {
-    return {
-      label: `${stats.total} profil${stats.total > 1 ? 's' : ''} à contacter`,
-      cta: 'Outreach',
-      targetTab: 'outreach',
-      urgency: 'medium',
-      icon: Zap,
-    };
-  }
-  // Tout en cours → suivi pipeline
-  if (stats.messaged > 0) {
-    return {
-      label: `${stats.messaged} contacté${stats.messaged > 1 ? 's' : ''} · ${stats.shortlisted} qualifié${stats.shortlisted > 1 ? 's' : ''}`,
-      cta: 'Pipeline',
-      targetTab: 'pipeline',
-      urgency: 'low',
-      icon: Briefcase,
-    };
-  }
-  return null;
-}
+/** Nombre, ou un tiret tant qu'il n'est pas connu ; jamais un zéro inventé. */
+const CountCell: React.FC<{ value: number | null }> = ({ value }) => (
+  <span className={cn('tabular-nums', value ? 'text-foreground' : 'text-muted-foreground')}>
+    {value === null ? '–' : value}
+  </span>
+);
 
-// Détermine quelle "section narrative" reçoit la mission
-function getNarrativeBucket(
-  project: UnifiedProject,
-  step: NextStep | null,
-): 'attention' | 'progress' | 'archive' {
-  if (project.status === 'completed' || project.status === 'archived') return 'archive';
-  if (step?.urgency === 'high') return 'attention';
-  return 'progress';
-}
+// ── Ligne de mission ──
 
-// ── Mission Card ──
-
-interface MissionCardProps {
+interface MissionRowProps {
   project: UnifiedProject;
-  stats: ProjectStats;
-  step: NextStep | null;
-  onClick: (tab?: string) => void;
+  /** Compteurs de la mission ; null tant qu'ils ne sont pas lus (ou en échec). */
+  counts: MissionStageCounts | null;
+  /** Date d'activité (updated_at ou dernière entrée dans une étape). */
+  activityAt: string | null;
+  onOpen: () => void;
+  onOpenSourcing: () => void;
   onStatusChange: (status: SourcingProject['status']) => void;
   onDelete: () => void;
   canDelete: boolean;
 }
 
-const MissionCard: React.FC<MissionCardProps> = ({
-  project, stats, step, onClick, onStatusChange, onDelete, canDelete,
+const MissionRow: React.FC<MissionRowProps> = ({
+  project, counts, activityAt, onOpen, onOpenSourcing, onStatusChange, onDelete, canDelete,
 }) => {
-  const StepIcon = step?.icon || ArrowRight;
-  const statusCfg = STATUS_CONFIG[project.status] || STATUS_CONFIG.active;
-  const isAttention = step?.urgency === 'high';
-
-  const lastActivity = project.lastSearchAt || project.createdAt;
-  const lastActivityLabel = formatDistanceToNow(new Date(lastActivity), { addSuffix: true, locale: fr });
+  const activity = timeAgo(activityAt);
+  const showJobTitle = !!project.jobTitle && project.jobTitle.trim().toLowerCase() !== project.name.trim().toLowerCase();
+  const subline = [showJobTitle ? project.jobTitle : null, project.clientName, project.location].filter(Boolean).join(' · ');
+  const statusLabel = project.status !== 'active' ? STATUS_LABEL[project.status] : null;
 
   return (
-    <div
-      className={cn(
-        'group bg-card border rounded-xl p-4 transition-all duration-200 cursor-pointer',
-        'hover:border-foreground/30 hover:shadow-md hover:-translate-y-px',
-        isAttention ? 'border-warning/40' : 'border-border',
-      )}
-      onClick={() => onClick()}
-      style={isAttention ? { background: 'linear-gradient(135deg, hsl(var(--card)), hsl(var(--status-warning-muted) / 0.4))' } : undefined}
+    <tr
+      data-testid="mission-row"
+      onClick={onOpen}
+      className="group h-[60px] cursor-pointer border-b border-border/50 transition-colors duration-150 hover:bg-muted/40"
     >
-      <div className="flex items-start gap-3 sm:gap-4">
-        {/* Icon */}
-        <div
-          className={cn(
-            'h-10 w-10 rounded-lg grid place-items-center flex-shrink-0',
-            isAttention ? '' : 'bg-muted',
-          )}
-          style={isAttention
-            ? { background: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' }
-            : { color: 'hsl(var(--muted-foreground))' }
-          }
-        >
-          <Briefcase className="w-4 h-4" strokeWidth={2} />
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <h3 className="font-semibold text-[14px] truncate">{project.name}</h3>
-            <span
-              className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full"
-              style={{ background: `${statusCfg.color}1a`, color: statusCfg.color }}
-            >
-              <span className="h-1 w-1 rounded-full" style={{ background: statusCfg.color }} />
-              {statusCfg.label}
-            </span>
-          </div>
-
-          <p className="text-[12px] text-muted-foreground inline-flex items-center gap-2 flex-wrap mb-2">
-            {project.clientName && (
-              <>
-                <span className="inline-flex items-center gap-1">
-                  <Building2 className="w-3 h-3" /> {project.clientName}
-                </span>
-                {project.location && <span className="text-muted-foreground/40">·</span>}
-              </>
-            )}
-            {project.location && (
-              <>
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="w-3 h-3" /> {project.location}
-                </span>
-                <span className="text-muted-foreground/40">·</span>
-              </>
-            )}
-            <span className="text-[11px]">Mise à jour {lastActivityLabel}</span>
-          </p>
-
-          {/* Inline KPI strip */}
-          {project.sourcingProject && (
-            <div className="flex items-center gap-3 text-[11px] text-muted-foreground mb-3">
-              <KpiInline label="Sourcés" value={stats.total} />
-              <KpiInline label="Contactés" value={stats.messaged} />
-              <KpiInline label="Réponses" value={stats.shortlisted} highlight={stats.shortlisted > 0} />
-            </div>
-          )}
-
-          {/* Next-step row */}
-          {step && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1.5 text-[11px]',
-                  isAttention ? 'font-medium' : 'text-muted-foreground',
-                )}
-                style={isAttention ? { color: 'hsl(var(--status-warning))' } : undefined}
-              >
-                {isAttention && <AlertCircle className="w-3 h-3" />}
-                {step.label}
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClick(step.targetTab);
-                }}
-                className={cn(
-                  'h-7 px-3 rounded-full text-[11px] font-semibold inline-flex items-center gap-1 transition-colors ml-auto',
-                  isAttention
-                    ? 'bg-foreground text-background hover:opacity-90'
-                    : 'bg-card border border-border hover:bg-accent text-foreground',
-                )}
-              >
-                <StepIcon className="w-3 h-3" />
-                {step.cta}
-                <ArrowRight className="w-3 h-3" strokeWidth={2.5} />
-              </button>
-            </div>
+      <td className="min-w-0 py-2 pl-3 pr-3 sm:pl-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+            className="min-w-0 truncate rounded-sm text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title={project.name}
+          >
+            {project.name}
+          </button>
+          {statusLabel && (
+            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{statusLabel}</span>
           )}
         </div>
-
-        {/* More menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          {subline && <span className="truncate">{subline}</span>}
+          {counts && counts.unopened > 0 && (
             <button
               type="button"
-              onClick={(e) => e.stopPropagation()}
-              className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-              aria-label="Plus d'actions"
+              onClick={(e) => { e.stopPropagation(); onOpenSourcing(); }}
+              className="shrink-0 rounded-sm text-brand underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <MoreVertical className="w-3.5 h-3.5" />
+              {plural(counts.unopened, 'profil trouvé', 'profils trouvés')}
             </button>
+          )}
+        </p>
+        {/* Sous 768 px les colonnes d'effectifs disparaissent : une seule phrase les reprend. */}
+        <p className="mt-0.5 truncate text-xs text-muted-foreground md:hidden">
+          {counts
+            ? COUNT_COLUMNS.map(({ label, of }) => `${label} ${of(counts)}`).join(' · ')
+            : 'Effectifs indisponibles'}
+        </p>
+      </td>
+      {COUNT_COLUMNS.map(({ label, of }) => (
+        <td key={label} className="hidden py-2 pr-3 text-right text-sm md:table-cell">
+          <CountCell value={counts ? of(counts) : null} />
+        </td>
+      ))}
+      <td className="hidden py-2 pr-3 text-right text-xs tabular-nums text-muted-foreground lg:table-cell">
+        {activity ?? ''}
+      </td>
+      <td className="py-2 pr-2 text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Actions pour ${project.name}`}
+              title="Plus d'actions"
+            >
+              <MoreHorizontal aria-hidden="true" />
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             {project.status !== 'active' && (
               <DropdownMenuItem onClick={() => onStatusChange('active')}>
-                <Play className="w-3.5 h-3.5 mr-2" /> Activer
+                <Play className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Activer
               </DropdownMenuItem>
             )}
             {project.status !== 'paused' && (
               <DropdownMenuItem onClick={() => onStatusChange('paused')}>
-                <Pause className="w-3.5 h-3.5 mr-2" /> Mettre en pause
+                <Pause className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Mettre en pause
               </DropdownMenuItem>
             )}
             {project.status !== 'completed' && (
               <DropdownMenuItem onClick={() => onStatusChange('completed')}>
-                <CheckCircle className="w-3.5 h-3.5 mr-2" /> Marquer terminée
+                <CheckCircle className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Marquer terminée
               </DropdownMenuItem>
             )}
             {project.status !== 'archived' && (
               <DropdownMenuItem onClick={() => onStatusChange('archived')}>
-                <Archive className="w-3.5 h-3.5 mr-2" /> Archiver
+                <Archive className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Archiver
               </DropdownMenuItem>
             )}
             {canDelete && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={onDelete}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-2" /> Supprimer
+                <DropdownMenuItem onClick={onDelete} className="text-danger focus:text-danger">
+                  <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Supprimer
                 </DropdownMenuItem>
               </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 };
 
-const KpiInline: React.FC<{ label: string; value: number; highlight?: boolean }> = ({
-  label, value, highlight,
-}) => (
-  <span className="inline-flex items-baseline gap-1">
-    <span
-      className={cn(
-        'font-display font-bold tabular-nums text-[13px] leading-none',
-        highlight ? '' : value === 0 ? 'text-muted-foreground/40' : 'text-foreground',
-      )}
-      style={highlight && value > 0 ? { color: 'hsl(var(--status-success))' } : undefined}
-    >
-      {value}
-    </span>
-    <span className="text-[10px] text-muted-foreground">{label}</span>
-  </span>
+// ── Tableau d'un groupe ──
+
+const MissionTable: React.FC<{ caption: string; children: React.ReactNode }> = ({ caption, children }) => (
+  <div className="-mx-3 overflow-x-auto sm:mx-0">
+    <table className="w-full table-fixed border-collapse text-sm">
+      <caption className="sr-only">{caption}</caption>
+      <colgroup>
+        <col />
+        {COUNT_COLUMNS.map(({ label }) => <col key={label} className="hidden w-24 md:table-column" />)}
+        <col className="hidden w-24 lg:table-column" />
+        <col className="w-12" />
+      </colgroup>
+      <thead>
+        <tr className="h-[34px] border-b border-border text-left text-xs text-muted-foreground">
+          <th scope="col" className="pl-3 pr-3 font-normal sm:pl-2">Mission</th>
+          {COUNT_COLUMNS.map(({ label }) => (
+            <th key={label} scope="col" className="hidden pr-3 text-right font-normal md:table-cell">{label}</th>
+          ))}
+          <th scope="col" className="hidden pr-3 text-right font-normal lg:table-cell">Activité</th>
+          <th scope="col" className="pr-2 text-right font-normal"><span className="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </table>
+  </div>
+);
+
+const LoadingRows: React.FC = () => (
+  <div className="space-y-0" aria-busy="true" aria-label="Chargement des missions">
+    {[0, 1, 2, 3].map((i) => (
+      <div key={i} className="flex h-[60px] items-center gap-4 border-b border-border/50 px-2">
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-4 w-56 max-w-full" />
+          <Skeleton className="mt-1.5 h-3 w-40 max-w-full" />
+        </div>
+        <Skeleton className="hidden h-4 w-40 md:block" />
+      </div>
+    ))}
+  </div>
 );
 
 // ─────────────────────────────────────────────────────────────────
-// Main component
+// Composant principal
 // ─────────────────────────────────────────────────────────────────
 
 export const ProjectsListV2: React.FC = () => {
@@ -387,82 +282,58 @@ export const ProjectsListV2: React.FC = () => {
     () => unifiedProjects.map(p => p.sourcingProject?.id).filter((id): id is string => !!id),
     [unifiedProjects],
   );
-  const { data: projectStats = {} } = useMultipleProjectStats(spIds);
 
-  const getStats = (project: UnifiedProject): ProjectStats => {
-    if (project.sourcingProject) {
-      return projectStats[project.sourcingProject.id] || {
-        total: project.sourcingProject.stats_total_found,
-        scored: project.sourcingProject.stats_scored,
-        messaged: project.sourcingProject.stats_messaged,
-        shortlisted: project.sourcingProject.stats_shortlisted,
-        dismissed: project.sourcingProject.stats_dismissed,
-        untreated: 0,
-      };
-    }
-    return { total: 0, scored: 0, messaged: 0, shortlisted: 0, dismissed: 0, untreated: 0 };
-  };
+  // Compteurs d'étapes : une seule lecture pour toutes les missions.
+  const countsQuery = useMissionStageCounts(spIds);
+  const counts = countsQuery.data;
+  const countsOf = useCallback(
+    (project: UnifiedProject): MissionStageCounts | null => counts?.[project.sourcingProject.id] ?? null,
+    [counts],
+  );
+  const activityOf = useCallback(
+    (project: UnifiedProject): string | null =>
+      missionActivityAt(project.updatedAt, countsOf(project)?.lastStageMoveAt ?? null) ?? project.createdAt,
+    [countsOf],
+  );
 
-  // Filter by search query
+  // Recherche : nom, poste, client et lieu du brief.
   const filtered = useMemo(() => unifiedProjects.filter(p => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
       p.name.toLowerCase().includes(q)
-      || p.clientName?.toLowerCase().includes(q)
-      || p.location?.toLowerCase().includes(q)
-      || p.skills.some(s => s.toLowerCase().includes(q))
+      || !!p.jobTitle?.toLowerCase().includes(q)
+      || !!p.clientName?.toLowerCase().includes(q)
+      || !!p.location?.toLowerCase().includes(q)
     );
   }), [unifiedProjects, searchQuery]);
 
-  // Group by narrative bucket
-  const buckets = useMemo(() => {
-    const attention: { project: UnifiedProject; stats: ProjectStats; step: NextStep | null }[] = [];
-    const progress: typeof attention = [];
-    const archive: typeof attention = [];
-
-    filtered.forEach(p => {
-      const stats = getStats(p);
-      const step = computeNextStep(p, stats);
-      const bucket = getNarrativeBucket(p, step);
-      const entry = { project: p, stats, step };
-      if (bucket === 'attention') attention.push(entry);
-      else if (bucket === 'progress') progress.push(entry);
-      else archive.push(entry);
-    });
-
-    // Sort each bucket by recency
-    const byRecency = (a: typeof attention[0], b: typeof attention[0]) => {
-      const aDate = a.project.lastSearchAt || a.project.createdAt;
-      const bDate = b.project.lastSearchAt || b.project.createdAt;
-      return new Date(bDate).getTime() - new Date(aDate).getTime();
+  // Deux groupes, chacun trié par dernière activité.
+  const groups = useMemo(() => {
+    const time = (p: UnifiedProject) => {
+      const t = new Date(activityOf(p) ?? 0).getTime();
+      return Number.isNaN(t) ? 0 : t;
     };
-    attention.sort(byRecency);
-    progress.sort(byRecency);
-    archive.sort(byRecency);
+    const byActivity = (a: UnifiedProject, b: UnifiedProject) => time(b) - time(a);
+    return {
+      ongoing: filtered.filter(p => isOngoing(p.status)).sort(byActivity),
+      archive: filtered.filter(p => !isOngoing(p.status)).sort(byActivity),
+    };
+  }, [filtered, activityOf]);
 
-    return { attention, progress, archive };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, projectStats]);
+  // Sous-titre : missions « En cours » seulement, effectifs additionnés ; rien
+  // tant qu'une de ces missions n'a pas ses compteurs.
+  const ongoingProjects = useMemo(() => unifiedProjects.filter(p => isOngoing(p.status)), [unifiedProjects]);
+  const summary = useMemo(() => {
+    const rows = ongoingProjects.map(countsOf);
+    const known = rows.length > 0 && rows.every((c): c is MissionStageCounts => c !== null);
+    const sum = (of: (c: MissionStageCounts) => number) =>
+      known ? (rows as MissionStageCounts[]).reduce((n, c) => n + of(c), 0) : null;
+    const toSort = sum(c => c.toSort);
+    const replied = sum(c => c.replied);
+    return { toSort, replied };
+  }, [ongoingProjects, countsOf]);
 
-  // Global KPIs
-  const globalKpis = useMemo(() => {
-    let activeMissions = 0;
-    let totalSourced = 0;
-    let totalToContact = 0;
-    let totalResponses = 0;
-    unifiedProjects.forEach(p => {
-      if (p.status === 'active') activeMissions++;
-      const s = getStats(p);
-      totalSourced += s.total;
-      totalToContact += s.untreated;
-      totalResponses += s.shortlisted;
-    });
-    return { activeMissions, totalSourced, totalToContact, totalResponses };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unifiedProjects, projectStats]);
-
-  // Navigate
   const navigateToWorkspace = useCallback((project: UnifiedProject, tab?: string) => {
     navigate(`/missions/${project.sourcingProject.id}${tab ? `?tab=${tab}` : ''}`);
   }, [navigate]);
@@ -475,13 +346,13 @@ export const ProjectsListV2: React.FC = () => {
 
   const isLoading = spLoading;
 
-  // Empty state if no missions at all
+  // Aucune mission : état vide de l'écran entier.
   if (!isLoading && unifiedProjects.length === 0) {
     return (
       <>
         {/* Missions confiées par une entreprise (cabinets et indépendants) :
             affichées avant l'état vide, qui parle des missions propres. */}
-        <div className="max-w-[1200px] mx-auto w-full mb-6">
+        <div className="mx-auto mb-6 w-full max-w-[1200px]">
           <PartnerMissionsSection />
         </div>
         <EmptyMissionState
@@ -503,177 +374,119 @@ export const ProjectsListV2: React.FC = () => {
     );
   }
 
+  const subtitle = [
+    plural(ongoingProjects.length, 'mission en cours', 'missions en cours'),
+    summary.toSort !== null ? `${summary.toSort} à trier` : null,
+    summary.replied !== null && summary.replied > 0 ? plural(summary.replied, 'réponse à traiter', 'réponses à traiter') : null,
+  ].filter(Boolean).join(', ');
+
+  const renderRow = (project: UnifiedProject) => (
+    <MissionRow
+      key={project.key}
+      project={project}
+      counts={countsOf(project)}
+      activityAt={activityOf(project)}
+      onOpen={() => navigateToWorkspace(project)}
+      onOpenSourcing={() => navigateToWorkspace(project, 'sourcing')}
+      onStatusChange={handleStatusChange(project)}
+      onDelete={() => setDeleteTarget(project)}
+      canDelete={!!project.sourcingProject}
+    />
+  );
+
   return (
-    <div className="max-w-[1200px] mx-auto w-full">
-      {/* ── Hero header ── */}
-      <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
-        <div>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">
-            Tableau de bord
-          </p>
-          <h1 className="font-display text-[26px] sm:text-[30px] font-bold leading-tight">
-            Tes missions{' '}
-            <span className="font-editorial italic font-normal text-muted-foreground">
-              en cours
-            </span>
-          </h1>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            {globalKpis.activeMissions} mission{globalKpis.activeMissions > 1 ? 's' : ''} active{globalKpis.activeMissions > 1 ? 's' : ''}
-            {buckets.attention.length > 0 && (
-              <>
-                <span className="mx-1.5">·</span>
-                <span className="font-medium" style={{ color: 'hsl(var(--status-warning))' }}>
-                  {buckets.attention.length} demande{buckets.attention.length > 1 ? 'nt' : ''} ton attention
-                </span>
-              </>
-            )}
-          </p>
-        </div>
+    <div className="mx-auto w-full max-w-[1200px]">
+      <PageHeader
+        title="Missions"
+        subtitle={subtitle}
+        actions={
+          !canCreateJob && maxJobs !== null ? (
+            <MissionQuotaNotice maxJobs={maxJobs} className="max-w-xs" />
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => { setCreateInitialTab('brief'); setShowCreateModal(true); }}
+            >
+              <Plus aria-hidden="true" />
+              Nouvelle mission
+            </Button>
+          )
+        }
+      />
 
-        {!canCreateJob && maxJobs !== null ? (
-          <MissionQuotaNotice maxJobs={maxJobs} className="max-w-xs flex-shrink-0" />
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setCreateInitialTab('brief');
-              setShowCreateModal(true);
-            }}
-            className="h-10 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-2 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] flex-shrink-0"
-          >
-            <Plus className="w-4 h-4" strokeWidth={2.5} />
-            Nouvelle mission
-          </button>
-        )}
-      </div>
+      {countsQuery.isError && (
+        <p className="mb-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground" role="alert">
+          Les effectifs des missions n'ont pas pu être chargés.
+          <Button variant="outline" size="xs" onClick={() => { void countsQuery.refetch(); }}>
+            <RefreshCw aria-hidden="true" />
+            Réessayer
+          </Button>
+        </p>
+      )}
 
-      {/* ── KPI strip ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <KpiCard label="Missions actives" value={globalKpis.activeMissions} />
-        <KpiCard label="Sourcés au total" value={globalKpis.totalSourced} />
-        <KpiCard label="À contacter" value={globalKpis.totalToContact} highlight={globalKpis.totalToContact > 0 ? 'warning' : undefined} />
-        <KpiCard label="Réponses reçues" value={globalKpis.totalResponses} highlight={globalKpis.totalResponses > 0 ? 'success' : undefined} />
-      </div>
-
-      {/* ── Search bar ── */}
-      <div className="relative mb-5">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+      {/* ── Recherche ── */}
+      <div className="relative mb-6 max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input
-          placeholder="Rechercher une mission, un client, un poste…"
+          placeholder="Rechercher une mission, un client, un poste"
+          aria-label="Rechercher une mission"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="h-9 pl-9 bg-card border-border"
+          className="pl-9"
         />
       </div>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 bg-card border border-border rounded-xl animate-pulse" />
-          ))}
-        </div>
+      {isLoading && <LoadingRows />}
+
+      {/* ── En cours ── */}
+      {!isLoading && groups.ongoing.length > 0 && (
+        <section className="mb-8" aria-labelledby="missions-en-cours">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+            <h2 id="missions-en-cours" className="eyebrow">En cours</h2>
+            <span className="text-xs text-muted-foreground">
+              {plural(groups.ongoing.length, 'mission active ou en pause', 'missions actives ou en pause')}
+            </span>
+          </div>
+          <MissionTable caption="Missions en cours">{groups.ongoing.map(renderRow)}</MissionTable>
+        </section>
       )}
 
-      {/* ── Section : Demandent ton attention ── */}
-      {!isLoading && buckets.attention.length > 0 && (
-        <Section
-          title="Demandent ton attention"
-          subtitle={`${buckets.attention.length} mission${buckets.attention.length > 1 ? 's' : ''} avec une action urgente`}
-          icon="⚡"
-        >
-          {buckets.attention.map(({ project, stats, step }) => (
-            <MissionCard
-              key={project.key}
-              project={project}
-              stats={stats}
-              step={step}
-              onClick={(tab) => navigateToWorkspace(project, tab)}
-              onStatusChange={handleStatusChange(project)}
-              onDelete={() => setDeleteTarget(project)}
-              canDelete={!!project.sourcingProject}
-            />
-          ))}
-        </Section>
-      )}
-
-      {/* ── Section : En cours ── */}
-      {!isLoading && buckets.progress.length > 0 && (
-        <Section
-          title="En cours"
-          subtitle={`${buckets.progress.length} mission${buckets.progress.length > 1 ? 's' : ''} active${buckets.progress.length > 1 ? 's' : ''}`}
-          icon="📍"
-        >
-          {buckets.progress.map(({ project, stats, step }) => (
-            <MissionCard
-              key={project.key}
-              project={project}
-              stats={stats}
-              step={step}
-              onClick={(tab) => navigateToWorkspace(project, tab)}
-              onStatusChange={handleStatusChange(project)}
-              onDelete={() => setDeleteTarget(project)}
-              canDelete={!!project.sourcingProject}
-            />
-          ))}
-        </Section>
-      )}
-
-      {/* ── Section : Archive (collapsable) ── */}
-      {!isLoading && buckets.archive.length > 0 && (
-        <div className="mb-4">
+      {/* ── Terminées, archivées (repliable) ── */}
+      {!isLoading && groups.archive.length > 0 && (
+        <section className="mb-8" aria-labelledby="missions-archivees">
           <button
             type="button"
             onClick={() => setShowArchive(s => !s)}
-            className="w-full flex items-center justify-between text-left mb-3 hover:bg-muted/40 px-2 py-1.5 rounded-md transition-colors"
+            aria-expanded={showArchive}
+            className="mb-2 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-semibold hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <div className="flex items-center gap-2">
-              <span className="text-base">📦</span>
-              <div>
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
-                  Terminées · archivées
-                </p>
-                <p className="text-[10px] text-muted-foreground/70">
-                  {buckets.archive.length} mission{buckets.archive.length > 1 ? 's' : ''}
-                </p>
-              </div>
-            </div>
-            {showArchive ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            <ChevronRight
+              className={cn('h-3.5 w-3.5 transition-transform duration-150', showArchive && 'rotate-90')}
+              aria-hidden="true"
+            />
+            <span id="missions-archivees">Terminées, archivées</span>
+            <span className="text-xs font-normal text-muted-foreground">{plural(groups.archive.length, 'mission')}</span>
           </button>
           {showArchive && (
-            <div className="space-y-2">
-              {buckets.archive.map(({ project, stats, step }) => (
-                <MissionCard
-                  key={project.key}
-                  project={project}
-                  stats={stats}
-                  step={step}
-                  onClick={(tab) => navigateToWorkspace(project, tab)}
-                  onStatusChange={handleStatusChange(project)}
-                  onDelete={() => setDeleteTarget(project)}
-                  canDelete={!!project.sourcingProject}
-                />
-              ))}
-            </div>
+            <MissionTable caption="Missions terminées et archivées">{groups.archive.map(renderRow)}</MissionTable>
           )}
-        </div>
+        </section>
       )}
 
-      {/* ── Section : Missions partenaires (cabinets et indépendants) ── */}
+      {/* ── Missions partenaires (cabinets et indépendants) ── */}
       {!isLoading && <PartnerMissionsSection />}
 
-      {/* No results after filtering */}
+      {/* Recherche sans résultat */}
       {!isLoading && filtered.length === 0 && unifiedProjects.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-12 text-center">
-          <Search className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
-          <p className="text-sm font-medium mb-1">Aucune mission trouvée</p>
-          <p className="text-xs text-muted-foreground">
-            Essaye avec d'autres mots-clés ou efface la recherche.
+        <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+          <p className="text-sm text-foreground">Aucune mission trouvée.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Essayez avec d'autres mots-clés ou effacez la recherche.
           </p>
         </div>
       )}
 
-      {/* ── Modals ── */}
+      {/* ── Fenêtres ── */}
       {showCreateModal && (
         <CreateMissionV2
           isOpen={showCreateModal}
@@ -691,7 +504,7 @@ export const ProjectsListV2: React.FC = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette mission ?</AlertDialogTitle>
             <AlertDialogDescription>
-              "{deleteTarget?.name}" sera supprimée définitivement avec tous ses candidats sourcés et messages.
+              « {deleteTarget?.name} » sera supprimée définitivement avec tous ses candidats sourcés et messages.
               Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -711,51 +524,6 @@ export const ProjectsListV2: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-};
-
-// ─── Sub-components ──────────────────────────────────────────────
-
-const Section: React.FC<{
-  title: string;
-  subtitle: string;
-  icon: string;
-  children: React.ReactNode;
-}> = ({ title, subtitle, icon, children }) => (
-  <div className="mb-6">
-    <div className="flex items-center gap-2 mb-3">
-      <span className="text-base">{icon}</span>
-      <div>
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
-          {title}
-        </p>
-        <p className="text-[10px] text-muted-foreground/70">{subtitle}</p>
-      </div>
-    </div>
-    <div className="space-y-2">{children}</div>
-  </div>
-);
-
-const KpiCard: React.FC<{
-  label: string;
-  value: number;
-  highlight?: 'success' | 'warning';
-}> = ({ label, value, highlight }) => {
-  const highlightColor =
-    highlight === 'success' ? 'hsl(var(--status-success))'
-    : highlight === 'warning' ? 'hsl(var(--status-warning))'
-    : undefined;
-
-  return (
-    <div className="bg-card border border-border rounded-lg px-4 py-3">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
-      <p
-        className="font-display text-[22px] font-bold tabular-nums leading-none"
-        style={highlightColor && value > 0 ? { color: highlightColor } : undefined}
-      >
-        {value}
-      </p>
     </div>
   );
 };

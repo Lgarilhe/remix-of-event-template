@@ -102,7 +102,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'prets-a-bouger',
     label: 'Prêts à bouger',
-    title: "À l'écoute (open to work) OU actifs récemment sur LinkedIn — les plus susceptibles de répondre",
+    title: "À l'écoute (open to work) OU actifs récemment sur LinkedIn : les plus susceptibles de répondre",
     active: f => f.open_to_work === true && f.spotlight === 'ACTIVE_TALENT',
     toggle: (f, active) => active
       ? { ...f, open_to_work: null, spotlight: '' as LinkedInFiltersState['spotlight'] }
@@ -112,7 +112,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'murs-bouger',
     label: 'Mûrs pour bouger',
-    title: '3 ans ou plus dans le poste actuel sans évolution — la fenêtre de départ classique',
+    title: '3 ans ou plus dans le poste actuel sans évolution : la fenêtre de départ classique',
     active: f => f.tenure_at_role_min != null && f.tenure_at_role_min >= 3,
     toggle: (f, active) => active
       ? { ...f, tenure_at_role_min: null, tenure_at_role_max: null }
@@ -132,7 +132,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'deja-croises',
     label: 'Déjà croisés',
-    title: "Candidats déjà apparus dans d'anciennes recherches de l'équipe — le stock dormant à requalifier",
+    title: "Candidats déjà apparus dans d'anciennes recherches de l'équipe : le stock dormant à requalifier",
     active: f => f.spotlight === 'REDISCOVERED_CANDIDATES',
     toggle: (f, active) => ({ ...f, spotlight: (active ? '' : 'REDISCOVERED_CANDIDATES') as LinkedInFiltersState['spotlight'] }),
     show: (_src, f) => f.api === 'recruiter',
@@ -140,7 +140,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'warm-intro',
     label: 'Warm intro',
-    title: 'Réseau 1er et 2e degré du compte connecté — une connexion commune peut faire l\'intro',
+    title: 'Réseau de 1er et 2e degré du compte connecté : une connexion commune peut faire l\'intro',
     active: f => f.network_distance.length > 0 && f.network_distance.every(d => d === 1 || d === 2),
     toggle: (f, active) => active
       ? { ...f, network_distance: [] }
@@ -151,7 +151,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'top-ecoles',
     label: 'Top écoles',
-    title: `${TOP_SCHOOLS.length} grandes écoles FR (HEC, Polytechnique, Centrale…) ajoutées au filtre École — « au moins une »`,
+    title: `${TOP_SCHOOLS.length} grandes écoles FR (HEC, Polytechnique, Centrale…) ajoutées au filtre École, « au moins une »`,
     active: f => TOP_SCHOOLS.filter(s => f.school.some(sc => sc.id === s.id)).length >= 10,
     toggle: (f, active) => active
       ? { ...f, school: f.school.filter(sc => !TOP_SCHOOL_IDS.has(sc.id)) }
@@ -177,7 +177,7 @@ const OVERLAYS: OverlayDef[] = [
   {
     key: 'ex-esn',
     label: 'Ex-ESN',
-    title: 'Est passé par une grande ESN (Capgemini, Alten, Sopra…) mais n\'y est plus — profils rompus au delivery, sortis du conseil',
+    title: 'Est passé par une grande ESN (Capgemini, Alten, Sopra…) mais n\'y est plus : profils rompus au delivery, sortis du conseil',
     active: f => f.company_keywords.some(c => ESN_BOOLEAN_GROUPS.includes(c.keywords)),
     toggle: (f, active) => active
       ? { ...f, company_keywords: f.company_keywords.filter(c => !ESN_BOOLEAN_GROUPS.includes(c.keywords)) }
@@ -244,7 +244,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
     try {
       const { list } = await fetchFundedCompanies(stage, fundedScope);
       bumpCache(x => x + 1);
-      if (!list.length) { toast.info('Annuaire en cours de résolution pour ce stade — réessaie dans quelques minutes'); return; }
+      if (!list.length) { toast.info('Annuaire en cours de résolution pour ce stade. Réessayez dans quelques minutes.'); return; }
       const active = list.filter(c => filters.company.some(fc => fc.id === c.id)).length >= Math.min(10, list.length);
       onFiltersEdit(f => active
         ? { ...f, company: f.company.filter(c => !list.some(l => l.id === c.id)) }
@@ -286,8 +286,8 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
 
   return (
     <div className="mb-2 flex flex-wrap items-center gap-1.5">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--k-text-muted)] mr-1">
-        Surcouches
+      <span className="mr-1 text-xs text-muted-foreground">
+        Filtres rapides
       </span>
       {defs.map(d => {
         const isActive = d.active(filters);
@@ -319,7 +319,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
         <span ref={pickerRef} className="relative">
           <button
             type="button"
-            title="Boîte actuelle parmi les sociétés financées connues (annuaire Konekt, EU, rafraîchi chaque mois) — choisis le stade de levée"
+            title="Boîte actuelle parmi les sociétés financées connues (annuaire Konekt, EU, rafraîchi chaque mois). Choisissez le stade de levée."
             onClick={() => setStageOpen(o => !o)}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150',
@@ -337,7 +337,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
           {stageOpen && (
             <div className="absolute z-40 top-full left-0 mt-1.5 min-w-[220px] rounded-[10px] border border-[var(--k-hairline-focus)] bg-[var(--k-surface-3)] shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
               <div className="flex items-center justify-between gap-2 px-2 pt-1 pb-1.5">
-                <span className="font-mono text-[10px] uppercase tracking-wide text-[var(--k-text-muted)]">Stade de levée</span>
+                <span className="text-xs text-muted-foreground">Stade de levée</span>
                 <span className="inline-flex rounded-md border border-[var(--k-hairline)] overflow-hidden">
                   {(['FR', 'EU'] as const).map(sc => (
                     <button
@@ -386,7 +386,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
               })}
               <p className="px-2 pt-1 pb-0.5 text-[11px] leading-snug text-[var(--k-text-muted)]">
                 Top = les {FUNDED_CAP} boîtes du stade dont l'effectif croît le plus vite
-                (6 derniers mois) — celles qui recrutent maintenant. Injectées comme boîte
+                (6 derniers mois), celles qui recrutent maintenant. Injectées comme boîte
                 actuelle, élagables une à une dans la pilule Boîte.
               </p>
             </div>

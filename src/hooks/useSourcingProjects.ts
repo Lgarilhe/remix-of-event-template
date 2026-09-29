@@ -32,6 +32,13 @@ export interface SourcingProject {
   calendly_link: string | null;
   /** Only present when fetched individually (not in list query) */
   job_details?: JobDetails;
+  /**
+   * Liste seulement (lot 0c) : intitulé du poste, client et lieu lus dans le
+   * brief (job_details), sans charger tout le JSON.
+   */
+  jd_title?: string | null;
+  jd_client?: string | null;
+  jd_location?: string | null;
   hunt_mode: boolean;
   hunt_bounty_percent: number | null;
   hunt_max_recruiters: number | null;
@@ -79,6 +86,12 @@ export interface SourcingProjectsOptions {
   enabled?: boolean;
 }
 
+// Colonnes de la liste. Typée string : l'analyse du littéral (chemins JSON
+// compris) dépasse la profondeur admise par TypeScript ; le résultat est
+// relu comme SourcingProject[].
+const PROJECT_LIST_COLUMNS: string =
+  'id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status, jd_title:job_details->>title, jd_client:job_details->client->>name, jd_location:job_details->>location';
+
 export const useSourcingProjects = (
   kind: 'mission' | 'search' = 'mission',
   options?: SourcingProjectsOptions,
@@ -89,6 +102,7 @@ export const useSourcingProjects = (
 
   // Fetch all projects — excludes heavy JSONB columns (job_details, filters_snapshot)
   // Use useSourcingProject(id) to fetch a single project with all fields.
+  // Du brief, seuls le poste, le client et le lieu sont lus (jd_*, lot 0c).
   // Filtré par kind : les missions et les recherches autonomes (/sourcing)
   // partagent la table mais jamais les listes.
   const query = useQuery({
@@ -98,13 +112,13 @@ export const useSourcingProjects = (
 
       const { data, error } = await supabase
         .from('sourcing_projects')
-        .select('id, name, kind, status, created_at, updated_at, created_by, organization_id, job_id, job_title, client_name, description, notes, last_search_at, stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted, calendly_link, hunt_mode, hunt_bounty_percent, hunt_max_recruiters, hunt_deadline, hunt_status')
+        .select(PROJECT_LIST_COLUMNS)
         .eq('organization_id', organizationId)
         .eq('kind', kind)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
-      return data as SourcingProject[];
+      return data as unknown as SourcingProject[];
     },
     enabled: isReady && !!user && !!organizationId && (options?.enabled ?? true),
     refetchInterval: options?.refetchInterval,
@@ -332,7 +346,10 @@ export const useSourcingProject = (projectId: string | null | undefined) => {
   return query;
 };
 
-// Hook to get candidates for a specific project
+// Candidats d'une mission (kanban, tableau et Analyses de la mission). Lot 0c :
+// la vue mission_candidate_rows rend une ligne par candidat (doublons réunis,
+// group_ids pour écrire tout le groupe) ; les profils jamais ouverts
+// (is_unopened) restent au Sourcing, hors du Pipeline.
 export const useProjectCandidates = (projectId: string | null) => {
   return useQuery({
     queryKey: ['project-candidates', projectId],
@@ -340,9 +357,10 @@ export const useProjectCandidates = (projectId: string | null) => {
       if (!projectId) return [];
 
       const { data, error } = await supabase
-        .from('job_candidate_status')
+        .from('mission_candidate_rows')
         .select('*')
         .eq('project_id', projectId)
+        .eq('is_unopened', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
