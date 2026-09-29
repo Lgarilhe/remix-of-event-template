@@ -143,23 +143,19 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
         <Button
           variant={isAdded ? "ghost" : "outline"}
           size="sm"
-          title={isAdded ? `Déjà shortlisté pour "${activeProject.name}"` : `Shortlister pour "${activeProject.name}"`}
-          className={`h-7 gap-1.5 text-xs rounded-lg border-2 px-2.5 font-medium shrink-0 transition-all ${
-            isAdded
-              ? 'text-success border-success/40 bg-success/10'
-              : 'bg-muted border-foreground/30 shadow-sm text-foreground hover:bg-accent hover:border-foreground/50 hover:shadow-md'
-          }`}
+          title={isAdded ? `Déjà retenu pour « ${activeProject.name} »` : `Retenir pour « ${activeProject.name} »`}
+          className={`shrink-0 ${isAdded ? 'text-success hover:text-success' : ''}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
         >
           {isAdding ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="animate-spin" aria-hidden="true" />
           ) : isAdded ? (
-            <Check className="w-3.5 h-3.5" />
+            <Check aria-hidden="true" />
           ) : (
-            <FolderPlus className="w-3.5 h-3.5" />
+            <FolderPlus aria-hidden="true" />
           )}
-          {isAdded ? 'Shortlisté' : 'Shortlister'}
+          {isAdded ? 'Retenu' : 'Retenir'}
         </Button>
       );
     }

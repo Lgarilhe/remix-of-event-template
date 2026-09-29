@@ -438,7 +438,7 @@ export const OverviewTab: React.FC<Props> = ({
           eyebrow={`${fullProfile.timeline.length} événements · onglet Activité pour tout voir`}
         >
           {recentTimeline.length === 0 ? (
-            <p className="text-[12px] text-muted-foreground/70 italic">
+            <p className="text-sm text-muted-foreground">
               Aucune activité encore enregistrée
             </p>
           ) : (
@@ -461,7 +461,7 @@ export const OverviewTab: React.FC<Props> = ({
           }
         >
           {upcomingActions.length === 0 ? (
-            <p className="text-[12px] text-muted-foreground/70 italic">
+            <p className="text-sm text-muted-foreground">
               Pas de rappel ni de séquence active
             </p>
           ) : (
@@ -470,7 +470,7 @@ export const OverviewTab: React.FC<Props> = ({
                 <UpcomingActionRow key={i} action={action} />
               ))}
               {upcomingActions.length > 4 && (
-                <p className="text-[10.5px] text-muted-foreground/70 italic pl-9">
+                <p className="text-xs text-muted-foreground/70 italic pl-9">
                   +{upcomingActions.length - 4} autre{upcomingActions.length - 4 > 1 ? 's' : ''}
                 </p>
               )}
@@ -482,7 +482,7 @@ export const OverviewTab: React.FC<Props> = ({
       {/* ═══ 5. ABOUT ═══ */}
       {summary && (
         <SectionCard icon={Sparkles} title="À propos" eyebrow="Résumé LinkedIn">
-          <p className="text-[12.5px] leading-relaxed text-foreground/85 whitespace-pre-line line-clamp-6">
+          <p className="text-sm leading-relaxed text-foreground/85 whitespace-pre-line line-clamp-6">
             {summary}
           </p>
         </SectionCard>
@@ -500,7 +500,7 @@ export const OverviewTab: React.FC<Props> = ({
               <ExperienceRow key={i} exp={exp} />
             ))}
             {(enrichedProfile!.experiences.length || 0) > 2 && (
-              <p className="text-[11px] text-muted-foreground/70 italic pl-9">
+              <p className="text-xs text-muted-foreground/70 italic pl-9">
                 +{enrichedProfile!.experiences.length - 2} autres positions — voir Profil
               </p>
             )}
@@ -526,12 +526,12 @@ export const OverviewTab: React.FC<Props> = ({
             <SectionCard icon={Award} title="Compétences" eyebrow={`${enrichedProfile!.skills.length} skills`}>
               <div className="flex flex-wrap gap-1.5">
                 {enrichedProfile!.skills.slice(0, 12).map((skill, i) => (
-                  <span key={i} className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
+                  <span key={i} className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border">
                     {skill}
                   </span>
                 ))}
                 {enrichedProfile!.skills.length > 12 && (
-                  <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full text-muted-foreground border border-border bg-muted/30">
+                  <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full text-muted-foreground border border-border bg-muted/30">
                     +{enrichedProfile!.skills.length - 12}
                   </span>
                 )}
@@ -542,7 +542,7 @@ export const OverviewTab: React.FC<Props> = ({
             <SectionCard icon={Languages} title="Langues">
               <div className="flex flex-wrap gap-1.5">
                 {enrichedProfile!.languages.map((lang, i) => (
-                  <span key={i} className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
+                  <span key={i} className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/30">
                     {lang}
                   </span>
                 ))}
@@ -562,14 +562,14 @@ export const OverviewTab: React.FC<Props> = ({
           <div className="space-y-2">
             {notes.slice(0, 2).map(note => (
               <div key={note.id} className="rounded-lg bg-muted/20 border border-border/60 px-3 py-2">
-                <p className="text-[12px] leading-relaxed text-foreground/85 line-clamp-3">{note.content}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs leading-relaxed text-foreground/85 line-clamp-3">{note.content}</p>
+                <p className="text-xs text-muted-foreground mt-1">
                   {formatDistanceToNow(new Date(note.created_at), { addSuffix: true, locale: fr })}
                 </p>
               </div>
             ))}
             {notes.length > 2 && (
-              <p className="text-[11px] text-muted-foreground/70 italic">
+              <p className="text-xs text-muted-foreground/70 italic">
                 +{notes.length - 2} autre{notes.length - 2 > 1 ? 's' : ''}
               </p>
             )}
@@ -616,10 +616,10 @@ function AlertsPanel({
       <div className="px-3 sm:px-4 py-2 border-b border-border bg-muted/20">
         <div className="flex items-center gap-2">
           <AlertCircle className="w-3.5 h-3.5 text-warning" />
-          <span className="text-[10px] uppercase tracking-wider font-bold text-foreground/70">
+          <span className="text-xs font-medium text-foreground-secondary">
             À traiter
           </span>
-          <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-warning/15 text-warning font-bold">
+          <span className="text-xs tabular-nums px-1.5 py-0.5 rounded-full bg-warning/15 text-warning font-bold">
             {alerts.length}
           </span>
         </div>
@@ -647,11 +647,11 @@ function AlertRow({ alert, onDismiss }: { alert: Alert; onDismiss: () => void })
         <Icon className="w-3.5 h-3.5" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] font-semibold text-foreground leading-tight flex items-center gap-1.5">
+        <p className="text-sm font-semibold text-foreground leading-tight flex items-center gap-1.5">
           <span className={cn('inline-block h-1.5 w-1.5 rounded-full shrink-0', severityStyles.dot)} />
           {alert.title}
         </p>
-        <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
           {alert.detail}
         </p>
       </div>
@@ -660,7 +660,7 @@ function AlertRow({ alert, onDismiss }: { alert: Alert; onDismiss: () => void })
       <button
         type="button"
         onClick={onDismiss}
-        className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full text-[10.5px] font-semibold border border-border bg-background hover:bg-success/10 hover:text-success hover:border-success/30 transition-all sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
+        className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full text-xs font-semibold border border-border bg-background hover:bg-success/10 hover:text-success hover:border-success/30 transition-all sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
         aria-label="Marquer cette alerte comme traitée"
       >
         <Check className="w-3 h-3" />
@@ -731,11 +731,11 @@ function ProfileSummaryCard({
       className="rounded-xl border border-border bg-card p-4 sm:p-5"
     >
       <div className="flex items-start gap-3">
-        <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+        <div className="h-9 w-9 rounded-lg bg-muted grid place-items-center shrink-0">
           <Sparkles className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Résumé du profil
           </p>
           <h3 className="font-display font-bold text-[15px] sm:text-[16px] tracking-tight text-foreground leading-tight mt-0.5">
@@ -754,12 +754,12 @@ function ProfileSummaryCard({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-border/60">
           {(strengths?.length ?? 0) > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-success mb-1.5">
+              <p className="text-xs font-medium text-success mb-1.5">
                 ✓ À retenir
               </p>
               <ul className="space-y-1">
                 {strengths!.slice(0, 4).map((s, i) => (
-                  <li key={i} className="text-[12px] text-foreground/85 leading-snug pl-1">
+                  <li key={i} className="text-xs text-foreground/85 leading-snug pl-1">
                     • {s}
                   </li>
                 ))}
@@ -768,12 +768,12 @@ function ProfileSummaryCard({
           )}
           {(concerns?.length ?? 0) > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-warning mb-1.5">
+              <p className="text-xs font-medium text-warning mb-1.5">
                 ⚠ Points d'attention
               </p>
               <ul className="space-y-1">
                 {concerns!.slice(0, 4).map((s, i) => (
-                  <li key={i} className="text-[12px] text-foreground/85 leading-snug pl-1">
+                  <li key={i} className="text-xs text-foreground/85 leading-snug pl-1">
                     • {s}
                   </li>
                 ))}
@@ -801,7 +801,7 @@ function StatCard({
     success: { iconBg: 'bg-success/10', iconText: 'text-success' },
     warning: { iconBg: 'bg-warning/10', iconText: 'text-warning' },
     brand: { iconBg: 'bg-brand-purple/10', iconText: 'text-brand-purple' },
-    muted: { iconBg: 'bg-emerald-500/15', iconText: 'text-foreground' },
+    muted: { iconBg: 'bg-muted', iconText: 'text-foreground' },
   }[tone];
 
   return (
@@ -820,7 +820,7 @@ function StatCard({
         <div className={cn('h-7 w-7 rounded-lg grid place-items-center shrink-0', toneStyles.iconBg)}>
           <Icon className={cn('w-3.5 h-3.5', toneStyles.iconText)} />
         </div>
-        <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground truncate">
+        <span className="text-xs text-muted-foreground truncate">
           {label}
         </span>
       </div>
@@ -828,7 +828,7 @@ function StatCard({
         {primary}
       </p>
       {secondary && (
-        <p className="text-[10.5px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">{secondary}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{secondary}</p>
       )}
     </motion.div>
   );
@@ -845,13 +845,13 @@ function SectionCard({
   return (
     <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
       <div className="flex items-center gap-2 mb-2.5">
-        <div className="h-7 w-7 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+        <div className="h-7 w-7 rounded-lg bg-muted grid place-items-center shrink-0">
           <Icon className="w-3.5 h-3.5 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-display font-bold text-[13px] tracking-tight text-foreground">{title}</h3>
           {eyebrow && (
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70">
+            <p className="text-xs text-muted-foreground">
               {eyebrow}
             </p>
           )}
@@ -862,6 +862,8 @@ function SectionCard({
   );
 }
 
+const RAW_JOB_ID = /^(project:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function PositionRow({ position }: { position: { jobId: string; jobTitle: string; score: number | null; stage: string | null; recommendation: string | null; lastUpdate: string | null } }) {
   const scoreTone =
     position.score == null ? null :
@@ -871,29 +873,29 @@ function PositionRow({ position }: { position: { jobId: string; jobTitle: string
 
   return (
     <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-muted/15 border border-border/50 hover:bg-muted/30 transition-colors">
-      <div className="h-7 w-7 rounded-md bg-emerald-500/15 grid place-items-center shrink-0">
+      <div className="h-7 w-7 rounded-md bg-muted grid place-items-center shrink-0">
         <Briefcase className="w-3.5 h-3.5 text-foreground" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] font-semibold text-foreground truncate leading-tight">
-          {position.jobTitle}
+        <p className="text-sm font-semibold text-foreground truncate leading-tight">
+          {RAW_JOB_ID.test(position.jobTitle) ? 'Mission sans titre' : position.jobTitle}
         </p>
         <div className="flex items-center gap-2 mt-0.5">
           {position.stage && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               <Target className="w-2.5 h-2.5 inline mr-0.5" />
               {position.stage}
             </span>
           )}
           {position.lastUpdate && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               · {formatDistanceToNow(new Date(position.lastUpdate), { addSuffix: true, locale: fr })}
             </span>
           )}
         </div>
       </div>
       {position.score != null && scoreTone && (
-        <span className={cn('inline-flex items-center text-[11px] px-1.5 py-0.5 rounded-full border font-bold tabular-nums shrink-0', scoreTone)}>
+        <span className={cn('inline-flex items-center text-xs px-1.5 py-0.5 rounded-full border font-bold tabular-nums shrink-0', scoreTone)}>
           {position.score}
         </span>
       )}
@@ -904,17 +906,17 @@ function PositionRow({ position }: { position: { jobId: string; jobTitle: string
 function TimelineRow({ event }: { event: { type: string; title: string; detail?: string; date: string } }) {
   const date = event.date ? new Date(event.date) : null;
   return (
-    <div className="flex items-start gap-2.5 text-[12px]">
+    <div className="flex items-start gap-2.5 text-xs">
       <div className="h-5 w-5 rounded-full bg-foreground/[0.06] grid place-items-center shrink-0 mt-0.5">
         <span className="h-1.5 w-1.5 rounded-full bg-foreground/40" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-foreground/85 leading-snug">{event.title}</p>
         {event.detail && (
-          <p className="text-[10.5px] text-muted-foreground/70 mt-0.5 line-clamp-1">{event.detail}</p>
+          <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-1">{event.detail}</p>
         )}
         {date && (
-          <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+          <p className="text-xs text-muted-foreground/60 mt-0.5">
             {formatDistanceToNow(date, { addSuffix: true, locale: fr })}
           </p>
         )}
@@ -934,13 +936,13 @@ function UpcomingActionRow({ action }: { action: { type: 'reminder' | 'sequence_
         <Icon className="w-3.5 h-3.5" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] font-semibold text-foreground truncate leading-tight">
+        <p className="text-sm font-semibold text-foreground truncate leading-tight">
           {action.title}
         </p>
         {action.detail && (
-          <p className="text-[10.5px] text-muted-foreground line-clamp-1 mt-0.5">{action.detail}</p>
+          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{action.detail}</p>
         )}
-        <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+        <p className="text-xs text-muted-foreground/70 mt-0.5">
           {action.type === 'reminder'
             ? formatDistanceToNow(new Date(action.date), { addSuffix: true, locale: fr })
             : `Inscrit ${formatDistanceToNow(new Date(action.date), { addSuffix: true, locale: fr })}`}
@@ -960,16 +962,16 @@ function ExperienceRow({
       {exp.logo ? (
         <img src={exp.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-card border border-border shrink-0" />
       ) : (
-        <div className="h-8 w-8 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+        <div className="h-8 w-8 rounded-lg bg-muted grid place-items-center shrink-0">
           <Building2 className="w-3.5 h-3.5 text-foreground" />
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-[12.5px] font-semibold text-foreground truncate leading-tight">
+        <p className="text-sm font-semibold text-foreground truncate leading-tight">
           {exp.title || 'Poste'}
         </p>
         <p className="text-[11.5px] text-muted-foreground truncate">{exp.company || '—'}</p>
-        <p className="text-[10.5px] text-muted-foreground/70 tabular-nums mt-0.5">
+        <p className="text-xs text-muted-foreground/70 tabular-nums mt-0.5">
           {exp.startDate || '?'} — {exp.isCurrent ? 'Actuel' : (exp.endDate || '?')}
         </p>
       </div>
@@ -987,7 +989,7 @@ function EducationRow({
       {edu.logo ? (
         <img src={edu.logo} alt="" className="w-9 h-9 rounded-lg object-contain bg-card border border-border shrink-0" />
       ) : (
-        <div className="h-9 w-9 rounded-lg bg-emerald-500/15 grid place-items-center shrink-0">
+        <div className="h-9 w-9 rounded-lg bg-muted grid place-items-center shrink-0">
           <GraduationCap className="w-4 h-4 text-foreground" />
         </div>
       )}
@@ -999,7 +1001,7 @@ function EducationRow({
           </p>
         )}
         {(edu.startYear || edu.endYear) && (
-          <p className="text-[10.5px] text-muted-foreground/70 tabular-nums mt-0.5">
+          <p className="text-xs text-muted-foreground/70 tabular-nums mt-0.5">
             {edu.startYear || '?'} — {edu.endYear || 'en cours'}
           </p>
         )}

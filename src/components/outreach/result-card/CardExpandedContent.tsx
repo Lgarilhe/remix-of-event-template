@@ -112,28 +112,23 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   ];
 
   return (
-    <div className="bg-background rounded-lg border border-border overflow-hidden">
+    <div className="overflow-hidden">
       <Tabs defaultValue={defaultTab} className="w-full">
-        <div className="border-b border-border overflow-x-auto bg-background">
-          <TabsList className="w-max min-w-full h-10 bg-transparent p-1 px-1.5 rounded-none gap-1">
+        <div className="overflow-x-auto border-y border-border">
+          <TabsList className="h-10 w-max min-w-full justify-start gap-1 rounded-none bg-transparent p-0 px-1">
             {/* Extra tabs (pipeline mode) — rendus EN PREMIER pour
                 que l'onglet par défaut (premier extraTab = "Aperçu")
                 soit aussi visuellement en position 1. */}
             {extraTabs?.map(tab => {
-              const Icon = tab.icon;
               return (
                 <TabsTrigger
                   key={tab.key}
                   value={tab.key}
-                  className="shrink-0 min-w-[60px] sm:min-w-0 sm:flex-1 text-xs h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 transition-all font-medium relative"
+                  className="relative h-10 shrink-0 gap-1.5 rounded-none px-2.5 text-sm font-normal text-muted-foreground shadow-none transition-colors duration-150 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:after:bg-brand"
                 >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  <span className="sm:hidden">{tab.shortLabel || tab.label}</span>
+                  {tab.label}
                   {tab.count != null && tab.count > 0 && (
-                    <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 rounded-full bg-foreground/10 text-foreground text-3xs font-bold tabular-nums">
-                      {tab.count}
-                    </span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{tab.count}</span>
                   )}
                 </TabsTrigger>
               );
@@ -145,18 +140,16 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="shrink-0 min-w-[60px] sm:min-w-0 sm:flex-1 text-xs h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-sm gap-1.5 px-2.5 sm:px-3 transition-all font-medium"
+                className="relative h-10 shrink-0 gap-1.5 rounded-none px-2.5 text-sm font-normal text-muted-foreground shadow-none transition-colors duration-150 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-transparent hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:after:bg-brand"
               >
-                <tab.icon className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.shortLabel}</span>
+                {tab.label}
               </TabsTrigger>
             ))}
           </TabsList>
         </div>
 
         {/* Experience Tab */}
-        <TabsContent value="experience" className="mt-0 p-2 sm:p-4">
+        <TabsContent value="experience" className="mt-0 px-0 py-4">
           {workExperience.length > 0 ? (
             <div className="space-y-2 sm:space-y-3">
               {workExperience.map((exp: any, index: number) => {
@@ -188,9 +181,9 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="font-bold text-foreground text-sm leading-tight">{exp.role}</p>
+                          <p className="text-sm font-semibold leading-tight text-foreground">{exp.role}</p>
                           {isCurrent && (
-                            <span className="text-xs bg-foreground text-background px-1.5 py-0.5 font-bold uppercase tracking-wider shrink-0">
+                            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-foreground-secondary">
                               En poste
                             </span>
                           )}
@@ -221,7 +214,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Education Tab */}
-        <TabsContent value="education" className="mt-0 p-2 sm:p-4">
+        <TabsContent value="education" className="mt-0 px-0 py-4">
           {education.length > 0 ? (
             <div className="space-y-2 sm:space-y-3">
               {education.map((edu: any, index: number) => {
@@ -263,7 +256,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Skills Tab */}
-        <TabsContent value="skills" className="mt-0 p-2 sm:p-4">
+        <TabsContent value="skills" className="mt-0 px-0 py-4">
           {skills.length > 0 ? (
             <SkillsWithEndorse
               skills={skills}
@@ -276,7 +269,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Messages Tab */}
-        <TabsContent value="messages" className="mt-0 p-2 sm:p-4">
+        <TabsContent value="messages" className="mt-0 px-0 py-4">
           <CardMessageThread
             accountId={accountId}
             profileId={profile.id}
@@ -288,15 +281,14 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
         </TabsContent>
 
         {/* Posts Tab */}
-        <TabsContent value="posts" className="mt-0 p-2 sm:p-4">
-          <div className="text-center py-12 text-muted-foreground">
-            <Newspaper className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-xs font-bold mb-1 uppercase tracking-wider">Publications LinkedIn</p>
-            <p className="text-xs text-muted-foreground mb-4">
-              Consultez les dernières publications de ce candidat
+        <TabsContent value="posts" className="mt-0 px-0 py-4">
+          <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+            <p className="text-sm text-foreground">Publications LinkedIn</p>
+            <p className="mb-4 mt-1 text-xs text-muted-foreground">
+              Consultez les dernières publications de ce candidat.
             </p>
-            <Button variant="outline" size="sm" className="rounded-lg border border-border text-foreground hover:bg-foreground hover:text-background uppercase tracking-wider text-xs font-semibold">
-              <Newspaper className="w-4 h-4 mr-2" />
+            <Button variant="outline" size="sm">
+              <Newspaper aria-hidden="true" />
               Voir les posts
             </Button>
           </div>
@@ -304,7 +296,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
 
         {/* Extra tabs (pipeline-only) — leur contenu est rendu via la prop. */}
         {extraTabs?.map(tab => (
-          <TabsContent key={tab.key} value={tab.key} className="mt-0 p-2 sm:p-4">
+          <TabsContent key={tab.key} value={tab.key} className="mt-0 px-0 py-4">
             {tab.content}
           </TabsContent>
         ))}
@@ -314,9 +306,8 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
 };
 
 const EmptyState: React.FC<{ icon: React.FC<any>; text: string }> = ({ icon: Icon, text }) => (
-  <div className="text-center py-12 text-muted-foreground">
-    <Icon className="w-10 h-10 mx-auto mb-3 opacity-30" />
-    <p className="text-xs font-bold uppercase tracking-wider">{text}</p>
+  <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+    <p className="text-sm text-muted-foreground">{text}</p>
   </div>
 );
 

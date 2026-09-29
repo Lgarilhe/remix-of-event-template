@@ -19,7 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Mail, Phone, Loader2, Sparkles, Check, X, AlertTriangle } from 'lucide-react';
+import { Mail, Phone, Loader2, Check, X, AlertTriangle, AtSign } from 'lucide-react';
 import { useCandidateEnrichment } from '@/hooks/useCandidateEnrichment';
 import { useAICredits } from '@/hooks/useAICredits';
 import { useEnrichmentPermission, formatResetDay } from '@/hooks/useEnrichmentPermission';
@@ -306,10 +306,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant="outline"
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`gap-1.5 ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} opacity-50 ${className}`}
+        className={`shrink-0 ${className}`}
         title="Demandez à votre administrateur d'activer la récupération de coordonnées"
       >
-        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <AtSign aria-hidden="true" />
         <span>Coordonnées</span>
       </Button>
     );
@@ -321,10 +321,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant="outline"
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`gap-1.5 ${compact ? 'h-7 px-2.5 text-xs rounded-lg' : 'text-xs'} opacity-50 ${className}`}
+        className={`shrink-0 ${className}`}
         title="L'enrichissement de contact nécessite un abonnement"
       >
-        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <AtSign aria-hidden="true" />
         <span>{compact ? 'Coordonnées' : 'Coordonnées (abonnement requis)'}</span>
       </Button>
     );
@@ -336,10 +336,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
         variant="outline"
         size={compact ? 'sm' : 'default'}
         onClick={() => setConfirmOpen(true)}
-        className={`gap-1.5 font-medium bg-muted border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all ${compact ? 'h-7 px-2.5 text-xs rounded-lg border-2' : 'text-xs'} ${className}`}
+        className={`shrink-0 ${className}`}
         title={`Récupérer email & téléphone de ${fullName}`}
       >
-        <Sparkles className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} aria-hidden="true" />
+        <AtSign aria-hidden="true" />
         <span>{compact ? 'Coordonnées' : 'Récupérer email & téléphone'}</span>
       </Button>
 

@@ -2,9 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import linkedinLogo from '@/assets/linkedin-logo.svg';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -26,7 +25,7 @@ import { AddToProjectButton } from '../projects/AddToProjectButton';
 import { EnrichContactButton } from './EnrichContactButton';
 import {
   Building2, MapPin, TrendingUp, ExternalLink, Loader2, Mail, Phone,
-  Target, PenLine, Archive,
+  Target, PenLine, Archive, X, Link2,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -103,6 +102,20 @@ const collectStrings = (input: unknown, depth = 0): string[] => {
 };
 
 const unique = (values: string[]) => Array.from(new Set(values.map((value) => value.trim())));
+
+/** Coordonnée copiable (adresse e-mail ou numéro) de l'en-tête de la fiche. */
+const ContactChip: React.FC<{ icon: React.ElementType; value: string; title: string; onCopy: () => void }> = ({ icon: Icon, value, title, onCopy }) => (
+  <button
+    type="button"
+    onClick={onCopy}
+    title={title}
+    className="inline-flex h-6 max-w-full items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground-secondary transition-colors duration-150 hover:border-border-strong hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  >
+    <Icon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <span className="max-w-[200px] truncate">{value}</span>
+  </button>
+);
+
 
 const CompanyLogo: React.FC<{ company: string; logoUrl?: string }> = ({ company, logoUrl }) => {
   const [fallbackIndex, setFallbackIndex] = useState(0);
@@ -604,7 +617,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[820px] p-0 flex flex-col overflow-hidden rounded-xl border-l border-border bg-muted" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        <SheetContent side="right" className="!w-full !max-w-[100vw] min-w-0 sm:!w-[95vw] sm:!max-w-[600px] p-0 flex flex-col overflow-hidden border-l border-border bg-background" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           {/* ─── NAV BAR ─── */}
           {(onNavigatePrev || onNavigateNext) && (
             <div className="flex items-center justify-between px-3 sm:px-5 py-2 bg-background border-b border-border shrink-0">
@@ -646,191 +659,154 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           )}
 
           {/* ─── HEADER ─── */}
-          <SheetHeader className="px-3 sm:px-5 pt-4 pb-3 bg-background border-b border-border shrink-0">
-            <div className="flex items-start gap-3">
-              <Avatar className="w-12 h-12 sm:w-14 sm:h-14 border border-border shrink-0 rounded-xl shadow-sm">
-                <AvatarImage src={displayProfile.profile_picture_url} alt={fullName} className="object-cover" />
-                <AvatarFallback className="bg-muted text-foreground text-base sm:text-lg font-semibold rounded-xl">
-                  {initials || '?'}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0 space-y-1">
-                <div className="flex items-center gap-2">
-                  <SheetTitle className="text-base sm:text-lg font-bold text-foreground leading-tight truncate">
-                    {fullName || 'Profil LinkedIn'}
-                  </SheetTitle>
-                  {profileUrl && (
-                    <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-6 h-6 rounded-md hover:bg-muted transition-colors shrink-0">
-                      <img src={linkedinLogo} alt="LinkedIn" className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                </div>
-                <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 leading-snug">
-                  {displayProfile.headline || currentRole || 'Profil LinkedIn'}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs text-muted-foreground">
-                  {currentCompany && (
-                    <span className="flex items-center gap-1.5 font-medium text-foreground/80">
-                      <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} />
-                      <span className="truncate max-w-[120px] sm:max-w-none">{currentCompany}</span>
-                      {currentJobTenure && <span className="text-muted-foreground/60 font-normal hidden sm:inline">· {currentJobTenure}</span>}
-                    </span>
-                  )}
-                  {displayProfile.location && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3 shrink-0" />
-                      <span className="truncate max-w-[100px] sm:max-w-none">{displayProfile.location}</span>
-                    </span>
-                  )}
-                  {totalExperience && (
-                    <span className="flex items-center gap-1 font-medium text-foreground/80">
-                      <TrendingUp className="w-3 h-3 shrink-0" />
-                      {totalExperience}
-                    </span>
-                  )}
-                </div>
-
-                {/* Status badges */}
-                <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                  <CardStatusBadges
-                    candidateStatus={candidateStatus}
-                    jobScore={jobScore}
-                    profile={profile}
-                    isLikelyToRespond={isLikelyToRespond}
-                    airtableMatch={airtableMatch}
-                    historyData={historyData}
-                    historyLoading={historyLoading}
-                    historyLatestDateLabel={historyLatestDateLabel}
-                  />
-                  {/* Pipeline mode : score badge cliquable pour ouvrir l'onglet Évaluation */}
-                  {pipelineMeta?.score != null && pipelineMeta.score > 0 && (
-                    <button
-                      onClick={pipelineMeta.onScoreClick}
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums border rounded-full transition-colors hover:opacity-90 ${
-                        pipelineMeta.score >= 70
-                          ? 'bg-success/15 text-success border-success/40'
-                          : pipelineMeta.score >= 50
-                            ? 'bg-warning/15 text-warning border-warning/40'
-                            : 'bg-destructive/15 text-destructive border-destructive/40'
-                      }`}
-                      title={`Score IA : ${pipelineMeta.score}/100 — clic pour voir l'évaluation`}
-                    >
-                      <Target className="w-3 h-3" />
-                      {pipelineMeta.score}
-                    </button>
-                  )}
-                </div>
-              </div>
+          <SheetHeader className="shrink-0 space-y-0 border-b border-border bg-background px-4 pb-3 pt-4 text-left sm:px-5">
+            <div className="flex items-center gap-2 pr-8">
+              <SheetTitle className="min-w-0 truncate text-lg font-semibold leading-tight text-foreground">
+                {fullName || 'Profil LinkedIn'}
+              </SheetTitle>
+              {profileUrl && (
+                <a
+                  href={profileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Ouvrir le profil LinkedIn"
+                  title="Ouvrir le profil LinkedIn"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors duration-150 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <img src={linkedinLogo} alt="" className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+            <p className="mt-1 line-clamp-2 text-sm leading-snug text-foreground-secondary">
+              {displayProfile.headline || currentRole || 'Profil LinkedIn'}
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {currentCompany && (
+                <span className="flex items-center gap-1.5">
+                  <CompanyLogo company={currentCompany} logoUrl={profileData.currentJob?.company_logo} />
+                  <span className="max-w-[160px] truncate sm:max-w-none">{currentCompany}</span>
+                  {currentJobTenure && <span className="hidden sm:inline">· {currentJobTenure}</span>}
+                </span>
+              )}
+              {displayProfile.location && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="max-w-[140px] truncate sm:max-w-none">{displayProfile.location}</span>
+                </span>
+              )}
+              {totalExperience && (
+                <span className="flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  {totalExperience}
+                </span>
+              )}
             </div>
 
-            {/* ─── PIPELINE META : stage selector + tags (mode pipeline only) ─── */}
-            {pipelineMeta && (
-              <div className="flex flex-wrap items-center gap-2 pt-2 mt-2 border-t border-border">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground hidden sm:inline">
-                  Étape
-                </span>
-                <select
-                  value={pipelineMeta.stage}
-                  onChange={(e) => pipelineMeta.onStageChange(e.target.value)}
-                  className="h-7 px-2.5 text-[11.5px] font-medium rounded-full bg-background border border-border focus:outline-none focus:ring-2 focus:ring-foreground/10"
+            {/* Statuts et note */}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 empty:hidden">
+              <CardStatusBadges
+                candidateStatus={candidateStatus}
+                jobScore={jobScore}
+                profile={profile}
+                isLikelyToRespond={isLikelyToRespond}
+                airtableMatch={airtableMatch}
+                historyData={historyData}
+                historyLoading={historyLoading}
+                historyLatestDateLabel={historyLatestDateLabel}
+              />
+              {/* Mode pipeline : la note ouvre l'onglet Évaluation */}
+              {pipelineMeta?.score != null && pipelineMeta.score > 0 && (
+                <button
+                  type="button"
+                  onClick={pipelineMeta.onScoreClick}
+                  className="rounded-md text-xs tabular-nums text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  title={`Note ${pipelineMeta.score} sur 100, voir l'évaluation`}
+                  aria-label={`Note ${pipelineMeta.score}, voir l'évaluation`}
                 >
-                  {pipelineMeta.stageOptions.map(s => (
-                    <option key={s.key} value={s.key}>{s.label}</option>
-                  ))}
-                </select>
+                  Note {pipelineMeta.score}
+                </button>
+              )}
+            </div>
+
+            {/* ─── PIPELINE META : étape et étiquettes (mode pipeline seulement) ─── */}
+            {pipelineMeta && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="hidden text-xs text-muted-foreground sm:inline">Étape</span>
+                <Select value={pipelineMeta.stage} onValueChange={(value) => pipelineMeta.onStageChange(value)}>
+                  <SelectTrigger aria-label="Étape" className="h-8 w-auto min-w-[10rem] gap-2 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pipelineMeta.stageOptions.map(o => (
+                      <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {pipelineMeta.tags?.map(tag => (
-                  <span
+                  <button
                     key={tag}
-                    className="inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-full bg-accent/20 text-foreground border border-accent/40 font-medium cursor-pointer hover:bg-destructive/10 hover:border-destructive/40 hover:text-destructive transition-colors"
+                    type="button"
+                    className="inline-flex h-6 items-center gap-1 rounded-full border border-border px-2 text-xs text-foreground-secondary transition-colors duration-150 hover:border-danger/40 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => pipelineMeta.onTagsChange?.((pipelineMeta.tags || []).filter(t => t !== tag))}
-                    title="Cliquer pour supprimer ce tag"
+                    title="Retirer cette étiquette"
+                    aria-label={`Retirer l'étiquette ${tag}`}
                   >
-                    {tag} ×
-                  </span>
+                    {tag}
+                    <X className="h-3 w-3" aria-hidden="true" />
+                  </button>
                 ))}
                 {pipelineMeta.onCreatePortalLink && (
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={pipelineMeta.onCreatePortalLink}
-                    className="ml-auto inline-flex items-center gap-1.5 h-7 px-3 rounded-full bg-success text-success-foreground text-[11px] font-bold hover:bg-success/90 transition-colors shadow-sm"
-                    title="Générer un lien portail à partager au client"
+                    className="ml-auto"
+                    title="Générer un lien à partager au client"
                   >
-                    🔗 Portail
-                  </button>
+                    <Link2 aria-hidden="true" />
+                    Portail
+                  </Button>
                 )}
               </div>
             )}
 
-            {/* ─── CONTACT INFO ─── */}
-            {/* En mode pipeline, on affiche TOUJOURS la ligne contacts
-                (même vide) pour donner accès au bouton "Ajouter contacts".
-                En sourcing, on garde l'ancien comportement (visible si
-                contacts présents). */}
+            {/* ─── COORDONNÉES ─── */}
+            {/* En mode pipeline, la ligne reste affichée même vide pour garder
+                l'accès à « Ajouter contacts ». En Sourcing, elle apparaît
+                seulement si des coordonnées existent. */}
             {(contactInfo.emails.length > 0 || contactInfo.phones.length > 0 || pipelineMeta?.manualEmail || pipelineMeta?.manualPhone || pipelineMeta?.contactsEditor) && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-2 mt-2 border-t border-border">
-                {/* Manual email/phone (saisis par le recruteur) — affichés en pills success */}
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 {pipelineMeta?.manualEmail && (
-                  <Badge
-                    variant="outline"
-                    className="gap-1 rounded-md border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success cursor-pointer hover:bg-success/15 transition-colors"
-                    onClick={() => { navigator.clipboard.writeText(pipelineMeta.manualEmail!); toast.success('Email copié'); }}
-                    title="Saisi manuellement"
-                  >
-                    <Mail className="h-3 w-3" />
-                    <span className="max-w-[160px] truncate">{pipelineMeta.manualEmail}</span>
-                  </Badge>
+                  <ContactChip icon={Mail} value={pipelineMeta.manualEmail} title="Saisi manuellement, cliquer pour copier" onCopy={() => { navigator.clipboard.writeText(pipelineMeta.manualEmail!); toast.success('Adresse e-mail copiée.'); }} />
                 )}
                 {pipelineMeta?.manualPhone && (
-                  <Badge
-                    variant="outline"
-                    className="gap-1 rounded-md border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success cursor-pointer hover:bg-success/15 transition-colors"
-                    onClick={() => { navigator.clipboard.writeText(pipelineMeta.manualPhone!); toast.success('Téléphone copié'); }}
-                    title="Saisi manuellement"
-                  >
-                    <Phone className="h-3 w-3" />
-                    <span>{pipelineMeta.manualPhone}</span>
-                  </Badge>
+                  <ContactChip icon={Phone} value={pipelineMeta.manualPhone} title="Saisi manuellement, cliquer pour copier" onCopy={() => { navigator.clipboard.writeText(pipelineMeta.manualPhone!); toast.success('Numéro copié.'); }} />
                 )}
                 {contactInfo.emails.map((email) => (
-                  <Badge
-                    key={email}
-                    variant="outline"
-                    className="gap-1 rounded-md border-border bg-muted/50 px-2 py-0.5 text-xs font-normal text-foreground cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => { navigator.clipboard.writeText(email); toast.success('Email copié'); }}
-                  >
-                    <Mail className="h-3 w-3 text-muted-foreground" />
-                    <span className="max-w-[160px] truncate">{email}</span>
-                  </Badge>
+                  <ContactChip key={email} icon={Mail} value={email} title="Cliquer pour copier" onCopy={() => { navigator.clipboard.writeText(email); toast.success('Adresse e-mail copiée.'); }} />
                 ))}
                 {contactInfo.phones.map((phone) => (
-                  <Badge
-                    key={phone}
-                    variant="outline"
-                    className="gap-1 rounded-md border-border bg-muted/50 px-2 py-0.5 text-xs font-normal text-foreground cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => { navigator.clipboard.writeText(phone); toast.success('Téléphone copié'); }}
-                  >
-                    <Phone className="h-3 w-3 text-muted-foreground" />
-                    <span>{phone}</span>
-                  </Badge>
+                  <ContactChip key={phone} icon={Phone} value={phone} title="Cliquer pour copier" onCopy={() => { navigator.clipboard.writeText(phone); toast.success('Numéro copié.'); }} />
                 ))}
-                {/* Editor manuel (pipeline mode) — bouton "Modifier" / "Ajouter contacts" */}
                 {pipelineMeta?.contactsEditor && (
                   <div className="ml-auto">{pipelineMeta.contactsEditor}</div>
                 )}
               </div>
             )}
 
-            {/* ─── ACTIONS BAR ─── */}
-            <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border overflow-x-auto no-scrollbar" data-no-swipe>
+            {/* ─── ACTIONS ─── */}
+            <div className="mt-3 flex flex-wrap items-center gap-2" data-no-swipe>
               {selectedJob && onScoreProfile && (!jobScore || isDegradedScore(jobScore)) && (
                 <Button
+                  variant="primary"
                   size="sm"
                   onClick={handleScore}
-                  disabled={isScoring}
-                  className="h-7 gap-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 px-3 font-medium shrink-0"
+                  loading={isScoring}
+                  className="shrink-0"
                 >
-                  {isScoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
-                  {/* Score dégradé (passe IA échouée) → proposer la relance */}
-                  {jobScore ? 'Relancer le score' : 'Score'}
+                  {!isScoring && <Target aria-hidden="true" />}
+                  {/* Note dégradée (passe IA échouée) : proposer la relance */}
+                  {jobScore ? 'Relancer la note' : 'Noter'}
                 </Button>
               )}
 
@@ -848,9 +824,9 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={() => setShowMessageModal(true)}
-                  className="h-7 gap-1.5 text-xs rounded-lg px-3 font-medium shrink-0"
+                  className="shrink-0"
                 >
-                  <PenLine className="w-3 h-3" />
+                  <PenLine aria-hidden="true" />
                   Message
                 </Button>
               )}
@@ -871,9 +847,8 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 />
               )}
 
-              {/* Récupérer email/téléphone via cascade waterfall — toujours
-                  affiché en mode 'button-only' car le block CONTACT INFO
-                  au-dessus gère déjà l'affichage des contacts existants. */}
+              {/* Email et téléphone par cascade : toujours affiché en mode
+                  « button-only », les coordonnées existantes le sont au-dessus. */}
               {profileUrl && (
                 <EnrichContactButton
                   profile={profile}
@@ -883,8 +858,13 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
               )}
 
               {onArchive && (
-                <Button variant="ghost" size="sm" onClick={onArchive} className="h-7 gap-1.5 text-xs rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-2 font-medium shrink-0 ml-auto">
-                  <Archive className="w-3 h-3" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onArchive}
+                  className="ml-auto shrink-0 text-danger hover:bg-danger-muted hover:text-danger"
+                >
+                  <Archive aria-hidden="true" />
                   <span className="hidden sm:inline">Archiver</span>
                 </Button>
               )}
@@ -893,35 +873,35 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
           {/* ─── CONTENT ─── */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="p-2.5 sm:p-5 space-y-3 sm:space-y-4 min-w-0 max-w-full">
+            <div className="min-w-0 max-w-full space-y-4 px-4 py-4 sm:px-5">
               {/* Job Score */}
               {jobScore && (
-                <div className="bg-background rounded-lg border border-border overflow-hidden">
+                <div className="overflow-hidden rounded-xl border border-border">
                   <details open className="group">
                     <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
                       <div className="flex items-center gap-2 min-w-0">
-                        <h3 className="text-xs font-semibold text-foreground">Scoring</h3>
+                        <h3 className="text-md font-semibold text-foreground">Note</h3>
                         {/* Profondeur de l'éval : rapide (données de liste) vs
                             complète (profil visité). Pendant le re-score → spinner. */}
                         {isDeepScoring ? (
-                          <span className="inline-flex items-center gap-1 text-3xs font-medium text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             Analyse complète en cours…
                           </span>
                         ) : jobScore.scoringDepth === 'deep' ? (
                           <span
-                            className="text-3xs font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                            className="rounded-md bg-success-muted px-1.5 py-0.5 text-xs text-success"
                             title="Évalué sur le profil complet (parcours détaillé, À propos…)"
                           >
-                            Éval. complète
+                            Évaluation complète
                           </span>
                         ) : (
                           <>
                             <span
-                              className="text-3xs font-medium px-1.5 py-0.5 rounded bg-foreground/5 text-muted-foreground"
+                              className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
                               title="Évalué sur les données de la liste de recherche"
                             >
-                              Éval. rapide
+                              Évaluation rapide
                             </span>
                             {/* Lancement MANUEL de l'analyse complète (avant :
                                 auto à l'ouverture de la fiche). stopPropagation
@@ -934,7 +914,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                                 title={isEnriching
                                   ? 'Chargement du profil en cours…'
                                   : 'Ré-évaluer sur le profil complet (parcours détaillé, À propos…) — peut consommer 1 visite de profil LinkedIn'}
-                                className="text-3xs font-semibold px-1.5 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="rounded-md text-xs font-semibold text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Analyse complète
                               </button>
@@ -968,14 +948,14 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 <>
                   {/* Airtable History Panel */}
                   {(historyLoading || hasHistory) && (
-                    <div className="bg-background rounded-lg border border-border overflow-hidden">
+                    <div className="overflow-hidden rounded-xl border border-border">
                       <CandidateHistoryPanel data={historyData} loading={historyLoading} compact={false} />
                     </div>
                   )}
 
                   {/* Aircall History */}
                   {(aircallHistory.loading || aircallHistory.calls.length > 0) && (
-                    <div className="bg-background rounded-lg border border-border overflow-hidden p-3 sm:p-4">
+                    <div className="overflow-hidden rounded-xl border border-border p-3 sm:p-4">
                       <AircallHistoryPanel
                         calls={aircallHistory.calls}
                         loading={aircallHistory.loading}
@@ -987,10 +967,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
                   {/* À propos */}
                   {displayProfile.summary && (
-                    <div className="bg-background rounded-lg border border-border overflow-hidden">
+                    <div className="overflow-hidden rounded-xl border border-border">
                       <details className="group">
                         <summary className="flex items-center justify-between p-3 sm:p-4 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-                          <h3 className="text-xs font-semibold text-foreground">À propos</h3>
+                          <h3 className="text-md font-semibold text-foreground">À propos</h3>
                           <ChevronRight className="w-3.5 h-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
                         </summary>
                         <div className="px-3 sm:px-4 pb-3 sm:pb-4">
@@ -1004,7 +984,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
 
               {/* Loading indicator for pool profile enrichment */}
               {isEnriching && (
-                <div className="flex items-center gap-2 p-3 rounded-lg border border-border bg-background text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 rounded-xl border border-border p-3 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Chargement du profil complet…
                 </div>
