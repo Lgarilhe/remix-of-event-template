@@ -429,9 +429,9 @@ async function dragCard(page: Page, name: string, label: string) {
 }
 
 async function pipelineRow(id: string) {
-  const { data, error } = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('id', id).single();
+  const { data, error } = await admin().from('job_candidate_status').select('status, pipeline_stage, general_stage').eq('id', id).single();
   if (error) throw new Error(`pipelineRow: ${error.message}`);
-  return data as { status: string; pipeline_stage: string | null };
+  return data as { status: string; pipeline_stage: string | null; general_stage: string };
 }
 
 async function seedPipelineRows(ws: Workspace, rows: Array<{ name: string; status: string; pipeline_stage: string | null }>) {
@@ -464,26 +464,28 @@ test.describe('Décision 29 : colonne « Répondu » du pipeline de mission', ()
     await openMissionKanban(page, ws.missionId, 'Alice Etape');
 
     expect(await columnLabels(page)).toEqual(['Sourcé', 'Contacté', 'Répondu', 'Shortlisté', 'Écarté']);
-    await expect(column(page, 'Répondu')).toHaveAttribute('aria-label', 'Colonne Répondu, 3 candidats');
-    for (const name of ['Alice Etape', 'Bruno Statut', 'Chloe Contactee']) {
+    // Lot 0b-4 : le kanban range par l'étape générale. Un candidat qui a répondu
+    // reste « Répondu » même avec l'ancien libellé « shortlisted » (Retenu vient
+    // avant Contacté dans le modèle du lot 0a).
+    await expect(column(page, 'Répondu')).toHaveAttribute('aria-label', 'Colonne Répondu, 4 candidats');
+    for (const name of ['Alice Etape', 'Bruno Statut', 'Chloe Contactee', 'Farid Shortlist']) {
       await expect(column(page, 'Répondu').getByText(name, { exact: true })).toBeVisible();
     }
     await expect(column(page, 'Contacté')).toHaveAttribute('aria-label', 'Colonne Contacté, 1 candidat');
     await expect(column(page, 'Contacté').getByText('David Attente', { exact: true })).toBeVisible();
     await expect(column(page, 'Sourcé').getByText('Emma Source', { exact: true })).toBeVisible();
-    // Étape plus avancée que la réponse : le candidat reste où le recruteur l'a mis.
-    await expect(column(page, 'Shortlisté').getByText('Farid Shortlist', { exact: true })).toBeVisible();
+    await expect(column(page, 'Shortlisté').getByText('Farid Shortlist', { exact: true })).toHaveCount(0);
 
     await dragCard(page, 'David Attente', 'Répondu');
     await expect(toast(page, 'David Attente déplacé vers « Répondu »')).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => pipelineRow(ids.get('David Attente')!), { timeout: 15_000 }).toEqual({ status: 'replied', pipeline_stage: 'Répondu' });
+    await expect.poll(() => pipelineRow(ids.get('David Attente')!), { timeout: 15_000 }).toMatchObject({ status: 'replied', general_stage: 'replied' });
     await expect(column(page, 'Répondu').getByText('David Attente', { exact: true })).toBeVisible({ timeout: 15_000 });
 
     await dragCard(page, 'Alice Etape', 'Contacté');
     await expect(toast(page, 'Alice Etape déplacé vers « Contacté »')).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => pipelineRow(ids.get('Alice Etape')!), { timeout: 15_000 }).toEqual({ status: 'messaged', pipeline_stage: 'messaged' });
+    await expect.poll(() => pipelineRow(ids.get('Alice Etape')!), { timeout: 15_000 }).toMatchObject({ status: 'messaged', general_stage: 'contacted' });
     await expect(column(page, 'Contacté').getByText('Alice Etape', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(column(page, 'Répondu')).toHaveAttribute('aria-label', 'Colonne Répondu, 3 candidats');
+    await expect(column(page, 'Répondu')).toHaveAttribute('aria-label', 'Colonne Répondu, 4 candidats');
   });
 
   test('avec des étapes d’entretien : « Répondu » suit « Contacté », un candidat en entretien qui a répondu reste dans son étape', async ({ browser }) => {
