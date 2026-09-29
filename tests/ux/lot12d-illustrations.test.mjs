@@ -1,8 +1,8 @@
 /**
  * Chantier design, lot 12 : illustrations (dessins à l'encre sur papier crème,
  * accent bleu-vert). Calques WebP allégés, composant décoratif unique dont les
- * pièces se posent une fois à l'apparition, états vides et pannes des écrans
- * hors refonte mission.
+ * pièces mobiles tournent en boucle (fond fixe), états vides et pannes des
+ * écrans hors refonte mission.
  *
  * Lancer : node --test tests/ux/lot12d-illustrations.test.mjs
  */
@@ -34,7 +34,7 @@ test('Illustrations : dix dessins, en calques WebP légers', () => {
     const rel = `src/assets/illustrations/${file}.webp`;
     assert.ok(existsSync(new URL(rel, ROOT)), `${rel} manquant`);
     assert.ok(statSync(new URL(rel, ROOT)).size < 60 * 1024, `${rel} dépasse 60 Ko`);
-    assert.match(component, new RegExp(`\\{ src: ${id}(?:, motion: | \\})`), `${file} importé sans servir`);
+    assert.match(component, new RegExp(`\\{\\s*src: ${id}(?:,\\s*motion: |\\s*\\})`), `${file} importé sans servir`);
   }
   // Chaque fichier du dossier sert un dessin, jamais les PNG d'origine (1 Mo chacun).
   const files = readdirSync(new URL('src/assets/illustrations/', ROOT));
@@ -51,30 +51,38 @@ test('Illustrations : décoratives, place réservée, chargées à la demande', 
   assert.match(component, /i === 0 \? cn\('block h-auto w-auto', SIZES\[size\]\) : 'absolute inset-0 h-full w-full'/);
 });
 
-test('Illustrations : entrée jouée une fois, une seconde au plus, coupée par le mouvement réduit', () => {
+test('Illustrations : fond fixe, pièces en boucle avec une pause, dessin fixe avec le mouvement réduit', () => {
   // Rien ne bouge avant que tous les calques soient là.
   assert.match(component, /const ready = settled >= layers\.length;/);
   assert.match(component, /onLoad=\{settle\}\s+onError=\{settle\}/);
   assert.match(component, /!ready && 'opacity-0'/);
-  // Deux animations, jouées une fois, jamais en boucle.
-  for (const name of ['illu-enter', 'illu-draw']) {
-    const line = tailwind.split('\n').find((l) => l.includes(`'${name}': '${name} `));
-    assert.ok(line, `animation ${name} absente de tailwind.config.ts`);
-    assert.match(line, / both',$/);
-    assert.doesNotMatch(line, /infinite/);
+  // L'entrée se joue une fois ; les pièces mobiles tournent en boucle (décision du propriétaire, 29/09).
+  const anim = (name) => tailwind.split('\n').find((l) => l.includes(`'${name}': 'illu-`));
+  assert.match(anim('illu-enter'), / both',$/);
+  assert.doesNotMatch(anim('illu-enter'), /infinite/);
+  for (const name of ['illu-loop', 'illu-drift', 'illu-draw']) assert.match(anim(name), / infinite both',$/, name);
+  assert.match(anim('illu-settle'), /, illu-float 4s .* infinite',$/);
+  // Une boucle garde une pause : entrée sur le premier cinquième du tour, pièce en place jusqu'à 80 %.
+  for (const name of ['illu-loop', 'illu-draw']) {
+    assert.match(tailwind, new RegExp(`'${name}': \\{\\s*'0%': \\{[\\s\\S]*?'20%, 80%': \\{`), name);
   }
-  assert.doesNotMatch(component, /infinite|iteration/);
-  // Départ et durée : une seconde au plus pour chaque pièce.
-  const motions = [...component.matchAll(/motion: \{([^}]*)\}/g)].map((m) => m[1]);
-  assert.ok(motions.length >= 12, `trop peu de mouvements relevés (${motions.length})`);
-  for (const m of motions) {
-    const delay = Number(/delay: (\d+)/.exec(m)?.[1] ?? 0);
-    const duration = Number(/duration: (\d+)/.exec(m)?.[1]);
-    assert.ok(duration > 0 && delay + duration <= 1000, `mouvement trop long : ${m.trim()}`);
+  // Durées : entrée d'une seconde au plus ; un tour de boucle entre 2,5 et 4,5 s.
+  const motions = [...component.matchAll(/motion: \{ anim: '(\w+)'([^}]*)\}/g)];
+  assert.ok(motions.length >= 14, `trop peu de mouvements relevés (${motions.length})`);
+  for (const [, kind, rest] of motions) {
+    const delay = Number(/delay: (\d+)/.exec(rest)?.[1] ?? 0);
+    const duration = Number(/duration: (\d+)/.exec(rest)?.[1]);
+    if (kind === 'enter' || kind === 'settle') {
+      assert.ok(delay + duration <= 1000, `entrée trop longue : ${rest.trim()}`);
+    } else {
+      assert.ok(duration >= 2500 && duration <= 4500, `tour de boucle hors 2,5 à 4,5 s : ${rest.trim()}`);
+    }
   }
-  // Mouvement réduit : durée coupée par la règle globale, attente coupée par le calque.
-  assert.match(read('src/index.css'), /prefers-reduced-motion: reduce[\s\S]{0,120}animation-duration: 0\.01ms !important/);
-  assert.match(component, /'motion-reduce:!\[animation-delay:0ms\]'/);
+  // Le fond reste fixe : seules les pièces mobiles bouclent.
+  assert.match(component, /\{ src: cafeTasse, motion: FADE \}/);
+  assert.match(component, /\{ src: orientationPoteau \}/);
+  // Mouvement réduit : aucune animation, le dessin est fixe dans son état final.
+  assert.match(component, /'motion-reduce:!animate-none'/);
 });
 
 test('Illustrations : états vides et pannes du kit', () => {

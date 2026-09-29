@@ -178,7 +178,7 @@ Toasts : un seul système, sonner (`import { toast } from "sonner"`). L'ancienne
 
 Retour d'appui : un bouton descend d'un pixel ou passe à 98 % de sa taille pendant l'appui. Une carte cliquable s'éclaire au survol (fond et filet), sans se soulever de plus d'un pixel.
 
-Aucune animation en boucle hors indicateur de chargement. Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
+Aucune animation en boucle hors indicateur de chargement et illustrations (§ Illustrations, décision du propriétaire du 29/09/2026). Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
 
 ## 8. États d'écran
 
@@ -195,21 +195,22 @@ Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent
 
 - Une illustration par écran au plus, à la place de l'icône d'un état vide, d'une panne ou d'une issue (invitation, lien, page introuvable). Jamais dans une liste, une carte serrée, un bouton, un toast ni la barre latérale (présente sur chaque écran) ; une panne compacte garde son icône.
 - Décorative : le titre dit ce qui se passe, l'image n'a pas de texte alternatif.
-- Une entrée courte : une fois les calques chargés, les pièces du dessin se posent une seule fois, en une seconde au plus, jamais en boucle. Avec le mouvement réduit, le dessin s'affiche directement dans son état final.
+- En mouvement, à la demande du propriétaire (29/09/2026) : une fois les calques chargés, le fond reste fixe et les pièces mobiles rejouent leur geste en boucle. Un tour dure 2,5 à 4,5 s : entrée sur le premier cinquième, pièce à sa place jusqu'aux quatre cinquièmes, puis sortie. Avec le mouvement réduit, le dessin est fixe dans son état final.
+- Écart connu : une animation de plus de cinq secondes sans commande de pause s'écarte du critère 2.2.2 des WCAG. Le réglage « réduire les animations » du système l'arrête ; un arrêt après quelques tours rendrait l'écran conforme sans ce réglage.
 - Une situation, un dessin :
 
-| Dessin | Situation | Entrée |
+| Dessin | Situation | Mouvement |
 |---|---|---|
-| `cafe` | rien à faire : journée ou semaine libre | la vapeur monte |
-| `conversation` | aucune conversation, avec un candidat ou l'assistant | les bulles s'ouvrent l'une après l'autre |
-| `envoi` | aucune séquence, envoi parti | l'avion part, sa trace se dessine |
-| `taches` | aucune tâche, premiers pas | les coches se posent une à une |
-| `valide` | invitation acceptée, inscription réussie | le badge se pose sur la carte |
-| `connexion` | panne de connexion, compte LinkedIn non relié ou déconnecté | la prise et la fiche se rapprochent sans se toucher |
+| `cafe` | rien à faire : journée ou semaine libre | la vapeur monte sans fin |
+| `conversation` | aucune conversation, avec un candidat ou l'assistant | la grande bulle s'ouvre, la petite lui répond en boucle |
+| `envoi` | aucune séquence, envoi parti | l'avion arrive avec sa trace, puis repart |
+| `taches` | aucune tâche, premiers pas | les coches se posent une à une, puis repartent |
+| `valide` | invitation acceptée, inscription réussie | le badge se pose sur la carte, se soulève, se repose |
+| `connexion` | panne de connexion, compte LinkedIn non relié ou déconnecté | la prise et la fiche se rapprochent sans se toucher, puis s'écartent |
 | `orientation` | page introuvable, lien expiré ou invalide | la flèche pivote sur son poteau |
-| `recherche` | aucun candidat, recherche sans résultat | la loupe passe au-dessus des fiches |
-| `brief` | poste à décrire | le dessin apparaît d'un seul tenant |
-| `dossier` | aucune mission, aucun document | le dessin apparaît d'un seul tenant |
+| `recherche` | aucun candidat, recherche sans résultat | la loupe passe au-dessus des fiches, s'y arrête, puis continue |
+| `brief` | poste à décrire | le dessin apparaît d'un seul tenant, puis flotte |
+| `dossier` | aucune mission, aucun document | le dessin apparaît d'un seul tenant, puis flotte |
 
 `brief` et `dossier` n'ont pas de calques qui recomposent le dessin : l'archive ne garde que le crayon du presse-papiers, et la feuille du dossier y est d'une autre échelle.
 
