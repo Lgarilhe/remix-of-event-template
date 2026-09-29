@@ -63,14 +63,12 @@ test('SEQ-006 — check_replies : pipeline « Répondu » borné à l\'organisat
 });
 
 // ---------------------------------------------------------------- SEQ-007
-test('SEQ-007 — check_replies : Notion seulement pour une organisation qui a relié le sien, par URL LinkedIn seule', () => {
-  const gateAt = checkReplies.indexOf('canSyncNotionForOrg(supabase, notionOrgId');
-  const findAt = checkReplies.indexOf('findCandidateInNotionSeq(');
-  assert.notEqual(gateAt, -1, 'synchro Notion non conditionnée à l\'organisation');
-  assert.ok(gateAt < findAt, 'le contrôle d\'organisation doit précéder toute écriture Notion');
-  assert.match(checkReplies, /findCandidateInNotionSeq\('', enrollment\.profile_url\)/, 'plus de recherche par nom');
+// Retrait de Notion, étape 2 (décision 16) : check_replies n'écrit plus rien
+// dans Notion.
+test('SEQ-007 — check_replies : plus aucune écriture Notion', () => {
+  assert.doesNotMatch(checkReplies, /canSyncNotionForOrg|notionOrgId|notionSyncAllowed/);
+  assert.doesNotMatch(checkReplies, /findCandidateInNotionSeq\(|createCandidateAndShortlistInNotion\(|updateNotionPageSeq\(/);
   assert.doesNotMatch(checkReplies, /enrollment\.profile_name \|\| ''/);
-  assert.match(checkReplies, /notionOrgId && enrollment\.profile_url/);
 });
 
 // ---------------------------------------------------------------- SEQ-027

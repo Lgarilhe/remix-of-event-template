@@ -44,7 +44,6 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
-import notionLogo from '@/assets/notion-logo.webp';
 import calendlyLogo from '@/assets/calendly-logo.webp';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
 import aircallLogo from '@/assets/aircall-logo.webp';
@@ -69,19 +68,6 @@ interface IntegrationConfig {
 }
 
 const INTEGRATIONS: IntegrationConfig[] = [
-  // Notion par clé API : retiré, la carte reste visible tant qu'une clé est
-  // enregistrée pour pouvoir la retirer (jusqu'à la suppression des colonnes).
-  {
-    id: 'notion',
-    name: 'Notion',
-    description: 'Synchronisation par clé API retirée. Retirez la clé pour arrêter toute écriture dans vos bases Notion.',
-    logoSrc: notionLogo,
-    connectedKey: 'notion_connected',
-    retired: true,
-    fields: [
-      { key: 'notion_api_key', label: 'Clé API Notion', placeholder: 'ntn_…', secret: true },
-    ],
-  },
   {
     id: 'calendly',
     name: 'Calendly',
@@ -556,7 +542,7 @@ export const IntegrationsSettings = () => {
   // Les colonnes *_connected sont des booléens : les cartes ne les lisent que par !!.
   const values = (integrations ?? EMPTY_VALUES) as unknown as Record<string, string | null>;
 
-  // Only show API-key integrations (Notion, Calendly, Aircall) if already configured
+  // Only show API-key integrations (Calendly, Aircall) if already configured
   const visibleIntegrations = INTEGRATIONS.filter(config => {
     if (config.hostedAuth) return true;
     if (values[config.connectedKey]) return true;

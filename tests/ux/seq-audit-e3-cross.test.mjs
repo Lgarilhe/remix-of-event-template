@@ -165,15 +165,14 @@ test('SEQ-045 — relation directe : invitation sautée « Déjà en relation : 
 });
 
 // ---------------------------------------------------------------- 7. SEQ-007 (E2)
-test('SEQ-007 — Notion : rapprochement par URL LinkedIn exacte seulement, rien sans URL', () => {
-  const find = sliceBetween(sequences, 'async function findCandidateInNotionSeq(', 'async function findShortlistsForCandidateSeq(');
-  assert.doesNotMatch(find, /title: \{ equals/, 'plus de recherche par nom');
-  assert.match(find, /if \(!url\) return null;/);
-  assert.match(find, /\{ property: 'URL Linkedin', url: \{ equals: url \} \}/);
-  const sync = sliceBetween(sequences, 'async function syncNotionStageAfterAction(', 'function extractNotionText(');
-  const guardAt = sync.indexOf('if (!profileUrl || !profileUrl.trim()) {');
-  assert.ok(guardAt > 0 && guardAt < sync.indexOf('findCandidateInNotionSeq('), 'sans URL : ni mise à jour ni création');
-  assert.ok(guardAt < sync.indexOf('createCandidateAndShortlistInNotion('));
+// Retrait de Notion, étape 2 (décision 16) : plus aucune aide Notion dans le
+// moteur, ni rapprochement, ni création de fiche, ni lecture de poste.
+test('SEQ-007 — Notion : plus aucune aide ni appel Notion dans le moteur', () => {
+  for (const fn of ['findCandidateInNotionSeq', 'findShortlistsForCandidateSeq', 'createCandidateAndShortlistInNotion',
+    'syncNotionStageAfterAction', 'extractNotionText', 'extractNotionJob', 'resolveNotionRelations']) {
+    assert.doesNotMatch(sequences, new RegExp(`\\b${fn}\\(`), `${fn} encore présent`);
+  }
+  assert.doesNotMatch(sequences, /api\.notion\.com|NOTION_API_KEY|NOTION_[A-Z]+_DB_ID/);
 });
 
 // ---------------------------------------------------------------- 8. SEQ-097 (E3)

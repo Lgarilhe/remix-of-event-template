@@ -62,9 +62,10 @@ jobs:
       #     seules migrations. Vérifié le 2026-09-07 sur PostgreSQL 16 vierge :
       #     les 266 fichiers de supabase/migrations/ s'appliquent sans erreur et
       #     supabase/tests/rls_two_orgs_audit.sql passe ses deux blocs (10 contrôles généraux, 22 contrôles séquences).
-      #     Une seule table de l'import Lovable n'est créée par aucune migration,
-      #     notion_api_cache ; le rattrapage 20260903074500 la traite désormais
-      #     sous condition d'existence.
+      #     Une seule table de l'import Lovable n'était créée par aucune
+      #     migration, notion_api_cache (prod seulement) : le rattrapage
+      #     20260903074500 puis le retrait de Notion (étape 2) la traitent sous
+      #     condition d'existence, et aucune étape de ce workflow n'en dépend.
       #     Si cette étape casse à nouveau, l'erreur vient d'une migration qui ne
       #     rejoue pas sur une base neuve : reproduire en local avant de toucher
       #     au workflow.

@@ -38,8 +38,9 @@ jobs:
           node-version: 20
       - name: Agent security regression tests
         run: npm run test:agent
-      # Lot C1 : garde-fous statiques des fonctions (secrets Notion de la
-      # plateforme, filtres d'organisation, portail client, rôle Collaborateur).
+      # Lot C1 : garde-fous statiques des fonctions (plus de Notion hors
+      # connexion de l'assistant : API, secrets et colonnes ; filtres
+      # d'organisation, portail client, rôle Collaborateur).
       - name: C1 regression tests (fonctions)
         run: node --test tests/c1/c1-fonctions.test.mjs
       # Refonte mission, lot 0b : écrivains de l'étape candidat (notation,

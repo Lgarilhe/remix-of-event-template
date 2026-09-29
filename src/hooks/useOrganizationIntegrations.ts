@@ -27,7 +27,6 @@ export interface OrganizationIntegrations {
 
 /** Champs secrets saisis par le client — écrits uniquement via la RPC set_integration_secret. */
 const SECRET_FIELDS: readonly string[] = [
-  'notion_api_key', // retrait seulement (carte Notion retirée)
   'calendly_api_key',
   'airtable_api_key',
   'aircall_api_token',

@@ -2,9 +2,9 @@
  * Lot C1, réparations des fuites : garde-fous statiques des fonctions edge.
  *
  * Même forme que tests/agent et tests/ux : lecture du source et assertions sur
- * les motifs, sans navigateur, sans base ni runtime Deno. Couvre R1 (partiel :
- * process-sequences et calendly-webhook reportés ; renforcé par le retrait de
- * Notion hors connexion de l'assistant, 2026-09-28), R2, R3 (points 2 et 3),
+ * les motifs, sans navigateur, sans base ni runtime Deno. Couvre R1 (renforcé
+ * par le retrait de Notion hors connexion de l'assistant, étapes 1 et 2 des
+ * 28 et 29/09), R2, R3 (points 2 et 3),
  * R4 (fonction edge), R8 et R11 (send-team-invitation, e-mail d'invitation de
  * mission).
  *
@@ -58,12 +58,15 @@ const MISSION_EMAIL = 'supabase/functions/_shared/transactional-email-templates/
 // ─── R1 : plus de Notion hors connexion de l'assistant (décision 16) ────────
 //
 // Étape 1 du retrait (2026-09-28) : l'ancienne synchro Notion par clé API sort
-// du code. Restent visés : l'API REST de Notion, les secrets de la plateforme
-// NOTION_API_KEY et NOTION_<BASE>_DB_ID, les colonnes notion_* de
-// organization_integrations, job_candidate_status et qualification_sessions
-// (encore en base jusqu'à l'étape 2). La connexion Notion de l'assistant passe
-// par mcp.notion.com : ses secrets (NOTION_TOKEN_ENCRYPTION_KEY,
-// NOTION_ALLOWED_RETURN_ORIGINS) et ses tables OAuth ne sont pas visés.
+// du code. Étape 2 (2026-09-29) : process-sequences et calendly-webhook suivent,
+// la carte « Notion par clé » quitte les Paramètres, et une migration supprime
+// les colonnes. Visés partout (supabase/functions et src) : l'API REST de
+// Notion, les secrets de la plateforme NOTION_API_KEY et NOTION_<BASE>_DB_ID,
+// les colonnes notion_* de organization_integrations, job_candidate_status et
+// qualification_sessions, la table notion_api_cache. La connexion Notion de
+// l'assistant passe par mcp.notion.com : ses secrets
+// (NOTION_TOKEN_ENCRYPTION_KEY, NOTION_ALLOWED_RETURN_ORIGINS) et ses tables
+// OAuth ne sont pas visés.
 
 const NOTION_REST_API = /api\.notion\.com/;
 const PLATFORM_NOTION_SECRET = /NOTION_(?:API_KEY|[A-Z]+_DB_ID)/;
@@ -78,16 +81,6 @@ const MCP_FILES = new Set([
   'supabase/functions/_shared/notion-oauth-policy.mjs',
   'supabase/functions/_shared/connector-selection.mjs',
 ]);
-// Reportés (DEFERRED) : process-sequences et calendly-webhook, réservés à une
-// autre session qui les réécrit. Neutralisés en production par le retrait des
-// secrets puis des colonnes (étape 2). Retirer chaque exception dès que son
-// code ne lit plus Notion.
-const DEFERRED_DIRS = ['supabase/functions/process-sequences/', 'supabase/functions/calendly-webhook/'];
-const isDeferred = (f) => DEFERRED_DIRS.some((d) => f.startsWith(d));
-// Secrets Notion de la plateforme : seul process-sequences en lit encore.
-// calendly-webhook n'en lit aucun et reste contrôlé.
-const SECRET_DEFERRED_DIRS = ['supabase/functions/process-sequences/'];
-const isSecretDeferred = (f) => SECRET_DEFERRED_DIRS.some((d) => f.startsWith(d));
 
 // Les cinq fonctions de l'ancienne synchro, supprimées le 2026-09-28.
 const REMOVED_NOTION_FUNCTIONS = [
@@ -103,8 +96,8 @@ test("R1 : aucune fonction n'appelle l'API REST de Notion ni ne lit ses secrets 
     .flatMap((f) => {
       const src = read(f);
       return [
-        ...(!isDeferred(f) && NOTION_REST_API.test(src) ? [`${f} : api.notion.com`] : []),
-        ...(!isSecretDeferred(f) && PLATFORM_NOTION_SECRET.test(src) ? [`${f} : ${src.match(PLATFORM_NOTION_SECRET)[0]}`] : []),
+        ...(NOTION_REST_API.test(src) ? [`${f} : api.notion.com`] : []),
+        ...(PLATFORM_NOTION_SECRET.test(src) ? [`${f} : ${src.match(PLATFORM_NOTION_SECRET)[0]}`] : []),
       ];
     });
   assert.deepEqual(offenders, []);
@@ -112,7 +105,6 @@ test("R1 : aucune fonction n'appelle l'API REST de Notion ni ne lit ses secrets 
 
 test("R1 : aucune fonction ne lit ni n'écrit une colonne notion_* de l'ancienne synchro", () => {
   const offenders = listSources('supabase/functions')
-    .filter((f) => !isDeferred(f))
     .flatMap((f) => {
       const src = read(f);
       const legacy = src.match(LEGACY_NOTION_COLUMN);
@@ -124,24 +116,19 @@ test("R1 : aucune fonction ne lit ni n'écrit une colonne notion_* de l'ancienne
   assert.deepEqual(offenders, []);
 });
 
-// Carte Notion retirée des Paramètres › Outils : elle ne lit que
-// notion_connected et l'indice de la clé, et n'écrit que le retrait de la clé,
-// jusqu'à la suppression des colonnes (étape 2).
-const KEY_REMOVAL_FILES = new Set([
-  'src/components/settings/IntegrationsSettings.tsx',
-  'src/hooks/useOrganizationIntegrations.ts',
-]);
-const KEY_REMOVAL_COLUMNS = new Set(['notion_api_key', 'notion_connected']);
-
-test('R1 : le front ne lit ni n\'écrit plus de colonne notion_* de l\'ancienne synchro', () => {
-  // types.ts est généré depuis le schéma : il garde les colonnes jusqu'à l'étape 2.
+test('R1 : le front ne lit ni n\'écrit plus de colonne notion_* de l\'ancienne synchro, ni l\'API ni ses secrets', () => {
+  // types.ts, généré depuis le schéma, suit la migration qui supprime les
+  // colonnes : il a son propre contrôle, avec cette migration.
   const legacyAll = new RegExp(LEGACY_NOTION_COLUMN.source, 'g');
   const offenders = listSources('src')
     .filter((f) => f !== 'src/integrations/supabase/types.ts')
     .flatMap((f) => {
-      const hits = read(f).match(legacyAll) ?? [];
-      const allowed = KEY_REMOVAL_FILES.has(f) ? KEY_REMOVAL_COLUMNS : new Set();
-      return [...new Set(hits.filter((h) => !allowed.has(h)))].map((h) => `${f} : ${h}`);
+      const src = read(f);
+      return [
+        ...[...new Set(src.match(legacyAll) ?? [])],
+        ...(NOTION_REST_API.test(src) ? ['api.notion.com'] : []),
+        ...(PLATFORM_NOTION_SECRET.test(src) ? [src.match(PLATFORM_NOTION_SECRET)[0]] : []),
+      ].map((h) => `${f} : ${h}`);
     });
   assert.deepEqual(offenders, []);
 });
@@ -432,4 +419,87 @@ test('Textes ajoutés : français, sans nom de fournisseur ni tiret long', () =>
   ].map((m) => m[1]);
   assert.ok(texts.length >= 3, 'textes du portail introuvables');
   for (const t of texts) assert.doesNotMatch(t, FORBIDDEN_IN_UI, t);
+});
+
+// ─── R1, étape 2 : la migration supprime les colonnes de l'ancienne synchro ──
+
+const NOTION_STEP2_MIGRATION = readdirSync(join(ROOT, 'supabase/migrations'))
+  .filter((f) => /^\d{14}_retrait_notion_etape2\.sql$/.test(f));
+// SQL sans commentaires : les assertions ne portent que sur les instructions.
+const sqlCode = (sql) => sql.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+// Texte de `start` (inclus) à la première occurrence de `end` qui suit.
+function between(src, start, end) {
+  const from = src.indexOf(start);
+  assert.ok(from >= 0, `repère introuvable : ${start}`);
+  const to = src.indexOf(end, from + start.length);
+  assert.ok(to > from, `repère de fin introuvable : ${end}`);
+  return src.slice(from, to);
+}
+
+test('R1 étape 2 : une seule migration, version unique et postérieure au lot 0b', () => {
+  assert.equal(NOTION_STEP2_MIGRATION.length, 1, 'un seul fichier *_retrait_notion_etape2.sql');
+  const version = NOTION_STEP2_MIGRATION[0].slice(0, 14);
+  assert.ok(version > '20260928235358', 'postérieure à la dernière migration au départ');
+  const same = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.startsWith(`${version}_`));
+  assert.equal(same.length, 1, 'version unique');
+});
+
+test('R1 étape 2 : la migration supprime les colonnes, les index et le cache, sous garde', () => {
+  const sql = sqlCode(read(`supabase/migrations/${NOTION_STEP2_MIGRATION[0]}`));
+  const dropped = {
+    job_candidate_status: ['notion_candidate_id', 'notion_shortlist_id', 'notion_synced_at'],
+    organization_integrations: ['notion_api_key', 'notion_candidats_db_id', 'notion_connected', 'notion_postes_db_id', 'notion_shortlist_db_id'],
+    qualification_sessions: ['notion_candidate_id', 'notion_shortlist_id', 'notion_synced_at'],
+  };
+  for (const [table, columns] of Object.entries(dropped)) {
+    const alter = between(sql, `ALTER TABLE public.${table}\n`, ';');
+    for (const c of columns) assert.match(alter, new RegExp(`DROP COLUMN IF EXISTS ${c}\\b`), `${table}.${c}`);
+  }
+  assert.match(sql, /DROP INDEX IF EXISTS public\.idx_jcs_notion_candidate_id;/);
+  assert.match(sql, /DROP INDEX IF EXISTS public\.idx_jcs_notion_shortlist_id;/);
+  // notion_api_cache n'existe qu'en prod : jamais de DROP sans garde.
+  assert.match(sql, /IF to_regclass\('public\.notion_api_cache'\) IS NOT NULL THEN\s*DROP TABLE public\.notion_api_cache;/);
+  // La vue est recréée avant le retrait des colonnes dont elle dépend.
+  assert.ok(sql.indexOf('CREATE VIEW public.organization_integrations_public') < sql.indexOf('ALTER TABLE public.organization_integrations'));
+});
+
+test('R1 étape 2 : vue et RPC recréées sans Notion, mêmes options et mêmes droits', () => {
+  const sql = sqlCode(read(`supabase/migrations/${NOTION_STEP2_MIGRATION[0]}`));
+  const view = between(sql, 'CREATE VIEW public.organization_integrations_public', ';');
+  assert.match(view, /WITH \(security_barrier = true\) AS/);
+  assert.match(view, /WHERE auth\.uid\(\) IS NOT NULL\s*AND public\.get_org_role\(auth\.uid\(\), oi\.organization_id\) IN \('owner', 'admin'\)/);
+  assert.doesNotMatch(view, /notion/i);
+  for (const hint of ['calendly_api_key_hint', 'airtable_api_key_hint', 'aircall_api_token_hint']) assert.ok(view.includes(hint), hint);
+  assert.match(sql, /DROP VIEW IF EXISTS public\.organization_integrations_public;/);
+  assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE public\.organization_integrations_public FROM PUBLIC, anon, authenticated;/);
+  assert.match(sql, /GRANT SELECT ON TABLE public\.organization_integrations_public TO authenticated, service_role;/);
+  for (const [fn, sig] of [['set_integration_secret', 'uuid, text, text'], ['update_integration_settings', 'uuid, jsonb']]) {
+    const body = between(sql, `CREATE OR REPLACE FUNCTION public.${fn}(`, '$$;');
+    assert.match(body, /SECURITY DEFINER\s*SET search_path = public, pg_temp/, fn);
+    assert.doesNotMatch(body, /notion/i, `${fn} sans champ Notion`);
+    assert.match(body, /RAISE EXCEPTION 'Champ non autorisé[^']*'[^;]*USING ERRCODE = '22023'/, `${fn} refuse un champ inconnu`);
+    assert.ok(sql.includes(`REVOKE EXECUTE ON FUNCTION public.${fn}(${sig}) FROM PUBLIC, anon;`), `${fn} fermée à anon`);
+    assert.ok(sql.includes(`GRANT EXECUTE ON FUNCTION public.${fn}(${sig}) TO authenticated, service_role;`), `${fn} ouverte aux membres`);
+  }
+});
+
+test('R1 étape 2 : la connexion Notion de l\'assistant reste intacte', () => {
+  const sql = sqlCode(read(`supabase/migrations/${NOTION_STEP2_MIGRATION[0]}`));
+  assert.doesNotMatch(sql, /organization_notion_connections|notion_oauth_states|notion_mcp_oauth_clients|claim_notion_token_refresh/);
+  assert.doesNotMatch(sql, /\bCASCADE\b/, 'aucune suppression en cascade');
+  // Seuls objets supprimés : la vue recréée, les deux index, les colonnes et le cache.
+  const drops = [...sql.matchAll(/DROP (TABLE|VIEW|INDEX|FUNCTION|POLICY|TRIGGER)(?: IF EXISTS)? ([\w.]+)/g)].map((m) => `${m[1]} ${m[2]}`).sort();
+  assert.deepEqual(drops, [
+    'INDEX public.idx_jcs_notion_candidate_id',
+    'INDEX public.idx_jcs_notion_shortlist_id',
+    'TABLE public.notion_api_cache',
+    'VIEW public.organization_integrations_public',
+  ]);
+});
+
+test('R1 étape 2 : types.ts ne décrit plus les colonnes ni le cache retirés', () => {
+  const types = read('src/integrations/supabase/types.ts');
+  const legacyAll = new RegExp(LEGACY_NOTION_COLUMN.source, 'g');
+  assert.deepEqual([...new Set(types.match(legacyAll) ?? [])], []);
+  assert.ok(types.includes('organization_integrations_public: {'), 'la vue reste typée');
 });

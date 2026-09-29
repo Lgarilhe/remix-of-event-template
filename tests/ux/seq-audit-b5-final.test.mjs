@@ -63,10 +63,12 @@ test('D4 — Calendly : organisation du rendez-vous unique parmi les organisatio
   assert.match(lookup, /candidateMatch = orgMatches\[0\] \?\? null;/);
 });
 
-test('D4 — Calendly : Notion de l’organisation identifiée, pas de l’organisation active du recruteur', () => {
-  const notion = sliceBetween(calendly, '// Try to update Notion', 'if (notionKey && CANDIDATS_DATABASE_ID');
-  assert.doesNotMatch(notion, /active_organization_id/);
-  assert.match(notion, /\.eq\('organization_id', candidateOrgId\)/);
+// Retrait de Notion, étape 2 (décision 16) : le rendez-vous n'écrit plus rien
+// dans Notion, ni ne lit la configuration Notion de l'organisation.
+test('D4 — Calendly : plus aucune écriture Notion', () => {
+  assert.doesNotMatch(calendly, /\/\/ Try to update Notion|notionKey|api\.notion\.com/);
+  assert.doesNotMatch(calendly, /notion_(api_key|connected|candidats_db_id|shortlist_db_id|candidate_id|shortlist_id)/);
+  assert.doesNotMatch(calendly, /active_organization_id/);
 });
 
 // ------------------------------------------------------- points 2 et 3 (D1)

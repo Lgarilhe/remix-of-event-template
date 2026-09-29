@@ -8,9 +8,10 @@
  *     au démarrage ;
  *   - Équipe : ni missions assignées, ni badges, ni cartes de chiffres ;
  *   - signatures sans « par défaut », tableau de bord sans WhatsApp ;
- *   - Calendly, Aircall et Notion par clé API retirés du menu d'ajout (la
- *     connexion Notion de l'assistant reste dans Connexions), proxy montré
- *     seulement s'il existe, extension masquée sans jeton actif ;
+ *   - Calendly et Aircall retirés du menu d'ajout, carte Notion par clé
+ *     supprimée avec ses colonnes (retrait de Notion, étape 2 ; la connexion
+ *     Notion de l'assistant reste dans Connexions), proxy montré seulement
+ *     s'il existe, extension masquée sans jeton actif ;
  *   - identifiant de l'organisation retiré de Général ; texte des politiques
  *     qui renvoie au journal de l’assistant.
  *
@@ -131,15 +132,17 @@ test('L3-9 — tableau de bord sans WhatsApp', () => {
 });
 
 // ---------------------------------------------------------------- 10. Intégrations
-test('L3-10 — Calendly, Aircall et Notion par clé retirés du menu, proxy seulement s’il existe', () => {
+test('L3-10 — Calendly et Aircall retirés du menu, plus de carte Notion par clé, proxy seulement s’il existe', () => {
   const integrations = read('src/components/settings/IntegrationsSettings.tsx');
-  for (const id of ['notion', 'calendly', 'aircall']) {
+  for (const id of ['calendly', 'aircall']) {
     assert.match(between(integrations, `id: '${id}'`, '\n  },'), /retired: true/, `${id} doit être retiré du menu d’ajout`);
   }
-  // Retrait de Notion (2026-09-28) : la carte par clé API ne sert plus qu'à
-  // retirer une clé encore enregistrée (plus d'identifiants de bases), la
-  // connexion Notion de l'assistant reste montée dans Connexions.
-  assert.doesNotMatch(between(integrations, "id: 'notion'", '\n  },'), /_db_id/, 'plus d’identifiants de bases Notion');
+  // Retrait de Notion, étape 2 : la carte par clé API a disparu avec ses
+  // colonnes (plus de clé à retirer), la connexion Notion de l'assistant reste
+  // montée dans Connexions.
+  assert.ok(!integrations.includes("id: 'notion'"), 'plus de carte Notion par clé');
+  assert.doesNotMatch(integrations, /notion_api_key|notion_connected|_db_id|notionLogo/, 'plus de champ Notion par clé');
+  assert.doesNotMatch(read('src/hooks/useOrganizationIntegrations.ts'), /notion_api_key/, 'plus de secret Notion à écrire');
   const connections = between(read('src/components/settings/shell/sections.tsx'), 'function ConnectionsSection()', '\n}\n');
   assert.ok(connections.includes('<SettingsAnchor id="notion"><NotionConnectionCard /></SettingsAnchor>'), 'la carte Notion de l’assistant doit rester dans Connexions');
   assert.ok(integrations.includes('!config.retired'));

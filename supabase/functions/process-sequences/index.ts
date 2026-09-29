@@ -70,7 +70,6 @@ const ENV_UNIPILE_API_KEY = Deno.env.get('UNIPILE_API_KEY');
 const ENV_UNIPILE_DSN_RAW = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
 const ENV_UNIPILE_DSN = `https://${ENV_UNIPILE_DSN_RAW}`;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
-const NOTION_API_KEY = Deno.env.get('NOTION_API_KEY');
 
 // Statuts d'exécution non terminaux : une étape dans un de ces états est
 // « en cours » et ne doit pas être re-planifiée.
@@ -100,7 +99,7 @@ const MEMBER_ACTIONS = new Set([
   'skip_execution', 'nudge_sequences', 'resume_enrollments', 're_enroll', 'mark_replied',
 ]);
 
-// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+// Timeout wrapper for all external fetch calls (Unipile, Anthropic)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -754,39 +753,6 @@ async function recoverEnrollmentEmail(supabase: any, enrollment: Record<string, 
     console.warn(`[process] Recherche d'adresse e-mail échouée pour ${enrollment.id} (non bloquant):`, e);
     return null;
   }
-}
-
-/**
- * SEQ-007 : la synchro Notion après envoi (syncNotionStageAfterAction) écrit
- * avec la clé NOTION_API_KEY et les bases NOTION_*_DB_ID de la plateforme. Elle
- * n'est permise que pour une organisation qui a relié Notion
- * (notion_connected) avec EXACTEMENT cette clé et ces bases : ses données vont
- * dans son propre Notion. Toute autre organisation est ignorée (jamais de repli
- * sur la configuration de la plateforme). Cache par cycle.
- */
-// deno-lint-ignore no-explicit-any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
-async function canSyncNotionForOrg(supabase: any, orgId: string, cache: Map<string, boolean>): Promise<boolean> {
-  const cached = cache.get(orgId);
-  if (cached !== undefined) return cached;
-  let allowed = false;
-  const envKey = Deno.env.get('NOTION_API_KEY');
-  const envCandidatsDb = Deno.env.get('NOTION_CANDIDATS_DB_ID');
-  const envShortlistDb = Deno.env.get('NOTION_SHORTLIST_DB_ID');
-  if (envKey && envCandidatsDb && envShortlistDb) {
-    const { data, error } = await supabase
-      .from('organization_integrations')
-      .select('notion_connected, notion_api_key, notion_candidats_db_id, notion_shortlist_db_id')
-      .eq('organization_id', orgId)
-      .maybeSingle();
-    if (error) console.warn(`[notion-sync] configuration Notion illisible pour org=${orgId}, synchro ignorée:`, error);
-    allowed = !error && !!data?.notion_connected
-      && data.notion_api_key === envKey
-      && data.notion_candidats_db_id === envCandidatsDb
-      && data.notion_shortlist_db_id === envShortlistDb;
-  }
-  cache.set(orgId, allowed);
-  return allowed;
 }
 
 // Raisons de pause qu'une reprise par séquence peut viser (contrat §2).
@@ -1662,8 +1628,6 @@ async function handleProcess(supabase: any, force = false) {
     const subscriptionGates = new Map<string, SubscriptionGate | null>();
     // Rattachement (organisation, compte d'envoi), lu une fois par cycle (SEQ-010).
     const senderAccountCache = new Map<string, boolean>();
-    // Organisations dont la synchro Notion écrit bien dans LEUR Notion (SEQ-007).
-    const notionSyncAllowed = new Map<string, boolean>();
     const getSubscriptionGateFor = async (orgId: string): Promise<SubscriptionGate | null> => {
       if (!subscriptionGates.has(orgId)) {
         try {
@@ -3155,16 +3119,6 @@ async function handleProcess(supabase: any, force = false) {
           if (effectiveActionType !== 'check_connection') await scheduleNextStep(supabase, enrollment, step.step_order, undefined, undefined, 0, step.id);
           results.processed++;
           if (!INVISIBLE_ACTIONS.has(effectiveActionType)) visibleActionsExecuted++;
-          
-          // Sync Notion stage (fire-and-forget, non-blocking)
-          // SEQ-007 : syncNotionStageAfterAction écrit avec la clé et les bases
-          // Notion de la plateforme. Elle ne tourne donc que pour une
-          // organisation qui a relié SON Notion et dont la configuration est
-          // exactement celle-là : jamais les candidats d'une autre organisation
-          // dans le Notion interne.
-          if (enrollmentOrgId && await canSyncNotionForOrg(supabase, enrollmentOrgId, notionSyncAllowed)) {
-            syncNotionStageAfterAction(step.action_type, enrollment).catch(err => console.warn('[notion-sync] Fire-and-forget error:', err));
-          }
         } else {
           // For email steps, sequence-send-email may have already updated the execution status.
           // Re-fetch to avoid overwriting a more specific status (e.g. 'bounced').
@@ -3531,7 +3485,6 @@ async function handleCheckReplies(supabase: any) {
   let notChecked = 0;
   // Toute inscription examinée, même écartée, passe en fin de rotation.
   const examinedIds: string[] = [];
-  const notionSyncAllowed = new Map<string, boolean>();
   const enrollments = activeEnrollments || [];
 
   for (const enrollment of enrollments) {
@@ -3623,32 +3576,6 @@ async function handleCheckReplies(supabase: any) {
     // SEQ-006 : pipeline « Répondu » borné à l'organisation de l'inscription
     // (échec fermé si elle est inconnue) et à sa mission.
     await markCandidateRepliedInPipeline(supabase, enrollment);
-
-    // SEQ-007 : synchro Notion seulement pour une organisation qui a relié SON
-    // Notion avec cette configuration (jamais le Notion interne alimenté par
-    // une autre organisation), et par l'URL LinkedIn seule (la recherche par
-    // nom mettait à jour la fiche d'un homonyme).
-    const notionOrgId = (enrollment.organization_id || enrollment.sequence?.organization_id || null) as string | null;
-    if (notionOrgId && enrollment.profile_url && hasTimeLeft(deadline, Date.now(), MIN_REMAINING_FOR_PROVIDER_CHECK_MS)
-      && await canSyncNotionForOrg(supabase, notionOrgId, notionSyncAllowed)) {
-      try {
-        let candidateId = await findCandidateInNotionSeq('', enrollment.profile_url);
-        if (!candidateId) {
-          // Create candidate + shortlist if not found
-          candidateId = await createCandidateAndShortlistInNotion(enrollment, { etape: 'Qualification', etat: 'A répondu' });
-        }
-        if (candidateId) {
-          await updateNotionPageSeq(candidateId, { 'Etat': { select: { name: 'A répondu' } } });
-          const shortlistIds = await findShortlistsForCandidateSeq(candidateId);
-          for (const slId of shortlistIds) {
-            await updateNotionPageSeq(slId, { 'Etape': { select: { name: 'Qualification' } } });
-          }
-          console.log(`[checkReplies] Notion synced: Etat→"A répondu", Etape→"Qualification" (${shortlistIds.length} shortlists)`);
-        }
-      } catch (notionErr) {
-        console.warn('[checkReplies] Notion sync failed (non-blocking):', notionErr);
-      }
-    }
 
     console.log(`[checkReplies] Reply detected for enrollment ${enrollment.id} (after ${afterDate})`);
   }
@@ -6345,262 +6272,6 @@ async function logAnalytics(supabase: any, sequenceId: string, field: string) {
   } catch (e) { console.error('Analytics error:', e); }
 }
 
-// ============ NOTION CANDIDATE/SHORTLIST SYNC ============
-
-const CANDIDATS_DATABASE_ID = Deno.env.get("NOTION_CANDIDATS_DB_ID")!;
-const SHORTLIST_DATABASE_ID_SEQ = Deno.env.get("NOTION_SHORTLIST_DB_ID")!;
-
-// Action → Notion stage mapping
-const ACTION_TO_NOTION_STAGE: Record<string, { etape: string; etat: string }> = {
-  connection_request: { etape: 'Pressenti', etat: 'Message à envoyer' },
-  message:            { etape: 'Contacté', etat: 'En attente de réponse' },
-  smart_message:      { etape: 'Contacté', etat: 'En attente de réponse' },
-  inmail:             { etape: 'Contacté', etat: 'En attente de réponse' },
-};
-
-async function notionQuerySeq(databaseId: string, filter: Record<string, unknown>) {
-  if (!NOTION_API_KEY) return null;
-  const response = await fetchWithTimeout(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filter, page_size: 100 }),
-  });
-  if (!response.ok) return null;
-  return response.json();
-}
-
-async function updateNotionPageSeq(pageId: string, properties: Record<string, unknown>) {
-  if (!NOTION_API_KEY) return false;
-  const response = await fetchWithTimeout(`https://api.notion.com/v1/pages/${pageId}`, {
-    method: 'PATCH',
-    headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ properties }),
-  });
-  if (!response.ok) console.error('[notion-sync] Update error:', await response.text().catch(() => ''));
-  return response.ok;
-}
-
-// SEQ-007 : rapprochement par URL LinkedIn exacte uniquement. La recherche
-// par nom seul désignait la fiche d'un homonyme, qui était alors mise à jour.
-// Le nom reste en paramètre pour les appelants existants, il n'est plus lu.
-async function findCandidateInNotionSeq(_name: string, linkedinUrl?: string): Promise<string | null> {
-  const url = (linkedinUrl || '').trim();
-  if (!url) return null;
-  const r = await notionQuerySeq(CANDIDATS_DATABASE_ID, { property: 'URL Linkedin', url: { equals: url } });
-  return r?.results?.[0]?.id ?? null;
-}
-
-async function findShortlistsForCandidateSeq(candidateId: string): Promise<string[]> {
-  const r = await notionQuerySeq(SHORTLIST_DATABASE_ID_SEQ, { property: 'Candidats', relation: { contains: candidateId } });
-  return (r?.results || []).map((p: { id: string }) => p.id);
-}
-
-async function createNotionPageSeq(databaseId: string, properties: Record<string, unknown>): Promise<string | null> {
-  if (!NOTION_API_KEY) return null;
-  const response = await fetchWithTimeout('https://api.notion.com/v1/pages', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ parent: { database_id: databaseId }, properties }),
-  });
-  if (!response.ok) {
-    console.error('[notion-sync] Create page error:', await response.text().catch(() => ''));
-    return null;
-  }
-  const data = await response.json();
-  return data.id;
-}
-
-async function createCandidateAndShortlistInNotion(
-  enrollment: Record<string, unknown>,
-  mapping: { etape: string; etat: string }
-): Promise<string | null> {
-  const profileName = enrollment.profile_name as string;
-  const profileUrl = enrollment.profile_url as string | undefined;
-  const profileHeadline = enrollment.profile_headline as string | undefined;
-  const jobId = enrollment.job_id as string | undefined;
-  const jobTitle = enrollment.job_title as string | undefined;
-
-  // Create Candidat
-  const candidatProps: Record<string, unknown> = {
-    'Nom': { title: [{ text: { content: profileName } }] },
-    'Entité': { select: { name: 'Konekt' } },
-    'Etape': { status: { name: mapping.etape === 'Pressenti' ? 'Pressenti' : 'Contacté' } },
-    'Etat': { select: { name: mapping.etat } },
-  };
-  if (profileUrl) {
-    candidatProps['URL Linkedin'] = { url: profileUrl };
-    candidatProps['Lien source'] = { url: profileUrl };
-  }
-  if (profileHeadline) {
-    candidatProps['Titre du poste'] = { rich_text: [{ text: { content: profileHeadline } }] };
-  }
-  if (jobId) {
-    candidatProps['💼 Postes'] = { relation: [{ id: jobId }] };
-  }
-
-  const candidateId = await createNotionPageSeq(CANDIDATS_DATABASE_ID, candidatProps);
-  if (!candidateId) {
-    console.error('[notion-sync] Failed to create candidate in Notion');
-    return null;
-  }
-  console.log(`[notion-sync] Created candidate in Notion: ${profileName} → ${candidateId}`);
-
-  // Create Shortlist
-  const shortlistTitle = jobTitle ? `${profileName} X ${jobTitle}` : profileName;
-  const shortlistProps: Record<string, unknown> = {
-    'Nom': { title: [{ text: { content: shortlistTitle } }] },
-    'Candidats': { relation: [{ id: candidateId }] },
-    'Etape': { select: { name: mapping.etape } },
-    'Entité': { select: { name: 'Konekt' } },
-  };
-  if (jobId) {
-    shortlistProps['💼 Postes'] = { relation: [{ id: jobId }] };
-  }
-
-  const shortlistId = await createNotionPageSeq(SHORTLIST_DATABASE_ID_SEQ, shortlistProps);
-  console.log(`[notion-sync] Created shortlist in Notion: ${shortlistTitle} → ${shortlistId}`);
-
-  return candidateId;
-}
-
-async function syncNotionStageAfterAction(actionType: string, enrollment: Record<string, unknown>) {
-  const mapping = ACTION_TO_NOTION_STAGE[actionType];
-  if (!mapping || !NOTION_API_KEY) return;
-  
-  try {
-    const profileName = enrollment.profile_name as string;
-    const profileUrl = enrollment.profile_url as string | undefined;
-    // SEQ-007 : sans URL LinkedIn, aucune fiche n'est rapprochée (le nom seul
-    // visait un homonyme) ni créée (une fiche en double à chaque action).
-    if (!profileUrl || !profileUrl.trim()) {
-      console.log(`[notion-sync] ${profileName || String(enrollment.id)} : pas d'URL LinkedIn, synchro Notion ignorée`);
-      return;
-    }
-
-    let candidateId = await findCandidateInNotionSeq(profileName, profileUrl);
-    
-    if (!candidateId) {
-      console.log(`[notion-sync] Candidate not found in Notion, creating: ${profileName}`);
-      candidateId = await createCandidateAndShortlistInNotion(enrollment, mapping);
-      if (!candidateId) return;
-      // Already created with correct etape/etat, done
-      return;
-    }
-
-    // Update Candidat "Etat"
-    await updateNotionPageSeq(candidateId, { 'Etat': { select: { name: mapping.etat } } });
-    
-    // Update all Shortlist "Etape"
-    const shortlistIds = await findShortlistsForCandidateSeq(candidateId);
-    if (shortlistIds.length === 0 && (enrollment.job_id || enrollment.job_title)) {
-      // Candidate exists but no shortlist — create one
-      const jobId = enrollment.job_id as string | undefined;
-      const jobTitle = enrollment.job_title as string | undefined;
-      const shortlistTitle = jobTitle ? `${profileName} X ${jobTitle}` : profileName;
-      const shortlistProps: Record<string, unknown> = {
-        'Nom': { title: [{ text: { content: shortlistTitle } }] },
-        'Candidats': { relation: [{ id: candidateId }] },
-        'Etape': { select: { name: mapping.etape } },
-        'Entité': { select: { name: 'Konekt' } },
-      };
-      if (jobId) {
-        shortlistProps['💼 Postes'] = { relation: [{ id: jobId }] };
-      }
-      const slId = await createNotionPageSeq(SHORTLIST_DATABASE_ID_SEQ, shortlistProps);
-      console.log(`[notion-sync] Created missing shortlist: ${shortlistTitle} → ${slId}`);
-    } else {
-      for (const slId of shortlistIds) {
-        await updateNotionPageSeq(slId, { 'Etape': { select: { name: mapping.etape } } });
-      }
-    }
-    
-    console.log(`[notion-sync] ${profileName}: Etat→"${mapping.etat}", Etape→"${mapping.etape}" (${shortlistIds.length} shortlists)`);
-  } catch (err) {
-    console.error('[notion-sync] Error:', err instanceof Error ? err.message : err);
-  }
-}
-
-// ============ NOTION HELPERS ============
-
-function extractNotionText(prop: unknown): string {
-  if (!prop || typeof prop !== 'object') return '';
-  const p = prop as Record<string, unknown>;
-  if (p.type === 'title' || p.type === 'rich_text') {
-    const arr = (p[p.type as string] || []) as Array<{ plain_text?: string }>;
-    return arr.map(t => t.plain_text || '').join('');
-  }
-  if (p.type === 'select' && p.select && typeof p.select === 'object') {
-    return (p.select as Record<string, unknown>).name as string || '';
-  }
-  if (p.type === 'multi_select' && Array.isArray(p.multi_select)) {
-    return (p.multi_select as Array<{ name: string }>).map(s => s.name).join(', ');
-  }
-  if (p.type === 'number') return p.number != null ? String(p.number) : '';
-  if (p.type === 'relation' && Array.isArray(p.relation)) {
-    // Store relation IDs as comma-separated for later resolution
-    return (p.relation as Array<{ id: string }>).map(r => r.id).filter(Boolean).join(',');
-  }
-  if (p.type === 'rollup' && p.rollup && typeof p.rollup === 'object') {
-    const rollup = p.rollup as Record<string, unknown>;
-    if (rollup.type === 'array' && Array.isArray(rollup.array)) {
-      return (rollup.array as Array<Record<string, unknown>>).map(item => {
-        if (item.type === 'title' || item.type === 'rich_text') {
-          const arr = (item[item.type as string] || []) as Array<{ plain_text?: string }>;
-          return arr.map(t => t.plain_text || '').join('');
-        }
-        return '';
-      }).filter(Boolean).join(', ');
-    }
-  }
-  return '';
-}
-
-// Resolve Notion relation IDs to page titles
-async function resolveNotionRelations(data: Record<string, string>, keys: string[]): Promise<void> {
-  if (!NOTION_API_KEY) return;
-  for (const key of keys) {
-    const val = data[key];
-    if (!val || !val.match(/^[a-f0-9-]{36}(,[a-f0-9-]{36})*$/i)) continue;
-    const ids = val.split(',');
-    const titles: string[] = [];
-    for (const id of ids.slice(0, 3)) {
-      try {
-        const res = await fetchWithTimeout(`https://api.notion.com/v1/pages/${id}`, {
-          headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' },
-        });
-        if (res.ok) {
-          const page = await res.json();
-          const props = (page.properties || {}) as Record<string, unknown>;
-          for (const prop of Object.values(props)) {
-            const p = prop as Record<string, unknown>;
-            if (p.type === 'title') {
-              const arr = (p.title || []) as Array<{ plain_text?: string }>;
-              const title = arr.map(t => t.plain_text || '').join('');
-              if (title) { titles.push(title); break; }
-            }
-          }
-        }
-      } catch { /* ignore */ }
-    }
-    if (titles.length > 0) {
-      data[key] = titles.join(', ');
-    } else {
-      // Resolution failed — clear the raw UUID so it doesn't leak into messages
-      delete data[key];
-    }
-  }
-}
-
-function extractNotionJob(pageData: Record<string, unknown>): Record<string, string> {
-  const props = (pageData.properties || {}) as Record<string, unknown>;
-  const result: Record<string, string> = {};
-  for (const [key, val] of Object.entries(props)) {
-    const text = extractNotionText(val);
-    if (text) result[key] = text;
-  }
-  return result;
-}
-
 // ============ POSTS FETCHER ============
 
 async function fetchRecentPostsForSequence(
@@ -6724,10 +6395,9 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
     })();
 
     // Fetch job context from sourcing_projects.job_details (universal, not tied to any specific ATS)
-    // Falls back to Notion API if job_details is empty and NOTION_API_KEY is configured (legacy)
     let jobNotionData: Record<string, string> = {};
     let jobBodyContent = '';
-    let jobAccompagnement: string[] = [];
+    const jobAccompagnement: string[] = [];
     let calendlyLink = '';
     // Mission lue une fois : contexte du poste, client, lien de rendez-vous et
     // configuration d'approche (outreach_config).
@@ -6790,28 +6460,6 @@ async function generatePersonalizedMessage(supabase: any, enrollment: Record<str
           calendlyLink = params.toString()
             ? `${baseCalendly}${baseCalendly.includes('?') ? '&' : '?'}${params.toString()}`
             : baseCalendly;
-        }
-
-        // Legacy fallback: if job_details is empty, try Notion API (for existing users with Notion integration)
-        if (!jd && NOTION_API_KEY) {
-          try {
-            const [pageRes, blocksRes] = await Promise.all([
-              fetchWithTimeout(`https://api.notion.com/v1/pages/${enrollment.job_id}`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
-              fetchWithTimeout(`https://api.notion.com/v1/blocks/${enrollment.job_id}/children?page_size=50`, { headers: { 'Authorization': `Bearer ${NOTION_API_KEY}`, 'Notion-Version': '2022-06-28' } }),
-            ]);
-            if (pageRes.ok) {
-              jobNotionData = extractNotionJob(await pageRes.json());
-              await resolveNotionRelations(jobNotionData, ['Client', 'Entreprise', 'Company', 'Société']);
-            }
-            if (blocksRes.ok) {
-              const blocks = ((await blocksRes.json()).results || []) as any[];
-              // deno-lint-ignore no-explicit-any
-              jobBodyContent = blocks.map((b: any) => { const rt = b[b.type]?.rich_text || b[b.type]?.text; return Array.isArray(rt) ? rt.map((t: any) => t.plain_text || '').join('') : ''; }).filter(Boolean).join('\n').slice(0, 800);
-            }
-            const accomp = jobNotionData['Accompagnement'] || jobNotionData['Type accompagnement'] || '';
-            if (accomp) jobAccompagnement = accomp.split(',').map(s => s.trim()).filter(Boolean);
-            console.log(`[generatePersonalizedMessage] Legacy fallback: Notion job data loaded`);
-          } catch { /* Notion unavailable, continue without */ }
         }
       } catch { /* ignore */ }
     }

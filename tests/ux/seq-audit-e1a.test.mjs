@@ -150,12 +150,12 @@ test('SEQ-006 — réponse avant envoi : job_candidate_status borné à l\'organ
 });
 
 // ---------------------------------------------------------------- SEQ-007
-test('SEQ-007 — la synchro Notion après envoi ne sert que l\'organisation propriétaire de la configuration', () => {
-  assert.match(loop, /if \(enrollmentOrgId && await canSyncNotionForOrg\(supabase, enrollmentOrgId, notionSyncAllowed\)\) \{\s*syncNotionStageAfterAction\(/);
-  const gate = sliceBetween(engine, 'async function canSyncNotionForOrg', '// Raisons de pause qu');
-  assert.match(gate, /notion_connected/);
-  assert.match(gate, /data\.notion_api_key === envKey/);
-  assert.match(gate, /\.eq\('organization_id', orgId\)/);
+// Retrait de Notion, étape 2 (décision 16) : plus aucune synchro Notion après
+// envoi, ni contrôle de configuration Notion de l'organisation.
+test('SEQ-007 — plus de synchro Notion après envoi', () => {
+  assert.doesNotMatch(loop, /canSyncNotionForOrg|syncNotionStageAfterAction|notionSyncAllowed/);
+  assert.doesNotMatch(engine, /async function canSyncNotionForOrg|async function syncNotionStageAfterAction/);
+  assert.doesNotMatch(engine, /notion_connected|notion_api_key/);
 });
 
 // ---------------------------------------------------------------- SEQ-010
