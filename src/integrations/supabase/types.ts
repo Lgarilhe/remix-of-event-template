@@ -6348,6 +6348,47 @@ export type Database = {
       }
     }
     Views: {
+      mission_candidate_rows: {
+        Row: {
+          candidate_headline: string | null
+          candidate_id: string | null
+          candidate_name: string | null
+          contacted_at: string | null
+          created_at: string | null
+          created_by: string | null
+          decision_source: string | null
+          first_interview_at: string | null
+          general_stage: string | null
+          group_ids: string[] | null
+          group_size: number | null
+          hired_at: string | null
+          id: string | null
+          is_unopened: boolean | null
+          job_id: string | null
+          linkedin_profile_data: Json | null
+          linkedin_profile_url: string | null
+          mission_kind: string | null
+          mission_name: string | null
+          organization_id: string | null
+          pipeline_stage: string | null
+          presented_at: string | null
+          process_step_id: string | null
+          project_id: string | null
+          recommendation: string | null
+          rejected_at: string | null
+          rejected_from_stage: string | null
+          replied_at: string | null
+          reply_summary: string | null
+          score: number | null
+          scoring_details: Json | null
+          skip_reason: string | null
+          stage_entered_at: string | null
+          status: string | null
+          tags: string[] | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
       organization_integrations_public: {
         Row: {
           aircall_api_id: string | null
@@ -6574,6 +6615,30 @@ export type Database = {
         }[]
       }
       get_marketplace_partner_state: { Args: never; Returns: Json }
+      get_mission_stage_counts: {
+        Args: { p_project_ids: string[] }
+        Returns: {
+          contacted: number
+          ever_contacted: number
+          ever_hired: number
+          ever_interviewed: number
+          ever_presented: number
+          ever_replied: number
+          ever_retained: number
+          hired: number
+          interviewing: number
+          interviewing_by_step: Json
+          last_stage_move_at: string
+          project_id: string
+          rejected: number
+          replied: number
+          retained: number
+          scored: number
+          to_sort: number
+          triaged_by_user: number
+          unopened: number
+        }[]
+      }
       get_mission_team_profiles: {
         Args: { p_project_id: string }
         Returns: Json[]
@@ -7044,6 +7109,20 @@ export type Database = {
           similarity: number
         }[]
       }
+      rgpd_purge_candidate_rows: {
+        Args: {
+          p_dry_run?: boolean
+          p_inactive_before: string
+          p_limit?: number
+          p_rejected_before: string
+        }
+        Returns: {
+          candidate_id: string
+          organization_id: string
+          reason: string
+          row_id: string
+        }[]
+      }
       retrieve_context_multi: {
         Args: {
           p_chunk_types?: string[]
@@ -7177,6 +7256,7 @@ export type Database = {
         Returns: string
       }
       unaccent: { Args: { "": string }; Returns: string }
+      undo_candidate_stages: { Args: { p_moves: Json }; Returns: Json }
       validate_marketplace_partner: {
         Args: { p_organization_id: string }
         Returns: Json

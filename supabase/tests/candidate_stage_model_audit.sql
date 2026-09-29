@@ -10,11 +10,14 @@
 --  * M : correspondance pure candidate_stage_from_legacy, aller-retour ;
 --  * T : déclencheur de transition sur des écritures directes réalistes ;
 --  * F : set_candidate_stage (paramètres, événements, IA, couple hérité) ;
---  * St : compteurs de mission (clé project_id + organisation, définitions
---    sur status) ;
+--  * St : compteurs de mission (clé project_id + organisation ; depuis le
+--    lot 0c, définitions de get_mission_stage_counts sur l'étape générale,
+--    cumuls « au total ») ;
 --  * B : reprise jcs_stage_backfill (jalons exacts ou NULL, updated_at intact,
 --    aucun appel HTTP d'indexation), puis seconde application de la
---    migration sur ces données (rien de réécrit, aucun appel HTTP) ;
+--    migration sur ces données, en chaîne avec celle du lot 0c
+--    (20260929112827 : aucune ligne candidat réécrite, aucun appel HTTP
+--    d'indexation des lignes candidat) ;
 --  * R : replace_process_steps (l'étape suit, la date reste).
 -- Aucune fonction n'est appelée sous SET ROLE authenticated sans que son
 -- droit ait été vérifié par has_function_privilege (plantage de l'image
@@ -103,18 +106,28 @@ LANGUAGE sql IMMUTABLE AS $$
               ELSE format('[%s : %s, attendu %s] ', p_label, coalesce(p_got::text, 'NULL'), coalesce(p_want::text, 'NULL')) END
 $$;
 
--- Appels HTTP de l'audit en file d'attente de pg_net (NULL si pg_net manque).
--- Les clés d'appel posées au bloc B visent cette adresse, jamais servie ; seules
--- ces lignes, non validées, sont comptées (le démon ne vide que les validées).
-CREATE FUNCTION pg_temp.csm_http() RETURNS integer
+-- Appels HTTP d'indexation des lignes candidat en file d'attente de pg_net
+-- (NULL si pg_net manque). Les clés d'appel posées au bloc B visent cette
+-- adresse, jamais servie ; seules ces lignes, non validées, sont comptées (le
+-- démon ne vide que les validées). Lot 0c : seuls les appels de la table
+-- p_table sont comptés (champ « table » du corps) ; depuis le lot 0c, les
+-- compteurs de mission suivent aussi l'étape, et leur mise à jour indexe la
+-- mission (sourcing_projects), hors du sujet des contrôles B8 et B12.
+CREATE FUNCTION pg_temp.csm_http(p_table text DEFAULT 'job_candidate_status') RETURNS integer
 LANGUAGE plpgsql AS $$
 DECLARE
   n integer;
+  v_body text;
 BEGIN
   IF to_regclass('net.http_request_queue') IS NULL THEN
     RETURN NULL;
   END IF;
-  EXECUTE 'SELECT count(*) FROM net.http_request_queue WHERE url LIKE ''http://127.0.0.1:9/csm-audit/%''' INTO n;
+  SELECT CASE format_type(a.atttypid, NULL) WHEN 'bytea' THEN 'convert_from(body, ''UTF8'')' ELSE 'body::text' END
+    INTO v_body
+    FROM pg_attribute a
+   WHERE a.attrelid = 'net.http_request_queue'::regclass AND a.attname = 'body' AND NOT a.attisdropped;
+  EXECUTE format('SELECT count(*) FROM net.http_request_queue WHERE url LIKE %L AND (%s)::jsonb ->> ''table'' = %L',
+                 'http://127.0.0.1:9/csm-audit/%', coalesce(v_body, 'NULL::text'), p_table) INTO n;
   RETURN n;
 END $$;
 
@@ -281,6 +294,7 @@ BEGIN
            AND has_function_privilege('authenticated', sig_map, 'EXECUTE')
            AND has_function_privilege('authenticated', sig_rps, 'EXECUTE')
            AND has_function_privilege('authenticated', 'public.get_project_stats(uuid)', 'EXECUTE')
+           AND has_function_privilege('authenticated', 'public.get_mission_stage_counts(uuid[])', 'EXECUTE')
            AND has_table_privilege('authenticated', 'public.mission_process_steps', 'UPDATE')
            AND has_table_privilege('authenticated', 'public.job_candidate_status', 'SELECT')
            AND has_table_privilege('authenticated', 'public.job_candidate_status', 'UPDATE');
@@ -695,19 +709,22 @@ BEGIN
   PERFORM pg_temp.csm_row(p4, 'St-5', 'replied');
   id_c := pg_temp.csm_row(p4, 'St-6', 'dismissed', NULL, 30, 'skip');
   PERFORM pg_temp.csm_row(p4, 'St-7', 'shortlisted');
-  -- St1. Définitions sur status : 7 lignes, 3 notées, 2 contactées, 1 écartée, 1 retenue.
+  -- St1. Définitions du lot 0c (get_mission_stage_counts) : 7 lignes (Sourcés),
+  --      3 notées, 2 contactées au total (St-4 par son jalon, St-5 par son
+  --      étape), 1 écartée, 3 retenues au total (St-4, St-5, St-7).
   SELECT ARRAY[stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted] INTO st_before
     FROM public.sourcing_projects WHERE id = p4;
-  failures := failures || pg_temp.csm_eq('St1 compteurs de P4', st_before::text, '{7,3,2,1,1}');
-  -- St4. Égaux à get_project_stats, appelée en membre (avant St2 : elle ne filtre pas l'organisation).
+  failures := failures || pg_temp.csm_eq('St1 compteurs de P4', st_before::text, '{7,3,2,1,3}');
+  -- St4. Égaux à get_mission_stage_counts, appelée en membre (source unique des compteurs).
   IF v_auth_ok THEN
     PERFORM pg_temp.csm_as(u_a);
     SET LOCAL ROLE authenticated;
-    SELECT ARRAY[g.total, g.scored, g.messaged, g.dismissed, g.shortlisted]::int[]::text INTO got
-      FROM public.get_project_stats(p4) g;
+    SELECT ARRAY[g.unopened + g.to_sort + g.retained + g.contacted + g.replied + g.interviewing + g.hired + g.rejected,
+                 g.scored, g.ever_contacted, g.rejected, g.ever_retained]::text INTO got
+      FROM public.get_mission_stage_counts(ARRAY[p4]) g;
     RESET ROLE;
     PERFORM pg_temp.csm_as(NULL);
-    failures := failures || pg_temp.csm_eq('St4 get_project_stats', got, st_before::text);
+    failures := failures || pg_temp.csm_eq('St4 get_mission_stage_counts', got, st_before::text);
   END IF;
   -- St2. Une ligne de O2 rattachée à P4 ne change pas ses chiffres.
   INSERT INTO public.job_candidate_status (candidate_id, job_id, project_id, organization_id, created_by, status, score)
@@ -720,7 +737,7 @@ BEGIN
   UPDATE public.job_candidate_status SET project_id = p2, job_id = 'project:' || p2 WHERE id = id_c;
   SELECT ARRAY[stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted] INTO st_after
     FROM public.sourcing_projects WHERE id = p4;
-  failures := failures || pg_temp.csm_eq('St3 P4', st_after::text, '{6,2,2,0,1}');
+  failures := failures || pg_temp.csm_eq('St3 P4', st_after::text, '{6,2,2,0,3}');
   SELECT ARRAY[stats_total_found - st_before[1], stats_dismissed - st_before[2]] INTO st_after
     FROM public.sourcing_projects WHERE id = p2;
   failures := failures || pg_temp.csm_eq('St3 P2', st_after::text, '{1,1}');
@@ -912,15 +929,27 @@ BEGIN
 END $$;
 
 -- ===== B12. Seconde application de la migration, sur les données de l'audit =====
--- Comme au déploiement : aucune ligne candidat ni mission réécrite (ctid) et
--- aucun appel HTTP (clés d'appel posées au bloc B). Toutes les lignes ont une
--- étape (NOT NULL) : la reprise ne prend rien.
+-- Comme au déploiement : aucune ligne candidat réécrite (ctid) et aucun appel
+-- HTTP d'indexation des lignes candidat (clés d'appel posées au bloc B).
+-- Toutes les lignes ont une étape (NOT NULL) : la reprise ne prend rien.
+-- Lot 0c : la migration 0a remet l'ancien recompute_mission_stats (sur
+-- status) et son recalcul complet ; elle est donc rejouée en chaîne avec
+-- celle du lot 0c, qui remet les définitions en vigueur. Contrôle des
+-- missions : mêmes compteurs avant et après la chaîne, et définitions du
+-- lot 0c en place. Ni ctid ni updated_at des missions : le recalcul du 0a,
+-- rejoué déclencheurs actifs, les réécrit volontairement (et, dans la
+-- transaction de l'audit, updated_at vaut déjà now()). Le recalcul du 0c
+-- sans updated_at ni indexation est contrôlé par le bloc B de
+-- candidate_stage_readers_audit.sql, missions datées dans le passé.
 CREATE TEMP TABLE csm_replay ON COMMIT DROP AS
-SELECT 'jcs' AS t, id, ctid::text AS ct FROM public.job_candidate_status
-UNION ALL SELECT 'sp', id, ctid::text FROM public.sourcing_projects;
+SELECT 'jcs' AS t, id, ctid::text AS ct FROM public.job_candidate_status;
+CREATE TEMP TABLE csm_replay_sp ON COMMIT DROP AS
+SELECT id, ARRAY[stats_total_found, stats_scored, stats_messaged, stats_dismissed, stats_shortlisted] AS st
+  FROM public.sourcing_projects;
 CREATE TEMP TABLE csm_replay_http ON COMMIT DROP AS SELECT pg_temp.csm_http() AS n;
 SET LOCAL client_min_messages = warning;
 \ir ../migrations/20260928201409_refonte_mission_lot0a_modele_etapes.sql
+\ir ../migrations/20260929112827_refonte_mission_lot0c_lectures.sql
 SET LOCAL client_min_messages = notice;
 DO $$
 DECLARE
@@ -928,12 +957,17 @@ DECLARE
   failures text := '';
 BEGIN
   SELECT count(*) INTO n FROM csm_replay r
-   WHERE r.ct IS DISTINCT FROM CASE r.t
-           WHEN 'jcs' THEN (SELECT j.ctid::text FROM public.job_candidate_status j WHERE j.id = r.id)
-           ELSE (SELECT p.ctid::text FROM public.sourcing_projects p WHERE p.id = r.id) END;
-  failures := pg_temp.csm_eq('B12 lignes réécrites par la seconde application', n, 0)
-    || pg_temp.csm_eq('B12 appels HTTP pendant la seconde application',
+   WHERE r.ct IS DISTINCT FROM (SELECT j.ctid::text FROM public.job_candidate_status j WHERE j.id = r.id);
+  failures := pg_temp.csm_eq('B12 lignes candidat réécrites par la seconde application', n, 0)
+    || pg_temp.csm_eq('B12 appels HTTP (lignes candidat) pendant la seconde application',
                       pg_temp.csm_http() - (SELECT h.n FROM csm_replay_http h), 0);
+  SELECT count(*) INTO n FROM csm_replay_sp r
+    JOIN public.sourcing_projects p ON p.id = r.id
+   WHERE r.st IS DISTINCT FROM ARRAY[p.stats_total_found, p.stats_scored, p.stats_messaged, p.stats_dismissed, p.stats_shortlisted];
+  failures := failures || pg_temp.csm_eq('B12 missions aux compteurs changés', n, 0);
+  IF position('get_mission_stage_counts' IN pg_get_functiondef('public.recompute_mission_stats(uuid[])'::regprocedure)) = 0 THEN
+    failures := failures || '[B12 recompute_mission_stats n''est plus celle du lot 0c] ';
+  END IF;
   IF failures <> '' THEN
     RAISE EXCEPTION 'candidate_stage_model_audit : %', failures;
   END IF;
