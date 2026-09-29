@@ -77,69 +77,20 @@ export const CardActions: React.FC<CardActionsProps> = ({
 
   return (
     <div className={`flex items-center ${compact ? 'gap-1' : 'gap-1.5'}`}>
-      {/* ═══ PRIMARY CTA — Score IA (gradient violet/indigo inspiré 21st.dev) ═══
-          Bouton CTA dédié à l'action AI scoring. Gradient indigo→violet→fuchsia
-          + shadow halo coloré + shine sweep au hover + sparkle pulse. Reste
-          compact (h-7/h-8) pour s'intégrer dans le rang d'actions. */}
+      {/* Action principale : noter le profil sur les critères du poste. */}
       {showScore && (
-        <button
+        <Button
+          variant="primary"
+          size={compact ? 'xs' : 'sm'}
           onClick={onScoreProfile}
-          disabled={isScoring}
-          title={isScoring ? 'Analyse IA en cours…' : `Scorer pour ${selectedJob?.title}`}
+          loading={isScoring}
+          title={isScoring ? 'Notation en cours' : `Noter pour ${selectedJob?.title}`}
           aria-busy={isScoring}
-          className={`group relative inline-flex items-center justify-center gap-1.5 overflow-hidden rounded-md font-bold uppercase tracking-wider text-white transition-all duration-200 ${
-            compact ? 'h-7 px-2.5 text-[11px]' : 'h-8 px-3.5 text-xs'
-          } ${isScoring ? 'cursor-wait' : 'cursor-pointer'}`}
-          style={{
-            backgroundImage: 'linear-gradient(110deg, #4f46e5 0%, #7c3aed 50%, #c026d3 100%)',
-            boxShadow: isScoring
-              ? '0 0 0 2px rgba(124, 58, 237, 0.35), 0 4px 18px 0 rgba(124, 58, 237, 0.55)'
-              : '0 4px 14px 0 rgba(124, 58, 237, 0.4)',
-          }}
-          onMouseEnter={(e) => {
-            if (isScoring) return;
-            e.currentTarget.style.boxShadow = '0 6px 22px 0 rgba(124, 58, 237, 0.6)';
-            e.currentTarget.style.transform = 'translateY(-1px) scale(1.02)';
-          }}
-          onMouseLeave={(e) => {
-            if (isScoring) return;
-            e.currentTarget.style.boxShadow = '0 4px 14px 0 rgba(124, 58, 237, 0.4)';
-            e.currentTarget.style.transform = '';
-          }}
+          className="shrink-0"
         >
-          {/* Loading state : shimmer continu (pas seulement au hover) + ring
-              + label "ANALYSE…". Donne 3 signaux visuels au lieu d'un simple
-              spinner perdu sur le gradient. */}
-          {isScoring && (
-            <span
-              aria-hidden
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_1.4s_ease-in-out_infinite]"
-            />
-          )}
-          {/* Shine sweep au hover (état idle uniquement) */}
-          {!isScoring && (
-            <span
-              aria-hidden
-              className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
-            />
-          )}
-          {/* Subtle inner highlight (top edge) */}
-          <span
-            aria-hidden
-            className="absolute inset-x-0 top-0 h-px bg-white/30"
-          />
-          {isScoring ? (
-            <>
-              <Loader2 className={`relative ${iconSize} animate-spin`} aria-hidden="true" />
-              <span className="relative">Analyse…</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className={`relative ${iconSize} group-hover:animate-pulse`} aria-hidden="true" />
-              <span className="relative">SCORE</span>
-            </>
-          )}
-        </button>
+          {!isScoring && <Sparkles aria-hidden="true" />}
+          {isScoring ? 'Notation…' : 'Noter'}
+        </Button>
       )}
 
       {showSequenceCTA && (
@@ -162,7 +113,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
           variant="outline"
           size="sm"
           onClick={onOpenMessage}
-          className="h-8 px-2.5 text-xs gap-1.5 bg-muted border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all font-medium"
+          className="shrink-0"
           title="Composer un message d'approche"
         >
           <PenLine className={iconSize} aria-hidden="true" />

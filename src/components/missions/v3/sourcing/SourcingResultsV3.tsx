@@ -9,7 +9,7 @@
 // Pas de date de recherche ni de tri un par un (lot 4), pas d'« Annuler » dans
 // les messages (annulation non branchée), pas de raisons d'écart au choix.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, ChevronRight, Loader2, Mail, Maximize2, Search, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,20 @@ import {
 /** Nombre de profils notés d'un clic (même lot que « Scorer les 20 premiers »). */
 const SCORE_BATCH = 20;
 const SCORING_FLOOR = ACTION_COSTS.scoring?.floor ?? 2;
+
+/**
+ * Affichages des profils à trier : « Tri » (une ligne de décision, la maquette),
+ * « Liste » (tableau dense de l'ancienne recherche : années d'expérience,
+ * postes, formation, compétences) et « Détaillé » (une fiche par profil). Le
+ * choix est gardé par SearchResultsPanel, dans la même clé que l'ancienne
+ * recherche ; la Liste reste l'affichage par défaut.
+ */
+export type SourcingView = 'triage' | 'compact' | 'detailed';
+const VIEW_OPTIONS: ReadonlyArray<{ value: SourcingView; label: string }> = [
+  { value: 'triage', label: 'Tri' },
+  { value: 'compact', label: 'Liste' },
+  { value: 'detailed', label: 'Détaillé' },
+];
 
 const STAGE_PILL: Record<GeneralStage, string> = {
   to_sort: 'bg-muted/50 text-muted-foreground',
@@ -113,6 +127,13 @@ export interface SourcingResultsV3Props {
   onOrderChange?: (profiles: LinkedInProfile[]) => void;
   onOpenInMail: () => void;
   onSequenceEnrollSuccess: () => void;
+  /** Affichage des profils à trier et son changement (choix gardé par SearchResultsPanel). */
+  view?: SourcingView;
+  onViewChange?: (view: SourcingView) => void;
+  /** Tableau dense des profils à trier (affichage « Liste ») ; fourni par SearchResultsPanel. */
+  renderCompact?: (args: { profiles: LinkedInProfile[]; allSelected: boolean; onToggleSelectAll: () => void }) => ReactNode;
+  /** Fiche d'un profil (affichage « Détaillé ») ; fournie par SearchResultsPanel. */
+  renderCard?: (profile: LinkedInProfile, index: number) => ReactNode;
 }
 
 export function SourcingResultsV3(props: SourcingResultsV3Props) {
@@ -121,7 +142,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
     selectedProfiles, jobScores, scoringInProgress, canBatchScore, treatedCandidates, selectedAccount,
     activeProject, chipsDirty, refineLoading, scrollAreaRef, onRerun, onLoadMore, onRefineSearch, onSetSelection,
     onToggleProfileSelection, onBatchScore, onRetainProfiles, onDismissProfiles, onRestoreCandidate, onOpenProfile,
-    onOrderChange, onOpenInMail, onSequenceEnrollSuccess,
+    onOrderChange, onOpenInMail, onSequenceEnrollSuccess, renderCompact, renderCard, view = 'compact', onViewChange,
   } = props;
 
   const [tab, setTab] = useState<SourcingGroup>('to_sort');
@@ -318,6 +339,11 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
   const allToSortSelected = toSort.length > 0 && selectedRows.length === toSort.length;
   const someToSortSelected = selectedRows.length > 0 && !allToSortSelected;
   const activeTabId = `sourcing-onglet-${tab}`;
+  // Les affichages riches ne concernent que les profils à trier ; Retenus et
+  // Écartés gardent leur tableau (étape, « Remettre à trier »).
+  const richAvailable = !!renderCompact && !!renderCard && tab === 'to_sort';
+  const richCompact = richAvailable && view === 'compact';
+  const richDetailed = richAvailable && view === 'detailed';
 
   return (
     <div className="flex min-h-[420px] w-full min-w-0 flex-col lg:h-full lg:min-h-0">
@@ -344,10 +370,28 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}
           </button>
         ) : null}
+        {renderCompact && renderCard && onViewChange && (
+          <div role="group" aria-label="Affichage des profils à trier" className="ml-auto flex shrink-0 rounded-lg border border-border bg-card p-0.5">
+            {VIEW_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={view === option.value}
+                onClick={() => onViewChange(option.value)}
+                className={cn(
+                  'flex h-7 items-center rounded-md px-2.5 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  view === option.value ? 'bg-muted font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div
           role="tablist"
           aria-label="Groupes de résultats"
-          className="ml-auto flex shrink-0 rounded-lg border border-border bg-card p-0.5"
+          className={cn('flex shrink-0 rounded-lg border border-border bg-card p-0.5', !(renderCompact && renderCard && onViewChange) && 'ml-auto')}
         >
           {SOURCING_GROUPS.map((group) => {
             const selected = group === tab;
@@ -380,14 +424,16 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
         {/* Rangée C : actions du groupe. */}
         {tab === 'to_sort' && !confirmAi && (
           <div role="toolbar" aria-label="Actions sur les profils à trier" className="mt-2.5 flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1.5 pl-2">
-            <Checkbox
-              ref={selectAllRef}
-              checked={allToSortSelected ? true : someToSortSelected ? 'indeterminate' : false}
-              disabled={toSort.length === 0}
-              onCheckedChange={(value) => onSetSelection(value === true ? toSort.map((row) => row.profile.id) : [])}
-              aria-label="Tout sélectionner"
-              className="mr-1.5"
-            />
+            {!richCompact && (
+              <Checkbox
+                ref={selectAllRef}
+                checked={allToSortSelected ? true : someToSortSelected ? 'indeterminate' : false}
+                disabled={toSort.length === 0}
+                onCheckedChange={(value) => onSetSelection(value === true ? toSort.map((row) => row.profile.id) : [])}
+                aria-label="Tout sélectionner"
+                className="mr-1.5"
+              />
+            )}
             {selectedJob && canBatchScore && (scoringInProgress ? (
               <Button variant="outline" size="sm" disabled className="h-8 gap-2 text-[13px] font-normal">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -468,6 +514,19 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
         )}
 
         <div ref={scrollAreaRef} className="relative mt-2.5 min-h-0 flex-1 lg:overflow-y-auto">
+          {richCompact && renderCompact && toSort.length > 0 && renderCompact({
+            profiles: toSort.map((row) => row.profile),
+            allSelected: allToSortSelected,
+            onToggleSelectAll: () => onSetSelection(allToSortSelected ? [] : toSort.map((row) => row.profile.id)),
+          })}
+          {richDetailed && renderCard && (
+            <div className="space-y-3">
+              {toSort.map((row, index) => (
+                <div key={row.profile.id}>{renderCard(row.profile, index)}</div>
+              ))}
+            </div>
+          )}
+          {!richCompact && !richDetailed && (
           <table className="w-full table-fixed border-collapse text-left">
             <thead>
               <tr className="h-[30px] border-b border-border text-xs text-muted-foreground">
@@ -604,6 +663,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
               ))}
             </tbody>
           </table>
+          )}
           {loadingMore && <span role="status" className="sr-only">Chargement de la suite</span>}
 
           {groups[tab].length === 0 && (

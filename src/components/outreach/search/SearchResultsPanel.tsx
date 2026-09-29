@@ -33,7 +33,7 @@ import {
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelPicker } from '@/components/ai/ModelPicker';
-import { SourcingResultsV3 } from '@/components/missions/v3/sourcing/SourcingResultsV3';
+import { SourcingResultsV3, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
 import { sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
 
 interface SearchResultsPanelProps {
@@ -253,6 +253,21 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   const setViewMode = useCallback((mode: ViewMode) => {
     setViewModeState(mode);
     try { localStorage.setItem('konekt_search_view_mode', mode); } catch { /* noop */ }
+  }, []);
+
+  // Nouvelle page mission : affichage des profils à trier (Tri, Liste, Détaillé),
+  // dans la clé de l'ancienne recherche ; la Liste reste le défaut.
+  const [v3View, setV3ViewState] = useState<SourcingView>(() => {
+    try {
+      const stored = localStorage.getItem('konekt_search_view_mode');
+      return stored === 'triage' || stored === 'detailed' ? stored : 'compact';
+    } catch {
+      return 'compact';
+    }
+  });
+  const setV3View = useCallback((next: SourcingView) => {
+    setV3ViewState(next);
+    try { localStorage.setItem('konekt_search_view_mode', next); } catch { /* noop */ }
   }, []);
 
   const [enriching, setEnriching] = useState(false);
@@ -501,6 +516,58 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           onOrderChange={setV3Order}
           onOpenInMail={() => onSetShowBulkInMailModal(true)}
           onSequenceEnrollSuccess={onSequenceEnrollSuccess}
+          view={v3View}
+          onViewChange={setV3View}
+          renderCompact={({ profiles, allSelected, onToggleSelectAll }) => (
+            <CompactResultsTable
+              profiles={profiles}
+              selectedJob={selectedJob}
+              jobScores={jobScores}
+              selectedProfiles={selectedProfiles}
+              treatedCandidates={treatedCandidates}
+              onToggleSelect={onToggleProfileSelection}
+              onToggleSelectAll={onToggleSelectAll}
+              allSelected={allSelected}
+              onOpenDetail={openProfileDetail}
+              onArchive={selectedJob ? (profile) => { void onDismissProfiles([profile]); } : undefined}
+              storageKey={selectedJob?.id || 'no-job'}
+            />
+          )}
+          renderCard={(profile) => (
+            <LinkedInResultCard
+              profile={profile}
+              selectedJob={selectedJob}
+              isSelected={selectedProfiles.has(profile.id)}
+              isBatchScoring={scoringInProgress}
+              viewMode="detailed"
+              onToggleSelect={() => onToggleProfileSelection(profile.id)}
+              jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
+                profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',
+                match_score: treatedCandidates.get(profile.id)!.score!,
+                matching_skills: [],
+                missing_skills: [],
+                experience_match: 'incertain' as const,
+                location_match: false,
+                summary: '',
+                recommendation: (treatedCandidates.get(profile.id)!.recommendation || 'maybe') as 'go' | 'maybe' | 'skip',
+              } : undefined)}
+              onScoreProfile={() => onScoreProfile(profile)}
+              accountId={selectedAccount || undefined}
+              onMessageSent={onMessageSent}
+              activeProject={activeProject}
+              onProfileTreated={() => onProfileTreated(profile.id)}
+              onArchive={selectedJob ? () => { void onDismissProfiles([profile]); } : undefined}
+              candidateStatus={treatedCandidates.get(profile.id) ? {
+                status: treatedCandidates.get(profile.id)!.status,
+                score: treatedCandidates.get(profile.id)!.score,
+                recommendation: treatedCandidates.get(profile.id)!.recommendation,
+                updated_at: treatedCandidates.get(profile.id)!.updated_at,
+              } : null}
+              enrollmentInfo={projectEnrollments.get(profile.id) || null}
+              airtableMatch={getAirtableMatch(getCanonicalProfileUrl(profile))}
+              onOpenDetail={() => openProfileDetail(profile)}
+            />
+          )}
         />
       ) : (<>
       {/* HEADER: count clarifié + Pool toggle. Affiché uniquement quand il
