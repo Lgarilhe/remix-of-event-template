@@ -1,7 +1,9 @@
 // Refonte mission, lot 2 : vue « Par étape » (kanban) de la nouvelle page
-// mission. Colonnes par étape générale : À trier, Retenu, Contacté, A répondu,
-// une par étape d'entretien (ou En entretien), Embauché, puis Écarté à part.
-// « Étape à choisir » seulement si besoin, sans dépôt (la base exige une étape).
+// mission. Colonnes Retenus, Contactés, A répondu, une par étape d'entretien
+// (ou En entretien), Embauché. Ni À trier (le tri reste dans la section À trier
+// de la liste), ni Écartés (derrière la puce Écartés) : la colonne Écarté
+// n'apparaît que pendant un glisser, comme zone de dépôt. « Étape à choisir »
+// seulement si besoin, sans dépôt (la base exige une étape).
 //
 // Glisser une carte = geste d'étape sur la ligne entière (group_ids), par
 // useMissionStageActions. La carte ne change de colonne qu'après l'écriture ;
@@ -28,18 +30,19 @@ import {
   type DragStartEvent,
   type ScreenReaderInstructions,
 } from '@dnd-kit/core';
-import { Clock, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { MissionStageCounts } from '@/hooks/useMissionStageCounts';
 import { useKnownStagesVersion, useMissionBoardRows } from '@/hooks/useMissionCandidateRows';
 import type { StageTarget } from '@/lib/candidateStage';
 import { plural } from '@/lib/plural';
-import { GENERAL_STAGE_LABEL, MISSION_STEP_MISSING_LABEL, isStale, stageAgeDays } from '@/lib/stageDisplay';
+import { GENERAL_STAGE_LABEL, MISSION_STEP_MISSING_LABEL } from '@/lib/stageDisplay';
 import { cn } from '@/lib/utils';
 import {
   NO_STEP,
   moveOptions,
+  provisionalNextAction,
   type MissionCandidateRow,
   type MissionStageActions,
   type MissionStepRef,
@@ -74,19 +77,13 @@ interface BoardColumn {
   label: string;
   /** Cible d'un dépôt ; null : colonne sans dépôt. */
   target: StageTarget | null;
-  dot: string;
 }
 
-const DOT: Record<string, string> = {
-  to_sort: 'bg-muted-foreground/50',
-  retained: 'bg-brand',
-  contacted: 'bg-info',
-  replied: 'bg-info',
-  interviewing: 'bg-brand',
-  hired: 'bg-success',
-  rejected: 'bg-danger',
-  missing: 'bg-warning',
-};
+/** Libellés des colonnes générales, au pluriel comme les puces de la barre d'étapes. */
+const COLUMN_LABEL: Record<string, string> = { retained: 'Retenus', contacted: 'Contactés' };
+
+/** Étapes sans colonne : À trier (section de la liste) et Écarté (zone de dépôt pendant un glisser). */
+const HIDDEN_STAGES = new Set(['to_sort', 'rejected']);
 
 export interface BoardPassRate {
   percent: number;
@@ -136,14 +133,6 @@ export function boardColumnOf(
   return stepIds.size > 0 ? `interviewing:${NO_STEP}` : 'interviewing';
 }
 
-function daysText(row: MissionCandidateRow, now: number): string | null {
-  const days = stageAgeDays(
-    { stage_entered_at: row.stageEnteredAt, updated_at: row.updatedAt, created_at: row.createdAt },
-    now,
-  );
-  return days === null ? null : `Dans cette étape depuis ${days} j`;
-}
-
 const BoardCard = memo(function BoardCard({
   row,
   now,
@@ -155,36 +144,23 @@ const BoardCard = memo(function BoardCard({
   active?: boolean;
   overlay?: boolean;
 }) {
-  const since = daysText(row, now);
-  const stale = isStale(
-    {
-      general_stage: row.stage,
-      process_step_id: row.processStepId,
-      stage_entered_at: row.stageEnteredAt,
-      updated_at: row.updatedAt,
-      created_at: row.createdAt,
-    },
-    now,
-  );
+  const next = provisionalNextAction(row, now);
   return (
     <div
       className={cn(
-        'rounded-lg border bg-card p-2.5 text-left transition-shadow duration-150 ease-out',
+        'flex flex-col gap-0.5 rounded-lg border bg-muted p-2.5 text-left text-[13px] transition-colors duration-150 ease-out',
         active ? 'border-brand ring-1 ring-brand' : 'border-border hover:border-border-strong',
         overlay && 'cursor-grabbing shadow-lg',
       )}
     >
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{candidateName(row)}</p>
-          {row.headline && <p className="truncate text-xs text-muted-foreground">{row.headline}</p>}
-        </div>
+      <div className="flex items-baseline justify-between gap-1.5">
+        <p className="min-w-0 truncate font-medium text-foreground">{candidateName(row)}</p>
         <ScorePill score={row.score} title={row.recommendation} />
       </div>
-      {since && (
-        <p className={cn('mt-1.5 inline-flex items-center gap-1 text-2xs', stale ? 'font-medium text-warning' : 'text-muted-foreground')}>
-          <Clock className="h-3 w-3" aria-hidden="true" />
-          {since}
+      {next.text && (
+        <p className={cn('truncate text-xs', next.stale ? 'text-warning' : 'text-muted-foreground')}>
+          {next.text}
+          {next.stale && <span className="sr-only">, sans mouvement</span>}
         </p>
       )}
     </div>
@@ -260,28 +236,29 @@ function Column({
       ref={setNodeRef}
       aria-label={`${column.label}, ${plural(rows.length, 'candidat')}`}
       className={cn(
-        'flex max-h-[calc(100dvh-300px)] min-h-[320px] w-[260px] shrink-0 flex-col rounded-xl bg-muted/30 transition-colors duration-150',
-        aside && 'ml-2',
+        'flex max-h-[calc(100dvh-300px)] min-h-[120px] w-[190px] shrink-0 flex-col gap-2 rounded-[10px] bg-card p-2.5 transition-colors duration-150',
+        aside && 'ml-2 border border-dashed border-border-strong',
         isOver && 'bg-muted/60 ring-1 ring-inset ring-brand/50',
       )}
     >
-      <header className="flex h-9 shrink-0 items-center gap-1.5 px-3">
-        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', column.dot)} aria-hidden="true" />
-        <h3 className="truncate text-xs font-semibold text-foreground">{column.label}</h3>
-        <span className="text-xs tabular-nums text-muted-foreground">{rows.length.toLocaleString('fr-FR')}</span>
+      <header className="shrink-0">
+        <div className="flex items-baseline justify-between gap-2 text-[12.5px] text-muted-foreground">
+          <h3 className="truncate font-semibold">{column.label}</h3>
+          <span className="tabular-nums">{rows.length.toLocaleString('fr-FR')}</span>
+        </div>
+        {rate && (
+          <p className="truncate text-2xs text-muted-foreground" title={rate.detail}>
+            <span aria-hidden="true">{rate.text}</span>
+            <span className="sr-only">{`Taux de passage : ${rate.percent} %. ${rate.detail}`}</span>
+          </p>
+        )}
       </header>
-      {rate && (
-        <p className="-mt-1 truncate px-3 pb-1.5 text-2xs text-muted-foreground" title={rate.detail}>
-          <span aria-hidden="true">{rate.text}</span>
-          <span className="sr-only">{`Taux de passage : ${rate.percent} %. ${rate.detail}`}</span>
-        </p>
-      )}
-      <div className="flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-1.5 pb-1.5">
+      <div className="-mx-1 flex-1 space-y-2 overflow-y-auto overscroll-contain px-1">
         {rows.map((row) => (
           <DraggableCard key={row.id} row={row} now={now} active={row.id === activeRowId} canDrag={canDrag} onOpen={onOpen} />
         ))}
         {rows.length === 0 && (
-          <p className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
+          <p className="rounded-lg border border-dashed border-border py-4 text-center text-xs text-muted-foreground">
             {isOver ? 'Déposer ici' : 'Aucun candidat'}
           </p>
         )}
@@ -350,28 +327,21 @@ export function MissionBoard({
   const { columns, rejected } = useMemo(() => {
     const options = moveOptions(steps);
     const main: BoardColumn[] = options
-      .filter((o) => o.target.stage !== 'rejected')
-      .map((o) => ({
-        key: o.key,
-        label: o.label,
-        target: o.target,
-        dot: DOT[o.target.stage] ?? DOT.interviewing,
-      }));
+      .filter((o) => !HIDDEN_STAGES.has(o.target.stage))
+      .map((o) => ({ key: o.key, label: COLUMN_LABEL[o.key] ?? o.label, target: o.target }));
     const missingKey = `interviewing:${NO_STEP}`;
     if (steps.length > 0 && (byColumn.get(missingKey)?.length ?? 0) > 0) {
       const at = main.findIndex((c) => c.key === 'replied') + 1;
-      main.splice(at, 0, { key: missingKey, label: MISSION_STEP_MISSING_LABEL, target: null, dot: DOT.missing });
+      main.splice(at, 0, { key: missingKey, label: MISSION_STEP_MISSING_LABEL, target: null });
     }
     return {
       columns: main,
-      rejected: { key: 'rejected', label: GENERAL_STAGE_LABEL.rejected, target: { stage: 'rejected' as const }, dot: DOT.rejected },
+      rejected: { key: 'rejected', label: GENERAL_STAGE_LABEL.rejected, target: { stage: 'rejected' as const } },
     };
   }, [steps, byColumn]);
 
-  const ordered = useMemo(
-    () => [...columns, rejected].flatMap((c) => byColumn.get(c.key) ?? []),
-    [columns, rejected, byColumn],
-  );
+  // Cartes affichées, dans l'ordre des colonnes (flèches de la fiche).
+  const ordered = useMemo(() => columns.flatMap((c) => byColumn.get(c.key) ?? []), [columns, byColumn]);
   const rates = useMemo(() => boardPassRates(counts, steps), [counts, steps]);
   // Publié seulement quand la liste des lignes change (jamais sur une simple
   // nouvelle référence) : pas de rendu en boucle avec l'écran parent.
@@ -431,9 +401,9 @@ export function MissionBoard({
 
   if (query.isLoading || stepsLoading) {
     return (
-      <div className="flex gap-2 overflow-x-auto pb-2" aria-busy="true" aria-label="Chargement du tableau par étape">
+      <div className="flex gap-3 overflow-x-auto pb-2" aria-busy="true" aria-label="Chargement du tableau par étape">
         {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-[320px] w-[260px] shrink-0 rounded-xl" />
+          <Skeleton key={i} className="h-[160px] w-[190px] shrink-0 rounded-[10px]" />
         ))}
       </div>
     );
@@ -456,7 +426,7 @@ export function MissionBoard({
         onDragEnd={(e) => void onDragEnd(e)}
         onDragCancel={() => setDragged(null)}
       >
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        <div className="flex items-start gap-3 overflow-x-auto pb-2">
           {columns.map((column) => (
             <Column
               key={column.key}
@@ -469,15 +439,10 @@ export function MissionBoard({
               rate={rates.get(column.key)}
             />
           ))}
-          <Column
-            column={rejected}
-            rows={byColumn.get(rejected.key) ?? []}
-            now={now}
-            activeRowId={activeRowId}
-            canDrag={canDrag}
-            onOpen={open}
-            aside
-          />
+          {/* Écarté : zone de dépôt seulement pendant un glisser, sans ses cartes. */}
+          {dragged !== null && (
+            <Column column={rejected} rows={[]} now={now} activeRowId={activeRowId} canDrag={canDrag} onOpen={open} aside />
+          )}
         </div>
         <DragOverlay dropAnimation={null}>{dragged ? <BoardCard row={dragged} now={now} overlay /> : null}</DragOverlay>
       </DndContext>

@@ -12,6 +12,7 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { useKnownStagesVersion, useMissionCandidateRows } from '@/hooks/useMissionCandidateRows';
 import {
   PIPELINE_PAGE_SIZE,
@@ -26,17 +27,26 @@ import { applyKnownStages, arrangeFrozen, frozenOrderKey, resetFrozenOrder, type
 
 const NO_ROWS: ArrangedRows<MissionCandidateRow> = { rows: [], outOfFilter: new Set(), orderDiffers: false };
 
-/** Largeurs (px) : case 40, note 56, étape 160, prochaine action 240, depuis 64 ; nom 180 au moins. */
-const FIXED_WIDTH = 40 + 56;
+/**
+ * Largeurs (px, grille de la maquette 2,2fr / 1fr / 1,6fr / 56 / 44 à 1 440 px) :
+ * case 40, note 48, étape 192, prochaine action 304, depuis 56 ; nom 180 au moins.
+ */
+const FIXED_WIDTH = 40 + 48;
 const NAME_MIN = 180;
+const STAGE_WIDTH = 192;
+const NEXT_WIDTH = 304;
+const SINCE_WIDTH = 56;
 
 /** Colonnes affichables dans `width` px de tableau. */
 export function listColumnsFor(width: number): CandidateListColumns {
-  const stage = width >= FIXED_WIDTH + NAME_MIN + 160;
-  const next = stage && width >= FIXED_WIDTH + NAME_MIN + 160 + 240;
-  const since = next && width >= FIXED_WIDTH + NAME_MIN + 160 + 240 + 64;
+  const stage = width >= FIXED_WIDTH + NAME_MIN + STAGE_WIDTH;
+  const next = stage && width >= FIXED_WIDTH + NAME_MIN + STAGE_WIDTH + NEXT_WIDTH;
+  const since = next && width >= FIXED_WIDTH + NAME_MIN + STAGE_WIDTH + NEXT_WIDTH + SINCE_WIDTH;
   return { stage, next, since };
 }
+
+/** Section À trier : ni étape, ni prochaine action, ni ancienneté. */
+const COMPACT_COLUMNS: CandidateListColumns = { stage: false, next: false, since: false };
 
 function sameColumns(a: CandidateListColumns, b: CandidateListColumns): boolean {
   return a.stage === b.stage && a.next === b.next && a.since === b.since;
@@ -121,6 +131,8 @@ interface CandidateListProps {
   now: number;
   /** Nom du tableau (lecteurs d'écran). */
   caption: string;
+  /** compact : section À trier, sans cadre ni en-tête visible, colonnes réduites au nom et à la note. */
+  variant?: 'default' | 'compact';
   testId?: string;
   isLoading: boolean;
   hasNextPage: boolean;
@@ -133,35 +145,35 @@ interface CandidateListProps {
   onOpen: (rowId: string) => void;
 }
 
-function LoadingRows({ columns }: { columns: CandidateListColumns }) {
+function LoadingRows({ columns, compact }: { columns: CandidateListColumns; compact: boolean }) {
   return (
     <>
       {[0, 1, 2, 3, 4].map((i) => (
-        <tr key={i} className="border-b border-border last:border-b-0" aria-hidden="true">
-          <td className="w-10 py-3 pl-3 pr-1">
+        <tr key={i} className={compact ? 'border-t border-border/50' : 'border-b border-border/50'} aria-hidden="true">
+          <td className="w-10 py-2 pl-2 pr-1">
             <Skeleton className="h-4 w-4" />
           </td>
-          <td className="py-3 pr-3">
+          <td className="h-[50px] py-2 pr-3">
             <Skeleton className="h-4 w-40 max-w-full" />
             <Skeleton className="mt-1.5 h-3 w-56 max-w-full" />
           </td>
           {columns.stage && (
-            <td className="py-3 pr-3">
-              <Skeleton className="h-4 w-24" />
+            <td className="py-2 pr-3">
+              <Skeleton className="h-5 w-24 rounded-md" />
             </td>
           )}
           {columns.next && (
-            <td className="py-3 pr-3">
+            <td className="py-2 pr-3">
               <Skeleton className="h-4 w-40" />
             </td>
           )}
           {columns.since && (
-            <td className="py-3 pr-3">
-              <Skeleton className="h-4 w-8" />
+            <td className="py-2 pr-3">
+              <Skeleton className="ml-auto h-4 w-8" />
             </td>
           )}
-          <td className="py-3 pr-3">
-            <Skeleton className="ml-auto h-5 w-7 rounded-full" />
+          <td className="py-2 pr-2">
+            <Skeleton className="ml-auto h-4 w-6" />
           </td>
         </tr>
       ))}
@@ -178,6 +190,7 @@ export function CandidateList({
   now,
   caption,
   testId = 'candidate-list',
+  variant = 'default',
   isLoading,
   hasNextPage,
   isFetchingNextPage,
@@ -189,7 +202,11 @@ export function CandidateList({
   onOpen,
 }: CandidateListProps) {
   const frameRef = useRef<HTMLDivElement>(null);
-  const columns = useListColumns(frameRef);
+  const measured = useListColumns(frameRef);
+  const compact = variant === 'compact';
+  const columns = compact ? COMPACT_COLUMNS : measured;
+  // Liste étroite (téléphone) : lignes à deux lignes, sans en-tête visible, filet en haut.
+  const narrow = !compact && !columns.stage;
   const selectedHere = rows.filter((row) => selectedIds.has(row.id)).length;
   const allState: boolean | 'indeterminate' =
     rows.length > 0 && selectedHere === rows.length ? true : selectedHere > 0 ? 'indeterminate' : false;
@@ -208,12 +225,23 @@ export function CandidateList({
           </button>
         </div>
       )}
-      <div ref={frameRef} className="overflow-x-auto rounded-xl border border-border bg-card">
+      {/* Hors À trier, bord à bord sous sm (gouttière de la page) : ne dépend que de la fenêtre, pas des colonnes mesurées. */}
+      <div ref={frameRef} className={cn('overflow-x-auto', !compact && '-mx-3 sm:mx-0', narrow && 'border-t border-border')}>
         <table data-testid={testId} className="w-full table-fixed border-collapse text-sm" aria-busy={isLoading}>
           <caption className="sr-only">{caption}</caption>
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th scope="col" className="w-10 py-2 pl-3 pr-1 font-normal">
+          {/* Largeurs fixées ici : avec table-fixed, un en-tête masqué (sr-only) ne les donne plus et les colonnes se partagent la place à parts égales. */}
+          <colgroup>
+            <col className="w-10" />
+            <col />
+            {columns.stage && <col className="w-48" />}
+            {columns.next && <col className="w-[19rem]" />}
+            {columns.since && <col className="w-14" />}
+            <col className="w-12" />
+          </colgroup>
+          {/* compact ou étroite : en-tête pour les lecteurs d'écran ; « Tout sélectionner » le montre au focus clavier. */}
+          <thead className={cn((compact || narrow) && 'sr-only focus-within:not-sr-only')}>
+            <tr className="h-[34px] border-b border-border text-left text-xs text-muted-foreground">
+              <th scope="col" className={cn('w-10 pr-1 font-normal', compact ? 'pl-2' : 'pl-3 sm:pl-2')}>
                 <Checkbox
                   checked={allState}
                   disabled={rows.length === 0}
@@ -221,16 +249,16 @@ export function CandidateList({
                   aria-label={`Tout sélectionner : ${caption}`}
                 />
               </th>
-              <th scope="col" className="min-w-[180px] py-2 pr-3 font-medium">Candidat</th>
-              {columns.stage && <th scope="col" className="w-40 py-2 pr-3 font-medium">Étape</th>}
-              {columns.next && <th scope="col" className="w-60 py-2 pr-3 font-medium">Prochaine action</th>}
-              {columns.since && <th scope="col" className="w-16 py-2 pr-3 font-medium">Depuis</th>}
-              <th scope="col" className="w-14 py-2 pr-3 text-right font-medium">Note</th>
+              <th scope="col" className="min-w-[180px] pr-3 font-normal">Candidat</th>
+              {columns.stage && <th scope="col" className="w-48 pr-3 font-normal">Étape</th>}
+              {columns.next && <th scope="col" className="w-[19rem] pr-3 font-normal">Prochaine action</th>}
+              {columns.since && <th scope="col" className="w-14 pr-3 text-right font-normal">Depuis</th>}
+              <th scope="col" className={cn('w-12 text-right font-normal', compact ? 'pr-2' : 'pr-3 sm:pr-2')}>Note</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && rows.length === 0 ? (
-              <LoadingRows columns={columns} />
+              <LoadingRows columns={columns} compact={compact} />
             ) : (
               rows.map((row) => (
                 <CandidateListRow
@@ -241,6 +269,7 @@ export function CandidateList({
                   active={row.id === activeRowId}
                   dimmed={outOfFilter.has(row.id)}
                   columns={columns}
+                  variant={variant}
                   now={now}
                   onToggle={onToggleRow}
                   onOpen={onOpen}

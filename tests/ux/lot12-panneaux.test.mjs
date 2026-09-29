@@ -193,6 +193,14 @@ test('neighborRowIds : voisins dans la liste affichée, par n importe quelle lig
   assert.deepEqual(A.neighborRowIds([], ['a']), { previous: null, next: null });
 });
 
+test('rowPosition : « N sur M » dans la liste affichée, par n importe quelle ligne du groupe', () => {
+  const visible = ['a', 'b', 'c'];
+  assert.deepEqual(A.rowPosition(visible, ['a']), { index: 1, total: 3 });
+  assert.deepEqual(A.rowPosition(visible, ['x', 'c']), { index: 3, total: 3 });
+  assert.equal(A.rowPosition(visible, ['z']), null);
+  assert.equal(A.rowPosition([], ['a']), null);
+});
+
 test('jalons, dates courtes et ancienneté', () => {
   assert.equal(A.shortDate('2026-09-17T10:00:00Z'), '17/09');
   assert.equal(A.shortDate('pas une date'), null);
@@ -223,6 +231,9 @@ const FILES = [
   'src/components/missions/v3/panels/CandidatePanelTabs.tsx',
   'src/components/missions/v3/panels/ContactPanel.tsx',
   'src/components/missions/v3/panels/candidateAdapters.ts',
+  'src/components/missions/v3/panels/CandidateNotesSection.tsx',
+  'src/components/missions/v3/panels/CandidateRemindersSection.tsx',
+  'src/components/missions/v3/panels/ConfirmDeleteDialog.tsx',
   'src/components/missions/v3/cadrage/CadrageScreen.tsx',
   'src/components/missions/v3/cadrage/CadrageReadOnlyBanner.tsx',
   'src/hooks/useMissionCandidateDetail.ts',

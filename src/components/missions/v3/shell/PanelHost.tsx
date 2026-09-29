@@ -1,7 +1,7 @@
 // Refonte mission, lots 1 et 2 : cadre des panneaux à droite (conception, 3.1).
 //
 // Un seul panneau à la fois, lu dans l'adresse (?panneau=fiche|contact), donc
-// refermé par Retour. Ordinateur (lg et plus) : colonne de 480 px sans voile, la
+// refermé par Retour. Ordinateur (lg et plus) : colonne de 440 px sans voile, la
 // liste reste visible et rétrécit. Téléphone et tablette : plein écran.
 // Entrée en 200 ms (glissement de 16 px et fondu), coupée en mouvement réduit.
 // Échap ferme, sauf si un menu, une liste ou une fenêtre est ouvert, ou si l'on
@@ -170,7 +170,7 @@ export function PanelHost() {
       transition={{ duration: 0.2, ease: 'easeOut' }}
       className={
         'fixed inset-0 z-40 flex min-h-0 flex-col overflow-y-auto overscroll-contain bg-background outline-none ' +
-        'lg:static lg:inset-auto lg:z-auto lg:w-[480px] lg:shrink-0 lg:border-l lg:border-border'
+        'lg:static lg:inset-auto lg:z-auto lg:w-[440px] lg:shrink-0 lg:border-l lg:border-border'
       }
     >
       <SectionErrorBoundary key={rowId ?? panel} fallbackTitle="Ce panneau n'a pas pu s'afficher">

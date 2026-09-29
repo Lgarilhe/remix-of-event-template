@@ -46,7 +46,7 @@ export function CandidatePanelTabs({ tabs, active, onChange }: CandidatePanelTab
       <div
         role="tablist"
         aria-label="Fiche du candidat"
-        className="sticky top-0 z-10 flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-background px-3 sm:px-4"
+        className="flex shrink-0 gap-1 overflow-x-auto border-y border-border bg-background px-3 sm:px-4"
       >
         {tabs.map((tab, index) => {
           const selected = tab.key === current.key;

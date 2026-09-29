@@ -1,8 +1,10 @@
-// Refonte mission, lot 2 : barre d'actions groupées (conception 4.2), visible
-// dès qu'une ligne est cochée (liste et À trier partagent la sélection) :
-// Retenir, Étape suivante (candidats à la même étape), Écarter (avec
-// confirmation), Déplacer vers, Contacter, Tout désélectionner. Écritures par useMissionStageActions, sur le groupe entier
-// de chaque candidat.
+// Refonte mission, lot 2 : barre d'actions groupées (conception 4.2), flottante
+// en bas à gauche, visible dès qu'une ligne est cochée (liste et À trier
+// partagent la sélection) : Contacter, Étape suivante (candidats à la même
+// étape), Écarter (avec confirmation), Retenir (sélection avec un À trier ou un
+// écarté), Déplacer vers, Tout désélectionner. Pas de « Présenter au client »
+// (lot 8). Écritures par useMissionStageActions, sur le groupe entier de
+// chaque candidat.
 
 import { useState } from 'react';
 import { ArrowRight, ArrowRightLeft, Check, ChevronDown, UserX, X } from 'lucide-react';
@@ -68,6 +70,7 @@ export function BulkActionBar({
   const count = rows.length;
   if (count === 0) return null;
   const next = commonNextStage(rows, steps);
+  const canRetain = rows.some((row) => row.stage === 'to_sort' || row.stage === 'rejected');
 
   const busy = actions.isMoving;
   const disabled = !canMove || busy;
@@ -81,13 +84,32 @@ export function BulkActionBar({
       role="toolbar"
       data-bulk-bar=""
       aria-label="Actions sur la sélection"
-      className="sticky bottom-0 z-20 -mx-3 border-t border-border bg-background/95 px-3 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in-0 motion-safe:duration-200"
+      className="sticky bottom-6 z-20 flex w-fit max-w-full flex-wrap items-center gap-1.5 rounded-xl border border-border-strong bg-popover py-2 pl-3.5 pr-2 text-popover-foreground shadow-lg motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in-0 motion-safe:duration-200"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Annoncé par la zone permanente de PipelineScreen. */}
-        <span className="mr-1 text-sm font-medium text-foreground">{selectionText(count)}</span>
+      {/* Annoncé par la zone permanente de PipelineScreen. */}
+      <span className="mr-1.5 text-[13px] font-semibold text-foreground">{selectionText(count)}</span>
+      <ContactSelectionButton rows={rows} project={project} disabled={disabled} onSuccess={onContacted} />
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={disabled || !next}
+        title={next ? `Passer à ${next.label}` : "Les candidats sélectionnés n'ont pas la même étape suivante."}
+        onClick={() => {
+          if (!next) return;
+          const fromStages = [...new Set(rows.map((row) => row.stage))] as GeneralStage[];
+          void run({ rows, target: next.target, fromStages, verb: next.target.stage === 'retained' ? 'retenu' : 'déplacé' });
+        }}
+      >
+        <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden="true" />
+        Étape suivante
+      </Button>
+      <Button variant="outline" size="sm" disabled={disabled} onClick={() => setConfirmReject(true)} className="text-danger hover:text-danger">
+        <UserX className="mr-1.5 h-4 w-4" aria-hidden="true" />
+        Écarter
+      </Button>
+      {canRetain && (
         <Button
-          variant="primary"
+          variant="outline"
           size="sm"
           disabled={disabled}
           onClick={() => void run({ rows, target: { stage: 'retained' }, fromStages: ['to_sort', 'rejected'], verb: 'retenu' })}
@@ -95,53 +117,33 @@ export function BulkActionBar({
           <Check className="mr-1.5 h-4 w-4" aria-hidden="true" />
           Retenir
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={disabled || !next}
-          title={next ? `Passer à ${next.label}` : "Les candidats sélectionnés n'ont pas la même étape suivante."}
-          onClick={() => {
-            if (!next) return;
-            const fromStages = [...new Set(rows.map((row) => row.stage))] as GeneralStage[];
-            void run({ rows, target: next.target, fromStages, verb: next.target.stage === 'retained' ? 'retenu' : 'déplacé' });
-          }}
-        >
-          <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          Étape suivante
-        </Button>
-        <Button variant="outline" size="sm" disabled={disabled} onClick={() => setConfirmReject(true)}>
-          <UserX className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          Écarter
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" disabled={disabled}>
-              <ArrowRightLeft className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Déplacer vers
-              <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-            {moveOptions(steps).map((option) => (
-              <DropdownMenuItem
-                key={option.key}
-                onSelect={() => {
-                  if (option.target.stage === 'rejected') setConfirmReject(true);
-                  else void run({ rows, target: option.target, verb: 'déplacé' });
-                }}
-              >
-                {option.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <ContactSelectionButton rows={rows} project={project} disabled={disabled} onSuccess={onContacted} />
-        <Button variant="ghost" size="sm" onClick={onClear} className="ml-auto">
-          <X className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          Tout désélectionner
-        </Button>
-      </div>
-      {!canMove && moveDisabledReason && <p className="mt-1.5 text-xs text-muted-foreground">{moveDisabledReason}</p>}
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" disabled={disabled}>
+            <ArrowRightLeft className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            Déplacer vers
+            <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
+          {moveOptions(steps).map((option) => (
+            <DropdownMenuItem
+              key={option.key}
+              onSelect={() => {
+                if (option.target.stage === 'rejected') setConfirmReject(true);
+                else void run({ rows, target: option.target, verb: 'déplacé' });
+              }}
+            >
+              {option.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Button variant="ghost" size="icon-sm" onClick={onClear} aria-label="Tout désélectionner" title="Tout désélectionner">
+        <X aria-hidden="true" />
+      </Button>
+      {!canMove && moveDisabledReason && <p className="w-full text-xs text-muted-foreground">{moveDisabledReason}</p>}
       <RejectConfirmDialog
         open={confirmReject}
         count={count}

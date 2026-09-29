@@ -296,7 +296,7 @@ export function stageFilterKey(filter: StageFilter | null): string {
 // ------------------------------------------------------ prochaine action
 
 export interface ProvisionalNextAction {
-  /** Texte de la colonne « Prochaine action » ; null : rien à afficher (Embauché, Écarté). */
+  /** Texte de la colonne « Prochaine action » ; null : rien à afficher (Écarté). */
   text: string | null;
   /** Jours pleins dans l'étape ; null sans date lisible. */
   days: number | null;
@@ -305,8 +305,9 @@ export interface ProvisionalNextAction {
 }
 
 /**
- * Règle PROVISOIRE (lot 2, conception 13) : l'étape et « Aucune action depuis
- * N j ». La règle de la section 4.3 arrive au lot 3 et remplacera ce texte ;
+ * Règle PROVISOIRE (lot 2, conception 13) : « Aucune action depuis N j »
+ * (0 j compris), « Aucune » pour Embauché, rien pour Écarté. La règle de la
+ * section 4.3 arrive au lot 3 et remplacera ce texte ;
  * aucune phrase ici ne suppose un signal dont la source n'existe pas.
  */
 export function provisionalNextAction(
@@ -316,10 +317,10 @@ export function provisionalNextAction(
   const dated = { stage_entered_at: row.stageEnteredAt, updated_at: row.updatedAt, created_at: row.createdAt };
   const days = stageAgeDays(dated, now);
   const stale = isStale({ general_stage: row.stage, process_step_id: row.processStepId, ...dated }, now);
-  if (row.stage === 'hired' || row.stage === 'rejected') return { text: null, days, stale: false };
+  if (row.stage === 'rejected') return { text: null, days, stale: false };
+  if (row.stage === 'hired') return { text: 'Aucune', days, stale: false };
   if (row.stage === 'to_sort') return { text: 'À trier', days, stale: false };
   if (days === null) return { text: 'Aucune action enregistrée', days, stale };
-  if (days === 0) return { text: "Dans l'étape depuis aujourd'hui", days, stale };
   return { text: `Aucune action depuis ${days} j`, days, stale };
 }
 

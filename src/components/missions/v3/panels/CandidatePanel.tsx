@@ -6,28 +6,32 @@
 // src/components/ats/candidate-detail/** et src/components/outreach/**,
 // importés tels quels. Gestes d'étape : useMissionStageActions sur tout le
 // groupe de la ligne ; la fiche reste ouverte et se relit.
+// Aperçu : vos notes, les rappels et les commentaires de l'équipe (les
+// demandes à l'assistant arrivent au lot 9).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
-import { ActivityTab, ActionsTab, NotesTab } from '@/components/ats/candidate-detail';
-import { OverviewTab } from '@/components/ats/candidate-detail/OverviewTab';
+import { ActivityTab } from '@/components/ats/candidate-detail';
+import { CandidateCommentsTab } from '@/components/ats/CandidateCommentsTab';
 import { EvaluationTab } from '@/components/ats/candidate-detail/EvaluationTab';
 import { ProfileDetailedTab } from '@/components/ats/candidate-detail/ProfileDetailedTab';
 import { CVTab } from '@/components/ats/candidate-detail/CVTab';
 import { ManualContactsEditor } from '@/components/ats/candidate-detail/ManualContactsEditor';
 import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { CandidateSequencesPanel } from '@/components/outreach/CandidateSequencesPanel';
-import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { useCandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
 import { useMissionCandidateDetail } from '@/hooks/useMissionCandidateDetail';
 import { useMissionStageActions } from '@/hooks/useMissionStageActions';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateStageReaders } from '@/lib/stageDisplay';
 import { atsCandidateToProfile } from '@/lib/atsCandidateToProfile';
 import { useMissionV3 } from '../MissionV3Context';
+import { ContactSelectionButton } from '../pipeline/ContactSelectionButton';
 import {
   rowStageLabel,
   type CandidatePanelProps,
@@ -42,10 +46,13 @@ import {
   candidateDisplayName,
   neighborRowIds,
   positionLine,
+  rowPosition,
   scoreReasons,
   toAtsCandidate,
 } from './candidateAdapters';
+import { CandidateNotesSection } from './CandidateNotesSection';
 import { CandidatePanelHeader } from './CandidatePanelHeader';
+import { CandidateRemindersSection } from './CandidateRemindersSection';
 import { CandidatePanelTabs, type CandidatePanelTabKey } from './CandidatePanelTabs';
 
 // Onglet ouvert, gardé d'un candidat à l'autre pendant la session (la fiche est
@@ -196,7 +203,7 @@ interface LoadedProps extends CandidatePanelProps {
 function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedProps) {
   const { project, canMoveCandidates, moveDisabledReason, visibleRowIds, openCandidate } = useMissionV3();
   const { organizationId } = useOrganization();
-  const { openAgent } = useAgent();
+  const queryClient = useQueryClient();
   const { steps } = useMissionProcess(project.id);
   const actions = useMissionStageActions(project.id);
   const { selectedAccount } = useFilteredLinkedInAccounts();
@@ -232,7 +239,9 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
   const jobTitle = candidate.jobTitle;
 
   // Voisins dans la liste affichée par Pipeline.
-  const { previous, next } = neighborRowIds(visibleRowIds, [rowId, row.id, ...row.groupIds]);
+  const ownIds = [rowId, row.id, ...row.groupIds];
+  const { previous, next } = neighborRowIds(visibleRowIds, ownIds);
+  const rank = rowPosition(visibleRowIds, ownIds);
   const goPrevious = previous ? () => openCandidate(previous, { replace: true }) : null;
   const goNext = next ? () => openCandidate(next, { replace: true }) : null;
 
@@ -263,43 +272,44 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
     void actions.move({ rows: [row], target: option.target, verb });
   };
 
+  // Retenu : Contacter (inscription dans une séquence de la mission), avant « Étape suivante ».
+  const contactAction =
+    row.stage === 'retained' ? (
+      <ContactSelectionButton
+        rows={[row]}
+        project={project}
+        disabled={!canMoveCandidates || actions.isMoving}
+        onSuccess={() => void invalidateStageReaders(queryClient)}
+      />
+    ) : null;
+
   const tabs: CandidatePanelTab[] = [
     {
       key: 'apercu',
       label: 'Aperçu',
       content: (
         <div className="space-y-6">
-          <SectionErrorBoundary fallbackTitle="Aperçu indisponible">
-            <OverviewTab
-              candidate={candidate}
-              enrichedProfile={enriched}
-              fullProfile={fullProfile}
-              notes={detail.notes}
-              reminders={detail.reminders}
-              organizationId={organizationId}
-            />
-          </SectionErrorBoundary>
-          <PanelSection title="Notes">
-            <NotesTab
-              candidateId={row.candidateId}
-              candidateName={name}
-              jobId={row.jobId}
+          <SectionErrorBoundary fallbackTitle="Vos notes n'ont pas pu s'afficher">
+            <CandidateNotesSection
               notes={detail.notes}
               loading={detail.notesLoading}
-              onAddNote={detail.addNote}
-              onDeleteNote={detail.deleteNote}
+              onAdd={detail.addNote}
+              onDelete={detail.deleteNote}
             />
-          </PanelSection>
-          <PanelSection title="Rappels et actions">
-            <ActionsTab
+          </SectionErrorBoundary>
+          <SectionErrorBoundary fallbackTitle="Les rappels n'ont pas pu s'afficher">
+            <CandidateRemindersSection
               reminders={detail.reminders}
-              onAddReminder={(title, date) => detail.addReminder(title, date, jobTitle)}
-              onDeleteReminder={detail.deleteReminder}
-              onOpenAgent={() => openAgent()}
-              candidateLinkedin={row.linkedinUrl}
-              hideNavigationShortcuts
+              onAdd={(title, date) => detail.addReminder(title, date, jobTitle)}
+              onDelete={detail.deleteReminder}
             />
-          </PanelSection>
+          </SectionErrorBoundary>
+          <section aria-label="Commentaires de l'équipe" className="flex min-w-0 flex-col gap-2">
+            <h3 className="text-md font-semibold text-foreground">Commentaires de l'équipe</h3>
+            <SectionErrorBoundary fallbackTitle="Les commentaires n'ont pas pu s'afficher">
+              <CandidateCommentsTab candidateId={row.candidateId} candidateName={name} jobId={row.jobId} />
+            </SectionErrorBoundary>
+          </section>
         </div>
       ),
     },
@@ -395,6 +405,8 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
         onClose={onClose}
         onPrevious={goPrevious}
         onNext={goNext}
+        rank={rank}
+        contactAction={contactAction}
       />
       <CandidatePanelTabs tabs={tabs} active={tab} onChange={setTab} />
     </div>

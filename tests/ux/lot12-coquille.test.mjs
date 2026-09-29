@@ -82,7 +82,7 @@ test('C-3 : coquille, onglets, panneau et menus', () => {
   assert.doesNotMatch(tabs, /Lock|🔒/, 'aucun verrou');
 
   const panel = code(`${SHELL_DIR}/PanelHost.tsx`);
-  for (const needle of ['data-testid="mission-panel"', 'data-panel={panel}', 'aria-labelledby={titleId}', "'Escape'", 'lg:w-[480px]', 'fixed inset-0', 'useReducedMotion', 'key={rowId}']) {
+  for (const needle of ['data-testid="mission-panel"', 'data-panel={panel}', 'aria-labelledby={titleId}', "'Escape'", 'lg:w-[440px]', 'fixed inset-0', 'useReducedMotion', 'key={rowId}']) {
     assert.ok(panel.includes(needle), `PanelHost : ${needle} absent`);
   }
 

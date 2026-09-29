@@ -1,6 +1,7 @@
 // Refonte mission, lot 1 : coquille de la nouvelle page mission
-// (conception, 3.1 et 4.2). Colonne pleine hauteur : en-tête de 48 px, trois
-// onglets, bandeau d'état, puis le contenu et le panneau de droite côte à côte.
+// (conception, 3.1 et 4.2). Colonne pleine hauteur : en-tête de 48 px (trois
+// onglets au centre à partir de lg, en bande à part en dessous), bandeau d'état,
+// puis le contenu et le panneau de droite côte à côte.
 // Pipeline et Sourcing prennent toute la largeur, Cadrage 1 280 px au plus.
 //
 // Hauteur : la fenêtre sous l'en-tête et les bandeaux de la mise en page
@@ -56,7 +57,7 @@ export function MissionShell() {
     <ViewportFrame data-testid="mission-v3" className="relative flex w-full max-w-full flex-col overflow-hidden bg-background">
       <div ref={topRef} className="flex shrink-0 flex-col">
         <MissionHeader />
-        <MissionTabs />
+        <MissionTabs className="lg:hidden" />
         <MissionStateBanner />
       </div>
       <div className="flex min-h-0 flex-1">

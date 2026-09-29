@@ -230,7 +230,6 @@ export function PipelineScreen(): JSX.Element | null {
           isLoading={countsQuery.isLoading}
           isError={countsError}
           onRetry={retryCounts}
-          onClose={() => ctx.setBilanOpen(false)}
         />
       )}
 
@@ -297,7 +296,8 @@ export function PipelineScreen(): JSX.Element | null {
             />
           )}
 
-          <div className="pb-4" aria-hidden="true" />
+          {/* Place pour la barre d'actions flottante : elle ne couvre jamais la dernière ligne. */}
+          <div className={selectedRows.length > 0 ? 'pb-28' : 'pb-4'} aria-hidden="true" />
           <BulkActionBar
             rows={selectedRows}
             steps={steps}

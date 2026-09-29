@@ -1,6 +1,10 @@
 // Refonte mission, lot 1 : en-tête de 48 px, sur une ligne (conception, 4.2).
-// « Missions » > nom de la mission (menu des autres missions) · client, statut
-// en menu, menu « ... ». Pas de bouton Assistant : Ctrl K reste.
+// À gauche « Missions » > nom de la mission (menu des autres missions) · client,
+// puis la pastille de statut (menu) ; au centre les trois onglets (sur
+// ordinateur, à partir de lg ; en dessous ils forment une bande à part,
+// MissionTabs) ; à droite le menu « ... », qui porte aussi « Revenir à
+// l'ancienne page ». Gauche et droite partagent la place (flex-1 basis-0) pour
+// centrer les onglets. Pas de bouton Assistant : Ctrl K reste.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -17,6 +21,7 @@ import { useMissionV3 } from '../MissionV3Context';
 import { ArchiveMissionDialog } from './ArchiveMissionDialog';
 import { MissionMoreMenu } from './MissionMoreMenu';
 import { MissionSwitcher } from './MissionSwitcher';
+import { MissionTabsNav } from './MissionTabs';
 import {
   MISSION_STATUS_DOT,
   MISSION_STATUS_LABEL,
@@ -30,7 +35,7 @@ function StatusLabel({ status }: { status: string }) {
   const dot = MISSION_STATUS_DOT[status as MissionStatus] ?? 'bg-muted-foreground';
   return (
     <>
-      <span aria-hidden="true" className={cn('h-2 w-2 shrink-0 rounded-full', dot)} />
+      <span aria-hidden="true" className={cn('h-[7px] w-[7px] shrink-0 rounded-full', dot)} />
       <span className="truncate">{missionStatusLabel(status)}</span>
     </>
   );
@@ -43,7 +48,7 @@ function MissionStatusMenu() {
   const enabled = canEditBrief && !control.saving;
 
   const baseClass =
-    'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground outline-none ' +
+    'ml-2 inline-flex h-[26px] shrink-0 items-center gap-1.5 rounded-full border border-border-strong pl-2.5 pr-2 text-[12.5px] text-foreground/90 outline-none ' +
     'transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring';
 
   if (!canEditBrief) {
@@ -88,7 +93,7 @@ function MissionStatusMenu() {
           <StatusLabel status={project.status} />
           <ChevronDown aria-hidden="true" className="h-3 w-3 shrink-0" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent align="start" className="w-44">
           <DropdownMenuRadioGroup value={project.status} onValueChange={onValueChange}>
             {MISSION_STATUS_ORDER.map((status) => (
               <DropdownMenuRadioItem key={status} value={status} className="gap-2">
@@ -108,11 +113,11 @@ export function MissionHeader() {
   const { project } = useMissionV3();
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2 sm:px-4">
-      <div className="flex min-w-0 flex-1 items-center gap-1 text-sm">
+    <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border pl-3 pr-2 sm:pl-6 sm:pr-5">
+      <div className="flex min-w-0 flex-1 basis-0 items-center gap-1.5 text-[13.5px]">
         <Link
           to="/missions"
-          className="hidden shrink-0 rounded-md px-1.5 py-1 font-medium text-muted-foreground outline-none transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
+          className="hidden shrink-0 rounded-md py-1 text-muted-foreground outline-none transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
         >
           Missions
         </Link>
@@ -121,14 +126,15 @@ export function MissionHeader() {
           <MissionSwitcher />
         </h1>
         {project.client_name && (
-          <span className="hidden min-w-0 items-center gap-1 text-sm text-muted-foreground sm:inline-flex">
+          <span className="hidden min-w-0 items-center gap-1 text-muted-foreground sm:inline-flex">
             <span aria-hidden="true">·</span>
             <span className="truncate">{project.client_name}</span>
           </span>
         )}
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
         <MissionStatusMenu />
+      </div>
+      <MissionTabsNav className="-mb-px hidden self-stretch lg:flex" linkClassName="h-full" />
+      <div className="flex shrink-0 items-center justify-end gap-1.5 lg:flex-1 lg:basis-0">
         <MissionMoreMenu />
       </div>
     </header>

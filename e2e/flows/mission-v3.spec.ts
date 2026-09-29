@@ -378,7 +378,7 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     const bar = stageBar(page);
     await expect(bar).toBeVisible();
     // Effectifs « en ce moment », sous le nom de l'étape ; étapes d'entretien réelles.
-    for (const name of ['À trier 3', 'Retenu 1', 'Contacté 1', 'A répondu 1', 'Préqualification 1', 'Entretien client 0', 'Embauché 0', 'Écartés 1']) {
+    for (const name of ['À trier 3', 'Retenus 1', 'Contactés 1', 'A répondu 1', 'Préqualification 1', 'Entretien client 0', 'Embauché 0', 'Écartés 1']) {
       await expect(bar.getByRole('button', { name, exact: true }), `puce « ${name} »`).toBeVisible({ timeout: 30_000 });
     }
 
@@ -445,7 +445,7 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expectNoDirectWrite(ws, mark);
 
     // Relecture : effectifs à jour, sans rechargement.
-    await expect(stageBar(page).getByRole('button', { name: 'Retenu 3', exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(stageBar(page).getByRole('button', { name: 'Retenus 3', exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole('button', { name: 'À trier (1)', exact: true })).toBeVisible({ timeout: 20_000 });
   });
 
@@ -488,15 +488,17 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await openToSort(page, 3);
     await expect(page.getByTestId('to-sort-list').getByText(N.unopened, { exact: true })).toHaveCount(0);
 
-    // Kanban (?vue=etapes) : les À trier y sont, le jamais ouvert non.
+    // Kanban (?vue=etapes) : ni À trier (tri dans la section de la liste), ni
+    // Écartés (derrière leur puce), ni jamais ouvert.
     await page.getByRole('group', { name: 'Affichage' }).getByRole('button', { name: 'Par étape', exact: true }).click();
     await expect(page).toHaveURL(/[?&]vue=etapes(&|$)/);
     const board = page.getByTestId('mission-board');
     await expect(board).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('to-sort-list'), 'la liste laisse la place au kanban').toHaveCount(0);
-    // Huit candidats hors jamais ouverts (cinq en cours ou écartés, trois à trier).
-    await expect(board.getByTestId('board-card')).toHaveCount(8, { timeout: 30_000 });
-    await expect(board.getByTestId('board-card').filter({ hasText: N.toSortA })).toHaveCount(1);
+    // Quatre candidats en cours (Retenus, Contactés, A répondu, Préqualification).
+    await expect(board.getByTestId('board-card')).toHaveCount(4, { timeout: 30_000 });
+    await expect(board.getByTestId('board-card').filter({ hasText: N.toSortA })).toHaveCount(0);
+    await expect(board.getByTestId('board-card').filter({ hasText: N.rejected })).toHaveCount(0);
     await expect(board.getByTestId('board-card').filter({ hasText: N.retained })).toHaveCount(1);
     await expect(page.locator('#main-content').getByText(N.unopened, { exact: true })).toHaveCount(0);
 
@@ -561,7 +563,9 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     // « Revenir à l'ancienne page » : éteint, même endroit dans l'ancienne page.
     await tabs(page).getByRole('link', { name: 'Sourcing', exact: true }).click();
     await expect(page).toHaveURL(pathIs(ws, '/sourcing'));
-    await page.getByRole('button', { name: "Revenir à l'ancienne page", exact: true }).first().click();
+    // Dans le menu « ... » de l'en-tête.
+    await shell(page).getByRole('button', { name: "Plus d'actions", exact: true }).first().click();
+    await page.getByRole('menuitem', { name: "Revenir à l'ancienne page", exact: true }).click();
     await expect(page).toHaveURL(urlIs(ws, '?tab=sourcing'), { timeout: 30_000 });
     await expect(oldStepper(page)).toBeVisible({ timeout: 30_000 });
     await expect(shell(page)).toHaveCount(0);

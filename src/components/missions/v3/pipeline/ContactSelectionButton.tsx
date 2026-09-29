@@ -1,6 +1,8 @@
 // Refonte mission, lot 2 : « Contacter » sur une sélection du Pipeline. Bouton
 // d'inscription existant (SequenceEnrollButton), avec le poste de la mission ;
-// les lignes sans profil LinkedIn sont laissées de côté, et le dit.
+// les lignes sans profil LinkedIn sont laissées de côté, et le dit. Dans la
+// barre d'actions, bouton plein clair (maquette) : le style du bouton partagé
+// est surchargé ici, sans toucher au composant.
 
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -12,6 +14,7 @@ import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts
 import type { ATSCandidate } from '@/hooks/useATSData';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { atsCandidateToProfile } from '@/lib/atsCandidateToProfile';
+import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
 import { GENERAL_STAGE_LABEL } from '@/lib/stageDisplay';
 import type { MissionCandidateRow } from '../types';
@@ -62,6 +65,13 @@ export function missingLinkedInText(count: number): string | null {
     : `${plural(count, 'candidat')} sans profil LinkedIn, laissé de côté.`;
 }
 
+/** Bouton plein clair (couleur du texte en fond). */
+const FILLED = 'border-0 bg-foreground text-background hover:bg-foreground/90 hover:text-background';
+/** Même style imposé au déclencheur de SequenceEnrollButton (enfant direct). */
+const FILLED_TRIGGER =
+  '[&>button]:!h-8 [&>button]:!border-0 [&>button]:!bg-foreground [&>button]:!text-[13px] [&>button]:!text-background ' +
+  '[&>button]:!shadow-none [&>button:hover]:!bg-foreground/90';
+
 interface ContactSelectionButtonProps {
   rows: readonly MissionCandidateRow[];
   project: SourcingProject;
@@ -84,14 +94,14 @@ export function ContactSelectionButton({ rows, project, disabled, onSuccess }: C
     control = <Skeleton className="h-8 w-24" aria-label="Chargement des comptes LinkedIn" />;
   } else if (disabled || !selectedAccount || profiles.length === 0) {
     control = (
-      <Button variant="outline" size="sm" disabled>
+      <Button variant="outline" size="sm" disabled className={FILLED}>
         <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
         Contacter
       </Button>
     );
   } else {
     control = (
-      <div role="group" aria-label="Contacter" className="inline-flex">
+      <div role="group" aria-label="Contacter" className={cn('inline-flex', FILLED_TRIGGER)}>
         <SequenceEnrollButton
           selectedProfiles={profiles}
           accountId={selectedAccount}

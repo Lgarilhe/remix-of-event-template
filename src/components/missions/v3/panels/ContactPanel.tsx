@@ -3,9 +3,10 @@
 // composants d'aujourd'hui tels quels (SequencesList, InvitationsPanel). Pas de
 // bandeau « candidats Go » ni de chiffres d'inscriptions : la conception les
 // retire. MissionOutreach reste pour l'ancienne page.
+// En-tête : titre, poste et client ; pied collé en bas : comment contacter.
 import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { Info, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
@@ -166,16 +167,20 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
     );
   }
 
+  const subtitle = [project.job_details?.title || project.name, project.client_name].filter(Boolean).join(' · ');
+
   return (
     <div className="flex min-h-full min-w-0 flex-col">
-      <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-3 sm:px-5">
-        <div className="min-w-0">
-          <h2 id={titleId} tabIndex={-1} className="text-lg font-semibold leading-tight text-foreground outline-none">
+      <div className="flex min-h-[52px] shrink-0 items-center gap-2 border-b border-border py-2 pl-5 pr-3">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h2 id={titleId} tabIndex={-1} className="text-md font-semibold leading-tight text-foreground outline-none">
             Prise de contact
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Pour contacter des candidats, cochez-les dans la liste, puis choisissez Contacter.
-          </p>
+          {subtitle && (
+            <span title={subtitle} className="truncate text-xs text-muted-foreground">
+              {subtitle}
+            </span>
+          )}
         </div>
         <Button
           type="button"
@@ -183,13 +188,19 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
           size="icon-sm"
           aria-label="Fermer le panneau"
           title="Fermer (Échap)"
-          className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0"
+          className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
           onClick={onClose}
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
       {body}
+      {!isArchived && (
+        <div className="sticky bottom-0 mt-auto flex shrink-0 items-start gap-2 border-t border-border bg-background px-5 py-3.5 text-xs text-muted-foreground">
+          <Info className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>Pour contacter des candidats, cochez-les dans la liste puis « Contacter ».</span>
+        </div>
+      )}
     </div>
   );
 }

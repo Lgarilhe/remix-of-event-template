@@ -1,6 +1,8 @@
 // Refonte mission, lot 2 : section « À trier » repliée en bas de la liste
-// (conception 4.2). Dépliée : mêmes lignes et mêmes cases que la liste, pages
-// de 50, lecture seulement une fois dépliée. Pas de « Trier un par un » (lot 4).
+// (conception 4.2). Un seul encadré : en-tête, puis, déplié, des lignes
+// compactes (nom, titre, note) avec leurs cases (seul accès à Retenir et
+// Écarter en lot jusqu'au lot 4), pages de 50, lecture seulement une fois
+// dépliée. Pas de « Trier un par un » ni de suggestion de l'IA (lot 4).
 
 import { forwardRef } from 'react';
 import { ChevronRight, RefreshCw } from 'lucide-react';
@@ -38,20 +40,23 @@ export const ToSortSection = forwardRef<HTMLElement, ToSortSectionProps>(functio
   ref,
 ) {
   return (
-    <section ref={ref} aria-label="À trier" className="scroll-mt-4">
+    <section ref={ref} aria-label="À trier" className="mt-3.5 scroll-mt-4 rounded-[10px] border border-border px-3.5 py-3">
       <Collapsible open={open} onOpenChange={onOpenChange}>
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-left text-sm font-medium text-foreground transition-colors duration-150 ease-out hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ChevronRight
-              className={cn('h-4 w-4 text-muted-foreground transition-transform duration-150', open && 'rotate-90')}
-              aria-hidden="true"
-            />
-            {toSortTitle(count)}
-          </button>
-        </CollapsibleTrigger>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13.5px] font-semibold text-foreground transition-colors duration-150 ease-out hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronRight
+                className={cn('h-3.5 w-3.5 transition-transform duration-150', open && 'rotate-90')}
+                aria-hidden="true"
+              />
+              {toSortTitle(count)}
+            </button>
+          </CollapsibleTrigger>
+          <span className="flex-1 text-[12.5px] text-muted-foreground">Profils notés, en attente de votre décision</span>
+        </div>
         <CollapsibleContent className="pt-2">
           {open && (
             <ToSortRows
@@ -87,7 +92,7 @@ function ToSortRows({
 
   if (list.isError && list.rows.length === 0) {
     return (
-      <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-3">
+      <div role="alert" className="flex flex-wrap items-center gap-3 px-1.5 py-2">
         <p className="text-sm text-muted-foreground">Impossible de charger les candidats.</p>
         <Button variant="outline" size="xs" onClick={() => void list.refetch()}>
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
@@ -102,6 +107,7 @@ function ToSortRows({
   return (
     <CandidateList
       testId="to-sort-list"
+      variant="compact"
       caption="Profils à trier"
       rows={list.rows}
       outOfFilter={list.outOfFilter}

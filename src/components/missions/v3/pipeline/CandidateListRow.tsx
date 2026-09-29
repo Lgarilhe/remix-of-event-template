@@ -3,9 +3,9 @@
 // ancienneté dans l'étape, note. Clic sur la ligne ou Entrée sur le nom : fiche.
 
 import { memo } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import type { GeneralStage } from '@/lib/candidateStage';
 import { provisionalNextAction, rowStageLabel, type MissionCandidateRow, type MissionStepRef } from '../types';
 
 export const UNNAMED_CANDIDATE = 'Candidat sans nom';
@@ -14,22 +14,27 @@ export function candidateName(row: Pick<MissionCandidateRow, 'name'>): string {
   return row.name?.trim() || UNNAMED_CANDIDATE;
 }
 
+/** Note du candidat : un nombre en gras, sans couleur (maquette). */
 export function ScorePill({ score, title }: { score: number | null; title?: string | null }) {
   if (score === null) return null;
   const rounded = Math.round(score);
   return (
-    <span
-      title={title ?? undefined}
-      aria-label={`Note ${rounded}`}
-      className={cn(
-        'inline-flex h-5 min-w-[28px] items-center justify-center rounded-full px-1.5 text-2xs font-semibold tabular-nums',
-        rounded >= 70 ? 'bg-success-muted text-success' : rounded >= 40 ? 'bg-warning-muted text-warning' : 'bg-danger-muted text-danger',
-      )}
-    >
+    <span title={title ?? undefined} aria-label={`Note ${rounded}`} className="text-[13.5px] font-semibold tabular-nums text-foreground">
       {rounded}
     </span>
   );
 }
+
+/** Pastille de l'étape, colorée selon l'étape (tokens du thème). */
+const STAGE_PILL: Record<GeneralStage, string> = {
+  replied: 'bg-brand/15 text-brand',
+  retained: 'bg-warning-muted text-warning',
+  hired: 'bg-success-muted text-success',
+  interviewing: 'bg-muted text-foreground',
+  contacted: 'bg-muted/50 text-muted-foreground',
+  to_sort: 'bg-muted/50 text-muted-foreground',
+  rejected: 'bg-muted/30 text-muted-foreground',
+};
 
 /** Colonnes affichées selon la place du tableau (CandidateList). */
 export interface CandidateListColumns {
@@ -49,6 +54,8 @@ interface CandidateListRowProps {
   dimmed: boolean;
   /** Colonnes affichées ; toutes par défaut. */
   columns?: CandidateListColumns;
+  /** compact : lignes de la section À trier (nom, titre, note), séparées par un filet haut. */
+  variant?: 'default' | 'compact';
   now: number;
   onToggle: (row: MissionCandidateRow, checked: boolean) => void;
   onOpen: (rowId: string) => void;
@@ -61,6 +68,7 @@ export const CandidateListRow = memo(function CandidateListRow({
   active,
   dimmed,
   columns = ALL_COLUMNS,
+  variant = 'default',
   now,
   onToggle,
   onOpen,
@@ -68,6 +76,14 @@ export const CandidateListRow = memo(function CandidateListRow({
   const name = candidateName(row);
   const stage = rowStageLabel(row, steps);
   const next = provisionalNextAction(row, now);
+
+  const compact = variant === 'compact';
+  // Sans colonne Étape, l'étape passe sous le nom ; inutile dans À trier (toutes les lignes y sont).
+  const stageUnderName = !columns.stage && !(compact && row.stage === 'to_sort' && !dimmed);
+  // Liste étroite hors À trier (téléphone) : nom, puis « Étape · action », sans intitulé du poste (maquette).
+  const narrow = !compact && !columns.stage;
+  const stageText = dimmed ? `Déplacé vers ${stage}` : stage;
+  const nextText = !compact && next.text && next.text !== stage ? next.text : null;
 
   return (
     <tr
@@ -77,62 +93,73 @@ export const CandidateListRow = memo(function CandidateListRow({
       data-selected={selected || undefined}
       onClick={() => onOpen(row.id)}
       className={cn(
-        'group cursor-pointer border-b border-border transition-colors duration-150 ease-out last:border-b-0',
+        'group cursor-pointer transition-colors duration-150 ease-out',
+        compact ? 'border-t border-border/50' : 'border-b border-border/50',
         active ? 'bg-brand/10' : selected ? 'bg-muted/60' : dimmed ? 'bg-muted/30 hover:bg-muted/40' : 'hover:bg-muted/40',
       )}
     >
-      <td className="w-10 py-2.5 pl-3 pr-1 align-top" onClick={(e) => e.stopPropagation()}>
+      <td className={cn('w-10 py-2 pr-1 align-middle', compact ? 'pl-2' : 'pl-3 sm:pl-2')} onClick={(e) => e.stopPropagation()}>
         <Checkbox
           checked={selected}
           onCheckedChange={(value) => onToggle(row, value === true)}
           aria-label={`Sélectionner ${name}`}
-          className="mt-0.5"
         />
       </td>
-      <td className="min-w-0 py-2.5 pr-3 align-top">
+      <td className={cn('min-w-0 py-2 pr-3 align-middle', narrow ? 'h-14' : 'h-[50px]')}>
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onOpen(row.id);
           }}
-          className="block max-w-full truncate rounded-sm text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            'block max-w-full truncate rounded-sm text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            narrow ? 'text-[15px]' : 'text-[13.5px]',
+          )}
         >
           {name}
         </button>
-        {row.headline && <p className="truncate text-xs text-muted-foreground">{row.headline}</p>}
-        {!columns.stage && (
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {dimmed ? `Déplacé vers ${stage}` : stage}
-            {next.text && next.text !== stage ? ` · ${next.text}` : ''}
+        {!narrow && row.headline && <p className="truncate text-xs text-muted-foreground">{row.headline}</p>}
+        {narrow ? (
+          <p className="mt-px truncate text-[13px]">
+            <span className="text-muted-foreground">{stageText}</span>
+            {nextText && <span className="text-foreground"> · {nextText}</span>}
           </p>
+        ) : (
+          stageUnderName && (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {stageText}
+              {nextText ? ` · ${nextText}` : ''}
+            </p>
+          )
         )}
       </td>
       {columns.stage && (
-        <td className="w-40 py-2.5 pr-3 align-top text-foreground">
-          <span className="block truncate">{stage}</span>
+        <td className="w-48 py-2 pr-3 align-middle">
+          <span className={cn('inline-block max-w-full truncate rounded-md px-2 py-0.5 text-xs', STAGE_PILL[row.stage])}>{stage}</span>
           {/* Ligne sortie du filtre après un geste : gardée à sa place, dite déplacée. */}
           {dimmed && <span className="block text-xs text-muted-foreground">déplacé</span>}
         </td>
       )}
       {columns.next && (
-        <td className="w-60 py-2.5 pr-3 align-top">
-          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-            {next.text && <span className="truncate text-foreground">{next.text}</span>}
-            {next.stale && (
-              <Badge variant="warning" className="px-1.5 py-0 text-2xs">
-                sans mouvement
-              </Badge>
-            )}
-          </span>
+        <td className="w-[19rem] py-2 pr-3 align-middle">
+          {next.text && (
+            <span
+              className={cn('block truncate text-[13px]', next.stale ? 'text-warning' : 'text-muted-foreground')}
+              title={next.stale ? 'Sans mouvement' : undefined}
+            >
+              {next.text}
+              {next.stale && <span className="sr-only">, sans mouvement</span>}
+            </span>
+          )}
         </td>
       )}
       {columns.since && (
-        <td className="w-16 py-2.5 pr-3 align-top tabular-nums text-muted-foreground">
-          {next.days !== null ? `${next.days} j` : ''}
+        <td className="w-14 py-2 pr-3 text-right align-middle tabular-nums text-muted-foreground">
+          {next.days !== null ? `${next.days}\u00a0j` : ''}
         </td>
       )}
-      <td className="w-14 py-2.5 pr-3 text-right align-top">
+      <td className={cn('w-12 py-2 text-right align-middle', compact ? 'pr-2' : 'pr-3 sm:pr-2')}>
         <ScorePill score={row.score} title={row.recommendation} />
       </td>
     </tr>

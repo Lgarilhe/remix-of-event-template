@@ -326,8 +326,8 @@ test('lot12 : prochaine action provisoire, « Aucune action depuis N j »', () =
   assert.deepEqual(at('contacted', '2026-09-23T11:00:00Z'), { text: 'Aucune action depuis 6 j', days: 6, stale: false });
   assert.equal(at('replied', '2026-09-20T11:00:00Z').stale, true, '7 j et plus : sans mouvement');
   assert.equal(at('retained', '2026-09-01T11:00:00Z').stale, false, 'Retenu : jamais sans mouvement');
-  assert.equal(at('contacted', '2026-09-29T08:00:00Z').text, "Dans l'étape depuis aujourd'hui");
-  assert.equal(at('hired', '2026-09-01T11:00:00Z').text, null);
+  assert.equal(at('contacted', '2026-09-29T08:00:00Z').text, 'Aucune action depuis 0 j', 'même jour : 0 j, jamais une autre phrase');
+  assert.equal(at('hired', '2026-09-01T11:00:00Z').text, 'Aucune');
   assert.equal(at('rejected', '2026-09-01T11:00:00Z').text, null);
   assert.equal(at('to_sort', '2026-09-01T11:00:00Z').text, 'À trier');
   assert.equal(at('contacted', null).text, 'Aucune action enregistrée');

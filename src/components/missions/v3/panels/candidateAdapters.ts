@@ -191,6 +191,19 @@ export function neighborRowIds(
   };
 }
 
+/**
+ * Place du candidat dans la liste affichée (« 3 sur 12 »), par n'importe
+ * quelle ligne de son groupe ; null s'il n'y figure pas.
+ */
+export function rowPosition(
+  visibleRowIds: readonly string[],
+  ids: readonly string[],
+): { index: number; total: number } | null {
+  const index = visibleRowIds.findIndex((id) => ids.includes(id));
+  if (index === -1) return null;
+  return { index: index + 1, total: visibleRowIds.length };
+}
+
 /** Date courte « 17/09 » ; null pour une date illisible. */
 export function shortDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
