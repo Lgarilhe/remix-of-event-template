@@ -2,9 +2,12 @@
  * DashboardMissionsPanel — les missions actives, les plus récentes d'abord (5 au plus).
  *
  * Une ligne par mission : initiales du client, nom, puis « 140 sourcés ·
- * 24 contactés · 12 retenus ». Le bouton de détail, toujours visible, déplie
- * la progression (part des candidats contactés et retenus) et la date de
- * dernière activité. Préférence de dépliage mémorisée dans le navigateur.
+ * 12 retenus au total · 24 contactés au total ». Les chiffres sont des cumuls
+ * depuis le début de la mission (stats_*, lot 0c-1) : un candidat qui avance
+ * ou qu'on écarte ne les fait pas baisser. Le bouton de détail, toujours
+ * visible, déplie la progression (part des candidats retenus et contactés au
+ * total) et la date de dernière activité. Préférence de dépliage mémorisée
+ * dans le navigateur.
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
@@ -32,7 +35,7 @@ const percent = (part: number, total: number) => (total > 0 ? Math.min(Math.roun
 const ProgressRow: React.FC<{ label: string; value: number; total: number }> = ({ label, value, total }) => {
   const pct = percent(value, total);
   return (
-    <div className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-3 text-xs">
+    <div className="grid grid-cols-[8.5rem_1fr_auto] items-center gap-3 text-xs">
       <span className="text-muted-foreground">{label}</span>
       <div
         className="h-1.5 overflow-hidden rounded-full bg-muted"
@@ -76,7 +79,7 @@ const MissionRow: React.FC<{
             <span className="block truncate text-sm font-medium text-foreground">{project.name}</span>
             <span className="block truncate text-xs text-muted-foreground">
               {project.client_name && `${project.client_name} · `}
-              {plural(total, 'sourcé')} · {plural(messaged, 'contacté')} · {plural(shortlisted, 'retenu')}
+              {plural(total, 'sourcé')} · {plural(shortlisted, 'retenu')} au total · {plural(messaged, 'contacté')} au total
             </span>
           </span>
         </Link>
@@ -95,8 +98,8 @@ const MissionRow: React.FC<{
 
       {expanded && (
         <div id={detailsId} className="space-y-2 px-2.5 pb-3 pl-[3.25rem]">
-          <ProgressRow label="Contactés" value={messaged} total={total} />
-          <ProgressRow label="Retenus" value={shortlisted} total={total} />
+          <ProgressRow label="Retenus au total" value={shortlisted} total={total} />
+          <ProgressRow label="Contactés au total" value={messaged} total={total} />
           {lastActivityLabel && <p className="text-xs text-muted-foreground">Dernière activité {lastActivityLabel}</p>}
         </div>
       )}

@@ -160,12 +160,127 @@ async function collaboratorMissionIds(ctx: ToolContext): Promise<string[]> {
 
 const trivialDryRun = (summary: string) => async () => ({ summary, details: {} });
 
+// ─── Étapes et comptes de mission (lot 0c-2) ──────────────────────────────
+// Les outils lisent le modèle des étapes : la vue mission_candidate_rows (une
+// ligne par candidat et par mission, doublons réunis) et la fonction
+// get_mission_stage_counts, mêmes définitions que les écrans et les stats_*.
+// Les profils trouvés par une recherche et jamais ouverts (is_unopened) ne
+// sont pas dans le Pipeline : comptés à part (unopened), jamais listés.
+
+type GeneralStage = 'to_sort' | 'retained' | 'contacted' | 'replied' | 'interviewing' | 'hired' | 'rejected';
+
+const GENERAL_STAGES: readonly GeneralStage[] = [
+  'to_sort', 'retained', 'contacted', 'replied', 'interviewing', 'hired', 'rejected',
+];
+
+// Copie des libellés de l'interface (GENERAL_STAGE_LABELS de
+// agent-tools-mutations.ts et de src/) : ce fichier ne les importe pas.
+const GENERAL_STAGE_LABEL: Record<GeneralStage, string> = {
+  to_sort: 'À trier',
+  retained: 'Retenu',
+  contacted: 'Contacté',
+  replied: 'A répondu',
+  interviewing: 'En entretien',
+  hired: 'Embauché',
+  rejected: 'Écarté',
+};
+
+// Anciens titres du /pipeline et étapes d'entretien, acceptés en entrée.
+const LEGACY_STAGE_TO_GENERAL: Record<string, GeneralStage> = {
+  'nouveau': 'to_sort',
+  'pressenti': 'retained',
+  'shortlist': 'retained',
+  'contacte': 'contacted',
+  'repondu': 'replied',
+  'pre-qualif': 'interviewing',
+  'cv envoye': 'interviewing',
+  'itw en cours': 'interviewing',
+  'offre': 'interviewing',
+  'gagne': 'hired',
+  'perdu': 'rejected',
+};
+
+const foldStage = (v: string) =>
+  v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+// Colonnes d'entretien du /pipeline : l'étape générale est « En entretien »,
+// le libellé précis reste dans pipeline_stage (tenu par set_candidate_stage).
+const INTERVIEW_SUBSTAGE: Record<string, string> = {
+  'pre-qualif': 'Pré-qualif',
+  'cv envoye': 'CV envoyé',
+  'itw en cours': 'ITW en cours',
+  'offre': 'Offre',
+};
+
+/** Étape générale d'un filtre saisi (clé, libellé de l'interface ou ancien titre), sinon null. */
+function parseGeneralStage(raw: unknown): GeneralStage | null {
+  const v = foldStage(String(raw ?? ''));
+  if (!v) return null;
+  for (const k of GENERAL_STAGES) {
+    if (v === k || v === foldStage(GENERAL_STAGE_LABEL[k])) return k;
+  }
+  return LEGACY_STAGE_TO_GENERAL[v] ?? null;
+}
+
+const stageLabel = (stage: string | null | undefined) =>
+  (stage && GENERAL_STAGE_LABEL[stage as GeneralStage]) || '(non défini)';
+
+interface MissionStageCounts {
+  project_id: string;
+  unopened: number;
+  to_sort: number;
+  retained: number;
+  contacted: number;
+  replied: number;
+  interviewing: number;
+  hired: number;
+  rejected: number;
+  ever_retained: number;
+  ever_contacted: number;
+  ever_replied: number;
+  ever_interviewed: number;
+  ever_hired: number;
+}
+
+/** Candidats du Pipeline d'une mission : toutes les étapes, jamais ouverts exclus. */
+const pipelineTotal = (c: MissionStageCounts) =>
+  GENERAL_STAGES.reduce((n, k) => n + (Number(c[k]) || 0), 0);
+
+/** Effectif actuel par étape, sous le libellé de l'interface. */
+const byStageLabel = (c: MissionStageCounts) =>
+  Object.fromEntries(GENERAL_STAGES.map((k) => [GENERAL_STAGE_LABEL[k], Number(c[k]) || 0]));
+
+/** Cumuls depuis le début (« au total »), mêmes définitions que les stats_*. */
+const totalsSinceStart = (c: MissionStageCounts) => ({
+  retenus_au_total: Number(c.ever_retained) || 0,
+  contactes_au_total: Number(c.ever_contacted) || 0,
+  ont_repondu_au_total: Number(c.ever_replied) || 0,
+  entretiens_au_total: Number(c.ever_interviewed) || 0,
+  embauches_au_total: Number(c.ever_hired) || 0,
+});
+
+async function missionStageCounts(
+  ctx: ToolContext,
+  missionIds: string[],
+): Promise<{ counts: Map<string, MissionStageCounts>; error: string | null }> {
+  if (missionIds.length === 0) return { counts: new Map(), error: null };
+  const { data, error } = await ctx.adminClient.rpc('get_mission_stage_counts', { p_project_ids: missionIds });
+  if (error) return { counts: new Map(), error: error.message };
+  const counts = new Map<string, MissionStageCounts>();
+  for (const r of (data as MissionStageCounts[] | null) ?? []) counts.set(r.project_id, r);
+  return { counts, error: null };
+}
+
 // ─── Tool — get_my_missions ────────────────────────────────────────────────
 const getMyMissions: AgentTool = {
   name: 'get_my_missions',
   description:
     "List the recruitment missions (sourcing projects) the user can see, with status, sourcing stats AND the real " +
     "candidate count per mission (plus a total_candidates aggregate). " +
+    "candidate_count = candidates in the mission pipeline (one per person, all stages including 'Écarté'); " +
+    "unopened_profiles = profiles found by a search that nobody has opened yet (they stay in Sourcing, not in the pipeline); " +
+    "by_stage = how many are at each stage RIGHT NOW. stats_* are cumulative totals since the start of the mission " +
+    "(stats_shortlisted = 'retenus au total', stats_messaged = 'contactés au total'): always say 'au total' for them. " +
     "Use when the user asks 'mes missions', 'quelles missions actives', 'sur quoi je bosse', 'combien de postes ouverts', " +
     "AND for any cross-mission / aggregate question like 'combien de candidats au total', 'combien de candidats sur mes " +
     "missions', 'lesquelles ont des candidats' — answer those from this tool, do NOT drill into each mission. " +
@@ -189,7 +304,7 @@ const getMyMissions: AgentTool = {
     const limit = Math.min(Math.max(Number(params.limit) || 25, 1), 50);
     let q = ctx.adminClient
       .from('sourcing_projects')
-      .select('id, name, job_title, client_name, status, stats_total_found, stats_scored, stats_shortlisted, updated_at')
+      .select('id, name, job_title, client_name, status, stats_total_found, stats_scored, stats_shortlisted, stats_messaged, updated_at')
       .eq('organization_id', ctx.organizationId);
     if (params.status) q = q.eq('status', String(params.status));
     if (!isPrivileged(role)) {
@@ -203,31 +318,23 @@ const getMyMissions: AgentTool = {
     if (error) return { success: false, error: error.message };
     const missions: Array<Record<string, unknown>> = (data ?? []) as Array<Record<string, unknown>>;
 
-    // Compteur RÉEL de candidats par mission. La liaison mission→candidats est
-    // `job_candidate_status.project_id = sourcing_projects.id` (cf. le hook app
-    // useProjectCandidates) — PAS `job_id`, qui est l'id de job/recherche,
-    // souvent synthétique (« project:<uuid> »). Permet de répondre aux
-    // questions agrégées sans drill-in par mission.
+    // Compteur RÉEL de candidats par mission (lot 0c-2) : get_mission_stage_counts,
+    // une ligne par candidat (doublons réunis), dans l'organisation de la
+    // mission. Les profils jamais ouverts sont comptés à part. Permet de
+    // répondre aux questions agrégées sans drill-in par mission.
     const missionIds = missions.map((m) => m.id as string).filter(Boolean);
     let totalCandidates = 0;
-    let countsTruncated = false;
-    if (missionIds.length > 0) {
-      const { data: cand, error: candErr } = await ctx.adminClient
-        .from('job_candidate_status')
-        .select('project_id')
-        .in('project_id', missionIds)
-        .limit(5000);
-      if (!candErr && Array.isArray(cand)) {
-        const tally: Record<string, number> = {};
-        for (const r of cand as Array<{ project_id: string | null }>) {
-          if (r.project_id) tally[r.project_id] = (tally[r.project_id] || 0) + 1;
-        }
-        for (const m of missions) {
-          const c = tally[m.id as string] || 0;
-          m.candidate_count = c;
-          totalCandidates += c;
-        }
-        countsTruncated = cand.length === 5000;
+    let totalUnopened = 0;
+    const { counts, error: countsErr } = await missionStageCounts(ctx, missionIds);
+    if (!countsErr) {
+      for (const m of missions) {
+        const c = counts.get(m.id as string);
+        const inPipeline = c ? pipelineTotal(c) : 0;
+        m.candidate_count = inPipeline;
+        m.unopened_profiles = c ? Number(c.unopened) || 0 : 0;
+        if (c) m.by_stage = byStageLabel(c);
+        totalCandidates += inPipeline;
+        totalUnopened += m.unopened_profiles as number;
       }
     }
     return {
@@ -235,8 +342,9 @@ const getMyMissions: AgentTool = {
       data: {
         role,
         count: missions.length,
-        total_candidates: totalCandidates,
-        ...(countsTruncated ? { counts_truncated: true } : {}),
+        ...(countsErr
+          ? { counts_error: 'Les nombres de candidats n\'ont pas pu être lus.' }
+          : { total_candidates: totalCandidates, total_unopened_profiles: totalUnopened }),
         missions,
       },
     };
@@ -249,6 +357,9 @@ const getMissionOverview: AgentTool = {
   description:
     "Get a snapshot of ONE mission: meta (title, client, status), sourcing stats, pipeline breakdown by stage, " +
     "and the top candidates by score. Use for 'où en est cette mission', 'résume le pipeline', 'combien de candidats à chaque étape'. " +
+    "pipeline_by_stage = candidates at each stage RIGHT NOW (one per person); unopened_profiles = profiles found by a " +
+    "search and never opened (in Sourcing, not in the pipeline); totals_since_start and stats_* are cumulative totals: " +
+    "say 'au total' for them. " +
     "Pass mission_id (UUID) if you have it, OR mission_name (the mission's exact name/title as shown to the user). " +
     "If you only know mission names from earlier in the conversation, pass mission_name — the tool resolves it.",
   category: 'read',
@@ -281,28 +392,27 @@ const getMissionOverview: AgentTool = {
     const resolved = await resolveMissionRef(ctx, params);
     if (!resolved) return { success: false, error: "Mission introuvable — donne le nom exact ou appelle get_my_missions." };
     const missionId = resolved.id;
-    const [{ data: mission, error: missionErr }, { data: rows, error: rowsErr }] = await Promise.all([
+    const [{ data: mission, error: missionErr }, { data: rows, error: rowsErr }, stageCounts] = await Promise.all([
       ctx.adminClient
         .from('sourcing_projects')
         .select('id, name, job_title, client_name, status, stats_total_found, stats_scored, stats_shortlisted, stats_messaged, stats_dismissed')
         .eq('id', missionId)
         .maybeSingle(),
-      // Liaison candidats : project_id = sourcing_projects.id (cf.
-      // useProjectCandidates app-side). `job_id` est l'id de recherche,
-      // souvent synthétique « project:<uuid> » → ne matcherait rien ici.
+      // Candidats du Pipeline (lot 0c-2) : mission_candidate_rows, une ligne
+      // par candidat, profils jamais ouverts exclus.
       ctx.adminClient
-        .from('job_candidate_status')
-        .select('candidate_id, candidate_name, pipeline_stage, status, score')
+        .from('mission_candidate_rows')
+        .select('candidate_id, candidate_name, general_stage, score')
         .eq('project_id', missionId)
+        .eq('organization_id', ctx.organizationId)
+        .eq('is_unopened', false)
         .order('score', { ascending: false, nullsFirst: false })
         .limit(300),
+      // Effectifs par étape et cumuls : la même fonction que les écrans.
+      missionStageCounts(ctx, [missionId]),
     ]);
-    const list = (rows as Array<{ candidate_id: string | null; candidate_name: string | null; pipeline_stage: string | null; status: string; score: number | null }> | null) ?? [];
-    const byStage: Record<string, number> = {};
-    for (const r of list) {
-      const k = r.pipeline_stage || '(non défini)';
-      byStage[k] = (byStage[k] || 0) + 1;
-    }
+    const list = (rows as Array<{ candidate_id: string | null; candidate_name: string | null; general_stage: string | null; score: number | null }> | null) ?? [];
+    const counts = stageCounts.counts.get(missionId);
     const scored = list.filter((r) => typeof r.score === 'number');
     const avgScore = scored.length
       ? Math.round((scored.reduce((s, r) => s + (r.score as number), 0) / scored.length) * 10) / 10
@@ -311,16 +421,29 @@ const getMissionOverview: AgentTool = {
       success: true,
       data: {
         mission,
-        pipeline_by_stage: byStage,
+        ...(counts
+          ? {
+            pipeline_by_stage: byStageLabel(counts),
+            candidates_in_pipeline: pipelineTotal(counts),
+            unopened_profiles: Number(counts.unopened) || 0,
+            totals_since_start: totalsSinceStart(counts),
+          }
+          : {}),
         candidates_loaded: list.length,
         truncated: list.length === 300,
         avg_score: avgScore,
         top_candidates: list.slice(0, 8).map((r) => ({
-          name: r.candidate_name, stage: r.pipeline_stage, status: r.status, score: r.score,
+          name: r.candidate_name, stage: stageLabel(r.general_stage), score: r.score,
           profile_path: r.candidate_id ? `/ats/scorecard/${r.candidate_id}` : null,
         })),
-        ...((missionErr || rowsErr)
-          ? { data_errors: { mission: missionErr?.message ?? null, candidates: rowsErr?.message ?? null } }
+        ...((missionErr || rowsErr || stageCounts.error)
+          ? {
+            data_errors: {
+              mission: missionErr?.message ?? null,
+              candidates: rowsErr?.message ?? null,
+              stage_counts: stageCounts.error,
+            },
+          }
           : {}),
       },
     };
@@ -331,7 +454,8 @@ const getMissionOverview: AgentTool = {
 const getMissionCandidates: AgentTool = {
   name: 'get_mission_candidates',
   description:
-    "List candidates of ONE mission (their NAMES, headline, pipeline stage, status, score, recommendation). " +
+    "List candidates of ONE mission (their NAMES, headline, pipeline stage, score, recommendation), one per person. " +
+    "Profiles found by a search and never opened are not listed (they stay in Sourcing). " +
     "Optional filters by stage or minimum score. Use for 'montre les candidats', 'donne-moi leurs noms', " +
     "'qui sont les meilleurs profils', 'liste des shortlistés'. " +
     "Pass mission_id (UUID) if you have it, OR mission_name (exact name/title) — if you only know the mission " +
@@ -343,7 +467,13 @@ const getMissionCandidates: AgentTool = {
     properties: {
       mission_id: { type: 'string', description: 'sourcing_projects UUID (si tu le connais).' },
       mission_name: { type: 'string', description: "Nom ou intitulé EXACT de la mission (ex: « Lead Developer Go ») — utilise-le si tu n'as pas l'UUID (cas fréquent entre deux tours)." },
-      stage: { type: 'string', description: "Optional pipeline stage filter (e.g. 'Pressenti', 'Pré-qualif')." },
+      stage: {
+        type: 'string',
+        description:
+          "Optional stage filter: 'À trier', 'Retenu', 'Contacté', 'A répondu', 'En entretien', 'Embauché' or 'Écarté' " +
+          "(keys to_sort, retained, contacted, replied, interviewing, hired, rejected are accepted too). " +
+          "'Pré-qualif', 'CV envoyé', 'ITW en cours' and 'Offre' filter the interview candidates on that exact column.",
+      },
       min_score: { type: 'number', description: 'Optional minimum score (0-100).' },
       limit: { type: 'number', description: 'Max candidates (default 25, hard cap 50).' },
     },
@@ -356,19 +486,33 @@ const getMissionCandidates: AgentTool = {
     if (!resolved) return { success: false, error: "Mission introuvable — donne le nom exact ou appelle get_my_missions." };
     const missionId = resolved.id;
     const limit = Math.min(Math.max(Number(params.limit) || 25, 1), 50);
+    const stage = params.stage ? parseGeneralStage(params.stage) : null;
+    const subStage = params.stage ? INTERVIEW_SUBSTAGE[foldStage(String(params.stage))] ?? null : null;
+    if (params.stage && !stage) {
+      return {
+        success: false,
+        error: `Étape inconnue : « ${String(params.stage)} ». Étapes : ${GENERAL_STAGES.map((k) => GENERAL_STAGE_LABEL[k]).join(', ')}.`,
+      };
+    }
+    // Lot 0c-2 : mission_candidate_rows, une ligne par candidat (doublons
+    // réunis), filtre sur l'étape générale, profils jamais ouverts exclus.
     let q = ctx.adminClient
-      .from('job_candidate_status')
-      .select('candidate_id, candidate_name, candidate_headline, pipeline_stage, status, score, recommendation')
-      // project_id = sourcing_projects.id (cf. useProjectCandidates) — pas job_id.
-      .eq('project_id', missionId);
-    if (params.stage) q = q.eq('pipeline_stage', String(params.stage));
+      .from('mission_candidate_rows')
+      .select('candidate_id, candidate_name, candidate_headline, general_stage, score, recommendation')
+      .eq('project_id', missionId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('is_unopened', false);
+    if (stage) q = q.eq('general_stage', stage);
+    // Libellé précis d'une colonne d'entretien : filtre exact, jamais élargi à tout l'entretien.
+    if (subStage) q = q.eq('pipeline_stage', subStage);
     if (params.min_score != null) q = q.gte('score', Number(params.min_score));
     const { data, error } = await q
       .order('score', { ascending: false, nullsFirst: false })
       .limit(limit);
     if (error) return { success: false, error: error.message };
-    const candidates = ((data as Array<{ candidate_id: string | null }> | null) ?? []).map((c) => ({
+    const candidates = ((data as Array<{ candidate_id: string | null; general_stage: string | null }> | null) ?? []).map((c) => ({
       ...c,
+      stage: subStage ? `${stageLabel(c.general_stage)} (${subStage})` : stageLabel(c.general_stage),
       // Profil in-app : route /ats/scorecard/:candidateId → .eq('candidate_id', …).
       profile_path: c.candidate_id ? `/ats/scorecard/${c.candidate_id}` : null,
     }));

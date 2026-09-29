@@ -47,6 +47,11 @@ jobs:
       # événements serveur, gestes des utilisateurs), un bloc par sous-lot.
       - name: Lot 0b regression tests (écrivains)
         run: node --test tests/c1/lot0b-ecrivains.test.mjs
+      # Refonte mission, lot 0c : lectures (vue mission_candidate_rows,
+      # get_mission_stage_counts, libellés « au total », outils de
+      # l'assistant, purge RGPD en compte seulement), un bloc par sous-lot.
+      - name: Lot 0c regression tests (lectures)
+        run: node --test tests/c1/lot0c-lectures.test.mjs
 
   migrations:
     name: Migrations (versions uniques)

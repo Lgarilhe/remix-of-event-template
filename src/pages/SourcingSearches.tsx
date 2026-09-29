@@ -39,8 +39,9 @@ const SearchCard = ({
 }) => {
   const stats = [
     { icon: Users, value: search.stats_total_found, label: 'profils' },
-    { icon: Star, value: search.stats_shortlisted, label: 'shortlistés' },
-    { icon: Send, value: search.stats_messaged, label: 'contactés' },
+    // Cumuls depuis le début (lot 0c-1) : d'où « au total ».
+    { icon: Star, value: search.stats_shortlisted, label: search.stats_shortlisted > 1 ? 'retenus au total' : 'retenu au total' },
+    { icon: Send, value: search.stats_messaged, label: search.stats_messaged > 1 ? 'contactés au total' : 'contacté au total' },
   ].filter(s => s.value > 0);
 
   return (

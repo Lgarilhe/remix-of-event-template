@@ -209,7 +209,8 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
   // Stats funnel
   const stats = [
     { label: 'Sourcés', value: project.stats_total_found || 0 },
-    { label: 'Contactés', value: project.stats_messaged || 0 },
+    // stats_messaged : cumul depuis le début (lot 0c-1), d'où « au total ».
+    { label: 'Contactés au total', value: project.stats_messaged || 0 },
     { label: 'Répondu', value: project.stats_replied || 0 },
     { label: 'Entretien', value: project.stats_qualified || 0 },
     { label: 'Offre', value: project.stats_hired || 0 },

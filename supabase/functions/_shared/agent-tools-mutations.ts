@@ -1324,6 +1324,42 @@ const enrollInSequence: AgentTool = {
 // l'instant — l'envoi via Unipile/Resend nécessite une UX dédiée et un canal
 // résolu, on l'ajoute en v3).
 
+/**
+ * Contexte du brouillon : la ligne du candidat dans la mission, dans
+ * l'organisation, quel qu'en soit l'auteur (lot 0c-2 : project_id et
+ * organization_id, plus job_id brut ni created_by), et la mission de
+ * l'organisation. Plusieurs lignes (doublons) : la plus récente.
+ */
+async function draftContext(
+  ctx: ToolContext,
+  params: Record<string, unknown>,
+): Promise<{
+  row: { candidate_name: string | null; candidate_headline: string | null; linkedin_profile_data: unknown } | null;
+  project: { name: string | null; job_title: string | null; client_name: string | null; description: string | null; job_details: unknown } | null;
+}> {
+  const projectId = missionIdParam(params);
+  const candidateId = String(params.candidate_id || '').trim();
+  if (!projectId || !candidateId) return { row: null, project: null };
+  const [{ data: row }, { data: project }] = await Promise.all([
+    ctx.adminClient
+      .from('job_candidate_status')
+      .select('candidate_name, candidate_headline, linkedin_profile_data')
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', projectId)
+      .eq('candidate_id', candidateId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name, description, job_details')
+      .eq('id', projectId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle(),
+  ]);
+  return { row, project };
+}
+
 const draftOutreachMessage: AgentTool = {
   name: 'draft_outreach_message',
   description:
@@ -1355,28 +1391,13 @@ const draftOutreachMessage: AgentTool = {
     required: ['candidate_id', 'job_id'],
   },
 
-  async verifyAccess(params, ctx) {
-    return updateCandidateStage.verifyAccess(params, ctx);
-  },
+  // Pas de new_stage ici : contrôle d'un candidat et d'une mission de
+  // l'organisation, comme add_to_shortlist.
+  verifyAccess: (params, ctx) => verifySingleCandidate(params, ctx),
 
   async dryRun(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-
-    const [{ data: row }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('candidate_name, candidate_headline, linkedin_profile_data')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .eq('created_by', ctx.userId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name, description, job_details')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
+    const { row, project } = await draftContext(ctx, params);
 
     const tone = String(params.tone ?? 'casual');
     const channel = String(params.channel ?? 'linkedin_dm');
@@ -1399,27 +1420,12 @@ const draftOutreachMessage: AgentTool = {
   },
 
   async execute(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
     const tone = String(params.tone ?? 'casual');
     const channel = String(params.channel ?? 'linkedin_dm');
     const angle = params.angle ? String(params.angle) : null;
 
     // Fetch context
-    const [{ data: row }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('candidate_name, candidate_headline, linkedin_profile_data')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .eq('created_by', ctx.userId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name, description, job_details')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
+    const { row, project } = await draftContext(ctx, params);
 
     if (!row || !project) {
       return { success: false, error: 'Candidat ou mission introuvable' };
@@ -1909,11 +1915,12 @@ const assignCandidateToMember: AgentTool = {
   },
 
   async verifyAccess(params, ctx) {
-    const jobId = String(params.job_id || '');
+    // Mission : uuid de sourcing_projects, préfixe « project: » accepté (lot 0c-2).
+    const jobId = missionIdParam(params) ?? '';
     const candidateId = String(params.candidate_id || '');
     const assigneeId = String(params.assigned_to_user_id || '');
     if (!jobId || !candidateId || !assigneeId) {
-      return { allowed: false, reason: 'job_id, candidate_id and assigned_to_user_id are required' };
+      return { allowed: false, reason: 'job_id (mission UUID), candidate_id and assigned_to_user_id are required' };
     }
 
     // 1. Mission in user's org
@@ -1927,12 +1934,16 @@ const assignCandidateToMember: AgentTool = {
       return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
     }
 
-    // 2. Candidate exists in this mission
+    // 2. Candidate exists in this mission. Par project_id et organisation
+    //    (lot 0c-2) : job_id vaut souvent « project:<uuid> », et un doublon
+    //    (deux auteurs) ne doit pas faire échouer maybeSingle.
     const { data: row } = await ctx.adminClient
       .from('job_candidate_status')
       .select('id')
-      .eq('job_id', jobId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', jobId)
       .eq('candidate_id', candidateId)
+      .limit(1)
       .maybeSingle();
     if (!row) {
       return {
@@ -1960,15 +1971,17 @@ const assignCandidateToMember: AgentTool = {
 
   async dryRun(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
+    const jobId = missionIdParam(params) ?? String(params.job_id);
     const assigneeId = String(params.assigned_to_user_id);
 
     const [{ data: current }, { data: project }, { data: assignee }, { data: existing }] = await Promise.all([
       ctx.adminClient
         .from('job_candidate_status')
         .select('candidate_name, candidate_headline')
+        .eq('organization_id', ctx.organizationId)
+        .eq('project_id', jobId)
         .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
+        .limit(1)
         .maybeSingle(),
       ctx.adminClient
         .from('sourcing_projects')
@@ -2026,15 +2039,17 @@ const assignCandidateToMember: AgentTool = {
 
   async execute(params, ctx) {
     const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
+    const jobId = missionIdParam(params) ?? String(params.job_id);
     const assigneeId = String(params.assigned_to_user_id);
 
     // Fetch candidate_name for the assignment row (denormalized for UI lookups)
     const { data: current } = await ctx.adminClient
       .from('job_candidate_status')
       .select('candidate_name')
+      .eq('organization_id', ctx.organizationId)
+      .eq('project_id', jobId)
       .eq('candidate_id', candidateId)
-      .eq('job_id', jobId)
+      .limit(1)
       .maybeSingle();
 
     // Check if assignment already exists
@@ -5001,11 +5016,29 @@ function normalizeMissionId(raw: unknown): string {
   return String(raw || '').trim().replace(/^project:/, '');
 }
 
+/**
+ * Profils à noter : même périmètre que le worker process-agent-tasks
+ * (organisation de l'appelant, mission, et le job_id de la plus ancienne ligne
+ * de la mission, forme sous laquelle score-profile-job écrit la note). Le
+ * nombre annoncé égale ainsi progress_total (lot 0c-2).
+ */
 async function countUnscoredProfiles(ctx: ToolContext, projectId: string): Promise<number> {
+  const { data: sampleRow } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select('job_id')
+    .eq('project_id', projectId)
+    .eq('organization_id', ctx.organizationId)
+    .not('job_id', 'is', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const jobId = (sampleRow as { job_id?: string | null } | null)?.job_id || `project:${projectId}`;
   const { count } = await ctx.adminClient
     .from('job_candidate_status')
     .select('id', { count: 'exact', head: true })
     .eq('project_id', projectId)
+    .eq('organization_id', ctx.organizationId)
+    .eq('job_id', jobId)
     .is('score', null)
     .not('linkedin_profile_data', 'is', null);
   return count ?? 0;
