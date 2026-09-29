@@ -14,7 +14,9 @@ import {
 } from 'lucide-react';
 import KonektLogo from '@/components/KonektLogo';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ScoreBadge } from '@/components/ui/score-badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { aiRecommendationMeta } from '@/lib/verdicts';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -103,20 +105,16 @@ const ReasoningBlock = ({ text }: { text: string }) => {
 
   return (
     <div className="text-sm">
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={() => setUserToggled(!open)}
         aria-expanded={open}
-        className="group flex items-center gap-1.5 rounded-sm py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="h-auto gap-1.5 rounded-sm px-0 py-0.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground max-md:min-h-11 [&_svg]:size-3.5"
       >
-        <ChevronRight
-          className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform duration-150', open && 'rotate-90')}
-          aria-hidden="true"
-        />
-        <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">
-          {streaming ? 'Réflexion en cours…' : 'Réflexion'}
-        </span>
-      </button>
+        <ChevronRight className={cn('transition-transform duration-150', open && 'rotate-90')} aria-hidden="true" />
+        {streaming ? 'Réflexion en cours…' : 'Réflexion'}
+      </Button>
       {open && (
         <div className="ml-1.5 mt-1 whitespace-pre-wrap border-l border-border pl-3 text-xs leading-relaxed text-muted-foreground">
           {text}
@@ -782,16 +780,19 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                       key={`${f.name}-${i}`}
                       className="group flex items-center gap-1.5 rounded-lg border border-border bg-muted py-1 pl-2 pr-1 text-2xs text-foreground-secondary"
                     >
-                      <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <FileText className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
                       <span className="max-w-[140px] truncate">{f.name}</span>
-                      <button
+                      {/* Sur téléphone, une zone invisible porte la cible à 44 px sans grossir l'étiquette. */}
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon-xs"
                         onClick={() => removeFile(i)}
-                        className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                        className="relative h-5 w-5 rounded-sm text-muted-foreground hover:bg-background hover:text-foreground max-md:after:absolute max-md:after:-inset-3 [&_svg]:size-3"
                         aria-label={`Retirer le fichier ${f.name}`}
                       >
-                        <X className="h-3 w-3" />
-                      </button>
+                        <X aria-hidden="true" />
+                      </Button>
                     </span>
                   ))}
                 </div>
@@ -814,16 +815,23 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
               {/* Toolbar */}
               <div className="flex items-center gap-1 pl-1 pr-0.5 pt-1">
                 {toolsSlot ?? (
-                  <FileUploadTrigger asChild>
-                    <button
-                      type="button"
-                      title="Joindre un fichier"
-                      aria-label="Joindre un fichier"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <Paperclip className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </FileUploadTrigger>
+                  <Tooltip>
+                    {/* FileUploadTrigger ne transmet pas de ref : l'infobulle s'ancre sur le bouton. */}
+                    <FileUploadTrigger asChild>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Joindre un fichier"
+                          className="shrink-0 rounded-full text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+                        >
+                          <Paperclip aria-hidden="true" />
+                        </Button>
+                      </TooltipTrigger>
+                    </FileUploadTrigger>
+                    <TooltipContent side="top">Joindre un fichier</TooltipContent>
+                  </Tooltip>
                 )}
 
                 {modelSlot}
@@ -834,7 +842,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                     aria-label="Envoyer"
                     title="Envoyer"
                     className={cn(
-                      'ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors',
+                      'ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors max-md:h-11 max-md:w-11',
                       'bg-foreground text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                       'disabled:cursor-not-allowed disabled:opacity-40'
                     )}
@@ -843,7 +851,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                   </ComposerPrimitive.Send>
                 </AuiIf>
                 <AuiIf condition={(st) => st.thread.isRunning}>
-                  <ComposerPrimitive.Cancel className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <ComposerPrimitive.Cancel className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-11">
                     <Square className="h-3 w-3 fill-current" aria-hidden="true" />
                     Arrêter
                   </ComposerPrimitive.Cancel>

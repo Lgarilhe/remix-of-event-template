@@ -15,3 +15,5 @@ export type { SectionProps } from './Section';
 
 export { ErrorState } from './ErrorState';
 export type { ErrorStateProps } from './ErrorState';
+
+export { ErrorBox } from './ErrorBox';

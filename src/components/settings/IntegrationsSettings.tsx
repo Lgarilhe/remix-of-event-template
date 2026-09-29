@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';

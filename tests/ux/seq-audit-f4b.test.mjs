@@ -401,7 +401,8 @@ test('SEQ-140 — raccourcis posés sur la liste, jamais Entrée seule pour une 
 
 // ---------------------------------------------------------------- SEQ-141 / SEQ-142 / SEQ-145
 test('SEQ-141 — depuis la messagerie, l’inscription est rattachée à une mission (ou « Sans mission »)', () => {
-  assert.match(inbox, /<option value="">Sans mission<\/option>/);
+  assert.match(inbox, /<SelectItem value=\{NO_MISSION\}>Sans mission<\/SelectItem>/);
+  assert.match(inbox, /onValueChange=\{\(value\) => setSelectedMissionId\(value === NO_MISSION \? '' : value\)\}/);
   assert.match(inbox, /job=\{selectedMission \? \{ id: selectedMission\.id, title: selectedMission\.name \} : null\}/);
   assert.match(inbox, /if \(inbox\.showSequenceSelect\) setSelectedMissionId\(linkedMissionId\);/);
 });

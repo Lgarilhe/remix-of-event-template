@@ -175,7 +175,7 @@ test('R5f — le hook expose l\'erreur de lecture et verrouille l\'écriture', (
 
 test('R5f — écran Sécurité LinkedIn : bloc d\'erreur au lieu des valeurs par défaut', () => {
   assert.doesNotMatch(safety, /\[userId, getQuotaForUser\]/);
-  assert.match(safety, /import \{ ErrorBox \} from '@\/components\/marketplace\/ErrorBox'/);
+  assert.match(safety, /import \{ ErrorBox \} from '@\/components\/layout\/ErrorBox'/);
   assert.match(safety, /<ErrorBox/);
   const errorAt = safety.indexOf('isError ?');
   assert.notEqual(errorAt, -1);

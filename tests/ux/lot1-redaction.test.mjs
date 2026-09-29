@@ -75,7 +75,7 @@ test('R5a — templates : bloc d\'erreur, ni suggestions ni liste, création dé
   assert.match(section, /!isLoading && !isError && templates\.length === 0/, 'suggestions affichées en erreur');
   assert.match(section, /!isLoading && !isError && templates\.length > 0/, 'liste affichée en erreur');
   assert.doesNotMatch(section, /!isLoading && templates\.length/, 'une condition sans !isError subsiste');
-  assert.match(templatesUi, /import \{ ErrorBox \} from '@\/components\/marketplace\/ErrorBox'/);
+  assert.match(templatesUi, /import \{ ErrorBox \} from '@\/components\/layout\/ErrorBox'/);
 });
 
 // ---------------------------------------------------------------- R5b

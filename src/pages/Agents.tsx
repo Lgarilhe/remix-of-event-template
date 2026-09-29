@@ -101,6 +101,7 @@ const AgentsPage = () => {
         <EmptyState
           illustration="conversation"
           title="Aucune conversation"
+          headingLevel={2}
           description="Posez une question à l'assistant ou confiez-lui une recherche."
           action={newConversation}
         />

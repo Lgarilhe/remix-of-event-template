@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { EmptyState } from '@/components/layout/EmptyState';
 import { useEmailSignatures, EmailSignature } from '@/hooks/useEmailSignatures';
 import { Mail, Plus, Pencil, Trash2 } from 'lucide-react';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { sanitizeSignatureHtml } from '@/lib/signatureHtml';
 
 /**
@@ -99,6 +99,7 @@ export const EmailSignatures: React.FC = () => {
             variant="compact"
             icon={Mail}
             title="Aucune signature"
+            headingLevel={4}
             description="Créez-en une pour l’utiliser dans vos séquences e-mail."
           />
         ) : (

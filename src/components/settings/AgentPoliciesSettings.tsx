@@ -24,7 +24,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SaveStatus, type SaveState } from '@/components/ui/save-status';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import {
   Select,
   SelectContent,

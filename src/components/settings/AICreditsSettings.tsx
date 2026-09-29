@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { Wallet, TrendingDown, Clock, ArrowUpRight, Coins, PlusCircle, ShoppingCart, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { EnrichmentAnalytics } from '@/components/settings/EnrichmentAnalytics';

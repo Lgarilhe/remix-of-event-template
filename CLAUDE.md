@@ -584,7 +584,7 @@ if (window.confirm('Supprimer ?')) { ... }
     <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
     <AlertDialogFooter>
       <AlertDialogCancel>Annuler</AlertDialogCancel>
-      <AlertDialogAction className="bg-destructive">Supprimer</AlertDialogAction>
+      <AlertDialogAction variant="destructive">Supprimer</AlertDialogAction>
     </AlertDialogFooter>
   </AlertDialogContent>
 </AlertDialog>

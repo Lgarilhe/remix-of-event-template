@@ -29,6 +29,11 @@ export interface EmptyStateProps {
   action?: React.ReactNode;
   /** Densité : compact dans une carte ou une colonne */
   variant?: 'default' | 'compact';
+  /**
+   * Niveau du titre, un cran sous le titre qui l'englobe : 2 à la place du
+   * contenu d'une page, 3 (défaut) dans une section, 4 dans une carte titrée en h3.
+   */
+  headingLevel?: 2 | 3 | 4;
   className?: string;
 }
 
@@ -59,9 +64,11 @@ export const EmptyState: React.FC<EmptyStateProps> = React.memo(({
   description,
   action,
   variant = 'default',
+  headingLevel = 3,
   className,
 }) => {
   const compact = variant === 'compact';
+  const Heading = `h${headingLevel}` as const;
 
   return (
     <div
@@ -77,7 +84,7 @@ export const EmptyState: React.FC<EmptyStateProps> = React.memo(({
       ) : (
         renderIcon(icon, compact)
       )}
-      <h3 className={cn('font-semibold text-foreground', compact ? 'text-sm' : 'text-md')}>{title}</h3>
+      <Heading className={cn('font-semibold text-foreground', compact ? 'text-sm' : 'text-md')}>{title}</Heading>
       {description && (
         <p className={cn('mt-1 max-w-md text-muted-foreground', compact ? 'text-xs' : 'text-sm')}>{description}</p>
       )}

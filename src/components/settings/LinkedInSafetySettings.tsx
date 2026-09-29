@@ -16,7 +16,7 @@ import {
   isValidMaxActionsPerDay,
 } from '@/hooks/useMemberQuotas';
 import { useOrganization } from '@/hooks/useOrganization';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 
 /**
  * LinkedInSafetySettings — Plages horaires + cap journalier d'actions LinkedIn.

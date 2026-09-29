@@ -105,6 +105,7 @@ export const PedigreePresetsSettings: React.FC = () => {
             variant="compact"
             icon={Bookmark}
             title="Aucun ICP configuré"
+            headingLevel={4}
             description="Créez-en un avec « Nouvel ICP » pour appliquer vos critères de sélection aux missions de chaque société."
           />
         ) : (

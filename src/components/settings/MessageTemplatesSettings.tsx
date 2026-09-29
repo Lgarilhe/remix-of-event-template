@@ -34,7 +34,7 @@ import { toast } from 'sonner';
 import { plural } from '@/lib/plural';
 import { PLACEHOLDERS_CATALOG } from '@/lib/templatePlaceholders';
 import { useUserTemplateVariables } from '@/hooks/useUserTemplateVariables';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 
 /** Raccourci ou variable cités tels qu'on les tape. */
 const KBD = 'rounded-sm border border-border bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground';

@@ -287,6 +287,7 @@ export default function ATS() {
         <EmptyState
           illustration="recherche"
           title="Aucun candidat pour l'instant"
+          headingLevel={2}
           description="Les candidats apparaissent ici dès que vous les ajoutez à une mission ou que vous les contactez."
           action={
             <Button asChild variant="outline" size="sm">
@@ -301,6 +302,7 @@ export default function ATS() {
         <EmptyState
           icon={SearchX}
           title="Aucun candidat ne correspond aux filtres"
+          headingLevel={2}
           description={`${plural(candidates.length, 'candidat masqué', 'candidats masqués')} par les filtres.`}
           action={
             <Button type="button" variant="outline" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>

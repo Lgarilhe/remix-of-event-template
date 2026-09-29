@@ -56,7 +56,7 @@ const ImperativeAlert = ({
         <AlertDialogFooter>
           <AlertDialogCancel onClick={() => onResolve(false)}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
-            className={destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
+            variant={destructive ? 'destructive' : 'primary'}
             onClick={() => onResolve(true)}
           >
             {confirmLabel}
