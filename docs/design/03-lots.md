@@ -318,7 +318,8 @@ Repris par le chantier design le 28 septembre, avec l'accord du propriétaire : 
 
 12d, illustrations :
 
-- Dix dessins (encre sur papier crème, accent bleu-vert) passés de 1 Mo en PNG à 15 à 45 Ko en WebP ; composant `Illustration`, décoratif, fixe, chargé à la demande, place réservée (`src/components/ui/illustration.tsx`).
+- Dix dessins (encre sur papier crème, accent bleu-vert) passés de 1 Mo en PNG à 15 à 45 Ko en WebP ; composant `Illustration`, décoratif, chargé à la demande, place réservée (`src/components/ui/illustration.tsx`).
+- Suite du 29 septembre, à la demande du propriétaire : les dessins arrivent en calques (vapeur, coches, badge, trace de l'avion…) et se posent une fois à l'apparition, en une seconde au plus, sans boucle, coupés par le mouvement réduit. Deux animations communes (`illu-enter`, `illu-draw`, `tailwind.config.ts`) réglées par pièce ; rien ne bouge avant que tous les calques soient chargés. Vérifié image par image (0 à 1 100 ms, thèmes clair et sombre) : l'état final est celui des dessins fixes.
 - Branché par `EmptyState` et `ErrorState` (`illustration="…"`), l'impasse publique (`PublicDeadEnd`) et la page introuvable. Placements : Tâches, Agenda, tableau de bord (rien de prévu), pipeline global, Agents, séquences, messagerie (aucun compte, aucune conversation choisie), acceptation d'invitation, Paramètres (aucun compte LinkedIn). Jamais dans la barre latérale, qui partage l'écran avec la page.
 - Règles et correspondance des dessins : `01-direction.md`, § Illustrations.
 

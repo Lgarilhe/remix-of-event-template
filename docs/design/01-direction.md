@@ -191,25 +191,27 @@ Chaque écran qui charge des données prévoit quatre états :
 
 ### Illustrations
 
-Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent (série du 28/09/2026). Composant `Illustration` (`src/components/ui/illustration.tsx`), fichiers WebP dans `src/assets/illustrations` (15 à 45 Ko, chargés à la demande). `EmptyState` et `ErrorState` les prennent par l'option `illustration`.
+Des dessins à l'encre sur papier crème et kraft, avec le bleu-vert de l'accent (série du 28/09/2026). Composant `Illustration` (`src/components/ui/illustration.tsx`). Chaque dessin est fait de calques WebP de même cadrage dans `src/assets/illustrations` (15 à 45 Ko par dessin, chargés à la demande). `EmptyState` et `ErrorState` les prennent par l'option `illustration`.
 
 - Une illustration par écran au plus, à la place de l'icône d'un état vide, d'une panne ou d'une issue (invitation, lien, page introuvable). Jamais dans une liste, une carte serrée, un bouton, un toast ni la barre latérale (présente sur chaque écran) ; une panne compacte garde son icône.
 - Décorative : le titre dit ce qui se passe, l'image n'a pas de texte alternatif.
-- Fixe : ni animation en boucle ni entrée animée.
+- Une entrée courte : une fois les calques chargés, les pièces du dessin se posent une seule fois, en une seconde au plus, jamais en boucle. Avec le mouvement réduit, le dessin s'affiche directement dans son état final.
 - Une situation, un dessin :
 
-| Dessin | Situation |
-|---|---|
-| `cafe` | rien à faire : journée ou semaine libre |
-| `conversation` | aucune conversation, avec un candidat ou l'assistant |
-| `envoi` | aucune séquence, envoi parti |
-| `taches` | aucune tâche, premiers pas |
-| `valide` | invitation acceptée, inscription réussie |
-| `connexion` | panne de connexion, compte LinkedIn non relié ou déconnecté |
-| `orientation` | page introuvable, lien expiré ou invalide |
-| `recherche` | aucun candidat, recherche sans résultat |
-| `brief` | poste à décrire |
-| `dossier` | aucune mission, aucun document |
+| Dessin | Situation | Entrée |
+|---|---|---|
+| `cafe` | rien à faire : journée ou semaine libre | la vapeur monte |
+| `conversation` | aucune conversation, avec un candidat ou l'assistant | les bulles s'ouvrent l'une après l'autre |
+| `envoi` | aucune séquence, envoi parti | l'avion part, sa trace se dessine |
+| `taches` | aucune tâche, premiers pas | les coches se posent une à une |
+| `valide` | invitation acceptée, inscription réussie | le badge se pose sur la carte |
+| `connexion` | panne de connexion, compte LinkedIn non relié ou déconnecté | la prise et la fiche se rapprochent sans se toucher |
+| `orientation` | page introuvable, lien expiré ou invalide | la flèche pivote sur son poteau |
+| `recherche` | aucun candidat, recherche sans résultat | la loupe passe au-dessus des fiches |
+| `brief` | poste à décrire | le dessin apparaît d'un seul tenant |
+| `dossier` | aucune mission, aucun document | le dessin apparaît d'un seul tenant |
+
+`brief` et `dossier` n'ont pas de calques qui recomposent le dessin : l'archive ne garde que le crayon du presse-papiers, et la feuille du dossier y est d'une autre échelle.
 
 ## 9. Texte
 

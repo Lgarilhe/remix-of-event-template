@@ -302,6 +302,26 @@ export default {
   					transform: 'translateX(100%)'
   				}
   			},
+  			// Entrée des pièces d'une illustration (src/components/ui/illustration.tsx) :
+  			// l'état de départ vient des variables --illu-*, l'arrivée est la place du dessin.
+  			'illu-enter': {
+  				from: {
+  					opacity: 'var(--illu-o, 0)',
+  					transform: 'translate(var(--illu-x, 0), var(--illu-y, 0)) rotate(var(--illu-r, 0deg)) scale(var(--illu-s, 1))'
+  				},
+  				to: {
+  					opacity: '1',
+  					transform: 'none'
+  				}
+  			},
+  			'illu-draw': {
+  				from: {
+  					clipPath: 'inset(0 100% 0 0)'
+  				},
+  				to: {
+  					clipPath: 'inset(0 var(--illu-draw-to, 0%) 0 0)'
+  				}
+  			},
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
@@ -312,6 +332,9 @@ export default {
   			'slide-in-left': 'slide-in-left 0.25s ease-out',
   			'scroll-left': 'scroll-left 40s linear infinite',
   			'scroll-left-fast': 'scroll-left 110s linear infinite',
+  			// Jouées une fois (fill both : état de départ pendant l'attente, place finale ensuite).
+  			'illu-enter': 'illu-enter var(--illu-duration, 700ms) var(--illu-ease, cubic-bezier(0.22, 1, 0.36, 1)) var(--illu-delay, 0ms) both',
+  			'illu-draw': 'illu-draw var(--illu-duration, 700ms) var(--illu-ease, cubic-bezier(0.22, 1, 0.36, 1)) var(--illu-delay, 0ms) both',
   		},
   		boxShadow: {
   			'2xs': 'var(--shadow-2xs)',

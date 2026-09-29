@@ -1,7 +1,8 @@
 /**
  * Chantier design, lot 12 : illustrations (dessins à l'encre sur papier crème,
- * accent bleu-vert). Fichiers WebP allégés, composant décoratif unique, états
- * vides et pannes des écrans hors refonte mission.
+ * accent bleu-vert). Calques WebP allégés, composant décoratif unique dont les
+ * pièces se posent une fois à l'apparition, états vides et pannes des écrans
+ * hors refonte mission.
  *
  * Lancer : node --test tests/ux/lot12d-illustrations.test.mjs
  */
@@ -15,29 +16,65 @@ const read = (rel) => readFileSync(new URL(rel, ROOT), 'utf8');
 const code = (rel) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
 
 const component = code('src/components/ui/illustration.tsx');
-const NAMES = [...component.matchAll(/^\s{2}(\w+): \{ src: \w+, width: \d+, height: \d+ \},$/gm)].map((m) => m[1]);
+const tailwind = read('tailwind.config.ts');
+/** Dessins : entrées « nom: { width, height, … layers: [ … ] } » de DRAWINGS. */
+const drawings = (() => {
+  const body = component.slice(component.indexOf('const DRAWINGS'), component.indexOf('const SIZES'));
+  return [...body.matchAll(/^\s{2}(\w+): \{/gm)].map((m) => m[1]);
+})();
+const imports = [...component.matchAll(/^import (\w+) from '@\/assets\/illustrations\/([\w-]+)\.webp';$/gm)].map((m) => ({ id: m[1], file: m[2] }));
 
-test('Illustrations : dix dessins, chacun en WebP léger', () => {
+test('Illustrations : dix dessins, en calques WebP légers', () => {
   assert.deepEqual(
-    [...NAMES].sort(),
+    [...drawings].sort(),
     ['brief', 'cafe', 'connexion', 'conversation', 'dossier', 'envoi', 'orientation', 'recherche', 'taches', 'valide'],
   );
-  for (const name of NAMES) {
-    const rel = `src/assets/illustrations/${name}.webp`;
+  assert.ok(imports.length >= 20, `trop peu de calques importés (${imports.length})`);
+  for (const { id, file } of imports) {
+    const rel = `src/assets/illustrations/${file}.webp`;
     assert.ok(existsSync(new URL(rel, ROOT)), `${rel} manquant`);
     assert.ok(statSync(new URL(rel, ROOT)).size < 60 * 1024, `${rel} dépasse 60 Ko`);
-    assert.match(component, new RegExp(`import ${name} from '@/assets/illustrations/${name}\\.webp';`));
+    assert.match(component, new RegExp(`\\{ src: ${id}(?:, motion: | \\})`), `${file} importé sans servir`);
   }
+  // Chaque fichier du dossier sert un dessin, jamais les PNG d'origine (1 Mo chacun).
   const files = readdirSync(new URL('src/assets/illustrations/', ROOT));
-  assert.ok(files.every((f) => f.endsWith('.webp')), 'jamais les PNG d’origine (1 Mo chacun)');
+  assert.ok(files.every((f) => f.endsWith('.webp')), 'jamais les PNG d’origine');
+  assert.deepEqual(files.map((f) => f.replace(/\.webp$/, '')).sort(), imports.map((i) => i.file).sort(), 'calque orphelin');
 });
 
-test('Illustrations : décoratives, fixes, chargées à la demande, place réservée', () => {
+test('Illustrations : décoratives, place réservée, chargées à la demande', () => {
   assert.match(component, /alt=""/);
   assert.match(component, /aria-hidden="true"/);
   assert.match(component, /loading="lazy"/);
-  assert.match(component, /width=\{width\}\s+height=\{height\}|width=\{width\}[\s\S]{0,40}height=\{height\}/);
-  assert.doesNotMatch(component, /animate-|motion\./, 'aucune animation');
+  assert.match(component, /width=\{width\}\s+height=\{height\}/);
+  // Le premier calque donne la taille, les autres se superposent au même cadrage.
+  assert.match(component, /i === 0 \? cn\('block h-auto w-auto', SIZES\[size\]\) : 'absolute inset-0 h-full w-full'/);
+});
+
+test('Illustrations : entrée jouée une fois, une seconde au plus, coupée par le mouvement réduit', () => {
+  // Rien ne bouge avant que tous les calques soient là.
+  assert.match(component, /const ready = settled >= layers\.length;/);
+  assert.match(component, /onLoad=\{settle\}\s+onError=\{settle\}/);
+  assert.match(component, /!ready && 'opacity-0'/);
+  // Deux animations, jouées une fois, jamais en boucle.
+  for (const name of ['illu-enter', 'illu-draw']) {
+    const line = tailwind.split('\n').find((l) => l.includes(`'${name}': '${name} `));
+    assert.ok(line, `animation ${name} absente de tailwind.config.ts`);
+    assert.match(line, / both',$/);
+    assert.doesNotMatch(line, /infinite/);
+  }
+  assert.doesNotMatch(component, /infinite|iteration/);
+  // Départ et durée : une seconde au plus pour chaque pièce.
+  const motions = [...component.matchAll(/motion: \{([^}]*)\}/g)].map((m) => m[1]);
+  assert.ok(motions.length >= 12, `trop peu de mouvements relevés (${motions.length})`);
+  for (const m of motions) {
+    const delay = Number(/delay: (\d+)/.exec(m)?.[1] ?? 0);
+    const duration = Number(/duration: (\d+)/.exec(m)?.[1]);
+    assert.ok(duration > 0 && delay + duration <= 1000, `mouvement trop long : ${m.trim()}`);
+  }
+  // Mouvement réduit : durée coupée par la règle globale, attente coupée par le calque.
+  assert.match(read('src/index.css'), /prefers-reduced-motion: reduce[\s\S]{0,120}animation-duration: 0\.01ms !important/);
+  assert.match(component, /'motion-reduce:!\[animation-delay:0ms\]'/);
 });
 
 test('Illustrations : états vides et pannes du kit', () => {
