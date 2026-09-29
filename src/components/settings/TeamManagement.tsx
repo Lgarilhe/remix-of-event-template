@@ -26,7 +26,7 @@ import { useOrganization, type OrganizationMember } from '@/hooks/useOrganizatio
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 
 interface TeamManagementProps {
   members: OrganizationMember[];

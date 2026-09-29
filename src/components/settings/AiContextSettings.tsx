@@ -29,7 +29,7 @@ import { SaveStatus, type SaveState } from '@/components/ui/save-status';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Building2, User as UserIcon, Plus, X } from 'lucide-react';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import {
   useUserAiContext,
   useOrgAiContext,

@@ -144,7 +144,7 @@ Tous les constats G sont listés : ils portent sur le socle et conditionnent les
 | G-05 | P1 | Statuts à valeur unique pour les deux thèmes ; 290 `text-muted-foreground/NN` sous 4,5:1 | partiel (lot 1 : statuts par thème ; lot 3 : opacités de texte comptées par le cliquet, 484 au départ) ; reprises écran par écran |
 | G-06 | P1 | Anneau de focus à 2,3:1 ; `focus:` au lieu de `focus-visible:` dans quatre primitives | corrigé (lot 1) |
 | G-03 | P2 | Classes sans CSS généré (`bg-foreground/8`, `w-4.5`, `line-clamp-8`) | corrigé (lot 3) |
-| G-07 | P2 | Bouton principal jamais employé, 143 aplats inversés refaits à la main ; `AlertDialogAction` transparent | partiel (lot 1 : `primary` monochrome, `AlertDialogAction` en `primary` ou `destructive`) ; aplats repris dans les lots d'écran |
+| G-07 | P2 | Bouton principal jamais employé, 143 aplats inversés refaits à la main ; `AlertDialogAction` transparent | partiel (lot 1 : `primary` monochrome, `AlertDialogAction` en `primary` ou `destructive` ; lot 13 : variante explicite `variant="destructive"`) ; aplats repris dans les lots d'écran |
 | G-08 | P2 | Hauteurs : 48 % des `Button`, 71 % des `Input`, 79 % des `SelectTrigger` surchargent la leur | partiel (lot 1 : échelle 28, 32, 36, 40) ; surcharges retirées dans les lots d'écran |
 | G-09 | P2 | 1 124 tailles `text-[Npx]`, règle Outfit sur les titres, six familles chargées | partiel (lot 1 : une famille, règle retirée, paliers nommés) ; tailles reprises dans les lots d'écran |
 | G-10 | P2 | Deux systèmes de toast ; l'action d'un toast est inopérante quand un dialogue est ouvert | corrigé (lot 1 : thème ; lot 3 : un seul système, toast cliquable par-dessus un dialogue) |
@@ -155,7 +155,7 @@ Tous les constats G sont listés : ils portent sur le socle et conditionnent les
 | G-15 | P2 | Mouvement réduit ignoré par 48 fichiers framer-motion | corrigé (lot 1) ; boucles décoratives retirées dans les lots d'écran |
 | G-16 | P2 | Ancien dégradé « skalr » et 123 classes `brand-purple` | partiel (lot 1 : classes partagées à plat ; lot 3 : compteur, 158 au départ) ; lots d'écran |
 | G-17 | P2 | 433 couleurs de palette brute, dont 76 tuiles d'icône émeraude | partiel (lot 1 : `IconTile` neutre par défaut) ; lots d'écran |
-| G-18 | P2 | Pas de primitives d'état : deux `EmptyState`, `ErrorBox` isolé, trois systèmes de chargement | partiel (lot 2 : `EmptyState`, `ErrorState`, `Spinner`) ; adoption dans les lots d'écran |
+| G-18 | P2 | Pas de primitives d'état : deux `EmptyState`, `ErrorBox` isolé, trois systèmes de chargement | partiel (lot 2 : `EmptyState`, `ErrorState`, `Spinner` ; lot 13 : `ErrorBox` dans `components/layout`) ; adoption dans les lots d'écran |
 | G-19 | P3 | Code mort : 16 fichiers de `ui/`, 4 de `layout/`, classes CSS orphelines | lot 11 (après fusion de la refonte mission) |
 | G-20 | P3 | Deux bascules de thème désynchronisées, `theme-color` faux | corrigé (lot 2) |
 | G-21 | P3 | Contrôles peu visibles : bord de champ 1,44:1, case vide 1,36:1, interrupteur éteint 1,46:1 | partiel (lot 3 : champs, cases et interrupteurs à 3:1 ; onglet actif et item de menu sous 3:1, soumis à la contre-revue) |

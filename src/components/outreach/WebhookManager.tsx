@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
 import { Bell, RefreshCw, Trash2 } from 'lucide-react';

@@ -246,6 +246,7 @@ export default function TasksPage() {
         <EmptyState
           icon={CheckSquare}
           title="Aucune tâche ne correspond à vos filtres"
+          headingLevel={2}
           description={`${plural(hiddenByFilters, 'tâche')} masquée${hiddenByFilters > 1 ? 's' : ''} par les filtres.`}
           action={
             <Button type="button" variant="outline" size="sm" onClick={() => setFilters(DEFAULT_TASKS_FILTERS)}>
@@ -257,6 +258,7 @@ export default function TasksPage() {
         <EmptyState
           illustration="taches"
           title="Aucune tâche en cours"
+          headingLevel={2}
           description="Créez une tâche ici, depuis la fiche d'un candidat ou depuis un entretien de l'agenda."
           action={
             <Button type="button" variant="outline" size="sm" onClick={() => setCreateOpen(true)}>

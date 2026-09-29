@@ -11,7 +11,7 @@ import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { CreditCard, ArrowUpRight, Calendar, Gauge, Download, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { plural } from '@/lib/plural';
 import { toast } from 'sonner';
 

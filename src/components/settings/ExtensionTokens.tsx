@@ -288,6 +288,7 @@ export const ExtensionTokens: React.FC<{ revealWhenEmpty?: boolean }> = ({ revea
             variant="compact"
             icon={KeyRound}
             title="Aucun jeton actif"
+            headingLevel={4}
             description="Créez un jeton pour relier l'extension Chrome à votre compte."
           />
         ) : (

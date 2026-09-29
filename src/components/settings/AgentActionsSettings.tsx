@@ -568,6 +568,7 @@ export const AgentActionsSettings = () => {
               variant="compact"
               icon={History}
               title="Aucune action ne correspond à ces filtres."
+              headingLevel={4}
               description="Changez de statut pour voir les autres actions."
               action={(
                 <Button size="sm" variant="outline" onClick={() => setStatusFilter('all')} className="max-md:h-11">
@@ -580,6 +581,7 @@ export const AgentActionsSettings = () => {
               variant="compact"
               icon={History}
               title="Aucune action pour le moment"
+              headingLevel={4}
               description="Les actions que l’assistant propose dans vos conversations apparaîtront ici, avec leur statut."
             />
           )

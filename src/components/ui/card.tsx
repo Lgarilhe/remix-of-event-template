@@ -2,8 +2,10 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+// Sans ombre : la carte se détache par son filet, l'ombre reste aux éléments qui flottent
+// (menus, dialogues, toasts ; 01-direction.md, § 4).
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("rounded-xl border border-border bg-card text-card-foreground shadow-sm", className)} {...props} />
+  <div ref={ref} className={cn("rounded-xl border border-border bg-card text-card-foreground", className)} {...props} />
 ));
 Card.displayName = "Card";
 

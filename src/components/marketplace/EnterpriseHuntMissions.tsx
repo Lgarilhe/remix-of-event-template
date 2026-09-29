@@ -15,7 +15,7 @@ import { EmptyState } from '@/components/layout/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { huntStatusLabel, huntStatusVariant, formatDate } from './huntLabels';
-import { ErrorBox } from './ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { RowsSkeleton } from './MarketplaceSkeleton';
 import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
 

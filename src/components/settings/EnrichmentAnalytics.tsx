@@ -25,7 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatGrid, StatTile } from '@/components/layout/StatTile';
-import { ErrorBox } from '@/components/marketplace/ErrorBox';
+import { ErrorBox } from '@/components/layout/ErrorBox';
 import { plural } from '@/lib/plural';
 import { Mail, Phone, TrendingUp, Contact, BarChart3, Check, X, Package } from 'lucide-react';
 

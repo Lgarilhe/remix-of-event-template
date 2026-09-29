@@ -334,6 +334,7 @@ export default function CalendarPage() {
         <EmptyState
           illustration="cafe"
           title={`Rien de prévu ${periodNoun}`}
+          headingLevel={2}
           description="Les entretiens, les InMails programmés et les étapes de séquence s'afficheront ici. Les rendez-vous pris via Calendly arrivent d'eux-mêmes."
           action={
             <Button type="button" variant="outline" size="sm" onClick={() => openCreate()}>
@@ -346,6 +347,7 @@ export default function CalendarPage() {
         <EmptyState
           icon={CalendarDays}
           title="Aucun événement ne correspond à vos filtres"
+          headingLevel={2}
           description={`${plural(rawEvents.length, 'événement')} ${periodNoun}, masqué${rawEvents.length > 1 ? 's' : ''} par les filtres.`}
           action={
             <Button type="button" variant="outline" size="sm" onClick={() => setFilters(DEFAULT_FILTERS)}>
