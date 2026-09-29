@@ -37,7 +37,7 @@ const aiHook = read('src/hooks/useAiContext.ts');
 const aiCard = read('src/components/settings/AiContextSettings.tsx');
 const onboarding = read('src/pages/Onboarding.tsx');
 const onboardingStorage = read('src/components/onboarding/onboardingStorage.ts');
-const sceneOrg = read('src/components/onboarding/SceneOrganization.tsx');
+const sceneStructure = read('src/components/onboarding/scenes/SceneStructure.tsx');
 const useOrg = read('src/hooks/useOrganization.ts');
 
 const VENDORS = /Unipile|Apollo|Anthropic|Claude|Resend|Stripe|BetterContact|Clearbit|PostgREST|Supabase/;
@@ -223,58 +223,43 @@ test('R4 — le type est écrit dans l’INSERT de l’organisation', () => {
   assert.match(between(mutation, '.insert(', '.select()'), /org_type: orgType/);
   assert.match(mutation, /orgType: 'enterprise' \| 'agency' \| 'freelance';/);
   assert.doesNotMatch(mutation, /orgType\?:/, 'paramètre obligatoire : pas d’organisation sans type');
-  assert.match(between(sceneOrg, 'const handleContinue', 'onComplete('), /\borgType,/);
-  assert.match(onboarding, /<SceneOrganization orgType=\{orgType\}/);
+  // La scène du nom passe le type choisi à la création, pour les trois profils.
+  assert.match(between(sceneStructure, 'await createOrganization({', '});'), /\borgType,/);
+  assert.match(onboarding, /<SceneStructure\s+orgType=\{orgType\}/);
 });
 
-test('R4 — plus d’UPDATE de type non attendu à la création', () => {
-  const created = between(onboarding, 'const handleOrgCreated', 'const handleLinkedInNext');
-  assert.doesNotMatch(created, /\.update\(|updateOrganization\(/);
-  assert.equal(count(onboarding, /updateOrganization\(/g), 1, 'seule l’activité de l’indépendant reste en UPDATE');
-});
-
-test('R4 — équipe, volume et secteurs : erreur lue, pas d’avancée sans écriture', () => {
-  const save = between(onboarding, 'const saveProfile', 'const handleOrgDetailsSubmitted');
-  assert.match(save, /await updateOrganization\(orgId/);
-  assert.match(save, /catch \(err\)[\s\S]*toast\.error\([\s\S]*return false;/);
-  const details = between(onboarding, 'const handleOrgDetailsSubmitted', 'const handleSpecializationsSubmitted');
-  assert.match(details, /if \(!\(await saveProfile\(data, specializations\)\)\) return;/);
-  assert.ok(details.indexOf('saveProfile') < details.indexOf("completeAndNext('orgdetails')"), 'scène marquée terminée après succès');
-  const specs = between(onboarding, 'const handleSpecializationsSubmitted', 'const handleOrgCreated');
-  assert.match(specs, /if \(!\(await saveProfile\(orgDetailsData, specs\)\)\) return;/);
-  assert.ok(specs.indexOf('saveProfile') < specs.indexOf("completeAndNext('specializations')"));
-  assert.doesNotMatch(save, /as any/);
-});
-
-test('R4 — indépendant : l’espace est créé avec son type par la scène du nom', () => {
-  const scene = read('src/components/onboarding/SceneFreelanceName.tsx');
-  assert.match(scene, /orgType: 'freelance'/);
-  assert.match(onboarding, /<SceneFreelanceName/);
-  assert.match(onboarding, /currentScene === 'org' && orgType === 'freelance'/);
-  assert.match(onboarding, /currentScene === 'org' && orgType && orgType !== 'freelance'/);
+test('R4 — aucune écriture du type après la création', () => {
+  for (const [name, src] of [['Onboarding.tsx', onboarding], ['SceneStructure.tsx', sceneStructure]]) {
+    for (const call of src.match(/updateOrganization\([^)]*\)/g) ?? []) {
+      assert.doesNotMatch(call, /org_type/, `${name} : ${call}`);
+    }
+  }
+  // Le seul UPDATE du parcours : le logo et le site trouvés pour l’entreprise, jamais devinés.
+  assert.equal(count(onboarding, /updateOrganization\(/g), 1);
+  const logoSync = between(onboarding, 'const logoSyncedRef', '// ─── Handlers de scènes');
+  assert.match(logoSync, /company\.logoUrl/);
+  assert.doesNotMatch(logoSync, /clearbit|logo\.dev|brandfetch/i);
 });
 
 test('C2 — l’espace créé est sauvegardé avec la progression', () => {
   assert.match(onboardingStorage, /createdOrgId\?: string \| null;/);
   assert.doesNotMatch(onboarding, /createdOrgIdRef/, 'un ref se perdait au rechargement');
   assert.match(onboarding, /useState<string \| null>\(restored\?\.createdOrgId \?\? null\)/, 'repris de la progression sauvegardée');
-  const persist = between(onboarding, 'saveOnboardingProgress({', '}, [');
+  const persist = between(onboarding, 'const progress: PersistedProgress = {', '};');
   assert.match(persist, /\bcreatedOrgId,/, 'écrit dans la progression');
-  assert.match(between(onboarding, 'saveOnboardingProgress({', ']);'), /completedScenes, createdOrgId$/, 'l’effet de sauvegarde suit createdOrgId');
-  assert.match(between(onboarding, 'const handleOrgCreated', 'const handleLinkedInNext'), /setCreatedOrgId\(data\.orgId\)/);
-  // Retour arrière ou rechargement : la scène du nom corrige l’espace, elle ne le recrée pas.
-  const scene = read('src/components/onboarding/SceneFreelanceName.tsx');
-  assert.match(scene, /let orgId = createdOrgId;/);
-  assert.match(between(scene, 'if (orgId) {', '} else {'), /updateOrganization\(orgId, \{ name: trimmed \}\)/);
+  assert.match(between(onboarding, 'saveOnboardingProgress(progressRef.current);\n  }, [', ']);'), /\bcreatedOrgId\b/, 'l’effet de sauvegarde suit createdOrgId');
+  assert.match(between(onboarding, 'const handleStructureCreated', 'const handleClientCommit'), /setCreatedOrgId\(orgId\)/);
+  // Retour arrière ou rechargement : la scène corrige le nom de l’espace, elle ne le recrée pas.
+  assert.match(sceneStructure, /let orgId = createdOrgId;/);
+  assert.match(between(sceneStructure, 'if (orgId) {', '} else {'), /updateOrganization\(orgId, \{ name \}\)/);
 });
 
-test('C2 — « déjà membre » : l’espace indépendant créé par l’utilisateur est repris, pas bloqué', () => {
-  const scene = read('src/components/onboarding/SceneFreelanceName.tsx');
-  const reuse = between(scene, '} catch (createErr) {', 'setConfirmSecondOpen(true)');
+test('C2 — « déjà membre » : l’espace créé par l’utilisateur, du même type, est repris et non bloqué', () => {
+  const reuse = between(sceneStructure, '} catch (createErr) {', 'setConfirmSecondOpen(true)');
   assert.match(reuse, /code !== ORG_ALREADY_EXISTS\) throw createErr/, 'les autres échecs restent signalés');
   assert.match(reuse, /await refetchOrganization\(\)/);
   assert.match(reuse, /own\.created_by === user\.id/);
-  assert.match(reuse, /own\.org_type === 'freelance'/);
+  assert.match(reuse, /own\.org_type === orgType/);
   assert.match(reuse, /orgId = own\.id;/);
 });
 
