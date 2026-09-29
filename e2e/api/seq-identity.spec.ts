@@ -29,6 +29,7 @@ import {
   admin,
   createOrg,
   deleteOrg,
+  seedCandidateRow,
   seedLinkedInAccount,
   seedMission,
   signIn,
@@ -423,11 +424,10 @@ test.describe('Identité du candidat : arrêt des autres inscriptions après une
       await sentStep(side.org, sibling.enrollmentId, s2.steps[0]);
       const mainNext = await laterStep(side.org, main.enrollmentId, s.steps[1]);
       const siblingNext = await laterStep(side.org, sibling.enrollmentId, s2.steps[1]);
-      const { error: jcsError } = await admin().from('job_candidate_status').insert({
-        organization_id: side.org.orgId, created_by: owner, candidate_id: shared, candidate_name: 'Jean Dupont',
-        job_id: `project:${missionId}`, project_id: missionId, status: 'contacted', pipeline_stage: 'Contacté',
+      await seedCandidateRow({
+        orgId: side.org.orgId, createdBy: owner, candidateId: shared, missionId, stage: 'contacted',
+        extra: { candidate_name: 'Jean Dupont' },
       });
-      if (jcsError) throw new Error(`job_candidate_status: ${jcsError.message}`);
       const { data: inmail, error: inmailError } = await admin().from('inmail_queue').insert({
         account_id: side.accountId, recipient_profile_id: shared, subject: 'Objet', message: 'Texte',
         status: 'sent', sent_at: minutesFromNow(-3 * 24 * 60), organization_id: side.org.orgId, created_by: owner,
@@ -445,8 +445,8 @@ test.describe('Identité du candidat : arrêt des autres inscriptions après une
     // puis provider_id égal à l'expéditeur).
     expect((await state(sideA.main.enrollmentId)).status).toBe('replied');
     expect((await state(sideA.sibling.enrollmentId)).status).toBe('replied');
-    const jcsA = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('organization_id', a.org.orgId).eq('candidate_id', shared).single();
-    expect(jcsA.data, 'pipeline de A passé « Répondu »').toEqual({ status: 'replied', pipeline_stage: 'Répondu' });
+    const jcsA = await admin().from('job_candidate_status').select('general_stage, status, pipeline_stage').eq('organization_id', a.org.orgId).eq('candidate_id', shared).single();
+    expect(jcsA.data, 'pipeline de A passé « Répondu »').toEqual({ general_stage: 'replied', status: 'replied', pipeline_stage: 'Répondu' });
     expect((await admin().from('inmail_queue').select('status').eq('id', sideA.inmailId).single()).data?.status).toBe('replied');
 
     // Organisation B intacte.
@@ -455,8 +455,8 @@ test.describe('Identité du candidat : arrêt des autres inscriptions après une
     for (const id of [sideB.mainNext, sideB.siblingNext]) {
       expect((await execution(id)).status, 'relances de B toujours programmées').toBe('scheduled');
     }
-    const jcsB = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('organization_id', b.org.orgId).eq('candidate_id', shared).single();
-    expect(jcsB.data, 'pipeline de B inchangé').toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
+    const jcsB = await admin().from('job_candidate_status').select('general_stage').eq('organization_id', b.org.orgId).eq('candidate_id', shared).single();
+    expect(jcsB.data, 'pipeline de B inchangé').toEqual({ general_stage: 'contacted' });
     expect((await admin().from('inmail_queue').select('status').eq('id', sideB.inmailId).single()).data?.status, 'InMail de B toujours « envoyé »').toBe('sent');
   });
 });

@@ -11,6 +11,7 @@
  * 4. Closed sequence enrollments (and their step executions, by cascade) and
  *    finished InMails with no activity for > 24 months — never active or
  *    paused enrollments, never pending InMails
+ * 5. Conversation–mission links (lot 0b) with no event for > 24 months
  *
  * Logs all deletions for audit trail.
  */
@@ -50,6 +51,7 @@ Deno.serve(async (req) => {
       refused_purged: 0,
       sequence_enrollments_purged: 0,
       inmails_purged: 0,
+      conversation_links_purged: 0,
       errors: [] as string[],
     };
 
@@ -242,6 +244,49 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       stats.errors.push(`inmails purge: ${e}`);
+    }
+
+    // ── 5. Liens conversation–mission après 24 mois (lot 0b) ─────────
+    // Un lien porte les identifiants LinkedIn du candidat et de la
+    // conversation. Il est inactif quand aucun de ses événements (envoi en cours, envoi, envoi
+    // attribué, réception) ni sa création n'a moins de 24 mois. updated_at
+    // n'est pas un critère : un rattrapage ou un rejeu le repose sans
+    // événement nouveau. Le même filtre est rejoué à la suppression, pour
+    // garder un lien touché entre la lecture et la suppression.
+    const cutoff24mIso = cutoff24m.toISOString();
+    const LINK_EVENT_FILTERS = ["outbound_pending_at", "last_outbound_at", "last_mission_send_at", "last_inbound_at"]
+      .map((column) => `${column}.is.null,${column}.lt."${cutoff24mIso}"`);
+    try {
+      let oldLinksQuery = adminClient
+        .from("mission_conversations")
+        .select("id")
+        .lt("created_at", cutoff24mIso);
+      for (const filter of LINK_EVENT_FILTERS) oldLinksQuery = oldLinksQuery.or(filter);
+      const { data: oldLinks, error: linksError } = await oldLinksQuery.limit(500);
+      if (linksError) {
+        stats.errors.push(`conversation links query: ${linksError.message}`);
+      } else {
+        const ids = (oldLinks ?? []).map((l: { id: string }) => l.id);
+        for (let i = 0; i < ids.length; i += 100) {
+          let deleteQuery = adminClient
+            .from("mission_conversations")
+            .delete()
+            .in("id", ids.slice(i, i + 100))
+            .lt("created_at", cutoff24mIso);
+          for (const filter of LINK_EVENT_FILTERS) deleteQuery = deleteQuery.or(filter);
+          const { data: deleted, error: deleteError } = await deleteQuery.select("id");
+          if (deleteError) {
+            stats.errors.push(`delete conversation links: ${deleteError.message}`);
+            break;
+          }
+          stats.conversation_links_purged += (deleted ?? []).length;
+        }
+        if (stats.conversation_links_purged > 0) {
+          console.log(`[rgpd-purge] Purged ${stats.conversation_links_purged} conversation links (> 24 months)`);
+        }
+      }
+    } catch (e) {
+      stats.errors.push(`conversation links purge: ${e}`);
     }
 
     // ── Summary ─────────────────────────────────────────────────────

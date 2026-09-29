@@ -9,6 +9,7 @@ import { inmailQueueRetry } from "../_shared/sequence-send-rules.ts";
 import { siblingEnrollmentsFilter, siblingStopScope } from "../_shared/sequence-engine-rules.ts";
 import { isGdprErasedEnrollment } from "../_shared/sequence-resume.ts";
 import { isCandidateErasedForOrg, linkedInProfileSlug } from "../_shared/get-or-fetch-contact.ts";
+import { candidateRef, missionIdFrom, recordOutbound } from "../_shared/candidate-stage-events.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,6 +79,45 @@ async function candidateErasedFor(supabase: any, orgId: string, recipientId: str
   return await isCandidateErasedForOrg(supabase, { organizationId: orgId, linkedinIds: [recipientId], linkedinUrl: profileUrl });
 }
 
+// Refonte mission, lot 0b-2a (S15). sent null : marqueur d'envoi en cours,
+// posé avant le POST (lien conversation–mission seul, pour reconnaître l'écho
+// de cet envoi dans le webhook). Sinon : envoi réel, lien puis « Contacté » en
+// origine system, avec une ligne À trier au nom de l'auteur de l'item si le
+// candidat n'en a aucune dans la mission. Au mieux : ne lève jamais, un échec
+// est journalisé et ne change rien au sort de l'item.
+async function recordQueueSend(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  item: InMailQueueItem,
+  orgId: string,
+  sent: { chatId: string | null; messageId: string | null } | null,
+): Promise<void> {
+  try {
+    const res = await recordOutbound(supabase, {
+      organizationId: orgId,
+      accountId: item.account_id,
+      candidate: candidateRef({ ids: [item.recipient_profile_id], name: item.recipient_name, headline: item.recipient_headline }),
+      source: "inmail_queue",
+      projectId: missionIdFrom(item.project_id),
+      chatId: sent?.chatId ?? null,
+      messageId: sent?.messageId ?? null,
+      createdBy: item.created_by,
+      pending: sent === null,
+      // Premier degré : message direct, sans InMail (voir l'envoi).
+      sendKind: item.network_distance === 1 ? "message" : "inmail",
+    });
+    if (!res.ok) {
+      console.error(`[process-inmail-queue] item ${item.id}: ${sent ? "envoi" : "marqueur"} non enregistré :`, res.fn, res.kind, res.error);
+    }
+  } catch (e) {
+    console.error(`[process-inmail-queue] item ${item.id}: enregistrement de l'envoi impossible :`, e);
+  }
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
 /** DSN sans schéma ni barre finale (les URL sont construites en https://${dsn}). */
 function bareDsn(raw: string): string {
   return raw.replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -98,6 +138,9 @@ interface InMailQueueItem {
   organization_id?: string | null;
   error_message?: string | null;
   network_distance: number | null; // 1=1st degree, 2=2nd degree, 3=3rd degree
+  recipient_headline?: string | null;
+  // Mission de l'InMail (lot 0b), vérifiée à la mise en file.
+  project_id?: string | null;
 }
 
 // Heures ouvrées : isWithinBusinessHours / nextBusinessHoursStart du module
@@ -155,7 +198,7 @@ Deno.serve(async (req: Request) => {
     // Service role client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, items, user_timezone, item_ids } = await req.json();
+    const { action, items, user_timezone, item_ids, project_id } = await req.json();
 
     // Helper function to validate user from auth header
     const validateUser = async () => {
@@ -443,6 +486,39 @@ Deno.serve(async (req: Request) => {
         );
       }
 
+      // Mission des InMails (lot 0b) : project_id de l'item, sinon de l'appel,
+      // préfixe project: accepté, vérifiée dans l'organisation de l'appelant.
+      // Forme invalide, hors organisation ou lecture impossible : aucune
+      // mission, résolue à l'envoi par le serveur.
+      const requestedMissionOf = (it: { project_id?: unknown } | null | undefined): string | null =>
+        missionIdFrom(it?.project_id) ?? missionIdFrom(project_id);
+      if (project_id != null && project_id !== "" && !missionIdFrom(project_id)) {
+        console.warn("[process-inmail-queue] project_id ignoré (forme invalide)");
+      }
+      const requestedMissions = [
+        ...new Set(freshItems.map((it: { project_id?: unknown }) => requestedMissionOf(it)).filter((id: string | null): id is string => !!id)),
+      ] as string[];
+      const verifiedMissions = new Set<string>();
+      if (callerOrgId && requestedMissions.length > 0) {
+        const { data: missions, error: missionErr } = await supabase
+          .from("sourcing_projects")
+          .select("id")
+          .eq("organization_id", callerOrgId)
+          .in("id", requestedMissions);
+        if (missionErr) {
+          console.warn("[process-inmail-queue] missions unreadable at enqueue:", missionErr.message);
+        }
+        for (const m of (missions ?? []) as Array<{ id: string }>) verifiedMissions.add(String(m.id).toLowerCase());
+        const ignored = requestedMissions.filter((id) => !verifiedMissions.has(id));
+        if (!missionErr && ignored.length > 0) {
+          console.warn("[process-inmail-queue] mission(s) hors organisation ignorée(s) :", ignored);
+        }
+      }
+      const verifiedMissionOf = (it: { project_id?: unknown } | null | undefined): string | null => {
+        const id = requestedMissionOf(it);
+        return id && verifiedMissions.has(id) ? id : null;
+      };
+
       // Load user's configured business hours + timezone (default 8h-19h Paris)
       const userQuotas = await loadUserQuotas(supabase, user.id, callerOrgId);
       const timezone = user_timezone || userQuotas.timezone;
@@ -502,6 +578,7 @@ Deno.serve(async (req: Request) => {
           // plages suivaient l'organisation active au moment de l'envoi.
           organization_id: callerOrgId,
           network_distance: item.network_distance || null,
+          project_id: verifiedMissionOf(item),
         };
       });
 
@@ -1094,6 +1171,9 @@ Deno.serve(async (req: Request) => {
             subject: !isFirstDegree ? item.subject : undefined,
           });
 
+          // Marqueur d'envoi en cours (lot 0b-2a), au mieux.
+          await recordQueueSend(supabase, item, itemOrgId as string, null);
+
           let response: Response;
           try {
             response = await fetchWithTimeout(
@@ -1150,8 +1230,9 @@ Deno.serve(async (req: Request) => {
 
           // Capture the provider usage % (LinkedIn signals how close we are to
           // its own limit) — proactively pauses the account at ≥90%.
+          let okBody: Record<string, unknown> | null = null;
           try {
-            const okBody = await response.json();
+            okBody = await response.json();
             await recordUsageSignal(supabase, item.account_id, parseUsagePct(okBody), item.user_timezone);
           } catch { /* response body is optional */ }
 
@@ -1164,6 +1245,12 @@ Deno.serve(async (req: Request) => {
               error_message: null,
             })
             .eq("id", item.id);
+
+          // Envoi réel (lot 0b-2a) : lien et « Contacté », au mieux.
+          await recordQueueSend(supabase, item, itemOrgId as string, {
+            chatId: textOrNull(okBody?.chat_id),
+            messageId: textOrNull(okBody?.message_id),
+          });
 
           results.push({ id: item.id, success: true });
 

@@ -198,31 +198,39 @@ test("R1 : add-to-shortlist ne pose que le statut Konekt, pour une organisation 
 
 test("R1 : auto-analyze-message ne lit et n'écrit job_candidate_status que dans l'organisation du compte", () => {
   const src = read(AUTO_ANALYZE);
-  assert.match(src, /if \(!skipStatusUpdates && candidateId && accountOrgId\) \{/);
+  // Lot 0b-2a : plus aucune écriture directe ; il reste la lecture du repli
+  // des auteurs (catégorie de conversation), bornée à l'organisation du compte.
   const queries = [...src.matchAll(/\.from\('job_candidate_status'\)[^;]*;/g)].map((m) => m[0]);
-  assert.equal(queries.length, 3, 'lecture des lignes, mise à jour, repli des auteurs');
+  assert.equal(queries.length, 1, 'seul le repli des auteurs lit encore les lignes');
   for (const q of queries) {
     assert.match(q, /\.eq\('organization_id', accountOrgId\)/, q);
-  }
-  for (const q of queries.filter((x) => x.includes('.or('))) {
+    assert.doesNotMatch(q, /\.(update|upsert|insert|delete)\(/, 'lecture seule');
     assert.ok(
       q.indexOf(".eq('organization_id', accountOrgId)") < q.indexOf('.or('),
       'le filtre d\'organisation précède le .or(...)',
     );
   }
   assert.match(src, /if \(userIds\.length === 0 && candidateId && accountOrgId\)/);
+  // Résumé et rattrapage : fonctions SQL serveur, dans l'organisation du compte.
+  assert.match(src, /recordReplySummary\(supabase, \{\s*organizationId: accountOrgId,/);
+  assert.match(src, /recordInbound\(supabase, \{\s*organizationId: accountOrgId,[\s\S]*?receivedAt: lastCandidateAt,/);
+  const events = read('supabase/functions/_shared/candidate-stage-events.ts');
+  assert.match(events, /callStageRpc\(client, 'record_reply_summary', \{/);
+  assert.match(events, /callStageRpc\(client, 'record_candidate_inbound', \{[\s\S]*?p_received_at: input\.receivedAt \?\? null,/);
 });
 
-test("R1 : l'analyse d'une réponse ne touche ni statut ni étape au-delà de « Contacté »", () => {
+test("R1 : l'analyse d'une réponse n'écrit plus ni statut, ni étape, ni recommandation", () => {
   const src = read(AUTO_ANALYZE);
-  const loop = src.slice(src.indexOf('for (const record of statusRecords)'));
-  assert.match(
-    loop,
-    /const isEarlyStage = stage === '' \|\| stage === 'Nouveau' \|\| stage === 'Contacté';/,
-  );
-  assert.match(loop, /\.\.\.\(isEarlyStage \? \{ status: appStatus, pipeline_stage: pipelineStage \} : \{\}\)/);
-  const update = loop.slice(loop.indexOf('.update({'), loop.indexOf('.eq(\'id\', record.id)'));
-  assert.doesNotMatch(update, /^\s*status: appStatus,/m, 'le statut ne doit plus être écrit sans condition');
+  // Lot 0b-2a (décision 8) : l'étape vient des écrivains SQL seulement.
+  assert.doesNotMatch(src, /\bstatus: appStatus\b|\bpipeline_stage:|\brecommendation:/);
+  assert.doesNotMatch(src, /for \(const record of statusRecords\)/);
+  // Rattrapage borné : avant l'analyse (même si elle échoue), date du dernier
+  // message du candidat ; le résumé n'est écrit qu'après une analyse réussie.
+  const catchUp = src.indexOf('await recordInbound(');
+  const analyze = src.indexOf('await analyzeIntent(');
+  const summary = src.indexOf('await recordReplySummary(');
+  assert.ok(catchUp > 0 && analyze > catchUp && summary > analyze, 'rattrapage, analyse, puis résumé');
+  assert.match(src, /const lastCandidateAt = lastCandidateMessageAt\(messages\);/);
 });
 
 // ─── R2 : submit-application neutralisée ────────────────────────────────────
@@ -311,6 +319,8 @@ test('R8 : la notation ne réécrit que les lignes de son organisation, statut f
   const withStatus = body.indexOf(".in('status', AI_REWRITABLE_STATUSES)");
   assert.ok(noteOnly > 0 && withStatus > 0, 'deux mises à jour disjointes attendues');
   assert.ok(noteOnly < withStatus, 'la note seule d\'abord : sinon une ligne passée en dismissed serait reprise');
+  // Lot 0b : la notation n'écarte plus personne.
+  assert.doesNotMatch(body, /'dismissed'/, 'aucun « dismissed » écrit par la notation');
   const list = src.match(/const AI_REWRITABLE_STATUSES = \[([^\]]*)\]/);
   assert.ok(list, 'AI_REWRITABLE_STATUSES introuvable');
   for (const s of ['messaged', 'replied', 'shortlisted', 'dismissed', 'interested', 'not_interested', 'qualification', 'contacted']) {

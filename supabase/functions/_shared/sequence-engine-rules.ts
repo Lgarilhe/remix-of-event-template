@@ -364,25 +364,23 @@ export function isLastContactOnAccount(
   });
 }
 
-// ─── SEQ-006 / SEQ-221 : réponse reportée dans le pipeline ──────────────────
+// ─── Refonte mission, lot 0b-2a (S13) : envoi enregistré sur la mission ─────
 
 /**
- * Statuts de job_candidate_status qu'une réponse passe « replied » (même liste
- * que unipile-webhook). « messaged » est le statut écrit à l'inscription :
- * sans lui, le pipeline d'un candidat inscrit ne bougeait jamais.
+ * Type d'envoi à enregistrer sur la mission de l'inscription (lien
+ * conversation–mission, puis « Contacté »), ou null quand l'action n'a rien
+ * envoyé au candidat sur LinkedIn : action sans envoi visible, e-mail et
+ * WhatsApp (canaux fermés, D2), saut signalé par l'action. Une invitation
+ * compte, avec ou sans note ; un message parti en InMail est un InMail.
  */
-export const REPLY_PIPELINE_STATUSES: readonly string[] = [
-  'contacted', 'shortlisted', 'scored', 'new', 'messaged', 'discovered', 'untreated',
-];
-
-/**
- * Écriture d'une réponse sur une ligne de pipeline : statut « replied », et
- * étape « Répondu » quand elle est vide, « Nouveau » ou « Contacté » (même
- * règle que unipile-webhook). Une étape plus avancée reste celle du recruteur.
- */
-export function replyPipelinePatch(pipelineStage: string | null | undefined): { status: 'replied'; pipeline_stage?: 'Répondu' } {
-  const promote = !pipelineStage || pipelineStage === 'Nouveau' || pipelineStage === 'Contacté';
-  return promote ? { status: 'replied', pipeline_stage: 'Répondu' } : { status: 'replied' };
+export function missionSendKind(
+  actionType: string,
+  result: { skipped?: string | null; skipReason?: string | null; needsInMail?: boolean | null },
+): 'message' | 'inmail' | 'invitation' | null {
+  if (!VISIBLE_SEND_ACTIONS.includes(actionType) || actionType === 'email' || actionType === 'whatsapp_message') return null;
+  if (result.skipped || result.skipReason) return null;
+  if (actionType === 'connection_request') return 'invitation';
+  return result.needsInMail ? 'inmail' : 'message';
 }
 
 // ─── SEQ-008 : rendez-vous rattaché par l'URL exacte du profil ──────────────

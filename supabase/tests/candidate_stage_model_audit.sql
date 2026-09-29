@@ -29,8 +29,20 @@
 -- P2 (une étape), P4 (compteurs), P5 (sans étape), P6 (reprise).
 -- O2 (C propriétaire) : P3.
 -- Les contrôles sont accumulés ; une exception finale liste ceux en échec.
+-- Lot 0b : la garde des écritures directes (stage_write_guard) est coupée dans
+-- la transaction (mode off) : les écritures directes de cet audit portent sur
+-- le déclencheur de transition du lot 0a, que le mode refus masquerait.
 -- =====================================================================
 SET LOCAL lock_timeout = '30s';
+
+DO $csm_mode$
+BEGIN
+  IF to_regprocedure('public.jcs_stage_write_mode()') IS NOT NULL THEN
+    EXECUTE $f$CREATE OR REPLACE FUNCTION public.jcs_stage_write_mode()
+      RETURNS text LANGUAGE sql STABLE SET search_path = public, pg_temp AS $m$ SELECT 'off'::text $m$ $f$;
+  END IF;
+END
+$csm_mode$;
 
 -- Contexte d'appel : utilisateur connecté (p_uid, rôle du jeton authenticated),
 -- serveur sans jeton (NULL, p_role NULL) ou clé de service (NULL, 'service_role').
@@ -211,11 +223,11 @@ BEGIN
      AND t.tgname COLLATE "C" < 'update_job_candidate_status_updated_at' COLLATE "C";
   failures := failures || pg_temp.csm_eq('S4 déclencheur de transition', n, 1);
 
-  -- S5. Les 8 déclencheurs attendus, et plus l'ancien déclencheur par ligne.
+  -- S5. Les 9 déclencheurs attendus (dont la garde du lot 0b), et plus l'ancien déclencheur par ligne.
   SELECT string_agg(tgname, ',' ORDER BY tgname) INTO got FROM pg_trigger
    WHERE tgrelid = 'public.job_candidate_status'::regclass AND NOT tgisinternal;
   failures := failures || pg_temp.csm_eq('S5 déclencheurs', got,
-    'resolve_project_id_ins,resolve_project_id_upd,stage_sync_from_legacy,sync_mission_stats_del,'
+    'resolve_project_id_ins,resolve_project_id_upd,stage_sync_from_legacy,stage_write_guard,sync_mission_stats_del,'
     'sync_mission_stats_ins,sync_mission_stats_upd,trg_auto_ingest_job_candidate_status,'
     'update_job_candidate_status_updated_at');
   IF to_regprocedure('public.refresh_project_shortlist_stats()') IS NOT NULL THEN

@@ -5,6 +5,8 @@
  * status pipeline Konekt si le candidat est connu :
  *   - status: 'discovered' | 'scored' | 'messaged' | 'replied' | 'shortlisted' | 'dismissed'
  *   - pipeline_stage: 'Nouveau' | 'Contacté' | 'Répondu' | ... | 'Gagné' | 'Perdu'
+ *   - general_stage: 'to_sort' | 'retained' | 'contacted' | 'replied' | 'interviewing'
+ *     | 'hired' | 'rejected' (étape du candidat, refonte mission lot 0a)
  *   - score: number | null
  *   - mission_title: string | null
  *
@@ -96,7 +98,7 @@ Deno.serve(async (req) => {
 
     const { data: rows, error } = await supabase
       .from('job_candidate_status')
-      .select('linkedin_profile_url, status, pipeline_stage, score, recommendation, job_id')
+      .select('linkedin_profile_url, status, pipeline_stage, general_stage, score, recommendation, job_id')
       .eq('organization_id', auth.organizationId)
       .or(slugConditions);
 
@@ -154,6 +156,7 @@ Deno.serve(async (req) => {
     const statuses: Record<string, {
       status: string;
       pipeline_stage: string | null;
+      general_stage: string | null;
       score: number | null;
       recommendation: string | null;
       mission_title: string | null;
@@ -165,6 +168,7 @@ Deno.serve(async (req) => {
       statuses[originalUrl] = {
         status: row.status,
         pipeline_stage: row.pipeline_stage,
+        general_stage: row.general_stage ?? null,
         score: row.score,
         recommendation: row.recommendation,
         mission_title: row.job_id ? (jobTitleMap.get(row.job_id) ?? null) : null,

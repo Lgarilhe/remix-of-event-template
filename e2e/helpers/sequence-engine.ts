@@ -53,7 +53,9 @@ export async function sentInvites(accountId: string): Promise<MockCall[]> {
 export interface MockRoute {
   method?: string;
   /** Expression régulière appliquée au chemin, ex. '^/api/v1/chats$'. */
-  path: string;
+  path?: string;
+  /** À la place de `path` : expression sur le chemin suivi de la chaîne de requête. */
+  url?: string;
   status?: number;
   body?: unknown;
   delay_ms?: number;

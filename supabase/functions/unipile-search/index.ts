@@ -112,6 +112,8 @@ interface SearchParams {
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
 import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from '../_shared/linkedin-quotas.ts';
+import { candidateRef, missionIdFrom, recordOutbound, type CandidateRef } from '../_shared/candidate-stage-events.ts';
+import { isCandidateErasedForOrg } from '../_shared/get-or-fetch-contact.ts';
 
 /**
  * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
@@ -415,7 +417,11 @@ Deno.serve(async (req) => {
       }
 
       case 'send_message': {
-        return await handleSendMessage(baseUrl, apiKey, gateAccountId, params);
+        return await handleSendMessage(baseUrl, apiKey, gateAccountId, params, {
+          organizationId: String(organization_id),
+          userId,
+          isInternal,
+        });
       }
 
       case 'mark_as_read': {
@@ -1771,6 +1777,220 @@ async function handleGetMessages(
   );
 }
 
+/** Appelant d'un envoi : organisation vérifiée, utilisateur (vide en appel interne). */
+interface SendContext {
+  organizationId: string;
+  userId: string;
+  isInternal: boolean;
+}
+
+const SEND_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sendText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+/** Candidat d'une conversation déjà liée à une mission sur ce compte (lien conversation–mission). */
+async function linkedChatCandidate(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  organizationId: string,
+  accountId: string,
+  chatId: string,
+): Promise<CandidateRef | null> {
+  const { data, error } = await admin
+    .from('mission_conversations')
+    .select('candidate_id, candidate_ids, candidate_slug')
+    .eq('organization_id', organizationId)
+    .eq('account_id', accountId)
+    .eq('chat_id', chatId)
+    .order('last_mission_send_at', { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (error) {
+    console.warn('[unipile-search] send_message: lien de conversation illisible:', error.message);
+    return null;
+  }
+  const row = (data ?? [])[0] as { candidate_id: string | null; candidate_ids: string[] | null; candidate_slug: string | null } | undefined;
+  if (!row) return null;
+  const ref = candidateRef({ ids: [row.candidate_id, ...(row.candidate_ids ?? [])], slug: row.candidate_slug });
+  return ref.ids.length > 0 ? ref : null;
+}
+
+/**
+ * Candidat d'une conversation lu auprès du prestataire : le seul participant
+ * qui n'est pas le compte. Aucun ou plusieurs (groupe) : null.
+ */
+async function fetchChatCandidate(baseUrl: string, apiKey: string, chatId: string): Promise<CandidateRef | null> {
+  try {
+    const res = await fetchWithTimeout(`${baseUrl}/chats/${encodeURIComponent(chatId)}/attendees`, {
+      headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
+    });
+    if (!res.ok) {
+      await res.text();
+      console.warn(`[unipile-search] send_message: participants indisponibles (statut ${res.status})`);
+      return null;
+    }
+    const body = await res.json();
+    const items: unknown[] = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
+    const others = items.filter((a) => {
+      if (!a || typeof a !== 'object') return false;
+      const att = a as Record<string, unknown>;
+      return !(att.is_self === true || att.is_self === 1 || att.role === 'self');
+    }) as Array<Record<string, unknown>>;
+    if (others.length !== 1) return null;
+    const other = others[0];
+    const specifics = other.specifics as Record<string, unknown> | null | undefined;
+    const ref = candidateRef({
+      ids: [sendText(other.provider_id)],
+      slug: sendText(other.public_identifier) ?? sendText(specifics?.public_identifier),
+      profileUrl: sendText(other.profile_url),
+      name: sendText(other.name),
+    });
+    return ref.ids.length > 0 ? ref : null;
+  } catch (e) {
+    console.warn('[unipile-search] send_message: lecture des participants impossible:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/** Envoi manuel à enregistrer : candidat, mission et auteur, résolus avant le POST. */
+interface ManualSendTarget {
+  // deno-lint-ignore no-explicit-any
+  admin: any;
+  candidate: CandidateRef;
+  projectId: string | null;
+  createdBy: string | null;
+  source: 'manual' | 'assistant';
+  sendKind: 'message' | 'inmail';
+}
+
+/**
+ * Refonte mission, lot 0b-2a (S14), avant le POST : candidat, mission et
+ * auteur de l'envoi, puis marqueur (record_candidate_outbound, p_pending) pour
+ * que l'écho de ce message au webhook ne soit pas pris pour un message écrit
+ * hors Konekt (décision 5a). Mission : project_id s'il a la forme d'un uuid
+ * (préfixe project: accepté), sinon résolue par le serveur. Candidat :
+ * recipient_id et recipient_profile_url ; pour une conversation existante,
+ * celui du lien, sinon le participant de la conversation. source et
+ * created_by ne sont lus que sur un appel interne (assistant). Candidat
+ * effacé (RGPD) dans l'organisation, ou registre illisible : rien n'est
+ * enregistré, le message part quand même. Au mieux : jamais d'erreur rendue.
+ */
+async function prepareManualSend(
+  baseUrl: string,
+  apiKey: string,
+  accountId: string,
+  params: Record<string, unknown>,
+  ctx: SendContext,
+): Promise<ManualSendTarget | null> {
+  try {
+    const rawProjectId = params.project_id;
+    const projectId = missionIdFrom(rawProjectId);
+    if (!projectId && rawProjectId != null && rawProjectId !== '') {
+      console.warn('[unipile-search] send_message: project_id ignoré (forme invalide)');
+    }
+    const chatId = sendText(params.chat_id);
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
+    );
+
+    let candidate = candidateRef({
+      ids: [sendText(params.recipient_id)],
+      profileUrl: sendText(params.recipient_profile_url),
+    });
+    if (candidate.ids.length === 0 && chatId) {
+      candidate = (await linkedChatCandidate(admin, ctx.organizationId, accountId, chatId))
+        ?? (await fetchChatCandidate(baseUrl, apiKey, chatId))
+        ?? candidate;
+    }
+    if (candidate.ids.length === 0) {
+      console.warn('[unipile-search] send_message: candidat inconnu, aucun lien ni étape');
+      return null;
+    }
+    try {
+      // Client esm.sh, type attendu npm : même API.
+      // deno-lint-ignore no-explicit-any
+      if (await isCandidateErasedForOrg(admin as any, {
+        organizationId: ctx.organizationId,
+        linkedinIds: candidate.ids,
+        linkedinUrl: candidate.profile_url ?? (candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null),
+      })) {
+        console.log('[unipile-search] send_message: candidat effacé, rien n\'est enregistré');
+        return null;
+      }
+    } catch (e) {
+      console.warn('[unipile-search] send_message: registre d\'effacement illisible, rien n\'est enregistré:', e instanceof Error ? e.message : e);
+      return null;
+    }
+
+    const internalCreatedBy = sendText(params.created_by);
+    const target: ManualSendTarget = {
+      admin,
+      candidate,
+      projectId,
+      createdBy: ctx.isInternal
+        ? (internalCreatedBy && SEND_UUID_RE.test(internalCreatedBy) ? internalCreatedBy : null)
+        : (ctx.userId || null),
+      source: ctx.isInternal && params.source === 'assistant' ? 'assistant' : 'manual',
+      // is_inmail ne vaut que pour une nouvelle conversation (voir l'envoi).
+      sendKind: !params.chat_id && params.is_inmail ? 'inmail' : 'message',
+    };
+    const marker = await recordOutbound(admin, {
+      organizationId: ctx.organizationId,
+      accountId,
+      candidate,
+      source: target.source,
+      projectId,
+      chatId,
+      createdBy: target.createdBy,
+      pending: true,
+      sendKind: target.sendKind,
+    });
+    if (!marker.ok) console.error('[unipile-search] send_message: marqueur non posé:', marker.fn, marker.kind, marker.error);
+    return target;
+  } catch (e) {
+    console.error('[unipile-search] send_message: préparation de l\'enregistrement impossible:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/**
+ * Après un envoi réussi : lien conversation–mission et « Contacté »
+ * (record_candidate_outbound), au mieux. Un échec est journalisé et n'est
+ * jamais renvoyé : le message est parti.
+ */
+async function recordManualSend(
+  target: ManualSendTarget,
+  accountId: string,
+  params: Record<string, unknown>,
+  sent: Record<string, unknown>,
+  ctx: SendContext,
+): Promise<void> {
+  try {
+    const res = await recordOutbound(target.admin, {
+      organizationId: ctx.organizationId,
+      accountId,
+      candidate: target.candidate,
+      source: target.source,
+      projectId: target.projectId,
+      chatId: sendText(params.chat_id) ?? sendText(sent?.chat_id),
+      messageId: sendText(sent?.message_id),
+      createdBy: target.createdBy,
+      sendKind: target.sendKind,
+    });
+    if (!res.ok) {
+      console.error('[unipile-search] send_message:', res.fn, res.kind, res.error);
+    } else if ('reason' in res.data) {
+      console.log(`[unipile-search] send_message: aucun lien (${res.data.reason})`);
+    } else {
+      console.log(`[unipile-search] send_message: mission ${res.data.project_id} (${res.data.via}), ${res.data.rows.length} ligne(s)`);
+    }
+  } catch (e) {
+    console.error('[unipile-search] send_message: enregistrement de l\'envoi impossible:', e instanceof Error ? e.message : e);
+  }
+}
+
 /**
  * Send message to a LinkedIn user
  * Supports both direct messages (for 1st degree) and InMails (for 2nd/3rd degree)
@@ -1780,7 +2000,8 @@ async function handleSendMessage(
   baseUrl: string,
   apiKey: string,
   accountId: string,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  ctx: SendContext,
 ): Promise<Response> {
   const { chat_id, recipient_id, text, message, subject, is_inmail } = params;
   const messageText = (text || message) as string;
@@ -1828,6 +2049,8 @@ async function handleSendMessage(
 
   console.log('Send message URL:', url, 'is_inmail:', is_inmail);
 
+  const manualSend = await prepareManualSend(baseUrl, apiKey, accountId, params, ctx);
+
   const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
@@ -1860,6 +2083,8 @@ async function handleSendMessage(
     // cross-version supabase-js client type mismatch (different import specifier than linkedin-quotas.ts)
     await recordUsageSignal(sbUsage as any, accountId, parseUsagePct(data), undefined);
   } catch (_e) { /* non-fatal */ }
+
+  if (manualSend) await recordManualSend(manualSend, accountId, params, data, ctx);
 
   return new Response(
     JSON.stringify({

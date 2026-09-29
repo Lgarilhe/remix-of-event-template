@@ -31,8 +31,11 @@ import { test, expect } from '@playwright/test';
 import {
   addMember,
   admin,
+  candidateRowState,
   deleteOrg,
+  seedCandidateRow,
   seedLinkedInAccount,
+  seedMission,
   signIn,
   type SeededStep,
   type TestOrg,
@@ -649,11 +652,12 @@ test.describe('Réponse : annulation des étapes de E1 en échec puis rejeu', ()
     // rejeu-pipeline-repondu-apres-echec-annulation (SEQ-006, SEQ-040)
     test('annulation des étapes de E1 en échec au premier passage : le candidat passe quand même « Répondu » dans le pipeline de son organisation après le rejeu', async () => {
       const s = await seedE1('E2E RR E1 pipeline');
-      const { data: jcsRow, error } = await admin().from('job_candidate_status').insert({
-        job_id: `job_rr_${rand()}`, candidate_id: s.profileId, created_by: s.org.owner.userId, organization_id: s.org.orgId,
-        candidate_name: 'Camille Martin', status: 'contacted', pipeline_stage: 'Contacté',
-      }).select('id').single();
-      if (error || !jcsRow) throw new Error(`jcs: ${error?.message}`);
+      // Refonte mission, lot 0b : la réponse n'écrit que dans la mission de l'inscription.
+      const mission = await seedMission(s.org.orgId, s.org.owner.userId);
+      await admin().from('outreach_sequences').update({ project_id: mission }).eq('id', s.q1.sequenceId);
+      const jcsRow = await seedCandidateRow({
+        orgId: s.org.orgId, createdBy: s.org.owner.userId, candidateId: s.profileId, missionId: mission, stage: 'contacted',
+      });
       await sentThenFollowUp(s.org, s.e1, s.q1.steps);
       const restore = failReplyCancel(s.e1);
 
@@ -662,9 +666,10 @@ test.describe('Réponse : annulation des étapes de E1 en échec puis rejeu', ()
       restore();
       expect((await rawWebhook(w.payload)).status).toBe(200);
 
-      const { data: row } = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('id', jcsRow.id).single();
-      // DÉFAUT rejeu-pipeline-jamais-repondu : le continue précède markCandidateRepliedInPipeline, et E1 est introuvable au rejeu.
-      expect(row, 'pipeline après rejeu').toEqual({ status: 'replied', pipeline_stage: 'Répondu' });
+      // Lot 0b : l'étape est écrite pour tout message du candidat (rejeu compris), dans la mission de E1.
+      const row = await candidateRowState(jcsRow.id);
+      expect({ stage: row.general_stage, status: row.status, pipeline_stage: row.pipeline_stage }, 'pipeline après rejeu')
+        .toEqual({ stage: 'replied', status: 'replied', pipeline_stage: 'Répondu' });
     });
   });
 });

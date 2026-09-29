@@ -2773,6 +2773,21 @@ const sendLinkedInMessage: AgentTool = {
       body.is_inmail = true;
       if (subject) body.subject = subject;
     }
+    // Refonte mission, lot 0b-2a (plan, section 2.3) : l'envoi pose le lien
+    // conversation–mission et « Contacté ». Origine assistant, auteur de la
+    // ligne créée = l'utilisateur, mission de la conversation de l'assistant
+    // (même organisation), sinon résolue par unipile-search.
+    body.source = 'assistant';
+    body.created_by = ctx.userId;
+    if (ctx.conversationId) {
+      const { data: conv } = await ctx.adminClient
+        .from('agent_conversations')
+        .select('project_id')
+        .eq('id', ctx.conversationId)
+        .eq('organization_id', ctx.organizationId)
+        .maybeSingle();
+      if (conv?.project_id) body.project_id = conv.project_id;
+    }
 
     try {
       const response = await fetch(`${supabaseUrl}/functions/v1/unipile-search`, {

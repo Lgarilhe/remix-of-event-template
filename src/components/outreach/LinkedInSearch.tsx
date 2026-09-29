@@ -391,7 +391,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setStatusFilter: search.setStatusFilter,
     autoHideTreatedRef: search.autoHideTreatedRef,
     candidateStatus: {
-      batchDismiss: search.candidateStatus.batchDismiss,
       saveScore: search.candidateStatus.saveScore,
       batchSaveScores: search.candidateStatus.batchSaveScores,
     },

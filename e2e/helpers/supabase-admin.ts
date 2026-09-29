@@ -120,6 +120,124 @@ export async function seedMission(
   return data.id as string;
 }
 
+export type CandidateStage = 'to_sort' | 'retained' | 'contacted' | 'replied' | 'interviewing' | 'hired' | 'rejected';
+
+/**
+ * Ligne candidat rattachée à une mission (refonte mission, lot 0b) : mission
+ * créée si absente, insertion À trier (job_id `project:<id>` et project_id,
+ * forme du Sourcing), puis étape par set_candidate_stage en origine user,
+ * comme le kanban. Les écrivains serveur n'agissent que sur les lignes de la
+ * mission résolue : une ligne sans mission n'est jamais touchée.
+ */
+export async function seedCandidateRow(opts: {
+  orgId: string;
+  createdBy: string;
+  candidateId: string;
+  missionId?: string;
+  stage?: CandidateStage;
+  stepId?: string | null;
+  legacyStage?: string | null;
+  extra?: Record<string, unknown>;
+}): Promise<{ id: string; missionId: string }> {
+  const missionId = opts.missionId ?? (await seedMission(opts.orgId, opts.createdBy));
+  const { data, error } = await admin()
+    .from('job_candidate_status')
+    .insert({
+      organization_id: opts.orgId,
+      project_id: missionId,
+      job_id: `project:${missionId}`,
+      candidate_id: opts.candidateId,
+      created_by: opts.createdBy,
+      candidate_name: 'Camille Martin',
+      ...opts.extra,
+    })
+    .select('id')
+    .single();
+  if (error || !data) throw new Error(`seedCandidateRow: ${error?.message}`);
+  const id = data.id as string;
+  const stage = opts.stage ?? 'to_sort';
+  if (stage !== 'to_sort') {
+    const { error: stageError } = await admin().rpc('set_candidate_stage', {
+      p_id: id,
+      p_stage: stage,
+      p_source: 'user',
+      p_organization_id: opts.orgId,
+      p_process_step_id: opts.stepId ?? null,
+      p_legacy_stage: opts.legacyStage ?? null,
+    });
+    if (stageError) throw new Error(`seedCandidateRow(${stage}): ${stageError.message}`);
+  }
+  return { id, missionId };
+}
+
+/** Libellés du /pipeline admis par set_candidate_stage pour chaque étape (origine user). */
+const LEGACY_LABELS: Record<CandidateStage, string[]> = {
+  to_sort: ['Nouveau', 'sourced', 'untreated'],
+  retained: ['Pressenti', 'shortlisted'],
+  contacted: ['Contacté', 'messaged'],
+  replied: ['Répondu'],
+  interviewing: ['Pré-qualif', 'ITW en cours', 'Offre', 'CV envoyé'],
+  hired: ['hired', 'Gagné'],
+  rejected: ['Perdu', 'dismissed'],
+};
+
+/**
+ * Amorçage écrit avec l'ancien couple (status, pipeline_stage) : l'étape en est
+ * dérivée par la base (candidate_stage_from_legacy), puis posée par
+ * seedCandidateRow ; le libellé du /pipeline est gardé quand l'étape l'admet.
+ * Le statut, lui, est celui qu'écrit set_candidate_stage (« messaged » pour
+ * Contacté) : comparer general_stage plutôt que status.
+ */
+export async function seedCandidateRowFromLegacy(opts: {
+  orgId: string;
+  createdBy: string;
+  candidateId: string;
+  missionId?: string;
+  status?: string | null;
+  pipelineStage?: string | null;
+  extra?: Record<string, unknown>;
+}): Promise<{ id: string; missionId: string }> {
+  const { data, error } = await admin().rpc('candidate_stage_from_legacy', {
+    p_status: opts.status ?? null, p_pipeline_stage: opts.pipelineStage ?? null, p_step_id: null,
+  });
+  if (error) throw new Error(`candidate_stage_from_legacy: ${error.message}`);
+  const derived = (Array.isArray(data) ? data[0] : data) as { general_stage: CandidateStage } | null;
+  const stage = derived?.general_stage ?? 'to_sort';
+  const label = opts.pipelineStage && LEGACY_LABELS[stage].includes(opts.pipelineStage) ? opts.pipelineStage : null;
+  return seedCandidateRow({
+    orgId: opts.orgId,
+    createdBy: opts.createdBy,
+    candidateId: opts.candidateId,
+    missionId: opts.missionId ? opts.missionId.replace(/^project:/, '') : undefined,
+    stage,
+    legacyStage: stage === 'to_sort' ? null : label,
+    extra: opts.extra,
+  });
+}
+
+export interface CandidateRowState {
+  general_stage: CandidateStage;
+  process_step_id: string | null;
+  decision_source: 'ai' | 'user' | 'system' | null;
+  status: string;
+  pipeline_stage: string | null;
+  contacted_at: string | null;
+  replied_at: string | null;
+  reply_summary: string | null;
+  recommendation: string | null;
+}
+
+/** Étape d'une ligne candidat (modèle 0a) et son couple de compatibilité. */
+export async function candidateRowState(id: string): Promise<CandidateRowState> {
+  const { data, error } = await admin()
+    .from('job_candidate_status')
+    .select('general_stage, process_step_id, decision_source, status, pipeline_stage, contacted_at, replied_at, reply_summary, recommendation')
+    .eq('id', id)
+    .single();
+  if (error || !data) throw new Error(`candidateRowState ${id}: ${error?.message}`);
+  return data as CandidateRowState;
+}
+
 export interface SeededStep {
   id: string;
   step_order: number;

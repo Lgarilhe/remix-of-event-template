@@ -13,9 +13,12 @@ import {
   SENT_EXECUTION_STATUSES, EMAIL_CHANNEL_SKIP_REASON, LINKEDIN_CHANNEL_SKIP_REASON, WHATSAPP_CHANNEL_SKIP_REASON,
   MANUAL_SKIP_REASON, resolveStepContent, isMissingRequiredText, missionJobIds,
   closedChannelSkipReason, isEmailOutcomeUnknown, siblingEnrollmentsFilter, SIBLING_REPLY_SKIP_REASON,
-  siblingStopScope, type SiblingStopScope, REPLY_PIPELINE_STATUSES, replyPipelinePatch, linkedinProfileSlug,
+  siblingStopScope, type SiblingStopScope, linkedinProfileSlug, missionSendKind,
   executionsSinceReEnroll, isLastContactOnAccount, type SameAccountContact,
 } from "../_shared/sequence-engine-rules.ts";
+import {
+  candidateRef, recordInbound, recordOutbound, type CandidateRef, type SendKind, type StageRpcClient,
+} from "../_shared/candidate-stage-events.ts";
 import {
   planResume, countOutcomes, ACCOUNT_NOT_IN_ORG_REASON, SUBSCRIPTION_REQUIRED_SKIP_REASON,
   isGdprErasedEnrollment, canActOnEnrollment, trackingWithoutPauseReason, GDPR_ERASED_RESUME_MESSAGE,
@@ -1159,7 +1162,7 @@ async function handleMarkReplied(supabase: any, organizationId: string | null, e
 
   const { data: enr, error } = await supabase
     .from('sequence_enrollments')
-    .select('id, status, completed_at, sequence_id, organization_id, profile_id, resolved_profile_id, provider_id, job_id, created_by, sequence:outreach_sequences(organization_id)')
+    .select('id, status, completed_at, sequence_id, organization_id, profile_id, resolved_profile_id, provider_id, account_id, assigned_sender_id, profile_url, job_id, created_by, sequence:outreach_sequences(organization_id)')
     .eq('id', enrollmentId).maybeSingle();
   if (error) {
     console.error('[mark_replied] lookup failed:', error);
@@ -1191,8 +1194,9 @@ async function handleMarkReplied(supabase: any, organizationId: string | null, e
   if (closed.failed && !closed.changed && !alreadyReplied) {
     return memberError('server_error', 'La réponse n\'a pas pu être enregistrée. Réessayez dans un instant.', 500);
   }
-  // SEQ-221 : pipeline de la mission passé « Répondu », comme une réponse
-  // détectée (aussi au second clic, s'il avait manqué au premier).
+  // SEQ-221 : réponse reportée dans la mission de l'inscription, comme une
+  // réponse détectée (aussi au second clic, s'il avait manqué au premier).
+  // Lot 0b-2a : sans envoi prouvé dans la mission, la ligne ne bouge pas.
   if (closed.changed || alreadyReplied) await markCandidateRepliedInPipeline(supabase, target);
   return json200({
     success: true,
@@ -3058,6 +3062,20 @@ async function handleProcess(supabase: any, force = false) {
           results.skipped++;
           continue;
         } else if (executeResult.success) {
+          // Refonte mission, lot 0b-2a (S13, décisions 6 et 21) : l'envoi est
+          // enregistré sur la mission de l'inscription AVANT toute autre
+          // écriture de cette branche, pour qu'aucun `continue` (inscription
+          // changée pendant l'envoi, statut 'sent' non écrit rattrapé par
+          // SEQ-079) ne le saute. Au mieux : jamais bloquant.
+          const sendKind = missionSendKind(effectiveActionType, executeResult);
+          if (sendKind) {
+            await recordEngineSend(supabase, enrollment, {
+              accountId: senderAccountFor(enrollment, step) || null,
+              sendKind,
+              chatId: executeResult.chatId ?? null,
+              messageId: executeResult.messageId ?? null,
+            });
+          }
           // Fix 1: Re-check enrollment status — a reply may have been detected during execution
           const { data: freshEnrollment } = await supabase
             .from('sequence_enrollments').select('status').eq('id', enrollment.id).single();
@@ -3084,6 +3102,11 @@ async function handleProcess(supabase: any, force = false) {
               // s'il est resté 'sending' (écriture du statut ratée).
               await recordEmailStepSent(supabase, exec.id, enrollment.sequence_id ?? null);
             }
+            // Lot 0b-2a (plan, section 3) : réponse arrivée pendant l'envoi.
+            // L'envoi est maintenant prouvé (enregistré plus haut, exécution
+            // « envoyée ») : la réponse est reportée dans la mission, « Contacté »
+            // puis « A répondu », même si le webhook est passé avant la preuve.
+            if (freshEnrollment?.status === 'replied') await markCandidateRepliedInPipeline(supabase, enrollment);
             await supabase.from('sequence_enrollments').update({ current_step_order: step.step_order + 1 }).eq('id', enrollment.id);
             results.processed++;
             if (!INVISIBLE_ACTIONS.has(effectiveActionType)) visibleActionsExecuted++;
@@ -5472,6 +5495,9 @@ async function scheduleNextStep(supabase: any, enrollment: any, currentStepOrder
  *    pas compter dans l'auto-pause de la séquence ;
  *  - skipped : 'suppressed' (adresse désinscrite) ou 'already_sent' renvoyé
  *    par sequence-send-email ; statusUpdateFailed : e-mail parti, statut non écrit.
+ * Refonte mission, lot 0b-2a : chatId (conversation où le message est parti)
+ * et messageId (identifiant rendu par l'envoi), pour le lien
+ * conversation–mission et la reconnaissance de l'écho dans le webhook.
  */
 interface StepActionResult {
   success: boolean;
@@ -5483,6 +5509,8 @@ interface StepActionResult {
   candidateError?: boolean;
   skipped?: string;
   statusUpdateFailed?: boolean;
+  chatId?: string | null;
+  messageId?: string | null;
 }
 
 /**
@@ -5716,7 +5744,16 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           return fd;
         };
 
+        // Refonte mission, lot 0b-2a : marqueur avant le POST (lien seul, sans
+        // « Contacté »), pour que le webhook reconnaisse l'écho de cet envoi
+        // et ne le prenne pas pour un message écrit hors Konekt. Au mieux.
+        await recordEngineSend(supabase, enrollment, {
+          accountId, sendKind: needsInMail ? 'inmail' : 'message', pending: true, chatId: existingChatId,
+        });
+
         let r: Response | null;
+        // Conversation où part le message : l'existante, ou celle que crée l'envoi.
+        let sentChatId: string | null = existingChatId;
         if (existingChatId) {
           // Send to existing chat thread — NO duplicate!
           const fd = new FormData();
@@ -5729,6 +5766,7 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
           if (r && !r.ok && rules.allowsNewChatFallback(r.status)) {
             const firstBody = await r.text().catch(() => '');
             console.warn(`[executeStepAction] Send to existing chat ${existingChatId} refused (${r.status}: ${firstBody}), falling back to new chat`);
+            sentChatId = null;
             r = await postSend(`${effectiveDsn}/api/v1/chats`, newChatForm());
           }
         } else {
@@ -5749,16 +5787,22 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         }
         // Le message est parti : le suivi (signal d'usage, statistiques) ne
         // doit jamais transformer cet envoi en échec relancé (SEQ-005).
+        // Lot 0b-2a : conversation et message rendus par l'envoi (nouvelle
+        // conversation : chat_id ; message dans une conversation : message_id).
+        let sentIds: { chat_id?: unknown; message_id?: unknown } = {};
         try {
           // Capte le signal usage fournisseur (% de proximité avec la limite LinkedIn)
           // → pause proactive du compte à ≥90 %.
           const sendBody = await r.json().catch(() => ({}));
           await recordUsageSignal(supabase, accountId, parseUsagePct(sendBody), (enrollment as any).user_timezone);
+          if (sendBody && typeof sendBody === 'object') sentIds = sendBody;
           await logAnalytics(supabase, enrollment.sequence_id as string, 'messages_sent');
         } catch (trackErr) {
           console.error(`[executeStepAction] Suivi après envoi en échec (message parti) :`, trackErr);
         }
-        return { success: true, message: msg, subject: needsInMail ? subj : undefined, needsInMail };
+        return { success: true, message: msg, subject: needsInMail ? subj : undefined, needsInMail,
+          chatId: sentChatId ?? (typeof sentIds.chat_id === 'string' ? sentIds.chat_id : null),
+          messageId: typeof sentIds.message_id === 'string' ? sentIds.message_id : null };
       }
       case 'whatsapp_message': {
         // Send WhatsApp message via Unipile — same API as LinkedIn (POST /api/v1/chats)
@@ -5947,6 +5991,9 @@ async function executeStepAction(actionType: string, enrollment: Record<string, 
         // LinkedIn invite note max ~300 chars. Use smartTruncate to cut at a
         // sentence boundary so we never send "Ça te par…" mid-word.
         if (msg && msg.trim()) invitePayload.message = rules.smartTruncate(msg, 300);
+        // Refonte mission, lot 0b-2a : marqueur avant le POST (écho de la note
+        // d'invitation reconnu par le webhook à l'acceptation). Au mieux.
+        await recordEngineSend(supabase, enrollment, { accountId, sendKind: 'invitation', pending: true });
         let r: Response;
         try {
           r = await fetchWithTimeout(`${effectiveDsn}/api/v1/users/invite`, { method: 'POST', headers: { 'X-API-KEY': effectiveApiKey, 'Content-Type': 'application/json' }, body: JSON.stringify(invitePayload) });
@@ -6162,42 +6209,105 @@ async function stopGdprErasedEnrollment(supabase: any, enrollmentId: string): Pr
   await cancelPendingExecutions(supabase, enrollmentId, GDPR_ERASURE_SKIP_REASON);
 }
 
+/** Organisation de l'inscription : sa colonne, sinon celle de sa séquence. */
+function enrollmentOrganizationId(enrollment: Record<string, unknown>): string | null {
+  const own = enrollment.organization_id;
+  if (typeof own === 'string' && own) return own;
+  const seqOrg = (enrollment.sequence as { organization_id?: unknown } | null | undefined)?.organization_id;
+  return typeof seqOrg === 'string' && seqOrg ? seqOrg : null;
+}
+
 /**
- * Réponse du candidat reportée dans le pipeline : job_candidate_status passe
- * « Répondu », borné à l'organisation de l'inscription (échec fermé si elle est
- * inconnue) et à sa mission (SEQ-006). Partagé par la vérification avant envoi,
- * les étapes d'attente et « Si pas de réponse », la scrutation et « Marquer
- * comme répondu » (SEQ-221). Mêmes statuts et même étape « Répondu » que le
- * webhook : la ligne « messaged » écrite à l'inscription est comprise, et une
- * étape vide, « Nouveau » ou « Contacté » passe « Répondu » au kanban.
+ * Candidat d'une inscription pour les fonctions SQL de l'étape : profile_id
+ * d'abord (forme des lignes du Sourcing, candidate_id d'une ligne ou d'un lien
+ * créés), puis ses autres identifiants LinkedIn et le slug de son profil.
+ */
+function enrollmentCandidate(enrollment: Record<string, unknown>): CandidateRef {
+  const text = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+  return candidateRef({
+    ids: [text(enrollment.profile_id), text(enrollment.resolved_profile_id), text(enrollment.provider_id)],
+    profileUrl: text(enrollment.profile_url),
+    name: text(enrollment.profile_name),
+    headline: text(enrollment.profile_headline),
+  });
+}
+
+/** Envoi du moteur à enregistrer : compte d'envoi, type, marqueur, conversation et message. */
+interface EngineSend {
+  accountId: string | null;
+  sendKind: SendKind;
+  pending?: boolean;
+  chatId?: string | null;
+  messageId?: string | null;
+}
+
+/**
+ * Refonte mission, lot 0b-2a (S13, décisions 6 et 21) : envoi du moteur
+ * enregistré sur la mission de l'inscription (record_candidate_outbound).
+ * - pending : marqueur avant le POST, lien seul (écho reconnu par le webhook) ;
+ * - sinon : lien (envoi attribué à la mission), puis « Contacté » en origine
+ *   system ; sans ligne du candidat dans la mission, une ligne À trier est
+ *   créée au nom de l'auteur de l'inscription.
+ * Au mieux : un échec est journalisé et ne change jamais l'issue de l'envoi.
+ */
+async function recordEngineSend(supabase: StageRpcClient, enrollment: Record<string, unknown>, send: EngineSend): Promise<void> {
+  const enrollmentId = String(enrollment.id);
+  try {
+    const orgId = enrollmentOrganizationId(enrollment);
+    if (!orgId) {
+      console.warn(`[process] envoi de ${enrollmentId} non enregistré sur une mission : organisation inconnue`);
+      return;
+    }
+    const res = await recordOutbound(supabase, {
+      organizationId: orgId,
+      accountId: send.accountId || null,
+      candidate: enrollmentCandidate(enrollment),
+      source: 'sequence',
+      enrollmentId,
+      createdBy: typeof enrollment.created_by === 'string' ? enrollment.created_by : null,
+      pending: send.pending === true,
+      sendKind: send.sendKind,
+      chatId: send.chatId ?? null,
+      messageId: send.messageId ?? null,
+    });
+    if (!res.ok) {
+      console.error(`[process] ${res.fn} (${res.kind}${send.pending ? ', marqueur' : ''}) pour l'inscription ${enrollmentId}:`, res.error);
+    }
+  } catch (err) {
+    console.error(`[process] envoi de ${enrollmentId} non enregistré sur sa mission:`, err);
+  }
+}
+
+/**
+ * Réponse du candidat reportée dans le pipeline (refonte mission, lot 0b-2a,
+ * S3) : record_candidate_inbound, mission de l'inscription d'abord
+ * (décision 4), sinon conversation, profil ou lignes contactées de
+ * l'organisation (décision 3). Si un envoi Konekt est prouvé dans cette
+ * mission, « Contacté » manqué puis « A répondu », en origine system
+ * (décision 13) ; sans preuve, une ligne À trier ou Retenue ne bouge pas.
+ * Seules les lignes de la mission résolue changent, dans l'organisation de
+ * l'inscription (rien si elle est inconnue). Partagé par la vérification
+ * avant envoi, les étapes d'attente et « Si pas de réponse », la scrutation,
+ * « Marquer comme répondu » (SEQ-221) et la réponse arrivée pendant un envoi.
+ * Au mieux : un échec est journalisé, la clôture de l'inscription reste acquise.
  */
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- client Supabase non typé, même convention que les autres handlers de ce fichier
 async function markCandidateRepliedInPipeline(supabase: any, enrollment: Record<string, any>) {
-  const jcsOrgId = (enrollment.organization_id || enrollment.sequence?.organization_id || null) as string | null;
-  if (enrollment.profile_id && !jcsOrgId) {
-    console.warn(`[process] job_candidate_status non mis à jour pour ${enrollment.id} : organisation inconnue`);
+  const orgId = enrollmentOrganizationId(enrollment);
+  if (!orgId) {
+    console.warn(`[process] réponse de ${enrollment.id} non reportée dans sa mission : organisation inconnue`);
+    return;
   }
-  if (enrollment.profile_id && jcsOrgId) {
-    let jcsQuery = supabase
-      .from('job_candidate_status')
-      .select('id, pipeline_stage')
-      .eq('candidate_id', enrollment.profile_id)
-      .in('status', [...REPLY_PIPELINE_STATUSES])
-      .eq('organization_id', jcsOrgId);
-    const jcsJobIds = missionJobIds(enrollment.job_id as string | null | undefined);
-    if (jcsJobIds) jcsQuery = jcsQuery.in('job_id', jcsJobIds);
-    const { data: jcsRows, error: jcsErr } = await jcsQuery;
-    if (jcsErr) console.warn(`[process] job_candidate_status illisible pour ${enrollment.id}:`, jcsErr);
-    for (const row of (jcsRows ?? []) as Array<{ id: string; pipeline_stage: string | null }>) {
-      const { error: updErr } = await supabase
-        .from('job_candidate_status')
-        .update({ ...replyPipelinePatch(row.pipeline_stage), updated_at: new Date().toISOString() })
-        .eq('id', row.id)
-        .eq('organization_id', jcsOrgId);
-      if (updErr) console.warn(`[process] job_candidate_status non mis à jour pour ${enrollment.id}:`, updErr);
-    }
-  }
+  const res = await recordInbound(supabase, {
+    organizationId: orgId,
+    accountId: senderAccountFor(enrollment) || null,
+    candidate: enrollmentCandidate(enrollment),
+    chatId: null,
+    enrollmentIds: [enrollment.id],
+    enrollmentFirst: true,
+  });
+  if (!res.ok) console.error(`[process] ${res.fn} (${res.kind}) pour l'inscription ${enrollment.id}:`, res.error);
 }
 
 /**

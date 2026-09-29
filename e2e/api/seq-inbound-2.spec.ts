@@ -23,8 +23,11 @@ import { E2E } from '../helpers/env';
 import {
   addMember,
   admin,
+  candidateRowState,
   createOrg,
   deleteOrg,
+  seedCandidateRow,
+  seedCandidateRowFromLegacy,
   seedLinkedInAccount,
   seedMission,
   signIn,
@@ -163,17 +166,19 @@ async function subscriptionOf(orgId: string) {
     .select('plan_id, status, stripe_customer_id, stripe_subscription_id').eq('organization_id', orgId).maybeSingle();
   return data as { plan_id: string; status: string; stripe_customer_id: string | null; stripe_subscription_id: string | null } | null;
 }
+// Refonte mission, lot 0b : ligne rattachée à une mission (job_id donné, sinon
+// nouvelle mission), étape dérivée de l'ancien couple et posée par set_candidate_stage.
 async function jcs(orgId: string, createdBy: string, candidateId: string, o: Record<string, unknown> = {}) {
-  const { data, error } = await admin().from('job_candidate_status').insert({
-    job_id: `job_e2e_${rand()}`, candidate_id: candidateId, created_by: createdBy, organization_id: orgId,
-    candidate_name: 'Camille Martin', status: 'contacted', pipeline_stage: 'Contacté', ...o,
-  }).select('id').single();
-  if (error || !data) throw new Error(`jcs: ${error?.message}`);
-  return data.id as string;
+  const { status = 'contacted', pipeline_stage = 'Contacté', job_id, ...extra } = o as { status?: string; pipeline_stage?: string | null; job_id?: string };
+  const { id } = await seedCandidateRowFromLegacy({
+    orgId, createdBy, candidateId, missionId: job_id, status, pipelineStage: pipeline_stage,
+    extra: { candidate_name: 'Camille Martin', ...extra },
+  });
+  return id;
 }
-async function jcsRow(id: string) {
-  const { data } = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('id', id).single();
-  return data as { status: string; pipeline_stage: string | null };
+/** Étape générale d'une ligne (modèle 0a). */
+async function jcsStage(id: string) {
+  return (await candidateRowState(id)).general_stage;
 }
 const ts = (iso: string | null | undefined) => (iso ? new Date(iso).getTime() : NaN);
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
@@ -515,6 +520,9 @@ test.describe('Réponse par e-mail', () => {
 
     // 1. in_reply_to suivi, réponse envoyée depuis une autre adresse.
     const seqA1 = await insertSequence(org, org.owner.userId, emailSeq);
+    // Refonte mission, lot 0b : la réponse n'écrit que dans la mission de l'inscription.
+    const missionA1 = await seedMission(org.orgId, org.owner.userId);
+    await admin().from('outreach_sequences').update({ project_id: missionA1 }).eq('id', seqA1.sequenceId);
     const profileA1 = `ACoAAE2EMAIL${rand()}${rand()}`;
     const a1 = await enroll(org, seqA1.sequenceId, org.owner.userId, ownerAccount, { profile_id: profileA1, email_used: addrA1, current_step_order: 1 });
     const seqSibling = await insertSequence(org, member.userId, emailSeq);
@@ -522,7 +530,9 @@ test.describe('Réponse par e-mail', () => {
     const seqB = await insertSequence(other, other.owner.userId, emailSeq);
     const b1 = await enroll(other, seqB.sequenceId, other.owner.userId, otherAccount, { email_used: addrA1.toLowerCase(), current_step_order: 1 });
     const b1Other = await enroll(other, seqB.sequenceId, other.owner.userId, otherAccount, { email_used: replyFromOther, current_step_order: 1 });
-    const jcsA1 = await jcs(org.orgId, org.owner.userId, profileA1);
+    const { id: jcsA1 } = await seedCandidateRow({
+      orgId: org.orgId, createdBy: org.owner.userId, candidateId: profileA1, missionId: missionA1, stage: 'contacted',
+    });
     const messageId = `<m1.${r}@e2e.konekt.test>`;
     const sentA1 = await schedule(org, a1.enrollmentId, seqA1.steps[0], { status: 'sent', scheduled_at: minutesFromNow(-DAY), executed_at: minutesFromNow(-DAY) });
     const { error: trErr } = await admin().from('sequence_email_tracking').insert({ execution_id: sentA1, tracking_id: `trk_${r}`, email_message_id: messageId });
@@ -545,7 +555,10 @@ test.describe('Réponse par e-mail', () => {
       expect(e.status, 'étape en attente annulée').toBe('cancelled');
       expect(e.skip_reason).toBe('Email reply detected via webhook');
     }
-    expect(await jcsRow(jcsA1), 'pipeline « Répondu » (SEQ-211)').toEqual({ status: 'replied', pipeline_stage: 'Répondu' });
+    const a1Row = await candidateRowState(jcsA1);
+    expect({ stage: a1Row.general_stage, status: a1Row.status, pipeline_stage: a1Row.pipeline_stage, source: a1Row.decision_source },
+      'pipeline « A répondu » dans la mission de l’inscription (SEQ-211)')
+      .toEqual({ stage: 'replied', status: 'replied', pipeline_stage: 'Répondu', source: 'system' });
     expect((await enr(sibling.enrollmentId)).status, 'même candidat sur un autre compte : arrêté (SEQ-212)').toBe('stopped');
     const se = await exec(siblingExec);
     expect(se.status).toBe('cancelled');
@@ -744,7 +757,10 @@ test.describe('Rendez-vous Calendly', () => {
     const slug = `camille-e2e-${rand()}`;
     const url = `https://www.linkedin.com/in/${slug}`;
     const profileId = `ACoAAE2ECAL${rand()}${rand()}`;
-    const jcsId = await jcs(org.orgId, org.owner.userId, profileId, { linkedin_profile_url: url });
+    // Refonte mission, lot 0b : ligne rattachée à une mission (sans étape d'entretien).
+    const { id: jcsId, missionId } = await seedCandidateRow({
+      orgId: org.orgId, createdBy: org.owner.userId, candidateId: profileId, stage: 'contacted', extra: { linkedin_profile_url: url },
+    });
     const seqs: Array<{ sequenceId: string; steps: SeededStep[] }> = [];
     for (let i = 0; i < 4; i++) seqs.push(await insertSequence(org, org.owner.userId, [
       { action_type: 'message', message_template: 'Bonjour' },
@@ -771,7 +787,12 @@ test.describe('Rendez-vous Calendly', () => {
     const sessions = await sessionsFor(eventId);
     expect(sessions, 'session de qualification créée').toHaveLength(1);
     expect(sessions[0].organization_id).toBe(org.orgId);
-    expect(await jcsRow(jcsId)).toEqual({ status: 'qualification', pipeline_stage: 'Pré-qualif' });
+    // Lot 0b (décision 12) : entretien en origine system dans la mission du rendez-vous, « ITW en cours ».
+    const booked = await candidateRowState(jcsId);
+    expect({ stage: booked.general_stage, step: booked.process_step_id, pipeline_stage: booked.pipeline_stage, source: booked.decision_source })
+      .toEqual({ stage: 'interviewing', step: null, pipeline_stage: 'ITW en cours', source: 'system' });
+    const { data: session } = await admin().from('qualification_sessions').select('project_id').eq('id', sessions[0].id).single();
+    expect(session?.project_id, 'séance dans la mission du rendez-vous').toBe(missionId);
     for (const [label, id] of [['active', active.enrollmentId], ['en pause', paused.enrollmentId], ['par URL', byUrl.enrollmentId]] as const) {
       const row = await enr(id);
       expect(row.status, `${label} : close`).toBe('completed');
@@ -819,14 +840,14 @@ test.describe('Rendez-vous Calendly', () => {
     expect(await sessionsFor(prefixEvent)).toEqual([]);
     expect((await enr(main.enrollmentId)).status, 'slug préfixe : inscription intacte').toBe('active');
     expect((await exec(mainExec)).status).toBe('scheduled');
-    expect(await jcsRow(jcsId)).toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
+    expect(await jcsStage(jcsId)).toBe('contacted');
 
     // Autre type d'événement : ignoré.
     const other = await calendlyBooking(fullUrl, `evt_e2e_${rand()}`, 'Autre');
     expect(other.status, JSON.stringify(other.body)).toBe(200);
     expect(other.body).toEqual({ success: true, skipped: true, reason: 'event_type_mismatch' });
     expect((await enr(main.enrollmentId)).status).toBe('active');
-    expect(await jcsRow(jcsId)).toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
+    expect(await jcsStage(jcsId)).toBe('contacted');
 
     // Six inscriptions correspondantes : aucun arrêt.
     const more: Array<{ enrollmentId: string; execId: string }> = [];
@@ -1150,9 +1171,9 @@ test.describe('check_replies', () => {
     const se = await exec(siblingExec);
     expect(se.status).toBe('cancelled');
     expect(se.skip_reason).toBe(SIBLING_REPLY_SKIP_REASON);
-    expect((await jcsRow(jcsMission)).status, 'pipeline de la mission : répondu').toBe('replied');
-    expect((await jcsRow(jcsOtherMission)).status, 'autre mission de l’organisation : inchangée (SEQ-006)').toBe('contacted');
-    expect((await jcsRow(jcsOtherOrg)).status, 'autre organisation : inchangée (SEQ-006)').toBe('contacted');
+    expect(await jcsStage(jcsMission), 'pipeline de la mission : répondu').toBe('replied');
+    expect(await jcsStage(jcsOtherMission), 'autre mission de l’organisation : inchangée (SEQ-006)').toBe('contacted');
+    expect(await jcsStage(jcsOtherOrg), 'autre organisation : inchangée (SEQ-006)').toBe('contacted');
     const notion = (await mockCalls()).filter((c) => c.at >= start && /notion/i.test(String(c.host ?? '')));
     expect(notion, 'aucun appel Notion pour une organisation sans Notion relié (SEQ-007)').toEqual([]);
 
@@ -1335,7 +1356,7 @@ test.describe('check_wait_events', () => {
       const rw = await exec(rWait);
       expect(rw.status, 'attente de réponse franchie').toBe('sent');
       expect((await exec(rLater)).status, 'relance « sans réponse » annulée').toBe('cancelled');
-      expect((await jcsRow(rJcs)).status, 'pipeline de la mission : répondu').toBe('replied');
+      expect(await jcsStage(rJcs), 'pipeline de la mission : répondu').toBe('replied');
       expect((await analytics(rSeq.sequenceId)).replies).toBe(1);
 
       const w2 = await exec(secondDegree.wait);

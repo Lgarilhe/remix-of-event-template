@@ -25,8 +25,10 @@ import { test, expect } from '@playwright/test';
 import {
   addMember,
   admin,
+  candidateRowState,
   createOrg,
   deleteOrg,
+  seedCandidateRowFromLegacy,
   seedLinkedInAccount,
   seedMission,
   seedSequence,
@@ -184,17 +186,15 @@ async function ownerToken(org: TestOrg) {
   return (await signIn(org.owner.email, org.owner.password)).access_token;
 }
 
+// Refonte mission, lot 0b : ligne de la mission, étape posée par set_candidate_stage.
 async function seedJcs(orgId: string, createdBy: string, jobId: string, candidateId: string, status = 'contacted') {
-  const { data, error } = await admin().from('job_candidate_status').insert({
-    organization_id: orgId, created_by: createdBy, job_id: jobId, candidate_id: candidateId, status,
-  }).select('id').single();
-  if (error || !data) throw new Error(`job_candidate_status: ${error?.message}`);
-  return data.id as string;
+  const { id } = await seedCandidateRowFromLegacy({ orgId, createdBy, candidateId, missionId: jobId, status });
+  return id;
 }
 
+/** Étape générale de la ligne (modèle 0a). */
 async function jcsStatus(id: string) {
-  const { data } = await admin().from('job_candidate_status').select('status').eq('id', id).single();
-  return (data as { status: string }).status;
+  return (await candidateRowState(id)).general_stage;
 }
 
 async function repliesReceived(sequenceId: string): Promise<number> {

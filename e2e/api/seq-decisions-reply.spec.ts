@@ -29,7 +29,9 @@ import { E2E } from '../helpers/env';
 import {
   addMember,
   admin,
+  candidateRowState,
   deleteOrg,
+  seedCandidateRowFromLegacy,
   seedLinkedInAccount,
   seedMission,
   type SeededStep,
@@ -162,13 +164,14 @@ async function dedupRows(eventKey: string): Promise<number> {
   const { data } = await admin().from('webhook_event_log').select('event_key').eq('event_key', eventKey);
   return (data ?? []).length;
 }
+// Refonte mission, lot 0b : étape dérivée de l'ancien couple et posée par set_candidate_stage.
 async function jcs(orgId: string, createdBy: string, jobId: string, candidateId: string, o: Record<string, unknown> = {}) {
-  const { data, error } = await admin().from('job_candidate_status').insert({
-    job_id: jobId, candidate_id: candidateId, created_by: createdBy, organization_id: orgId,
-    candidate_name: 'Camille Martin', status: 'messaged', pipeline_stage: null, ...o,
-  }).select('id').single();
-  if (error || !data) throw new Error(`jcs: ${error?.message}`);
-  return data.id as string;
+  const { status = 'messaged', pipeline_stage = null, ...extra } = o as { status?: string; pipeline_stage?: string | null };
+  const { id } = await seedCandidateRowFromLegacy({
+    orgId, createdBy, candidateId, missionId: jobId, status, pipelineStage: pipeline_stage,
+    extra: { candidate_name: 'Camille Martin', ...extra },
+  });
+  return id;
 }
 async function jcsRow(id: string) {
   const { data } = await admin().from('job_candidate_status').select('status, pipeline_stage').eq('id', id).single();
@@ -317,7 +320,7 @@ test.describe('Décision 8 : réponse reçue après la dernière relance', () =>
     expect(row.pause_reason).toBeNull();
     expect(await replies(s.sequenceId), 'réponse comptée').toBe(1);
     expect(await jcsRow(jcsMission), 'pipeline de la mission de l’inscription').toEqual({ status: 'replied', pipeline_stage: 'Répondu' });
-    expect(await jcsRow(jcsOther), 'autre mission inchangée').toEqual({ status: 'contacted', pipeline_stage: 'Contacté' });
+    expect((await candidateRowState(jcsOther)).general_stage, 'autre mission inchangée').toBe('contacted');
     const notes = await notificationsOf(org.orgId, 'new_message');
     expect(notes, 'le recruteur est prévenu du message').toHaveLength(1);
     expect(notes[0].metadata).toMatchObject({ chat_id: chatId, is_candidate: true, enrollment_id: s.enrollmentId });
