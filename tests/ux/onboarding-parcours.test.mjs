@@ -253,6 +253,14 @@ test('Message : rien n’est envoyé, le ton passe par le serveur', () => {
   assert.match(scene, /rien n'est envoyé/i);
 });
 
+test('Champ à trous : un prénom proposé après le focus se remplace en tapant', () => {
+  // Le prénom deviné arrive dans un effet, après l'autofocus : sélectionner au focus seulement
+  // porterait sur un champ vide, et la frappe s'ajouterait (« LaurentLaurent »).
+  const src = read('src/components/onboarding/parts/FillIn.tsx');
+  assert.match(src, /typedRef/, 'la frappe est suivie pour ne plus resélectionner');
+  assert.match(src, /useEffect\(\(\) => \{[^}]*\.select\(\)/s, 'la sélection est reposée quand la valeur arrive');
+});
+
 test('Le bureau : des variables de thème, pas de couleur en dur, et le mouvement réduit respecté', () => {
   const desk = code('src/components/onboarding/stage/Desk.tsx');
   assert.doesNotMatch(desk, /#[0-9a-fA-F]{6}\b/, 'papier et encre viennent des variables --paper*');

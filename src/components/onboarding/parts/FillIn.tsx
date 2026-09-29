@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -49,11 +49,20 @@ export const FillIn: React.FC<Props> = ({
   size = 'lg',
 }) => {
   const md = size === 'md';
+  const inputRef = useRef<HTMLInputElement>(null);
+  const typedRef = useRef(false);
   const [focused, setFocused] = useState(false);
   const [exampleIndex, setExampleIndex] = useState(0);
   const example = examples?.[exampleIndex % (examples?.length || 1)] ?? '';
   const typing = !!examples?.length && !value && !focused;
   const { shown, done } = useTypewriter(example, { start: typing, speed: 38 });
+
+  // Une réponse proposée après le focus (prénom deviné, arrivé en retard) reste sélectionnée
+  // tant que rien n'est tapé : la première frappe la remplace au lieu de s'y ajouter.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (selectOnFocus && value && !typedRef.current && el && document.activeElement === el) el.select();
+  }, [selectOnFocus, value]);
 
   // Exemple suivant, un instant après que le précédent est écrit en entier.
   useEffect(() => {
@@ -70,9 +79,13 @@ export const FillIn: React.FC<Props> = ({
       </label>
       <span className={cn('relative flex-1', md ? 'w-full' : 'min-w-[11rem]')}>
         <Input
+          ref={inputRef}
           id={id}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            typedRef.current = true;
+            onChange(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && onSubmit) {
               e.preventDefault();

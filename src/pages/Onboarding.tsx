@@ -97,7 +97,6 @@ const Onboarding = () => {
 
   const lookup = useCompanyLookup();
   const flow = useMemo(() => buildFlow({ linkedinSkipped }), [linkedinSkipped]);
-  const sceneRef = useRef<HTMLDivElement>(null);
   const account = useMemo(() => connectedAccounts(accounts)[0] ?? null, [accounts]);
 
   // Départ dans le tunnel : un utilisateur qui a déjà un espace et arrive à l'accueil, sans reprise, n'a rien à faire ici.
@@ -108,13 +107,14 @@ const Onboarding = () => {
 
   // Le focus suit la scène : un champ qui prend le focus de lui-même le garde, sinon la scène le reçoit
   // (clavier et lecteur d'écran repartent de son titre, pas du bouton de la scène précédente).
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      const el = sceneRef.current;
-      if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+  // Une ref de rappel plutôt qu'un effet sur `scene` : la scène sortante reste montée le temps de
+  // son animation, la nouvelle n'existe qu'après.
+  const focusScene = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    requestAnimationFrame(() => {
+      if (el.isConnected && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [scene]);
+  }, []);
 
   // Adresse propre après la lecture du retour de LinkedIn
   useEffect(() => {
@@ -445,7 +445,7 @@ const Onboarding = () => {
         </div>
       )}
       <AnimatePresence mode="wait">
-        <motion.div key={scene} ref={sceneRef} tabIndex={-1} className="outline-none" exit={{ opacity: 0, x: -28 }} transition={{ duration: 0.18, ease: 'easeIn' }}>
+        <motion.div key={scene} ref={focusScene} tabIndex={-1} className="outline-none" exit={{ opacity: 0, x: -28 }} transition={{ duration: 0.18, ease: 'easeIn' }}>
           {scene === 'hello' && (
             <SceneHello minutes={remainingMinutes(flow, 'hello')} value={firstName} onChange={setFirstName} onSubmit={() => void handleHello()} saving={savingHello} />
           )}
