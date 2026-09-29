@@ -114,7 +114,7 @@ export const CardExpandedContent: React.FC<CardExpandedContentProps> = ({
   return (
     <div className="bg-background rounded-lg border border-border overflow-hidden">
       <Tabs defaultValue={defaultTab} className="w-full">
-        <div className="border-b border-border overflow-x-auto bg-background">
+        <div className="border-b border-border overflow-x-auto no-scrollbar bg-background">
           <TabsList className="w-max min-w-full h-10 bg-transparent p-1 px-1.5 rounded-none gap-1">
             {/* Extra tabs (pipeline mode) — rendus EN PREMIER pour
                 que l'onglet par défaut (premier extraTab = "Aperçu")

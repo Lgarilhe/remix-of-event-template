@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { StickyNote, Plus, Trash2, Loader2 } from 'lucide-react';
+import { StickyNote, Plus, Trash2, Loader2, Users, Lock } from 'lucide-react';
 import { AiTextarea } from '@/components/ai/AiTextarea';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { EmptyState as EmptyStateUI } from '@/components/ui/EmptyState';
 import { CandidateCommentsTab } from '../CandidateCommentsTab';
 import { CenteredLoader } from './shared';
@@ -43,27 +44,15 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
 
   return (
     <div className="space-y-4">
-      {/* Toggle team / personal */}
-      <div className="flex gap-0">
-        <button
-          onClick={() => setNoteMode('team')}
-          className={cn(
-            "flex-1 py-2 text-xs font-bold uppercase tracking-wider border border-border transition-colors",
-            noteMode === 'team' ? 'bg-foreground text-background' : 'text-foreground hover:bg-accent/50'
-          )}
-        >
-          💬 Équipe
-        </button>
-        <button
-          onClick={() => setNoteMode('personal')}
-          className={cn(
-            "flex-1 py-2 text-xs font-bold uppercase tracking-wider border border-border -ml-px transition-colors",
-            noteMode === 'personal' ? 'bg-foreground text-background' : 'text-foreground hover:bg-accent/50'
-          )}
-        >
-          📝 Perso
-        </button>
-      </div>
+      <SegmentedControl<'team' | 'personal'>
+        aria-label="Type de note"
+        value={noteMode}
+        onValueChange={setNoteMode}
+        options={[
+          { value: 'team', label: 'Équipe', icon: Users },
+          { value: 'personal', label: 'Perso', icon: Lock },
+        ]}
+      />
 
       {noteMode === 'team' ? (
         <CandidateCommentsTab
@@ -73,7 +62,7 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
         />
       ) : (
         <div className="space-y-4">
-          <div className="flex gap-0">
+          <div className="flex items-end gap-2">
             <AiTextarea
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
@@ -85,10 +74,9 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
                 tone: 'concise',
               }}
             />
-            <button onClick={handleAdd} disabled={addingNote || !newNote.trim()}
-              className="h-auto px-4 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50">
-              {addingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-            </button>
+            <Button variant="primary" size="icon" onClick={handleAdd} disabled={addingNote || !newNote.trim()} aria-label="Ajouter la note">
+              {addingNote ? <Loader2 className="animate-spin" /> : <Plus />}
+            </Button>
           </div>
           {loading ? (
             <CenteredLoader />
@@ -97,11 +85,11 @@ export const NotesTab = React.memo<NotesTabProps>(({ candidateId, candidateName,
           ) : (
             <div className="space-y-2">
               {notes.map(note => (
-                <div key={note.id} className="group p-3 border border-border bg-foreground/[0.02]">
+                <div key={note.id} className="group rounded-lg border border-border p-3">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm text-foreground whitespace-pre-wrap flex-1">{note.content}</p>
-                    <button onClick={() => onDeleteNote(note.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
+                    <button onClick={() => onDeleteNote(note.id)} aria-label="Supprimer la note"
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>

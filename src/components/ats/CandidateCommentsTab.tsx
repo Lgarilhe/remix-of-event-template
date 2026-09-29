@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrganization } from '@/hooks/useOrganization';
 import { Loader2, Send, Trash2, MessageCircle, AtSign } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/layout/EmptyState';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -240,7 +242,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
     <div className="space-y-4">
       {/* Input */}
       <div className="relative">
-        <div className="flex gap-0">
+        <div className="flex items-end gap-2">
           <div className="flex-1 relative">
             <Textarea
               ref={textareaRef}
@@ -265,7 +267,7 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
                       i === mentionIndex ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                     )}
                   >
-                    <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-xs font-bold uppercase shrink-0">
+                    <div className="h-6 w-6 rounded-full bg-muted text-foreground flex items-center justify-center text-xs font-semibold uppercase shrink-0">
                       {member.display_name.charAt(0)}
                     </div>
                     <div className="min-w-0">
@@ -276,13 +278,15 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
               </div>
             )}
           </div>
-          <button
+          <Button
+            variant="primary"
+            size="icon"
             onClick={handleSubmit}
             disabled={submitting || !newComment.trim()}
-            className="h-auto px-4 border border-border -ml-px bg-foreground text-background text-xs font-medium uppercase tracking-wider disabled:opacity-50 hover:bg-foreground/90 transition-colors"
+            aria-label="Envoyer le commentaire"
           >
-            {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          </button>
+            {submitting ? <Loader2 className="animate-spin" /> : <Send />}
+          </Button>
         </div>
       </div>
 
@@ -292,22 +296,23 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       ) : comments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-          <MessageCircle className="w-8 h-8 mb-2 opacity-40" />
-          <p className="text-xs font-medium uppercase tracking-wider">Aucun commentaire</p>
-          <p className="text-xs mt-1">Soyez le premier à commenter</p>
-        </div>
+        <EmptyState
+          variant="compact"
+          icon={MessageCircle}
+          title="Aucun commentaire"
+          description="Tapez @ pour mentionner un collègue."
+        />
       ) : (
         <div className="space-y-2">
           {comments.map(comment => (
-            <div key={comment.id} className="group p-3 border border-border bg-foreground/[0.02] hover:border-border transition-colors">
+            <div key={comment.id} className="group rounded-lg border border-border p-3">
               <div className="flex items-start gap-2">
-                <div className="h-6 w-6 bg-foreground text-background flex items-center justify-center text-xs font-bold uppercase shrink-0 mt-0.5">
+                <div className="h-6 w-6 rounded-full bg-muted text-foreground flex items-center justify-center text-xs font-semibold uppercase shrink-0 mt-0.5">
                   {getMemberName(comment.created_by).charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-display font-bold text-[13px] tracking-tight text-foreground">
+                    <span className="text-sm font-medium text-foreground">
                       {getMemberName(comment.created_by)}
                     </span>
                     <div className="flex items-center gap-1">
@@ -316,7 +321,8 @@ export const CandidateCommentsTab: React.FC<CandidateCommentsTabProps> = ({
                       </span>
                       <button
                         onClick={() => handleDelete(comment.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
+                        aria-label="Supprimer le commentaire"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
