@@ -307,7 +307,7 @@ test('0b-2a (S4, S5) : ni l\'analyse ni Calendly n\'écrivent l\'étape en direc
   assert.match(analyze, /\} else if \(accountOrgId && stageAllowed\) \{/);
   assert.match(analyze, /if \(accountOrgId && stageAllowed\) \{\s*const summaryRes = await recordReplySummary/);
   const calendly = read(CALENDLY);
-  // (« Pré-qualif » ne reste que dans la synchronisation Notion.)
+  // (« Pré-qualif » est parti avec la synchronisation Notion, retirée le 29/09.)
   assert.doesNotMatch(calendly, /status: 'qualification'|pipeline_stage:/);
   assert.doesNotMatch(calendly, /\.from\('job_candidate_status'\)\s*\.update\(/);
   // Mission résolue avant la séance, même mission pour l'étape.

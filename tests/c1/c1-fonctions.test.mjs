@@ -2,9 +2,9 @@
  * Lot C1, réparations des fuites : garde-fous statiques des fonctions edge.
  *
  * Même forme que tests/agent et tests/ux : lecture du source et assertions sur
- * les motifs, sans navigateur, sans base ni runtime Deno. Couvre R1 (partiel :
- * process-sequences et calendly-webhook reportés ; renforcé par le retrait de
- * Notion hors connexion de l'assistant, 2026-09-28), R2, R3 (points 2 et 3),
+ * les motifs, sans navigateur, sans base ni runtime Deno. Couvre R1 (renforcé
+ * par le retrait de Notion hors connexion de l'assistant, étapes 1 et 2 des
+ * 28 et 29/09), R2, R3 (points 2 et 3),
  * R4 (fonction edge), R8 et R11 (send-team-invitation, e-mail d'invitation de
  * mission).
  *
@@ -58,12 +58,15 @@ const MISSION_EMAIL = 'supabase/functions/_shared/transactional-email-templates/
 // ─── R1 : plus de Notion hors connexion de l'assistant (décision 16) ────────
 //
 // Étape 1 du retrait (2026-09-28) : l'ancienne synchro Notion par clé API sort
-// du code. Restent visés : l'API REST de Notion, les secrets de la plateforme
-// NOTION_API_KEY et NOTION_<BASE>_DB_ID, les colonnes notion_* de
-// organization_integrations, job_candidate_status et qualification_sessions
-// (encore en base jusqu'à l'étape 2). La connexion Notion de l'assistant passe
-// par mcp.notion.com : ses secrets (NOTION_TOKEN_ENCRYPTION_KEY,
-// NOTION_ALLOWED_RETURN_ORIGINS) et ses tables OAuth ne sont pas visés.
+// du code. Étape 2 (2026-09-29) : process-sequences et calendly-webhook suivent,
+// la carte « Notion par clé » quitte les Paramètres, et une migration supprime
+// les colonnes. Visés partout (supabase/functions et src) : l'API REST de
+// Notion, les secrets de la plateforme NOTION_API_KEY et NOTION_<BASE>_DB_ID,
+// les colonnes notion_* de organization_integrations, job_candidate_status et
+// qualification_sessions, la table notion_api_cache. La connexion Notion de
+// l'assistant passe par mcp.notion.com : ses secrets
+// (NOTION_TOKEN_ENCRYPTION_KEY, NOTION_ALLOWED_RETURN_ORIGINS) et ses tables
+// OAuth ne sont pas visés.
 
 const NOTION_REST_API = /api\.notion\.com/;
 const PLATFORM_NOTION_SECRET = /NOTION_(?:API_KEY|[A-Z]+_DB_ID)/;
@@ -78,16 +81,6 @@ const MCP_FILES = new Set([
   'supabase/functions/_shared/notion-oauth-policy.mjs',
   'supabase/functions/_shared/connector-selection.mjs',
 ]);
-// Reportés (DEFERRED) : process-sequences et calendly-webhook, réservés à une
-// autre session qui les réécrit. Neutralisés en production par le retrait des
-// secrets puis des colonnes (étape 2). Retirer chaque exception dès que son
-// code ne lit plus Notion.
-const DEFERRED_DIRS = ['supabase/functions/process-sequences/', 'supabase/functions/calendly-webhook/'];
-const isDeferred = (f) => DEFERRED_DIRS.some((d) => f.startsWith(d));
-// Secrets Notion de la plateforme : seul process-sequences en lit encore.
-// calendly-webhook n'en lit aucun et reste contrôlé.
-const SECRET_DEFERRED_DIRS = ['supabase/functions/process-sequences/'];
-const isSecretDeferred = (f) => SECRET_DEFERRED_DIRS.some((d) => f.startsWith(d));
 
 // Les cinq fonctions de l'ancienne synchro, supprimées le 2026-09-28.
 const REMOVED_NOTION_FUNCTIONS = [
@@ -103,8 +96,8 @@ test("R1 : aucune fonction n'appelle l'API REST de Notion ni ne lit ses secrets 
     .flatMap((f) => {
       const src = read(f);
       return [
-        ...(!isDeferred(f) && NOTION_REST_API.test(src) ? [`${f} : api.notion.com`] : []),
-        ...(!isSecretDeferred(f) && PLATFORM_NOTION_SECRET.test(src) ? [`${f} : ${src.match(PLATFORM_NOTION_SECRET)[0]}`] : []),
+        ...(NOTION_REST_API.test(src) ? [`${f} : api.notion.com`] : []),
+        ...(PLATFORM_NOTION_SECRET.test(src) ? [`${f} : ${src.match(PLATFORM_NOTION_SECRET)[0]}`] : []),
       ];
     });
   assert.deepEqual(offenders, []);
@@ -112,7 +105,6 @@ test("R1 : aucune fonction n'appelle l'API REST de Notion ni ne lit ses secrets 
 
 test("R1 : aucune fonction ne lit ni n'écrit une colonne notion_* de l'ancienne synchro", () => {
   const offenders = listSources('supabase/functions')
-    .filter((f) => !isDeferred(f))
     .flatMap((f) => {
       const src = read(f);
       const legacy = src.match(LEGACY_NOTION_COLUMN);
@@ -124,24 +116,19 @@ test("R1 : aucune fonction ne lit ni n'écrit une colonne notion_* de l'ancienne
   assert.deepEqual(offenders, []);
 });
 
-// Carte Notion retirée des Paramètres › Outils : elle ne lit que
-// notion_connected et l'indice de la clé, et n'écrit que le retrait de la clé,
-// jusqu'à la suppression des colonnes (étape 2).
-const KEY_REMOVAL_FILES = new Set([
-  'src/components/settings/IntegrationsSettings.tsx',
-  'src/hooks/useOrganizationIntegrations.ts',
-]);
-const KEY_REMOVAL_COLUMNS = new Set(['notion_api_key', 'notion_connected']);
-
-test('R1 : le front ne lit ni n\'écrit plus de colonne notion_* de l\'ancienne synchro', () => {
-  // types.ts est généré depuis le schéma : il garde les colonnes jusqu'à l'étape 2.
+test('R1 : le front ne lit ni n\'écrit plus de colonne notion_* de l\'ancienne synchro, ni l\'API ni ses secrets', () => {
+  // types.ts, généré depuis le schéma, suit la migration qui supprime les
+  // colonnes : il a son propre contrôle, avec cette migration.
   const legacyAll = new RegExp(LEGACY_NOTION_COLUMN.source, 'g');
   const offenders = listSources('src')
     .filter((f) => f !== 'src/integrations/supabase/types.ts')
     .flatMap((f) => {
-      const hits = read(f).match(legacyAll) ?? [];
-      const allowed = KEY_REMOVAL_FILES.has(f) ? KEY_REMOVAL_COLUMNS : new Set();
-      return [...new Set(hits.filter((h) => !allowed.has(h)))].map((h) => `${f} : ${h}`);
+      const src = read(f);
+      return [
+        ...[...new Set(src.match(legacyAll) ?? [])],
+        ...(NOTION_REST_API.test(src) ? ['api.notion.com'] : []),
+        ...(PLATFORM_NOTION_SECRET.test(src) ? [src.match(PLATFORM_NOTION_SECRET)[0]] : []),
+      ].map((h) => `${f} : ${h}`);
     });
   assert.deepEqual(offenders, []);
 });

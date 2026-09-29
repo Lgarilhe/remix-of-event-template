@@ -89,7 +89,7 @@ test('SEQ-006 — réponse : pipeline mis à jour dans l’organisation et la mi
 
 // ------------------------------------------------------------------ SEQ-008
 test('SEQ-008 — Calendly : jamais d’arrêt sans candidat reconnu, toujours dans son organisation', () => {
-  const stop = sliceBetween(calendly, "// Arrêt des séquences du candidat", '// Try to update Notion');
+  const stop = sliceBetween(calendly, "// Arrêt des séquences du candidat", 'return new Response(JSON.stringify({\n      success: true,\n      session_id: session.id,');
   assert.match(stop, /if \(candidateMatch\?\.candidate_id && candidateOrgId\) \{/);
   // Toutes les requêtes d'arrêt sont bornées à l'organisation du candidat.
   const selects = stop.match(/\.from\('sequence_enrollments'\)\s*\.select\(enrollmentColumns\)[\s\S]*?;/g) ?? [];
