@@ -3157,9 +3157,6 @@ export type Database = {
           job_id: string
           linkedin_profile_data: Json | null
           linkedin_profile_url: string | null
-          notion_candidate_id: string | null
-          notion_shortlist_id: string | null
-          notion_synced_at: string | null
           organization_id: string | null
           pipeline_stage: string | null
           presented_at: string | null
@@ -3193,9 +3190,6 @@ export type Database = {
           job_id: string
           linkedin_profile_data?: Json | null
           linkedin_profile_url?: string | null
-          notion_candidate_id?: string | null
-          notion_shortlist_id?: string | null
-          notion_synced_at?: string | null
           organization_id?: string | null
           pipeline_stage?: string | null
           presented_at?: string | null
@@ -3229,9 +3223,6 @@ export type Database = {
           job_id?: string
           linkedin_profile_data?: Json | null
           linkedin_profile_url?: string | null
-          notion_candidate_id?: string | null
-          notion_shortlist_id?: string | null
-          notion_synced_at?: string | null
           organization_id?: string | null
           pipeline_stage?: string | null
           presented_at?: string | null
@@ -4085,24 +4076,6 @@ export type Database = {
           },
         ]
       }
-      notion_api_cache: {
-        Row: {
-          cache_key: string
-          payload: Json
-          updated_at: string
-        }
-        Insert: {
-          cache_key: string
-          payload?: Json
-          updated_at?: string
-        }
-        Update: {
-          cache_key?: string
-          payload?: Json
-          updated_at?: string
-        }
-        Relationships: []
-      }
       nurturing_opportunities: {
         Row: {
           analysis_context: Json | null
@@ -4261,11 +4234,6 @@ export type Database = {
           coresignal_enabled: boolean
           created_at: string
           id: string
-          notion_api_key: string | null
-          notion_candidats_db_id: string | null
-          notion_connected: boolean
-          notion_postes_db_id: string | null
-          notion_shortlist_db_id: string | null
           organization_id: string
           pdl_api_key: string | null
           unipile_api_key: string | null
@@ -4291,11 +4259,6 @@ export type Database = {
           coresignal_enabled?: boolean
           created_at?: string
           id?: string
-          notion_api_key?: string | null
-          notion_candidats_db_id?: string | null
-          notion_connected?: boolean
-          notion_postes_db_id?: string | null
-          notion_shortlist_db_id?: string | null
           organization_id: string
           pdl_api_key?: string | null
           unipile_api_key?: string | null
@@ -4321,11 +4284,6 @@ export type Database = {
           coresignal_enabled?: boolean
           created_at?: string
           id?: string
-          notion_api_key?: string | null
-          notion_candidats_db_id?: string | null
-          notion_connected?: boolean
-          notion_postes_db_id?: string | null
-          notion_shortlist_db_id?: string | null
           organization_id?: string
           pdl_api_key?: string | null
           unipile_api_key?: string | null
@@ -5076,9 +5034,6 @@ export type Database = {
           job_title: string | null
           manager_id: string | null
           notes: string | null
-          notion_candidate_id: string | null
-          notion_shortlist_id: string | null
-          notion_synced_at: string | null
           organization_id: string | null
           project_id: string | null
           scoring_summary: Json | null
@@ -5110,9 +5065,6 @@ export type Database = {
           job_title?: string | null
           manager_id?: string | null
           notes?: string | null
-          notion_candidate_id?: string | null
-          notion_shortlist_id?: string | null
-          notion_synced_at?: string | null
           organization_id?: string | null
           project_id?: string | null
           scoring_summary?: Json | null
@@ -5144,9 +5096,6 @@ export type Database = {
           job_title?: string | null
           manager_id?: string | null
           notes?: string | null
-          notion_candidate_id?: string | null
-          notion_shortlist_id?: string | null
-          notion_synced_at?: string | null
           organization_id?: string | null
           project_id?: string | null
           scoring_summary?: Json | null
@@ -6413,11 +6362,6 @@ export type Database = {
           coresignal_enabled: boolean
           created_at: string
           id: string
-          notion_api_key_hint: string | null
-          notion_candidats_db_id: string | null
-          notion_connected: boolean
-          notion_postes_db_id: string | null
-          notion_shortlist_db_id: string | null
           organization_id: string
           unipile_connected: boolean
           updated_at: string
@@ -6667,11 +6611,6 @@ export type Database = {
           coresignal_enabled: boolean
           created_at: string
           id: string
-          notion_api_key: string | null
-          notion_candidats_db_id: string | null
-          notion_connected: boolean
-          notion_postes_db_id: string | null
-          notion_shortlist_db_id: string | null
           organization_id: string
           pdl_api_key: string | null
           unipile_api_key: string | null

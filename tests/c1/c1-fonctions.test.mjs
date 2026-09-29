@@ -420,3 +420,86 @@ test('Textes ajoutés : français, sans nom de fournisseur ni tiret long', () =>
   assert.ok(texts.length >= 3, 'textes du portail introuvables');
   for (const t of texts) assert.doesNotMatch(t, FORBIDDEN_IN_UI, t);
 });
+
+// ─── R1, étape 2 : la migration supprime les colonnes de l'ancienne synchro ──
+
+const NOTION_STEP2_MIGRATION = readdirSync(join(ROOT, 'supabase/migrations'))
+  .filter((f) => /^\d{14}_retrait_notion_etape2\.sql$/.test(f));
+// SQL sans commentaires : les assertions ne portent que sur les instructions.
+const sqlCode = (sql) => sql.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+// Texte de `start` (inclus) à la première occurrence de `end` qui suit.
+function between(src, start, end) {
+  const from = src.indexOf(start);
+  assert.ok(from >= 0, `repère introuvable : ${start}`);
+  const to = src.indexOf(end, from + start.length);
+  assert.ok(to > from, `repère de fin introuvable : ${end}`);
+  return src.slice(from, to);
+}
+
+test('R1 étape 2 : une seule migration, version unique et postérieure au lot 0b', () => {
+  assert.equal(NOTION_STEP2_MIGRATION.length, 1, 'un seul fichier *_retrait_notion_etape2.sql');
+  const version = NOTION_STEP2_MIGRATION[0].slice(0, 14);
+  assert.ok(version > '20260928235358', 'postérieure à la dernière migration au départ');
+  const same = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.startsWith(`${version}_`));
+  assert.equal(same.length, 1, 'version unique');
+});
+
+test('R1 étape 2 : la migration supprime les colonnes, les index et le cache, sous garde', () => {
+  const sql = sqlCode(read(`supabase/migrations/${NOTION_STEP2_MIGRATION[0]}`));
+  const dropped = {
+    job_candidate_status: ['notion_candidate_id', 'notion_shortlist_id', 'notion_synced_at'],
+    organization_integrations: ['notion_api_key', 'notion_candidats_db_id', 'notion_connected', 'notion_postes_db_id', 'notion_shortlist_db_id'],
+    qualification_sessions: ['notion_candidate_id', 'notion_shortlist_id', 'notion_synced_at'],
+  };
+  for (const [table, columns] of Object.entries(dropped)) {
+    const alter = between(sql, `ALTER TABLE public.${table}\n`, ';');
+    for (const c of columns) assert.match(alter, new RegExp(`DROP COLUMN IF EXISTS ${c}\\b`), `${table}.${c}`);
+  }
+  assert.match(sql, /DROP INDEX IF EXISTS public\.idx_jcs_notion_candidate_id;/);
+  assert.match(sql, /DROP INDEX IF EXISTS public\.idx_jcs_notion_shortlist_id;/);
+  // notion_api_cache n'existe qu'en prod : jamais de DROP sans garde.
+  assert.match(sql, /IF to_regclass\('public\.notion_api_cache'\) IS NOT NULL THEN\s*DROP TABLE public\.notion_api_cache;/);
+  // La vue est recréée avant le retrait des colonnes dont elle dépend.
+  assert.ok(sql.indexOf('CREATE VIEW public.organization_integrations_public') < sql.indexOf('ALTER TABLE public.organization_integrations'));
+});
+
+test('R1 étape 2 : vue et RPC recréées sans Notion, mêmes options et mêmes droits', () => {
+  const sql = sqlCode(read(`supabase/migrations/${NOTION_STEP2_MIGRATION[0]}`));
+  const view = between(sql, 'CREATE VIEW public.organization_integrations_public', ';');
+  assert.match(view, /WITH \(security_barrier = true\) AS/);
+  assert.match(view, /WHERE auth\.uid\(\) IS NOT NULL\s*AND public\.get_org_role\(auth\.uid\(\), oi\.organization_id\) IN \('owner', 'admin'\)/);
+  assert.doesNotMatch(view, /notion/i);
+  for (const hint of ['calendly_api_key_hint', 'airtable_api_key_hint', 'aircall_api_token_hint']) assert.ok(view.includes(hint), hint);
+  assert.match(sql, /DROP VIEW IF EXISTS public\.organization_integrations_public;/);
+  assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE public\.organization_integrations_public FROM PUBLIC, anon, authenticated;/);
+  assert.match(sql, /GRANT SELECT ON TABLE public\.organization_integrations_public TO authenticated, service_role;/);
+  for (const [fn, sig] of [['set_integration_secret', 'uuid, text, text'], ['update_integration_settings', 'uuid, jsonb']]) {
+    const body = between(sql, `CREATE OR REPLACE FUNCTION public.${fn}(`, '$$;');
+    assert.match(body, /SECURITY DEFINER\s*SET search_path = public, pg_temp/, fn);
+    assert.doesNotMatch(body, /notion/i, `${fn} sans champ Notion`);
+    assert.match(body, /RAISE EXCEPTION 'Champ non autorisé[^']*'[^;]*USING ERRCODE = '22023'/, `${fn} refuse un champ inconnu`);
+    assert.ok(sql.includes(`REVOKE EXECUTE ON FUNCTION public.${fn}(${sig}) FROM PUBLIC, anon;`), `${fn} fermée à anon`);
+    assert.ok(sql.includes(`GRANT EXECUTE ON FUNCTION public.${fn}(${sig}) TO authenticated, service_role;`), `${fn} ouverte aux membres`);
+  }
+});
+
+test('R1 étape 2 : la connexion Notion de l\'assistant reste intacte', () => {
+  const sql = sqlCode(read(`supabase/migrations/${NOTION_STEP2_MIGRATION[0]}`));
+  assert.doesNotMatch(sql, /organization_notion_connections|notion_oauth_states|notion_mcp_oauth_clients|claim_notion_token_refresh/);
+  assert.doesNotMatch(sql, /\bCASCADE\b/, 'aucune suppression en cascade');
+  // Seuls objets supprimés : la vue recréée, les deux index, les colonnes et le cache.
+  const drops = [...sql.matchAll(/DROP (TABLE|VIEW|INDEX|FUNCTION|POLICY|TRIGGER)(?: IF EXISTS)? ([\w.]+)/g)].map((m) => `${m[1]} ${m[2]}`).sort();
+  assert.deepEqual(drops, [
+    'INDEX public.idx_jcs_notion_candidate_id',
+    'INDEX public.idx_jcs_notion_shortlist_id',
+    'TABLE public.notion_api_cache',
+    'VIEW public.organization_integrations_public',
+  ]);
+});
+
+test('R1 étape 2 : types.ts ne décrit plus les colonnes ni le cache retirés', () => {
+  const types = read('src/integrations/supabase/types.ts');
+  const legacyAll = new RegExp(LEGACY_NOTION_COLUMN.source, 'g');
+  assert.deepEqual([...new Set(types.match(legacyAll) ?? [])], []);
+  assert.ok(types.includes('organization_integrations_public: {'), 'la vue reste typée');
+});
