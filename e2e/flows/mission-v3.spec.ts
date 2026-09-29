@@ -5,7 +5,8 @@
  * Parcours vérifiés dans le navigateur, sur la vraie base :
  *  1. /missions/:id ouvre la nouvelle page, Pipeline actif, sans le stepper ;
  *  2. trois onglets (Pipeline, Sourcing, Cadrage), Retour revient à l'écran
- *     précédent ;
+ *     précédent ; Cadrage : cinq sections, un critère enregistré, une étape
+ *     sans candidat supprimée après confirmation ;
  *  3. fiche du candidat à droite (quatre onglets), fermée par Retour et Échap ;
  *  4. barre d'étapes « En ce moment » : une puce filtre (?etape=), un second
  *     clic revient à la liste par défaut, « Écartés » montre les écartés ;
@@ -304,10 +305,16 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(tabs(page).getByRole('link', { name: 'Sourcing', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(tabs(page).getByRole('link', { name: 'Pipeline', exact: true })).not.toHaveAttribute('aria-current', 'page');
 
-    // Cadrage : trois sections, Réglages repliés.
+    // Cadrage : cinq sections (Équipe : cabinet sur offre payante), Réglages repliés.
     await tabs(page).getByRole('link', { name: 'Cadrage', exact: true }).click();
     await expect(page).toHaveURL(pathIs(ws, '/cadrage'));
-    for (const [id, title] of [['cadrage-poste', 'Le poste'], ['cadrage-etapes', "Étapes d'entretien"], ['cadrage-reglages', 'Réglages']]) {
+    for (const [id, title] of [
+      ['cadrage-criteres', 'Critères'],
+      ['cadrage-poste', 'Le poste'],
+      ['cadrage-etapes', "Étapes d'entretien"],
+      ['cadrage-equipe', 'Équipe'],
+      ['cadrage-reglages', 'Réglages'],
+    ]) {
       const section = page.locator(`#${id}`);
       await expect(section).toBeVisible({ timeout: 30_000 });
       await expect(section.getByText(title, { exact: true }).first()).toBeVisible();
@@ -322,6 +329,48 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(page).toHaveURL(urlIs(ws));
     await expect(tabs(page).getByRole('link', { name: 'Pipeline', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(listRows(page).filter({ hasText: N.retained })).toBeVisible({ timeout: 30_000 });
+  });
+
+  test('Cadrage : un critère modifié est enregistré ; une étape sans candidat se supprime après confirmation', async ({ browser }) => {
+    const ws = await workspace('E2E V3 cadrage');
+    await processSteps(ws, ['Étape vide']);
+    const page = await openAs(browser, ws, { beta: true });
+    await page.goto(missionUrl(ws, '/cadrage'), { waitUntil: 'domcontentloaded' });
+    const criteria = page.locator('#cadrage-criteres');
+    await expect(criteria).toBeVisible({ timeout: 30_000 });
+
+    // Critère : libellé, puis importance ; enregistré 800 ms après la dernière frappe.
+    await criteria.getByRole('button', { name: 'Ajouter un critère' }).click();
+    const label = criteria.getByRole('textbox', { name: 'Libellé du critère 1' });
+    await expect(label).toBeFocused();
+    await label.fill('Culture produit');
+    await criteria
+      .getByRole('group', { name: 'Importance du critère Culture produit' })
+      .getByRole('button', { name: 'Indispensable' })
+      .click();
+    await expect(page.getByText('Enregistré', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(async () => {
+        const { data } = await admin().from('sourcing_projects').select('job_details').eq('id', ws.missionId).single();
+        const list = ((data?.job_details as { evaluation_criteria?: Array<{ label: string; weight: number }> } | null)
+          ?.evaluation_criteria) ?? [];
+        return list.map((c) => [c.label, c.weight]);
+      }, { timeout: 15_000 })
+      .toEqual([['Culture produit', 3]]);
+
+    // Étape sans candidat : confirmation, puis suppression.
+    const steps = page.locator('#cadrage-etapes');
+    await steps.getByRole('button', { name: "Supprimer l'étape Étape vide" }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText("Aucun candidat n'est à cette étape.", { timeout: 15_000 });
+    await dialog.getByRole('button', { name: "Supprimer l'étape" }).click();
+    await expect(toast(page, 'Étape « Étape vide » supprimée.')).toBeVisible({ timeout: 15_000 });
+    await expect(steps.getByText('Aucune étape. Ajoutez au moins une étape pour suivre les entretiens.')).toBeVisible();
+    const { count } = await admin()
+      .from('mission_process_steps')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', ws.missionId);
+    expect(count).toBe(0);
   });
 
   // ═══ 3 : fiche ════════════════════════════════════════════════════════════

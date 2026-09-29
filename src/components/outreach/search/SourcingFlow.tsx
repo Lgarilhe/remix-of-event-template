@@ -70,6 +70,8 @@ interface SearchHeroProps {
   /** Recherche échouée avant tout résultat : message affiché sous le prompt. */
   errorMessage?: string | null;
   disabled?: boolean;
+  /** Nouvelle page mission : sans pastille de mission (le nom est dans l'en-tête), textes vouvoyés. */
+  variant?: 'default' | 'mission-v3';
 }
 
 const HERO_EXAMPLES = [
@@ -79,7 +81,9 @@ const HERO_EXAMPLES = [
 
 export const SearchHero: React.FC<SearchHeroProps> = ({
   jobTitle, clientName, history, onLaunch, onResumeHistory, onLaunchWithBriefFilters, errorMessage, disabled,
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -102,13 +106,15 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
       <div className="absolute top-[-60px] left-1/2 -translate-x-1/2 w-[560px] max-w-full h-[300px] pointer-events-none opacity-50"
         style={{ background: 'radial-gradient(ellipse at center, var(--k-accent-tint), transparent 70%)' }} />
 
+      {!isV3 && (
       <div className="relative inline-flex items-center gap-2 rounded-full border border-[var(--k-hairline)] bg-[var(--k-surface)] pl-1.5 pr-3 py-1 text-xs text-[var(--k-text-2)] mb-5">
         <span className="w-5 h-5 grid place-items-center rounded-full border border-[var(--k-hairline)] bg-[var(--k-surface-2)]"><Target /></span>
         Mission · <b className="font-medium text-[var(--k-text)]">{jobTitle}</b>
         {clientName && <span className="text-[var(--k-text-muted)]">· {clientName}</span>}
       </div>
+      )}
 
-      <h2 className="relative text-xl font-semibold tracking-[-.015em] mb-4 text-[var(--k-text)]">Qui cherches-tu ?</h2>
+      <h2 className="relative text-xl font-semibold tracking-[-.015em] mb-4 text-[var(--k-text)]">{isV3 ? 'Qui cherchez-vous ?' : 'Qui cherches-tu ?'}</h2>
 
       <div className={cn(
         'relative w-full max-w-[640px] rounded-xl border bg-[var(--k-surface)] px-4 py-3.5 transition-[border-color,box-shadow] duration-150',
@@ -125,15 +131,24 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (armed) onLaunch(value.trim()); } }}
-            placeholder="Décris le profil idéal — rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que tu pourras piloter."
+            aria-label={isV3 ? 'Décrivez le profil recherché' : undefined}
+            placeholder={isV3
+              ? "Décrivez le profil idéal : rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que vous pourrez modifier."
+              : "Décris le profil idéal — rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que tu pourras piloter."}
             className="flex-1 min-w-0 resize-none border-0 bg-transparent p-0 text-[15px] leading-relaxed text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none min-h-[52px]"
           />
         </div>
         <div className="flex items-center gap-2.5 mt-1.5">
+          {isV3 ? (
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-[var(--k-text-muted)]">
+            <kbd className="px-1.5 py-0.5 rounded border border-[var(--k-hairline)] font-sans text-[11px]">Entrée</kbd> pour lancer
+          </span>
+          ) : (
           <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[11px] text-[var(--k-text-muted)]">
             <kbd className="px-1.5 py-0.5 rounded border border-[var(--k-hairline)]">⏎</kbd> lancer ·
             <kbd className="px-1.5 py-0.5 rounded border border-[var(--k-hairline)]">/</kbd> focus
           </span>
+          )}
           <button
             type="button"
             disabled={disabled}
@@ -146,7 +161,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             )}
           >
             <svg viewBox="0 0 24 24" {...svgProps} strokeWidth={1.6} className="w-3.5 h-3.5"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
-            {!armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : <>Générer &amp; chercher</>}
+            {!armed && onLaunchWithBriefFilters ? 'Lancer la recherche avec les filtres du brief' : isV3 ? 'Générer les filtres et chercher' : <>Générer &amp; chercher</>}
           </button>
         </div>
       </div>
@@ -156,9 +171,15 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
       )}
 
       <div className="relative flex flex-wrap justify-center gap-1.5 mt-4 max-w-[660px]">
+        {isV3 ? (
+        <span className="w-full text-center text-xs text-[var(--k-text-muted)] mb-0.5">
+          Exemples : rôle, séniorité, contexte, lieu
+        </span>
+        ) : (
         <span className="w-full text-center font-mono text-[10px] uppercase tracking-wider text-[var(--k-text-muted)] mb-0.5">
           Exemples — rôle + séniorité + contexte + lieu
         </span>
+        )}
         {HERO_EXAMPLES.map(ex => (
           <button key={ex} type="button" onClick={() => { setValue(ex); taRef.current?.focus(); }}
             className="rounded-full border border-[var(--k-hairline)] px-3 py-1.5 text-xs text-[var(--k-text-muted)] hover:text-[var(--k-text-2)] hover:border-[var(--k-hairline-hover)] transition-colors">
@@ -167,6 +188,16 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         ))}
       </div>
 
+      {isV3 ? (
+      <p className="relative mt-6 text-center text-xs text-[var(--k-text-muted)]">
+        ou{' '}
+        <button type="button" onClick={() => onLaunch('')} disabled={disabled}
+          className="font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] underline underline-offset-4 decoration-[var(--k-hairline-focus)]">
+          {onLaunchWithBriefFilters ? 'régénérer les filtres depuis le poste' : 'générer les filtres depuis le poste'}
+        </button>
+        , sans rien écrire
+      </p>
+      ) : (
       <div className="relative flex items-center gap-3 mt-6 text-xs text-[var(--k-text-muted)]">
         <span className="w-10 h-px bg-[var(--k-hairline)]" />
         ou
@@ -177,6 +208,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         — sans rien taper
         <span className="w-10 h-px bg-[var(--k-hairline)]" />
       </div>
+      )}
 
       {history.length > 0 && (
         <div className="relative w-full max-w-[640px] mt-8">
@@ -468,6 +500,11 @@ function buildChips(f: LinkedInFiltersState): FacetChip[] {
   return chips;
 }
 
+/** Nombre de pilules de filtres (bouton « Filtres (N) » de la nouvelle page mission). */
+export function countFilterChips(f: LinkedInFiltersState): number {
+  return buildChips(f).length;
+}
+
 function advancedCount(f: LinkedInFiltersState): number {
   return f.function.length + f.degree.length + f.groups.length
     + f.network_distance.length + f.past_company.length + f.past_job_title.length
@@ -485,11 +522,18 @@ interface FilterChipBarProps {
   onFollowUp: (phrase: string) => Promise<void>;
   accountId: string | null;
   searchSource: 'linkedin' | 'database';
+  /**
+   * Nouvelle page mission : pilules et « + Filtre » seulement. L'affinage,
+   * la fenêtre de filtres, le total et « Relancer » vivent au-dessus du tableau.
+   */
+  variant?: 'default' | 'mission-v3';
 }
 
 export const FilterChipBar: React.FC<FilterChipBarProps> = ({
   filters, onFiltersEdit, total, loading, dirty, onRerun, onOpenAdvanced, onFollowUp, accountId, searchSource,
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
   const chips = buildChips(filters);
   const advCount = advancedCount(filters);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -684,7 +728,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
   const weightLabel: Record<Weight, string> = { must: 'Indispensable', should: 'Souhaité', exclude: 'Exclure' };
 
   return (
-    <div className="mb-2">
+    <div className={isV3 ? undefined : 'mb-2'}>
       {/* Barre unique : phrase d'affinage repliée + pilules + ajout + compteur */}
       <div ref={barRef} className="relative flex flex-wrap items-center gap-1.5">
         {fuOpen && (
@@ -1063,6 +1107,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
         </span>
 
         {/* Phrase d'affinage — repliée en bouton (dé-densification) */}
+        {!isV3 && (<>
         <button
           type="button"
           onClick={() => setFuOpen(o => !o)}
@@ -1105,6 +1150,7 @@ export const FilterChipBar: React.FC<FilterChipBarProps> = ({
             {loading ? 'Recherche…' : dirty ? 'Relancer la recherche' : 'À jour'}
           </button>
         </div>
+        </>)}
       </div>
     </div>
   );

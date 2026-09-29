@@ -284,17 +284,29 @@ test('fiche : quatre onglets, liste de mission_candidate_rows, clés sous projec
   assert.match(hook, /organization_id: organizationId/);
 });
 
-test('Prise de contact et Cadrage : composants existants tels quels', () => {
+test('Prise de contact : composants existants tels quels ; Cadrage : sections de la maquette, Réglages d\'aujourd\'hui', () => {
   const contact = read('src/components/missions/v3/panels/ContactPanel.tsx');
   assert.match(contact, /<SequencesList/);
   assert.match(contact, /<InvitationsPanel/);
   assert.match(contact, /reliez d'abord un compte LinkedIn/);
   assert.ok(!/emoji/.test(code(contact)));
+  // Cadrage (lot 12, maquette) : écran propre à la nouvelle page, plus les
+  // composants V2 du brief et du process ; les Réglages restent MissionConfigV2.
   const cadrage = read('src/components/missions/v3/cadrage/CadrageScreen.tsx');
-  for (const needle of ['cadrage-poste', 'cadrage-etapes', 'cadrage-reglages', 'Le poste', "Étapes d'entretien", 'Réglages']) {
+  for (const needle of ['cadrage-criteres', 'cadrage-poste', 'cadrage-etapes', 'cadrage-equipe', 'cadrage-reglages', 'Réglages']) {
     assert.ok(cadrage.includes(needle), needle);
   }
-  assert.match(cadrage, /<MissionBriefV2 project=\{project\} readOnly=\{!canEditBrief\}/);
-  assert.match(cadrage, /<MissionProcessV2 project=\{project\} readOnly=\{!canEditProcess\}/);
-  assert.match(cadrage, /<MissionConfigV2 project=\{project\} readOnly=\{!canEditBrief\}/);
+  assert.ok(!/<MissionBriefV2\b/.test(code(cadrage)), 'plus de MissionBriefV2 dans Cadrage');
+  assert.ok(!/<MissionProcessV2\b/.test(code(cadrage)), 'plus de MissionProcessV2 dans Cadrage');
+  assert.match(cadrage, /<MissionConfigV2 project=\{project\} readOnly=\{!canEditBrief\} hideStatus hideMessageSettings embedded \/>/);
+  assert.match(cadrage, /<CriteriaSection jd=\{jd\} updateField=\{updateField\} readOnly=\{!canEditBrief\}/);
+  assert.match(cadrage, /<InterviewStepsSection project=\{project\} readOnly=\{!canEditProcess\}/);
+  for (const [file, title] of [
+    ['CriteriaSection.tsx', 'Critères'],
+    ['JobSection.tsx', 'Le poste'],
+    ['InterviewStepsSection.tsx', "Étapes d'entretien"],
+    ['TeamSection.tsx', 'Équipe'],
+  ]) {
+    assert.ok(read(`src/components/missions/v3/cadrage/${file}`).includes(title), `${file} : ${title}`);
+  }
 });

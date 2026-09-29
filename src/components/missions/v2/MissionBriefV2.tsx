@@ -13,7 +13,7 @@
  * FilterReviewModal). Aucun changement de data model.
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, Loader2, Mic, Plus, X, Check, Cloud, CloudUpload, AlertCircle,
@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { invokeWithCredits } from '@/lib/invokeWithCredits';
-import { deepMerge } from '@/lib/deepMerge';
+import { useJobDetailsAutosave } from '@/hooks/useJobDetailsAutosave';
 import { FilterReviewModal } from '../FilterReviewModal';
 import { VoiceDictation } from '../VoiceDictation';
 import type { JobDetails } from '@/types/jobDetails';
@@ -51,79 +51,9 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [showFilterReview, setShowFilterReview] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Auto-save logic (debounced 800ms).
-  // latestRef = la "vérité serveur" la plus récente (depuis project.job_details).
-  // pendingPatchRef = les changements en cours de saisie pas encore persistés.
-  // À chaque render on re-merge les deux pour afficher l'état frais.
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingPatchRef = useRef<Partial<JobDetails>>({});
-  const latestRef = useRef<JobDetails>(project.job_details || {});
-  // Incrémenté à chaque frappe. Permet de savoir si l'user a tapé pendant
-  // qu'une sauvegarde était en vol (sinon on effacerait sa saisie).
-  const editSeqRef = useRef(0);
-
-  // Sync latestRef quand project.job_details change (DB sync depuis le serveur).
-  // On ne le réécrase PAS pendant que l'user tape (sinon on perd les patchs locaux).
-  useEffect(() => {
-    latestRef.current = project.job_details || {};
-  }, [project.job_details]);
-
-  // Flush pending patch + cleanup timers au unmount.
-  // CRITIQUE : si l'user navigue ailleurs alors qu'un timer est en cours
-  // (ex: tape un champ puis change de sub-tab dans les 800ms), on flush
-  // immédiatement pour ne pas perdre la saisie.
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        // Flush sync : envoie le patch en attente avant de démonter
-        if (Object.keys(pendingPatchRef.current).length > 0) {
-          const merged = deepMerge(latestRef.current, pendingPatchRef.current);
-          updateProject({ id: project.id, job_details: merged } as any).catch(() => {
-            // best-effort, l'user a déjà quitté
-          });
-        }
-      }
-      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.id]); // re-flush si on switch de mission
-
-  const [tick, setTick] = useState(0); // forces re-render on local edit
-  const jd = deepMerge(latestRef.current, pendingPatchRef.current) as JobDetails;
-  // Le tick force un re-render pour afficher la nouvelle valeur sans race
-  void tick;
-
-  const updateField = useCallback((patch: Partial<JobDetails>) => {
-    if (readOnly) return;
-    pendingPatchRef.current = deepMerge(pendingPatchRef.current, patch);
-    editSeqRef.current += 1;
-    setTick(t => t + 1);
-    setSaveStatus('saving');
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      const sentSeq = editSeqRef.current;
-      const merged = deepMerge(latestRef.current, pendingPatchRef.current);
-      updateProject({ id: project.id, job_details: merged } as any).then(
-        () => {
-          // Ne vider le pending QUE si aucune frappe n'a eu lieu pendant
-          // la requête en vol — sinon on perdrait le texte tapé entre
-          // l'envoi et la réponse, et le refetch ferait reculer le champ.
-          // Une frappe ultérieure a déjà reprogrammé un save du pending complet.
-          if (editSeqRef.current === sentSeq) {
-            pendingPatchRef.current = {};
-          }
-          setSaveStatus('saved');
-          if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
-          saveStatusTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2500);
-        },
-        () => setSaveStatus('error'),
-      );
-    }, 800);
-  }, [project.id, updateProject, readOnly]);
+  // Enregistrement automatique du brief (logique déplacée telle quelle dans
+  // useJobDetailsAutosave, partagée avec l'écran Cadrage de la nouvelle page).
+  const { jd, updateField, saveStatus } = useJobDetailsAutosave(project, readOnly);
 
   const handleAnalyze = async () => {
     const descText = jd.mission_description || jd.raw_brief || jd.context || '';

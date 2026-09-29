@@ -435,11 +435,20 @@ interface MissionTeamSectionProps {
   projectName: string;
   onAdd: (input: { user_id: string; role: string }) => Promise<any>;
   onRemove: (id: string) => Promise<any>;
+  /**
+   * Nouvelle page mission : sans filet ni en-tête « Équipe mission (n) », la
+   * section qui l'accueille porte son titre. Défaut : rendu d'aujourd'hui.
+   */
+  embedded?: boolean;
+  /** Libellés des rôles (liste et menu d'assignation). Défaut : ceux d'aujourd'hui. */
+  roleLabels?: Record<string, string>;
 }
 
 export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
   team, loadingTeam, readOnly, getMemberName, getTeamMemberName, isExternalMember, orgMembers, projectId, projectName, onAdd, onRemove,
+  embedded = false, roleLabels,
 }) => {
+  const roleLabel = (role: string) => roleLabels?.[role] || ROLE_LABELS[role] || role;
   const { invitations, sendInvitation, isSending, cancelInvitation } = useMissionInvitations(projectId);
   const [showAssign, setShowAssign] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
@@ -463,14 +472,16 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
   };
 
   return (
-    <div className="mt-6 pt-6 border-t border-border">
-      <div className="flex items-center justify-between mb-4">
+    <div className={embedded ? undefined : 'mt-6 pt-6 border-t border-border'}>
+      <div className={cn('flex items-center justify-between', embedded ? (!readOnly && availableMembers.length > 0 && !showAssign ? 'mb-3' : undefined) : 'mb-4')}>
+        {!embedded && (
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
             Équipe mission ({team.length})
           </h3>
         </div>
+        )}
         {!readOnly && availableMembers.length > 0 && !showAssign && (
           <button
             onClick={() => setShowAssign(true)}
@@ -483,8 +494,9 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
 
       {/* Assign form */}
       {showAssign && (
-        <div className="flex items-center gap-2 mb-4">
+        <div className={cn('flex items-center gap-2 mb-4', embedded && 'flex-wrap')}>
           <select
+            aria-label={embedded ? 'Membre à assigner' : undefined}
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
             className="flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
@@ -497,22 +509,24 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <select
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
+            aria-label={embedded ? 'Rôle dans la mission' : undefined}
             className="h-9 px-3 rounded-lg text-[12px] font-medium border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10"
           >
-            <option value="lead">Lead</option>
-            <option value="sourcer">Sourcer</option>
-            <option value="account_manager">Account Manager</option>
-            <option value="reviewer">Reviewer</option>
+            <option value="lead">{roleLabels?.lead || 'Lead'}</option>
+            <option value="sourcer">{roleLabels?.sourcer || 'Sourcer'}</option>
+            <option value="account_manager">{roleLabels?.account_manager || 'Account Manager'}</option>
+            <option value="reviewer">{roleLabels?.reviewer || 'Reviewer'}</option>
           </select>
           <button
             onClick={handleAssign}
             disabled={!selectedUserId}
             className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
           >
-            OK
+            {embedded ? 'Assigner' : 'OK'}
           </button>
           <button
             onClick={() => { setShowAssign(false); setSelectedUserId(''); }}
+            aria-label={embedded ? 'Annuler' : undefined}
             className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-[11.5px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             ×
@@ -539,7 +553,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                 </p>
               </div>
               <span className="px-2 py-0.5 text-xs font-medium rounded-md border border-border text-muted-foreground bg-muted/50">
-                {ROLE_LABELS[member.role] || member.role}
+                {roleLabel(member.role)}
               </span>
               {!readOnly && !isExternalMember(member.user_id) && (
                 <button
@@ -547,6 +561,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                     id: member.id,
                     name: getTeamMemberName(member.user_id, getMemberName(member.user_id)),
                   })}
+                  aria-label={embedded ? `Retirer ${getTeamMemberName(member.user_id, getMemberName(member.user_id))} de l'équipe` : undefined}
                   className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />

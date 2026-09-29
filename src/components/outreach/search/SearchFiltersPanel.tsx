@@ -88,6 +88,8 @@ interface SearchFiltersPanelProps {
   onScoringInstructionsChange?: (value: string) => void;
   suggestions?: FilterSuggestions | null;
   onSuggestionsGenerated?: (suggestions: FilterSuggestions | null) => void;
+  /** Nouvelle page mission : sans la barre en langage naturel (le champ « Affiner » la remplace). */
+  hidePromptBar?: boolean;
 }
 
 export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
@@ -116,6 +118,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
   onScoringInstructionsChange,
   suggestions,
   onSuggestionsGenerated,
+  hidePromptBar = false,
 }) => {
   const [keywordsDialogOpen, setKeywordsDialogOpen] = useState(false);
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -372,7 +375,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
       {/* Barre de recherche en langage naturel — entrée principale (mission).
           La phrase augmente le brief ; l'IA Konekt en dérive les filtres
           éditables affichés ci-dessous. */}
-      {activeProject && selectedJob && (
+      {activeProject && selectedJob && !hidePromptBar && (
         <SearchPromptBar
           selectedJob={selectedJob}
           accountId={selectedAccount}

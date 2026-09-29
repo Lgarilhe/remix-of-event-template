@@ -1,6 +1,8 @@
 // Refonte mission, lot 1 : écran Sourcing de la nouvelle page mission.
-// Le Sourcing d'aujourd'hui, tel quel et pleine largeur (ses retraits viennent
-// au lot 4). Mission archivée : fermé, avec « Réactiver » (il n'a pas de mode
+// Le Sourcing d'aujourd'hui, pleine largeur, en disposition « mission-v3 »
+// (rangée Affiner, Filtres, Nouvelle recherche ; résultats en trois groupes,
+// src/components/missions/v3/sourcing/**). Même recherche et mêmes écritures ;
+// l'ancienne page et /sourcing/:id gardent leur rendu. Mission archivée : fermé, avec « Réactiver » (il n'a pas de mode
 // lecture seule). Sans compte LinkedIn utilisable : une carte « Relier LinkedIn »
 // à la place de la recherche, une fois les comptes chargés (conception 5.3).
 import { Link } from 'react-router-dom';
@@ -44,7 +46,7 @@ export function SourcingScreen() {
   }
   return (
     <SectionErrorBoundary fallbackTitle="Erreur dans le Sourcing">
-      <MissionSourcing project={project} />
+      <MissionSourcing project={project} layout="mission-v3" />
     </SectionErrorBoundary>
   );
 }

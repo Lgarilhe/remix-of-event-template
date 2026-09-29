@@ -14,7 +14,7 @@ import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDet
 import { JobMatchResult, BatchScoringStats as BatchScoringStatsType } from '@/components/outreach/JobScoreDisplay';
 import { BatchScoringReport, BatchReportEntry } from '@/components/outreach/BatchScoringReport';
 import { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
-import { ScoredSortBy, canRehydrate } from '@/hooks/useFilteredResults';
+import { ScoredSortBy, canRehydrate, rehydrateProfile } from '@/hooks/useFilteredResults';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useAirtableMatch } from '@/hooks/useAirtableMatch';
@@ -33,6 +33,8 @@ import {
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelPicker } from '@/components/ai/ModelPicker';
+import { SourcingResultsV3 } from '@/components/missions/v3/sourcing/SourcingResultsV3';
+import { sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
 
 interface SearchResultsPanelProps {
   // Results
@@ -134,6 +136,16 @@ interface SearchResultsPanelProps {
   // Refs
   scrollAreaRef: React.RefObject<HTMLDivElement>;
   loadMoreTriggerRef: React.RefObject<HTMLDivElement>;
+
+  // Nouvelle page mission (Sourcing, trois groupes) : rendu propre, passé
+  // seulement par SourcingScreen. Défaut : le rendu actuel, inchangé.
+  layout?: 'default' | 'mission-v3';
+  chipsDirty?: boolean;
+  onRerun?: () => void;
+  onSetSelection?: (ids: string[]) => void;
+  onRetainProfiles?: (profiles: LinkedInProfile[]) => Promise<void>;
+  onDismissProfiles?: (profiles: LinkedInProfile[]) => Promise<void>;
+  onRestoreProfile?: (candidateId: string) => Promise<void>;
 }
 
 const getCanonicalProfileUrl = (p: Pick<LinkedInProfile, 'profile_url' | 'public_profile_url'>) =>
@@ -210,7 +222,19 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   openToWorkActive = false,
   openToWorkSupported = false,
   onToggleOpenToWork,
+  layout = 'default',
+  chipsDirty = false,
+  onRerun,
+  onSetSelection,
+  onRetainProfiles,
+  onDismissProfiles,
+  onRestoreProfile,
 }) => {
+  const isV3 = layout === 'mission-v3';
+  // Nouvelle page : ordre du groupe affiché (flèches de la fiche) et profils
+  // remis à trier ici (gardés dans À trier même hors de la recherche en cours).
+  const [v3Order, setV3Order] = useState<LinkedInProfile[] | null>(null);
+  const [v3Restored, setV3Restored] = useState<ReadonlySet<string>>(() => new Set());
   // Profile detail sheet state
   const [detailProfile, setDetailProfile] = useState<LinkedInProfile | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -314,20 +338,23 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, [selectedAccount]);
 
   // Navigation helpers for profile detail sheet
+  // Nouvelle page : la fiche parcourt le groupe affiché, dans l'ordre du tableau.
+  const navList = isV3 && v3Order ? v3Order : filteredResults;
+
   const detailIndex = useMemo(() => {
     if (!detailProfile) return -1;
-    return filteredResults.findIndex(r => r.id === detailProfile.id);
-  }, [detailProfile, filteredResults]);
+    return navList.findIndex(r => r.id === detailProfile.id);
+  }, [detailProfile, navList]);
 
   const navigatePrev = useMemo(() => {
     if (detailIndex <= 0) return undefined;
-    return () => setDetailProfile(filteredResults[detailIndex - 1]);
-  }, [detailIndex, filteredResults]);
+    return () => setDetailProfile(navList[detailIndex - 1]);
+  }, [detailIndex, navList]);
 
   const navigateNext = useMemo(() => {
-    if (detailIndex < 0 || detailIndex >= filteredResults.length - 1) return undefined;
-    return () => setDetailProfile(filteredResults[detailIndex + 1]);
-  }, [detailIndex, filteredResults]);
+    if (detailIndex < 0 || detailIndex >= navList.length - 1) return undefined;
+    return () => setDetailProfile(navList[detailIndex + 1]);
+  }, [detailIndex, navList]);
 
 
   // Airtable match - collect profile info for URL + fuzzy matching
@@ -423,8 +450,59 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
     return displayResults.filter(p => !isScored(p.id)).slice(0, 20).map(p => p.id);
   }, [results, displayResults, jobScores, treatedCandidates]);
 
+  // Nouvelle page : À trier = la recherche en cours (et les profils remis à
+  // trier ici) ; Retenus et Écartés = toutes les lignes de la mission lues par
+  // la recherche. Calcul d'affichage seul : ni la vue, ni le filtre, ni le
+  // cache de la recherche ne sont modifiés.
+  const v3Profiles = useMemo(
+    () => (isV3
+      ? sourcingProfilesOf(results, treatedCandidates, (s) => (canRehydrate(s) ? rehydrateProfile(s) : null), v3Restored)
+      : results),
+    [isV3, results, treatedCandidates, v3Restored],
+  );
+  const restoreV3 = useCallback(async (candidateId: string) => {
+    setV3Restored(prev => new Set(prev).add(candidateId));
+    await onRestoreProfile?.(candidateId);
+  }, [onRestoreProfile]);
+
   return (
-    <div className="bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden">
+    <div className={isV3 ? 'flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full' : 'bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden'}>
+      {isV3 && onSetSelection && onRetainProfiles && onDismissProfiles ? (
+        <SourcingResultsV3
+          profiles={v3Profiles}
+          results={results}
+          loading={loading}
+          loadingMore={loadingMore}
+          hasSearched={hasSearched}
+          hasMoreResults={hasMoreResults}
+          cursor={cursor}
+          total={total}
+          selectedJob={selectedJob}
+          selectedProfiles={selectedProfiles}
+          jobScores={jobScores}
+          scoringInProgress={scoringInProgress}
+          canBatchScore={canBatchScore}
+          treatedCandidates={treatedCandidates}
+          selectedAccount={selectedAccount}
+          activeProject={activeProject}
+          chipsDirty={chipsDirty}
+          refineLoading={refineLoading}
+          scrollAreaRef={scrollAreaRef}
+          onRerun={onRerun}
+          onLoadMore={onLoadMore}
+          onRefineSearch={onRefineSearch}
+          onSetSelection={onSetSelection}
+          onToggleProfileSelection={onToggleProfileSelection}
+          onBatchScore={onBatchScore}
+          onRetainProfiles={onRetainProfiles}
+          onDismissProfiles={onDismissProfiles}
+          onRestoreCandidate={onRestoreProfile ? restoreV3 : undefined}
+          onOpenProfile={openProfileDetail}
+          onOrderChange={setV3Order}
+          onOpenInMail={() => onSetShowBulkInMailModal(true)}
+          onSequenceEnrollSuccess={onSequenceEnrollSuccess}
+        />
+      ) : (<>
       {/* HEADER: count clarifié + Pool toggle. Affiché uniquement quand il
           y a quelque chose à montrer (count après search, ou pool toggle).
           Avant : toujours rendu — 45px de chrome vide avant les résultats. */}
@@ -1192,6 +1270,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           </div>
         )}
       </div>
+      </>)}
 
       {/* Profile Detail Sheet */}
       <ProfileDetailSheet
@@ -1218,7 +1297,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
         onNavigatePrev={navigatePrev}
         onNavigateNext={navigateNext}
         currentIndex={detailIndex >= 0 ? detailIndex : undefined}
-        totalCount={filteredResults.length}
+        totalCount={navList.length}
       />
 
       {/* Bulk InMail Modal */}
@@ -1228,7 +1307,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           onClose={() => onSetShowBulkInMailModal(false)}
           recipients={Array.from(selectedProfiles)
             .map(id => {
-              const p = results.find(r => r.id === id);
+              const p = (isV3 ? v3Profiles : results).find(r => r.id === id);
               if (!p) return null;
               return {
                 id: p.id,

@@ -138,7 +138,7 @@ export const MISSION_SCREENS: readonly MissionScreen[] = ['pipeline', 'sourcing'
 export type MissionPanelKind = 'fiche' | 'contact';
 
 /** Sections de Cadrage visées par une adresse (?section=). */
-export type CadrageSection = 'poste' | 'etapes' | 'reglages';
+export type CadrageSection = 'criteres' | 'poste' | 'etapes' | 'equipe' | 'reglages';
 
 /** Affichage de Pipeline (?vue=) : liste par défaut, kanban sur « etapes ». */
 export type PipelineViewMode = 'liste' | 'etapes';
@@ -225,7 +225,7 @@ export interface MissionV3Location {
   stage: string | null;
 }
 
-const SECTIONS: readonly CadrageSection[] = ['poste', 'etapes', 'reglages'];
+const SECTIONS: readonly CadrageSection[] = ['criteres', 'poste', 'etapes', 'equipe', 'reglages'];
 
 /** Lecture de l'adresse de la nouvelle page. Sous-chemin inconnu : Pipeline. null hors d'une mission. */
 export function readMissionV3Location(pathname: string, search: string): MissionV3Location | null {
@@ -294,17 +294,19 @@ export function legacyToV3Target(pathname: string, search: string): string | nul
 
 /**
  * Nouvelle adresse vers l'ancienne vue (?tab=), pour l'interrupteur éteint :
- * Sourcing vers sourcing ; Cadrage vers brief (process pour « etapes »,
- * config pour « reglages ») ; panneau Prise de contact vers outreach ; Bilan
- * vers insights ; fiche, affichage ou filtre d'étape vers pipeline ;
- * sous-chemin inconnu vers la Vue d'ensemble.
+ * Sourcing vers sourcing ; Cadrage vers brief (process pour « etapes » et
+ * « equipe », l'équipe étant sous le process ; config pour « reglages ») ;
+ * panneau Prise de contact vers outreach ; Bilan vers insights ; fiche,
+ * affichage ou filtre d'étape vers pipeline ; sous-chemin inconnu vers la Vue
+ * d'ensemble.
  */
 export function v3ToLegacyTab(info: { screen: MissionScreen | null; params: URLSearchParams }): string | null {
   const { screen, params } = info;
   if (screen === 'sourcing') return 'sourcing';
   if (screen === 'cadrage') {
     const section = params.get(V3_PARAM.section);
-    return section === 'etapes' ? 'process' : section === 'reglages' ? 'config' : 'brief';
+    if (section === 'etapes' || section === 'equipe') return 'process';
+    return section === 'reglages' ? 'config' : 'brief';
   }
   if (screen === null) return null;
   if (params.get(V3_PARAM.panel) === 'contact') return 'outreach';

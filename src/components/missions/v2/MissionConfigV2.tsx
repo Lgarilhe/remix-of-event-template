@@ -27,6 +27,18 @@ interface MissionConfigV2Props {
   readOnly?: boolean;
   /** Masque le statut (champ et carte) : la nouvelle page mission le gère dans son en-tête, avec confirmation. */
   hideStatus?: boolean;
+  /**
+   * Masque la configuration des messages et le lien de prise de rendez-vous
+   * (champ et raccourci) : la nouvelle page mission les présente dans Le poste.
+   */
+  hideMessageSettings?: boolean;
+  /**
+   * Rendu intégré à la nouvelle page mission (Réglages de Cadrage) : sans
+   * en-tête, sans bandeau de lecture seule ni colonne latérale (indicateur
+   * d'enregistrement, conseil), sans emoji, textes vouvoyés, et un champ
+   * Client qui dit ce qu'il nomme. Défaut : le rendu actuel.
+   */
+  embedded?: boolean;
 }
 
 const STATUS_OPTIONS: { value: SourcingProject['status']; label: string; color: string }[] = [
@@ -38,7 +50,7 @@ const STATUS_OPTIONS: { value: SourcingProject['status']; label: string; color: 
 
 // ──────────────────────────────────────────────────────────────────
 
-export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readOnly = false, hideStatus = false }) => {
+export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readOnly = false, hideStatus = false, hideMessageSettings = false, embedded = false }) => {
   const { updateProject } = useSourcingProjects();
   const { isAgency } = useOrganization();
 
@@ -67,10 +79,11 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
   const currentStatus = STATUS_OPTIONS.find(s => s.value === project.status) || STATUS_OPTIONS[0];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 pb-8">
+    <div className={embedded ? 'grid grid-cols-1 gap-6 pb-2' : 'grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 pb-8'}>
       {/* Form principal */}
       <div className="min-w-0">
         {/* Header */}
+        {!embedded && (
         <div className="mb-5">
           <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
             Étape 1 · Cadrage
@@ -80,8 +93,9 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
             Paramètres généraux de la mission, hunt mode et portail client.
           </p>
         </div>
+        )}
 
-        {readOnly && (
+        {readOnly && !embedded && (
           <div className="mb-4 px-4 py-3 rounded-lg border border-border bg-muted/30 inline-flex items-center gap-2">
             <Eye className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
@@ -90,12 +104,22 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
           </div>
         )}
 
+        {/* Rendu intégré : pas de colonne latérale, l'état d'enregistrement des
+            Réglages s'affiche ici, seulement quand il y a quelque chose à dire. */}
+        {embedded && (
+          <div aria-live="polite" className="mb-2 min-h-4 text-xs text-muted-foreground">
+            {saveStatus === 'saving' && 'Enregistrement des réglages…'}
+            {saveStatus === 'saved' && 'Réglages enregistrés'}
+            {saveStatus === 'error' && <span className="text-destructive">Échec de l'enregistrement des réglages</span>}
+          </div>
+        )}
+
         <div className="space-y-4">
           {/* Section Infos mission */}
           <SectionCard
-            emoji="⚙️"
+            emoji={embedded ? undefined : '⚙️'}
             title="Infos mission"
-            subtitle="Identité et statut"
+            subtitle={embedded ? 'Nom, client affiché et notes internes' : 'Identité et statut'}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Nom de la mission" required>
@@ -108,7 +132,10 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
               </Field>
 
               {isAgency && (
-                <Field label="Client">
+                <Field
+                  label={embedded ? 'Client affiché dans vos listes' : 'Client'}
+                  hint={embedded ? "Nom affiché dans l'en-tête et la liste des missions. Les messages utilisent le client du poste." : undefined}
+                >
                   <DebouncedInput
                     defaultValue={project.client_name || ''}
                     onCommit={(v) => handleUpdate({ client_name: v || null })}
@@ -137,6 +164,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
               </Field>
               )}
 
+              {!hideMessageSettings && (
               <Field
                 label="Lien Calendly"
                 hint="Le lien sera utilisé pour le bouton 'Programmer un RDV' sur les conversations candidat"
@@ -149,10 +177,14 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
                   readOnly={readOnly}
                 />
               </Field>
+              )}
             </div>
 
             <div className="pt-3 border-t border-border">
-              <Field label="Notes internes" hint="Notes privées sur cette mission (visibles uniquement par ton équipe)">
+              <Field
+                label="Notes internes"
+                hint={embedded ? 'Notes privées sur cette mission, visibles par votre équipe seulement.' : 'Notes privées sur cette mission (visibles uniquement par ton équipe)'}
+              >
                 <DebouncedTextarea
                   defaultValue={project.notes || ''}
                   onCommit={(v) => handleUpdate({ notes: v || null })}
@@ -165,7 +197,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
           </SectionCard>
 
           {/* Section Configuration outreach — incarnation IA pour les messages */}
-          {!readOnly && (
+          {!readOnly && !hideMessageSettings && (
             <OutreachConfigSection
               project={project}
               onUpdate={handleUpdate}
@@ -179,6 +211,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
       </div>
 
       {/* Sidebar */}
+      {!embedded && (
       <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
         {/* Save indicator */}
         <div className="bg-card border border-border rounded-lg p-3">
@@ -233,6 +266,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
         )}
 
         {/* Quick links */}
+        {!hideMessageSettings && (
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
             Raccourcis
@@ -256,6 +290,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
             )}
           </div>
         </div>
+        )}
 
         {/* Tips */}
         <div className="bg-card border border-border rounded-lg p-4">
@@ -267,6 +302,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
           </p>
         </div>
       </aside>
+      )}
     </div>
   );
 };
@@ -274,14 +310,14 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
 // ─── Sub-components ───────────────────────────────────────────────
 
 const SectionCard: React.FC<{
-  emoji: string;
+  emoji?: string;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
 }> = ({ emoji, title, subtitle, children }) => (
   <div className="bg-card border border-border rounded-xl overflow-hidden">
     <div className="px-5 py-3 border-b border-border flex items-center gap-3">
-      <span className="text-base">{emoji}</span>
+      {emoji && <span className="text-base">{emoji}</span>}
       <div>
         <h3 className="font-display text-[14px] font-bold leading-tight">{title}</h3>
         {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}

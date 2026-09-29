@@ -9,10 +9,12 @@ interface VoiceDictationProps {
   onTranscript: (text: string) => void;
   /** Called with the full transcript when recording stops */
   onComplete: (fullTranscript: string) => void;
+  /** Facultatif : prévenu quand l'écoute commence (connexion comprise) et s'arrête. */
+  onRecordingChange?: (active: boolean) => void;
   className?: string;
 }
 
-export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, onComplete, className }) => {
+export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, onComplete, onRecordingChange, className }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [interimText, setInterimText] = useState('');
@@ -23,6 +25,11 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
   const fullTranscriptRef = useRef('');
   const startTimeRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const active = isRecording || isConnecting;
+  useEffect(() => {
+    onRecordingChange?.(active);
+  }, [active, onRecordingChange]);
 
   // Cleanup on unmount
   useEffect(() => {

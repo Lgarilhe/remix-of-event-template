@@ -1,75 +1,95 @@
-// Refonte mission, lot 1 : écran Cadrage de la nouvelle page mission
-// (conception 5.6, jusqu'aux lots 7 et 8). Une seule page : Le poste
-// (MissionBriefV2), Étapes d'entretien (MissionProcessV2), puis Réglages repliés
-// (MissionConfigV2), composants d'aujourd'hui tels quels. Lecture seule
-// annoncée en tête avec sa raison. ?section=poste|etapes|reglages fait défiler
-// jusqu'à la section, et reglages la déplie.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+// Refonte mission : écran Cadrage de la nouvelle page mission (conception
+// 5.6, maquette Cadrage). Une colonne de 920 px : bandeau de lecture seule,
+// bandeau de complétude, Critères, Le poste (avec Vos messages et Plus de
+// détails), Étapes d'entretien, Équipe (selon les droits), puis Réglages
+// repliés (MissionConfigV2, jusqu'aux lots 7 et 8).
+//
+// Une seule instance de useJobDetailsAutosave pour tout l'écran : Critères,
+// Le poste, Vos messages et Plus de détails écrivent le même brouillon, et les
+// Réglages n'y écrivent plus (hideMessageSettings), d'où plus de course entre
+// deux chemins d'enregistrement. ?section=criteres|poste|etapes|equipe|reglages
+// fait défiler jusqu'à la section, et reglages la déplie.
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
-import { MissionBriefV2 } from '@/components/missions/v2/MissionBriefV2';
-import { MissionProcessV2 } from '@/components/missions/v2/MissionProcessV2';
 import { MissionConfigV2 } from '@/components/missions/v2/MissionConfigV2';
+import { useJobDetailsAutosave, type JobDetailsSaveStatus } from '@/hooks/useJobDetailsAutosave';
 import { useMissionProcess } from '@/hooks/useMissionProcess';
+import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { cn } from '@/lib/utils';
 import { useMissionV3 } from '../MissionV3Context';
 import type { CadrageSection } from '../types';
 import { CadrageReadOnlyBanner } from './CadrageReadOnlyBanner';
+import { CadrageReadiness } from './CadrageReadiness';
+import { CriteriaSection } from './CriteriaSection';
+import { InterviewStepsSection } from './InterviewStepsSection';
+import { JobMoreDetails } from './JobMoreDetails';
+import { JobSection } from './JobSection';
+import { TeamSection } from './TeamSection';
 
 const SECTION_ID: Record<CadrageSection, string> = {
+  criteres: 'cadrage-criteres',
   poste: 'cadrage-poste',
   etapes: 'cadrage-etapes',
+  equipe: 'cadrage-equipe',
   reglages: 'cadrage-reglages',
 };
 
-// En-tête de section : petites capitales grises, description facultative sur
-// la même ligne (même style que « En ce moment » du Pipeline).
+// En-tête de section : petites capitales grises (même style que « En ce moment » du Pipeline).
 const SECTION_TITLE_CLASS = 'text-2xs font-semibold uppercase tracking-wider text-muted-foreground';
 
-// Les composants d'aujourd'hui gardent leur propre en-tête (« Étape 1 · Cadrage »,
-// grand titre, phrase d'aide). Ici, un seul niveau de titre par section : on
-// masque ce bloc de texte (racine grid > colonne > en-tête > texte), pas ses
-// boutons voisins (Dicter, Analyser avec l'IA, Suggestion IA).
-const HIDE_V2_HEADING = '[&>div>div:first-child>div:first-child>div:first-child]:hidden';
-const HIDE_V2_CONFIG_HEADING = '[&>div>div:first-child>div.mb-5:first-child]:hidden';
+/** Lien de prise de rendez-vous (colonne de la mission), enregistré à la sortie du champ. */
+function useCalendlyLinkSave(projectId: string, readOnly: boolean) {
+  const { updateProject } = useSourcingProjects();
+  const [status, setStatus] = useState<JobDetailsSaveStatus>('idle');
+  const last = useRef<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
 
-function CadrageSectionBlock({
-  section,
-  title,
-  description,
-  children,
-}: {
-  section: Exclude<CadrageSection, 'reglages'>;
-  title: string;
-  description?: string;
-  children: ReactNode;
-}) {
-  const headingId = `${SECTION_ID[section]}-titre`;
-  return (
-    <section id={SECTION_ID[section]} aria-labelledby={headingId} className="scroll-mt-4">
-      <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <h2 id={headingId} className={SECTION_TITLE_CLASS}>
-          {title}
-        </h2>
-        {description && <span className="text-xs text-muted-foreground">{description}</span>}
-      </div>
-      {children}
-    </section>
+  const save = useCallback(
+    async (value: string) => {
+      if (readOnly) return;
+      last.current = value;
+      setStatus('saving');
+      try {
+        await updateProject({ id: projectId, calendly_link: value || null });
+        setStatus('saved');
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setStatus('idle'), 2500);
+      } catch {
+        setStatus('error');
+      }
+    },
+    [projectId, readOnly, updateProject],
   );
+  const retry = useCallback(() => {
+    if (last.current !== null) void save(last.current);
+  }, [save]);
+  return { status, save, retry };
+}
+
+/** Un état pour l'écran : l'échec d'abord, puis l'envoi en cours, puis l'enregistré. */
+function combinedStatus(a: JobDetailsSaveStatus, b: JobDetailsSaveStatus): JobDetailsSaveStatus {
+  for (const s of ['error', 'saving', 'saved'] as const) if (a === s || b === s) return s;
+  return 'idle';
 }
 
 export function CadrageScreen(): JSX.Element | null {
   const { project, location, canEditBrief, canEditProcess } = useMissionV3();
-  const { loadingSteps } = useMissionProcess(project.id);
+  const { steps, loadingSteps, stepsError } = useMissionProcess(project.id);
+  const autosave = useJobDetailsAutosave(project, !canEditBrief);
+  const link = useCalendlyLinkSave(project.id, !canEditBrief);
   const reduceMotion = useReducedMotion();
   const section = location.section;
   const [settingsOpen, setSettingsOpen] = useState(section === 'reglages');
   const scrolledFor = useRef<CadrageSection | null>(null);
 
-  // Défilement vers la section demandée, une fois par demande. Les étapes et
-  // les réglages attendent la liste des étapes, qui change la hauteur au-dessus.
+  // Défilement vers la section demandée, une fois par demande. Les sections
+  // sous les étapes attendent leur liste, qui change la hauteur au-dessus.
   useEffect(() => {
     if (!section) {
       scrolledFor.current = null;
@@ -77,7 +97,7 @@ export function CadrageScreen(): JSX.Element | null {
     }
     if (section === 'reglages') setSettingsOpen(true);
     if (scrolledFor.current === section) return;
-    if (section !== 'poste' && loadingSteps) return;
+    if (section !== 'poste' && section !== 'criteres' && loadingSteps) return;
     scrolledFor.current = section;
     const frame = window.requestAnimationFrame(() => {
       document
@@ -87,25 +107,51 @@ export function CadrageScreen(): JSX.Element | null {
     return () => window.cancelAnimationFrame(frame);
   }, [section, loadingSteps, reduceMotion]);
 
+  const { jd, updateField } = autosave;
+  const status = combinedStatus(autosave.saveStatus, link.status);
+  const retry = () => {
+    if (autosave.saveStatus === 'error') autosave.retry();
+    if (link.status === 'error') link.retry();
+  };
+  const stepsState = loadingSteps ? 'loading' : stepsError ? 'error' : 'ready';
+
   return (
-    <div className="w-full max-w-[1280px] space-y-5 pb-12 pt-2">
+    <div className="mx-auto flex w-full max-w-[920px] flex-col gap-5 pb-12 pt-2">
       <CadrageReadOnlyBanner />
 
-      <CadrageSectionBlock section="poste" title="Le poste">
-        <SectionErrorBoundary fallbackTitle="Erreur dans Le poste">
-          <div className={HIDE_V2_HEADING}>
-            <MissionBriefV2 project={project} readOnly={!canEditBrief} />
-          </div>
-        </SectionErrorBoundary>
-      </CadrageSectionBlock>
+      <CadrageReadiness
+        jd={jd}
+        stepCount={steps.length}
+        stepsState={stepsState}
+        saveStatus={status}
+        onRetry={retry}
+        canDictate={canEditBrief}
+        updateField={updateField}
+      />
 
-      <CadrageSectionBlock section="etapes" title="Étapes d'entretien" description="Dans l'ordre où le candidat les passe.">
-        <SectionErrorBoundary fallbackTitle="Erreur dans les Étapes d'entretien">
-          <div className={HIDE_V2_HEADING}>
-            <MissionProcessV2 project={project} readOnly={!canEditProcess} />
-          </div>
-        </SectionErrorBoundary>
-      </CadrageSectionBlock>
+      <SectionErrorBoundary fallbackTitle="Erreur dans les Critères">
+        <CriteriaSection jd={jd} updateField={updateField} readOnly={!canEditBrief} />
+      </SectionErrorBoundary>
+
+      <SectionErrorBoundary fallbackTitle="Erreur dans Le poste">
+        <JobSection
+          jd={jd}
+          updateField={updateField}
+          readOnly={!canEditBrief}
+          calendlyLink={project.calendly_link ?? ''}
+          onCalendlyCommit={(value) => void link.save(value)}
+        >
+          <JobMoreDetails jd={jd} updateField={updateField} readOnly={!canEditBrief} />
+        </JobSection>
+      </SectionErrorBoundary>
+
+      <SectionErrorBoundary fallbackTitle="Erreur dans les Étapes d'entretien">
+        <InterviewStepsSection project={project} readOnly={!canEditProcess} />
+      </SectionErrorBoundary>
+
+      <SectionErrorBoundary fallbackTitle="Erreur dans l'Équipe">
+        <TeamSection project={project} readOnly={!canEditProcess} />
+      </SectionErrorBoundary>
 
       <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen} asChild>
         <section id={SECTION_ID.reglages} aria-labelledby="cadrage-reglages-titre" className="scroll-mt-4">
@@ -126,14 +172,12 @@ export function CadrageScreen(): JSX.Element | null {
               </CollapsibleTrigger>
             </h2>
             <span className="text-xs text-muted-foreground">
-              Portail client, mode chasse et autres réglages de la mission.
+              Nom de la mission, notes internes, portail client et autres réglages.
             </span>
           </div>
           <CollapsibleContent className="pt-2.5">
             <SectionErrorBoundary fallbackTitle="Erreur dans les Réglages">
-              <div className={HIDE_V2_CONFIG_HEADING}>
-                <MissionConfigV2 project={project} readOnly={!canEditBrief} hideStatus />
-              </div>
+              <MissionConfigV2 project={project} readOnly={!canEditBrief} hideStatus hideMessageSettings embedded />
             </SectionErrorBoundary>
           </CollapsibleContent>
         </section>

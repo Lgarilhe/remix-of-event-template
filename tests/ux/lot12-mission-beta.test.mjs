@@ -155,6 +155,8 @@ test('lot12 : lecture de l\'adresse de la nouvelle page', () => {
   assert.equal(ficheSansLigne.panel, null, 'fiche sans candidat : aucun panneau');
   assert.equal(beta.readMissionV3Location(`/missions/${ID}`, '?panneau=contact&candidat=r1').candidateRowId, null);
   assert.equal(beta.readMissionV3Location(`/missions/${ID}/cadrage`, '?section=reglages').section, 'reglages');
+  assert.equal(beta.readMissionV3Location(`/missions/${ID}/cadrage`, '?section=criteres').section, 'criteres');
+  assert.equal(beta.readMissionV3Location(`/missions/${ID}/cadrage`, '?section=equipe').section, 'equipe');
   assert.equal(beta.readMissionV3Location(`/missions/${ID}/cadrage`, '?section=autre').section, null);
   assert.equal(beta.readMissionV3Location(`/missions/${ID}/xyz`, '').screen, 'pipeline');
   assert.equal(beta.readMissionV3Location(`/missions/${ID}`, '').view, 'liste');
@@ -187,6 +189,8 @@ test('lot12 : nouvelles adresses vers ?tab= (interrupteur éteint)', () => {
   assert.equal(to(`/missions/${ID}/cadrage`), `/missions/${ID}?tab=brief`);
   assert.equal(to(`/missions/${ID}/cadrage`, '?section=etapes'), `/missions/${ID}?tab=process`);
   assert.equal(to(`/missions/${ID}/cadrage`, '?section=reglages'), `/missions/${ID}?tab=config`);
+  assert.equal(to(`/missions/${ID}/cadrage`, '?section=criteres'), `/missions/${ID}?tab=brief`, 'critères : dans le brief');
+  assert.equal(to(`/missions/${ID}/cadrage`, '?section=equipe'), `/missions/${ID}?tab=process`, 'équipe : sous le process');
   assert.equal(to(`/missions/${ID}`, '?panneau=contact'), `/missions/${ID}?tab=outreach`);
   assert.equal(to(`/missions/${ID}`, '?bilan=1'), `/missions/${ID}?tab=insights`);
   assert.equal(to(`/missions/${ID}`, '?panneau=fiche&candidat=r1'), `/missions/${ID}?tab=pipeline`);
