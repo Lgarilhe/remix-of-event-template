@@ -346,10 +346,9 @@ export const useSourcingProject = (projectId: string | null | undefined) => {
   return query;
 };
 
-// Candidats d'une mission (kanban, tableau et Analyses de la mission). Lot 0c :
-// la vue mission_candidate_rows rend une ligne par candidat (doublons réunis,
-// group_ids pour écrire tout le groupe) ; les profils jamais ouverts
-// (is_unopened) restent au Sourcing, hors du Pipeline.
+// Candidats d'une mission (kanban, tableau et Analyses de l'ancienne page mission).
+// Lecture de la table : la nouvelle page mission lit la vue mission_candidate_rows
+// (useMissionCandidateRows) et remplace cette page.
 export const useProjectCandidates = (projectId: string | null) => {
   return useQuery({
     queryKey: ['project-candidates', projectId],
@@ -357,10 +356,9 @@ export const useProjectCandidates = (projectId: string | null) => {
       if (!projectId) return [];
 
       const { data, error } = await supabase
-        .from('mission_candidate_rows')
+        .from('job_candidate_status')
         .select('*')
         .eq('project_id', projectId)
-        .eq('is_unopened', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
