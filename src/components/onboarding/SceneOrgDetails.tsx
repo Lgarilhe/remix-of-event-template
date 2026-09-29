@@ -27,7 +27,7 @@ interface Props {
   onBack?: () => void;
 }
 
-const TEAM_SIZES = [
+export const TEAM_SIZES = [
   { value: '1', label: 'Juste moi' },
   { value: '2-5', label: '2 à 5 personnes' },
   { value: '6-20', label: '6 à 20 personnes' },
@@ -42,7 +42,7 @@ const ANNUAL_HIRES = [
   { value: '40+', label: 'Plus de 40 recrutements' },
 ];
 
-const FREELANCE_MODES = [
+export const FREELANCE_MODES = [
   { value: 'rpo', label: "RPO (intégré à l'équipe du client)" },
   { value: 'success', label: 'Au succès, missions ponctuelles' },
   { value: 'both', label: 'Les deux' },
@@ -66,11 +66,11 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, initial, onSubmit, o
   return (
     <div className="flex w-full flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           {isFreelance ? 'Comment travaillez-vous ?' : 'Quelle est la taille de votre équipe ?'}
         </h1>
         <p className="mt-2 max-w-md text-md text-foreground-secondary">
-          Votre façon de travailler et votre volume calibrent vos quotas d'envoi et ce que l'IA Konekt vous recommande.
+          Ces réponses règlent vos plafonds d'envoi et les conseils de l'IA Konekt.
         </p>
       </div>
 

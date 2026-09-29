@@ -42,11 +42,11 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect, initial = null }) => {
   return (
     <div className="w-full">
       <div className="mb-8">
-        <h1 id={titleId} className="text-2xl font-semibold tracking-tight text-foreground">
+        <h1 id={titleId} className="text-3xl font-semibold tracking-tight text-foreground">
           Qui êtes-vous ?
         </h1>
         <p className="mt-2 max-w-md text-md text-foreground-secondary">
-          Konekt adapte ses écrans, ses quotas et ses conseils à une entreprise, un cabinet ou un indépendant.
+          Konekt adapte ses écrans et ses quotas à votre façon de recruter.
         </p>
       </div>
 

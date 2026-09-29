@@ -1,89 +1,53 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Check, Circle } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Illustration } from '@/components/ui/illustration';
-import { cn } from '@/lib/utils';
-
-export interface LaunchChecklistItem {
-  key: string;
-  label: string;
-  done: boolean;
-  /** Rubrique des Paramètres où terminer plus tard (affichée si non fait) */
-  settingsPath?: string;
-}
 
 interface Props {
-  items: LaunchChecklistItem[];
   orgName?: string;
+  linkedInConnected: boolean;
   /** Ouvre la création de la première mission. */
   onFinish: () => void;
   /** Sortie sans mission : tableau de bord. */
   onSkip: () => void;
 }
 
-function configuredLabel(done: number, total: number): string {
-  return done > 1 ? `${done} éléments configurés sur ${total}` : `${done} élément configuré sur ${total}`;
-}
-
 /**
- * Fin du tunnel : une coche, ce qui est fait et ce qui reste, une action.
- * Plus de confettis ni de compteur qui défile (B-65).
+ * Fin du tunnel : la fiche de gauche montre ce qui est configuré, cette scène
+ * ne garde que la suite : créer une mission. Le seul point resté en suspens
+ * (LinkedIn non relié) est dit une fois, avec son lien.
  */
-export const SceneLaunch: React.FC<Props> = ({ items, orgName, onFinish, onSkip }) => {
-  const doneCount = items.filter((i) => i.done).length;
-
-  return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <Illustration name="valide" size="lg" />
-        <div className="space-y-1.5">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Votre espace est prêt</h1>
-          <p className="text-sm text-muted-foreground">
-            {orgName ? `${orgName} : ` : ''}
-            {configuredLabel(doneCount, items.length)}.
-          </p>
-        </div>
-      </div>
-
-      <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-        {items.map((item) => (
-          <li key={item.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
-            {item.done ? (
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-success-muted text-success">
-                <Check className="h-3 w-3" aria-hidden="true" />
-              </span>
-            ) : (
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">
-                <Circle className="h-3.5 w-3.5" aria-hidden="true" />
-              </span>
-            )}
-            <span className={cn('min-w-0 flex-1 text-sm', item.done ? 'text-foreground' : 'text-muted-foreground')}>
-              {item.label}
-              <span className="sr-only">{item.done ? ' : fait' : ' : à faire'}</span>
-            </span>
-            {!item.done && item.settingsPath && (
-              <Link
-                to={item.settingsPath}
-                className="inline-flex min-h-11 shrink-0 items-center rounded-md text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
-              >
-                Terminer dans les Paramètres
-              </Link>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <div className="flex flex-col items-center gap-2">
-        <Button variant="primary" size="lg" onClick={onFinish} className="min-h-11 w-full md:min-h-0">
-          Créer ma première mission
-          <ArrowRight aria-hidden="true" />
-        </Button>
-        <p className="text-xs text-muted-foreground">Décrivez le poste : l'IA Konekt prépare la recherche de candidats.</p>
-        <Button variant="ghost" onClick={onSkip} className="min-h-11 text-muted-foreground md:min-h-0">
-          Aller au tableau de bord
-        </Button>
-      </div>
+export const SceneLaunch: React.FC<Props> = ({ orgName, linkedInConnected, onFinish, onSkip }) => (
+  <div className="flex w-full flex-col gap-6">
+    <div>
+      <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+        {orgName ? `${orgName} est prêt` : 'Votre espace est prêt'}
+      </h1>
+      <p className="mt-2 max-w-md text-md text-foreground-secondary">
+        Il reste à décrire un poste. L'IA Konekt en tire une première recherche de candidats.
+      </p>
     </div>
-  );
-};
+
+    {!linkedInConnected && (
+      <p className="max-w-md text-sm text-muted-foreground">
+        LinkedIn n'est pas encore connecté : la recherche et les messages en ont besoin.{' '}
+        <Link
+          to="/settings/account/connections"
+          className="rounded-md font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Le connecter dans les Paramètres
+        </Link>
+      </p>
+    )}
+
+    <div className="flex flex-wrap items-center gap-3">
+      <Button variant="primary" size="lg" onClick={onFinish} className="min-h-11 md:min-h-0">
+        Créer ma première mission
+        <ArrowRight aria-hidden="true" />
+      </Button>
+      <Button variant="ghost" onClick={onSkip} className="min-h-11 text-muted-foreground md:min-h-0">
+        Aller au tableau de bord
+      </Button>
+    </div>
+  </div>
+);

@@ -55,12 +55,11 @@ export const SceneSpecializations: React.FC<Props> = ({ onSubmit, onSkip, onBack
   return (
     <div className="w-full">
       <div className="mb-8">
-        <h1 id={titleId} className="text-2xl font-semibold tracking-tight text-foreground">
+        <h1 id={titleId} className="text-3xl font-semibold tracking-tight text-foreground">
           Dans quels secteurs recrutez-vous ?
         </h1>
         <p className="mt-2 max-w-md text-md text-foreground-secondary">
-          Vos secteurs donnent son vocabulaire à l'IA Konekt : briefs, scoring des candidats
-          et filtres de recherche pré-remplis avec les bons mots. Facultatif, modifiable plus tard.
+          Ils servent à pré-remplir vos briefs et vos filtres de recherche. Facultatif.
         </p>
       </div>
 

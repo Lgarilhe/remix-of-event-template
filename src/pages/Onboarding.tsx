@@ -9,20 +9,17 @@ import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
 import { updateOrganization } from '@/lib/organizationUpdate';
 import { InvitationBanner } from '@/components/InvitationBanner';
 import { Spinner } from '@/components/ui/spinner';
-import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
-import { SceneWelcome } from '@/components/onboarding/SceneWelcome';
+import { OnboardingShell, type SummaryRow } from '@/components/onboarding/OnboardingShell';
 import { SceneOrganization } from '@/components/onboarding/SceneOrganization';
 import { SceneFreelanceName } from '@/components/onboarding/SceneFreelanceName';
 import { SceneLinkedIn } from '@/components/onboarding/SceneLinkedIn';
 import { SceneOrgType } from '@/components/onboarding/SceneOrgType';
-import { SceneOrgDetails, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
+import { SceneOrgDetails, TEAM_SIZES, FREELANCE_MODES, type OrgDetailsData } from '@/components/onboarding/SceneOrgDetails';
 import { SceneSpecializations } from '@/components/onboarding/SceneSpecializations';
-import { SceneLaunch, type LaunchChecklistItem } from '@/components/onboarding/SceneLaunch';
+import { SceneLaunch } from '@/components/onboarding/SceneLaunch';
 import {
   FLOWS,
   DEFAULT_FLOW,
-  chaptersForFlow,
-  remainingSeconds,
   type OrgType,
   type SceneKey,
 } from '@/components/onboarding/onboardingMeta';
@@ -31,6 +28,12 @@ import {
   saveOnboardingProgress,
   clearOnboardingProgress,
 } from '@/components/onboarding/onboardingStorage';
+
+const ORG_TYPE_LABELS: Record<OrgType, string> = {
+  enterprise: 'Entreprise',
+  agency: 'Cabinet',
+  freelance: 'Indépendant',
+};
 
 export interface OnboardingCompanyData {
   /** Id de l'organisation créée (le hook `useOrganization` n'est pas encore rafraîchi à ce moment). */
@@ -46,9 +49,7 @@ const Onboarding = () => {
 
   const [orgType, setOrgType] = useState<OrgType | null>(restored?.orgType ?? null);
   const [step, setStep] = useState(() => {
-    // Second espace demandé explicitement : la personne connaît déjà Konekt, on saute l'accueil.
-    if (!restored && new URLSearchParams(window.location.search).get('new') === '1') return 1;
-    if (!restored?.orgType) return restored?.scene === 'orgtype' ? 1 : 0;
+    if (!restored?.orgType) return 0;
     const flow = FLOWS[restored.orgType];
     // Repli : la progression est reprise sur la scène persistée ; si cette scène
     // n'existe plus (tunnel raccourci), on repart de la première scène.
@@ -56,6 +57,8 @@ const Onboarding = () => {
     return idx >= 0 ? idx : 0;
   });
   const [orgCreated, setOrgCreated] = useState(false);
+  // Nom saisi à la scène société, affiché dans la fiche de gauche
+  const [orgName, setOrgName] = useState<string | null>(null);
   // Verrou anti double clic sur l'écriture des réponses (équipe, volume, secteurs)
   const savingRef = useRef(false);
   // Id de l'espace créé dans CE tunnel. `orgCreated` ne convient pas comme
@@ -81,7 +84,6 @@ const Onboarding = () => {
   const isExplicitNewWorkspace = new URLSearchParams(location.search).get('new') === '1';
 
   const flow = useMemo(() => (orgType ? FLOWS[orgType] : DEFAULT_FLOW), [orgType]);
-  const chapters = useMemo(() => chaptersForFlow(flow), [flow]);
   const currentScene = flow[step] ?? 'orgtype';
 
   const linkedInConnected = accounts.some(
@@ -190,6 +192,7 @@ const Onboarding = () => {
   const handleOrgCreated = useCallback(
     (data: OnboardingCompanyData) => {
       setOrgCreated(true);
+      setOrgName(data.name);
       if (data.orgId) setCreatedOrgId(data.orgId);
       markCompleted('org');
       // org_type est écrit dans l'INSERT (SceneOrganization → createOrganization) :
@@ -219,17 +222,51 @@ const Onboarding = () => {
     [navigate, queryClient]
   );
 
-  // ─── Récap de lancement ───
-  const launchItems = useMemo<LaunchChecklistItem[]>(() => {
-    const items: LaunchChecklistItem[] = [
-      { key: 'org', label: 'Espace de travail créé', done: orgCreated || !!organization },
+  // ─── Fiche « Votre espace » (colonne de gauche) ───
+  const summary = useMemo<SummaryRow[]>(() => {
+    const isFreelance = orgType === 'freelance';
+    const teamLabel = isFreelance
+      ? FREELANCE_MODES.find((m) => m.value === orgDetailsData?.freelanceMode)?.label
+      : TEAM_SIZES.find((t) => t.value === orgDetailsData?.teamSize)?.label;
+    const specsDone = completedScenes.has('specializations');
+    const linkedInPassed = completedScenes.has('linkedin') || currentScene === 'launch';
+    const active = (scene: SceneKey) => currentScene === scene;
+    return [
+      {
+        key: 'type',
+        label: 'Profil',
+        value: orgType ? ORG_TYPE_LABELS[orgType] : null,
+        active: active('orgtype'),
+      },
+      {
+        key: 'org',
+        label: isFreelance ? 'Activité' : 'Société',
+        value: orgName ?? organization?.name ?? null,
+        active: active('org'),
+      },
+      {
+        key: 'team',
+        label: isFreelance ? 'Mode' : 'Équipe',
+        value: completedScenes.has('orgdetails') ? (teamLabel ?? null) : null,
+        active: active('orgdetails'),
+      },
+      {
+        key: 'specs',
+        label: 'Secteurs',
+        value: !specsDone ? null : specializations.length > 0 ? `${specializations.length} choisi${specializations.length > 1 ? 's' : ''}` : 'Non précisé',
+        muted: specsDone && specializations.length === 0,
+        active: active('specializations'),
+      },
+      {
+        key: 'linkedin',
+        label: 'LinkedIn',
+        value: linkedInConnected ? 'Connecté' : linkedInPassed ? 'À connecter plus tard' : null,
+        ok: linkedInConnected,
+        muted: !linkedInConnected,
+        active: active('linkedin'),
+      },
     ];
-    if (specializations.length > 0) {
-      items.push({ key: 'activity', label: 'Activité et secteurs renseignés', done: true });
-    }
-    items.push({ key: 'linkedin', label: 'Compte LinkedIn connecté', done: linkedInConnected, settingsPath: '/settings/account/connections' });
-    return items;
-  }, [orgCreated, organization, specializations, linkedInConnected]);
+  }, [orgType, orgName, organization?.name, orgDetailsData, completedScenes, specializations, linkedInConnected, currentScene]);
 
   // F3 : un utilisateur qui a déjà un espace et arrive à l'ENTRÉE du tunnel
   // (step 0, pas de progression en cours) sans `?new=1` n'a rien à faire ici →
@@ -256,13 +293,7 @@ const Onboarding = () => {
   }
 
   return (
-    <OnboardingShell
-      flow={flow}
-      stepIndex={step}
-      chapters={chapters}
-      completedScenes={completedScenes}
-      orgName={organization?.name}
-    >
+    <OnboardingShell flow={flow} stepIndex={step} summary={summary}>
       <div className="w-full max-w-lg mx-auto mb-4 empty:mb-0">
         <InvitationBanner />
       </div>
@@ -276,12 +307,6 @@ const Onboarding = () => {
           transition={{ duration: 0.2, ease: 'easeOut' }}
           className="w-full"
         >
-          {currentScene === 'welcome' && (
-            <SceneWelcome
-              minutes={Math.max(1, Math.ceil(remainingSeconds(flow, 0) / 60))}
-              onStart={() => completeAndNext('welcome')}
-            />
-          )}
           {currentScene === 'orgtype' && <SceneOrgType onSelect={handleOrgTypeSelected} initial={orgType} />}
           {currentScene === 'org' && orgType === 'freelance' && (
             <SceneFreelanceName
@@ -308,8 +333,8 @@ const Onboarding = () => {
           {currentScene === 'linkedin' && <SceneLinkedIn onNext={handleLinkedInNext} onBack={goBack} />}
           {currentScene === 'launch' && (
             <SceneLaunch
-              items={launchItems}
-              orgName={organization?.name}
+              orgName={orgName ?? organization?.name}
+              linkedInConnected={linkedInConnected}
               onFinish={() => handleFinish('mission')}
               onSkip={() => handleFinish('dashboard')}
             />

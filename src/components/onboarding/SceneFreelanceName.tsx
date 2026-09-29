@@ -102,7 +102,7 @@ export const SceneFreelanceName: React.FC<Props> = ({ createdOrgId, allowSecondW
   return (
     <div className="flex w-full flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Sous quel nom travaillez-vous ?</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Sous quel nom travaillez-vous ?</h1>
         <p className="mt-2 max-w-md text-md text-foreground-secondary">
           Ce nom identifie votre espace Konekt. Vous pourrez le modifier plus tard dans les Paramètres.
         </p>

@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Check, ExternalLink, RefreshCw, Lock, Unplug } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ExternalLink, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Illustration } from '@/components/ui/illustration';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
@@ -24,9 +23,8 @@ const POLL_INTERVAL_MS = 8000;
 const POLL_WINDOW_MS = 3 * 60 * 1000;
 
 const LINKEDIN_BENEFITS = [
-  'Invitations, messages et relances entièrement automatisés',
-  'Fonctionne 24h/24, même ordinateur éteint',
-  'Envois plafonnés et progressifs pour protéger votre compte',
+  'Les envois restent sous les plafonds LinkedIn, avec une montée progressive.',
+  'Vous pouvez déconnecter le compte à tout moment.',
 ];
 
 const NAV_BUTTON_CLASS = 'min-h-11 md:min-h-0';
@@ -129,14 +127,11 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <div className="flex items-center justify-between gap-6">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Connectez votre compte LinkedIn</h1>
-          <p className="mt-2 max-w-md text-md text-foreground-secondary">
-            Konekt travaille depuis votre compte : c'est lui qui cherche les candidats et envoie vos messages.
-          </p>
-        </div>
-        <Illustration name="connexion" size="md" className="hidden shrink-0 sm:block" />
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Connectez votre compte LinkedIn</h1>
+        <p className="mt-2 max-w-md text-md text-foreground-secondary">
+          Konekt cherche les candidats et envoie vos messages depuis votre compte. Sans lui, pas de sourcing.
+        </p>
       </div>
 
       <div
@@ -180,18 +175,14 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Lock className="h-3.5 w-3.5" aria-hidden="true" /> Connexion sécurisée
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Unplug className="h-3.5 w-3.5" aria-hidden="true" /> Déconnectable à tout moment
-        </span>
-        <Button variant="ghost" size="xs" onClick={handleRefresh} disabled={refreshing} className="text-muted-foreground min-h-11 md:min-h-0">
-          <RefreshCw className={cn(refreshing && 'animate-spin')} aria-hidden="true" />
-          Vérifier la connexion
-        </Button>
-      </div>
+      {!linkedInConnected && (
+        <div className="-mt-2">
+          <Button variant="ghost" size="xs" onClick={handleRefresh} disabled={refreshing} className="min-h-11 text-muted-foreground md:min-h-0">
+            <RefreshCw className={cn(refreshing && 'animate-spin')} aria-hidden="true" />
+            Vérifier la connexion
+          </Button>
+        </div>
+      )}
 
       <div className={cn('flex items-center gap-2 pt-2', onBack ? 'justify-between' : 'justify-end')}>
         {onBack && (

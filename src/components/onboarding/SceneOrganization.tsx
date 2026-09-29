@@ -320,7 +320,7 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
     <div className="flex w-full flex-col gap-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Quelle est votre société ?</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Quelle est votre société ?</h1>
         <p className="mt-2 max-w-md text-md text-foreground-secondary">
           Donnez son nom : Konekt récupère son logo, sa description et ses postes ouverts pour construire votre espace.
         </p>

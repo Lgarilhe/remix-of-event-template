@@ -4,9 +4,9 @@ import type { OrgDetailsData } from './SceneOrgDetails';
 // ⚠️ Bumper la version à chaque changement de forme du flow (ajout/retrait
 // d'étapes) : une progression persistée sur l'ancien flow serait ignorée
 // plutôt que de pointer sur la mauvaise scène.
-// v6 : accueil ajouté, parcours identique pour tous (welcome → orgtype → org → orgdetails → specializations → linkedin → launch).
-const STORAGE_KEY = 'konekt_onboarding_progress_v6';
-const LEGACY_STORAGE_KEYS = ['konekt_onboarding_progress_v4', 'konekt_onboarding_progress_v5'];
+// v7 : parcours identique pour tous (orgtype → org → orgdetails → specializations → linkedin → launch).
+const STORAGE_KEY = 'konekt_onboarding_progress_v7';
+const LEGACY_STORAGE_KEYS = ['konekt_onboarding_progress_v4', 'konekt_onboarding_progress_v5', 'konekt_onboarding_progress_v6'];
 
 export interface PersistedProgress {
   step: number;

@@ -1,36 +1,42 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { KonektLogo } from '@/components/KonektLogo';
-import type { ChapterDef, SceneKey } from './onboardingMeta';
-import { remainingSeconds } from './onboardingMeta';
+import { remainingSeconds, type SceneKey } from './onboardingMeta';
 import { cn } from '@/lib/utils';
+
+/** Une ligne de la fiche « Votre espace » : vide tant que la question n'a pas de réponse. */
+export interface SummaryRow {
+  key: string;
+  label: string;
+  value: string | null;
+  /** Texte gris quand la réponse est « non précisée » ou « plus tard ». */
+  muted?: boolean;
+  /** Réponse qui vaut une coche (LinkedIn connecté). */
+  ok?: boolean;
+  /** La question posée à l'écran en ce moment. */
+  active: boolean;
+}
 
 interface Props {
   flow: SceneKey[];
   stepIndex: number;
-  chapters: ChapterDef[];
-  completedScenes: Set<SceneKey>;
-  orgName?: string;
+  summary: SummaryRow[];
   children: React.ReactNode;
 }
 
 /**
- * Coquille de l'onboarding : fond uni, en-tête minimal (logo, étape, temps
- * restant), fil des chapitres, une colonne de contenu. La progression est la
- * barre du haut, en accent (docs/design/01-direction.md, § 2).
+ * Coquille de l'onboarding : à gauche, la fiche de l'espace qui se remplit au
+ * fil des réponses (ce que l'on configure, et où l'on en est) ; à droite, une
+ * seule question. Sur téléphone, la fiche disparaît et la barre du haut suffit.
+ * Fond uni, aucun décor (docs/design/01-direction.md, § 1).
  */
-export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, chapters, completedScenes, orgName, children }) => {
+export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, summary, children }) => {
   const progress = Math.round(((stepIndex + 1) / flow.length) * 100);
-  const currentScene = flow[stepIndex];
-  const isFinale = currentScene === 'launch';
-  const isWelcome = currentScene === 'welcome';
+  const isFinale = flow[stepIndex] === 'launch';
   const remainingMin = Math.max(1, Math.ceil(remainingSeconds(flow, stepIndex) / 60));
-  const currentChapterIdx = isFinale
-    ? chapters.length
-    : chapters.findIndex((c) => c.scenes.includes(currentScene));
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-background lg:flex-row">
       <div
         role="progressbar"
         aria-label="Progression de la configuration"
@@ -42,57 +48,50 @@ export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, chapters, co
         <div className="h-full bg-brand transition-[width] duration-200 ease-out" style={{ width: `${progress}%` }} />
       </div>
 
-      <header className="flex items-center justify-between gap-3 px-4 py-5 sm:px-10">
-        <div className="flex min-w-0 items-center gap-2.5">
+      <aside className="flex shrink-0 flex-col border-border px-4 py-5 sm:px-10 lg:sticky lg:top-0 lg:h-screen lg:w-96 lg:border-r lg:bg-card lg:px-10 lg:py-8">
+        <div className="flex items-center justify-between gap-3">
           <KonektLogo theme="auto" size={24} className="shrink-0" />
-          {orgName && (
-            <span className="hidden truncate border-l border-border pl-2.5 text-xs text-muted-foreground sm:inline">
-              {orgName}
-            </span>
-          )}
+          <p className="text-xs tabular-nums text-muted-foreground lg:hidden">
+            Étape {stepIndex + 1} sur {flow.length}
+          </p>
         </div>
-        <p className="flex shrink-0 items-baseline gap-3 text-xs text-muted-foreground">
-          {!isWelcome && (
-            <span className="tabular-nums text-foreground-secondary">
-              Étape {stepIndex + 1} sur {flow.length}
-            </span>
-          )}
-          {!isFinale && <span className="hidden sm:inline">Environ {remainingMin} min</span>}
-        </p>
-      </header>
 
-      {!isWelcome && (
-        <nav aria-label="Chapitres" className="mx-auto w-full max-w-2xl px-4 pt-1 sm:px-8">
-          <ol className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            {chapters.map((chapter, i) => {
-              // Coché seulement si ses scènes sont faites : un LinkedIn « connecté plus tard » reste à faire.
-              const done = chapter.scenes.every((s) => completedScenes.has(s));
-              const current = i === currentChapterIdx;
-              return (
-                <li
-                  key={chapter.id}
-                  aria-current={current ? 'step' : undefined}
+        <div className="mt-auto hidden lg:block">
+          <p className="eyebrow">Votre espace</p>
+          <dl className="mt-4 divide-y divide-border border-y border-border">
+            {summary.map((row) => (
+              <div
+                key={row.key}
+                className={cn(
+                  'relative flex items-baseline justify-between gap-4 py-3 pl-3 transition-colors duration-150',
+                  row.active && 'before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-brand',
+                )}
+              >
+                <dt className={cn('text-sm', row.active ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                  {row.label}
+                </dt>
+                <dd
                   className={cn(
-                    'flex items-center gap-1.5',
-                    current
-                      ? 'font-medium text-foreground underline decoration-brand decoration-2 underline-offset-4'
-                      : done
-                        ? 'text-foreground-secondary'
-                        : 'text-muted-foreground',
+                    'flex min-w-0 items-center gap-1.5 text-right text-sm',
+                    row.value && !row.muted ? 'text-foreground' : 'text-muted-foreground',
                   )}
                 >
-                  {done && !current && <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />}
-                  {chapter.title}
-                  {done && !current && <span className="sr-only">(terminé)</span>}
-                </li>
-              );
-            })}
-          </ol>
-        </nav>
-      )}
+                  {row.ok && <Check className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />}
+                  <span className="truncate">{row.value ?? (row.active ? 'En cours' : 'À renseigner')}</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-4 text-xs tabular-nums text-muted-foreground">
+            {isFinale
+              ? 'Configuration terminée'
+              : `Étape ${stepIndex + 1} sur ${flow.length}, environ ${remainingMin} min. Votre progression est enregistrée.`}
+          </p>
+        </div>
+      </aside>
 
       <main className="w-full flex-1">
-        <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-8 sm:py-12">{children}</div>
+        <div className="mx-auto w-full max-w-xl px-4 py-8 sm:px-8 sm:py-12 lg:px-12 lg:pt-32">{children}</div>
       </main>
     </div>
   );
