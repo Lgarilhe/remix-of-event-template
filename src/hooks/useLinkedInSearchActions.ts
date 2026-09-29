@@ -881,12 +881,23 @@ export function useLinkedInSearchActions(
         // sinon elle épuise le compteur et bloque sa propre pagination.
         if (!isDatabase) quota.recordAction('searchResultsFetched', batch.length);
 
-        // Apply client-side experience filter
-        const filteredBatch = filterByCalculatedExperience(
-          batch,
-          currentFilters.calculated_experience_min,
-          currentFilters.calculated_experience_max
-        );
+        // Filtre d'expérience côté navigateur : une estimation (fin de la
+        // dernière formation, sinon premier poste) qui écarte à tort un profil
+        // senior ayant suivi une formation récente, et qui ignore le maximum.
+        // Quand LinkedIn applique déjà la tranche saisie (Recruiter ou Sales
+        // Navigator, paramètre envoyé), c'est LinkedIn qui décide : la deuxième
+        // passe ferait disparaître des profils qu'il vient de valider, et
+        // relancerait jusqu'à dix pages pour en trouver assez.
+        const linkedinFiltersExperience = !isDatabase
+          && (currentFilters.api === 'recruiter' || currentFilters.api === 'sales_navigator')
+          && (currentFilters.years_of_experience_min !== null || currentFilters.years_of_experience_max !== null);
+        const filteredBatch = linkedinFiltersExperience
+          ? batch
+          : filterByCalculatedExperience(
+            batch,
+            currentFilters.calculated_experience_min,
+            currentFilters.calculated_experience_max
+          );
 
         // Apply client-side location filter only for LinkedIn results.
         // Base Konekt already filters location server-side, and local geo keyword
