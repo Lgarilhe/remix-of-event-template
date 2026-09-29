@@ -107,42 +107,50 @@ interface StageProps {
  * actes en haut, le bureau à gauche et la scène en cours à droite. Les scènes
  * changent, le bureau reste : il se remplit au fil des réponses.
  */
-export const Stage: React.FC<StageProps> = ({ steps, activeIndex, progress, desk, onLeave, children }) => (
-  <PointerProvider>
-    <div className="relative flex min-h-screen flex-col overflow-x-hidden bg-background">
-      <div
-        role="progressbar"
-        aria-label="Progression de la configuration"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(progress)}
-        className="fixed inset-x-0 top-0 z-sticky h-0.5 bg-border"
-      >
-        <motion.div className="h-full bg-brand" initial={false} animate={{ width: `${progress}%` }} transition={{ duration: 0.5, ease: EASE_OUT }} />
+export const Stage: React.FC<StageProps> = ({ steps, activeIndex, progress, desk, onLeave, children }) => {
+  // Le bureau est collé (position: sticky) : tant que le plateau est ouvert, html et body ne défilent pas d'eux-mêmes (index.css).
+  React.useEffect(() => {
+    document.documentElement.classList.add('stage-open');
+    return () => document.documentElement.classList.remove('stage-open');
+  }, []);
+
+  return (
+    <PointerProvider>
+      <div className="relative flex min-h-screen flex-col overflow-x-clip bg-background">
+        <div
+          role="progressbar"
+          aria-label="Progression de la configuration"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
+          className="fixed inset-x-0 top-0 z-sticky h-0.5 bg-border"
+        >
+          <motion.div className="h-full bg-brand" initial={false} animate={{ width: `${progress}%` }} transition={{ duration: 0.5, ease: EASE_OUT }} />
+        </div>
+        <Backdrop />
+        <header className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 py-5 sm:px-10">
+          <KonektLogo theme="auto" size={24} className="shrink-0" />
+          <div className="hidden justify-center pb-4 sm:flex">
+            <Trail steps={steps} activeIndex={activeIndex} />
+          </div>
+          <div className="col-start-3 flex items-center justify-self-end gap-3">
+            <p className="text-xs tabular-nums text-muted-foreground sm:hidden">
+              {activeIndex + 1} / {steps.length}
+            </p>
+            {onLeave && (
+              <Button variant="ghost" size="sm" onClick={onLeave} className="hidden text-muted-foreground sm:inline-flex">
+                Terminer plus tard
+              </Button>
+            )}
+          </div>
+        </header>
+        <main className="relative z-10 mx-auto grid w-full max-w-7xl flex-1 gap-2 px-4 pb-12 sm:px-10 lg:grid-cols-[minmax(0,36rem)_minmax(0,32rem)] lg:items-start lg:justify-center lg:gap-20 lg:pb-16">
+          {/* Le bureau ne bouge pas d'une scène à l'autre : il reste collé au même endroit, même quand la question est longue. */}
+          <div aria-hidden="true" className="mx-auto w-full max-w-[13rem] sm:max-w-[21rem] lg:sticky lg:top-24 lg:max-w-none">{desk}</div>
+          {/* Face au bureau : une question courte se centre sur sa hauteur, une longue le dépasse et la page défile. */}
+          <div className="min-w-0 lg:flex lg:min-h-[36rem] lg:flex-col lg:justify-center">{children}</div>
+        </main>
       </div>
-      <Backdrop />
-      <header className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 py-5 sm:px-10">
-        <KonektLogo theme="auto" size={24} className="shrink-0" />
-        <div className="hidden justify-center pb-4 sm:flex">
-          <Trail steps={steps} activeIndex={activeIndex} />
-        </div>
-        <div className="col-start-3 flex items-center justify-self-end gap-3">
-          <p className="text-xs tabular-nums text-muted-foreground sm:hidden">
-            {activeIndex + 1} / {steps.length}
-          </p>
-          {onLeave && (
-            <Button variant="ghost" size="sm" onClick={onLeave} className="hidden text-muted-foreground sm:inline-flex">
-              Terminer plus tard
-            </Button>
-          )}
-        </div>
-      </header>
-      <main className="relative z-10 mx-auto grid w-full max-w-7xl flex-1 gap-2 px-4 pb-12 sm:px-10 lg:grid-cols-[minmax(0,36rem)_minmax(0,32rem)] lg:items-start lg:justify-center lg:gap-20 lg:pb-16">
-        {/* Le bureau ne bouge pas d'une scène à l'autre : il reste collé au même endroit, même quand la question est longue. */}
-        <div aria-hidden="true" className="mx-auto w-full max-w-[13rem] sm:max-w-[21rem] lg:sticky lg:top-24 lg:max-w-none">{desk}</div>
-        {/* Face au bureau : une question courte se centre sur sa hauteur, une longue le dépasse et la page défile. */}
-        <div className="min-w-0 lg:flex lg:min-h-[36rem] lg:flex-col lg:justify-center">{children}</div>
-      </main>
-    </div>
-  </PointerProvider>
-);
+    </PointerProvider>
+  );
+};

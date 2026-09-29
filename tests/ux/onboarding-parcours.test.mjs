@@ -261,6 +261,16 @@ test('Champ à trous : un prénom proposé après le focus se remplace en tapant
   assert.match(src, /useEffect\(\(\) => \{[^}]*\.select\(\)/s, 'la sélection est reposée quand la valeur arrive');
 });
 
+test('Le bureau reste collé : aucun conteneur de défilement au-dessus de lui', () => {
+  // position: sticky se rattache au plus proche ancêtre qui défile. Un overflow-x: hidden ou auto
+  // sur le plateau, html ou body le rend inerte : le bureau partirait avec la page sur les scènes longues.
+  const stage = read('src/components/onboarding/stage/Stage.tsx');
+  assert.match(stage, /lg:sticky/);
+  assert.match(stage, /min-h-screen flex-col overflow-x-clip/, 'le plateau coupe sans défiler');
+  assert.match(stage, /classList\.add\('stage-open'\)/);
+  assert.match(read('src/index.css'), /html\.stage-open,\s*html\.stage-open body \{\s*overflow-x: clip;/);
+});
+
 test('Le bureau : des variables de thème, pas de couleur en dur, et le mouvement réduit respecté', () => {
   const desk = code('src/components/onboarding/stage/Desk.tsx');
   assert.doesNotMatch(desk, /#[0-9a-fA-F]{6}\b/, 'papier et encre viennent des variables --paper*');
