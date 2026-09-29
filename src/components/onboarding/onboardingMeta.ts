@@ -1,25 +1,29 @@
 export type OrgType = 'enterprise' | 'agency' | 'freelance';
 
 export type SceneKey =
+  | 'welcome'
   | 'orgtype'
+  | 'org'
   | 'orgdetails'
   | 'specializations'
-  | 'org'
   | 'linkedin'
   | 'launch';
 
 /**
- * Tunnel réduit au strict nécessaire pour utiliser l'app : type d'organisation
- * → organisation (entreprise / cabinet) ou détails + spécialisations (freelance,
- * qui crée l'organisation en silence) → connexion LinkedIn → fin.
+ * Un seul parcours, de même longueur pour tous : accueil → type → société (ou
+ * nom de l'activité pour un indépendant) → équipe et volume → secteurs →
+ * LinkedIn → fin. La longueur ne dépend pas du type choisi : la barre de
+ * progression ne saute pas après le premier choix.
  */
+const FULL_FLOW: SceneKey[] = ['welcome', 'orgtype', 'org', 'orgdetails', 'specializations', 'linkedin', 'launch'];
+
 export const FLOWS: Record<OrgType, SceneKey[]> = {
-  enterprise: ['orgtype', 'org', 'linkedin', 'launch'],
-  agency:     ['orgtype', 'org', 'linkedin', 'launch'],
-  freelance:  ['orgtype', 'orgdetails', 'specializations', 'linkedin', 'launch'],
+  enterprise: FULL_FLOW,
+  agency: FULL_FLOW,
+  freelance: FULL_FLOW,
 };
 
-export const DEFAULT_FLOW: SceneKey[] = FLOWS.enterprise;
+export const DEFAULT_FLOW: SceneKey[] = FULL_FLOW;
 
 export interface ChapterDef {
   id: string;
@@ -29,14 +33,14 @@ export interface ChapterDef {
 
 export const CHAPTERS: ChapterDef[] = [
   {
-    id: 'activity',
-    title: 'Votre activité',
-    scenes: ['orgtype', 'orgdetails', 'specializations'],
+    id: 'profile',
+    title: 'Votre profil',
+    scenes: ['orgtype', 'org'],
   },
   {
-    id: 'company',
-    title: 'Votre société',
-    scenes: ['org'],
+    id: 'activity',
+    title: 'Votre activité',
+    scenes: ['orgdetails', 'specializations'],
   },
   {
     id: 'tools',
@@ -45,12 +49,13 @@ export const CHAPTERS: ChapterDef[] = [
   },
 ];
 
-/** Durées estimées par étape (secondes) — affichage du temps restant. */
+/** Durées estimées par étape (secondes) : affichage du temps restant. */
 export const STEP_DURATIONS: Record<Exclude<SceneKey, 'launch'>, number> = {
+  welcome: 10,
   orgtype: 10,
+  org: 40,
   orgdetails: 20,
   specializations: 20,
-  org: 45,
   linkedin: 60,
 };
 

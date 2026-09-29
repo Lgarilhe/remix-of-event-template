@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ArrowLeft, ArrowRight, Check, ExternalLink, RefreshCw, Lock, Unplug } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Illustration } from '@/components/ui/illustration';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useLinkedInAccounts } from '@/contexts/LinkedInAccountsContext';
@@ -25,7 +26,7 @@ const POLL_WINDOW_MS = 3 * 60 * 1000;
 const LINKEDIN_BENEFITS = [
   'Invitations, messages et relances entièrement automatisés',
   'Fonctionne 24h/24, même ordinateur éteint',
-  'Connexion sécurisée, déconnectable à tout moment',
+  'Envois plafonnés et progressifs pour protéger votre compte',
 ];
 
 const NAV_BUTTON_CLASS = 'min-h-11 md:min-h-0';
@@ -128,11 +129,14 @@ export const SceneLinkedIn: React.FC<Props> = ({ onNext, onBack }) => {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Connectez votre compte LinkedIn</h1>
-        <p className="mt-2 max-w-md text-md text-foreground-secondary">
-          Sans LinkedIn connecté, pas de sourcing ni de messages.
-        </p>
+      <div className="flex items-center justify-between gap-6">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Connectez votre compte LinkedIn</h1>
+          <p className="mt-2 max-w-md text-md text-foreground-secondary">
+            Konekt travaille depuis votre compte : c'est lui qui cherche les candidats et envoie vos messages.
+          </p>
+        </div>
+        <Illustration name="connexion" size="md" className="hidden shrink-0 sm:block" />
       </div>
 
       <div

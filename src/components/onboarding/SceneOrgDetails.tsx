@@ -2,6 +2,7 @@ import React, { useId, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type OrgType = 'enterprise' | 'agency' | 'freelance';
@@ -19,8 +20,11 @@ export interface OrgDetailsData {
 
 interface Props {
   orgType: OrgType;
+  /** Réponses déjà données (retour arrière ou reprise). */
+  initial?: OrgDetailsData | null;
   onSubmit: (data: OrgDetailsData) => void;
-  onBack: () => void;
+  /** Absent juste après la création de l'espace : revenir en arrière la relancerait. */
+  onBack?: () => void;
 }
 
 const TEAM_SIZES = [
@@ -47,11 +51,11 @@ const FREELANCE_MODES = [
 const FIELD_CLASS = 'h-11 md:h-10';
 const NAV_BUTTON_CLASS = 'min-h-11 md:min-h-0';
 
-export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) => {
+export const SceneOrgDetails: React.FC<Props> = ({ orgType, initial, onSubmit, onBack }) => {
   const isFreelance = orgType === 'freelance';
-  const [teamSize, setTeamSize] = useState(isFreelance ? '1' : '');
-  const [freelanceMode, setFreelanceMode] = useState('');
-  const [annualHires, setAnnualHires] = useState('');
+  const [teamSize, setTeamSize] = useState(initial?.teamSize ?? (isFreelance ? '1' : ''));
+  const [freelanceMode, setFreelanceMode] = useState(initial?.freelanceMode ?? '');
+  const [annualHires, setAnnualHires] = useState(initial?.annualHires ?? '');
   const modeId = useId();
   const teamId = useId();
   const hiresId = useId();
@@ -63,7 +67,7 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
     <div className="flex w-full flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          {isFreelance ? 'Votre activité, concrètement.' : 'Votre équipe, concrètement.'}
+          {isFreelance ? 'Comment travaillez-vous ?' : 'Quelle est la taille de votre équipe ?'}
         </h1>
         <p className="mt-2 max-w-md text-md text-foreground-secondary">
           Votre façon de travailler et votre volume calibrent vos quotas d'envoi et ce que l'IA Konekt vous recommande.
@@ -123,11 +127,13 @@ export const SceneOrgDetails: React.FC<Props> = ({ orgType, onSubmit, onBack }) 
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-2">
-        <Button variant="ghost" onClick={onBack} className={NAV_BUTTON_CLASS}>
-          <ArrowLeft aria-hidden="true" />
-          Retour
-        </Button>
+      <div className={cn('flex items-center pt-2', onBack ? 'justify-between' : 'justify-end')}>
+        {onBack && (
+          <Button variant="ghost" onClick={onBack} className={NAV_BUTTON_CLASS}>
+            <ArrowLeft aria-hidden="true" />
+            Retour
+          </Button>
+        )}
         <Button
           variant="primary"
           onClick={() =>

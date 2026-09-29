@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { IconTile } from '@/components/ui/IconTile';
+import { Illustration } from '@/components/ui/illustration';
 import { cn } from '@/lib/utils';
 
 export interface LaunchChecklistItem {
@@ -16,7 +16,10 @@ export interface LaunchChecklistItem {
 interface Props {
   items: LaunchChecklistItem[];
   orgName?: string;
+  /** Ouvre la création de la première mission. */
   onFinish: () => void;
+  /** Sortie sans mission : tableau de bord. */
+  onSkip: () => void;
 }
 
 function configuredLabel(done: number, total: number): string {
@@ -27,13 +30,13 @@ function configuredLabel(done: number, total: number): string {
  * Fin du tunnel : une coche, ce qui est fait et ce qui reste, une action.
  * Plus de confettis ni de compteur qui défile (B-65).
  */
-export const SceneLaunch: React.FC<Props> = ({ items, orgName, onFinish }) => {
+export const SceneLaunch: React.FC<Props> = ({ items, orgName, onFinish, onSkip }) => {
   const doneCount = items.filter((i) => i.done).length;
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
       <div className="flex flex-col items-center gap-4 text-center">
-        <IconTile icon={Check} tone="success" size="lg" aria-hidden="true" />
+        <Illustration name="valide" size="lg" />
         <div className="space-y-1.5">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Votre espace est prêt</h1>
           <p className="text-sm text-muted-foreground">
@@ -71,10 +74,16 @@ export const SceneLaunch: React.FC<Props> = ({ items, orgName, onFinish }) => {
         ))}
       </ul>
 
-      <Button variant="primary" size="lg" onClick={onFinish} className="min-h-11 w-full md:min-h-0">
-        Créer une mission
-        <ArrowRight aria-hidden="true" />
-      </Button>
+      <div className="flex flex-col items-center gap-2">
+        <Button variant="primary" size="lg" onClick={onFinish} className="min-h-11 w-full md:min-h-0">
+          Créer ma première mission
+          <ArrowRight aria-hidden="true" />
+        </Button>
+        <p className="text-xs text-muted-foreground">Décrivez le poste : l'IA Konekt prépare la recherche de candidats.</p>
+        <Button variant="ghost" onClick={onSkip} className="min-h-11 text-muted-foreground md:min-h-0">
+          Aller au tableau de bord
+        </Button>
+      </div>
     </div>
   );
 };

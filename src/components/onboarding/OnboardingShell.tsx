@@ -23,6 +23,7 @@ export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, chapters, co
   const progress = Math.round(((stepIndex + 1) / flow.length) * 100);
   const currentScene = flow[stepIndex];
   const isFinale = currentScene === 'launch';
+  const isWelcome = currentScene === 'welcome';
   const remainingMin = Math.max(1, Math.ceil(remainingSeconds(flow, stepIndex) / 60));
   const currentChapterIdx = isFinale
     ? chapters.length
@@ -51,40 +52,44 @@ export const OnboardingShell: React.FC<Props> = ({ flow, stepIndex, chapters, co
           )}
         </div>
         <p className="flex shrink-0 items-baseline gap-3 text-xs text-muted-foreground">
-          <span className="tabular-nums text-foreground-secondary">
-            Étape {stepIndex + 1} sur {flow.length}
-          </span>
+          {!isWelcome && (
+            <span className="tabular-nums text-foreground-secondary">
+              Étape {stepIndex + 1} sur {flow.length}
+            </span>
+          )}
           {!isFinale && <span className="hidden sm:inline">Environ {remainingMin} min</span>}
         </p>
       </header>
 
-      <nav aria-label="Chapitres" className="mx-auto w-full max-w-2xl px-4 pt-1 sm:px-8">
-        <ol className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          {chapters.map((chapter, i) => {
-            // Coché seulement si ses scènes sont faites : un LinkedIn « connecté plus tard » reste à faire.
-            const done = chapter.scenes.every((s) => completedScenes.has(s));
-            const current = i === currentChapterIdx;
-            return (
-              <li
-                key={chapter.id}
-                aria-current={current ? 'step' : undefined}
-                className={cn(
-                  'flex items-center gap-1.5',
-                  current
-                    ? 'font-medium text-foreground underline decoration-brand decoration-2 underline-offset-4'
-                    : done
-                      ? 'text-foreground-secondary'
-                      : 'text-muted-foreground',
-                )}
-              >
-                {done && !current && <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />}
-                {chapter.title}
-                {done && !current && <span className="sr-only">(terminé)</span>}
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
+      {!isWelcome && (
+        <nav aria-label="Chapitres" className="mx-auto w-full max-w-2xl px-4 pt-1 sm:px-8">
+          <ol className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            {chapters.map((chapter, i) => {
+              // Coché seulement si ses scènes sont faites : un LinkedIn « connecté plus tard » reste à faire.
+              const done = chapter.scenes.every((s) => completedScenes.has(s));
+              const current = i === currentChapterIdx;
+              return (
+                <li
+                  key={chapter.id}
+                  aria-current={current ? 'step' : undefined}
+                  className={cn(
+                    'flex items-center gap-1.5',
+                    current
+                      ? 'font-medium text-foreground underline decoration-brand decoration-2 underline-offset-4'
+                      : done
+                        ? 'text-foreground-secondary'
+                        : 'text-muted-foreground',
+                  )}
+                >
+                  {done && !current && <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />}
+                  {chapter.title}
+                  {done && !current && <span className="sr-only">(terminé)</span>}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+      )}
 
       <main className="w-full flex-1">
         <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-8 sm:py-12">{children}</div>

@@ -16,7 +16,7 @@ interface Props {
   mode: 'single' | 'multi';
   /** single : appelé au choix (permet l'auto-avance) ; multi : à chaque toggle */
   onSelect: (value: string) => void;
-  /** Liste compacte sur 2 colonnes (longues listes) */
+  /** Liste compacte sur 2 colonnes, y compris sur téléphone (longues listes) */
   columns?: 1 | 2;
   dense?: boolean;
   /** Active les raccourcis clavier A, B, C… */
@@ -66,7 +66,7 @@ export const EditorialChoiceList: React.FC<Props> = ({
       role={mode === 'single' ? 'radiogroup' : 'group'}
       aria-labelledby={labelledBy}
       // -mx-3 : la lettre s'aligne sur le titre, le fond de survol garde sa marge.
-      className={cn(columns === 2 ? 'grid grid-cols-1 gap-x-4 sm:grid-cols-2' : 'flex flex-col', '-mx-3 gap-y-1')}
+      className={cn(columns === 2 ? 'grid grid-cols-2 gap-x-2 sm:gap-x-4' : 'flex flex-col', '-mx-3 gap-y-1')}
     >
       {options.map((option, i) => {
         const isSelected = selected.includes(option.value);

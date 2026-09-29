@@ -5,7 +5,8 @@ type OrgType = 'enterprise' | 'agency' | 'freelance';
 
 interface Props {
   onSelect: (orgType: OrgType) => void;
-  onBack: () => void;
+  /** Réponse déjà donnée (retour arrière) : elle reste cochée. */
+  initial?: OrgType | null;
 }
 
 const ORG_TYPE_OPTIONS = [
@@ -26,8 +27,8 @@ const ORG_TYPE_OPTIONS = [
   },
 ];
 
-export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
-  const [selected, setSelected] = useState<string[]>([]);
+export const SceneOrgType: React.FC<Props> = ({ onSelect, initial = null }) => {
+  const [selected, setSelected] = useState<string[]>(initial ? [initial] : []);
   const firedRef = useRef(false);
   const titleId = useId();
 
@@ -45,8 +46,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
           Qui êtes-vous ?
         </h1>
         <p className="mt-2 max-w-md text-md text-foreground-secondary">
-          Konekt ne montre pas la même chose à une entreprise, un cabinet ou un indépendant.
-          Tout part d'ici.
+          Konekt adapte ses écrans, ses quotas et ses conseils à une entreprise, un cabinet ou un indépendant.
         </p>
       </div>
 
@@ -59,7 +59,7 @@ export const SceneOrgType: React.FC<Props> = ({ onSelect }) => {
       />
 
       <p className="mt-8 text-xs text-muted-foreground">
-        Cliquez sur une réponse ou tapez sa lettre : la suite s'enchaîne toute seule.
+        Cliquez sur une réponse ou tapez sa lettre : la suite s'affiche aussitôt.
       </p>
     </div>
   );

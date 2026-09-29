@@ -233,43 +233,48 @@ test('R4 — plus d’UPDATE de type non attendu à la création', () => {
   assert.equal(count(onboarding, /updateOrganization\(/g), 1, 'seule l’activité de l’indépendant reste en UPDATE');
 });
 
-test('R4 — indépendant : erreur lue, pas d’avancée sans écriture', () => {
-  const submit = between(onboarding, 'const handleSpecializationsSubmitted', 'const handleOrgCreated');
-  assert.match(submit, /orgType: 'freelance'/);
-  assert.match(submit, /let orgId = createdOrgId;/, 'réessai sans recréer l’espace');
-  const details = between(submit, 'await updateOrganization(orgId', '} catch (err) {');
-  assert.match(details, /catch \(detailsErr\)[\s\S]*toast\.error\([\s\S]*return;/);
-  assert.match(between(submit, '} catch (err) {', '} finally {'), /return;/);
-  assert.ok(
-    submit.indexOf("markCompleted('specializations')") > submit.indexOf('} finally {'),
-    'la scène n’est marquée terminée qu’après succès',
-  );
-  assert.doesNotMatch(submit, /as any/);
+test('R4 — équipe, volume et secteurs : erreur lue, pas d’avancée sans écriture', () => {
+  const save = between(onboarding, 'const saveProfile', 'const handleOrgDetailsSubmitted');
+  assert.match(save, /await updateOrganization\(orgId/);
+  assert.match(save, /catch \(err\)[\s\S]*toast\.error\([\s\S]*return false;/);
+  const details = between(onboarding, 'const handleOrgDetailsSubmitted', 'const handleSpecializationsSubmitted');
+  assert.match(details, /if \(!\(await saveProfile\(data, specializations\)\)\) return;/);
+  assert.ok(details.indexOf('saveProfile') < details.indexOf("completeAndNext('orgdetails')"), 'scène marquée terminée après succès');
+  const specs = between(onboarding, 'const handleSpecializationsSubmitted', 'const handleOrgCreated');
+  assert.match(specs, /if \(!\(await saveProfile\(orgDetailsData, specs\)\)\) return;/);
+  assert.ok(specs.indexOf('saveProfile') < specs.indexOf("completeAndNext('specializations')"));
+  assert.doesNotMatch(save, /as any/);
 });
 
-test('C2 — indépendant : l’espace créé est sauvegardé avec la progression', () => {
+test('R4 — indépendant : l’espace est créé avec son type par la scène du nom', () => {
+  const scene = read('src/components/onboarding/SceneFreelanceName.tsx');
+  assert.match(scene, /orgType: 'freelance'/);
+  assert.match(onboarding, /<SceneFreelanceName/);
+  assert.match(onboarding, /currentScene === 'org' && orgType === 'freelance'/);
+  assert.match(onboarding, /currentScene === 'org' && orgType && orgType !== 'freelance'/);
+});
+
+test('C2 — l’espace créé est sauvegardé avec la progression', () => {
   assert.match(onboardingStorage, /createdOrgId\?: string \| null;/);
   assert.doesNotMatch(onboarding, /createdOrgIdRef/, 'un ref se perdait au rechargement');
   assert.match(onboarding, /useState<string \| null>\(restored\?\.createdOrgId \?\? null\)/, 'repris de la progression sauvegardée');
   const persist = between(onboarding, 'saveOnboardingProgress({', '}, [');
   assert.match(persist, /\bcreatedOrgId,/, 'écrit dans la progression');
   assert.match(between(onboarding, 'saveOnboardingProgress({', ']);'), /completedScenes, createdOrgId$/, 'l’effet de sauvegarde suit createdOrgId');
-  const submit = between(onboarding, 'const handleSpecializationsSubmitted', 'const handleOrgCreated');
-  assert.match(submit, /setCreatedOrgId\(orgId\)/);
-  assert.ok(
-    submit.indexOf('setCreatedOrgId(orgId)') < submit.indexOf('await updateOrganization(orgId'),
-    'l’id est gardé avant l’écriture de l’activité, qui peut échouer',
-  );
   assert.match(between(onboarding, 'const handleOrgCreated', 'const handleLinkedInNext'), /setCreatedOrgId\(data\.orgId\)/);
+  // Retour arrière ou rechargement : la scène du nom corrige l’espace, elle ne le recrée pas.
+  const scene = read('src/components/onboarding/SceneFreelanceName.tsx');
+  assert.match(scene, /let orgId = createdOrgId;/);
+  assert.match(between(scene, 'if (orgId) {', '} else {'), /updateOrganization\(orgId, \{ name: trimmed \}\)/);
 });
 
 test('C2 — « déjà membre » : l’espace indépendant créé par l’utilisateur est repris, pas bloqué', () => {
-  const submit = between(onboarding, 'const handleSpecializationsSubmitted', 'const handleOrgCreated');
-  const reuse = between(submit, '} catch (createErr) {', 'setCreatedOrgId(orgId)');
+  const scene = read('src/components/onboarding/SceneFreelanceName.tsx');
+  const reuse = between(scene, '} catch (createErr) {', 'setConfirmSecondOpen(true)');
   assert.match(reuse, /code !== ORG_ALREADY_EXISTS\) throw createErr/, 'les autres échecs restent signalés');
   assert.match(reuse, /await refetchOrganization\(\)/);
-  assert.match(reuse, /own\.created_by !== user\.id/);
-  assert.match(reuse, /own\.org_type !== 'freelance'/);
+  assert.match(reuse, /own\.created_by === user\.id/);
+  assert.match(reuse, /own\.org_type === 'freelance'/);
   assert.match(reuse, /orgId = own\.id;/);
 });
 

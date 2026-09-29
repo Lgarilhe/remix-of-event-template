@@ -4,9 +4,9 @@ import type { OrgDetailsData } from './SceneOrgDetails';
 // ⚠️ Bumper la version à chaque changement de forme du flow (ajout/retrait
 // d'étapes) : une progression persistée sur l'ancien flow serait ignorée
 // plutôt que de pointer sur la mauvaise scène.
-// v5 : tunnel raccourci (orgtype → org | orgdetails + specializations → linkedin → launch).
-const STORAGE_KEY = 'konekt_onboarding_progress_v5';
-const LEGACY_STORAGE_KEYS = ['konekt_onboarding_progress_v4'];
+// v6 : accueil ajouté, parcours identique pour tous (welcome → orgtype → org → orgdetails → specializations → linkedin → launch).
+const STORAGE_KEY = 'konekt_onboarding_progress_v6';
+const LEGACY_STORAGE_KEYS = ['konekt_onboarding_progress_v4', 'konekt_onboarding_progress_v5'];
 
 export interface PersistedProgress {
   step: number;
@@ -17,10 +17,9 @@ export interface PersistedProgress {
   specializations: string[];
   completed: SceneKey[];
   /**
-   * Id de l'espace créé par ce tunnel. Gardé seulement en mémoire, il se perdait
-   * au rechargement : un indépendant dont l'activité n'avait pas pu être écrite
-   * restait bloqué (« déjà membre d'un espace ») ou, avec ?new=1, créait un
-   * second espace. Facultatif : absent des progressions déjà enregistrées.
+   * Id de l'espace créé par ce tunnel. Sauvegardé avec la progression : après un
+   * rechargement, le réessai reprend cet espace au lieu d'échouer sur « déjà
+   * membre d'un espace » ou, avec ?new=1, d'en créer un second.
    */
   createdOrgId?: string | null;
 }

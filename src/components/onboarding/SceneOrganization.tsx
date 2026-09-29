@@ -10,22 +10,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useOrganization, ORG_ALREADY_EXISTS } from '@/hooks/useOrganization';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import linkedinLogo from '@/assets/linkedin-logo.webp';
+import { SecondWorkspaceDialog } from './SecondWorkspaceDialog';
 
 const WTTJ_LOGO = 'https://www.welcometothejungle.com/assets/images/logos/wttj.svg';
 const WTTJ_FALLBACK = 'https://cdn.welcometothejungle.com/wttj-front/production/assets/images/logos/wttj.svg';
@@ -329,7 +320,7 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
     <div className="flex w-full flex-col gap-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Votre société, en un mot.</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Quelle est votre société ?</h1>
         <p className="mt-2 max-w-md text-md text-foreground-secondary">
           Donnez son nom : Konekt récupère son logo, sa description et ses postes ouverts pour construire votre espace.
         </p>
@@ -337,11 +328,6 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
 
       {/* Search input */}
       <div className="flex gap-2">
-        {onBack && (
-          <Button variant="outline" size="icon" onClick={onBack} className="h-11 w-11 shrink-0" aria-label="Étape précédente">
-            <ArrowLeft aria-hidden="true" />
-          </Button>
-        )}
         <div className="relative flex-1">
           <Label htmlFor={inputId} className="sr-only">Nom de votre société</Label>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -487,8 +473,13 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
             </Tabs>
           )}
 
-          {/* Navigation */}
-          <div className="flex items-center justify-end pt-2">
+          <div className={cn('flex items-center pt-2', onBack ? 'justify-between' : 'justify-end')}>
+            {onBack && (
+              <Button variant="ghost" onClick={onBack} className="min-h-11 md:min-h-0">
+                <ArrowLeft aria-hidden="true" />
+                Retour
+              </Button>
+            )}
             <Button
               variant="primary"
               onClick={() => handleContinue(allowSecondWorkspace)}
@@ -502,28 +493,20 @@ export const SceneOrganization: React.FC<Props> = ({ orgType, onComplete, onBack
         </div>
       )}
 
-      {/* F3 : confirmation explicite avant la création d'un second espace */}
-      <AlertDialog open={confirmSecondOpen} onOpenChange={setConfirmSecondOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Vous avez déjà un espace de travail</AlertDialogTitle>
-            <AlertDialogDescription>
-              Votre compte fait déjà partie d’un espace Konekt. Créer un nouvel espace le
-              rendra actif à la place de l’actuel : vos missions, crédits et comptes
-              LinkedIn resteront dans l’espace existant. Voulez-vous vraiment créer un second espace ?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive"
-              onClick={() => { setConfirmSecondOpen(false); void handleContinue(true); }}
-            >
-              Créer un second espace
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {onBack && phase !== 'results' && (
+        <div className="flex items-center pt-2">
+          <Button variant="ghost" onClick={onBack} className="min-h-11 md:min-h-0">
+            <ArrowLeft aria-hidden="true" />
+            Retour
+          </Button>
+        </div>
+      )}
+
+      <SecondWorkspaceDialog
+        open={confirmSecondOpen}
+        onOpenChange={setConfirmSecondOpen}
+        onConfirm={() => void handleContinue(true)}
+      />
     </div>
   );
 };

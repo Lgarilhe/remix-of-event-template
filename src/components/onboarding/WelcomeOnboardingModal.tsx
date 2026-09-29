@@ -70,7 +70,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
 
   // Step 2 : si l'user a déjà un compte LinkedIn connecté (case rare premier login
   // mais possible si compte préexistant), on saute au step 3 automatiquement
-  const hasLinkedIn = accounts.length > 0;
+  const hasLinkedIn = accounts.some((a) => a.type !== 'WHATSAPP' && a.provider !== 'WHATSAPP');
 
   const handleClose = () => {
     setOpen(false);
@@ -122,8 +122,8 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
                 Bienvenue dans l'équipe {organization?.name || 'Konekt'}
               </h2>
               <p className="text-sm text-muted-foreground">
-                Vous venez de rejoindre Konekt. En 2 minutes, on vous montre comment
-                lancer votre premier sourcing.
+                Vous venez de rejoindre Konekt. Deux étapes pour lancer votre premier sourcing :
+                connecter votre LinkedIn, puis ouvrir une mission.
               </p>
             </div>
             <Button variant="primary" onClick={handleNext} className="mt-4 w-full min-h-11 md:min-h-0">
@@ -131,7 +131,7 @@ export const WelcomeOnboardingModal: React.FC<WelcomeOnboardingModalProps> = ({
               <ArrowRight aria-hidden="true" />
             </Button>
             <Button variant="ghost" size="sm" onClick={handleClose} className="text-muted-foreground min-h-11 md:min-h-0">
-              Passer le tutoriel
+              Passer
             </Button>
           </div>
         )}
