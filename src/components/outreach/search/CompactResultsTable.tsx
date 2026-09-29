@@ -649,21 +649,21 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
     const cols: ColumnConfig[] = [];
 
     // 👤 Profil — sticky avatar + nom
-    cols.push({ id: 'avatar', label: 'Avatar', section: 'profil', defaultVisible: true, sticky: true, minWidth: 40 });
+    cols.push({ id: 'avatar', label: 'Photo', section: 'profil', defaultVisible: true, sticky: true, minWidth: 40 });
     cols.push({
       id: 'name', label: 'Nom', section: 'profil', defaultVisible: true, sticky: true, minWidth: 160,
       sortValue: (p) => (p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim()).toLowerCase(),
     });
     cols.push({
-      id: 'headline', label: 'Headline', section: 'profil', defaultVisible: true, minWidth: 220,
+      id: 'headline', label: 'Titre du profil', section: 'profil', defaultVisible: true, minWidth: 220,
       sortValue: (p) => (p.headline || '').toLowerCase(),
     });
     cols.push({
-      id: 'score', label: 'Score IA', section: 'profil', defaultVisible: true, minWidth: 70,
+      id: 'score', label: 'Note', section: 'profil', defaultVisible: true, minWidth: 70,
       sortValue: (_, s) => s?.match_score ?? -1,
     });
     cols.push({
-      id: 'recommendation', label: 'Reco', section: 'profil', defaultVisible: true, minWidth: 70,
+      id: 'recommendation', label: 'Avis', section: 'profil', defaultVisible: true, minWidth: 70,
       sortValue: (_, s) => s?.recommendation === 'go' ? 0 : s?.recommendation === 'maybe' ? 1 : s?.recommendation === 'skip' ? 2 : 3,
     });
     cols.push({
@@ -684,15 +684,15 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
     });
 
     // 🚦 Signaux LinkedIn
-    cols.push({ id: 'sig_open_to_work', label: 'Open to Work', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => (p.open_to_work || p.is_open_to_work) ? 1 : 0 });
+    cols.push({ id: 'sig_open_to_work', label: 'À l\'écoute', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => (p.open_to_work || p.is_open_to_work) ? 1 : 0 });
     cols.push({ id: 'sig_premium', label: 'Premium', section: 'signals', defaultVisible: false, minWidth: 70, sortValue: (p) => (p.premium || p.is_premium) ? 1 : 0 });
     cols.push({ id: 'sig_hiring', label: 'Recrute', section: 'signals', defaultVisible: false, minWidth: 70, sortValue: (p) => p.is_hiring ? 1 : 0 });
     cols.push({ id: 'sig_influencer', label: 'Influenceur', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => p.is_influencer ? 1 : 0 });
     cols.push({ id: 'sig_creator', label: 'Créateur', section: 'signals', defaultVisible: false, minWidth: 70, sortValue: (p) => p.is_creator ? 1 : 0 });
     cols.push({ id: 'sig_can_inmail', label: 'InMail', section: 'signals', defaultVisible: false, minWidth: 60, sortValue: (p) => p.can_send_inmail ? 1 : 0 });
-    cols.push({ id: 'sig_open_profile', label: 'Open profile', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => (p.open_profile || p.is_open_profile) ? 1 : 0 });
+    cols.push({ id: 'sig_open_profile', label: 'Profil ouvert', section: 'signals', defaultVisible: false, minWidth: 80, sortValue: (p) => (p.open_profile || p.is_open_profile) ? 1 : 0 });
     cols.push({ id: 'sig_verified', label: 'Vérifié', section: 'signals', defaultVisible: false, minWidth: 60, sortValue: (p) => p.verified ? 1 : 0 });
-    cols.push({ id: 'sig_recently_hired', label: 'Recemt embauché', section: 'signals', defaultVisible: false, minWidth: 100, sortValue: (p) => p.recently_hired ? 1 : 0 });
+    cols.push({ id: 'sig_recently_hired', label: 'Récemment embauché', section: 'signals', defaultVisible: false, minWidth: 100, sortValue: (p) => p.recently_hired ? 1 : 0 });
 
     // 📞 Contact
     cols.push({ id: 'email', label: 'Email', section: 'contact', defaultVisible: false, minWidth: 180, sortValue: (p) => (getEmail(p) || '').toLowerCase() });
@@ -701,22 +701,22 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
 
     // 🌐 Network
     cols.push({ id: 'connections', label: 'Connexions', section: 'network', defaultVisible: false, minWidth: 80, sortValue: (p) => p.connections_count ?? 0 });
-    cols.push({ id: 'followers', label: 'Followers', section: 'network', defaultVisible: false, minWidth: 80, sortValue: (p) => p.followers_count ?? 0 });
-    cols.push({ id: 'shared_connections', label: 'Conn. partagées', section: 'network', defaultVisible: false, minWidth: 90, sortValue: (p) => p.shared_connections_count ?? 0 });
-    cols.push({ id: 'network_distance', label: 'Distance', section: 'network', defaultVisible: false, minWidth: 70, sortValue: (p) => Number(p.network_distance) || 9 });
+    cols.push({ id: 'followers', label: 'Abonnés', section: 'network', defaultVisible: false, minWidth: 80, sortValue: (p) => p.followers_count ?? 0 });
+    cols.push({ id: 'shared_connections', label: 'Relations communes', section: 'network', defaultVisible: false, minWidth: 90, sortValue: (p) => p.shared_connections_count ?? 0 });
+    cols.push({ id: 'network_distance', label: 'Degré', section: 'network', defaultVisible: false, minWidth: 70, sortValue: (p) => Number(p.network_distance) || 9 });
 
     // 💼 Expériences (XP totale + nb postes + XP 1..5)
     cols.push({
-      id: 'years_exp', label: 'Années XP', section: 'experience', defaultVisible: true, minWidth: 80,
+      id: 'years_exp', label: 'Expérience', section: 'experience', defaultVisible: true, minWidth: 80,
       sortValue: (p) => getYearsOfExp(p),
     });
     cols.push({
-      id: 'jobs_count', label: 'Nb postes', section: 'experience', defaultVisible: false, minWidth: 70,
+      id: 'jobs_count', label: 'Nombre de postes', section: 'experience', defaultVisible: false, minWidth: 70,
       sortValue: (p) => p.work_experience?.length ?? 0,
     });
     for (let i = 1; i <= 5; i++) {
       cols.push({
-        id: `exp_${i}`, label: `XP ${i}`, section: 'experience', defaultVisible: i <= 2, minWidth: 200,
+        id: `exp_${i}`, label: `Poste ${i}`, section: 'experience', defaultVisible: i <= 2, minWidth: 200,
         sortValue: (p) => (p.work_experience?.[i - 1]?.company || '').toLowerCase(),
       });
     }
@@ -731,11 +731,11 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
 
     // 🛠️ Compétences
     cols.push({
-      id: 'skills_top', label: 'Top skills', section: 'skills', defaultVisible: false, minWidth: 220,
+      id: 'skills_top', label: 'Compétences clés', section: 'skills', defaultVisible: false, minWidth: 220,
       sortValue: (p) => (p.skills?.[0]?.name || '').toLowerCase(),
     });
     cols.push({
-      id: 'skills_count', label: 'Nb skills', section: 'skills', defaultVisible: false, minWidth: 70,
+      id: 'skills_count', label: 'Nombre de compétences', section: 'skills', defaultVisible: false, minWidth: 70,
       sortValue: (p) => p.skills?.length ?? 0,
     });
     cols.push({
@@ -863,9 +863,9 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="border border-border bg-background overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-background">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
           <p className="text-xs text-muted-foreground">
             <span className="text-foreground font-medium">{profiles.length}</span> profil{profiles.length > 1 ? 's' : ''}
             {' · '}
@@ -890,7 +890,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
               <DropdownMenuSeparator />
               {Array.from(columnsBySection.entries()).map(([section, cols]) => (
                 <React.Fragment key={section}>
-                  <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground pt-2">
+                  <DropdownMenuLabel className="pt-2 text-xs font-normal text-muted-foreground">
                     {SECTION_LABELS[section]}
                   </DropdownMenuLabel>
                   {cols.map((col) => {
@@ -932,8 +932,8 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="border-b border-border bg-muted/40 backdrop-blur-sm sticky top-0 z-20">
-                <th className="p-1.5 text-left align-middle w-8 sticky left-0 z-30 bg-muted/40 backdrop-blur-sm">
+              <tr className="sticky top-0 z-20 border-b border-border bg-background">
+                <th className="p-1.5 text-left align-middle w-8 sticky left-0 z-30 bg-background">
                   <Checkbox
                     checked={allSelected && profiles.length > 0}
                     onCheckedChange={onToggleSelectAll}
@@ -950,8 +950,8 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                   return (
                     <th
                       key={col.id}
-                      className={`px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap ${
-                        col.sticky ? 'sticky z-30 bg-muted/40 backdrop-blur-sm' : ''
+                      className={`h-9 px-2 text-left text-xs font-normal text-muted-foreground whitespace-nowrap ${
+                        col.sticky ? 'sticky z-30 bg-background' : ''
                       } ${col.section === 'criteres' && idx > 0 && visibleColumns[idx - 1]?.section !== 'criteres' ? 'border-l-2 border-info/30' : ''}`}
                       style={{
                         minWidth: col.minWidth ? `${col.minWidth}px` : undefined,
@@ -987,7 +987,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                             )}
                           </TooltipContent>
                         </Tooltip>
-                      ) : col.label}
+                      ) : col.id === 'avatar' ? <span className="sr-only">{col.label}</span> : col.label}
                     </th>
                   );
                 })}
@@ -1001,7 +1001,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                 const fullName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Profil LinkedIn';
                 const initials = getInitials(fullName);
                 const profileUrl = getProfileUrl(profile);
-                const rowBg = isSelected ? 'bg-accent/40' : '';
+                const rowBg = isSelected ? 'bg-muted/60' : '';
 
                 return (
                   <tr
@@ -1064,15 +1064,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                         return (
                           <td key={col.id} className={`${baseTd} text-center`}>
                             {score?.match_score != null && score.match_score > 0 ? (
-                              <span
-                                className={`inline-flex items-center justify-center min-w-[36px] px-1.5 py-0.5 font-bold font-mono tabular-nums text-xs ${
-                                  score.match_score >= 70
-                                    ? 'bg-success/15 text-success border border-success/40'
-                                    : score.match_score >= 40
-                                      ? 'bg-warning/15 text-warning border border-warning/40'
-                                      : 'bg-destructive/15 text-destructive border border-destructive/40'
-                                }`}
-                              >
+                              <span className="text-sm font-semibold tabular-nums text-foreground">
                                 {score.match_score}
                               </span>
                             ) : (
@@ -1085,13 +1077,13 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                         const r = score?.recommendation;
                         if (!r) return <td key={col.id} className={`${baseTd} text-center`}><span className="text-muted-foreground/30">—</span></td>;
                         const cfg = r === 'go'
-                          ? { label: 'GO', cls: 'bg-success/15 text-success border-success/40' }
+                          ? { label: 'Recommandé', cls: 'bg-success-muted text-success' }
                           : r === 'maybe'
-                            ? { label: 'MAYBE', cls: 'bg-warning/15 text-warning border-warning/40' }
-                            : { label: 'SKIP', cls: 'bg-destructive/15 text-destructive border-destructive/40' };
+                            ? { label: 'À voir', cls: 'bg-warning-muted text-warning' }
+                            : { label: 'Peu adapté', cls: 'bg-muted text-muted-foreground' };
                         return (
                           <td key={col.id} className={`${baseTd} text-center`}>
-                            <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${cfg.cls}`}>
+                            <span className={`inline-flex items-center whitespace-nowrap rounded-md px-1.5 py-0.5 text-xs ${cfg.cls}`}>
                               {cfg.label}
                             </span>
                           </td>
@@ -1327,15 +1319,14 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
 
         {/* Footer info */}
         {selectedJob && criteriaList.length === 0 && (
-          <div className="px-3 py-2 border-t border-border bg-muted/30 text-xs text-muted-foreground flex items-center gap-1.5">
-            <HelpCircle className="w-3 h-3" aria-hidden="true" />
+          <div className="flex items-center gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            <HelpCircle className="h-3 w-3" aria-hidden="true" />
             <span>Aucun critère défini sur ce poste — ajoutez compétences ou must/should/nice-to-have dans le brief pour voir les colonnes critères.</span>
           </div>
         )}
         {selectedJob && criteriaList.length > 0 && Object.keys(jobScores).length === 0 && (
-          <div className="px-3 py-2 border-t border-border bg-info/10 text-xs text-info flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3" aria-hidden="true" />
-            <span>Lancez le scoring pour évaluer les profils sur les critères du poste.</span>
+          <div className="flex items-center gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            <span>Les profils ne sont pas encore notés. Notez-les pour les comparer aux critères du poste.</span>
           </div>
         )}
       </div>
