@@ -1,8 +1,9 @@
 /**
  * Règles partagées par les deux fenêtres d'inscription en séquence (modale
  * simple et préparation avec aperçu) : textes communs, séquence encore active,
- * statut « contacté » sans rétrogradation, inscriptions déjà existantes et
- * annonce de la première action.
+ * inscriptions déjà existantes et annonce de la première action. Rien n'est
+ * écrit dans le pipeline à l'inscription (lot 0b) : « Contacté » est posé par
+ * le serveur au premier envoi réel.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -68,73 +69,6 @@ export async function sequenceInactiveReason(supabase: Client, sequenceId: strin
   if (error) throw error;
   if (!data) return "Cette séquence est introuvable. Rechargez la page, puis réessayez.";
   return data.is_active ? null : SEQUENCE_INACTIVE_MESSAGE;
-}
-
-/** Statuts pipeline plus avancés que « contacté » (ou égaux) : jamais écrasés par l'inscription. */
-export const STATUSES_KEPT_ON_ENROLL = ['messaged', 'replied', 'shortlisted'] as const;
-
-/** Vrai si l'inscription peut passer le candidat à « contacté » sans rétrograder un statut existant. */
-export function shouldMarkMessaged(existingStatuses: ReadonlyArray<string | null | undefined>): boolean {
-  return !existingStatuses.some(s => !!s && (STATUSES_KEPT_ON_ENROLL as readonly string[]).includes(s));
-}
-
-interface CandidateRef {
-  id: string;
-  name?: string | null;
-  headline?: string | null;
-  profile_url?: string | null;
-  public_profile_url?: string | null;
-}
-
-/**
- * Passe à « contacté » (job_candidate_status) les candidats inscrits, sans
- * rétrograder un candidat déjà contacté, shortlisté ou qui a répondu. Les deux
- * formes d'identifiant d'une mission du sourcing (« project:{uuid} » et
- * « {uuid} ») sont lues, comme dans useJobCandidateStatus. Non bloquant :
- * l'inscription est faite, une erreur est seulement journalisée.
- */
-export async function markCandidatesMessaged(
-  supabase: Client,
-  params: { rawJobId: string; userId: string; organizationId: string; profiles: CandidateRef[] },
-): Promise<void> {
-  const { rawJobId, userId, organizationId, profiles } = params;
-  if (!rawJobId || profiles.length === 0) return;
-  const jobId = rawJobId.startsWith('project:') ? rawJobId.slice('project:'.length) : rawJobId;
-  const jobIdForms = Array.from(new Set([rawJobId, jobId]));
-  try {
-    const { data: existing, error: readError } = await supabase
-      .from('job_candidate_status')
-      .select('candidate_id, status')
-      .in('job_id', jobIdForms)
-      .eq('created_by', userId)
-      .in('candidate_id', profiles.map(p => p.id));
-    if (readError) throw readError;
-    const statusesByCandidate = new Map<string, string[]>();
-    for (const row of existing ?? []) {
-      const list = statusesByCandidate.get(row.candidate_id) ?? [];
-      list.push(row.status);
-      statusesByCandidate.set(row.candidate_id, list);
-    }
-    const rows = profiles
-      .filter(p => shouldMarkMessaged(statusesByCandidate.get(p.id) ?? []))
-      .map(profile => ({
-        job_id: jobId,
-        candidate_id: profile.id,
-        candidate_name: profile.name || null,
-        candidate_headline: profile.headline || null,
-        linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
-        status: 'messaged',
-        created_by: userId,
-        organization_id: organizationId,
-      }));
-    if (rows.length === 0) return;
-    const { error: writeError } = await supabase
-      .from('job_candidate_status')
-      .upsert(rows, { onConflict: 'job_id,candidate_id,created_by' });
-    if (writeError) throw writeError;
-  } catch (err) {
-    console.warn('[enrollment] job_candidate_status update failed:', err);
-  }
 }
 
 /**

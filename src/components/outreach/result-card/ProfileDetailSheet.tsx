@@ -12,6 +12,7 @@ import { LinkedInProfile } from '../types';
 import { JobMatchResult, JobScoreDisplay, SalaryBadge, isDegradedScore } from '../JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { CardExpandedContent } from './CardExpandedContent';
 import { CardStatusBadges } from './CardStatusBadges';
 import { useProfileData } from './useProfileData';
@@ -1019,6 +1020,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 selectedJob={selectedJob}
                 jobScore={jobScore}
                 accountId={accountId}
+                projectId={missionIdOfJob(activeProject?.id)}
                 candidateStatus={candidateStatus}
                 airtableMatch={airtableMatch}
                 historyData={null}
@@ -1045,30 +1047,16 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
           job={selectedJob}
           selectedAccount={accountId}
           calendlyLink={activeProject?.calendly_link}
+          projectId={missionIdOfJob(activeProject?.id)}
           candidateHistory={historyData ? {
             shortlists: historyData.shortlists,
             placements: historyData.placements,
             notes: historyData.notes,
             appointments: historyData.appointments,
           } : undefined}
-          onMessageSent={async () => {
-            try {
-              const { data: { user } } = await supabase.auth.getUser();
-              const userId = user?.id || '00000000-0000-0000-0000-000000000000';
-              const pUrl = profile.profile_url || profile.public_profile_url;
-              await supabase.from('job_candidate_status').upsert({
-                job_id: selectedJob.id,
-                candidate_id: profile.id,
-                candidate_name: fullName,
-                candidate_headline: profile.headline || null,
-                linkedin_profile_url: pUrl || null,
-                status: 'messaged',
-                created_by: userId,
-                project_id: activeProject?.id || null,
-              }, { onConflict: 'job_id,candidate_id,created_by' });
-            } catch (err) {
-              console.error('Error saving messaged status:', err);
-            }
+          onMessageSent={() => {
+            // « Contacté » est posé par le serveur à l'envoi (lot 0b) : plus
+            // d'écriture du pipeline depuis le navigateur.
             onMessageSent?.();
             onProfileTreated?.();
           }}

@@ -1123,87 +1123,6 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     }
   }, [selectedAccount, fetchMessages]);
 
-  // Fire-and-forget: update status to 'messaged' + stage 'Contacté' after sending from inbox
-  const syncAfterInboxSend = useCallback(async (chat: Chat) => {
-    if (!user) return;
-
-    try {
-      const profileId = getAttendeeProfileId(chat);
-      const profileUrl = chat.attendees?.[0]?.profile_url || null;
-      const candidateName = getChatDisplayName(chat);
-      const candidateHeadline = getChatHeadline(chat);
-
-      // Find job context from enrollments or job_candidate_status
-      const enrollmentProfileId = profileId || (profileUrl ? profileUrl.split('/').filter(Boolean).pop() : null);
-      const enrollment = enrollmentProfileId ? enrollmentsMap.get(enrollmentProfileId) : null;
-      const jobId = enrollment?.job_id || null;
-
-      // 1. Statut Konekt : ne pose 'messaged' que si le candidat n'est pas déjà
-      //    plus avancé (replied / shortlisted / dismissed, ou stage kanban manuel).
-      //    Lecture org-wide (RLS org) pour ne pas créer un 2e row si le row
-      //    existant a été créé par un collègue. organizationId requis : la policy
-      //    INSERT refuse sinon (refus RLS silencieux avant ce fix).
-      if (profileId && jobId && organizationId) {
-        const { data: existing, error: readErr } = await supabase
-          .from('job_candidate_status')
-          .select('id, status')
-          .eq('organization_id', organizationId)
-          // Les deux formes coexistent en base (le sourcing écrit 'project:<uuid>')
-          .in('job_id', [jobId, `project:${jobId}`])
-          .eq('candidate_id', profileId)
-          .limit(1)
-          .maybeSingle();
-        if (readErr) {
-          console.warn('[Inbox] job_candidate_status read failed:', readErr.message);
-        } else if (!existing) {
-          const { error: insErr } = await supabase
-            .from('job_candidate_status')
-            .upsert({
-              job_id: jobId,
-              candidate_id: profileId,
-              linkedin_profile_url: profileUrl || null,
-              candidate_name: candidateName || null,
-              candidate_headline: candidateHeadline || null,
-              status: 'messaged',
-              created_by: user.id,
-              organization_id: organizationId,
-            }, {
-              onConflict: 'job_id,candidate_id,created_by',
-              ignoreDuplicates: true,
-            });
-          if (insErr) console.warn('[Inbox] job_candidate_status insert failed:', insErr.message);
-          else console.log('[Inbox] Status set to messaged for', candidateName);
-        } else if (['discovered', 'scored', 'new', 'untreated', 'contacted'].includes(existing.status)) {
-          const { error: updErr } = await supabase
-            .from('job_candidate_status')
-            .update({ status: 'messaged' })
-            .eq('id', existing.id);
-          if (updErr) console.warn('[Inbox] job_candidate_status update failed:', updErr.message);
-          else console.log('[Inbox] Status updated to messaged for', candidateName);
-        } else {
-          console.log(`[Inbox] Status kept (${existing.status}) for`, candidateName);
-        }
-      }
-
-      // 2. Étape kanban 'Contacté' via add-to-shortlist, sans rétrograder un
-      //    candidat plus avancé — uniquement si la conversation est rattachée à
-      //    un job (enrollment), sinon n'importe quel interlocuteur LinkedIn
-      //    (client, collègue) serait touché.
-      if (candidateName && jobId && organizationId) {
-        await invokeEdgeFunction('add-to-shortlist', {
-          organization_id: organizationId,
-          name: candidateName,
-          headline: candidateHeadline,
-          linkedinUrl: profileUrl || undefined,
-          jobId,
-          etape: 'Contacté',
-        });
-      }
-    } catch (err) {
-      console.error('[Inbox] Post-send sync error (non-blocking):', err);
-    }
-  }, [enrollmentsMap, organizationId, user]);
-
   // Scroll to bottom helper
   const scrollToBottom = useCallback((smooth = true) => {
     const container = messagesContainerRef.current;
@@ -1250,9 +1169,9 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
       // Mark chat as read locally after sending
       markChatAsReadLocally(selectedChat.id);
       
-      // Fire-and-forget: sync du statut Konekt
-      syncAfterInboxSend(selectedChat);
-      
+      // « Contacté » est posé par le serveur à l'envoi, dans la mission de la
+      // conversation (lot 0b) : plus d'écriture du pipeline ici.
+
       setTimeout(() => scrollToBottom(true), 100);
 
       emitQuotaAction('messagesSent', 1, selectedAccount);
@@ -1265,7 +1184,7 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
     } finally {
       setSending(false);
     }
-  }, [selectedAccount, selectedChat, newMessage, syncAfterInboxSend]);
+  }, [selectedAccount, selectedChat, newMessage]);
 
   // Une suggestion IA n'est jamais envoyée d'un clic : elle remplit le
   // composeur, où on la relit avant d'envoyer (revue design D-14).

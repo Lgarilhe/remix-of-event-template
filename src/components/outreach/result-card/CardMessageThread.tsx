@@ -12,6 +12,11 @@ interface CardMessageThreadProps {
   accountId?: string;
   profileId: string;
   profileName: string;
+  /**
+   * Mission de l'envoi (uuid, sans « project: ») : le serveur y pose
+   * « Contacté » (lot 0b). Absente, il la résout lui-même.
+   */
+  projectId?: string;
   onMessageSent?: () => void;
   onProfileTreated?: () => void;
 }
@@ -32,6 +37,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
   accountId,
   profileId,
   profileName,
+  projectId,
   onMessageSent,
   onProfileTreated,
 }) => {
@@ -101,6 +107,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
           account_id: accountId,
           chat_id: chatId,
           text: replyText.trim(),
+          project_id: projectId,
         },
       });
 
@@ -125,7 +132,7 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
     } finally {
       setIsSending(false);
     }
-  }, [chatId, replyText, isSending, accountId, onMessageSent, onProfileTreated]);
+  }, [chatId, replyText, isSending, accountId, projectId, onMessageSent, onProfileTreated]);
 
   if (!accountId) {
     return (

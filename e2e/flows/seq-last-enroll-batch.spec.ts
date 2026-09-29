@@ -17,6 +17,10 @@
  * l'écriture (insertion en clé de service au passage de la requête) : seule la
  * base la voit. Les étapes seedées ont un jour de délai : le cycle du moteur
  * lancé par d'autres suites n'a rien à ramasser ici.
+ *
+ * Refonte mission, lot 0b-2b : l'inscription n'écrit rien dans le pipeline.
+ * En fin de scénario, la première étape de l'inscrit est avancée et un cycle
+ * du moteur l'envoie : « Contacté » n'apparaît qu'à ce moment.
  */
 import type { Browser, BrowserContext, Locator, Page, Route } from '@playwright/test';
 import { test, expect } from '../fixtures';
@@ -30,7 +34,7 @@ import {
   storageStateForUser,
   type TestOrg,
 } from '../helpers/supabase-admin';
-import { engineAvailable, ENGINE_SKIP_REASON } from '../helpers/sequence-engine';
+import { engineAvailable, ENGINE_SKIP_REASON, minutesFromNow, runCycle, setMockMode } from '../helpers/sequence-engine';
 
 test.skip(!engineAvailable, ENGINE_SKIP_REASON);
 test.describe.configure({ timeout: 180_000 });
@@ -138,16 +142,18 @@ async function executionsOf(enrollmentId: string) {
   return ((data ?? []) as Array<{ status: string }>).map((e) => e.status);
 }
 
-/** Candidats de ces identifiants passés « contacté » (la recherche en a posé d'autres en « découvert »). */
-async function messagedCandidates(ws: Workspace, candidateIds: string[]) {
+/**
+ * Lignes du pipeline de ces candidats dans l'organisation (la recherche en a
+ * posé en « découvert »).
+ */
+async function pipelineRows(ws: Workspace, candidateIds: string[]) {
   const { data, error } = await admin()
     .from('job_candidate_status')
-    .select('candidate_id')
+    .select('candidate_id, status, general_stage, decision_source')
     .eq('organization_id', ws.org.orgId)
-    .eq('status', 'messaged')
     .in('candidate_id', candidateIds);
-  if (error) throw new Error(`messagedCandidates: ${error.message}`);
-  return ((data ?? []) as Array<{ candidate_id: string }>).map((r) => r.candidate_id);
+  if (error) throw new Error(`pipelineRows: ${error.message}`);
+  return (data ?? []) as Array<{ candidate_id: string; status: string; general_stage: string; decision_source: string | null }>;
 }
 
 // ─── Navigateur ─────────────────────────────────────────────────────────────
@@ -288,7 +294,36 @@ async function expectOnlyKeptEnrolled(ws: Workspace, seq: SeededSeq, t: Trio) {
   const [kept] = await rowsForPerson(seq.id, [t.kept.id]);
   expect(kept?.status, 'le troisième candidat est inscrit').toBe('active');
   expect(await executionsOf(kept!.id), 'avec sa première étape planifiée').toEqual(['scheduled']);
-  expect(await messagedCandidates(ws, [t.erased.id, t.twin.id, t.kept.id]), 'seul l’inscrit passe « contacté »').toEqual([t.kept.id]);
+  // Lot 0b-2b : l'inscription n'écrit rien dans le pipeline, pas même pour l'inscrit.
+  const afterEnroll = await pipelineRows(ws, [t.erased.id, t.twin.id, t.kept.id]);
+  expect(afterEnroll.filter((r) => r.status === 'messaged' || r.general_stage === 'contacted'), 'aucune ligne « contacté » à l’inscription')
+    .toEqual([]);
+}
+
+/**
+ * Lot 0b-2b : « Contacté » est posé par le moteur au premier envoi réel. La
+ * première étape de l'inscrit est avancée (un jour de délai au départ), puis
+ * un cycle du moteur l'envoie : seul l'inscrit passe « Contacté », origine
+ * system.
+ */
+async function expectContactedAfterFirstSend(ws: Workspace, seq: SeededSeq, t: Trio, kind: 'message' | 'invitation') {
+  const [kept] = await rowsForPerson(seq.id, [t.kept.id]);
+  // Invitation : destinataire hors réseau (le faux prestataire le dit connecté par défaut).
+  if (kind === 'invitation') await setMockMode(ws.accountId, { distance: 'SECOND_DEGREE' });
+  const { error } = await admin()
+    .from('sequence_step_executions')
+    .update({ scheduled_at: minutesFromNow(-1) })
+    .eq('enrollment_id', kept!.id)
+    .eq('status', 'scheduled');
+  if (error) throw new Error(`première étape due: ${error.message}`);
+  await runCycle();
+  expect(await executionsOf(kept!.id), 'première étape envoyée').toContain('sent');
+  const rows = await pipelineRows(ws, [t.erased.id, t.twin.id, t.kept.id]);
+  const contacted = rows.filter((r) => r.general_stage === 'contacted');
+  expect(contacted.map((r) => ({ candidate: r.candidate_id, source: r.decision_source })), 'seul l’inscrit passe « Contacté », au premier envoi')
+    .toEqual([{ candidate: t.kept.id, source: 'system' }]);
+  expect(rows.filter((r) => r.candidate_id === t.kept.id).every((r) => r.general_stage === 'contacted'), 'aucune ligne de l’inscrit restée en arrière')
+    .toBe(true);
 }
 
 // ═══ Fenêtre simple : insertion groupée reprise candidat par candidat ═══════
@@ -318,6 +353,7 @@ test('fenêtre simple : sur trois candidats, le profil effacé et la même perso
     expect(single, 'même ligne que dans l’insertion groupée').toEqual(grouped.find((r) => r.profile_id === single.profile_id));
   }
   await expectOnlyKeptEnrolled(ws, seq, t);
+  await expectContactedAfterFirstSend(ws, seq, t, 'invitation');
 });
 
 // ═══ Préparation avec aperçu : une insertion par candidat ═══════════════════
@@ -342,4 +378,5 @@ test('aperçu : sur trois candidats, le profil effacé et la même personne déj
   await expect(dialog.getByText(/inscriptions? en échec/)).toHaveCount(0);
   expect(posts.length, 'une insertion par candidat').toBe(3);
   await expectOnlyKeptEnrolled(ws, seq, t);
+  await expectContactedAfterFirstSend(ws, seq, t, 'message');
 });

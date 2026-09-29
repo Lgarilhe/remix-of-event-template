@@ -202,36 +202,35 @@ test('SEQ-127 — vérification des contacts récents en échec : blocage et « 
 });
 
 // ---------------------------------------------------------------- SEQ-124
-test('SEQ-124 — l’inscription ne rétrograde jamais un candidat contacté, shortlisté ou qui a répondu', () => {
-  assert.equal(helpers.shouldMarkMessaged([]), true);
-  assert.equal(helpers.shouldMarkMessaged(['discovered']), true);
-  assert.equal(helpers.shouldMarkMessaged(['shortlisted']), false);
-  assert.equal(helpers.shouldMarkMessaged(['scored', 'replied']), false);
-  assert.equal(helpers.shouldMarkMessaged(['messaged']), false);
+// Refonte mission, lot 0b-2b : l'inscription n'écrit plus rien dans le
+// pipeline. « Contacté » est posé par le serveur au premier envoi réel, ce qui
+// règle aussi la rétrogradation que SEQ-124 empêchait côté navigateur.
+test('SEQ-124 — l’inscription n’écrit plus le statut pipeline (lot 0b-2b)', () => {
+  assert.equal(helpers.shouldMarkMessaged, undefined, 'shouldMarkMessaged supprimée');
+  assert.equal(helpers.markCandidatesMessaged, undefined, 'markCandidatesMessaged supprimée');
+  assert.equal(helpers.STATUSES_KEPT_ON_ENROLL, undefined, 'STATUSES_KEPT_ON_ENROLL supprimée');
   for (const [name, source] of [['inscription simple', enrollModal], ['aperçu', previewModal]]) {
-    assert.match(source, /await markCandidatesMessaged\(supabase, \{/, name);
-    assert.doesNotMatch(source, /status: 'messaged',/, `${name} : plus d'upsert « contacté » sans condition`);
+    assert.doesNotMatch(source, /markCandidatesMessaged/, `${name} : plus d'écriture « contacté » à l'inscription`);
+    assert.doesNotMatch(source, /status: 'messaged',/, `${name} : plus d'upsert « contacté »`);
   }
 });
 
-test('SEQ-124 — markCandidatesMessaged lit les deux formes d’identifiant de mission et n’écrit que les autres', async () => {
-  const writes = [];
-  const supabase = {
-    from: () => {
-      const chain = {
-        select: () => chain, in: () => chain, eq: () => chain,
-        upsert: (rows) => { writes.push(rows); return Promise.resolve({ error: null }); },
-        then: (resolve) => resolve({ data: [{ candidate_id: 'shortlisté', status: 'shortlisted' }, { candidate_id: 'nouveau', status: 'scored' }], error: null }),
-      };
-      return chain;
-    },
-  };
-  await helpers.markCandidatesMessaged(supabase, {
-    rawJobId: 'project:6f1c2d3e-0000-4000-8000-000000000001', userId: 'u1', organizationId: 'org-1',
-    profiles: [{ id: 'shortlisté' }, { id: 'nouveau' }],
-  });
-  assert.equal(writes.length, 1);
-  assert.deepEqual(writes[0].map(r => [r.candidate_id, r.status, r.job_id]), [['nouveau', 'messaged', '6f1c2d3e-0000-4000-8000-000000000001']]);
+test('SEQ-124 — l’inscription ne touche plus job_candidate_status (lot 0b-2b)', () => {
+  assert.doesNotMatch(read('src/components/outreach/enrollment-preview/enrollmentHelpers.ts'), /job_candidate_status/);
+  const simple = slice(enrollModal, 'const handleEnroll = async () => {', '\n  };\n');
+  assert.doesNotMatch(simple, /job_candidate_status/, 'inscription simple');
+  const preview = slice(previewModal, 'const handleEnroll = async () => {', '// ── Shortlist without message ──');
+  assert.doesNotMatch(preview, /job_candidate_status/, 'aperçu');
+});
+
+test('Lot 0b-2b — mission des envois : sans « project: », uuid seulement, sinon rien', () => {
+  const id = '6f1c2d3e-0000-4000-8000-000000000001';
+  assert.equal(previewHook.missionIdOfJob(`project:${id}`), id);
+  assert.equal(previewHook.missionIdOfJob(id), id);
+  assert.equal(previewHook.missionIdOfJob('recXYZ123'), undefined, 'poste hors mission');
+  assert.equal(previewHook.missionIdOfJob('project:pas-un-uuid'), undefined);
+  assert.equal(previewHook.missionIdOfJob(null), undefined);
+  assert.equal(previewHook.missionIdOfJob(undefined), undefined);
 });
 
 // ---------------------------------------------------------------- SEQ-129

@@ -12,7 +12,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -341,4 +341,82 @@ test('0b-2a : marqueur de build dans X-Client-Info (même clé que supabase-js)'
   const vite = read('vite.config.ts');
   assert.match(vite, /__KONEKT_BUILD__: JSON\.stringify\(KONEKT_BUILD\)/);
   assert.match(vite, /process\.env\.VERCEL_GIT_COMMIT_SHA/);
+});
+
+// ─── 0b-2b : le navigateur n'écrit plus « Contacté », les envois portent la mission ─
+
+// Fichiers .ts et .tsx de src/, récursivement.
+function srcFiles(dir = 'src') {
+  const out = [];
+  for (const name of readdirSync(join(ROOT, dir))) {
+    const rel = `${dir}/${name}`;
+    if (statSync(join(ROOT, rel)).isDirectory()) out.push(...srcFiles(rel));
+    else if (/\.tsx?$/.test(name)) out.push(rel);
+  }
+  return out;
+}
+
+test('0b-2b (N14, N18) : plus de markCandidatesMessaged ni de syncAfterInboxSend dans src', () => {
+  const files = srcFiles();
+  assert.ok(files.length > 100, 'arbre src lu');
+  for (const rel of files) {
+    const src = read(rel);
+    assert.doesNotMatch(src, /\bmarkCandidatesMessaged\b|\bshouldMarkMessaged\b|\bSTATUSES_KEPT_ON_ENROLL\b/, `${rel} : écriture « contacté » à l'inscription`);
+    assert.doesNotMatch(src, /\bsyncAfterInboxSend\b/, `${rel} : écriture « contacté » après un envoi de la messagerie`);
+  }
+  // L'inscription ne touche plus job_candidate_status.
+  assert.doesNotMatch(read('src/components/outreach/enrollment-preview/enrollmentHelpers.ts'), /job_candidate_status/);
+  // L'envoi de la messagerie n'écrit plus le pipeline.
+  const send = callbackBody(read('src/hooks/useMessagesInbox.ts'), 'sendMessage');
+  assert.match(send, /action: 'send_message'/);
+  assert.doesNotMatch(send, /job_candidate_status|add-to-shortlist/);
+});
+
+test('0b-2b (N17, N20) : aucun appel à add-to-shortlist avec l\'étape « Contacté », plus d\'upsert « messaged » de la fiche', () => {
+  for (const rel of srcFiles()) {
+    const src = read(rel);
+    assert.doesNotMatch(src, /etape:\s*['"]Contacté['"]/, `${rel} : étape « Contacté » écrite par le navigateur`);
+    let at = src.indexOf("'add-to-shortlist'");
+    while (at >= 0) {
+      const call = src.slice(at, src.indexOf('});', at));
+      assert.doesNotMatch(call, /Contacté/, `${rel} : add-to-shortlist avec « Contacté »`);
+      at = src.indexOf("'add-to-shortlist'", at + 1);
+    }
+  }
+  assert.doesNotMatch(read('src/components/outreach/OutreachMessageModal.tsx'), /add-to-shortlist/);
+  const sheet = read('src/components/outreach/result-card/ProfileDetailSheet.tsx');
+  assert.doesNotMatch(sheet, /status: 'messaged'/, 'fiche : plus d\'upsert « messaged » après un message');
+});
+
+test('0b-2b : les envois du navigateur passent la mission (project_id)', () => {
+  // Mission d'un poste : sans « project: », uuid seulement.
+  const hook = read('src/hooks/useEnrollmentPreview.ts');
+  const mission = topLevelBody(hook, 'export function missionIdOfJob(');
+  assert.match(mission, /normalizeMissionJobId\(rawJobId\)/);
+  assert.match(mission, /UUID_RE\.test\(id\)/);
+  // Fenêtre de message.
+  const modal = read('src/components/outreach/OutreachMessageModal.tsx');
+  const modalSend = modal.slice(modal.indexOf("action: 'send_message'"), modal.indexOf('});', modal.indexOf("action: 'send_message'")));
+  // Mission explicite d'abord : pour une mission ancienne, job.id est l'id du
+  // poste hérité (sourcing_projects.job_id), que le serveur écarte.
+  assert.match(modalSend, /project_id: missionIdOfJob\(projectId\) \?\? missionIdOfJob\(job\.id\),/);
+  assert.match(modalSend, /recipient_profile_url: recipientProfileUrl,/);
+  // Fil de la fiche : propriété projectId, passée au send_message.
+  const thread = read('src/components/outreach/result-card/CardMessageThread.tsx');
+  assert.match(thread, /projectId\?: string;/);
+  const threadSend = callbackBody(thread, 'handleSendReply');
+  assert.match(threadSend, /action: 'send_message',[\s\S]*project_id: projectId,/);
+  assert.match(read('src/components/outreach/result-card/CardExpandedContent.tsx'), /projectId=\{projectId\}/);
+  const sheet = read('src/components/outreach/result-card/ProfileDetailSheet.tsx');
+  assert.match(sheet, /projectId=\{missionIdOfJob\(activeProject\?\.id\)\}/);
+  const sheetModal = sheet.slice(sheet.indexOf('<OutreachMessageModal'), sheet.indexOf('/>', sheet.indexOf('<OutreachMessageModal')));
+  assert.match(sheetModal, /projectId=\{missionIdOfJob\(activeProject\?\.id\)\}/, 'fenêtre de message : mission de la fiche, pas le poste');
+  assert.match(read('src/components/ats/CandidateDetailModal.tsx'), /projectId=\{missionIdOfJob\(candidate\.jobId\)\}/);
+  // InMail groupé : action queue de la file.
+  const bulk = read('src/components/outreach/BulkInMailModal.tsx');
+  const queue = bulk.slice(bulk.indexOf("action: 'queue'"), bulk.indexOf('});', bulk.indexOf("action: 'queue'")));
+  assert.match(queue, /project_id: missionIdOfJob\(projectId\) \?\? missionIdOfJob\(selectedJob\?\.id\),/);
+  const panel = read('src/components/outreach/search/SearchResultsPanel.tsx');
+  const panelBulk = panel.slice(panel.indexOf('<BulkInMailModal'), panel.indexOf('/>', panel.indexOf('selectedJob={selectedJob}', panel.indexOf('<BulkInMailModal'))));
+  assert.match(panelBulk, /projectId=\{activeProject\?\.id\}/, 'InMail groupé : mission active, pas le poste');
 });

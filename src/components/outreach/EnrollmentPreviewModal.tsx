@@ -65,7 +65,6 @@ import {
   firstActionSummary,
   formerPassageLabel,
   isOtherMemberAccountError,
-  markCandidatesMessaged,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
   samePersonRefusedLabel,
@@ -529,7 +528,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
     setEnrollResults(null);
     setEnrollProgress(null);
     const results: EnrollResults = { success: 0, skipped: 0, alreadyPassed: 0, gdprErased: [], samePerson: [], formerPassages: 0, errors: [] };
-    // Candidats réellement inscrits : leur statut pipeline passe à « contacté ».
+    // Candidats réellement inscrits : leurs aperçus de session sont libérés
+    // (rien n'est écrit dans le pipeline à l'inscription, lot 0b).
     const enrolledProfiles: LinkedInProfile[] = [];
 
     try {
@@ -736,16 +736,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
         }
       }
 
-      // Statut pipeline « contacté », sans rétrograder un candidat déjà
-      // contacté, shortlisté ou qui a répondu (non bloquant).
-      if (job?.id && enrolledProfiles.length > 0) {
-        await markCandidatesMessaged(supabase, {
-          rawJobId: job.id,
-          userId,
-          organizationId,
-          profiles: enrolledProfiles,
-        });
-      }
+      // Rien n'est écrit dans le pipeline à l'inscription : le serveur passe
+      // le candidat à « Contacté » au premier envoi réel (lot 0b).
 
       // Les candidats inscrits n'ont plus besoin de leurs aperçus.
       const enrolledIds = enrolledProfiles.map(p => p.id);

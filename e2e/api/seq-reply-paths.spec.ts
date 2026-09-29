@@ -16,10 +16,10 @@
  * candidat dans l'organisation), SEQ-221 (« Marquer comme répondu » met à jour
  * le pipeline et les compteurs).
  *
- * Données réalistes : l'inscription depuis l'interface écrit
- * job_candidate_status en « messaged », job_id nu, sans pipeline_stage
- * (markCandidatesMessaged, src/components/outreach/enrollment-preview/
- * enrollmentHelpers.ts). Les tests existants partaient de « contacted ».
+ * Données réalistes : une ligne job_candidate_status en « messaged », job_id
+ * nu, sans pipeline_stage, comme l'écrivait l'inscription depuis l'interface
+ * jusqu'au lot 0b-2b (depuis, « Contacté » est posé par le serveur au premier
+ * envoi réel). Les tests existants partaient de « contacted ».
  * L'étape de pipeline vue par le recruteur est calculée comme dans
  * src/hooks/useATSData.ts (computeEffectiveStage) : pipeline_stage explicite
  * prioritaire, sinon dérivée du statut.

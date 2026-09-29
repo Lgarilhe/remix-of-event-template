@@ -35,7 +35,6 @@ import {
   firstActionSummary,
   formerPassageLabel,
   isOtherMemberAccountError,
-  markCandidatesMessaged,
   NO_LINKEDIN_ACCOUNT_DESCRIPTION,
   NO_LINKEDIN_ACCOUNT_TITLE,
   samePersonRefusedLabel,
@@ -517,16 +516,8 @@ export const SequenceEnrollModal: React.FC<SequenceEnrollModalProps> = ({
         return;
       }
 
-      // 4. Statut pipeline « contacté », sans rétrograder un candidat déjà
-      // contacté, shortlisté ou qui a répondu (non bloquant).
-      if (job?.id) {
-        await markCandidatesMessaged(supabase, {
-          rawJobId: job.id,
-          userId,
-          organizationId,
-          profiles: enrollSet.filter(p => insertedProfileIds.has(p.id)),
-        });
-      }
+      // 4. Rien n'est écrit dans le pipeline à l'inscription : le serveur
+      // passe le candidat à « Contacté » au premier envoi réel (lot 0b).
 
       setResults(enrollmentResults);
 

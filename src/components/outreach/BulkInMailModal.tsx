@@ -53,7 +53,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { EmptyState, ErrorState } from '@/components/layout';
-import { useMissionOutreachConfig, useSenderFirstName } from '@/hooks/useEnrollmentPreview';
+import { missionIdOfJob, useMissionOutreachConfig, useSenderFirstName } from '@/hooks/useEnrollmentPreview';
 import {
   Clock,
   PenLine,
@@ -90,6 +90,9 @@ interface BulkInMailModalProps {
   recipients: Recipient[];
   accountId: string;
   selectedJob?: Job | null;
+  /** Mission des InMails (uuid). Prioritaire sur l'id du poste, qui n'est pas
+   *  celui de la mission pour une mission ancienne (job_id hérité). */
+  projectId?: string;
 }
 
 interface GeneratedMessage {
@@ -170,6 +173,7 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
   recipients: allRecipients,
   accountId,
   selectedJob,
+  projectId,
 }) => {
   const { organizationId } = useOrganization();
   const { user } = useAuthReady();
@@ -664,6 +668,8 @@ export const BulkInMailModal: React.FC<BulkInMailModalProps> = ({
         action: 'queue',
         items,
         user_timezone: userTimezone,
+        // Mission des InMails (lot 0b) : le serveur y pose « Contacté » à l'envoi.
+        project_id: missionIdOfJob(projectId) ?? missionIdOfJob(selectedJob?.id),
       });
 
       if (error || !data?.success) {
