@@ -3,6 +3,7 @@
 // les lignes sans profil LinkedIn sont laissées de côté, et le dit.
 
 import { useMemo, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -91,17 +92,32 @@ export function ContactSelectionButton({ rows, project, disabled, onSuccess }: C
   } else {
     control = (
       <div role="group" aria-label="Contacter" className="inline-flex">
-        <SequenceEnrollButton selectedProfiles={profiles} accountId={selectedAccount} selectedJob={job} onSuccess={onSuccess} />
+        <SequenceEnrollButton
+          selectedProfiles={profiles}
+          accountId={selectedAccount}
+          selectedJob={job}
+          onSuccess={onSuccess}
+          triggerLabel="Contacter"
+        />
       </div>
     );
   }
 
-  const note = !accountsLoading && !disabled && !selectedAccount ? 'Reliez votre compte LinkedIn pour contacter.' : missing;
+  const noAccount = !accountsLoading && !disabled && !selectedAccount;
+  const note = noAccount ? 'Reliez votre compte LinkedIn pour contacter.' : missing;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       {control}
       {note && <span className="text-xs text-muted-foreground">{note}</span>}
+      {noAccount && (
+        <Link
+          to="/settings/account/connections"
+          className="rounded-sm text-xs font-medium text-brand underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Relier LinkedIn
+        </Link>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 // prochaine action (règle provisoire du lot 2) ; le bouton principal qui dépend
 // de l'étape, « Déplacer vers » et « Écarter ». Changer d'étape ne ferme pas la
 // fiche. Flèches : candidat précédent ou suivant dans la liste affichée.
+import { useEffect, useRef } from 'react';
 import { ArrowRightLeft, Check, ChevronDown, ChevronUp, ExternalLink, UserX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -99,6 +100,18 @@ export function CandidatePanelHeader({
   const showAction = action.text !== null && action.text !== currentLabel;
   const rejectedFrom = row.stage === 'rejected' ? stageLabel(row.rejectedFromStage) : null;
 
+  // « Écarter » disparaît quand la ligne est écartée : le focus qu'il avait
+  // passe à « Déplacer vers », jamais sur la page entière.
+  const moveTriggerRef = useRef<HTMLButtonElement>(null);
+  const previousStage = useRef(row.stage);
+  useEffect(() => {
+    const was = previousStage.current;
+    previousStage.current = row.stage;
+    if (was === 'rejected' || row.stage !== 'rejected') return;
+    const active = document.activeElement;
+    if (active === null || active === document.body) moveTriggerRef.current?.focus({ preventScroll: true });
+  }, [row.stage]);
+
   return (
     <div className="border-b border-border px-4 pb-4 pt-3 sm:px-5">
       <div className="flex items-center justify-between gap-2">
@@ -109,6 +122,7 @@ export function CandidatePanelHeader({
             size="icon-sm"
             aria-label="Candidat précédent"
             title="Candidat précédent (flèche haut)"
+            className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0"
             disabled={!onPrevious}
             onClick={() => onPrevious?.()}
           >
@@ -120,13 +134,22 @@ export function CandidatePanelHeader({
             size="icon-sm"
             aria-label="Candidat suivant"
             title="Candidat suivant (flèche bas)"
+            className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0"
             disabled={!onNext}
             onClick={() => onNext?.()}
           >
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Fermer le panneau" title="Fermer (Échap)" onClick={onClose}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Fermer le panneau"
+          title="Fermer (Échap)"
+          className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0"
+          onClick={onClose}
+        >
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
@@ -189,7 +212,7 @@ export function CandidatePanelHeader({
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="sm" disabled={disabled}>
+            <Button ref={moveTriggerRef} type="button" variant="outline" size="sm" disabled={disabled}>
               <ArrowRightLeft className="mr-1.5 h-4 w-4" aria-hidden="true" />
               Déplacer vers
               <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" aria-hidden="true" />

@@ -57,9 +57,11 @@ test('C-2 : route, entrée et clé de page', () => {
 
   const entry = code('src/pages/MissionEntry.tsx');
   assert.doesNotMatch(entry, /<Navigate/, 'redirection en effet, jamais un <Navigate> rendu');
-  for (const needle of ['legacyToV3Target(', 'v3ToLegacyTarget(', 'missionBetaParam(', 'withoutMissionBetaParam(', 'setMissionBeta(', 'replace: true', "import('./MissionWorkspace')"]) {
+  for (const needle of ['legacyToV3Target(', 'v3ToLegacyTarget(', 'missionBetaParam(', 'withoutMissionBetaParam(', 'setMissionBeta(', 'replace: true']) {
     assert.ok(entry.includes(needle), `MissionEntry : ${needle} absent`);
   }
+  // Ancienne page importée avec l'entrée (un seul fichier à charger, interrupteur éteint).
+  assert.match(entry, /import MissionWorkspace from '\.\/MissionWorkspace'|import\('\.\/MissionWorkspace'\)/);
   assert.match(entry, /useEffect\(/);
 
   const layout = code('src/components/AppLayout.tsx');

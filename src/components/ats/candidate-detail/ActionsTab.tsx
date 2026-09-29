@@ -20,9 +20,11 @@ interface ActionsTabProps {
   onDeleteReminder: (id: string) => Promise<void>;
   onOpenAgent: () => void;
   candidateLinkedin?: string | null;
+  /** Masque les raccourcis Messagerie et Scoring (liens vers d'autres pages). */
+  hideNavigationShortcuts?: boolean;
 }
 
-export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminder, onDeleteReminder, onOpenAgent, candidateLinkedin }) => {
+export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminder, onDeleteReminder, onOpenAgent, candidateLinkedin, hideNavigationShortcuts = false }) => {
   const [showNewReminder, setShowNewReminder] = useState(false);
   const [newReminderTitle, setNewReminderTitle] = useState('');
   const [newReminderDate, setNewReminderDate] = useState('');
@@ -63,6 +65,7 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
             <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Brief client</p>
             <p className="text-xs text-muted-foreground mt-0.5">Préparer une présentation</p>
           </button>
+          {!hideNavigationShortcuts && (
           <button
             onClick={() => { window.location.href = '/missions?tab=messages'; }}
             className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"
@@ -71,7 +74,8 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
             <p className="text-xs font-bold uppercase tracking-wider text-foreground mt-2">Messagerie</p>
             <p className="text-xs text-muted-foreground mt-0.5">Ouvrir la messagerie</p>
           </button>
-          {candidateLinkedin && (
+          )}
+          {!hideNavigationShortcuts && candidateLinkedin && (
             <button
               onClick={() => { window.location.href = `/missions?tab=search&score=${encodeURIComponent(candidateLinkedin)}`; }}
               className="border border-border hover:border-border p-3 text-left transition-all duration-150 hover:bg-muted/50 active:scale-[0.97] group"

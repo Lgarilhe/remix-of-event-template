@@ -25,6 +25,8 @@ import { SENDER_ROLE_LABELS, RECRUITMENT_MODE_LABELS } from '@/types/jobDetails'
 interface MissionConfigV2Props {
   project: SourcingProject;
   readOnly?: boolean;
+  /** Masque le statut (champ et carte) : la nouvelle page mission le gère dans son en-tête, avec confirmation. */
+  hideStatus?: boolean;
 }
 
 const STATUS_OPTIONS: { value: SourcingProject['status']; label: string; color: string }[] = [
@@ -36,7 +38,7 @@ const STATUS_OPTIONS: { value: SourcingProject['status']; label: string; color: 
 
 // ──────────────────────────────────────────────────────────────────
 
-export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readOnly = false }) => {
+export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readOnly = false, hideStatus = false }) => {
   const { updateProject } = useSourcingProjects();
   const { isAgency } = useOrganization();
 
@@ -116,6 +118,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
                 </Field>
               )}
 
+              {!hideStatus && (
               <Field label="Statut">
                 <select
                   value={project.status}
@@ -132,6 +135,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
                   ))}
                 </select>
               </Field>
+              )}
 
               <Field
                 label="Lien Calendly"
@@ -207,6 +211,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
         </div>
 
         {/* Statut actuel */}
+        {!hideStatus && (
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
             Statut actuel
@@ -225,6 +230,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
             {project.status === 'archived' && 'Mission archivée — accès en lecture seule.'}
           </p>
         </div>
+        )}
 
         {/* Quick links */}
         <div className="bg-card border border-border rounded-lg p-4">

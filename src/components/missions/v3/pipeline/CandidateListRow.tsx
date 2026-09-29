@@ -31,6 +31,15 @@ export function ScorePill({ score, title }: { score: number | null; title?: stri
   );
 }
 
+/** Colonnes affichées selon la place du tableau (CandidateList). */
+export interface CandidateListColumns {
+  stage: boolean;
+  next: boolean;
+  since: boolean;
+}
+
+const ALL_COLUMNS: CandidateListColumns = { stage: true, next: true, since: true };
+
 interface CandidateListRowProps {
   row: MissionCandidateRow;
   steps: readonly MissionStepRef[];
@@ -38,6 +47,8 @@ interface CandidateListRowProps {
   active: boolean;
   /** Ligne gardée à sa place mais sortie du filtre après un geste. */
   dimmed: boolean;
+  /** Colonnes affichées ; toutes par défaut. */
+  columns?: CandidateListColumns;
   now: number;
   onToggle: (row: MissionCandidateRow, checked: boolean) => void;
   onOpen: (rowId: string) => void;
@@ -49,6 +60,7 @@ export const CandidateListRow = memo(function CandidateListRow({
   selected,
   active,
   dimmed,
+  columns = ALL_COLUMNS,
   now,
   onToggle,
   onOpen,
@@ -66,8 +78,7 @@ export const CandidateListRow = memo(function CandidateListRow({
       onClick={() => onOpen(row.id)}
       className={cn(
         'group cursor-pointer border-b border-border transition-colors duration-150 ease-out last:border-b-0',
-        active ? 'bg-brand/10' : selected ? 'bg-muted/60' : 'hover:bg-muted/40',
-        dimmed && 'opacity-60',
+        active ? 'bg-brand/10' : selected ? 'bg-muted/60' : dimmed ? 'bg-muted/30 hover:bg-muted/40' : 'hover:bg-muted/40',
       )}
     >
       <td className="w-10 py-2.5 pl-3 pr-1 align-top" onClick={(e) => e.stopPropagation()}>
@@ -90,28 +101,37 @@ export const CandidateListRow = memo(function CandidateListRow({
           {name}
         </button>
         {row.headline && <p className="truncate text-xs text-muted-foreground">{row.headline}</p>}
-        <p className="mt-0.5 truncate text-xs text-muted-foreground sm:hidden">
-          {stage}
-          {next.text && next.text !== stage ? ` · ${next.text}` : ''}
-          {dimmed ? ' · déplacé' : ''}
-        </p>
+        {!columns.stage && (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {dimmed ? `Déplacé vers ${stage}` : stage}
+            {next.text && next.text !== stage ? ` · ${next.text}` : ''}
+          </p>
+        )}
       </td>
-      <td className="hidden w-40 py-2.5 pr-3 align-top text-foreground sm:table-cell">
-        <span className="block truncate">{stage}</span>
-      </td>
-      <td className="hidden w-60 py-2.5 pr-3 align-top md:table-cell">
-        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {next.text && <span className="truncate text-foreground">{next.text}</span>}
-          {next.stale && (
-            <Badge variant="warning" className="px-1.5 py-0 text-2xs">
-              sans mouvement
-            </Badge>
-          )}
-        </span>
-      </td>
-      <td className="hidden w-16 py-2.5 pr-3 align-top tabular-nums text-muted-foreground sm:table-cell">
-        {next.days !== null ? `${next.days} j` : ''}
-      </td>
+      {columns.stage && (
+        <td className="w-40 py-2.5 pr-3 align-top text-foreground">
+          <span className="block truncate">{stage}</span>
+          {/* Ligne sortie du filtre après un geste : gardée à sa place, dite déplacée. */}
+          {dimmed && <span className="block text-xs text-muted-foreground">déplacé</span>}
+        </td>
+      )}
+      {columns.next && (
+        <td className="w-60 py-2.5 pr-3 align-top">
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {next.text && <span className="truncate text-foreground">{next.text}</span>}
+            {next.stale && (
+              <Badge variant="warning" className="px-1.5 py-0 text-2xs">
+                sans mouvement
+              </Badge>
+            )}
+          </span>
+        </td>
+      )}
+      {columns.since && (
+        <td className="w-16 py-2.5 pr-3 align-top tabular-nums text-muted-foreground">
+          {next.days !== null ? `${next.days} j` : ''}
+        </td>
+      )}
       <td className="w-14 py-2.5 pr-3 text-right align-top">
         <ScorePill score={row.score} title={row.recommendation} />
       </td>

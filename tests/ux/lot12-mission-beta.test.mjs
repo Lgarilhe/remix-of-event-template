@@ -279,8 +279,11 @@ test('lot12 : résultat par candidat, pas par ligne', () => {
     ],
     error: null,
   };
+  // a : jugé sur sa ligne canonique (inchangée), même si son doublon b a changé.
   assert.deepEqual(v3.summarizeStageMove(rows, outcome),
-    { changed: 1, unchanged: 0, skipped: 1, refused: 1, firstHint: 'STAGE_STEP_REQUIRED', callFailed: false });
+    { changed: 0, unchanged: 1, skipped: 1, refused: 1, firstHint: 'STAGE_STEP_REQUIRED', callFailed: false });
+  // Ligne canonique absente de la réponse : les autres lignes du groupe jugent.
+  assert.equal(v3.summarizeStageMove([{ id: 'z', groupIds: ['z', 'w'] }], { rows: [{ id: 'w', result: 'updated', hint: null }], error: null }).changed, 1);
   const failed = v3.summarizeStageMove(rows, { rows: [], error: { hint: null, code: null, message: 'x' } });
   assert.equal(failed.callFailed, true);
   assert.equal(failed.changed, 0, 'rien annoncé comme fait');
@@ -338,6 +341,10 @@ test('lot12 : ordre de la liste, le même que la requête', () => {
     { id: 'd', stageEnteredAt: '2026-09-10T10:00:00Z', score: 10 },
   ];
   assert.deepEqual([...rows].sort(v3.comparePipelineRows).map((r) => r.id), ['d', 'a', 'b', 'c']);
+  // Embauché en dernier, même plus ancien ; À trier par note.
+  const withHired = [...rows, { id: 'h', stage: 'hired', stageEnteredAt: '2026-08-01T10:00:00Z', score: 99 }];
+  assert.deepEqual(withHired.sort(v3.comparePipelineRows).map((r) => r.id), ['d', 'a', 'b', 'c', 'h']);
+  assert.deepEqual([...rows].sort(v3.compareToSortRows).map((r) => r.id), ['c', 'a', 'd', 'b']);
 });
 
 // ------------------------------------------------------- cibles d'étape
@@ -387,8 +394,11 @@ test('lot12 : Bilan sur les cumuls, nombres accordés, pas de taux au-delà de 1
   assert.equal(replied.text, '9 ont répondu sur 12 contactés');
   assert.equal(replied.percent, 75);
   const one = v3.bilanRates({ triagedByUser: 0, everRetained: 1, everContacted: 3, everReplied: 1 });
-  assert.equal(one[0].text, '1 retenu sur 0 profil trié par vous');
+  assert.equal(one[0].text, '1 retenu au total', 'plus de retenus que de profils triés : cumul seul');
   assert.equal(one[0].percent, null, 'dénominateur nul');
+  const none = v3.bilanRates({ triagedByUser: 0, everRetained: 0, everContacted: 0, everReplied: 0 });
+  assert.equal(none[0].text, '0 retenu sur 0 profil trié par vous');
+  assert.equal(v3.bilanRates({ triagedByUser: 0, everRetained: 4, everContacted: 4, everReplied: 0 })[0].text, '4 retenus au total');
   assert.equal(one[1].text, '3 ont été contactés sur 1 retenu');
   assert.equal(one[1].percent, null, 'jamais de taux à 300 %');
   assert.equal(one[2].text, '1 a répondu sur 3 contactés');

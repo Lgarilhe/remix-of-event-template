@@ -17,7 +17,7 @@ export function MissionTabs() {
   const { search } = useLocation();
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-2 sm:px-4">
+    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-2 sm:px-4 lg:h-10">
       <nav aria-label="Écrans de la mission" className="-mb-px flex min-w-0 flex-1 items-stretch self-stretch overflow-x-auto scrollbar-hide">
         {TAB_ORDER.map((screen) => {
           const active = location.screen === screen;
@@ -31,7 +31,7 @@ export function MissionTabs() {
               onClick={onClick}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'inline-flex shrink-0 items-center border-b-2 px-3 text-sm font-medium outline-none',
+                'inline-flex min-h-11 shrink-0 items-center border-b-2 px-3 text-sm font-medium outline-none lg:min-h-0',
                 'transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                 active
                   ? 'border-brand text-foreground'

@@ -61,7 +61,7 @@ export const useMissionProcess = (projectId: string | undefined) => {
   const { organizationId } = useOrganization();
 
   // Fetch steps
-  const { data: steps = [], isLoading: loadingSteps } = useQuery({
+  const { data: steps = [], isLoading: loadingSteps, isError: stepsError, refetch: refetchSteps } = useQuery({
     queryKey: ['mission-process-steps', projectId],
     queryFn: async () => {
       if (!projectId) return [];
@@ -280,6 +280,9 @@ export const useMissionProcess = (projectId: string | undefined) => {
     steps,
     team,
     loadingSteps,
+    /** Lecture des étapes en échec (sans données). */
+    stepsError,
+    refetchSteps,
     loadingTeam,
     addStep: addStepMutation.mutateAsync,
     updateStep: updateStepMutation.mutateAsync,

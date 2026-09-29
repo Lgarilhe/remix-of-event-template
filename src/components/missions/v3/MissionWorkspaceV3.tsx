@@ -23,11 +23,14 @@ import {
   type MissionV3Location,
 } from '@/lib/missionBeta';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useSidebarOffline } from '@/hooks/sidebar/useSidebarOffline';
 import { useSourcingProject, type SourcingProject } from '@/hooks/useSourcingProjects';
 import { MissionV3Context } from './MissionV3Context';
 import type { MissionV3ContextValue, MissionWorkspaceV3Props } from './types';
 import { MissionShell } from './shell/MissionShell';
 import { missionScreenTarget } from './shell/missionScreens';
+import { ORG_TYPE_MISSING_REASON } from './shell/missionStatus';
+import { ViewportFrame } from './shell/ViewportFrame';
 
 type PushKind = 'panel' | 'bilan';
 
@@ -85,10 +88,10 @@ function HeaderSkeleton() {
 
 function PageFrame({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="flex h-screen w-full max-w-full flex-col overflow-hidden bg-background">
+    <ViewportFrame className="flex w-full max-w-full flex-col overflow-hidden bg-background">
       <SEOHead title={title} description="Espace de travail mission" />
       {children}
-    </div>
+    </ViewportFrame>
   );
 }
 
@@ -144,6 +147,7 @@ function MissionWorkspaceLoaded({ project }: { project: SourcingProject }) {
   const navigate = useNavigate();
   const routerLocation = useLocation();
   const { orgType, organizationId, isLoading: orgLoading } = useOrganization();
+  const { offline } = useSidebarOffline();
   const [visibleRowIds, setVisibleRowIdsState] = useState<readonly string[]>([]);
 
   const { pathname, search, state } = routerLocation;
@@ -249,10 +253,12 @@ function MissionWorkspaceLoaded({ project }: { project: SourcingProject }) {
   const canPipeline = hasFeature(orgType, 'pipeline');
   const canEditBrief = hasFeature(orgType, 'edit_brief') && isOwnMission && !isArchived;
   const canEditProcess = hasFeature(orgType, 'edit_process') && isOwnMission && !isArchived;
-  const canMoveCandidates = canPipeline && !isArchived;
+  const canMoveCandidates = canPipeline && !isArchived && !offline;
   let moveDisabledReason: string | null = null;
   if (isArchived) moveDisabledReason = 'Mission archivée : réactivez-la pour agir.';
+  else if (!orgLoading && !orgType) moveDisabledReason = ORG_TYPE_MISSING_REASON;
   else if (!orgLoading && !canPipeline) moveDisabledReason = 'Votre formule ne permet pas de modifier ce pipeline.';
+  else if (offline) moveDisabledReason = 'Hors ligne : les changements reprendront à la reconnexion.';
 
   const value: MissionV3ContextValue = useMemo(
     () => ({
@@ -339,7 +345,9 @@ export function MissionWorkspaceV3({ projectId }: MissionWorkspaceV3Props) {
     );
   }
 
-  return <MissionWorkspaceLoaded project={data} />;
+  // Remontée à chaque mission : sélection, sections dépliées et défilement ne
+  // passent jamais d'une mission à l'autre.
+  return <MissionWorkspaceLoaded key={data.id} project={data} />;
 }
 
 export default MissionWorkspaceV3;

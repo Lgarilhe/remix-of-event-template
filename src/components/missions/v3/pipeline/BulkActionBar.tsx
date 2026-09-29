@@ -1,11 +1,11 @@
 // Refonte mission, lot 2 : barre d'actions groupées (conception 4.2), visible
 // dès qu'une ligne est cochée (liste et À trier partagent la sélection) :
-// Retenir, Écarter (avec confirmation), Déplacer vers, Contacter, Tout
-// désélectionner. Écritures par useMissionStageActions, sur le groupe entier
+// Retenir, Étape suivante (candidats à la même étape), Écarter (avec
+// confirmation), Déplacer vers, Contacter, Tout désélectionner. Écritures par useMissionStageActions, sur le groupe entier
 // de chaque candidat.
 
 import { useState } from 'react';
-import { ArrowRightLeft, Check, ChevronDown, UserX, X } from 'lucide-react';
+import { ArrowRight, ArrowRightLeft, Check, ChevronDown, UserX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -15,9 +15,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { plural } from '@/lib/plural';
+import type { GeneralStage } from '@/lib/candidateStage';
 import {
   moveOptions,
+  nextStageOption,
   type MissionCandidateRow,
+  type MoveOption,
   type MissionStageActions,
   type MissionStepRef,
   type StageMoveSummary,
@@ -42,6 +45,14 @@ export function selectionText(count: number): string {
   return `${plural(count, 'candidat sélectionné', 'candidats sélectionnés')}`;
 }
 
+/** Étape suivante commune à toute la sélection ; null si les candidats n'ont pas la même. */
+export function commonNextStage(rows: readonly MissionCandidateRow[], steps: readonly MissionStepRef[]): MoveOption | null {
+  if (rows.length === 0) return null;
+  const first = nextStageOption(rows[0], steps);
+  if (!first) return null;
+  return rows.every((row) => nextStageOption(row, steps)?.key === first.key) ? first : null;
+}
+
 export function BulkActionBar({
   rows,
   steps,
@@ -56,6 +67,7 @@ export function BulkActionBar({
   const [confirmReject, setConfirmReject] = useState(false);
   const count = rows.length;
   if (count === 0) return null;
+  const next = commonNextStage(rows, steps);
 
   const busy = actions.isMoving;
   const disabled = !canMove || busy;
@@ -67,13 +79,13 @@ export function BulkActionBar({
   return (
     <div
       role="toolbar"
+      data-bulk-bar=""
       aria-label="Actions sur la sélection"
       className="sticky bottom-0 z-20 -mx-3 border-t border-border bg-background/95 px-3 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in-0 motion-safe:duration-200"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-sm font-medium text-foreground" aria-live="polite">
-          {selectionText(count)}
-        </span>
+        {/* Annoncé par la zone permanente de PipelineScreen. */}
+        <span className="mr-1 text-sm font-medium text-foreground">{selectionText(count)}</span>
         <Button
           variant="primary"
           size="sm"
@@ -82,6 +94,20 @@ export function BulkActionBar({
         >
           <Check className="mr-1.5 h-4 w-4" aria-hidden="true" />
           Retenir
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled || !next}
+          title={next ? `Passer à ${next.label}` : "Les candidats sélectionnés n'ont pas la même étape suivante."}
+          onClick={() => {
+            if (!next) return;
+            const fromStages = [...new Set(rows.map((row) => row.stage))] as GeneralStage[];
+            void run({ rows, target: next.target, fromStages, verb: next.target.stage === 'retained' ? 'retenu' : 'déplacé' });
+          }}
+        >
+          <ArrowRight className="mr-1.5 h-4 w-4" aria-hidden="true" />
+          Étape suivante
         </Button>
         <Button variant="outline" size="sm" disabled={disabled} onClick={() => setConfirmReject(true)}>
           <UserX className="mr-1.5 h-4 w-4" aria-hidden="true" />

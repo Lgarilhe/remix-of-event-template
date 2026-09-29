@@ -27,7 +27,7 @@ import {
   type StageMoveSummary,
 } from '../types';
 import { BilanCard } from './BilanCard';
-import { BulkActionBar } from './BulkActionBar';
+import { BulkActionBar, selectionText } from './BulkActionBar';
 import { CandidateList, useFrozenCandidateRows } from './CandidateList';
 import { MissionBoard } from './MissionBoard';
 import {
@@ -71,11 +71,18 @@ export function PipelineScreen(): JSX.Element | null {
   const countsError = countsQuery.isError || (countsQuery.isSuccess && counts === null);
   const retryCounts = useCallback(() => void countsQuery.refetch(), [countsQuery]);
 
-  const { steps: processSteps } = useMissionProcess(project.id);
+  const { steps: processSteps, loadingSteps, stepsError, refetchSteps } = useMissionProcess(project.id);
+  // Clé primitive : useMissionProcess rend un tableau neuf à chaque rendu tant
+  // que les étapes ne sont pas lues ; sans elle, le kanban relancerait le rendu
+  // de l'écran en boucle.
+  const stepsKey = processSteps.map((s) => `${s.id}\u0000${s.name}\u0000${s.step_order}`).join('\u0001');
   const steps = useMemo<MissionStepRef[]>(
     () => processSteps.map((s) => ({ id: s.id, name: s.name, step_order: s.step_order })),
-    [processSteps],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stepsKey],
   );
+  const stepsFailed = stepsError && !loadingSteps && steps.length === 0;
+  const retrySteps = useCallback(() => void refetchSteps(), [refetchSteps]);
 
   const filter = parseStageFilter(location.stage);
   const filterParam = filter ? stageFilterParam(filter) : null;
@@ -130,16 +137,27 @@ export function PipelineScreen(): JSX.Element | null {
   const selectedIds = useMemo(() => new Set(selection.keys()), [selection]);
   const selectedRows = useMemo(() => [...selection.values()], [selection]);
 
+  // La barre d'actions disparaît avec la sélection : le focus qu'elle avait
+  // (ou qu'une fenêtre de confirmation lui a rendu) passe au début de la liste,
+  // jamais sur la page entière.
+  const listStartRef = useRef<HTMLSpanElement>(null);
+  const clearSelectionKeepingFocus = useCallback(() => {
+    const active = document.activeElement;
+    const inBar = active instanceof HTMLElement && !!active.closest('[data-bulk-bar]');
+    if (inBar || active === document.body || active === null) listStartRef.current?.focus({ preventScroll: true });
+    clearSelection();
+  }, [clearSelection]);
+
   const onMoved = useCallback(
     (summary: StageMoveSummary) => {
-      if (summary.changed > 0) clearSelection();
+      if (summary.changed > 0) clearSelectionKeepingFocus();
     },
-    [clearSelection],
+    [clearSelectionKeepingFocus],
   );
   const onContacted = useCallback(() => {
     void invalidateStageReaders(queryClient);
-    clearSelection();
-  }, [queryClient, clearSelection]);
+    clearSelectionKeepingFocus();
+  }, [queryClient, clearSelectionKeepingFocus]);
 
   // ------------------------------------------------ ordre publié (fiche)
   const [mainRows, setMainRows] = useState<readonly MissionCandidateRow[]>(EMPTY_ROWS);
@@ -179,12 +197,19 @@ export function PipelineScreen(): JSX.Element | null {
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-4 pt-1">
+      {/* Zone annoncée présente dès l'arrivée : la première case cochée est lue. */}
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {selection.size > 0 ? selectionText(selection.size) : ''}
+      </p>
       <StageBar
         counts={counts}
         isLoading={countsQuery.isLoading}
         isError={countsError}
         onRetry={retryCounts}
         steps={steps}
+        stepsLoading={loadingSteps}
+        stepsFailed={stepsFailed}
+        onRetrySteps={retrySteps}
         activeFilter={filter}
         onToggle={onToggleStage}
       />
@@ -214,6 +239,10 @@ export function PipelineScreen(): JSX.Element | null {
           <MissionBoard
             projectId={project.id}
             steps={steps}
+            stepsLoading={loadingSteps}
+            stepsFailed={stepsFailed}
+            onRetrySteps={retrySteps}
+            counts={counts}
             canMove={ctx.canMoveCandidates}
             moveDisabledReason={ctx.moveDisabledReason}
             actions={actions}
@@ -224,6 +253,9 @@ export function PipelineScreen(): JSX.Element | null {
         </div>
       ) : (
         <>
+          <span ref={listStartRef} tabIndex={-1} className="sr-only">
+            Liste des candidats
+          </span>
           <PipelineListView
             project={project}
             filter={filter}
@@ -275,7 +307,7 @@ export function PipelineScreen(): JSX.Element | null {
             actions={actions}
             onMoved={onMoved}
             onContacted={onContacted}
-            onClear={clearSelection}
+            onClear={clearSelectionKeepingFocus}
           />
         </>
       )}

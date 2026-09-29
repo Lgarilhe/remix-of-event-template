@@ -134,18 +134,67 @@ test('même ordre relu : pas de lien « Actualiser l’ordre »', () => {
 test('ligne déplacée par un geste et absente de la relecture : gardée à sa place, nouvelle étape, atténuée', () => {
   const store = new Map();
   const known = new Map();
-  frozen.arrangeFrozen('k', [row('a', { stage: 'to_sort' }), row('b', { stage: 'to_sort' })], (r) => r.stage === 'to_sort', store, known);
+  frozen.arrangeFrozen('k', [row('a', { stage: 'to_sort' }), row('b', { stage: 'to_sort' })], (r) => r.stage === 'to_sort', store, known, 500);
   frozen.rememberStageMoves(
     [{ id: 'a', groupIds: ['a', 'a2'] }],
     { rows: [{ id: 'a2', result: 'updated', generalStage: 'retained', processStepId: null, stageEnteredAt: '2026-09-29T08:00:00Z' }] },
     1000,
     known,
   );
-  const out = frozen.arrangeFrozen('k', [row('b', { stage: 'to_sort' })], (r) => r.stage === 'to_sort', store, known);
+  const out = frozen.arrangeFrozen('k', [row('b', { stage: 'to_sort' })], (r) => r.stage === 'to_sort', store, known, 1500);
   assert.deepEqual(ids(out.rows), ['a', 'b']);
   assert.equal(out.rows[0].stage, 'retained');
   assert.ok(out.outOfFilter.has('a'));
   assert.equal(out.orderDiffers, true);
+});
+
+test('ligne absente, geste antérieur à la dernière lecture qui la contenait : retirée (changée ailleurs depuis)', () => {
+  const store = new Map();
+  const known = new Map();
+  frozen.arrangeFrozen('k', [row('a', { stage: 'to_sort' })], (r) => r.stage === 'to_sort', store, known, 500);
+  frozen.rememberStageMoves(
+    [{ id: 'a', groupIds: ['a'] }],
+    { rows: [{ id: 'a', result: 'updated', generalStage: 'retained', processStepId: null, stageEnteredAt: null }] },
+    1000,
+    known,
+  );
+  // Relue après le geste (toujours là), puis écartée ailleurs : absente de la lecture suivante.
+  frozen.arrangeFrozen('k', [row('a', { stage: 'retained' })], (r) => r.stage === 'to_sort', store, known, 2000);
+  const out = frozen.arrangeFrozen('k', [], (r) => r.stage === 'to_sort', store, known, 3000);
+  assert.deepEqual(ids(out.rows), []);
+});
+
+test('doublon : la nouvelle ligne canonique prend la place de l\'ancienne, jamais une seconde place', () => {
+  const store = new Map();
+  const known = new Map();
+  frozen.arrangeFrozen('k', [row('x', { groupIds: ['x', 'y'] }), row('b')], inProgress, store, known, 500);
+  frozen.rememberStageMoves(
+    [{ id: 'x', groupIds: ['x', 'y'] }],
+    { rows: [
+      { id: 'x', result: 'updated', generalStage: 'replied', processStepId: null, stageEnteredAt: null },
+      { id: 'y', result: 'updated', generalStage: 'replied', processStepId: null, stageEnteredAt: null },
+    ] },
+    1000,
+    known,
+  );
+  const out = frozen.arrangeFrozen('k', [row('b'), row('y', { groupIds: ['y', 'x'], stage: 'replied' })], inProgress, store, known, 2000);
+  assert.deepEqual(ids(out.rows), ['y', 'b']);
+  assert.equal(out.rows[0].stage, 'replied');
+});
+
+test('étape connue jugée sur la ligne canonique : un doublon qui avance seul ne change pas l\'étape affichée', () => {
+  const known = new Map();
+  const n = frozen.rememberStageMoves(
+    [{ id: 'x', groupIds: ['x', 'y'] }],
+    { rows: [
+      { id: 'x', result: 'skipped', generalStage: 'contacted', processStepId: null, stageEnteredAt: null },
+      { id: 'y', result: 'updated', generalStage: 'retained', processStepId: null, stageEnteredAt: null },
+    ] },
+    1000,
+    known,
+  );
+  assert.equal(n, 0);
+  assert.equal(known.size, 0);
 });
 
 test('ligne absente sans geste connu : retirée', () => {

@@ -52,6 +52,10 @@ export function writeMissionBeta(on: boolean, storage: MissionBetaStorage | null
 // (useSyncExternalStore dans src/hooks/useMissionBeta.ts).
 let cached: boolean | null = null;
 const listeners = new Set<() => void>();
+// Changements faits dans cet onglet seulement (setMissionBeta), sans ceux des
+// autres onglets (événement storage) : la page affichée ne bascule jamais
+// sous les doigts de l'utilisateur à cause d'un autre onglet.
+const localListeners = new Set<() => void>();
 
 function notify(): void {
   for (const listener of listeners) listener();
@@ -77,6 +81,15 @@ export function setMissionBeta(on: boolean): void {
   if (cached === on) return;
   cached = on;
   notify();
+  for (const listener of localListeners) listener();
+}
+
+/** Abonnement aux seuls changements faits dans cet onglet (page mission affichée). */
+export function subscribeMissionBetaLocal(listener: () => void): () => void {
+  localListeners.add(listener);
+  return () => {
+    localListeners.delete(listener);
+  };
 }
 
 export function subscribeMissionBeta(listener: () => void): () => void {
@@ -96,6 +109,7 @@ export function subscribeMissionBeta(listener: () => void): () => void {
 export function resetMissionBetaForTests(): void {
   cached = null;
   listeners.clear();
+  localListeners.clear();
 }
 
 /** Valeur demandée par ?nouvelle-mission= : true (1), false (0), sinon null. */

@@ -6,7 +6,7 @@
 // de pipeline_stage.
 //
 // Ordre : écriture, étapes connues (la ligne change d'étape à l'écran), puis
-// relecture (invalidateStageReaders) et annonces. Rien n'est annoncé avant la
+// relecture (invalidateStageReaders, après toute réponse par ligne) et annonces. Rien n'est annoncé avant la
 // réponse de la base. Ne lève jamais.
 
 import { useCallback, useState } from 'react';
@@ -61,10 +61,11 @@ export function useMissionStageActions(_projectId: string): MissionStageActions 
       try {
         const outcome = await setCandidateStages(ids, request.target, request.fromStages);
         const summary = summarizeStageMove(request.rows, outcome);
-        if (outcome.updated > 0) {
-          rememberStageMoves(request.rows, outcome);
-          void invalidateStageReaders(queryClient);
-        }
+        if (outcome.updated > 0) rememberStageMoves(request.rows, outcome);
+        // Relecture après toute réponse par ligne : « déjà à cette étape »,
+        // « laissé à son étape » ou un refus disent aussi que l'écran était
+        // périmé. Un appel échoué n'a rien appris : pas de relecture.
+        if (outcome.rows.length > 0) void invalidateStageReaders(queryClient);
 
         if (summary.changed > 0) toast.success(stageMoveSuccessText(summary.changed, request.verb));
         const skipped = skippedStageMessage(summary.skipped);

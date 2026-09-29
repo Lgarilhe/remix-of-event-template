@@ -14,10 +14,17 @@
 // Étapes connues après un geste (rememberStageMoves) : l'écriture a réussi,
 // la relecture n'est pas encore là. Une étape connue s'applique à une ligne
 // lue AVANT le geste (at > dataUpdatedAt de la lecture), et à une ligne figée
-// que la relecture ne rend plus (sortie du filtre ou de la page chargée).
+// que la relecture ne rend plus (sortie du filtre ou de la page chargée), si
+// le geste est postérieur à la dernière lecture qui la contenait : un
+// changement fait ailleurs ensuite retire la ligne au lieu d'afficher une
+// étape périmée.
+//
+// Doublons : une ligne est reconnue par son groupe (group_ids), pas par son
+// seul id. Quand un geste change la ligne canonique d'un candidat, la
+// nouvelle prend la place de l'ancienne, jamais une seconde place.
 
 import type { GeneralStage, StageBatchOutcome } from '@/lib/candidateStage';
-import type { MissionCandidateRow, MissionRowRef } from '../types';
+import { candidateResults, type MissionCandidateRow, type MissionRowRef } from '../types';
 
 // ------------------------------------------------------ étapes connues
 
@@ -53,9 +60,11 @@ export function knownStagesStore(): ReadonlyMap<string, KnownStage> {
 }
 
 /**
- * Retient l'étape des lignes changées par un geste, par ligne canonique
- * (row.id) : le résultat de la ligne elle-même s'il a changé, sinon celui
- * d'une autre ligne changée de son groupe.
+ * Retient l'étape des candidats changés par un geste, jugés sur leur ligne
+ * canonique (candidateResults : row.id si la réponse la contient, sinon les
+ * autres lignes du groupe). Un doublon qui avance seul ne change pas l'étape
+ * affichée. L'étape est retenue pour toutes les lignes du groupe : la ligne
+ * canonique de la vue peut changer après le geste.
  */
 export function rememberStageMoves(
   rows: readonly MissionRowRef[],
@@ -67,16 +76,15 @@ export function rememberStageMoves(
   let remembered = 0;
   for (const row of rows) {
     const ids = row.groupIds.length > 0 ? row.groupIds : [row.id];
-    const own = byId.get(row.id);
-    const changed =
-      own && own.result === 'updated' ? own : ids.map((id) => byId.get(id)).find((r) => r && r.result === 'updated');
+    const changed = candidateResults(row, byId).find((r) => r.result === 'updated');
     if (!changed || !changed.generalStage) continue;
-    store.set(row.id, {
+    const known: KnownStage = {
       stage: changed.generalStage,
       processStepId: changed.generalStage === 'interviewing' ? changed.processStepId : null,
       stageEnteredAt: changed.stageEnteredAt,
       at,
-    });
+    };
+    for (const id of new Set([row.id, ...ids])) store.set(id, known);
     remembered += 1;
   }
   if (remembered > 0 && store === knownStages) {
@@ -113,6 +121,8 @@ export function applyKnownStages<T extends MissionCandidateRow>(
 interface FrozenEntry<T> {
   ids: string[];
   rows: Map<string, T>;
+  /** Heure (dataUpdatedAt) de la dernière lecture qui contenait chaque ligne. */
+  seenAt: Map<string, number>;
 }
 
 export type FrozenOrderStore = Map<string, FrozenEntry<MissionCandidateRow>>;
@@ -135,7 +145,8 @@ export interface ArrangedRows<T> {
 /**
  * Range `fetched` (ordre de la base, étapes connues déjà appliquées) selon
  * l'ordre figé de `key`, puis mémorise l'ordre affiché. `matches` dit si une
- * ligne entre dans le filtre de la liste.
+ * ligne entre dans le filtre de la liste ; `fetchedAt` est l'heure de la
+ * lecture (dataUpdatedAt).
  */
 export function arrangeFrozen<T extends MissionCandidateRow>(
   key: string,
@@ -143,42 +154,59 @@ export function arrangeFrozen<T extends MissionCandidateRow>(
   matches: (row: T) => boolean,
   store: FrozenOrderStore = frozenStore,
   known: ReadonlyMap<string, KnownStage> = knownStages,
+  fetchedAt: number = Date.now(),
 ): ArrangedRows<T> {
   const fetchedById = new Map<string, T>();
-  for (const row of fetched) if (!fetchedById.has(row.id)) fetchedById.set(row.id, row);
+  // Ligne relue par chacun des ids de son groupe (doublons réunis).
+  const fetchedByMember = new Map<string, T>();
+  for (const row of fetched) {
+    if (fetchedById.has(row.id)) continue;
+    fetchedById.set(row.id, row);
+    for (const id of [row.id, ...row.groupIds]) if (!fetchedByMember.has(id)) fetchedByMember.set(id, row);
+  }
   const previous = store.get(key) as FrozenEntry<T> | undefined;
 
   const out: T[] = [];
   const outOfFilter = new Set<string>();
   const placed = new Set<string>();
+  const seenAt = new Map<string, number>();
 
-  if (previous) {
-    for (const id of previous.ids) {
-      const current = fetchedById.get(id);
-      if (current) {
-        out.push(current);
-        placed.add(id);
-        if (!matches(current)) outOfFilter.add(id);
-        continue;
-      }
-      // Absente de la relecture : gardée seulement si un geste l'a déplacée.
-      const old = previous.rows.get(id);
-      const move = known.get(id);
-      if (!old || !move) continue;
-      const moved = withKnownStage(old, move);
-      out.push(moved);
-      placed.add(id);
-      if (!matches(moved)) outOfFilter.add(id);
-    }
-  }
-  for (const row of fetchedById.values()) {
-    if (placed.has(row.id)) continue;
+  const place = (row: T) => {
     out.push(row);
     placed.add(row.id);
     if (!matches(row)) outOfFilter.add(row.id);
-  }
+  };
 
-  store.set(key, { ids: out.map((r) => r.id), rows: new Map(out.map((r) => [r.id, r])) as Map<string, MissionCandidateRow> });
+  if (previous) {
+    for (const id of previous.ids) {
+      const old = previous.rows.get(id);
+      // Même ligne, ou même candidat sous une autre ligne canonique.
+      const current =
+        fetchedById.get(id) ??
+        [id, ...(old?.groupIds ?? [])].map((member) => fetchedByMember.get(member)).find((row) => row !== undefined);
+      if (current) {
+        if (!placed.has(current.id)) place(current);
+        continue;
+      }
+      // Absente de la relecture : gardée seulement si un geste l'a déplacée
+      // après la dernière lecture qui la contenait.
+      const move = known.get(id);
+      const lastSeen = previous.seenAt.get(id) ?? 0;
+      if (!old || !move || move.at <= lastSeen) continue;
+      place(withKnownStage(old, move));
+      seenAt.set(id, lastSeen);
+    }
+  }
+  for (const row of fetchedById.values()) {
+    if (!placed.has(row.id)) place(row);
+  }
+  for (const row of fetchedById.values()) seenAt.set(row.id, fetchedAt);
+
+  store.set(key, {
+    ids: out.map((r) => r.id),
+    rows: new Map(out.map((r) => [r.id, r])) as Map<string, MissionCandidateRow>,
+    seenAt,
+  });
 
   const dbOrder = [...fetchedById.keys()];
   const shownFetched = out.filter((r) => fetchedById.has(r.id)).map((r) => r.id);

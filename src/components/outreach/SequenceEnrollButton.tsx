@@ -59,6 +59,8 @@ interface SequenceEnrollButtonProps {
   selectedJob?: SequenceEnrollJob | null;
   onSuccess?: () => void;
   onCreateSequence?: () => void;
+  /** Libellé du bouton ; « Séquence » par défaut. */
+  triggerLabel?: string;
 }
 
 /** Identifiant de mission (sourcing_projects.id) d'un poste synthétique « project:{uuid} ». */
@@ -72,6 +74,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   selectedJob,
   onSuccess,
   onCreateSequence,
+  triggerLabel = 'Séquence',
 }) => {
   const [sequences, setSequences] = useState<SequenceOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -220,7 +223,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
             className="border-2 border-success/70 text-success bg-success/10 shadow-sm hover:bg-success/20 hover:border-success hover:shadow-md transition-all px-2.5 h-7 gap-1.5 text-xs font-semibold rounded-lg shrink-0"
           >
             <GitBranch className="w-3.5 h-3.5 shrink-0" />
-            Séquence
+            {triggerLabel}
             <ChevronDown className="w-3 h-3 shrink-0 opacity-70" />
           </Button>
         </DropdownMenuTrigger>

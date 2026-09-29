@@ -55,6 +55,17 @@ function ordered(query: any) {
     .order('id', { ascending: true });
 }
 
+/** Ordre de compareToSortRows (section À trier) : la note d'abord, puis l'ancienneté, puis l'id. */
+function orderedByScore(query: any) {
+  return query
+    .order('score', { ascending: false, nullsFirst: false })
+    .order('stage_entered_at', { ascending: true, nullsFirst: false })
+    .order('id', { ascending: true });
+}
+
+/** Étapes « en cours » qui ont une prochaine action : tout sauf Embauché, lu après elles. */
+const ACTIONABLE_STAGES = IN_PROGRESS_STAGES.filter((stage) => stage !== 'hired');
+
 function filtered(query: any, filter: StageFilter | null) {
   if (filter === null) return query.in('general_stage', [...IN_PROGRESS_STAGES]);
   let q = query.eq('general_stage', filter.stage);
@@ -69,8 +80,55 @@ export function missionCandidateRowsKey(projectId: string, filter: StageFilter |
 }
 
 /**
+ * Position de lecture : `part` 0 = lignes du filtre (en cours : celles qui ont
+ * une prochaine action), 1 = Embauchés de la liste en cours, lus après.
+ */
+export interface RowsPageParam {
+  part: 0 | 1;
+  from: number;
+}
+
+export interface MissionRowsPage {
+  rows: MissionCandidateRow[];
+  /** Suite de la lecture ; null quand tout est lu. */
+  next: RowsPageParam | null;
+}
+
+async function readRange(query: any, from: number, count: number): Promise<{ rows: MissionCandidateRow[]; full: boolean }> {
+  const { data, error } = await query.range(from, from + count - 1);
+  if (error) throw error;
+  const read = Array.isArray(data) ? data.length : 0;
+  return { rows: toRows(data), full: read >= count };
+}
+
+/**
+ * Une page de la liste. En cours (filtre null) : d'abord les étapes qui ont
+ * une prochaine action, puis les Embauchés, pour qu'un embauché ne passe
+ * jamais devant un candidat qui attend. À trier : la note d'abord.
+ */
+async function readRowsPage(projectId: string, filter: StageFilter | null, param: RowsPageParam): Promise<MissionRowsPage> {
+  const size = PIPELINE_PAGE_SIZE;
+  if (filter !== null) {
+    const base = filtered(baseQuery(projectId), filter);
+    const page = await readRange(filter.stage === 'to_sort' ? orderedByScore(base) : ordered(base), param.from, size);
+    return { rows: page.rows, next: page.full ? { part: 0, from: param.from + size } : null };
+  }
+  const hired = () => ordered(baseQuery(projectId).eq('general_stage', 'hired'));
+  if (param.part === 1) {
+    const page = await readRange(hired(), param.from, size);
+    return { rows: page.rows, next: page.full ? { part: 1, from: param.from + size } : null };
+  }
+  const active = await readRange(ordered(baseQuery(projectId).in('general_stage', ACTIONABLE_STAGES)), param.from, size);
+  if (active.full) return { rows: active.rows, next: { part: 0, from: param.from + size } };
+  // Fin des lignes actives : la page se complète avec les premiers Embauchés.
+  const rest = size - active.rows.length;
+  const tail = await readRange(hired(), 0, rest);
+  return { rows: [...active.rows, ...tail.rows], next: tail.full ? { part: 1, from: rest } : null };
+}
+
+/**
  * Liste de Pipeline (filtre null : candidats en cours) ou d'une étape, par
- * pages de PIPELINE_PAGE_SIZE. hasNextPage tant qu'une page est pleine.
+ * pages de PIPELINE_PAGE_SIZE. hasNextPage tant qu'il reste à lire.
  */
 export function useMissionCandidateRows(
   projectId: string,
@@ -79,18 +137,9 @@ export function useMissionCandidateRows(
 ) {
   return useInfiniteQuery({
     queryKey: missionCandidateRowsKey(projectId, filter),
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }): Promise<MissionCandidateRow[]> => {
-      const from = pageParam as number;
-      const { data, error } = await ordered(filtered(baseQuery(projectId), filter)).range(
-        from,
-        from + PIPELINE_PAGE_SIZE - 1,
-      );
-      if (error) throw error;
-      return toRows(data);
-    },
-    getNextPageParam: (lastPage, pages) =>
-      lastPage.length >= PIPELINE_PAGE_SIZE ? pages.reduce((n, page) => n + page.length, 0) : undefined,
+    initialPageParam: { part: 0, from: 0 } as RowsPageParam,
+    queryFn: ({ pageParam }): Promise<MissionRowsPage> => readRowsPage(projectId, filter, pageParam as RowsPageParam),
+    getNextPageParam: (lastPage) => lastPage.next ?? undefined,
     enabled: !!projectId && (options?.enabled ?? true),
     staleTime: 30_000,
     refetchOnWindowFocus: true,

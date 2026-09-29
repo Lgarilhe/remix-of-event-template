@@ -105,12 +105,12 @@ export function CadrageScreen(): JSX.Element | null {
               </CollapsibleTrigger>
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Statut, portail client, mode chasse et autres réglages de la mission.
+              Portail client, mode chasse et autres réglages de la mission.
             </p>
           </div>
           <CollapsibleContent className="pt-4">
             <SectionErrorBoundary fallbackTitle="Erreur dans les Réglages">
-              <MissionConfigV2 project={project} readOnly={!canEditBrief} />
+              <MissionConfigV2 project={project} readOnly={!canEditBrief} hideStatus />
             </SectionErrorBoundary>
           </CollapsibleContent>
         </section>

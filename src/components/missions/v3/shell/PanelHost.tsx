@@ -6,13 +6,26 @@
 // Entrée en 200 ms (glissement de 16 px et fondu), coupée en mouvement réduit.
 // Échap ferme, sauf si un menu, une liste ou une fenêtre est ouvert, ou si l'on
 // écrit dans un champ. Focus : sur le titre à l'ouverture, rendu au déclencheur
-// à la fermeture.
+// à la fermeture. Sous lg, le panneau plein écran est une fenêtre modale :
+// role="dialog" et aria-modal, reste de la coquille inerte (MissionShell), et
+// Tab comme Maj+Tab tournent dans le panneau.
 import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { useMissionV3 } from '../MissionV3Context';
 import { CandidatePanel } from '../panels/CandidatePanel';
 import { ContactPanel } from '../panels/ContactPanel';
+import { PANEL_FULLSCREEN_QUERY, useMediaQuery } from './useMediaQuery';
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Éléments du panneau atteignables au clavier, dans l'ordre. */
+function focusables(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => !el.closest('[hidden], [inert]') && el.getClientRects().length > 0,
+  );
+}
 
 /** Couches ouvertes qui gardent Échap pour elles (menus, listes, fenêtres). */
 const OPEN_LAYER_SELECTOR = [
@@ -72,6 +85,7 @@ export function PanelHost() {
   const panel = location.panel;
   const rowId = panel === 'fiche' ? location.candidateRowId : null;
   const isOpen = panel !== null;
+  const modal = useMediaQuery(PANEL_FULLSCREEN_QUERY);
 
   // Ouverture, changement de panneau ou de candidat : focus sur le titre.
   // Première ouverture : mémorise le déclencheur (focus encore hors du panneau).
@@ -110,6 +124,35 @@ export function PanelHost() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, closePanel]);
 
+  // Fenêtre modale (sous lg) : Tab et Maj+Tab restent dans le panneau.
+  useEffect(() => {
+    if (!isOpen || !modal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || event.defaultPrevented) return;
+      const aside = asideRef.current;
+      if (!aside || document.querySelector(OPEN_LAYER_SELECTOR)) return;
+      const items = focusables(aside);
+      if (items.length === 0) {
+        event.preventDefault();
+        aside.focus({ preventScroll: true });
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const inside = active instanceof Node && aside.contains(active);
+      if (event.shiftKey && (!inside || active === first || active === aside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (!inside || active === last)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, modal]);
+
   if (!isOpen) return null;
 
   return (
@@ -119,6 +162,8 @@ export function PanelHost() {
       tabIndex={-1}
       data-testid="mission-panel"
       data-panel={panel}
+      role={modal ? 'dialog' : undefined}
+      aria-modal={modal ? true : undefined}
       aria-labelledby={titleId}
       initial={reduceMotion ? false : { opacity: 0, x: 16 }}
       animate={{ opacity: 1, x: 0 }}

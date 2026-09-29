@@ -2,7 +2,9 @@
 // zone 4). Effectifs actuels de get_mission_stage_counts, sous le nom de
 // l'étape ; chaque puce filtre la liste (?etape=). Jamais de zéro inventé :
 // pendant le chargement les puces sont grises et sans chiffre, en cas d'erreur
-// la barre le dit.
+// la barre le dit. Tant que les étapes d'entretien de la mission se lisent,
+// le groupe Suivi reste gris (jamais une puce « En entretien » remplacée
+// ensuite) ; si leur lecture échoue, la barre le dit.
 
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +26,11 @@ interface StageBarProps {
   isError: boolean;
   onRetry: () => void;
   steps: readonly MissionStepRef[];
+  /** Étapes d'entretien en cours de lecture. */
+  stepsLoading?: boolean;
+  /** Lecture des étapes d'entretien en échec. */
+  stepsFailed?: boolean;
+  onRetrySteps?: () => void;
   activeFilter: StageFilter | null;
   onToggle: (filter: StageFilter) => void;
 }
@@ -86,9 +93,21 @@ function Chip({ chip, active, loading, onToggle }: { chip: StageChip; active: bo
   );
 }
 
-export function StageBar({ counts, isLoading, isError, onRetry, steps, activeFilter, onToggle }: StageBarProps) {
+export function StageBar({
+  counts,
+  isLoading,
+  isError,
+  onRetry,
+  steps,
+  stepsLoading = false,
+  stepsFailed = false,
+  onRetrySteps,
+  activeFilter,
+  onToggle,
+}: StageBarProps) {
   const { sourcing, follow, rejected } = chipsOf(counts, steps);
   const loading = isLoading && !counts;
+  const hired = follow[follow.length - 1];
 
   return (
     <section data-testid="stage-bar" aria-labelledby="stage-bar-title" className="space-y-2">
@@ -112,15 +131,40 @@ export function StageBar({ counts, isLoading, isError, onRetry, steps, activeFil
             ].map((group) => (
               <div key={group.title} role="group" aria-label={group.title} className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <span className="mr-1 w-full text-xs text-muted-foreground sm:w-36 sm:shrink-0">{group.title}</span>
-                {group.chips.map((chip) => (
-                  <Chip
-                    key={stageFilterParam(chip.filter)}
-                    chip={chip}
-                    active={sameStageFilter(activeFilter, chip.filter)}
-                    loading={loading}
-                    onToggle={onToggle}
-                  />
-                ))}
+                {group.chips === follow && stepsLoading ? (
+                  <span className="contents" aria-busy="true" aria-label="Chargement des étapes d'entretien">
+                    <Skeleton className="h-8 w-28 rounded-full" aria-hidden="true" />
+                    <Skeleton className="h-8 w-24 rounded-full" aria-hidden="true" />
+                  </span>
+                ) : group.chips === follow && stepsFailed ? (
+                  <>
+                    <span role="alert" className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      Étapes d'entretien indisponibles.
+                      {onRetrySteps && (
+                        <Button variant="outline" size="xs" onClick={onRetrySteps}>
+                          <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                          Réessayer
+                        </Button>
+                      )}
+                    </span>
+                    <Chip
+                      chip={hired}
+                      active={sameStageFilter(activeFilter, hired.filter)}
+                      loading={loading}
+                      onToggle={onToggle}
+                    />
+                  </>
+                ) : (
+                  group.chips.map((chip) => (
+                    <Chip
+                      key={stageFilterParam(chip.filter)}
+                      chip={chip}
+                      active={sameStageFilter(activeFilter, chip.filter)}
+                      loading={loading}
+                      onToggle={onToggle}
+                    />
+                  ))
+                )}
               </div>
             ))}
           </div>

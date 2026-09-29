@@ -7,6 +7,11 @@
 // useMissionStageActions. La carte ne change de colonne qu'après l'écriture ;
 // rien n'est annoncé avant. L'ancien kanban (MissionPipeline.tsx) reste pour
 // l'ancienne page.
+//
+// Taux de passage (lot 2) : sous l'en-tête des colonnes Contacté, A répondu,
+// première étape d'entretien et Embauché, la part des candidats de l'étape
+// d'avant qui l'ont atteinte, sur les cumuls « au total » de
+// get_mission_stage_counts (jalons datés), avec le calcul écrit.
 
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
@@ -23,8 +28,10 @@ import {
   type DragStartEvent,
   type ScreenReaderInstructions,
 } from '@dnd-kit/core';
-import { Clock } from 'lucide-react';
+import { Clock, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { MissionStageCounts } from '@/hooks/useMissionStageCounts';
 import { useKnownStagesVersion, useMissionBoardRows } from '@/hooks/useMissionCandidateRows';
 import type { StageTarget } from '@/lib/candidateStage';
 import { plural } from '@/lib/plural';
@@ -80,6 +87,44 @@ const DOT: Record<string, string> = {
   rejected: 'bg-danger',
   missing: 'bg-warning',
 };
+
+export interface BoardPassRate {
+  percent: number;
+  /** Texte court sous l'en-tête. */
+  text: string;
+  /** Calcul écrit en clair. */
+  detail: string;
+}
+
+/**
+ * Taux de passage des colonnes du kanban, sur les cumuls : Contacté sur
+ * Retenu, A répondu sur Contacté, première étape d'entretien (ou En
+ * entretien) sur A répondu, Embauché sur les entretiens. Aucun taux sans
+ * dénominateur, ni au-delà de 100 %.
+ */
+export function boardPassRates(
+  counts: Pick<MissionStageCounts, 'everRetained' | 'everContacted' | 'everReplied' | 'everInterviewed' | 'everHired'> | null,
+  steps: readonly MissionStepRef[],
+): Map<string, BoardPassRate> {
+  const out = new Map<string, BoardPassRate>();
+  if (!counts) return out;
+  const first = [...steps].sort((a, b) => a.step_order - b.step_order)[0];
+  const interviewKey = first ? `interviewing:${first.id}` : 'interviewing';
+  const add = (key: string, n: number, d: number, from: string, detail: string) => {
+    if (!(d > 0) || n > d) return;
+    out.set(key, { percent: Math.round((100 * n) / d), text: `${Math.round((100 * n) / d)} % ${from}`, detail });
+  };
+  const { everRetained, everContacted, everReplied, everInterviewed, everHired } = counts;
+  add('contacted', everContacted, everRetained, 'des retenus',
+    `${plural(everContacted, 'contacté')} sur ${plural(everRetained, 'retenu')}, au total.`);
+  add('replied', everReplied, everContacted, 'des contactés',
+    `${plural(everReplied, 'réponse')} sur ${plural(everContacted, 'contacté')}, au total.`);
+  add(interviewKey, everInterviewed, everReplied, 'des réponses',
+    `${plural(everInterviewed, 'candidat reçu', 'candidats reçus')} en entretien sur ${plural(everReplied, 'réponse')}, au total.`);
+  add('hired', everHired, everInterviewed, 'des entretiens',
+    `${plural(everHired, 'embauché')} sur ${plural(everInterviewed, 'candidat reçu', 'candidats reçus')} en entretien, au total.`);
+  return out;
+}
 
 /** Colonne d'une ligne : étape générale, et étape d'entretien de la mission. */
 export function boardColumnOf(
@@ -198,6 +243,7 @@ function Column({
   canDrag,
   onOpen,
   aside,
+  rate,
 }: {
   column: BoardColumn;
   rows: MissionCandidateRow[];
@@ -206,6 +252,7 @@ function Column({
   canDrag: boolean;
   onOpen: (rowId: string) => void;
   aside?: boolean;
+  rate?: BoardPassRate;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.key, disabled: column.target === null || !canDrag });
   return (
@@ -223,6 +270,12 @@ function Column({
         <h3 className="truncate text-xs font-semibold text-foreground">{column.label}</h3>
         <span className="text-xs tabular-nums text-muted-foreground">{rows.length.toLocaleString('fr-FR')}</span>
       </header>
+      {rate && (
+        <p className="-mt-1 truncate px-3 pb-1.5 text-2xs text-muted-foreground" title={rate.detail}>
+          <span aria-hidden="true">{rate.text}</span>
+          <span className="sr-only">{`Taux de passage : ${rate.percent} %. ${rate.detail}`}</span>
+        </p>
+      )}
       <div className="flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-1.5 pb-1.5">
         {rows.map((row) => (
           <DraggableCard key={row.id} row={row} now={now} active={row.id === activeRowId} canDrag={canDrag} onOpen={onOpen} />
@@ -240,6 +293,12 @@ function Column({
 interface MissionBoardProps {
   projectId: string;
   steps: readonly MissionStepRef[];
+  /** Étapes d'entretien en cours de lecture : squelette, aucun dépôt possible. */
+  stepsLoading?: boolean;
+  stepsFailed?: boolean;
+  onRetrySteps?: () => void;
+  /** Effectifs et cumuls de la mission, pour les taux de passage. */
+  counts?: MissionStageCounts | null;
   canMove: boolean;
   moveDisabledReason: string | null;
   actions: MissionStageActions;
@@ -251,6 +310,10 @@ interface MissionBoardProps {
 export function MissionBoard({
   projectId,
   steps,
+  stepsLoading = false,
+  stepsFailed = false,
+  onRetrySteps,
+  counts = null,
   canMove,
   moveDisabledReason,
   actions,
@@ -309,11 +372,19 @@ export function MissionBoard({
     () => [...columns, rejected].flatMap((c) => byColumn.get(c.key) ?? []),
     [columns, rejected, byColumn],
   );
+  const rates = useMemo(() => boardPassRates(counts, steps), [counts, steps]);
+  // Publié seulement quand la liste des lignes change (jamais sur une simple
+  // nouvelle référence) : pas de rendu en boucle avec l'écran parent.
   const notify = useRef(onRowsChange);
   notify.current = onRowsChange;
+  const orderedKey = ordered.map((r) => `${r.id}:${r.stage}:${r.processStepId ?? ""}`).join(',');
+  const lastNotified = useRef<string | null>(null);
   useEffect(() => {
+    if (lastNotified.current === orderedKey) return;
+    lastNotified.current = orderedKey;
     notify.current(ordered);
-  }, [ordered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderedKey]);
 
   const open = (rowId: string) => {
     if (dragHappened.current) return;
@@ -344,7 +415,21 @@ export function MissionBoard({
 
   if (query.isError && !query.data) return <ListError onRetry={() => void query.refetch()} />;
 
-  if (query.isLoading) {
+  if (stepsFailed) {
+    return (
+      <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-3">
+        <p className="text-sm text-muted-foreground">Les étapes d'entretien n'ont pas pu être lues : le tableau par étape attend.</p>
+        {onRetrySteps && (
+          <Button variant="outline" size="xs" onClick={onRetrySteps}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+            Réessayer
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  if (query.isLoading || stepsLoading) {
     return (
       <div className="flex gap-2 overflow-x-auto pb-2" aria-busy="true" aria-label="Chargement du tableau par étape">
         {[0, 1, 2, 3, 4].map((i) => (
@@ -381,6 +466,7 @@ export function MissionBoard({
               activeRowId={activeRowId}
               canDrag={canDrag}
               onOpen={open}
+              rate={rates.get(column.key)}
             />
           ))}
           <Column

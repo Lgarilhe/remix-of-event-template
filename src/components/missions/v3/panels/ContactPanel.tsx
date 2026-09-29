@@ -16,6 +16,7 @@ import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts
 import { useOrganization } from '@/hooks/useOrganization';
 import { cn } from '@/lib/utils';
 import { useMissionV3 } from '../MissionV3Context';
+import { ArchivedNotice } from '../shell/ArchivedNotice';
 import type { ContactPanelProps } from '../types';
 
 type ContactTab = 'sequences' | 'invitations';
@@ -29,7 +30,7 @@ const TABS: readonly { key: ContactTab; label: string }[] = [
 const OUTREACH_PARAM = 'outreach';
 
 export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Element | null {
-  const { project } = useMissionV3();
+  const { project, isArchived } = useMissionV3();
   const { organizationId } = useOrganization();
   const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts();
   const navigate = useNavigate();
@@ -65,7 +66,13 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   };
 
   let body: JSX.Element;
-  if (accountsLoading) {
+  if (isArchived) {
+    body = (
+      <div className="px-4 py-4 sm:px-5">
+        <ArchivedNotice text="La prise de contact est fermée. Réactivez la mission pour gérer ses séquences et ses invitations." />
+      </div>
+    );
+  } else if (accountsLoading) {
     body = (
       <div className="space-y-3 px-4 py-4 sm:px-5" aria-busy="true" aria-label="Chargement des comptes LinkedIn">
         <Skeleton className="h-9 w-full" />
@@ -170,7 +177,15 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
             Pour contacter des candidats, cochez-les dans la liste, puis choisissez Contacter.
           </p>
         </div>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Fermer le panneau" title="Fermer (Échap)" onClick={onClose}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Fermer le panneau"
+          title="Fermer (Échap)"
+          className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0"
+          onClick={onClose}
+        >
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>

@@ -79,7 +79,15 @@ function PanelSection({ title, children }: { title: string; children: ReactNode 
 function CloseBar({ onClose }: { onClose: () => void }) {
   return (
     <div className="flex justify-end px-4 pt-3 sm:px-5">
-      <Button type="button" variant="ghost" size="icon-sm" aria-label="Fermer le panneau" title="Fermer (Échap)" onClick={onClose}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Fermer le panneau"
+        title="Fermer (Échap)"
+        className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0"
+        onClick={onClose}
+      >
         <X className="h-4 w-4" aria-hidden="true" />
       </Button>
     </div>
@@ -289,6 +297,7 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
               onDeleteReminder={detail.deleteReminder}
               onOpenAgent={() => openAgent()}
               candidateLinkedin={row.linkedinUrl}
+              hideNavigationShortcuts
             />
           </PanelSection>
         </div>

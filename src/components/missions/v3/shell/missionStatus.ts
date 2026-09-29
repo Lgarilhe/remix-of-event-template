@@ -32,6 +32,10 @@ const STATUS_TOAST: Readonly<Record<Exclude<MissionStatus, 'archived'>, string>>
   completed: 'Mission marquée comme pourvue.',
 };
 
+/** Raison d'un geste refusé quand le type de l'organisation n'est pas renseigné (conception 9, F-M9). */
+export const ORG_TYPE_MISSING_REASON =
+  "Le type de votre organisation n'est pas renseigné. Adressez-vous au propriétaire de l'organisation.";
+
 export function missionStatusLabel(status: string | null | undefined): string {
   return (MISSION_STATUS_ORDER as readonly string[]).includes(status ?? '')
     ? MISSION_STATUS_LABEL[status as MissionStatus]
@@ -61,6 +65,7 @@ export function useMissionStatusControl(): MissionStatusControl {
   let blockedReason: string | null = null;
   if (!orgLoading) {
     if (!isOwnMission) blockedReason = 'Cette mission appartient à une autre organisation.';
+    else if (!orgType) blockedReason = ORG_TYPE_MISSING_REASON;
     else if (!hasFeature(orgType, 'edit_brief')) {
       blockedReason = 'Votre formule ou votre rôle ne permet pas de changer le statut de cette mission.';
     } else if (isArchived) blockedReason = 'Mission archivée : réactivez-la pour changer son statut.';

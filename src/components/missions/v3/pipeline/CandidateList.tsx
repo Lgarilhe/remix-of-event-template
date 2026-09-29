@@ -1,8 +1,13 @@
 // Refonte mission, lot 2 : tableau des candidats de la nouvelle page mission
 // (liste en cours, liste filtrée par étape, section À trier). Pages de 50,
 // ordre figé pour la session (frozenOrder.ts), sélection partagée.
+//
+// Colonnes selon la place réelle du tableau (barre latérale et fiche ouvertes
+// comprises), pas selon la largeur de l'écran : le nom du candidat garde
+// toujours au moins 180 px. Par ordre de priorité : Étape, Prochaine action,
+// Depuis. Sans la colonne Étape, l'étape passe sous le nom.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,10 +21,45 @@ import {
   type MissionStepRef,
   type StageFilter,
 } from '../types';
-import { CandidateListRow } from './CandidateListRow';
+import { CandidateListRow, type CandidateListColumns } from './CandidateListRow';
 import { applyKnownStages, arrangeFrozen, frozenOrderKey, resetFrozenOrder, type ArrangedRows } from './frozenOrder';
 
 const NO_ROWS: ArrangedRows<MissionCandidateRow> = { rows: [], outOfFilter: new Set(), orderDiffers: false };
+
+/** Largeurs (px) : case 40, note 56, étape 160, prochaine action 240, depuis 64 ; nom 180 au moins. */
+const FIXED_WIDTH = 40 + 56;
+const NAME_MIN = 180;
+
+/** Colonnes affichables dans `width` px de tableau. */
+export function listColumnsFor(width: number): CandidateListColumns {
+  const stage = width >= FIXED_WIDTH + NAME_MIN + 160;
+  const next = stage && width >= FIXED_WIDTH + NAME_MIN + 160 + 240;
+  const since = next && width >= FIXED_WIDTH + NAME_MIN + 160 + 240 + 64;
+  return { stage, next, since };
+}
+
+function sameColumns(a: CandidateListColumns, b: CandidateListColumns): boolean {
+  return a.stage === b.stage && a.next === b.next && a.since === b.since;
+}
+
+/** Colonnes du tableau selon la largeur mesurée de son cadre (avant peinture, puis à chaque changement). */
+function useListColumns(ref: RefObject<HTMLElement>): CandidateListColumns {
+  const [columns, setColumns] = useState<CandidateListColumns>(() => listColumnsFor(0));
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const apply = () => {
+      const next = listColumnsFor(el.clientWidth);
+      setColumns((prev) => (sameColumns(prev, next) ? prev : next));
+    };
+    apply();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return columns;
+}
 
 /**
  * Lignes d'une liste (filtre null : en cours), étapes connues appliquées, dans
@@ -40,9 +80,9 @@ export function useFrozenCandidateRows(
 
   const arranged = useMemo(() => {
     if (!query.data) return NO_ROWS;
-    const fetched = applyKnownStages(query.data.pages.flat(), query.dataUpdatedAt);
+    const fetched = applyKnownStages(query.data.pages.flatMap((page) => page.rows), query.dataUpdatedAt);
     const current = filterRef.current;
-    return arrangeFrozen(key, fetched, (row) => rowMatchesFilter(row, current));
+    return arrangeFrozen(key, fetched, (row) => rowMatchesFilter(row, current), undefined, undefined, query.dataUpdatedAt);
     // knownVersion et epoch : relire après un geste et après « Actualiser l'ordre ».
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data, query.dataUpdatedAt, key, knownVersion, epoch]);
@@ -93,7 +133,7 @@ interface CandidateListProps {
   onOpen: (rowId: string) => void;
 }
 
-function LoadingRows() {
+function LoadingRows({ columns }: { columns: CandidateListColumns }) {
   return (
     <>
       {[0, 1, 2, 3, 4].map((i) => (
@@ -105,15 +145,21 @@ function LoadingRows() {
             <Skeleton className="h-4 w-40 max-w-full" />
             <Skeleton className="mt-1.5 h-3 w-56 max-w-full" />
           </td>
-          <td className="hidden py-3 pr-3 sm:table-cell">
-            <Skeleton className="h-4 w-24" />
-          </td>
-          <td className="hidden py-3 pr-3 md:table-cell">
-            <Skeleton className="h-4 w-40" />
-          </td>
-          <td className="hidden py-3 pr-3 sm:table-cell">
-            <Skeleton className="h-4 w-8" />
-          </td>
+          {columns.stage && (
+            <td className="py-3 pr-3">
+              <Skeleton className="h-4 w-24" />
+            </td>
+          )}
+          {columns.next && (
+            <td className="py-3 pr-3">
+              <Skeleton className="h-4 w-40" />
+            </td>
+          )}
+          {columns.since && (
+            <td className="py-3 pr-3">
+              <Skeleton className="h-4 w-8" />
+            </td>
+          )}
           <td className="py-3 pr-3">
             <Skeleton className="ml-auto h-5 w-7 rounded-full" />
           </td>
@@ -142,6 +188,8 @@ export function CandidateList({
   onToggleAll,
   onOpen,
 }: CandidateListProps) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const columns = useListColumns(frameRef);
   const selectedHere = rows.filter((row) => selectedIds.has(row.id)).length;
   const allState: boolean | 'indeterminate' =
     rows.length > 0 && selectedHere === rows.length ? true : selectedHere > 0 ? 'indeterminate' : false;
@@ -160,7 +208,7 @@ export function CandidateList({
           </button>
         </div>
       )}
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div ref={frameRef} className="overflow-x-auto rounded-xl border border-border bg-card">
         <table data-testid={testId} className="w-full table-fixed border-collapse text-sm" aria-busy={isLoading}>
           <caption className="sr-only">{caption}</caption>
           <thead>
@@ -170,19 +218,19 @@ export function CandidateList({
                   checked={allState}
                   disabled={rows.length === 0}
                   onCheckedChange={(value) => onToggleAll(rows, value === true)}
-                  aria-label="Tout sélectionner"
+                  aria-label={`Tout sélectionner : ${caption}`}
                 />
               </th>
-              <th scope="col" className="py-2 pr-3 font-medium">Candidat</th>
-              <th scope="col" className="hidden w-40 py-2 pr-3 font-medium sm:table-cell">Étape</th>
-              <th scope="col" className="hidden w-60 py-2 pr-3 font-medium md:table-cell">Prochaine action</th>
-              <th scope="col" className="hidden w-16 py-2 pr-3 font-medium sm:table-cell">Depuis</th>
+              <th scope="col" className="min-w-[180px] py-2 pr-3 font-medium">Candidat</th>
+              {columns.stage && <th scope="col" className="w-40 py-2 pr-3 font-medium">Étape</th>}
+              {columns.next && <th scope="col" className="w-60 py-2 pr-3 font-medium">Prochaine action</th>}
+              {columns.since && <th scope="col" className="w-16 py-2 pr-3 font-medium">Depuis</th>}
               <th scope="col" className="w-14 py-2 pr-3 text-right font-medium">Note</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && rows.length === 0 ? (
-              <LoadingRows />
+              <LoadingRows columns={columns} />
             ) : (
               rows.map((row) => (
                 <CandidateListRow
@@ -192,6 +240,7 @@ export function CandidateList({
                   selected={selectedIds.has(row.id)}
                   active={row.id === activeRowId}
                   dimmed={outOfFilter.has(row.id)}
+                  columns={columns}
                   now={now}
                   onToggle={onToggleRow}
                   onOpen={onOpen}

@@ -199,10 +199,22 @@ export interface StageMoveSummary {
 }
 
 /**
- * Résultat par candidat d'un appel setCandidateStages sur rowWriteIds(rows).
- * Un candidat compte comme changé si une de ses lignes a changé ; refusé si
- * une de ses lignes est refusée et aucune n'a changé ; non traité (callFailed)
- * s'il n'a aucune ligne dans la réponse.
+ * Résultat d'une ligne du groupe qui juge le candidat : celui de la ligne
+ * canonique (row.id, celle qu'on voit) quand la réponse la contient ; sinon,
+ * celui des autres lignes du groupe. Un doublon moins avancé qui avance seul ne
+ * change pas l'étape affichée du candidat.
+ */
+export function candidateResults<R extends { id: string }>(row: MissionRowRef, byId: ReadonlyMap<string, R>): R[] {
+  const own = byId.get(row.id);
+  if (own) return [own];
+  return (row.groupIds.length > 0 ? row.groupIds : [row.id]).map((id) => byId.get(id)).filter((r): r is R => !!r);
+}
+
+/**
+ * Résultat par candidat d'un appel setCandidateStages sur rowWriteIds(rows),
+ * jugé sur sa ligne canonique (candidateResults). Changé si elle a changé ;
+ * refusé si elle est refusée ; non traité (callFailed) s'il n'a aucune ligne
+ * dans la réponse.
  */
 export function summarizeStageMove(rows: readonly MissionRowRef[], outcome: StageBatchOutcome): StageMoveSummary {
   const byId = new Map(outcome.rows.map((r) => [r.id, r]));
@@ -218,13 +230,13 @@ export function summarizeStageMove(rows: readonly MissionRowRef[], outcome: Stag
   for (const row of rows) {
     if (seen.has(row.id)) continue;
     seen.add(row.id);
-    const results = (row.groupIds.length > 0 ? row.groupIds : [row.id]).map((id) => byId.get(id)).filter(Boolean);
+    const results = candidateResults(row, byId);
     if (results.length === 0) continue;
-    if (results.some((r) => r!.result === 'updated')) summary.changed += 1;
-    else if (results.some((r) => r!.result === 'error')) {
+    if (results.some((r) => r.result === 'updated')) summary.changed += 1;
+    else if (results.some((r) => r.result === 'error')) {
       summary.refused += 1;
-      summary.firstHint ??= results.find((r) => r!.result === 'error')!.hint;
-    } else if (results.every((r) => r!.result === 'unchanged')) summary.unchanged += 1;
+      summary.firstHint ??= results.find((r) => r.result === 'error')!.hint;
+    } else if (results.every((r) => r.result === 'unchanged')) summary.unchanged += 1;
     else summary.skipped += 1;
   }
   return summary;
@@ -311,25 +323,45 @@ export function provisionalNextAction(
   return { text: `Aucune action depuis ${days} j`, days, stale };
 }
 
-/**
- * Ordre de la liste, le même que celui demandé à la base : plus longtemps dans
- * l'étape d'abord (règle provisoire de l'urgence), puis la note, puis l'id.
- * Requête : order('stage_entered_at', asc, nulls last), order('score', desc,
- * nulls last), order('id', asc).
- */
-export function comparePipelineRows(
-  a: Pick<MissionCandidateRow, 'id' | 'stageEnteredAt' | 'score'>,
-  b: Pick<MissionCandidateRow, 'id' | 'stageEnteredAt' | 'score'>,
-): number {
+type OrderedRow = Pick<MissionCandidateRow, 'id' | 'stageEnteredAt' | 'score'> & Partial<Pick<MissionCandidateRow, 'stage'>>;
+
+function byAge(a: OrderedRow, b: OrderedRow): number {
   const ta = a.stageEnteredAt ? Date.parse(a.stageEnteredAt) : NaN;
   const tb = b.stageEnteredAt ? Date.parse(b.stageEnteredAt) : NaN;
   const na = Number.isNaN(ta);
   const nb = Number.isNaN(tb);
   if (na !== nb) return na ? 1 : -1;
   if (!na && ta !== tb) return ta - tb;
+  return 0;
+}
+
+function byScore(a: OrderedRow, b: OrderedRow): number {
   if ((a.score === null) !== (b.score === null)) return a.score === null ? 1 : -1;
   if (a.score !== null && b.score !== null && a.score !== b.score) return b.score - a.score;
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  return 0;
+}
+
+const byRowId = (a: OrderedRow, b: OrderedRow): number => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/**
+ * Ordre de la liste « en cours » et des étapes, le même que celui demandé à
+ * la base (useMissionCandidateRows) : les lignes qui ont une prochaine action
+ * d'abord (Embauché en dernier), puis plus longtemps dans l'étape (règle
+ * provisoire de l'urgence), puis la note, puis l'id.
+ */
+export function comparePipelineRows(a: OrderedRow, b: OrderedRow): number {
+  const ha = a.stage === 'hired';
+  const hb = b.stage === 'hired';
+  if (ha !== hb) return ha ? 1 : -1;
+  return byAge(a, b) || byScore(a, b) || byRowId(a, b);
+}
+
+/**
+ * Ordre de la section À trier (maquette 4.1) : la note d'abord, les
+ * meilleurs profils en tête, puis l'ancienneté, puis l'id.
+ */
+export function compareToSortRows(a: OrderedRow, b: OrderedRow): number {
+  return byScore(a, b) || byAge(a, b) || byRowId(a, b);
 }
 
 // ------------------------------------------------------- cibles d'étape
@@ -453,13 +485,25 @@ export function bilanRates(
   counts: Pick<MissionStageCounts, 'triagedByUser' | 'everRetained' | 'everContacted' | 'everReplied'>,
 ): BilanRate[] {
   const { triagedByUser, everRetained, everContacted, everReplied } = counts;
+  // Les profils triés par vous comptent les lignes dont la DERNIÈRE décision
+  // vient d'une personne : un envoi ou une réponse la réécrit. Plus de retenus
+  // que de profils triés : le rapport serait faux, seul le cumul est donné.
+  const retainedRate: BilanRate =
+    everRetained > triagedByUser
+      ? {
+          key: 'retained',
+          text: `${plural(everRetained, 'retenu')} au total`,
+          detail: 'Candidats retenus au total. Une partie a été contactée depuis : le rapport aux profils triés par vous ne peut pas être calculé.',
+          percent: null,
+        }
+      : {
+          key: 'retained',
+          text: `${plural(everRetained, 'retenu')} sur ${plural(triagedByUser, 'profil trié', 'profils triés')} par vous`,
+          detail: 'Candidats retenus au total, sur les profils que vous avez triés vous-même.',
+          percent: percentOf(everRetained, triagedByUser),
+        };
   return [
-    {
-      key: 'retained',
-      text: `${plural(everRetained, 'retenu')} sur ${plural(triagedByUser, 'profil trié', 'profils triés')} par vous`,
-      detail: 'Candidats retenus au total, sur les profils que vous avez triés vous-même.',
-      percent: percentOf(everRetained, triagedByUser),
-    },
+    retainedRate,
     {
       key: 'contacted',
       text: `${everContacted.toLocaleString('fr-FR')} ${everContacted > 1 ? 'ont été contactés' : 'a été contacté'} sur ${plural(everRetained, 'retenu')}`,

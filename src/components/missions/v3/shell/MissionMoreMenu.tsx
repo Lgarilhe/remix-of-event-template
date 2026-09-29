@@ -25,7 +25,13 @@ export function MissionMoreMenu() {
     <>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Plus d'actions" className="shrink-0">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Plus d'actions"
+            className="min-h-11 min-w-11 shrink-0 lg:min-h-0 lg:min-w-0"
+          >
             <MoreHorizontal aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
