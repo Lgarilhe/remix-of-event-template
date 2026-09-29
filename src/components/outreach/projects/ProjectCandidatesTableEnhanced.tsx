@@ -67,6 +67,16 @@ import {
 import { pausedLabel, pauseReasonHint } from '@/lib/sequenceLabels';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  setCandidateStages,
+  skippedStageMessage,
+  stageErrorMessage,
+  type GeneralStage,
+} from '@/lib/candidateStage';
+import { plural } from '@/lib/plural';
+
+// Étapes de départ de « Shortlister » : jamais un recul depuis Contacté ou plus loin.
+const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
 
 interface ProjectCandidate {
   id: string;
@@ -350,28 +360,43 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
     setSelectedIds(newSet);
   };
 
-  // Bulk actions
-  const bulkUpdateStatus = async (newStatus: string) => {
-    if (selectedIds.size === 0) return;
-    
-    try {
-      const ids = Array.from(selectedIds);
-      const { error } = await supabase
-        .from('job_candidate_status')
-        .update({ status: newStatus })
-        .in('id', ids);
+  // Lot 0b-4 (N4, N5) : l'étape passe par set_candidate_stages (origine user).
+  // « Shortlister » ne retient que les candidats à trier, retenus ou écartés :
+  // un candidat déjà contacté ou plus loin reste à son étape, et c'est annoncé.
+  const stageTargetOf = (newStatus: 'shortlisted' | 'dismissed') =>
+    newStatus === 'shortlisted'
+      ? { target: { stage: 'retained' as const }, from: RETAIN_FROM_STAGES }
+      : { target: { stage: 'rejected' as const }, from: undefined };
 
-      if (error) throw error;
-
+  const applyStageChange = async (ids: string[], newStatus: 'shortlisted' | 'dismissed'): Promise<boolean> => {
+    const { target, from } = stageTargetOf(newStatus);
+    const outcome = await setCandidateStages(ids, target, from);
+    const moved = outcome.updated + outcome.unchanged;
+    if (moved > 0 || outcome.skipped > 0) {
       queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-      setSelectedIds(new Set());
-      toast.success(`${ids.length} candidat(s) mis à jour`);
-    } catch (error) {
-      console.error('Error bulk updating:', error);
-      toast.error('Erreur lors de la mise à jour');
     }
+    const failure = outcome.error ?? outcome.rows.find(r => r.result === 'error') ?? null;
+    if (failure) {
+      console.error('Error updating candidate stage:', failure);
+      toast.error(stageErrorMessage(failure.hint));
+      return false;
+    }
+    const skipped = skippedStageMessage(outcome.skipped);
+    if (moved > 0) {
+      toast.success(`${plural(moved, 'candidat')} mis à jour.${skipped ? ` ${skipped}` : ''}`);
+    } else if (skipped) {
+      toast.info(skipped);
+    }
+    return true;
+  };
+
+  // Bulk actions
+  const bulkUpdateStatus = async (newStatus: 'shortlisted' | 'dismissed') => {
+    if (selectedIds.size === 0) return;
+    const ok = await applyStageChange(Array.from(selectedIds), newStatus);
+    if (ok) setSelectedIds(new Set());
   };
 
   const exportToCSV = () => {
@@ -401,23 +426,8 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
     toast.success(`${dataToExport.length} candidat(s) exporté(s)`);
   };
 
-  const updateCandidateStatus = async (candidateId: string, newStatus: string) => {
-    try {
-      const { error } = await supabase
-        .from('job_candidate_status')
-        .update({ status: newStatus })
-        .eq('id', candidateId);
-
-      if (error) throw error;
-
-      queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-      toast.success(`Statut mis à jour`);
-    } catch (error) {
-      console.error('Error updating status:', error);
-      toast.error('Erreur lors de la mise à jour');
-    }
+  const updateCandidateStatus = async (candidateId: string, newStatus: 'shortlisted' | 'dismissed') => {
+    await applyStageChange([candidateId], newStatus);
   };
 
   // Retirer un candidat de la mission met aussi en pause ses séquences de la

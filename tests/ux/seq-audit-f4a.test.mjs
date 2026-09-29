@@ -270,16 +270,29 @@ test('SEQ-047 — pendant l’inscription, la préparation ne se ferme pas et mo
 test('SEQ-048 — « Shortlister sans message » écrit organization_id et annonce le nombre réel', () => {
   const body = slice(previewModal, 'const handleShortlist = async () => {', 'const handleClose = () => {');
   assert.match(body, /organization_id: organizationId/);
-  assert.match(body, /\.upsert\(rows, \{ onConflict: 'job_id,candidate_id,created_by' \}\)\s*\.select\('candidate_id'\)/);
+  assert.match(body, /\.upsert\(rows, \{ onConflict: 'job_id,candidate_id,created_by' \}\)\s*\.select\('id'\)/);
   assert.match(body, /if \(writeError\) throw writeError;/);
-  assert.match(body, /saved = written\?\.length \?\? 0;/);
+  // Lot 0b-4 (N15) : le nombre annoncé est celui des lignes retenues par la base.
+  assert.match(body, /const saved = outcome\.updated \+ outcome\.unchanged;/);
   assert.match(body, /Ajout impossible : aucun candidat n'a été enregistré\./);
   assert.doesNotMatch(body, /00000000-0000-0000-0000-000000000000/);
   assert.doesNotMatch(body, /count\+\+/);
-  // Jamais de rétrogradation d'un candidat contacté ou qui a répondu.
-  assert.match(body, /r\.status === 'messaged' \|\| r\.status === 'replied'/);
+  // Jamais de rétrogradation d'un candidat contacté ou plus loin : plus de statut dans
+  // l'upsert, Retenu seulement depuis À trier, Retenu ou Écarté (set_candidate_stages,
+  // origine user), et les candidats laissés à leur étape sont annoncés.
+  const rowsPayload = slice(body, 'const missingProfiles = activeProfiles', '}));');
+  assert.doesNotMatch(rowsPayload, /\bstatus:/);
+  // Lignes réelles du candidat dans la mission : clé du Sourcing (job.id, « project:<uuid> »),
+  // lignes existantes sous l'une des deux formes reprises, jamais doublées.
+  assert.match(rowsPayload, /job_id: job\.id,/);
+  assert.match(body, /\.in\('job_id', jobIdForms\)/);
+  assert.match(rowsPayload, /activeProfiles\.filter\(profile => !existingCandidates\.has\(profile\.id\)\);\s*const rows = missingProfiles\.map\(profile => \(\{/);
+  assert.match(body, /const ids = \[\.\.\.\(existingRows \?\? \[\]\)\.map\(r => r\.id\), \.\.\.written\.map\(r => r\.id\)\];/);
+  assert.match(body, /setCandidateStages\(ids, \{ stage: 'retained' \}, RETAIN_FROM_STAGES\)/);
+  assert.match(previewModal, /const RETAIN_FROM_STAGES: GeneralStage\[\] = \['to_sort', 'retained', 'rejected'\];/);
+  assert.match(body, /skippedStageMessage\(outcome\.skipped\)/);
   // Sur échec total, la fenêtre reste ouverte : onSuccess n'est pas appelé.
-  const failure = slice(body, 'if (rows.length > 0 && saved === 0) {', '}');
+  const failure = slice(body, 'if (saved === 0 && outcome.skipped === 0) {', '}');
   assert.doesNotMatch(failure, /onSuccess/);
   assert.match(failure, /return;/);
 });

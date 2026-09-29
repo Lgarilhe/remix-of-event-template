@@ -3,6 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import {
+  setCandidateStage,
+  setCandidateStages,
+  stageErrorMessage,
+  type GeneralStage,
+} from '@/lib/candidateStage';
 
 export type CandidateStatus = 'discovered' | 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
 
@@ -49,6 +55,10 @@ const STATUS_UPDATE_CHUNK = 100;
 function isScoringStatus(status: string | null | undefined): boolean {
   return !status || status === 'scored' || SCORABLE_STATUSES.includes(status);
 }
+
+// Lot 0b-4 (N13, N15) : « Shortlister » ne retient que ces étapes de départ.
+// Un candidat contacté ou plus loin reste à son étape (résultat skipped).
+const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
 
 // Lève l'erreur : l'appelant n'annonce pas « scored » si la base ne l'a pas.
 async function markScored(ids: string[]): Promise<void> {
@@ -247,6 +257,9 @@ export function useJobCandidateStatus(jobId: string | null) {
   }, [fetchStatuses]);
 
   // Dismiss a candidate (mark as non-relevant for this job)
+  // Lot 0b-4 (N6) : l'upsert n'écrit que les données fournies, sans statut
+  // (la note et l'identité déjà en base sont gardées) ; l'écart passe ensuite
+  // par set_candidate_stage (origine user). Rend true si le candidat est écarté.
   const dismissCandidate = useCallback(async (
     candidateId: string,
     candidateData: {
@@ -259,214 +272,197 @@ export function useJobCandidateStatus(jobId: string | null) {
       scoringDetails?: any;
       linkedinProfileData?: any;
     }
-  ) => {
-    if (!jobId) return;
+  ): Promise<boolean> => {
+    if (!jobId) return false;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error('Vous devez être connecté');
-        return;
+        return false;
       }
 
-      const { error } = await supabase
+      const provided = {
+        ...(candidateData.profileUrl ? { linkedin_profile_url: candidateData.profileUrl } : {}),
+        ...(candidateData.name ? { candidate_name: candidateData.name } : {}),
+        ...(candidateData.headline ? { candidate_headline: candidateData.headline } : {}),
+        ...(candidateData.score != null ? { score: candidateData.score } : {}),
+        ...(candidateData.recommendation ? { recommendation: candidateData.recommendation } : {}),
+        ...(candidateData.skipReason ? { skip_reason: candidateData.skipReason } : {}),
+        ...(candidateData.scoringDetails ? { scoring_details: candidateData.scoringDetails } : {}),
+        ...(candidateData.linkedinProfileData ? { linkedin_profile_data: candidateData.linkedinProfileData } : {}),
+      };
+
+      const { data: saved, error } = await supabase
         .from('job_candidate_status')
         .upsert({
           job_id: jobId,
           candidate_id: candidateId,
-          linkedin_profile_url: candidateData.profileUrl || null,
-          candidate_name: candidateData.name || null,
-          candidate_headline: candidateData.headline || null,
-          status: 'dismissed',
-          score: candidateData.score || null,
-          recommendation: candidateData.recommendation || null,
-          skip_reason: candidateData.skipReason || null,
-          scoring_details: candidateData.scoringDetails || null,
-          linkedin_profile_data: candidateData.linkedinProfileData || null,
-           created_by: user.id,
-           organization_id: organizationId,
+          ...provided,
+          created_by: user.id,
+          organization_id: organizationId,
         }, {
           onConflict: 'job_id,candidate_id,created_by'
-        });
+        })
+        .select('id');
 
       if (error) throw error;
+      const rowId = saved?.[0]?.id;
+      if (!rowId) throw new Error('Ligne candidat introuvable après enregistrement');
 
-      // Update local state
+      const outcome = await setCandidateStage(rowId, { stage: 'rejected' });
+      if (!outcome.ok) {
+        console.error('Error dismissing candidate:', outcome);
+        toast.error(stageErrorMessage('hint' in outcome ? outcome.hint : null));
+        return false;
+      }
+
+      // Update local state (note et identité déjà connues gardées)
+      const now = new Date().toISOString();
       setDismissedIds(prev => new Set([...prev, candidateId]));
       setTreatedIds(prev => new Set([...prev, candidateId]));
       setStatuses(prev => {
         const next = new Map(prev);
+        const existing = next.get(candidateId);
         next.set(candidateId, {
-          id: '', // Will be set by DB
-          job_id: jobId,
-          candidate_id: candidateId,
-          linkedin_profile_url: candidateData.profileUrl || null,
-          candidate_name: candidateData.name || null,
-          candidate_headline: candidateData.headline || null,
+          ...(existing ?? {
+            job_id: jobId,
+            candidate_id: candidateId,
+            linkedin_profile_url: null,
+            candidate_name: null,
+            candidate_headline: null,
+            score: null,
+            recommendation: null,
+            skip_reason: null,
+            created_by: user.id,
+            created_at: now,
+          }),
+          ...provided,
+          id: rowId,
           status: 'dismissed',
-          score: candidateData.score || null,
-          recommendation: candidateData.recommendation || null,
-          skip_reason: candidateData.skipReason || null,
-          created_by: user.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+          updated_at: now,
+        } as JobCandidateStatus);
         return next;
       });
+      return true;
     } catch (error) {
       console.error('Error dismissing candidate:', error);
       toast.error('Erreur lors de l\'archivage');
+      return false;
     }
-  }, [jobId]);
+  }, [jobId, organizationId]);
 
-  // Batch dismiss multiple candidates (e.g., all with score < 40)
+  // Archivage en lot (Sourcing). Lot 0b-4 (N7) : upsert de l'identité seule,
+  // sans statut ni note (une note déjà en base est gardée), puis écart par
+  // set_candidate_stages (origine user, lots de 200). Rend le nombre de
+  // candidats écartés et de candidats non écartés ; les erreurs sont annoncées ici.
   const batchDismiss = useCallback(async (
     candidates: Array<{
       id: string;
       name?: string;
       headline?: string;
       profileUrl?: string;
-      score?: number;
-      recommendation?: string;
-      skipReason?: string;
-      scoringDetails?: any;
-      linkedinProfileData?: any;
     }>
-  ) => {
-    if (!jobId || candidates.length === 0) return;
+  ): Promise<{ dismissed: number; failed: number }> => {
+    if (!jobId || candidates.length === 0) return { dismissed: 0, failed: 0 };
+
+    // Dedupe by candidate_id to avoid Postgres "cannot affect row a second time" error
+    const uniqueCandidates = Array.from(
+      new Map(candidates.map(c => [c.id, c])).values()
+    );
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error('Vous devez être connecté');
-        return;
+        return { dismissed: 0, failed: uniqueCandidates.length };
       }
 
-      // Dedupe by candidate_id to avoid Postgres "cannot affect row a second time" error
-      const uniqueCandidates = Array.from(
-        new Map(candidates.map(c => [c.id, c])).values()
-      );
+      // Mêmes colonnes pour toutes les lignes : dans un upsert groupé, une
+      // colonne absente d'une ligne serait mise à NULL.
+      const records = uniqueCandidates.map(c => {
+        const existing = statuses.get(c.id);
+        return {
+          job_id: jobId,
+          candidate_id: c.id,
+          linkedin_profile_url: c.profileUrl || existing?.linkedin_profile_url || null,
+          candidate_name: c.name || existing?.candidate_name || null,
+          candidate_headline: c.headline || existing?.candidate_headline || null,
+          created_by: user.id,
+          organization_id: organizationId,
+        };
+      });
 
-      const records = uniqueCandidates.map(c => ({
-        job_id: jobId,
-        candidate_id: c.id,
-        linkedin_profile_url: c.profileUrl || null,
-        candidate_name: c.name || null,
-        candidate_headline: c.headline || null,
-        status: 'dismissed',
-        score: c.score || null,
-        recommendation: c.recommendation || null,
-        skip_reason: c.skipReason || null,
-        scoring_details: c.scoringDetails || null,
-        linkedin_profile_data: c.linkedinProfileData || null,
-        created_by: user.id,
-        organization_id: organizationId,
-      }));
-
-      const { error } = await supabase
+      const { data: saved, error } = await supabase
         .from('job_candidate_status')
         .upsert(records, {
           onConflict: 'job_id,candidate_id,created_by'
-        });
+        })
+        .select('id, candidate_id');
 
       if (error) throw error;
 
-      // Update local state
-      const newDismissed = new Set(dismissedIds);
-      const newTreated = new Set(treatedIds);
-      setStatuses(prev => {
-        const next = new Map(prev);
-        uniqueCandidates.forEach(c => {
-          newDismissed.add(c.id);
-          newTreated.add(c.id);
-          next.set(c.id, {
-            id: '',
-            job_id: jobId,
-            candidate_id: c.id,
-            linkedin_profile_url: c.profileUrl || null,
-            candidate_name: c.name || null,
-            candidate_headline: c.headline || null,
-            status: 'dismissed',
-            score: c.score || null,
-            recommendation: c.recommendation || null,
-            skip_reason: c.skipReason || null,
-            created_by: user.id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-        });
-        return next;
-      });
-      setDismissedIds(newDismissed);
-      setTreatedIds(newTreated);
+      const candidateByRow = new Map((saved ?? []).map(row => [row.id, row.candidate_id]));
+      const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'rejected' });
 
-      // Note: Toast is handled by the caller (LinkedInSearch) to provide better context
+      const dismissedNow = outcome.rows
+        .filter(row => row.result === 'updated' || row.result === 'unchanged')
+        .map(row => ({ rowId: row.id, candidateId: candidateByRow.get(row.id) }))
+        .filter((r): r is { rowId: string; candidateId: string } => !!r.candidateId);
+
+      // Update local state (note et identité déjà connues gardées)
+      if (dismissedNow.length > 0) {
+        const now = new Date().toISOString();
+        const byId = new Map(uniqueCandidates.map(c => [c.id, c]));
+        setStatuses(prev => {
+          const next = new Map(prev);
+          for (const { rowId, candidateId } of dismissedNow) {
+            const existing = next.get(candidateId);
+            const c = byId.get(candidateId);
+            next.set(candidateId, {
+              ...(existing ?? {
+                job_id: jobId,
+                candidate_id: candidateId,
+                score: null,
+                recommendation: null,
+                skip_reason: null,
+                created_by: user.id,
+                created_at: now,
+              }),
+              linkedin_profile_url: c?.profileUrl || existing?.linkedin_profile_url || null,
+              candidate_name: c?.name || existing?.candidate_name || null,
+              candidate_headline: c?.headline || existing?.candidate_headline || null,
+              id: rowId,
+              status: 'dismissed',
+              updated_at: now,
+            } as JobCandidateStatus);
+          }
+          return next;
+        });
+        setDismissedIds(prev => new Set([...prev, ...dismissedNow.map(r => r.candidateId)]));
+        setTreatedIds(prev => new Set([...prev, ...dismissedNow.map(r => r.candidateId)]));
+      }
+
+      const failed = uniqueCandidates.length - dismissedNow.length;
+      const failure = outcome.error ?? outcome.rows.find(row => row.result === 'error') ?? null;
+      if (failure) {
+        console.error('Error batch dismissing candidates:', failure);
+        toast.error(stageErrorMessage(failure.hint));
+      } else if (failed > 0) {
+        toast.error('Erreur lors de l\'archivage en lot');
+      }
+      // Note: le succès est annoncé par l'appelant (LinkedInSearch)
+      return { dismissed: dismissedNow.length, failed };
     } catch (error) {
       console.error('Error batch dismissing candidates:', error);
       toast.error('Erreur lors de l\'archivage en lot');
+      return { dismissed: 0, failed: uniqueCandidates.length };
     }
-  }, [jobId, dismissedIds, treatedIds]);
+  }, [jobId, organizationId, statuses]);
 
-  // Update status (messaged, replied, shortlisted)
-  const updateStatus = useCallback(async (
-    candidateId: string,
-    status: CandidateStatus
-  ) => {
-    if (!jobId) return;
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const existing = statuses.get(candidateId);
-
-      const { error } = await supabase
-        .from('job_candidate_status')
-        .upsert({
-          job_id: jobId,
-          candidate_id: candidateId,
-          status,
-           created_by: user.id,
-           organization_id: organizationId,
-          ...(existing ? {
-            linkedin_profile_url: existing.linkedin_profile_url,
-            candidate_name: existing.candidate_name,
-            candidate_headline: existing.candidate_headline,
-            score: existing.score,
-            recommendation: existing.recommendation,
-          } : {}),
-        }, {
-          onConflict: 'job_id,candidate_id,created_by'
-        });
-
-      if (error) throw error;
-
-      // Update local state
-      setTreatedIds(prev => new Set([...prev, candidateId]));
-      if (status === 'dismissed') {
-        setDismissedIds(prev => new Set([...prev, candidateId]));
-      } else {
-        setDismissedIds(prev => {
-          const next = new Set(prev);
-          next.delete(candidateId);
-          return next;
-        });
-      }
-
-      setStatuses(prev => {
-        const next = new Map(prev);
-        const current = next.get(candidateId);
-        if (current) {
-          next.set(candidateId, { ...current, status, updated_at: new Date().toISOString() });
-        }
-        return next;
-      });
-    } catch (error) {
-      console.error('Error updating candidate status:', error);
-    }
-  }, [jobId, statuses]);
-
-  // Restore a dismissed candidate → set back to 'discovered' (preserves linkedin_profile_data)
+  // Restore a dismissed candidate → back to « À trier » (preserves linkedin_profile_data).
+  // Lot 0b-4 (N9) : la note est effacée en écriture directe (l'étape ne change
+  // pas), puis l'étape passe par set_candidate_stage (origine user).
   const restoreCandidate = useCallback(async (candidateId: string) => {
     if (!jobId) return;
 
@@ -474,14 +470,24 @@ export function useJobCandidateStatus(jobId: string | null) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { error } = await supabase
+      const { data: rows, error } = await supabase
         .from('job_candidate_status')
-        .update({ status: 'discovered', score: null, recommendation: null, skip_reason: null })
+        .update({ score: null, recommendation: null, skip_reason: null })
         .eq('job_id', jobId)
         .eq('candidate_id', candidateId)
-        .eq('created_by', user.id);
+        .eq('created_by', user.id)
+        .select('id');
 
       if (error) throw error;
+      const rowId = rows?.[0]?.id;
+      if (!rowId) throw new Error('Ligne candidat introuvable');
+
+      const outcome = await setCandidateStage(rowId, { stage: 'to_sort' });
+      if (!outcome.ok) {
+        console.error('Error restoring candidate:', outcome);
+        toast.error(stageErrorMessage('hint' in outcome ? outcome.hint : null));
+        return;
+      }
 
       // Update local state
       setDismissedIds(prev => {
@@ -780,10 +786,15 @@ export function useJobCandidateStatus(jobId: string | null) {
    * shortlist. `batchDiscover` ignorait en plus les profils déjà connus et
    * avalait ses erreurs de persistance : un échec base ressortait en succès.
    *
-   * Les trois garanties tenues ici :
-   *  - le statut écrit est bien `shortlisted`, y compris pour un profil déjà noté ;
+   * Lot 0b-4 (N13) : l'upsert n'écrit plus le statut. Il enregistre les
+   * données du profil, puis set_candidate_stages (origine user) retient les
+   * candidats à trier, retenus ou écartés. Un candidat déjà contacté ou plus
+   * loin reste à son étape (compté dans `skipped`).
+   *
+   * Les garanties tenues ici :
+   *  - l'étape écrite est bien Retenu (statut `shortlisted`), y compris pour un profil déjà noté ;
    *  - l'historique utile du candidat est conservé (score, recommandation, identité) ;
-   *  - le bilan retourné distingue ajoutés, déjà en shortlist, et échec.
+   *  - le bilan retourné distingue ajoutés, déjà en shortlist, laissés à leur étape, et échec.
    *    L'appelant ne doit afficher un succès que sur la foi de ce bilan.
    */
   const batchShortlist = useCallback(async (
@@ -794,12 +805,12 @@ export function useJobCandidateStatus(jobId: string | null) {
       profileUrl?: string;
       linkedinProfileData?: Record<string, unknown> | null;
     }>
-  ): Promise<{ added: number; already: number; failed: number; error?: string }> => {
-    if (!jobId) return { added: 0, already: 0, failed: profiles.length, error: 'Aucune mission active' };
-    if (profiles.length === 0) return { added: 0, already: 0, failed: 0 };
+  ): Promise<{ added: number; already: number; skipped: number; failed: number; error?: string }> => {
+    if (!jobId) return { added: 0, already: 0, skipped: 0, failed: profiles.length, error: 'Aucune mission active' };
+    if (profiles.length === 0) return { added: 0, already: 0, skipped: 0, failed: 0 };
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { added: 0, already: 0, failed: profiles.length, error: 'Session expirée' };
+    if (!user) return { added: 0, already: 0, skipped: 0, failed: profiles.length, error: 'Session expirée' };
 
     // Dédoublonnage par candidat
     const unique = Array.from(new Map(profiles.map(p => [p.id, p])).values());
@@ -809,9 +820,12 @@ export function useJobCandidateStatus(jobId: string | null) {
     const toWrite = unique.filter(p => statuses.get(p.id)?.status !== 'shortlisted');
 
     if (toWrite.length === 0) {
-      return { added: 0, already: already.length, failed: 0 };
+      return { added: 0, already: already.length, skipped: 0, failed: 0 };
     }
 
+    // Données du profil, sans statut. Mêmes colonnes pour toutes les lignes
+    // (upsert groupé) ; la note n'est reprise que depuis l'état local, et
+    // jamais effacée : null seulement pour une ligne qui n'en a pas.
     const records = toWrite.map(p => {
       const existing = statuses.get(p.id);
       return {
@@ -823,55 +837,83 @@ export function useJobCandidateStatus(jobId: string | null) {
         candidate_headline: existing?.candidate_headline || p.headline || null,
         linkedin_profile_url: existing?.linkedin_profile_url || p.profileUrl || null,
         linkedin_profile_data: existing?.linkedin_profile_data || p.linkedinProfileData || null,
-        // L'historique de notation survit à la mise en shortlist.
-        score: existing?.score ?? null,
-        recommendation: existing?.recommendation ?? null,
-        status: 'shortlisted' as const,
         created_by: user.id,
         organization_id: organizationId,
       };
     });
 
-    const { error } = await supabase
+    const { data: saved, error } = await supabase
       .from('job_candidate_status')
-      .upsert(records, { onConflict: 'job_id,candidate_id,created_by' });
+      .upsert(records, { onConflict: 'job_id,candidate_id,created_by' })
+      .select('id, candidate_id');
 
     if (error) {
       // Pas de `return` silencieux : l'appelant doit pouvoir ne rien confirmer.
       console.error('[batchShortlist] échec de persistance:', error);
-      return { added: 0, already: already.length, failed: toWrite.length, error: error.message };
+      return { added: 0, already: already.length, skipped: 0, failed: toWrite.length, error: error.message };
     }
 
-    // État local : le statut change pour tout le monde, y compris les déjà connus.
-    setStatuses(prev => {
-      const next = new Map(prev);
-      for (const p of toWrite) {
-        const existing = next.get(p.id);
-        next.set(p.id, {
-          ...(existing ?? {
-            id: '',
-            job_id: jobId,
-            candidate_id: p.id,
-            linkedin_profile_url: p.profileUrl || null,
-            candidate_name: p.name || null,
-            candidate_headline: p.headline || null,
-            score: null,
-            recommendation: null,
-            skip_reason: null,
-            created_by: user.id,
-            created_at: new Date().toISOString(),
-            linkedin_profile_data: p.linkedinProfileData || null,
-          }),
-          status: 'shortlisted',
-          updated_at: new Date().toISOString(),
-        } as JobCandidateStatus);
-      }
-      return next;
-    });
-    setTreatedIds(prev => new Set([...prev, ...toWrite.map(p => p.id)]));
+    const candidateByRow = new Map((saved ?? []).map(row => [row.id, row.candidate_id]));
+    const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'retained' }, RETAIN_FROM_STAGES);
 
-    return { added: toWrite.length, already: already.length, failed: 0 };
-  }, [jobId, statuses, organizationId, setStatuses, setTreatedIds]);
+    const retained = new Set<string>();
+    let added = 0;
+    let alreadyInDb = 0;
+    for (const row of outcome.rows) {
+      const candidateId = candidateByRow.get(row.id);
+      if (!candidateId) continue;
+      if (row.result === 'updated') { retained.add(candidateId); added += 1; }
+      else if (row.result === 'unchanged') { retained.add(candidateId); alreadyInDb += 1; }
+    }
+    const failed = toWrite.length - retained.size - outcome.skipped;
+
+    // État local : Retenu pour les lignes retenues ; les autres gardent leur statut.
+    if (retained.size > 0) {
+      setStatuses(prev => {
+        const next = new Map(prev);
+        for (const p of toWrite) {
+          if (!retained.has(p.id)) continue;
+          const existing = next.get(p.id);
+          next.set(p.id, {
+            ...(existing ?? {
+              id: '',
+              job_id: jobId,
+              candidate_id: p.id,
+              linkedin_profile_url: p.profileUrl || null,
+              candidate_name: p.name || null,
+              candidate_headline: p.headline || null,
+              score: null,
+              recommendation: null,
+              skip_reason: null,
+              created_by: user.id,
+              created_at: new Date().toISOString(),
+              linkedin_profile_data: p.linkedinProfileData || null,
+            }),
+            status: 'shortlisted',
+            updated_at: new Date().toISOString(),
+          } as JobCandidateStatus);
+        }
+        return next;
+      });
+      setTreatedIds(prev => new Set([...prev, ...retained]));
+      setDismissedIds(prev => {
+        const next = new Set(prev);
+        for (const id of retained) next.delete(id);
+        return next;
+      });
+    }
+
+    const failure = outcome.error ?? outcome.rows.find(row => row.result === 'error') ?? null;
+    if (failure) console.error('[batchShortlist] échec du changement d\'étape:', failure);
+
+    return {
+      added,
+      already: already.length + alreadyInDb,
+      skipped: outcome.skipped,
+      failed: Math.max(0, failed),
+      ...(failure ? { error: stageErrorMessage(failure.hint) } : {}),
+    };
+  }, [jobId, statuses, organizationId, setStatuses, setTreatedIds, setDismissedIds]);
 
   return {
     statuses,
@@ -884,7 +926,6 @@ export function useJobCandidateStatus(jobId: string | null) {
     batchShortlist,
     saveScore,
     batchSaveScores,
-    updateStatus,
     restoreCandidate,
     isDismissed,
     isTreated: useCallback((candidateId: string) => treatedIds.has(candidateId), [treatedIds]),

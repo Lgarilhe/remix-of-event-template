@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -15,7 +15,7 @@ import { TutorialVideoDialog } from '@/components/help/TutorialVideoDialog';
 import { PIPELINE_TUTORIAL } from '@/components/help/tutorials';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
-import { supabase } from '@/integrations/supabase/client';
+import { missionColumnToStage, setCandidateStage, stageErrorMessage, type StageTarget } from '@/lib/candidateStage';
 import { List, LayoutGrid, Clock, MessageSquare, ChevronRight, Linkedin, Users, Send, ListChecks, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -33,6 +33,8 @@ interface ProjectCandidate {
   linkedin_profile_url: string | null;
   status: string;
   pipeline_stage: string | null;
+  general_stage?: string | null;
+  process_step_id?: string | null;
   score: number | null;
   recommendation: string | null;
   skip_reason: string | null;
@@ -113,6 +115,25 @@ const columnKeyOf = (c: ProjectCandidate): string => {
   if (c.pipeline_stage === REPLIED_KEY) return REPLIED_KEY;
   if (REPLY_STATUSES.has(c.status) && (!c.pipeline_stage || REPLY_PROMOTABLE_STAGES.has(c.pipeline_stage))) return REPLIED_KEY;
   return c.pipeline_stage || c.status;
+};
+
+// Lot 0b-4 : colonne d'après l'étape générale (lue par select('*')) quand elle
+// est connue. set_candidate_stage garde un ancien libellé équivalent (« Gagné »,
+// « Contacté »...) : ranger par ce libellé laisserait la carte hors de sa colonne.
+// Une clé absente des colonnes affichées se range dans la première.
+const GENERAL_STAGE_COLUMN: Record<string, string> = {
+  retained: 'shortlisted',
+  contacted: 'messaged',
+  replied: REPLIED_KEY,
+  hired: 'hired',
+  rejected: 'dismissed',
+};
+const stageColumnOf = (c: ProjectCandidate): string => {
+  const g = c.general_stage;
+  if (!g) return columnKeyOf(c);
+  if (g === 'to_sort') return '';
+  if (g === 'interviewing') return c.process_step_id || columnKeyOf(c);
+  return GENERAL_STAGE_COLUMN[g] ?? columnKeyOf(c);
 };
 
 const stageAgeDays = (iso: string | null) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : 0);
@@ -357,29 +378,37 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const updateStage = async (candidateId: string, newStage: string) => {
-    // Map back to status for backward compatibility
-    const statusMap: Record<string, string> = {
-      sourced: 'untreated', untreated: 'untreated',
-      messaged: 'messaged',
-      [REPLIED_KEY]: 'replied',
-      dismissed: 'dismissed',
-      hired: 'shortlisted',
-    };
-    const newStatus = statusMap[newStage] || 'shortlisted';
+  const stepIds = useMemo(() => new Set(steps.map(s => s.id)), [steps]);
 
-    const { error } = await supabase
-      .from('job_candidate_status')
-      .update({ status: newStatus, pipeline_stage: newStage })
-      .eq('id', candidateId);
-    if (error) {
-      toast.error('Erreur lors de la mise à jour');
-      return;
+  // Lot 0b-4 : l'étape s'écrit par set_candidate_stage (origine user), jamais
+  // par une écriture directe de status ou pipeline_stage. Renvoie true si
+  // l'étape est enregistrée ; un refus est annoncé par son indice.
+  const updateStage = async (candidateId: string, columnKey: string): Promise<boolean> => {
+    let target: StageTarget;
+    try {
+      target = missionColumnToStage(columnKey, stepIds);
+    } catch {
+      toast.error(stageErrorMessage());
+      return false;
+    }
+    const outcome = await setCandidateStage(candidateId, target);
+    if (outcome.ok === false) {
+      toast.error(stageErrorMessage(outcome.hint));
+      return false;
     }
     queryClient.invalidateQueries({ queryKey: ['project-candidates', project.id] });
     queryClient.invalidateQueries({ queryKey: ['project-stats', project.id] });
     queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+    return true;
   };
+
+  // Colonne où la carte est affichée (repli sur la première colonne compris) :
+  // la même pour le rangement, le glisser et la fiche.
+  const displayColumnOf = useCallback((c: ProjectCandidate): string => {
+    const key = stageColumnOf(c);
+    if (key === 'dismissed' || columns.some(col => col.key === key)) return key;
+    return columns[0]?.key || 'untreated';
+  }, [columns]);
 
   // Group candidates by column
   const candidatesByColumn = useMemo(() => {
@@ -388,20 +417,12 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     grouped['dismissed'] = [];
 
     (candidates as ProjectCandidate[]).forEach(c => {
-      const stage = columnKeyOf(c);
-      if (stage === 'dismissed') {
-        grouped['dismissed'].push(c);
-      } else if (grouped[stage]) {
-        grouped[stage].push(c);
-      } else {
-        // Fallback: map old statuses to first column
-        const firstKey = columns[0]?.key || 'untreated';
-        if (!grouped[firstKey]) grouped[firstKey] = [];
-        grouped[firstKey].push(c);
-      }
+      const key = displayColumnOf(c);
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(c);
     });
     return grouped;
-  }, [candidates, columns]);
+  }, [candidates, columns, displayColumnOf]);
 
   // Funnel « au moins arrivé à cette étape » : cumul depuis la droite.
   // La colonne Écarté est hors funnel (transversale).
@@ -433,7 +454,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     setDraggedCandidate(c || null);
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     // Relâche la garde après le click fantôme émis à la fin du drag
     setTimeout(() => { dragHappenedRef.current = false; }, 0);
     setDraggedCandidate(null);
@@ -448,10 +469,11 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     if (!targetColumn) return;
 
     const candidate = (candidates as ProjectCandidate[]).find(c => c.id === candidateId);
-    if (candidate && columnKeyOf(candidate) === targetColumn) return;
+    if (candidate && displayColumnOf(candidate) === targetColumn) return;
 
-    updateStage(candidateId, targetColumn);
-    const colLabel = columns.find(c => c.key === targetColumn)?.label || targetColumn;
+    // Toast après l'enregistrement : jamais « déplacé » sur un déplacement refusé.
+    if (!(await updateStage(candidateId, targetColumn))) return;
+    const colLabel = [...columns, DISMISSED_COLUMN].find(c => c.key === targetColumn)?.label || targetColumn;
     const who = candidate?.candidate_name ?? 'Candidat';
     toast.success(targetColumn === 'hired' ? `${who} embauché !` : `${who} déplacé vers « ${colLabel} »`);
   };
@@ -656,7 +678,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             linkedin: detailCandidate.linkedin_profile_url,
             headline: detailCandidate.candidate_headline,
             expertise: [],
-            stage: columnKeyOf(detailCandidate),
+            stage: displayColumnOf(detailCandidate),
             entity: null,
             source: 'local',
             sourceId: detailCandidate.id,
@@ -671,7 +693,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           } as ATSCandidate}
           onClose={() => setDetailCandidate(null)}
           onStageChange={(rowId, newStage) => {
-            updateStage(rowId, newStage);
+            void updateStage(rowId, newStage);
             setDetailCandidate(null);
           }}
           onRefresh={() => {

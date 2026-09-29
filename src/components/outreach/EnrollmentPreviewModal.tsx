@@ -72,6 +72,10 @@ import {
 } from './enrollment-preview/enrollmentHelpers';
 import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
 import { plural } from '@/lib/plural';
+import { setCandidateStages, skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
+
+// Étapes de départ de « Présélectionner sans message » : jamais un recul depuis Contacté ou plus loin.
+const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
 
 // ── Types ──
 
@@ -772,9 +776,11 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   };
 
   // ── Shortlist without message ──
-  // Une seule écriture groupée, relue (.select) : le nombre annoncé est celui
-  // des lignes réellement enregistrées. Un candidat déjà contacté ou qui a
-  // répondu garde son statut (jamais rétrogradé en « shortlisté »).
+  // Lot 0b-4 (N15) : une écriture groupée des données du profil, sans statut,
+  // relue (.select), puis set_candidate_stages (origine user) retient les
+  // candidats à trier, retenus ou écartés. Le nombre annoncé est celui des
+  // lignes réellement retenues. Un candidat déjà contacté ou plus loin garde
+  // son étape (jamais rétrogradé), et c'est annoncé.
   const handleShortlist = async () => {
     if (!job?.id) {
       toast.error('Aucune mission associée à ces candidats', {
@@ -798,53 +804,55 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       }
       const userId = user.id;
 
-      // Idem normalisation : "project:{uuid}" → uuid
-      const normalizedJobId = job.id.startsWith('project:')
-        ? job.id.slice('project:'.length)
-        : job.id;
-
+      // Clé des lignes du Sourcing de mission : job.id tel quel (« project:<uuid> »
+      // depuis une mission), comme useJobCandidateStatus. Une ligne déjà présente
+      // sous l'une des deux formes (avec ou sans préfixe) est reprise, jamais
+      // doublée : set_candidate_stages porte sur les lignes réelles du candidat.
+      const jobIdForms = job.id.startsWith('project:')
+        ? [job.id, job.id.slice('project:'.length)]
+        : [job.id];
       const { data: existingRows, error: readError } = await supabase
         .from('job_candidate_status')
-        .select('candidate_id, status')
-        .eq('job_id', normalizedJobId)
+        .select('id, candidate_id')
+        .in('job_id', jobIdForms)
         .eq('created_by', userId)
         .in('candidate_id', activeProfiles.map(p => p.id));
       if (readError) throw readError;
-      const alreadyContacted = new Set(
-        (existingRows ?? [])
-          .filter(r => r.status === 'messaged' || r.status === 'replied')
-          .map(r => r.candidate_id),
-      );
+      const existingCandidates = new Set((existingRows ?? []).map(r => r.candidate_id));
 
-      const rows = activeProfiles
-        .filter(profile => !alreadyContacted.has(profile.id))
-        .map(profile => ({
-          job_id: normalizedJobId,
-          candidate_id: profile.id,
-          candidate_name: profile.name || null,
-          candidate_headline: profile.headline || null,
-          linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
-          status: 'shortlisted',
-          created_by: userId,
-          organization_id: organizationId, // requis par RLS org_members_all
-        }));
+      const missingProfiles = activeProfiles.filter(profile => !existingCandidates.has(profile.id));
+      const rows = missingProfiles.map(profile => ({
+        job_id: job.id,
+        candidate_id: profile.id,
+        candidate_name: profile.name || null,
+        candidate_headline: profile.headline || null,
+        linkedin_profile_url: profile.profile_url || profile.public_profile_url || null,
+        created_by: userId,
+        organization_id: organizationId, // requis par RLS org_members_all
+      }));
 
-      let saved = 0;
+      let written: { id: string }[] = [];
       if (rows.length > 0) {
-        const { data: written, error: writeError } = await supabase
+        const { data, error: writeError } = await supabase
           .from('job_candidate_status')
           .upsert(rows, { onConflict: 'job_id,candidate_id,created_by' })
-          .select('candidate_id');
+          .select('id');
         if (writeError) throw writeError;
-        saved = written?.length ?? 0;
+        written = data ?? [];
       }
 
-      if (rows.length > 0 && saved === 0) {
-        // Rien d'enregistré (refus silencieux) : la fenêtre reste ouverte.
-        toast.error("Ajout impossible : aucun candidat n'a été enregistré.");
+      const ids = [...(existingRows ?? []).map(r => r.id), ...written.map(r => r.id)];
+      const outcome = await setCandidateStages(ids, { stage: 'retained' }, RETAIN_FROM_STAGES);
+      const saved = outcome.updated + outcome.unchanged;
+      const failure = outcome.error ?? outcome.rows.find(r => r.result === 'error') ?? null;
+      if (failure) console.error('[EnrollmentPreviewModal] Shortlist stage failed:', failure);
+
+      if (saved === 0 && outcome.skipped === 0) {
+        // Rien d'enregistré (refus silencieux ou refus de l'étape) : la fenêtre reste ouverte.
+        toast.error(failure ? stageErrorMessage(failure.hint) : "Ajout impossible : aucun candidat n'a été enregistré.");
         return;
       }
-      const failed = rows.length - saved;
+      const failed = (existingRows ?? []).length + rows.length - saved - outcome.skipped;
       if (saved > 0) {
         const added = plural(saved, 'candidat présélectionné', 'candidats présélectionnés');
         if (failed > 0) {
@@ -855,9 +863,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
           toast.success(added);
         }
       }
-      if (alreadyContacted.size > 0) {
-        toast.info(`${plural(alreadyContacted.size, 'candidat déjà contacté', 'candidats déjà contactés')} : statut conservé`);
-      }
+      const skipped = skippedStageMessage(outcome.skipped);
+      if (skipped) toast.info(skipped);
       onSuccess();
     } catch (err) {
       console.error('[EnrollmentPreviewModal] Shortlist failed:', err);

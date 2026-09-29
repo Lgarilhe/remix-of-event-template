@@ -1,5 +1,7 @@
 // @ts-nocheck serve import removed
-// add-to-shortlist ne pose plus que le statut Konekt du candidat (job_candidate_status).
+// add-to-shortlist : « Retenir » un candidat dans une mission (refonte mission,
+// lot 0b-4). L'étape passe par apply_mission_candidate_stage (origine 'user') :
+// plus aucune écriture directe de status ni de pipeline_stage.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 
 const corsHeaders = {
@@ -17,163 +19,26 @@ interface AddToShortlistData {
   linkedinUrl?: string;
   name?: string;
   headline?: string;
-  etape?: string;             // Pressenti, Contacté, etc.
+  etape?: string;             // « Contacté » : ignoré depuis le lot 0b-4
 }
 
-// ── job_candidate_status sync ───────────────────────────────────────
-// Écrit le statut Konekt. Historiquement c'était un UPDATE par égalité
-// stricte d'URL qui ne matchait jamais (formats d'URL
-// différents entre le stockage et le payload) → 0 ligne 'shortlisted' en base
-// et la pill Shortlist du sourcing restait vide.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Stages qu'un simple « message envoyé » (etape Contacté) a le droit d'écraser.
-// Tout autre stage (Répondu, Pré-qualif, CV envoyé, ITW en cours, Offre, Gagné,
-// Perdu, ou valeur inconnue type « Qualification ») est considéré plus
-// avancé → intouchable. Complément de la liste advancedStages
-// d'auto-analyze-message. Pressenti (rang 3 du kanban, au-dessus de Répondu)
-// est protégé aussi : un shortlisté qui reçoit son premier message le garde.
-const CONTACT_OVERWRITABLE_STAGES = new Set<string>(['Nouveau', 'Contacté']);
-// Statuts Konekt qui verrouillent le flux Contacté même sans pipeline_stage
-// explicite (le kanban dérive « Répondu » de status='replied').
-const CONTACT_LOCKED_STATUSES = new Set<string>(['replied', 'dismissed']);
-function canOverwriteWithContact(stage: string | null | undefined): boolean {
-  return !stage || CONTACT_OVERWRITABLE_STAGES.has(stage);
-}
-// Même règle pour « Shortlister » (Pressenti) : seuls Nouveau, Contacté et
-// Répondu montent en Pressenti. Une étape plus avancée (étape de mission,
-// ITW en cours, Offre…), un candidat déjà shortlisté ou écarté restent tels quels.
-const SHORTLIST_OVERWRITABLE_STAGES = new Set<string>(['Nouveau', 'Contacté', 'Répondu']);
-const SHORTLIST_LOCKED_STATUSES = new Set<string>(['shortlisted', 'dismissed']);
-function canOverwriteWithShortlist(stage: string | null | undefined, status: string | null | undefined): boolean {
-  return (!stage || SHORTLIST_OVERWRITABLE_STAGES.has(stage)) && !SHORTLIST_LOCKED_STATUSES.has(status || '');
-}
-type JcsRow = { id: string; pipeline_stage: string | null; status: string | null };
+// Étapes depuis lesquelles « Retenir » s'applique : un candidat déjà contacté,
+// en échange ou en entretien reste à son étape (résultat skipped).
+const RETAIN_FROM_STAGES = ['to_sort', 'retained', 'rejected'];
 
-interface JcsSyncInput {
-  organizationId: string;
-  userId: string;
-  jobId?: string;
-  linkedinId?: string;
-  linkedinUrl?: string;
-  name?: string;
-  headline?: string;
-  etape?: string;
+// Mission : id de sourcing_projects, avec ou sans le préfixe « project: ».
+function missionIdOf(jobId: unknown): string | null {
+  const raw = typeof jobId === 'string' ? jobId.trim().replace(/^project:/, '') : '';
+  return UUID_RE.test(raw) ? raw.toLowerCase() : null;
 }
 
-// alreadyExists : le candidat était déjà suivi plus loin sur cette mission,
-// rien n'a été réécrit.
-async function syncCandidateStatus(input: JcsSyncInput): Promise<{ alreadyExists: boolean }> {
-  try {
-    // Le flux "message envoyé" (etape Contacté) ne doit PAS marquer shortlisted
-    // : le statut messaged est posé par ailleurs.
-    const isShortlistIntent = input.etape !== 'Contacté';
-
-    // job_id normalisé sans préfixe "project:" (même convention que
-    // l'inscription en séquence ; le sourcing lit les 2 formes).
-    const normalizedJobId = input.jobId?.startsWith('project:')
-      ? input.jobId.slice('project:'.length)
-      : input.jobId;
-
-    // 1. Voie fiable : par candidate_id. Une ligne déjà suivie dans
-    //    l'organisation (job_id avec ou sans préfixe, quel que soit son auteur)
-    //    est mise à jour sans rétrogradation plutôt que dupliquée ; sinon upsert
-    //    par (job_id, candidate_id, created_by).
-    if (isShortlistIntent && normalizedJobId && input.linkedinId) {
-      const { data: existing, error: existingErr } = await supabase
-        .from('job_candidate_status')
-        .select('id, pipeline_stage, status')
-        .eq('organization_id', input.organizationId)
-        .eq('candidate_id', input.linkedinId)
-        .in('job_id', [normalizedJobId, `project:${normalizedJobId}`]);
-      if (existingErr) {
-        console.warn('[add-to-shortlist] jcs lookup failed:', existingErr.message);
-        return { alreadyExists: false };
-      }
-      if (existing && existing.length > 0) {
-        const targets = existing.filter((r: JcsRow) => canOverwriteWithShortlist(r.pipeline_stage, r.status));
-        if (targets.length === 0) {
-          console.log('[add-to-shortlist] jcs: already tracked further, nothing rewritten');
-          return { alreadyExists: true };
-        }
-        const { error: updErr } = await supabase
-          .from('job_candidate_status')
-          .update({ status: 'shortlisted', pipeline_stage: input.etape || 'Pressenti' })
-          .in('id', targets.map((r: JcsRow) => r.id));
-        if (updErr) console.warn('[add-to-shortlist] jcs update failed:', updErr.message);
-        return { alreadyExists: false };
-      }
-      const { error } = await supabase
-        .from('job_candidate_status')
-        .upsert({
-          job_id: normalizedJobId,
-          candidate_id: input.linkedinId,
-          created_by: input.userId,
-          organization_id: input.organizationId,
-          status: 'shortlisted',
-          pipeline_stage: input.etape || 'Pressenti',
-          ...(input.name ? { candidate_name: input.name } : {}),
-          ...(input.headline ? { candidate_headline: input.headline } : {}),
-          ...(input.linkedinUrl ? { linkedin_profile_url: input.linkedinUrl } : {}),
-        }, { onConflict: 'job_id,candidate_id,created_by' });
-      if (error) {
-        console.warn('[add-to-shortlist] jcs upsert failed:', error.message);
-      } else {
-        console.log('[add-to-shortlist] jcs upserted (candidate_id match)');
-        return { alreadyExists: false };
-      }
-    }
-
-    // 2. Fallback : update des lignes existantes par slug LinkedIn (les URLs
-    //    varient — www/locale/trailing slash — l'égalité stricte ne matche pas).
-    //    Restreint au job fourni quand il existe (sinon toutes les missions de
-    //    l'org étaient touchées) et, dans le flux Contacté, aux lignes dont le
-    //    stage courant n'est pas déjà plus avancé.
-    if (!input.linkedinUrl) return { alreadyExists: false };
-    const slug = input.linkedinUrl.match(/\/in\/([^/?#]+)/i)?.[1];
-    let lookup = supabase
-      .from('job_candidate_status')
-      .select('id, pipeline_stage, status')
-      .eq('organization_id', input.organizationId);
-    if (normalizedJobId) {
-      // Les 2 formes coexistent en base (avec/sans préfixe project:)
-      lookup = lookup.in('job_id', [normalizedJobId, `project:${normalizedJobId}`]);
-    }
-    if (slug && !/[%_]/.test(slug)) {
-      lookup = lookup.ilike('linkedin_profile_url', `%/in/${slug}%`);
-    } else {
-      lookup = lookup.eq('linkedin_profile_url', input.linkedinUrl);
-    }
-    const { data: rows, error: lookupErr } = await lookup;
-    if (lookupErr) {
-      console.warn('[add-to-shortlist] jcs lookup failed:', lookupErr.message);
-      return { alreadyExists: false };
-    }
-    const targets = (rows || []).filter((r: JcsRow) => isShortlistIntent
-      ? canOverwriteWithShortlist(r.pipeline_stage, r.status)
-      : canOverwriteWithContact(r.pipeline_stage) && !CONTACT_LOCKED_STATUSES.has(r.status || ''));
-    if (targets.length === 0) {
-      console.log(`[add-to-shortlist] jcs: ${rows?.length || 0} rows matched, 0 to update (url match)`);
-      return { alreadyExists: isShortlistIntent && (rows?.length || 0) > 0 };
-    }
-    const updatePayload: Record<string, unknown> = {
-      ...(isShortlistIntent ? { status: 'shortlisted' } : {}),
-      pipeline_stage: input.etape || 'Pressenti',
-    };
-    const { error: updErr } = await supabase
-      .from('job_candidate_status')
-      .update(updatePayload)
-      .in('id', targets.map((r: { id: string }) => r.id));
-    if (updErr) {
-      console.warn('[add-to-shortlist] jcs update failed:', updErr.message);
-    } else {
-      console.log(`[add-to-shortlist] jcs updated ${targets.length} rows (url match)`);
-    }
-    return { alreadyExists: false };
-  } catch (syncErr) {
-    // Best-effort, non bloquant
-    console.warn('[add-to-shortlist] jcs sync error (non-blocking):', syncErr);
-    return { alreadyExists: false };
-  }
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status,
+  });
 }
 
 // ── Main handler ────────────────────────────────────────────────────
@@ -213,21 +78,63 @@ Deno.serve(async (req) => {
 
     if (!data.organization_id) throw new Error('organization_id est requis');
 
-    const { alreadyExists } = await syncCandidateStatus({
-      organizationId: data.organization_id,
-      userId: user.id,
-      jobId: data.jobId,
-      linkedinId: data.linkedinId,
-      linkedinUrl: data.linkedinUrl,
-      name: data.name,
-      headline: data.headline,
-      etape: data.etape,
-    });
+    // « Contacté » : posé par le serveur à l'envoi réel (lot 0b-2a), plus ici.
+    if (data.etape === 'Contacté') {
+      return jsonResponse({ success: true, ignored: 'contact' });
+    }
 
-    return new Response(
-      JSON.stringify({ success: true, ...(alreadyExists ? { alreadyExists: true } : {}) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    );
+    const projectId = missionIdOf(data.jobId);
+    if (!projectId) {
+      return jsonResponse({ success: false, error: 'Choisissez une mission' }, 400);
+    }
+    const linkedinId = typeof data.linkedinId === 'string' ? data.linkedinId.trim() : '';
+    const linkedinUrl = typeof data.linkedinUrl === 'string' ? data.linkedinUrl.trim() : '';
+    if (!linkedinId && !linkedinUrl) {
+      return jsonResponse({ success: false, error: 'Profil du candidat introuvable' }, 400);
+    }
+
+    // Lignes du candidat dans la mission, tous auteurs (la ligne déjà suivie
+    // est reprise, jamais doublée) ; une ligne À trier au nom de l'appelant
+    // n'est créée que si la mission n'en a aucune. Puis Retenu depuis À trier,
+    // Retenu ou Écarté. La mission est contrôlée dans l'organisation par la fonction.
+    const { data: applied, error: applyError } = await supabase.rpc('apply_mission_candidate_stage', {
+      p_organization_id: data.organization_id,
+      p_project_id: projectId,
+      p_candidate: {
+        ids: linkedinId ? [linkedinId] : [],
+        ...(linkedinUrl ? { profile_url: linkedinUrl } : {}),
+        ...(data.name ? { name: data.name } : {}),
+        ...(data.headline ? { headline: data.headline } : {}),
+      },
+      p_stage: 'retained',
+      p_source: 'user',
+      p_process_step_id: null,
+      p_legacy_stage: null,
+      p_from_stages: RETAIN_FROM_STAGES,
+      p_create_by: user.id,
+      p_only_created_by: null,
+    });
+    if (applyError) {
+      console.warn('[add-to-shortlist] apply_mission_candidate_stage failed:', applyError.message, applyError.hint);
+      if (applyError.hint === 'STAGE_MISSION_NOT_FOUND') {
+        return jsonResponse({ success: false, error: 'Mission introuvable' }, 404);
+      }
+      return jsonResponse({ success: false, error: "Le candidat n'a pas été ajouté" }, 500);
+    }
+
+    const rows: Array<{ result?: string }> = Array.isArray(applied?.rows) ? applied.rows : [];
+    if (rows.length === 0) {
+      // Aucune ligne trouvée ni créable (profil sans identifiant stable).
+      return jsonResponse({ success: false, error: "Le candidat n'a pas été ajouté" }, 422);
+    }
+    if (rows.every((r) => r.result === 'error')) {
+      return jsonResponse({ success: false, error: "Le candidat n'a pas été ajouté" }, 409);
+    }
+    // alreadyExists : le candidat était déjà suivi plus loin sur cette mission,
+    // son étape n'a pas changé.
+    const alreadyExists = rows.every((r) => r.result === 'skipped');
+
+    return jsonResponse({ success: true, ...(alreadyExists ? { alreadyExists: true } : {}) });
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

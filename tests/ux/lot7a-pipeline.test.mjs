@@ -40,6 +40,12 @@ const STUBS = [
   'export const useQueryClient = () => ({});',
   'export const useMemo = (f) => f();',
   'export const useCallback = (f) => f;',
+  // Lot 0b-4 : étape écrite par src/lib/candidateStage.ts, organisation par useOrganization.
+  'export const useOrganization = () => ({});',
+  'export const ATS_LABEL_TO_STAGE = {};',
+  'export const exactTarget = () => null;',
+  'export const setCandidateStage = async () => ({ ok: true });',
+  'export const stageErrorMessage = () => "";',
 ].join('\n');
 
 const loadATSData = async () => {
@@ -217,6 +223,58 @@ test('E-23 : survol sobre, un seul toast groupé, retour arrière sur échec', (
   assert.equal((BULK.match(/toast\.(success|error|warning)\(/g) || []).length, 4, 'un toast par issue, pas par candidat');
   assert.match(HOOK, /if \(upsertError\) throw upsertError;/);
   assert.match(HOOK, /if \(!options\.silent\)/);
+});
+
+test('0b-4 (N2, N3) : le /pipeline change l\'étape par set_candidate_stage, jamais en direct', () => {
+  const fn = HOOK.slice(HOOK.indexOf('const handleStageChange'), HOOK.indexOf('// Handle tags update'));
+  // Plus aucune écriture directe de l'étape (N2 : pipeline_stage ; N3 : upsert « messaged »).
+  assert.doesNotMatch(fn, /pipeline_stage\s*:/, 'pipeline_stage écrit en direct');
+  assert.doesNotMatch(fn, /\bstatus\s*:/, 'status écrit en direct');
+  assert.doesNotMatch(fn, /\.update\(/, 'mise à jour directe de la ligne candidat');
+  assert.doesNotMatch(fn, /'messaged'/);
+  // Libellé du /pipeline vers la cible, écrite par le module commun (origine user).
+  assert.match(fn, /options\.target \?\? ATS_LABEL_TO_STAGE\[newStage\]/);
+  assert.match(fn, /await setCandidateStage\(rowId, target\)/);
+  assert.match(fn, /stageErrorMessage\(refusalHint\)/);
+  // N3 : sans mission, refus annoncé ; sinon insertion À trier, relecture, puis l'étape.
+  assert.match(fn, /candidate\.source !== 'local' && !candidate\.jobId/);
+  assert.match(fn, /n'est rattaché à aucune mission/);
+  assert.match(fn, /organization_id: organizationId/);
+  assert.match(fn, /ignoreDuplicates: true/);
+  assert.match(fn, /\.select\('id'\)[\s\S]*?\.maybeSingle\(\)/);
+  // Annulation : la cible exacte d'avant, lue en base (general_stage, process_step_id).
+  assert.match(HOOK, /JCS_DISPLAY_COLUMNS = '[^']*general_stage, process_step_id/);
+  assert.match(HOOK, /stageTarget: stageTargetOf\(r\)/);
+  assert.match(fn, /handleStageChange\(candidateId, oldStage, \{ target: oldTarget \}\)/);
+  assert.match(PAGE, /target: c\.stageTarget \?\? null/);
+  assert.match(PAGE, /handleStageChange\(id, prev\.stage, \{ silent: true, target: prev\.target \}\)/);
+});
+
+test('0b-4 (N1) : le kanban de mission passe par set_candidate_stage, toast après succès', () => {
+  const MISSION = read('src/components/missions/MissionPipeline.tsx');
+  assert.doesNotMatch(MISSION, /from\('job_candidate_status'\)/, 'écriture directe de la ligne candidat');
+  assert.doesNotMatch(MISSION, /\.update\(\{|statusMap/, 'couple status / pipeline_stage écrit en direct');
+  assert.match(MISSION, /await setCandidateStage\(candidateId, target\)/);
+  assert.match(MISSION, /missionColumnToStage\(columnKey, stepIds\)/);
+  assert.match(MISSION, /toast\.error\(stageErrorMessage\(outcome\.hint\)\)/);
+  const drag = MISSION.slice(MISSION.indexOf('const handleDragEnd'), MISSION.indexOf('if (isLoading || loadingSteps)'));
+  assert.ok(
+    drag.indexOf('await updateStage(') > -1 && drag.indexOf('await updateStage(') < drag.indexOf('toast.success('),
+    'le toast « déplacé » suit l\'enregistrement',
+  );
+  // Relecture 0b-4 : la carte se range par l'étape générale (un ancien libellé gardé
+  // par set_candidate_stage la laisserait hors de sa colonne), et la garde du glisser
+  // compare la colonne affichée, repli sur la première colonne compris.
+  assert.match(MISSION, /general_stage\?: string \| null;/);
+  assert.match(MISSION, /if \(g === 'interviewing'\) return c\.process_step_id \|\| columnKeyOf\(c\);/);
+  assert.match(MISSION, /const key = displayColumnOf\(c\);/);
+  assert.match(drag, /if \(candidate && displayColumnOf\(candidate\) === targetColumn\) return;/);
+});
+
+test('0b-4 (N2) : /pipeline, étape inconnue rangée par l\'étape générale, toast d\'annulation sans identifiant', () => {
+  assert.match(PAGE, /return \(generalStage && GENERAL_STAGE_LABEL\[generalStage\]\) \|\| 'Nouveau';/);
+  assert.match(PAGE, /displayStage\(c\.stage, c\.stageTarget\?\.stage\)/);
+  assert.match(HOOK, /\?\? GENERAL_STAGE_LABEL\[target\.stage\] \?\? newStage;/);
 });
 
 test('E-14, E-24 : en-tête, vues et état vide du registre calme', () => {

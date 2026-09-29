@@ -31,7 +31,7 @@ import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { BulkActionsBar, type BulkMoveResult } from '@/components/ats/BulkActionsBar';
-import { useATSData, ATS_STAGES, type ATSCandidate } from '@/hooks/useATSData';
+import { useATSData, ATS_STAGES, GENERAL_STAGE_LABEL, type ATSCandidate } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
 
@@ -53,12 +53,16 @@ const STAGE_KEYS = new Set(ATS_STAGES.map((s) => s.key));
 /** Identifiant d'une étape d'entretien (pipeline_stage d'une ligne en entretien). */
 const PROCESS_STEP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Colonne du pipeline global pour une étape brute. */
-function displayStage(stage: string): string {
+/**
+ * Colonne du pipeline global pour une étape brute. Une clé inconnue (« messaged »,
+ * « shortlisted » du kanban de mission) suit l'étape générale de la ligne (lot 0b-4),
+ * sinon « Nouveau ».
+ */
+function displayStage(stage: string, generalStage?: string | null): string {
   if (STAGE_KEYS.has(stage)) return stage;
   if (PROCESS_STEP_ID.test(stage)) return 'ITW en cours';
   if (stage === 'hired') return 'Gagné';
-  return 'Nouveau';
+  return (generalStage && GENERAL_STAGE_LABEL[generalStage]) || 'Nouveau';
 }
 
 const EMPTY_FILTERS: ATSFiltersValue = { search: '', stage: [], source: [], job: [], tag: [], hasReminder: false };
@@ -114,7 +118,7 @@ export default function ATS() {
   // dans `candidates` (annulation d'un déplacement groupé).
   const pipelineCandidates = useMemo(
     () => candidates.map((c) => {
-      const stage = displayStage(c.stage);
+      const stage = displayStage(c.stage, c.stageTarget?.stage);
       return stage === c.stage ? c : { ...c, stage };
     }),
     [candidates],
@@ -135,7 +139,9 @@ export default function ATS() {
   // Déplacement groupé : un candidat après l'autre (pour ne pas saturer la base),
   // sans toast par candidat ; la barre en affiche un seul pour le lot (E-23).
   const handleBulkStageChange = useCallback(async (ids: string[], newStage: string): Promise<BulkMoveResult> => {
-    const previous = new Map(candidates.map((c) => [c.id, c.stage]));
+    // Étape d'avant le déplacement : l'étape brute (affichage) et sa cible exacte
+    // en base (lot 0b-4), que l'annulation restaure.
+    const previous = new Map(candidates.map((c) => [c.id, { stage: c.stage, target: c.stageTarget ?? null }]));
     const moved: string[] = [];
     const failed: string[] = [];
     for (const id of ids) {
@@ -147,8 +153,8 @@ export default function ATS() {
     const undo = async () => {
       let restored = 0;
       for (const id of moved) {
-        const stage = previous.get(id);
-        if (stage && (await handleStageChange(id, stage, { silent: true }))) restored++;
+        const prev = previous.get(id);
+        if (prev && (await handleStageChange(id, prev.stage, { silent: true, target: prev.target }))) restored++;
       }
       if (restored === moved.length) {
         toast.success(`Déplacement annulé\u00a0: ${plural(restored, 'candidat remis', 'candidats remis')} à leur étape précédente`);

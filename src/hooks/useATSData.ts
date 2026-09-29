@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useOrganization } from '@/hooks/useOrganization';
+import { ATS_LABEL_TO_STAGE, exactTarget, setCandidateStage, stageErrorMessage, type StageTarget } from '@/lib/candidateStage';
 
 // Types
 export interface ATSCandidate {
@@ -43,6 +45,8 @@ export interface ATSCandidate {
     salary_analysis?: any;
   } | null;
   linkedinProfileData?: any;
+  /** Cible exacte de l'étape en base (lignes de la table seulement), pour l'annulation d'un déplacement. */
+  stageTarget?: StageTarget | null;
 }
 
 export const ATS_STAGES = [
@@ -57,6 +61,20 @@ export const ATS_STAGES = [
   { key: 'Gagné', label: 'Gagné', color: 'bg-success/10 border-success/30' },
   { key: 'Perdu', label: 'Perdu', color: 'bg-destructive/10 border-destructive/30' },
 ];
+
+/**
+ * Libellé du /pipeline d'une étape générale (lot 0b-4) : colonne d'une ligne dont
+ * l'étape brute est inconnue du /pipeline, et libellé du toast d'une annulation.
+ */
+export const GENERAL_STAGE_LABEL: Readonly<Record<string, string>> = {
+  to_sort: 'Nouveau',
+  retained: 'Pressenti',
+  contacted: 'Contacté',
+  replied: 'Répondu',
+  interviewing: 'ITW en cours',
+  hired: 'Gagné',
+  rejected: 'Perdu',
+};
 
 /** Provenance d'un candidat, écrite en mots et jamais par sa clé (revue design E-18). */
 export const ATS_SOURCE_LABELS: Record<ATSCandidate['source'], string> = {
@@ -165,7 +183,16 @@ function computeEffectiveStage(pipelineStage: string | null, status: string): st
 }
 
 // Columns needed for ATS display (excluding heavy linkedin_profile_data JSON)
-const JCS_DISPLAY_COLUMNS = 'id, candidate_id, candidate_name, candidate_headline, linkedin_profile_url, status, pipeline_stage, score, recommendation, job_id, tags, updated_at, created_at, scoring_details';
+const JCS_DISPLAY_COLUMNS = 'id, candidate_id, candidate_name, candidate_headline, linkedin_profile_url, status, pipeline_stage, general_stage, process_step_id, score, recommendation, job_id, tags, updated_at, created_at, scoring_details';
+
+/** Cible exacte d'une ligne (lot 0b-4) ; null pour une étape inconnue. */
+function stageTargetOf(r: { general_stage: string; process_step_id: string | null; pipeline_stage: string | null }): StageTarget | null {
+  try {
+    return exactTarget(r);
+  } catch {
+    return null;
+  }
+}
 
 // Fetch all candidates from local job_candidate_status table (primary source)
 async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
@@ -220,6 +247,7 @@ async function fetchLocalCandidates(): Promise<ATSCandidate[]> {
       tags: r.tags || [],
       scoringDetails: r.scoring_details || null,
       linkedinProfileData: r.linkedin_profile_data || null,
+      stageTarget: stageTargetOf(r),
     };
   });
 }
@@ -395,6 +423,7 @@ async function fetchAllCandidates(): Promise<ATSCandidate[]> {
 
 export function useATSData() {
   const queryClient = useQueryClient();
+  const { organizationId } = useOrganization();
 
   const {
     data: candidates = [],
@@ -410,13 +439,16 @@ export function useATSData() {
     refetchOnWindowFocus: true, // Fix Opus A4 — voir commentaire sur STALE_TIME
   });
 
-  // Handle stage change: update local DB.
+  // Handle stage change.
+  // Lot 0b-4 : l'étape s'écrit par set_candidate_stage (origine user), jamais par
+  // une écriture directe de status ou pipeline_stage. `newStage` est un libellé du
+  // /pipeline ; `target` (annulation) restaure la cible exacte d'avant le déplacement.
   // Renvoie true si le déplacement est enregistré. `silent` : pas de toast, le
   // déplacement groupé en affiche un seul pour tout le lot (revue design E-23).
   const handleStageChange = useCallback(async (
     candidateId: string,
     newStage: string,
-    options: { silent?: boolean } = {},
+    options: { silent?: boolean; target?: StageTarget | null } = {},
   ): Promise<boolean> => {
     // État courant du cache plutôt que la liste du rendu : un « Annuler » ou un
     // déplacement groupé relit l'étape réelle du candidat.
@@ -424,10 +456,29 @@ export function useATSData() {
     const candidate = current.find(c => c.id === candidateId);
     if (!candidate) return false;
 
+    const target = options.target ?? ATS_LABEL_TO_STAGE[newStage];
+    if (!target) {
+      if (!options.silent) toast.error(stageErrorMessage());
+      return false;
+    }
+    // Un candidat venu d'une séquence ou d'un InMail sans mission n'a pas de
+    // ligne où porter une étape : refus annoncé, rien n'est écrit.
+    if (candidate.source !== 'local' && !candidate.jobId) {
+      if (!options.silent) {
+        toast.error(`${candidate.name} n'est rattaché à aucune mission. Ajoutez-le d'abord à une mission pour changer son étape.`);
+      }
+      return false;
+    }
+
     const oldStage = candidate.stage;
+    const oldTarget = candidate.stageTarget ?? null;
     const oldLastActivity = candidate.lastActivity;
     const nowIso = new Date().toISOString();
-    const stageLabel = ATS_STAGES.find(s => s.key === newStage)?.label ?? newStage;
+    // Une étape brute restaurée (identifiant d'étape d'entretien, clé de mission)
+    // s'annonce par le libellé de son étape générale, jamais telle quelle.
+    const stageLabel = ATS_STAGES.find(s => s.key === newStage)?.label
+      ?? GENERAL_STAGE_LABEL[target.stage] ?? newStage;
+    let refusalHint: string | null = null;
 
     // 1. Optimistic UI update
     // 🐛 BUG FIX (Opus audit) : avant, l'optimistic ne mettait à jour que `stage`,
@@ -435,58 +486,66 @@ export function useATSData() {
     // daysSince(lastActivity)) restait affichée pendant 30min (staleTime)
     // après qu'on a explicitement bougé le candidat. Signal visuel incohérent.
     queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) =>
-      old?.map(c => c.id === candidateId ? { ...c, stage: newStage, lastActivity: nowIso } : c) ?? []
+      old?.map(c => c.id === candidateId ? { ...c, stage: newStage, lastActivity: nowIso, stageTarget: target } : c) ?? []
     );
 
     try {
-      // 🐛 BUG FIX Opus A3 (source of truth ambiguous) : avant, handleStageChange
-      // ne persistait QUE pour source='local'. Les candidats de source sequence/inmail
-      // voyaient leur stage revert au prochain refetch (car stage dérivé de status
-      // sans écriture en DB). Fix : upsert dans job_candidate_status pour
-      // sequence/inmail aussi → source de vérité unifiée.
-      if (candidate.source === 'local') {
-        const { data: updated, error: updateError } = await supabase
-          .from('job_candidate_status')
-          .update({ pipeline_stage: newStage })
-          .eq('id', candidate.sourceId)
-          .select('id');
-
-        if (updateError) throw updateError;
-        // Un refus des règles d'accès répond sans erreur, sur zéro ligne.
-        if (!updated || updated.length === 0) throw new Error('Aucune ligne mise à jour');
-      } else if (candidate.source === 'sequence' || candidate.source === 'inmail') {
-        // Récup user + org pour la row upsert
+      // 🐛 BUG FIX Opus A3 (source of truth ambiguous) : les candidats de source
+      // sequence/inmail n'ont pas de ligne : une ligne À trier est créée dans
+      // leur mission (jamais une étape écrite en direct), puis l'étape suit le
+      // même chemin que les autres → source de vérité unifiée.
+      let rowId = candidate.sourceId;
+      if (candidate.source === 'sequence' || candidate.source === 'inmail') {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Non authentifié');
-
-        // jobId peut être null pour inmail — on upsert quand même, la row
-        // tient juste le stage manuel sans job associé (edge case).
-        const upsertPayload: Record<string, unknown> = {
-          candidate_id: candidate.candidateId,
-          candidate_name: candidate.name,
-          candidate_headline: candidate.headline,
-          linkedin_profile_url: candidate.linkedin,
-          pipeline_stage: newStage,
-          status: 'messaged', // minimum pour passer le check NOT NULL
-          created_by: user.id,
-        };
-        if (candidate.jobId) {
-          upsertPayload.job_id = candidate.jobId;
-        }
+        if (!organizationId) throw new Error('Organisation introuvable');
 
         const { error: upsertError } = await supabase
           .from('job_candidate_status')
-          .upsert(upsertPayload, {
-            onConflict: candidate.jobId
-              ? 'job_id,candidate_id,created_by'
-              : 'candidate_id,created_by',
-            ignoreDuplicates: false,
+          .upsert({
+            candidate_id: candidate.candidateId,
+            candidate_name: candidate.name,
+            candidate_headline: candidate.headline,
+            linkedin_profile_url: candidate.linkedin,
+            job_id: candidate.jobId as string,
+            organization_id: organizationId,
+            created_by: user.id,
+          }, {
+            onConflict: 'job_id,candidate_id,created_by',
+            ignoreDuplicates: true,
           });
-
         // Un échec d'écriture annule l'état optimiste, comme pour la table
         // principale : plus de « Candidat déplacé » sur un déplacement perdu (E-23).
         if (upsertError) throw upsertError;
+
+        // Relecture de la ligne, créée ou déjà présente (même clé d'unicité).
+        const { data: row, error: readError } = await supabase
+          .from('job_candidate_status')
+          .select('id')
+          .eq('job_id', candidate.jobId as string)
+          .eq('candidate_id', candidate.candidateId)
+          .eq('created_by', user.id)
+          .maybeSingle();
+        if (readError) throw readError;
+        if (!row) throw new Error('Ligne candidat introuvable');
+        rowId = row.id;
       }
+
+      const outcome = await setCandidateStage(rowId, target);
+      if (outcome.ok === false) {
+        refusalHint = outcome.hint;
+        throw new Error(outcome.message);
+      }
+
+      // Cible enregistrée : une annulation ultérieure repart de celle-ci.
+      const savedTarget: StageTarget = {
+        stage: outcome.generalStage ?? target.stage,
+        processStepId: outcome.processStepId,
+        legacyStage: outcome.processStepId ? null : target.legacyStage ?? null,
+      };
+      queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) =>
+        old?.map(c => c.id === candidateId ? { ...c, stageTarget: savedTarget } : c) ?? []
+      );
 
       // Toast avec action Undo (Opus audit idée #E)
       if (!options.silent) {
@@ -494,8 +553,8 @@ export function useATSData() {
           action: {
             label: 'Annuler',
             onClick: () => {
-              // Re-run le change avec l'ancien stage (revert)
-              void handleStageChange(candidateId, oldStage);
+              // Revert : l'ancienne étape, restaurée par sa cible exacte.
+              void handleStageChange(candidateId, oldStage, { target: oldTarget });
             },
           },
         });
@@ -505,14 +564,16 @@ export function useATSData() {
       console.error('Error updating stage:', error);
       // Revert optimistic update — restaurer stage ET lastActivity
       queryClient.setQueryData<ATSCandidate[]>(['ats-candidates'], (old) =>
-        old?.map(c => c.id === candidateId ? { ...c, stage: oldStage, lastActivity: oldLastActivity } : c) ?? []
+        old?.map(c => c.id === candidateId ? { ...c, stage: oldStage, lastActivity: oldLastActivity, stageTarget: oldTarget } : c) ?? []
       );
       if (!options.silent) {
-        toast.error(`Le déplacement de ${candidate.name} n'a pas été enregistré. Réessayez.`);
+        toast.error(refusalHint
+          ? stageErrorMessage(refusalHint)
+          : `Le déplacement de ${candidate.name} n'a pas été enregistré. Réessayez.`);
       }
       return false;
     }
-  }, [candidates, queryClient]);
+  }, [candidates, queryClient, organizationId]);
 
   // Handle tags update
   const handleTagsChange = useCallback(async (candidateId: string, tags: string[]) => {

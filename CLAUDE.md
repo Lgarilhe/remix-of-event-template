@@ -262,8 +262,12 @@ Cron : `expire-subscription-trials` (horaire) → `expire_subscription_trials()`
 `get_org_member_emails(org)` (e-mails de auth.users des membres ; appelant owner/admin/member de l'org, jamais collaborator ni anon) :
 `profiles` n'a pas de colonne `email` ni `avatar_url`, ne jamais les demander.
 `set_candidate_stage(p_id, p_stage, p_source, p_organization_id, p_process_step_id, p_legacy_stage)` (lot 0a, SECURITY INVOKER) :
-écriture de l'étape d'un candidat, qui tient aussi le couple status / pipeline_stage. Tous les écrivains y passent au lot 0b ;
-d'ici là, le déclencheur suit leurs écritures du couple. La RLS de l'appelant s'applique.
+écriture de l'étape d'un candidat, qui tient aussi le couple status / pipeline_stage. Depuis le lot 0b-4, tous les écrivains y
+passent : navigateur par `src/lib/candidateStage.ts` (`setCandidateStage(s)`, origine `user` seulement, lots de 200,
+`ATS_LABEL_TO_STAGE` identique à la table de l'assistant, `missionColumnToStage`, `exactTarget` pour l'annulation du /pipeline,
+`stageErrorMessage` par HINT) ; serveur par `apply_mission_candidate_stage` (add-to-shortlist, outils de l'assistant) et les
+fonctions record_*. Plus aucune écriture directe de status ou pipeline_stage qui change l'étape (garde statique
+`tests/c1/lot0b-ecrivains.test.mjs`, liste blanche commentée). La RLS de l'appelant s'applique.
 Hors navigateur (clé de service), `p_organization_id` est obligatoire (HINT STAGE_ORG_REQUIRED) ; une ligne d'une autre
 organisation est introuvable (STAGE_ROW_NOT_FOUND). Trois origines :
 - `user` : la seule admise depuis le navigateur (sinon STAGE_SOURCE_FORBIDDEN). Vers interviewing, l'étape d'entretien est

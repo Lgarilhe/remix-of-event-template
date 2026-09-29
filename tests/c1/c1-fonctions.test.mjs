@@ -171,27 +171,47 @@ test('R1 : plus aucun appel aux fonctions retirées ni à resolveNotionCredentia
   assert.deepEqual(offenders, []);
 });
 
-test("R1 : add-to-shortlist ne pose que le statut Konekt, pour une organisation de l'appelant", () => {
+test("R1 : add-to-shortlist retient par apply_mission_candidate_stage, pour une organisation de l'appelant", () => {
   const src = read(ADD_TO_SHORTLIST);
+  // Plus aucune écriture directe : seule l'appartenance est lue en table.
   const tables = [...src.matchAll(/\.from\('([a-z_]+)'\)/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(tables)].sort(), ['job_candidate_status', 'organization_members']);
+  assert.deepEqual([...new Set(tables)].sort(), ['organization_members']);
+  assert.doesNotMatch(src, /job_candidate_status'\)/, 'aucun .from(\'job_candidate_status\')');
+  assert.doesNotMatch(src, /\.(update|upsert|insert)\(/, 'aucune écriture directe');
+  // Hors commentaires : ni l'ancien couple, ni ses valeurs.
+  assert.doesNotMatch(src.replace(/^\s*\/\/[^\n]*$/gm, ''), /pipeline_stage|status: '|'shortlisted'|'Pressenti'/);
   const iMember = src.indexOf(".from('organization_members')");
   const iRequired = src.indexOf("if (!data.organization_id) throw");
-  const iSync = src.indexOf('await syncCandidateStatus(');
-  assert.ok(iMember > 0 && iRequired > iMember && iSync > iRequired, 'appartenance et organisation vérifiées avant toute écriture');
+  const iRpc = src.indexOf("rpc('apply_mission_candidate_stage'");
+  assert.ok(iMember > 0 && iRequired > iMember && iRpc > iRequired, 'appartenance et organisation vérifiées avant toute écriture');
   assert.match(src.slice(iMember, iRequired), /status: 403/);
-  assert.match(src, /JSON\.stringify\(\{ success: true, \.\.\.\(alreadyExists \? \{ alreadyExists: true \} : \{\}\) \}\)/);
-  // « Contacté » ne rétrograde jamais un candidat plus avancé.
-  assert.match(src, /const CONTACT_OVERWRITABLE_STAGES = new Set<string>\(\['Nouveau', 'Contacté'\]\);/);
-  assert.match(src, /const CONTACT_LOCKED_STATUSES = new Set<string>\(\['replied', 'dismissed'\]\);/);
-  assert.match(src, /const isShortlistIntent = input\.etape !== 'Contacté';/);
-  // « Shortlister » non plus, et réutilise la ligne déjà suivie (job_id avec ou
-  // sans préfixe project:) au lieu d'en créer une seconde.
-  assert.match(src, /const SHORTLIST_OVERWRITABLE_STAGES = new Set<string>\(\['Nouveau', 'Contacté', 'Répondu'\]\);/);
-  assert.match(src, /const SHORTLIST_LOCKED_STATUSES = new Set<string>\(\['shortlisted', 'dismissed'\]\);/);
-  const iLookup = src.indexOf(".in('job_id', [normalizedJobId, `project:${normalizedJobId}`])");
-  assert.ok(iLookup > 0 && iLookup < src.indexOf('.upsert('), 'ligne existante cherchée avant l’upsert');
-  assert.match(src, /isShortlistIntent\s*\? canOverwriteWithShortlist\(r\.pipeline_stage, r\.status\)/);
+  // « Contacté » : ignoré, sans écriture, avant la mission.
+  const iContact = src.indexOf("if (data.etape === 'Contacté') {");
+  assert.ok(iContact > iRequired && iContact < iRpc, 'branche Contacté avant l’appel');
+  assert.match(src.slice(iContact, iContact + 200), /return jsonResponse\(\{ success: true, ignored: 'contact' \}\);/);
+  // Mission obligatoire (400), sans « project: », forme uuid.
+  assert.match(src, /const raw = typeof jobId === 'string' \? jobId\.trim\(\)\.replace\(\/\^project:\/, ''\) : '';/);
+  assert.match(src, /return UUID_RE\.test\(raw\) \? raw\.toLowerCase\(\) : null;/);
+  const iMission = src.indexOf('const projectId = missionIdOf(data.jobId);');
+  assert.ok(iMission > iContact && iMission < iRpc, 'mission contrôlée avant l’appel');
+  assert.match(src.slice(iMission, iRpc), /if \(!projectId\) \{\s*return jsonResponse\(\{ success: false, error: 'Choisissez une mission' \}, 400\);/);
+  // Appel : Retenu, origine user, depuis À trier, Retenu ou Écarté. Réutilise la ligne déjà
+  // suivie dans la mission, quel qu'en soit l'auteur, au lieu d'en créer une seconde : une
+  // ligne de l'appelant n'est créée que si la mission n'en a aucune.
+  const call = src.slice(iRpc, src.indexOf('});', iRpc));
+  assert.match(call, /p_organization_id: data\.organization_id,/);
+  assert.match(call, /p_project_id: projectId,/);
+  assert.match(call, /ids: linkedinId \? \[linkedinId\] : \[\],/);
+  assert.match(call, /profile_url: linkedinUrl/);
+  assert.match(call, /p_stage: 'retained',/);
+  assert.match(call, /p_source: 'user',/);
+  assert.match(call, /p_from_stages: RETAIN_FROM_STAGES,/);
+  assert.match(call, /p_create_by: user\.id,/);
+  assert.match(call, /p_only_created_by: null,/);
+  assert.match(src, /const RETAIN_FROM_STAGES = \['to_sort', 'retained', 'rejected'\];/);
+  // alreadyExists : toutes les lignes laissées à leur étape.
+  assert.match(src, /const alreadyExists = rows\.every\(\(r\) => r\.result === 'skipped'\);/);
+  assert.match(src, /jsonResponse\(\{ success: true, \.\.\.\(alreadyExists \? \{ alreadyExists: true \} : \{\}\) \}\)/);
 });
 
 // ─── R1 (arbitrage) : auto-analyze-message borné à l'organisation du compte ──

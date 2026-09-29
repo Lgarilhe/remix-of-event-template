@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/select';
 import { Building2, MapPin, Phone, Plus, Video } from 'lucide-react';
 import { useOrganization } from '@/hooks/useOrganization';
+import { setCandidateStage, stageErrorMessage } from '@/lib/candidateStage';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
@@ -213,29 +214,44 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       }
 
       // ─── Si nouveau candidat → créer JCS row d'abord (le candidat
-      // apparaîtra au pipeline en "Pressenti" sur la mission sélectionnée)
+      // apparaîtra au pipeline en "Pressenti" sur la mission sélectionnée).
+      // Lot 0b-4 (N19) : insertion À trier, puis Retenu par set_candidate_stage
+      // (origine user). Sans mission, pas de ligne : la qualif existe sans elle.
       let candidateProfileId = candidate.candidateId;
+      // Ligne créée dans la mission, et refus du passage en Retenu (annoncé après
+      // la programmation) : le toast ne promet « ajouté au pipeline » qu'une fois
+      // la ligne créée et retenue.
+      let pipelineRowCreated = false;
+      let stageRefusal: string | null = null;
       if (!candidateProfileId) {
         // Génère un id pour le nouveau candidat
         candidateProfileId = crypto.randomUUID();
 
-        const jcsInsert: Record<string, unknown> = {
-          organization_id: organizationId,
-          candidate_id: candidateProfileId,
-          candidate_name: candidate.name.trim(),
-          candidate_headline: candidate.headline?.trim() || null,
-          status: 'shortlisted',
-          pipeline_stage: 'Pressenti',
-        };
-        if (projectId && selectedProject?.job_id) {
-          jcsInsert.job_id = selectedProject.job_id;
-        }
-        const { error: jcsErr } = await supabase
-          .from('job_candidate_status')
-          .insert(jcsInsert as any);
-        if (jcsErr) {
-          console.warn('[CreateEvent] JCS insert error (non-fatal):', jcsErr);
-          // On continue quand même — la qualif peut exister sans JCS
+        if (projectId && selectedProject) {
+          const { data: jcsRow, error: jcsErr } = await supabase
+            .from('job_candidate_status')
+            .insert({
+              organization_id: organizationId,
+              created_by: user.id,
+              job_id: `project:${projectId}`,
+              project_id: projectId,
+              candidate_id: candidateProfileId,
+              candidate_name: candidate.name.trim(),
+              candidate_headline: candidate.headline?.trim() || null,
+            })
+            .select('id')
+            .single();
+          if (jcsErr || !jcsRow) {
+            console.warn('[CreateEvent] JCS insert error (non-fatal):', jcsErr);
+            // On continue quand même — la qualif peut exister sans JCS
+          } else {
+            pipelineRowCreated = true;
+            const outcome = await setCandidateStage(jcsRow.id, { stage: 'retained' });
+            if (outcome.ok === false) {
+              console.warn('[CreateEvent] JCS stage error (non-fatal):', outcome);
+              stageRefusal = stageErrorMessage(outcome.hint);
+            }
+          }
         }
       }
 
@@ -266,12 +282,19 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       if (error) throw error;
 
       toast.success(
-        candidate.candidateId
-          ? 'Entretien programmé'
-          : `Entretien programmé, ${candidate.name} ajouté au pipeline`,
+        pipelineRowCreated && !stageRefusal
+          ? `Entretien programmé, ${candidate.name} ajouté au pipeline`
+          : 'Entretien programmé',
       );
+      if (pipelineRowCreated && stageRefusal) {
+        toast.warning(`${candidate.name} est ajouté à la mission à l'étape « À trier ». ${stageRefusal}`);
+      }
       await queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      await queryClient.invalidateQueries({ queryKey: ['ats-data'] });
+      await queryClient.invalidateQueries({ queryKey: ['ats-candidates'] });
+      if (pipelineRowCreated && projectId) {
+        await queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
+        await queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
+      }
       resetForm();
       onOpenChange(false);
     } catch (err: any) {

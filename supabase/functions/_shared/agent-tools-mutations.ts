@@ -26,18 +26,17 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15
 }
 
 // ─── Tool 1 — update_candidate_stage ────────────────────────────────────────
-// MVP : seul tool implémenté pour valider la mécanique end-to-end.
+// Refonte mission, lot 0b-4 : les outils d'étape (update_candidate_stage,
+// add_to_shortlist, dismiss_candidate, bulk_update_stage, bulk_dismiss)
+// n'écrivent plus status ni pipeline_stage. Ils passent par
+// apply_mission_candidate_stage, origine 'user' (l'utilisateur a approuvé le
+// geste), qui tient l'étape générale, les jalons et le couple de
+// compatibilité. Portée : toutes les lignes du candidat dans la mission
+// (project_id), dans l'organisation, quel qu'en soit l'auteur (décision 15) ;
+// l'aperçu d'approbation annonce le nombre de lignes.
 //
-// Updates `pipeline_stage` (the business-facing kanban stage seen in the ATS
-// view), NOT `status` (the technical state machine). The frontend ATS calls
-// computeEffectiveStage(pipeline_stage, status) to combine both — see
-// useATSData.ts:96. Updating pipeline_stage is the right "user-facing"
-// mutation : moves the card across the kanban board.
-//
-// MVP refuse to UPSERT — it requires the row to already exist. This avoids
-// Claude hallucinating candidate_ids and creating orphan rows. The candidate
-// must have been "discovered" first (via LinkedIn search) before we can move
-// it on the pipeline.
+// Aucune création : la ligne doit déjà exister dans la mission. Cela évite
+// qu'un identifiant inventé crée une ligne orpheline.
 
 // Business pipeline stages (matches STAGE_ORDER in useATSData.ts).
 // Final states: Gagné = won, Perdu = lost.
@@ -54,6 +53,321 @@ const ALLOWED_STAGES = [
   'Perdu',
 ] as const;
 type PipelineStage = (typeof ALLOWED_STAGES)[number];
+
+type GeneralStage = 'to_sort' | 'retained' | 'contacted' | 'replied' | 'interviewing' | 'hired' | 'rejected';
+interface StageTarget { stage: GeneralStage; legacyStage?: string | null }
+
+// Copie de ATS_LABEL_TO_STAGE (src/lib/candidateStage.ts) : ce fichier Deno ne
+// peut pas importer src/. Les deux tables doivent rester identiques
+// (tests/c1/lot0b-ecrivains.test.mjs). Libellé hérité seulement quand l'étape
+// générale ne suffit pas (décision 20).
+const ATS_LABEL_TO_STAGE: Readonly<Record<PipelineStage, StageTarget>> = {
+  'Nouveau': { stage: 'to_sort' },
+  'Contacté': { stage: 'contacted' },
+  'Répondu': { stage: 'replied' },
+  'Pressenti': { stage: 'retained' },
+  'Pré-qualif': { stage: 'interviewing', legacyStage: 'Pré-qualif' },
+  'CV envoyé': { stage: 'interviewing', legacyStage: 'CV envoyé' },
+  'ITW en cours': { stage: 'interviewing', legacyStage: 'ITW en cours' },
+  'Offre': { stage: 'interviewing', legacyStage: 'Offre' },
+  'Gagné': { stage: 'hired', legacyStage: 'Gagné' },
+  'Perdu': { stage: 'rejected' },
+};
+
+const GENERAL_STAGE_LABELS: Record<GeneralStage, string> = {
+  to_sort: 'À trier',
+  retained: 'Retenu',
+  contacted: 'Contacté',
+  replied: 'A répondu',
+  interviewing: 'En entretien',
+  hired: 'Embauché',
+  rejected: 'Écarté',
+};
+
+// « Retenir » (add_to_shortlist) : un candidat déjà contacté, en échange ou en
+// entretien reste à son étape.
+const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
+
+const MISSION_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Mission d'un paramètre job_id : id de sourcing_projects (préfixe « project: » retiré), sinon null. */
+function missionIdParam(params: Record<string, unknown>): string | null {
+  const raw = String(params.job_id || '').trim().replace(/^project:/, '');
+  return MISSION_UUID_RE.test(raw) ? raw.toLowerCase() : null;
+}
+
+function lineCount(n: number): string {
+  return `${n} ligne${n > 1 ? 's' : ''}`;
+}
+
+interface MissionCandidateRow {
+  id: string;
+  candidate_id: string;
+  candidate_name: string | null;
+  candidate_headline: string | null;
+  general_stage: GeneralStage | null;
+  pipeline_stage: string | null;
+  status: string | null;
+}
+
+/** Lignes des candidats dans la mission, dans l'organisation, tous auteurs. */
+async function missionCandidateRows(
+  ctx: ToolContext,
+  projectId: string,
+  candidateIds: string[],
+): Promise<{ rows: MissionCandidateRow[]; error: string | null }> {
+  if (candidateIds.length === 0) return { rows: [], error: null };
+  const { data, error } = await ctx.adminClient
+    .from('job_candidate_status')
+    .select('id, candidate_id, candidate_name, candidate_headline, general_stage, pipeline_stage, status')
+    .eq('organization_id', ctx.organizationId)
+    .eq('project_id', projectId)
+    .in('candidate_id', candidateIds)
+    .order('created_at', { ascending: true });
+  if (error) return { rows: [], error: error.message };
+  return { rows: (data as MissionCandidateRow[] | null) ?? [], error: null };
+}
+
+/** La mission doit exister et appartenir à l'organisation de l'appelant. */
+async function verifyMissionOfOrg(
+  ctx: ToolContext,
+  projectId: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const { data: project, error } = await ctx.adminClient
+    .from('sourcing_projects')
+    .select('id, organization_id')
+    .eq('id', projectId)
+    .maybeSingle();
+  if (error) return { allowed: false, reason: "La mission n'a pas pu être vérifiée. Réessayez dans un instant." };
+  if (!project) return { allowed: false, reason: `Mission ${projectId} introuvable` };
+  if (project.organization_id !== ctx.organizationId) {
+    return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+  }
+  return { allowed: true };
+}
+
+/** Un candidat, une mission : mission de l'organisation et au moins une ligne du candidat. */
+async function verifySingleCandidate(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const projectId = missionIdParam(params);
+  const candidateId = String(params.candidate_id || '').trim();
+  if (!projectId || !candidateId) return { allowed: false, reason: 'job_id (mission UUID) and candidate_id are required' };
+  const mission = await verifyMissionOfOrg(ctx, projectId);
+  if (!mission.allowed) return mission;
+  const { rows, error } = await missionCandidateRows(ctx, projectId, [candidateId]);
+  if (error) return { allowed: false, reason: "Le candidat n'a pas pu être vérifié. Réessayez dans un instant." };
+  if (rows.length === 0) {
+    return {
+      allowed: false,
+      reason: `Le candidat ${candidateId} n'est pas encore associé à cette mission. Lance d'abord une recherche LinkedIn ou ajoute-le manuellement avant de modifier son étape.`,
+    };
+  }
+  return { allowed: true };
+}
+
+/** La ligne est-elle déjà à la cible (étape générale, et libellé hérité s'il est demandé) ? */
+function isAtTarget(row: MissionCandidateRow, target: StageTarget): boolean {
+  return row.general_stage === target.stage && (!target.legacyStage || row.pipeline_stage === target.legacyStage);
+}
+
+function stageLabelOf(row: MissionCandidateRow): string {
+  return row.general_stage ? GENERAL_STAGE_LABELS[row.general_stage] ?? row.general_stage : '(non défini)';
+}
+
+const STAGE_REFUSAL_MESSAGES: Record<string, string> = {
+  STAGE_MISSION_NOT_FOUND: 'Cette mission est introuvable dans votre organisation.',
+  STAGE_ROW_NOT_FOUND: "Ce candidat n'est plus dans cette mission. Rechargez la page.",
+  STAGE_STEP_REQUIRED: "Choisissez l'étape d'entretien de cette mission.",
+  STAGE_STEP_NOT_IN_MISSION: "Cette étape n'appartient pas à la mission du candidat. Rechargez la page.",
+};
+
+function stageRefusalMessage(hint: string | null | undefined): string {
+  return (hint && STAGE_REFUSAL_MESSAGES[hint]) || "Le changement d'étape n'a pas été enregistré. Réessayez.";
+}
+
+interface StageApplyRow {
+  id: string;
+  changed?: boolean;
+  result?: string;
+  general_stage?: string | null;
+  hint?: string | null;
+}
+
+interface CandidateStageOutcome {
+  rows: StageApplyRow[];
+  changed: number;
+  unchanged: number;
+  kept: number;
+  refused: number;
+  error: string | null;
+}
+
+/**
+ * Pose l'étape d'un candidat sur toutes ses lignes de la mission
+ * (apply_mission_candidate_stage, origine 'user', aucune création), puis la
+ * raison d'un écart en écriture directe (skip_reason, hors étape) sur les
+ * lignes désormais écartées.
+ */
+async function applyCandidateStage(
+  ctx: ToolContext,
+  projectId: string,
+  candidateId: string,
+  target: StageTarget,
+  fromStages: GeneralStage[] | null,
+  skipReason: string | null,
+): Promise<CandidateStageOutcome> {
+  const outcome: CandidateStageOutcome = { rows: [], changed: 0, unchanged: 0, kept: 0, refused: 0, error: null };
+  const { data, error } = await ctx.adminClient.rpc('apply_mission_candidate_stage', {
+    p_organization_id: ctx.organizationId,
+    p_project_id: projectId,
+    p_candidate: { ids: [candidateId] },
+    p_stage: target.stage,
+    p_source: 'user',
+    p_process_step_id: null,
+    p_legacy_stage: target.legacyStage ?? null,
+    p_from_stages: fromStages,
+    p_create_by: null,
+    p_only_created_by: null,
+  });
+  if (error) {
+    console.warn('[agent-tools] apply_mission_candidate_stage failed:', error.message, error.hint);
+    outcome.error = stageRefusalMessage(error.hint);
+    return outcome;
+  }
+  const rows: StageApplyRow[] = Array.isArray((data as { rows?: unknown })?.rows)
+    ? (data as { rows: StageApplyRow[] }).rows
+    : [];
+  outcome.rows = rows;
+  for (const r of rows) {
+    if (r.result === 'error') outcome.refused++;
+    else if (r.result === 'skipped' || r.result === 'kept' || r.result === 'not_contacted') outcome.kept++;
+    else if (r.changed) outcome.changed++;
+    else outcome.unchanged++;
+  }
+  if (rows.length > 0 && outcome.refused === rows.length) {
+    outcome.error = stageRefusalMessage(rows[0].hint);
+  }
+  if (skipReason && target.stage === 'rejected') {
+    const rejectedIds = rows.filter((r) => r.result !== 'error' && r.general_stage === 'rejected').map((r) => r.id);
+    if (rejectedIds.length > 0) {
+      const { error: reasonError } = await ctx.adminClient
+        .from('job_candidate_status')
+        .update({ skip_reason: skipReason })
+        .eq('organization_id', ctx.organizationId)
+        .eq('project_id', projectId)
+        .eq('candidate_id', candidateId)
+        .in('id', rejectedIds);
+      if (reasonError) console.warn('[agent-tools] skip_reason update failed:', reasonError.message);
+    }
+  }
+  return outcome;
+}
+
+/** Aperçu d'un changement d'étape pour un candidat (toutes ses lignes de la mission). */
+async function candidateStageDryRun(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+  stageLabel: PipelineStage,
+  fromStages: GeneralStage[] | null,
+) {
+  const candidateId = String(params.candidate_id || '').trim();
+  const projectId = missionIdParam(params) ?? '';
+  const reason = params.reason ? String(params.reason) : null;
+  const target = ATS_LABEL_TO_STAGE[stageLabel];
+
+  const [{ rows }, { data: project }] = await Promise.all([
+    missionCandidateRows(ctx, projectId, [candidateId]),
+    ctx.adminClient
+      .from('sourcing_projects')
+      .select('name, job_title, client_name')
+      .eq('id', projectId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle(),
+  ]);
+
+  const jobLabel = project?.job_title || project?.name || projectId;
+  const clientLabel = project?.client_name ? ` (${project.client_name})` : '';
+  const first = rows[0];
+  const candidateLabel = first?.candidate_name || candidateId;
+  const fromLabels = [...new Set(rows.map(stageLabelOf))];
+  const fromStage = fromLabels.length > 0 ? fromLabels.join(', ') : '(non défini)';
+  const keptRows = fromStages ? rows.filter((r) => !r.general_stage || !fromStages.includes(r.general_stage)) : [];
+  const movingRows = rows.filter((r) => !keptRows.includes(r) && !isAtTarget(r, target));
+  const isNoOp = movingRows.length === 0;
+  // Aucune ligne à la cible, toutes laissées à leur étape (déjà plus loin) :
+  // le candidat n'est pas « déjà à l'étape », il reste où il est.
+  const keptAll = isNoOp && keptRows.length > 0 && keptRows.length === rows.length;
+  const keptLabels = [...new Set(keptRows.map(stageLabelOf))].join(', ');
+
+  return {
+    summary: keptAll
+      ? `${candidateLabel} reste à « ${keptLabels} » sur "${jobLabel}${clientLabel}" (déjà plus loin que « ${stageLabel} », ${lineCount(rows.length)})`
+      : isNoOp
+      ? `${candidateLabel} est déjà à l'étape « ${stageLabel} » sur "${jobLabel}${clientLabel}" (${lineCount(rows.length)})`
+      : `Déplacer ${candidateLabel} : « ${fromStage} » → « ${stageLabel} » sur "${jobLabel}${clientLabel}" (${lineCount(movingRows.length)})`,
+    details: {
+      candidate_id: candidateId,
+      candidate_name: first?.candidate_name ?? null,
+      candidate_headline: first?.candidate_headline ?? null,
+      job_id: projectId,
+      job_label: jobLabel,
+      client_label: project?.client_name ?? null,
+      from_stage: fromStage,
+      to_stage: stageLabel,
+      rows: rows.length,
+      rows_to_move: movingRows.length,
+      rows_kept: keptRows.length,
+      reason,
+      is_no_op: isNoOp,
+      kept_all: keptAll,
+    },
+    warning: keptRows.length > 0
+      ? (keptRows.length > 1
+        ? `${lineCount(keptRows.length)} déjà plus loin, laissées à leur étape.`
+        : `${lineCount(keptRows.length)} déjà plus loin, laissée à son étape.`)
+      : isNoOp
+      ? 'Aucun changement : le candidat est déjà à cette étape.'
+      : target.stage === 'rejected'
+      ? 'Ce candidat sera écarté de cette mission.'
+      : undefined,
+  };
+}
+
+function candidateStageResult(outcome: CandidateStageOutcome, stageLabel: string) {
+  if (outcome.error) return { success: false, error: outcome.error };
+  if (outcome.rows.length === 0) {
+    return { success: false, error: "Ce candidat n'est plus dans cette mission. Rechargez la page." };
+  }
+  // Toutes les lignes laissées à leur étape (déjà plus loin) : rien n'a changé,
+  // et le résultat ne doit pas annoncer la nouvelle étape.
+  if (outcome.changed + outcome.unchanged === 0 && outcome.kept > 0) {
+    return {
+      success: true,
+      data: {
+        rows: outcome.rows.length,
+        changed: 0,
+        unchanged: 0,
+        kept: outcome.kept,
+        refused: outcome.refused,
+        kept_all: true,
+        message: `Aucun changement : le candidat est déjà plus loin que « ${stageLabel} », il reste à son étape.`,
+      },
+    };
+  }
+  return {
+    success: true,
+    data: {
+      rows: outcome.rows.length,
+      changed: outcome.changed,
+      unchanged: outcome.unchanged,
+      kept: outcome.kept,
+      refused: outcome.refused,
+      new_stage: stageLabel,
+    },
+  };
+}
 
 const updateCandidateStage: AgentTool = {
   name: 'update_candidate_stage',
@@ -91,140 +405,42 @@ const updateCandidateStage: AgentTool = {
   },
 
   async verifyAccess(params, ctx) {
-    const jobId = String(params.job_id || '');
-    const candidateId = String(params.candidate_id || '');
-    if (!jobId || !candidateId) return { allowed: false, reason: 'job_id and candidate_id are required' };
-
-    // 1. Job must belong to the user's org
-    const { data: project } = await ctx.adminClient
-      .from('sourcing_projects')
-      .select('id, organization_id')
-      .eq('id', jobId)
-      .maybeSingle();
-
-    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
-    if (project.organization_id !== ctx.organizationId) {
-      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
+    const stage = String(params.new_stage || '');
+    if (!(ALLOWED_STAGES as readonly string[]).includes(stage)) {
+      return { allowed: false, reason: `new_stage must be one of: ${ALLOWED_STAGES.join(', ')}` };
     }
-
-    // 2. Row must already exist (we don't create candidates from chat)
-    const { data: row } = await ctx.adminClient
-      .from('job_candidate_status')
-      .select('id')
-      .eq('job_id', jobId)
-      .eq('candidate_id', candidateId)
-      .eq('created_by', ctx.userId)
-      .maybeSingle();
-
-    if (!row) {
-      return {
-        allowed: false,
-        reason: `Le candidat ${candidateId} n'est pas encore associé à cette mission. Lance d'abord une recherche LinkedIn ou ajoute-le manuellement avant de modifier son stade.`,
-      };
-    }
-
-    return { allowed: true };
+    return verifySingleCandidate(params, ctx);
   },
 
   async dryRun(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-    const newStage = String(params.new_stage) as PipelineStage;
-    const reason = params.reason ? String(params.reason) : null;
-
-    // Fetch current row + project metadata in parallel
-    const [{ data: current }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('pipeline_stage, status, candidate_name, candidate_headline, updated_at')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .eq('created_by', ctx.userId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
-
-    const jobLabel = project?.job_title || project?.name || jobId;
-    const clientLabel = project?.client_name ? ` (${project.client_name})` : '';
-    const candidateLabel = current?.candidate_name || candidateId;
-    const fromStage = current?.pipeline_stage || '(non défini)';
-    const isNoOp = current?.pipeline_stage === newStage;
-
-    return {
-      summary: isNoOp
-        ? `${candidateLabel} est déjà au stade « ${newStage} » sur "${jobLabel}${clientLabel}"`
-        : `Déplacer ${candidateLabel} : « ${fromStage} » → « ${newStage} » sur "${jobLabel}${clientLabel}"`,
-      details: {
-        candidate_id: candidateId,
-        candidate_name: current?.candidate_name ?? null,
-        candidate_headline: current?.candidate_headline ?? null,
-        job_id: jobId,
-        job_label: jobLabel,
-        client_label: project?.client_name ?? null,
-        from_stage: fromStage,
-        to_stage: newStage,
-        underlying_status: current?.status ?? null,
-        reason,
-        is_no_op: isNoOp,
-      },
-      warning: isNoOp
-        ? 'Aucun changement — le candidat est déjà à ce stade.'
-        : newStage === 'Perdu'
-        ? 'Stade terminal : ce candidat sera marqué comme perdu pour cette mission.'
-        : undefined,
-    };
+    return candidateStageDryRun(params, ctx, String(params.new_stage) as PipelineStage, null);
   },
 
   async execute(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
+    const projectId = missionIdParam(params);
+    const candidateId = String(params.candidate_id || '').trim();
     const newStage = String(params.new_stage) as PipelineStage;
-    const reason = params.reason ? String(params.reason) : null;
-
-    // UPDATE only — row existence already verified in verifyAccess
-    const updatePayload: Record<string, unknown> = { pipeline_stage: newStage };
-    if (newStage === 'Perdu' && reason) {
-      updatePayload.skip_reason = reason;
+    const target = ATS_LABEL_TO_STAGE[newStage];
+    if (!projectId || !candidateId || !target) {
+      return { success: false, error: 'job_id, candidate_id and a valid new_stage are required' };
     }
-
-    const { data, error } = await ctx.adminClient
-      .from('job_candidate_status')
-      .update(updatePayload)
-      .eq('job_id', jobId)
-      .eq('candidate_id', candidateId)
-      .eq('created_by', ctx.userId)
-      .select('id, pipeline_stage, status, updated_at')
-      .single();
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    return {
-      success: true,
-      data: {
-        row_id: data.id,
-        new_pipeline_stage: data.pipeline_stage,
-        underlying_status: data.status,
-        updated_at: data.updated_at,
-      },
-    };
+    const reason = params.reason ? String(params.reason).slice(0, 500) : null;
+    const outcome = await applyCandidateStage(ctx, projectId, candidateId, target, null, reason);
+    return candidateStageResult(outcome, newStage);
   },
 };
 
 // ─── Tool 2 — add_to_shortlist ──────────────────────────────────────────────
-// Raccourci sémantique : alias de update_candidate_stage avec stage='Pressenti'
-// (= shortlist business). Existe séparément car Claude le comprend mieux quand
-// l'user dit "ajoute X à ma shortlist" sans connaître le nom exact du stage.
+// Raccourci sémantique : « Retenir » (étape retained, libellé Pressenti), sans
+// faire reculer un candidat déjà contacté ou plus loin. Existe séparément car
+// Claude le comprend mieux quand l'user dit "ajoute X à ma shortlist" sans
+// connaître le nom exact du stage.
 
 const addToShortlist: AgentTool = {
   name: 'add_to_shortlist',
   description:
-    "Add a candidate to the user's shortlist for a specific mission. Internally moves the candidate to the 'Pressenti' pipeline stage. " +
+    "Add a candidate to the user's shortlist for a specific mission. Internally moves the candidate to the 'Pressenti' pipeline stage, " +
+    "only from 'Nouveau', 'Pressenti' or 'Perdu': a candidate already contacted or further along stays at their stage (result kept_all: true, nothing changed). " +
     "Use this when the user says 'ajoute X à la shortlist', 'shortliste Y', 'mets-le dans mes pressentis'.",
   category: 'mutation_safe',
   requiresApproval: true,
@@ -238,14 +454,22 @@ const addToShortlist: AgentTool = {
     required: ['candidate_id', 'job_id'],
   },
 
-  verifyAccess: (params, ctx) => updateCandidateStage.verifyAccess(params, ctx),
+  verifyAccess: (params, ctx) => verifySingleCandidate(params, ctx),
 
   async dryRun(params, ctx) {
-    return updateCandidateStage.dryRun({ ...params, new_stage: 'Pressenti' }, ctx);
+    return candidateStageDryRun(params, ctx, 'Pressenti', RETAIN_FROM_STAGES);
   },
 
+  // Retenu depuis À trier, Retenu ou Écarté seulement : un candidat plus
+  // avancé reste à son étape.
   async execute(params, ctx) {
-    return updateCandidateStage.execute({ ...params, new_stage: 'Pressenti' }, ctx);
+    const projectId = missionIdParam(params);
+    const candidateId = String(params.candidate_id || '').trim();
+    if (!projectId || !candidateId) return { success: false, error: 'job_id and candidate_id are required' };
+    const outcome = await applyCandidateStage(
+      ctx, projectId, candidateId, ATS_LABEL_TO_STAGE['Pressenti'], RETAIN_FROM_STAGES, null,
+    );
+    return candidateStageResult(outcome, 'Pressenti');
   },
 };
 
@@ -1593,10 +1817,9 @@ const addCandidateNote: AgentTool = {
 };
 
 // ─── Tool 8 — dismiss_candidate ─────────────────────────────────────────────
-// Marque un candidat comme "écarté" pour une mission spécifique (status=
-// 'dismissed' dans job_candidate_status). N'utilise PAS pipeline_stage='Perdu'
-// car ce stade signifie "process abouti puis perdu en fin de tunnel", alors
-// que dismissed = "pas pertinent dès le départ pour cette mission".
+// Écarte un candidat d'une mission (étape rejected, par
+// apply_mission_candidate_stage, origine 'user'), puis écrit la raison
+// (skip_reason) sur ses lignes écartées de la mission.
 
 const dismissCandidate: AgentTool = {
   name: 'dismiss_candidate',
@@ -1626,108 +1849,27 @@ const dismissCandidate: AgentTool = {
     required: ['candidate_id', 'job_id'],
   },
 
-  async verifyAccess(params, ctx) {
-    const jobId = String(params.job_id || '');
-    const candidateId = String(params.candidate_id || '');
-    if (!jobId || !candidateId) return { allowed: false, reason: 'job_id and candidate_id are required' };
-
-    const { data: project } = await ctx.adminClient
-      .from('sourcing_projects')
-      .select('id, organization_id')
-      .eq('id', jobId)
-      .maybeSingle();
-
-    if (!project) return { allowed: false, reason: `Mission ${jobId} introuvable` };
-    if (project.organization_id !== ctx.organizationId) {
-      return { allowed: false, reason: 'Cette mission appartient à une autre organisation' };
-    }
-
-    const { data: row } = await ctx.adminClient
-      .from('job_candidate_status')
-      .select('id, status')
-      .eq('job_id', jobId)
-      .eq('candidate_id', candidateId)
-      .maybeSingle();
-
-    if (!row) {
-      return {
-        allowed: false,
-        reason: `Le candidat ${candidateId} n'est pas associé à cette mission.`,
-      };
-    }
-    return { allowed: true };
-  },
+  verifyAccess: (params, ctx) => verifySingleCandidate(params, ctx),
 
   async dryRun(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-    const reason = params.reason ? String(params.reason) : null;
-
-    const [{ data: current }, { data: project }] = await Promise.all([
-      ctx.adminClient
-        .from('job_candidate_status')
-        .select('status, candidate_name, candidate_headline')
-        .eq('candidate_id', candidateId)
-        .eq('job_id', jobId)
-        .maybeSingle(),
-      ctx.adminClient
-        .from('sourcing_projects')
-        .select('name, job_title, client_name')
-        .eq('id', jobId)
-        .maybeSingle(),
-    ]);
-
-    const jobLabel = project?.job_title || project?.name || jobId;
-    const candidateLabel = current?.candidate_name || candidateId;
-    const isNoOp = current?.status === 'dismissed';
-
+    const preview = await candidateStageDryRun(params, ctx, 'Perdu', null);
+    const d = preview.details;
+    const name = d.candidate_name || d.candidate_id;
     return {
-      summary: isNoOp
-        ? `${candidateLabel} est déjà écarté de "${jobLabel}"`
-        : `Écarter ${candidateLabel} de la mission "${jobLabel}"`,
-      details: {
-        candidate_id: candidateId,
-        candidate_name: current?.candidate_name ?? null,
-        candidate_headline: current?.candidate_headline ?? null,
-        job_id: jobId,
-        job_label: jobLabel,
-        client_label: project?.client_name ?? null,
-        from_status: current?.status ?? null,
-        to_status: 'dismissed',
-        reason,
-        is_no_op: isNoOp,
-      },
-      warning: isNoOp ? 'Aucun changement — déjà écarté.' : undefined,
+      ...preview,
+      summary: d.is_no_op
+        ? `${name} est déjà écarté de "${d.job_label}"`
+        : `Écarter ${name} de la mission "${d.job_label}" (${lineCount(d.rows_to_move)})`,
     };
   },
 
   async execute(params, ctx) {
-    const candidateId = String(params.candidate_id);
-    const jobId = String(params.job_id);
-    const reason = params.reason ? String(params.reason) : null;
-
-    const updatePayload: Record<string, unknown> = { status: 'dismissed' };
-    if (reason) updatePayload.skip_reason = reason;
-
-    const { data, error } = await ctx.adminClient
-      .from('job_candidate_status')
-      .update(updatePayload)
-      .eq('job_id', jobId)
-      .eq('candidate_id', candidateId)
-      .select('id, status, skip_reason, updated_at')
-      .single();
-
-    if (error) return { success: false, error: error.message };
-
-    return {
-      success: true,
-      data: {
-        row_id: data.id,
-        new_status: data.status,
-        skip_reason: data.skip_reason,
-        updated_at: data.updated_at,
-      },
-    };
+    const projectId = missionIdParam(params);
+    const candidateId = String(params.candidate_id || '').trim();
+    if (!projectId || !candidateId) return { success: false, error: 'job_id and candidate_id are required' };
+    const reason = params.reason ? String(params.reason).slice(0, 500) : null;
+    const outcome = await applyCandidateStage(ctx, projectId, candidateId, ATS_LABEL_TO_STAGE['Perdu'], null, reason);
+    return candidateStageResult(outcome, 'Perdu');
   },
 };
 
@@ -4239,37 +4381,81 @@ const launchSearch: AgentTool = {
 // candidat par son nom pour que l'utilisateur voie exactement ce qui va être
 // modifié avant d'approuver. Ne crée jamais de rows : les candidats absents
 // de job_candidate_status pour cette mission sont ignorés et signalés.
+// Lot 0b-4 : une boucle apply_mission_candidate_stage par candidat (origine
+// 'user'), sur toutes ses lignes de la mission (project_id), tous auteurs.
 
 const BULK_MAX = 50;
 
-interface BulkTarget {
-  candidate_id: string;
-  candidate_name: string | null;
-  current: string | null;
-}
-
+/** Candidats demandés présents dans la mission (lignes) et absents. */
 async function resolveBulkTargets(
   ctx: ToolContext,
-  jobId: string,
+  projectId: string,
   candidateIds: string[],
-  field: 'pipeline_stage' | 'status',
-): Promise<{ found: BulkTarget[]; missing: string[] }> {
-  const { data } = await ctx.adminClient
-    .from('job_candidate_status')
-    .select(`candidate_id, candidate_name, ${field}`)
-    .eq('organization_id', ctx.organizationId)
-    .eq('job_id', jobId)
-    .in('candidate_id', candidateIds);
-  const rows = (data as Array<Record<string, any>> | null) ?? [];
-  const foundIds = new Set(rows.map((r) => r.candidate_id));
+): Promise<{ rows: MissionCandidateRow[]; foundIds: string[]; missing: string[]; error: string | null }> {
+  const { rows, error } = await missionCandidateRows(ctx, projectId, candidateIds);
+  const found = new Set(rows.map((r) => r.candidate_id));
   return {
-    found: rows.map((r) => ({
-      candidate_id: r.candidate_id,
-      candidate_name: r.candidate_name ?? null,
-      current: r[field] ?? null,
-    })),
-    missing: candidateIds.filter((id) => !foundIds.has(id)),
+    rows,
+    foundIds: candidateIds.filter((id) => found.has(id)),
+    missing: candidateIds.filter((id) => !found.has(id)),
+    error,
   };
+}
+
+/** Mission de l'organisation, 2 à BULK_MAX candidats, au moins une ligne dans la mission. */
+async function verifyBulkAccess(
+  params: Record<string, unknown>,
+  ctx: ToolContext,
+  singleTool: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
+  const ids = parseBulkIds(params);
+  if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : ${singleTool})` };
+  const projectId = missionIdParam(params);
+  if (!projectId) return { allowed: false, reason: 'job_id (mission UUID) is required' };
+  const mission = await verifyMissionOfOrg(ctx, projectId);
+  if (!mission.allowed) return mission;
+  const { foundIds, error } = await resolveBulkTargets(ctx, projectId, ids);
+  if (error) return { allowed: false, reason: "Les candidats n'ont pas pu être vérifiés. Réessayez dans un instant." };
+  if (foundIds.length === 0) return { allowed: false, reason: "Aucun des candidats fournis n'existe sur cette mission." };
+  return { allowed: true };
+}
+
+/** Nombre de candidats distincts d'un ensemble de lignes (un candidat peut avoir une ligne par auteur). */
+function distinctCandidates(rows: MissionCandidateRow[]): number {
+  return new Set(rows.map((r) => r.candidate_id)).size;
+}
+
+/** Lignes regroupées par candidat, dans l'ordre de première apparition. */
+function rowsByCandidate(rows: MissionCandidateRow[]): MissionCandidateRow[][] {
+  const groups = new Map<string, MissionCandidateRow[]>();
+  for (const r of rows) {
+    const g = groups.get(r.candidate_id);
+    if (g) g.push(r);
+    else groups.set(r.candidate_id, [r]);
+  }
+  return [...groups.values()];
+}
+
+/** Boucle apply_mission_candidate_stage par candidat ; cumule les lignes. */
+async function applyBulkStage(
+  ctx: ToolContext,
+  projectId: string,
+  candidateIds: string[],
+  target: StageTarget,
+  skipReason: string | null,
+): Promise<{ changed: number; unchanged: number; kept: number; refused: number; failedCandidates: number }> {
+  const total = { changed: 0, unchanged: 0, kept: 0, refused: 0, failedCandidates: 0 };
+  for (const candidateId of candidateIds) {
+    const outcome = await applyCandidateStage(ctx, projectId, candidateId, target, null, skipReason);
+    total.changed += outcome.changed;
+    total.unchanged += outcome.unchanged;
+    total.kept += outcome.kept;
+    total.refused += outcome.refused;
+    // Appel en échec (erreur transitoire, délai) : aucune ligne rendue, candidat non traité.
+    if (outcome.error && outcome.rows.length === 0) total.failedCandidates++;
+  }
+  return total;
 }
 
 function parseBulkIds(params: Record<string, unknown>): string[] {
@@ -4306,67 +4492,66 @@ const bulkUpdateStage: AgentTool = {
     required: ['job_id', 'candidate_ids', 'new_stage'],
   },
   async verifyAccess(params, ctx) {
-    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
-    const ids = parseBulkIds(params);
-    if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : update_candidate_stage)` };
-    if (!String(params.job_id || '').trim()) return { allowed: false, reason: 'job_id is required' };
     const stage = String(params.new_stage || '');
     if (!(ALLOWED_STAGES as readonly string[]).includes(stage)) {
       return { allowed: false, reason: `new_stage must be one of: ${ALLOWED_STAGES.join(', ')}` };
     }
-    return { allowed: true };
+    return verifyBulkAccess(params, ctx, 'update_candidate_stage');
   },
   async dryRun(params, ctx) {
     const ids = parseBulkIds(params);
-    const jobId = String(params.job_id);
-    const stage = String(params.new_stage);
-    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'pipeline_stage');
-    const toMove = found.filter((t) => t.current !== stage);
-    const noOps = found.length - toMove.length;
+    const projectId = missionIdParam(params) ?? '';
+    const stage = String(params.new_stage) as PipelineStage;
+    const target = ATS_LABEL_TO_STAGE[stage];
+    const { rows, missing } = await resolveBulkTargets(ctx, projectId, ids);
+    const toMove = rows.filter((r) => !isAtTarget(r, target));
+    const noOps = rows.length - toMove.length;
     return {
-      summary: `Déplacer ${toMove.length} candidat(s) vers « ${stage} »`,
+      summary: `Déplacer ${distinctCandidates(toMove)} candidat(s) vers « ${stage} » (${lineCount(toMove.length)})`,
       details: {
-        job_id: jobId,
+        job_id: projectId,
         new_stage: stage,
         reason: String(params.reason || '') || null,
-        candidates: found.map((t) => ({
-          name: t.candidate_name || t.candidate_id,
-          from: t.current,
+        candidates: rowsByCandidate(rows).map((g) => ({
+          name: g[0].candidate_name || g[0].candidate_id,
+          from: [...new Set(g.map(stageLabelOf))].join(', '),
           to: stage,
-          no_op: t.current === stage,
+          no_op: g.every((r) => isAtTarget(r, target)),
         })),
+        rows: rows.length,
         skipped_not_in_pipeline: missing,
         no_op_count: noOps,
       },
       warning: missing.length > 0
-        ? `${missing.length} candidat(s) introuvable(s) sur cette mission — ils seront ignorés.`
+        ? `${missing.length} candidat(s) introuvable(s) sur cette mission, ils seront ignorés.`
         : noOps > 0
-        ? `${noOps} candidat(s) déjà au stade cible (aucun changement pour eux).`
+        ? `${noOps} ligne(s) déjà à l'étape cible (aucun changement pour elles).`
         : undefined,
     };
   },
   async execute(params, ctx) {
     const ids = parseBulkIds(params);
-    const jobId = String(params.job_id);
-    const stage = String(params.new_stage);
-    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'pipeline_stage');
-    if (found.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
-    const { data, error } = await ctx.adminClient
-      .from('job_candidate_status')
-      .update({ pipeline_stage: stage })
-      .eq('organization_id', ctx.organizationId)
-      .eq('job_id', jobId)
-      .in('candidate_id', found.map((t) => t.candidate_id))
-      .select('candidate_id');
-    if (error) return { success: false, error: error.message };
-    const updated = (data as Array<{ candidate_id: string }> | null)?.length ?? 0;
+    const projectId = missionIdParam(params);
+    const stage = String(params.new_stage) as PipelineStage;
+    const target = ATS_LABEL_TO_STAGE[stage];
+    if (!projectId || !target) return { success: false, error: 'job_id and a valid new_stage are required' };
+    const { foundIds, missing, error: lookupError } = await resolveBulkTargets(ctx, projectId, ids);
+    if (lookupError) return { success: false, error: "Les candidats n'ont pas pu être relus. Réessayez." };
+    if (foundIds.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
+    const total = await applyBulkStage(ctx, projectId, foundIds, target, null);
+    if (total.changed + total.unchanged + total.kept === 0) {
+      return { success: false, error: "Le changement d'étape n'a pas été enregistré. Réessayez." };
+    }
     return {
       success: true,
       data: {
-        updated,
+        updated: total.changed,
+        unchanged: total.unchanged,
+        refused: total.refused,
+        failed: total.failedCandidates,
         skipped: missing.length,
         new_stage: stage,
-        message: `${updated} candidat(s) déplacé(s) vers « ${stage} »${missing.length ? ` (${missing.length} ignoré(s), hors pipeline)` : ''}.`,
+        message: `${total.changed} ligne(s) déplacée(s) vers « ${stage} »${missing.length ? ` (${missing.length} candidat(s) ignoré(s), hors pipeline)` : ''}${total.refused ? `, ${total.refused} refusée(s)` : ''}${total.failedCandidates ? `, ${total.failedCandidates} candidat(s) non traité(s), réessayez` : ''}.`,
       },
     };
   },
@@ -4395,54 +4580,52 @@ const bulkDismiss: AgentTool = {
     required: ['job_id', 'candidate_ids', 'reason'],
   },
   async verifyAccess(params, ctx) {
-    if (!ctx.organizationId) return { allowed: false, reason: 'No active organization' };
-    const ids = parseBulkIds(params);
-    if (ids.length < 2) return { allowed: false, reason: `candidate_ids doit contenir entre 2 et ${BULK_MAX} candidats (pour un seul : dismiss_candidate)` };
-    if (!String(params.job_id || '').trim()) return { allowed: false, reason: 'job_id is required' };
     if (!String(params.reason || '').trim()) return { allowed: false, reason: 'reason is required for bulk dismissal' };
-    return { allowed: true };
+    return verifyBulkAccess(params, ctx, 'dismiss_candidate');
   },
   async dryRun(params, ctx) {
     const ids = parseBulkIds(params);
-    const jobId = String(params.job_id);
-    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'status');
-    const toDismiss = found.filter((t) => t.current !== 'dismissed');
+    const projectId = missionIdParam(params) ?? '';
+    const target = ATS_LABEL_TO_STAGE['Perdu'];
+    const { rows, missing } = await resolveBulkTargets(ctx, projectId, ids);
+    const toDismiss = rows.filter((r) => !isAtTarget(r, target));
     return {
-      summary: `Écarter ${toDismiss.length} candidat(s) de la mission`,
+      summary: `Écarter ${distinctCandidates(toDismiss)} candidat(s) de la mission (${lineCount(toDismiss.length)})`,
       details: {
-        job_id: jobId,
+        job_id: projectId,
         reason: String(params.reason),
-        candidates: found.map((t) => ({
-          name: t.candidate_name || t.candidate_id,
-          current_status: t.current,
-          already_dismissed: t.current === 'dismissed',
+        candidates: rowsByCandidate(rows).map((g) => ({
+          name: g[0].candidate_name || g[0].candidate_id,
+          current_stage: [...new Set(g.map(stageLabelOf))].join(', '),
+          already_dismissed: g.every((r) => isAtTarget(r, target)),
         })),
+        rows: rows.length,
         skipped_not_in_pipeline: missing,
       },
-      warning: `Action destructive : ${toDismiss.length} candidat(s) seront marqués « écartés » sur cette mission.${missing.length ? ` ${missing.length} id(s) introuvable(s) seront ignorés.` : ''}`,
+      warning: `Action destructive : ${toDismiss.length} ligne(s) seront écartées sur cette mission.${missing.length ? ` ${missing.length} id(s) introuvable(s) seront ignorés.` : ''}`,
     };
   },
   async execute(params, ctx) {
     const ids = parseBulkIds(params);
-    const jobId = String(params.job_id);
+    const projectId = missionIdParam(params);
+    if (!projectId) return { success: false, error: 'job_id is required' };
     const reason = String(params.reason).slice(0, 500);
-    const { found, missing } = await resolveBulkTargets(ctx, jobId, ids, 'status');
-    if (found.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
-    const { data, error } = await ctx.adminClient
-      .from('job_candidate_status')
-      .update({ status: 'dismissed', skip_reason: reason })
-      .eq('organization_id', ctx.organizationId)
-      .eq('job_id', jobId)
-      .in('candidate_id', found.map((t) => t.candidate_id))
-      .select('candidate_id');
-    if (error) return { success: false, error: error.message };
-    const updated = (data as Array<{ candidate_id: string }> | null)?.length ?? 0;
+    const { foundIds, missing, error: lookupError } = await resolveBulkTargets(ctx, projectId, ids);
+    if (lookupError) return { success: false, error: "Les candidats n'ont pas pu être relus. Réessayez." };
+    if (foundIds.length === 0) return { success: false, error: 'Aucun des candidats fournis n\'existe sur cette mission.' };
+    const total = await applyBulkStage(ctx, projectId, foundIds, ATS_LABEL_TO_STAGE['Perdu'], reason);
+    if (total.changed + total.unchanged + total.kept === 0) {
+      return { success: false, error: "Le changement d'étape n'a pas été enregistré. Réessayez." };
+    }
     return {
       success: true,
       data: {
-        dismissed: updated,
+        dismissed: total.changed,
+        unchanged: total.unchanged,
+        refused: total.refused,
+        failed: total.failedCandidates,
         skipped: missing.length,
-        message: `${updated} candidat(s) écarté(s)${missing.length ? ` (${missing.length} ignoré(s), hors pipeline)` : ''}. Motif : ${reason}`,
+        message: `${total.changed} ligne(s) écartée(s)${missing.length ? ` (${missing.length} candidat(s) ignoré(s), hors pipeline)` : ''}${total.refused ? `, ${total.refused} refusée(s)` : ''}${total.failedCandidates ? `, ${total.failedCandidates} candidat(s) non traité(s), réessayez` : ''}. Motif : ${reason}`,
       },
     };
   },

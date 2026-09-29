@@ -21,6 +21,8 @@ import { JobMatchResult } from '@/components/outreach/JobScoreDisplay';
 import { Job } from '@/types/jobs';
 import { invokeEdgeFunction, isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
+import { plural } from '@/lib/plural';
+import { skippedStageMessage } from '@/lib/candidateStage';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
@@ -655,9 +657,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         profileUrl: profile.public_profile_url || profile.profile_url,
       }));
     
-    await search.candidateStatus.batchDismiss(profilesToDismiss);
-    search.setSelectedProfiles(new Set());
-    toast.success(`${profilesToDismiss.length} profil(s) archivé(s)`);
+    // Lot 0b-4 (N7) : bilan réel de la base ; les erreurs sont annoncées par
+    // batchDismiss, et la sélection est gardée s'il reste des profils à archiver.
+    const { dismissed, failed } = await search.candidateStatus.batchDismiss(profilesToDismiss);
+    if (failed === 0) search.setSelectedProfiles(new Set());
+    if (dismissed > 0) {
+      toast.success(`${plural(dismissed, 'profil')} ${dismissed > 1 ? 'archivés' : 'archivé'}`);
+    }
   }, [search.selectedJob, search.selectedProfiles, mergedResults, search.candidateStatus, search.setSelectedProfiles]);
 
   const handleBulkAddToProject = useCallback(async () => {
@@ -672,8 +678,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
     // Historique : ce handler archivait les profils tout en annonçant un ajout
     // (corrigé), puis les écrivait en `discovered` tout en annonçant une
-    // shortlist (constat UX01). Il écrit maintenant le statut `shortlisted`,
-    // celui que le filtre Shortlist cherche réellement.
+    // shortlist (constat UX01). Il retient maintenant les profils (statut
+    // `shortlisted`, celui que le filtre Shortlist cherche réellement), par
+    // set_candidate_stages depuis le lot 0b-4 : un candidat déjà contacté ou
+    // plus loin reste à son étape, et c'est annoncé.
     const bilan = await search.candidateStatus.batchShortlist(
       profilesToAdd.map(profile => ({
         id: profile.id,
@@ -687,9 +695,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     // Un échec conserve la sélection : l'utilisateur peut réessayer sans
     // reconstituer son lot. On ne confirme que ce que la base a accepté.
     if (bilan.failed > 0) {
+      if (bilan.added > 0 || bilan.skipped > 0) {
+        queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+      }
       toast.error(
         bilan.error
-          ? `Shortlist impossible : ${bilan.error}. Votre sélection est conservée.`
+          ? `Shortlist impossible : ${bilan.error.replace(/\.\s*$/, '')}. Votre sélection est conservée.`
           : 'Shortlist impossible. Votre sélection est conservée, réessayez.'
       );
       return;
@@ -699,23 +710,27 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
 
     const parts: string[] = [];
-    if (bilan.added > 0) parts.push(`${bilan.added} profil(s) shortlisté(s)`);
+    if (bilan.added > 0) parts.push(`${plural(bilan.added, 'profil')} ${bilan.added > 1 ? 'ajoutés' : 'ajouté'} à la shortlist`);
     if (bilan.already > 0) parts.push(`${bilan.already} déjà en shortlist`);
-    if (introuvables > 0) parts.push(`${introuvables} introuvable(s)`);
-    toast.success(parts.join(', ') || 'Aucun profil à shortlister');
+    if (introuvables > 0) parts.push(`${introuvables} ${introuvables > 1 ? 'introuvables' : 'introuvable'}`);
+    const skipped = skippedStageMessage(bilan.skipped);
+    const summary = parts.length > 0 ? `${parts.join(', ')}.` : '';
+    if (summary) toast.success(skipped ? `${summary} ${skipped}` : summary);
+    else if (skipped) toast.info(skipped);
+    else toast.success('Aucun profil à ajouter');
   }, [activeProject, search.selectedJob, search.selectedProfiles, mergedResults, search.candidateStatus, search.setSelectedProfiles, queryClient]);
 
   // Handle archive for single profile
   const handleArchive = useCallback(async (profile: LinkedInProfile) => {
     if (!search.selectedJob) return;
     
-    await search.candidateStatus.dismissCandidate(profile.id, {
+    const archived = await search.candidateStatus.dismissCandidate(profile.id, {
       name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
       headline: profile.headline,
       profileUrl: profile.public_profile_url || profile.profile_url,
     });
     
-    toast.success('Profil archivé');
+    if (archived) toast.success('Profil archivé');
   }, [search.selectedJob, search.candidateStatus]);
 
   // Handle profile treated (messaged, sequenced, etc.)

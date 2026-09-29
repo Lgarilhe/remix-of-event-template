@@ -96,7 +96,9 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
 
         if (error) throw error;
       } else {
-        // Create new record
+        // Create new record, à trier (lot 0b-4, N16 : insertion admise).
+        // Organisation de la mission : exigée par la RLS et par les policies
+        // mission_same_org_* (une ligne ne porte que la mission de son organisation).
         const { error } = await supabase
           .from('job_candidate_status')
           .insert({
@@ -111,6 +113,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
             skip_reason: skipReason,
             status: 'untreated',
             created_by: user.id,
+            organization_id: project.organization_id,
           });
 
         if (error) throw error;
@@ -121,11 +124,11 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
       queryClient.invalidateQueries({ queryKey: ['project-stats', project.id] });
       queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
-      toast.success(`${candidateName} shortlisté pour "${project.name}"`);
+      toast.success(`${candidateName} ajouté à « ${project.name} »`);
       onAdded?.();
     } catch (error) {
       console.error('Error adding to project:', error);
-      toast.error('Erreur lors de la shortlist');
+      toast.error('Erreur lors de l\'ajout');
     } finally {
       setIsAdding(false);
     }
