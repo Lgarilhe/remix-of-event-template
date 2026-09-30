@@ -26,6 +26,8 @@ import { plural } from '@/lib/plural';
 /** Bilan d'un déplacement groupé. */
 export interface BulkMoveResult {
   moved: number;
+  /** Candidats déjà à l'étape visée : rien n'a été écrit pour eux. */
+  unchanged: number;
   failed: number;
   /** Remet les candidats déplacés à leur étape précédente. */
   undo?: () => void | Promise<void>;
@@ -51,16 +53,20 @@ export const BulkActionsBar: React.FC<BulkActionsBarProps> = ({
   const handleBulkMove = async (stage: { key: string; label: string }) => {
     setLoading(true);
     try {
-      const { moved, failed, undo } = await onBulkStageChange(Array.from(selectedIds), stage.key);
+      const { moved, unchanged, failed, undo } = await onBulkStageChange(Array.from(selectedIds), stage.key);
       const target = `«\u00a0${stage.label}\u00a0»`;
       const undoAction = undo ? { action: { label: 'Annuler', onClick: () => void undo() } } : undefined;
-      if (failed === 0) {
-        toast.success(`${plural(moved, 'candidat déplacé', 'candidats déplacés')} vers ${target}`, undoAction);
+      // Les candidats déjà à l'étape sont dits à part : ils ne sont ni déplacés ni en échec.
+      const already = unchanged > 0 ? `, ${plural(unchanged, 'candidat')} déjà à cette étape` : '';
+      if (failed === 0 && moved === 0) {
+        toast.info(`Aucun déplacement\u00a0: ${plural(unchanged, 'candidat est', 'candidats sont')} déjà à l'étape ${target}.`);
+      } else if (failed === 0) {
+        toast.success(`${plural(moved, 'candidat déplacé', 'candidats déplacés')} vers ${target}${already}`, undoAction);
       } else if (moved === 0) {
         toast.error(`Aucun candidat déplacé vers ${target}\u00a0: l'enregistrement a échoué. Réessayez.`);
       } else {
         toast.warning(
-          `${plural(moved, 'candidat déplacé', 'candidats déplacés')} vers ${target}, ${plural(failed, 'échec')}. Les candidats non déplacés restent cochés\u00a0: réessayez.`,
+          `${plural(moved, 'candidat déplacé', 'candidats déplacés')} vers ${target}${already}, ${plural(failed, 'échec')}. Les candidats non déplacés restent cochés\u00a0: réessayez.`,
           undoAction,
         );
       }

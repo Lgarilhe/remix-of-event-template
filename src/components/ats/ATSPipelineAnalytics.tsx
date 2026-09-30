@@ -1,8 +1,8 @@
 /**
  * Affichage « Analyse » du pipeline global (revue design E-27).
  *
- * Chaque mesure porte le nom de ce qu'elle mesure : le temps écoulé depuis la
- * dernière action (pas le temps passé dans l'étape), la répartition actuelle
+ * Chaque mesure porte le nom de ce qu'elle mesure : le temps passé dans
+ * l'étape (depuis l'entrée dans l'étape, lot 0c-4), la répartition actuelle
  * par étape, la progression d'après l'étape actuelle (pas un historique des
  * passages). Barres monochromes à 3:1 au moins, valeur écrite à côté ;
  * l'accent (warning) ne signale que l'écart au délai de l'étape. Définitions
@@ -14,7 +14,8 @@ import { Section, StatGrid, StatTile } from '@/components/layout';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InfoHint } from '@/components/ui/info-hint';
-import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, daysSinceLastAction } from '@/hooks/useATSData';
+import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, daysInStage } from '@/hooks/useATSData';
+import { atsColumnTitle } from '@/lib/stageDisplay';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
 
@@ -33,7 +34,8 @@ interface StageMetrics {
   count: number;
   avgDays: number;
   stagnantCount: number;
-  guideTime: number;
+  /** Délai de l'étape en jours ; null pour À trier et Retenu, qui n'en ont pas. */
+  guideTime: number | null;
 }
 
 interface Bottleneck {
@@ -67,15 +69,15 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
     // Stage metrics
     const metrics: StageMetrics[] = ACTIVE_STAGES.map(stage => {
       const stageCandidates = candidates.filter(c => c.stage === stage.key);
-      const guideTime = STAGNATION_DAYS[stage.key] || 7;
+      const guideTime = STAGNATION_DAYS[stage.key] ?? null;
 
-      const daysSinceAction = stageCandidates.map(c => daysSinceLastAction(c, now) ?? 0);
+      const daysSinceAction = stageCandidates.map(c => daysInStage(c, now) ?? 0);
 
       const avgDays = daysSinceAction.length > 0
         ? Math.round(daysSinceAction.reduce((a, b) => a + b, 0) / daysSinceAction.length)
         : 0;
 
-      const stagnantCount = daysSinceAction.filter(d => d > guideTime).length;
+      const stagnantCount = guideTime === null ? 0 : daysSinceAction.filter(d => d > guideTime).length;
 
       return {
         key: stage.key,
@@ -89,14 +91,15 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
 
     // Bottlenecks: stages with stagnant candidates
     const bottlenecks: Bottleneck[] = metrics
-      .filter(m => m.stagnantCount > 0)
-      .map(m => ({
-        stage: m.label,
-        count: m.stagnantCount,
-        avgDays: m.avgDays,
-        guideTime: m.guideTime,
-        severity: (m.stagnantCount >= 5 || m.avgDays > m.guideTime * 2 ? 'critical' : 'warning') as 'critical' | 'warning',
-      }))
+      .flatMap(m => m.guideTime !== null && m.stagnantCount > 0
+        ? [{
+            stage: m.label,
+            count: m.stagnantCount,
+            avgDays: m.avgDays,
+            guideTime: m.guideTime,
+            severity: (m.stagnantCount >= 5 || m.avgDays > m.guideTime * 2 ? 'critical' : 'warning') as 'critical' | 'warning',
+          }]
+        : [])
       .sort((a, b) => b.count - a.count);
 
     // Progression d'après l'étape actuelle
@@ -123,8 +126,8 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
       const rate = atOrBeyond > 0 ? Math.round((nextAtOrBeyond / atOrBeyond) * 100) : 0;
 
       return {
-        from: stage,
-        to: nextStage,
+        from: atsColumnTitle(stage),
+        to: atsColumnTitle(nextStage),
         fromCount: atOrBeyond,
         toCount: nextAtOrBeyond,
         rate,
@@ -138,8 +141,10 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
     const totalEnded = totalWon + totalLost;
     const winRate = totalEnded > 0 ? Math.round((totalWon / totalEnded) * 100) : 0;
     const totalStagnant = metrics.reduce((sum, m) => sum + m.stagnantCount, 0);
-    const overallAvgDays = metrics.length > 0
-      ? Math.round(metrics.reduce((sum, m) => sum + m.avgDays * m.count, 0) / Math.max(metrics.reduce((sum, m) => sum + m.count, 0), 1))
+    // Moyenne sur les candidats engagés : À trier et Retenu, sans délai, ne tirent pas le rythme.
+    const engaged = metrics.filter(m => m.guideTime !== null);
+    const overallAvgDays = engaged.length > 0
+      ? Math.round(engaged.reduce((sum, m) => sum + m.avgDays * m.count, 0) / Math.max(engaged.reduce((sum, m) => sum + m.count, 0), 1))
       : 0;
 
     return {
@@ -158,23 +163,23 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
         <StatTile
           label="Candidats actifs"
           value={kpis.totalActive}
-          trailing={<Definition label="Candidats actifs">Candidats ni gagnés ni perdus. {plural(kpis.totalWon, 'gagné')} au total.</Definition>}
+          trailing={<Definition label="Candidats actifs">Candidats ni embauchés ni écartés. {plural(kpis.totalWon, 'embauché')} en ce moment.</Definition>}
         />
         <StatTile
           label="Taux de réussite"
           value={percent(kpis.winRate)}
           trailing={
             <Definition label="Taux de réussite">
-              Part des candidats gagnés parmi ceux qui ont quitté le pipeline, gagnés ou perdus ({kpis.totalEnded} à ce jour).
+              Part des candidats embauchés parmi ceux qui ont quitté le pipeline, embauchés ou écartés ({kpis.totalEnded} à ce jour).
             </Definition>
           }
         />
         <StatTile
-          label="Jours depuis la dernière action"
+          label="Jours dans l'étape"
           value={days(kpis.overallAvgDays)}
           trailing={
-            <Definition label="Jours depuis la dernière action">
-              Moyenne, sur les candidats actifs, du nombre de jours écoulés depuis leur dernière action. Ce n'est pas le temps passé dans l'étape.
+            <Definition label="Jours dans l'étape">
+              Moyenne, sur les candidats engagés (de Contacté à Offre), du nombre de jours écoulés depuis leur entrée dans leur étape actuelle.
             </Definition>
           }
         />
@@ -185,7 +190,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
           accent={kpis.totalStagnant > 0}
           trailing={
             <Definition label="Sans mouvement">
-              Candidats restés sans action plus longtemps que le délai de leur étape (de 3 à 10 jours selon l'étape).
+              Candidats restés dans leur étape plus longtemps que le délai de cette étape (de 3 à 10 jours selon l'étape). Les étapes À trier, Retenu, Embauché et Écarté n'ont pas de délai.
             </Definition>
           }
         />
@@ -198,7 +203,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
           subtitle={plural(bottlenecks.length, 'étape')}
           action={
             <Definition label="Goulots d'étranglement">
-              {"Étapes où des candidats dépassent le délai prévu sans action. Critique\u00a0: 5 candidats ou plus sans mouvement, ou une moyenne au-delà du double du délai de l'étape."}
+              {"Étapes où des candidats dépassent le délai prévu dans l'étape. Critique\u00a0: 5 candidats ou plus sans mouvement, ou une moyenne au-delà du double du délai de l'étape."}
             </Definition>
           }
         >
@@ -208,7 +213,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">{b.stage}</p>
                   <p className="text-xs text-muted-foreground">
-                    {plural(b.count, 'candidat')} sans mouvement depuis plus de {days(b.guideTime)}, {days(b.avgDays)} en moyenne depuis la dernière action
+                    {plural(b.count, 'candidat')} sans mouvement depuis plus de {days(b.guideTime)}, {days(b.avgDays)} en moyenne dans l'étape
                   </p>
                 </div>
                 <Badge variant={b.severity === 'critical' ? 'danger' : 'warning'} className="shrink-0">
@@ -226,13 +231,13 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
         subtitle="Candidats actifs"
         action={
           <Definition label="Répartition par étape">
-            Nombre de candidats actifs dans chaque étape. À droite, les jours écoulés en moyenne depuis leur dernière action, comparés au délai de l'étape.
+            Nombre de candidats actifs dans chaque étape. À droite, les jours passés en moyenne dans l'étape, comparés au délai de l'étape.
           </Definition>
         }
       >
         <ul className="space-y-3 p-4">
           {stageMetrics.map(metric => {
-            const isOverGuide = metric.avgDays > metric.guideTime;
+            const isOverGuide = metric.guideTime !== null && metric.avgDays > metric.guideTime;
             return (
               <li
                 key={metric.key}
@@ -245,9 +250,11 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
                   <span className="sr-only"> candidat{metric.count > 1 ? 's' : ''}</span>
                 </span>
                 <span className={cn('col-span-3 text-xs sm:col-span-1', isOverGuide ? 'font-medium text-warning' : 'text-muted-foreground')}>
-                  {metric.count === 0
-                    ? `Délai de l'étape\u00a0: ${days(metric.guideTime)}`
-                    : `${days(metric.avgDays)} en moyenne, ${isOverGuide ? 'au-delà du' : 'pour un'} délai de ${days(metric.guideTime)}`}
+                  {metric.guideTime === null
+                    ? (metric.count === 0 ? "Pas de délai pour cette étape" : `${days(metric.avgDays)} en moyenne, pas de délai pour cette étape`)
+                    : metric.count === 0
+                      ? `Délai de l'étape\u00a0: ${days(metric.guideTime)}`
+                      : `${days(metric.avgDays)} en moyenne, ${isOverGuide ? 'au-delà du' : 'pour un'} délai de ${days(metric.guideTime)}`}
                   {metric.stagnantCount > 0 && `, ${metric.stagnantCount} sans mouvement`}
                 </span>
               </li>
@@ -262,7 +269,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
         subtitle="D'après l'étape actuelle"
         action={
           <Definition label="Progression d'une étape à la suivante">
-            Parmi les candidats arrivés à une étape, la part de ceux qui ont atteint au moins la suivante. Calculée d'après l'étape actuelle de chaque candidat, et non d'après l'historique de ses passages ; les candidats perdus sont exclus.
+            Parmi les candidats arrivés à une étape, la part de ceux qui ont atteint au moins la suivante. Calculée d'après l'étape actuelle de chaque candidat, et non d'après l'historique de ses passages ; les candidats écartés sont exclus.
           </Definition>
         }
       >
@@ -294,11 +301,11 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-medium text-muted-foreground">Rythme</p>
               <Definition label="Rythme">
-                {"D'après les jours écoulés depuis la dernière action, en moyenne\u00a0: rapide jusqu'à 5 jours, modéré de 6 à 10 jours, lent au-delà."}
+                {"D'après les jours passés dans l'étape, en moyenne\u00a0: rapide jusqu'à 5 jours, modéré de 6 à 10 jours, lent au-delà."}
               </Definition>
             </div>
             <p className="mt-1 text-xl font-semibold text-foreground">{velocityOf(kpis.overallAvgDays)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{days(kpis.overallAvgDays)} en moyenne depuis la dernière action</p>
+            <p className="mt-1 text-xs text-muted-foreground">{days(kpis.overallAvgDays)} en moyenne dans l'étape</p>
           </div>
           <div className="rounded-lg border border-border p-4">
             <div className="flex items-center justify-between gap-2">

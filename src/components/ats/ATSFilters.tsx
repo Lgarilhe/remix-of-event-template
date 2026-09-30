@@ -53,7 +53,7 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
           type="search"
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-          placeholder="Nom, poste, intitulé…"
+          placeholder="Nom, mission, intitulé…"
           aria-label="Rechercher un candidat"
           className="h-8 pl-8 max-md:h-11"
         />
@@ -84,7 +84,7 @@ export const ATSFilters: React.FC<ATSFiltersProps> = ({ filters, onFiltersChange
       </FilterPill>
 
       {options.jobs.length > 0 && (
-        <FilterPill label="Poste" count={filters.job.length} contentClassName="max-h-72 overflow-y-auto">
+        <FilterPill label="Mission" count={filters.job.length} contentClassName="max-h-72 overflow-y-auto">
           {options.jobs.map((job) => (
             <FilterOption
               key={job.id}

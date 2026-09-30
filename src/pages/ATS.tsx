@@ -31,7 +31,7 @@ import { RemindersSidebar } from '@/components/ats/RemindersSidebar';
 import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
 import { JobDetailSheet } from '@/components/ats/JobDetailSheet';
 import { BulkActionsBar, type BulkMoveResult } from '@/components/ats/BulkActionsBar';
-import { useATSData, ATS_STAGES, GENERAL_STAGE_LABEL, type ATSCandidate } from '@/hooks/useATSData';
+import { useATSData, ATS_STAGES, type ATSCandidate } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
 
@@ -47,23 +47,6 @@ const VIEWS: { value: PipelineView; label: string; icon: React.ElementType }[] =
 
 const parseView = (value: string | null): PipelineView =>
   VIEWS.some((v) => v.value === value) ? (value as PipelineView) : 'kanban';
-
-const STAGE_KEYS = new Set(ATS_STAGES.map((s) => s.key));
-
-/** Identifiant d'une étape d'entretien (pipeline_stage d'une ligne en entretien). */
-const PROCESS_STEP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Colonne du pipeline global pour une étape brute. Une clé inconnue (« messaged »,
- * « shortlisted » du kanban de mission) suit l'étape générale de la ligne (lot 0b-4),
- * sinon « Nouveau ».
- */
-function displayStage(stage: string, generalStage?: string | null): string {
-  if (STAGE_KEYS.has(stage)) return stage;
-  if (PROCESS_STEP_ID.test(stage)) return 'ITW en cours';
-  if (stage === 'hired') return 'Gagné';
-  return (generalStage && GENERAL_STAGE_LABEL[generalStage]) || 'Nouveau';
-}
 
 const EMPTY_FILTERS: ATSFiltersValue = { search: '', stage: [], source: [], job: [], tag: [], hasReminder: false };
 
@@ -94,12 +77,17 @@ export default function ATS() {
   const [jobSheetOpen, setJobSheetOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  const {
+    candidates, loading, error, refetch, handleStageChange, moveCandidates, undoStageMoves, refreshStageReaders, handleTagsChange,
+  } = useATSData();
+
+  // Poste d'un candidat : la fiche de sa mission, lue par son id (lot 0c-4) quel
+  // que soit la forme du job_id de la ligne ; sinon le poste tel quel.
   const handleJobClick = (jobId: string) => {
-    setSelectedJobId(jobId);
+    const projectId = candidates.find((c) => c.jobId === jobId && c.projectId)?.projectId;
+    setSelectedJobId(projectId ? `project:${projectId}` : jobId);
     setJobSheetOpen(true);
   };
-
-  const { candidates, loading, error, refetch, handleStageChange, handleTagsChange } = useATSData();
 
   const refresh = async () => {
     setRefreshing(true);
@@ -109,20 +97,6 @@ export default function ATS() {
       setRefreshing(false);
     }
   };
-
-  // Étape affichée : une étape que le pipeline global ne connaît pas (clé d'une
-  // mission) se range dans « Nouveau », comme sa colonne, dans toutes les vues de
-  // la page, au lieu d'afficher la clé brute (en attendant le module d'étapes, E-01).
-  // Deux exceptions (lot 0b) : l'identifiant d'une étape d'entretien de la mission
-  // s'affiche « ITW en cours » et « hired » s'affiche « Gagné ». L'étape brute reste
-  // dans `candidates` (annulation d'un déplacement groupé).
-  const pipelineCandidates = useMemo(
-    () => candidates.map((c) => {
-      const stage = displayStage(c.stage, c.stageTarget?.stage);
-      return stage === c.stage ? c : { ...c, stage };
-    }),
-    [candidates],
-  );
 
   // Sélection groupée (cases des cartes en colonnes)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -136,34 +110,34 @@ export default function ATS() {
   }, []);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  // Déplacement groupé : un candidat après l'autre (pour ne pas saturer la base),
+  // Déplacement groupé : un seul geste pour tous les candidats cochés (une lecture
+  // de l'état d'avant, un appel par lot de 200 lignes, un seul « Stage Change »),
   // sans toast par candidat ; la barre en affiche un seul pour le lot (E-23).
+  // Un doublon est écrit avec tout son groupe. L'annulation remet l'état d'avant
+  // lu en base juste avant le geste (lot 0c-4), par undo_candidate_stages.
   const handleBulkStageChange = useCallback(async (ids: string[], newStage: string): Promise<BulkMoveResult> => {
-    // Étape d'avant le déplacement : l'étape brute (affichage) et sa cible exacte
-    // en base (lot 0b-4), que l'annulation restaure.
-    const previous = new Map(candidates.map((c) => [c.id, { stage: c.stage, target: c.stageTarget ?? null }]));
-    const moved: string[] = [];
-    const failed: string[] = [];
-    for (const id of ids) {
-      if (await handleStageChange(id, newStage, { silent: true })) moved.push(id);
-      else failed.push(id);
-    }
+    const result = await moveCandidates(ids, newStage);
     // Les candidats non déplacés restent cochés, pour réessayer.
-    setSelectedIds(new Set(failed));
+    setSelectedIds(new Set(result.failedIds));
+    if (result.moved > 0 || result.partial > 0) {
+      refreshStageReaders().catch((e) => console.error('[ATS] relecture après déplacement groupé :', e));
+    }
+    const groups = result.undoGroups;
     const undo = async () => {
-      let restored = 0;
-      for (const id of moved) {
-        const prev = previous.get(id);
-        if (prev && (await handleStageChange(id, prev.stage, { silent: true, target: prev.target }))) restored++;
-      }
-      if (restored === moved.length) {
-        toast.success(`Déplacement annulé\u00a0: ${plural(restored, 'candidat remis', 'candidats remis')} à leur étape précédente`);
-      } else {
-        toast.error(`Annulation incomplète\u00a0: ${restored} sur ${moved.length} candidats remis à leur étape. Réessayez pour les autres.`);
+      try {
+        await undoStageMoves(groups);
+      } catch (e) {
+        console.error('[ATS] annulation impossible :', e);
+        toast.error("L'annulation n'a pas été enregistrée. Réessayez.");
       }
     };
-    return { moved: moved.length, failed: failed.length, undo: moved.length > 0 ? undo : undefined };
-  }, [candidates, handleStageChange]);
+    return {
+      moved: result.moved,
+      unchanged: result.unchanged,
+      failed: result.failedIds.length,
+      undo: groups.length > 0 ? undo : undefined,
+    };
+  }, [moveCandidates, undoStageMoves, refreshStageReaders]);
 
   const [filters, setFilters] = useState<ATSFiltersValue>(EMPTY_FILTERS);
 
@@ -198,10 +172,14 @@ export default function ATS() {
     const sources = new Set<ATSCandidate['source']>();
     const jobsMap = new Map<string, string>();
     const tagsSet = new Set<string>();
-    pipelineCandidates.forEach(candidate => {
+    candidates.forEach(candidate => {
       stages.add(candidate.stage);
       sources.add(candidate.source);
-      if (candidate.jobId && candidate.jobTitle) jobsMap.set(candidate.jobId, candidate.jobTitle);
+      // Filtre Mission sur la mission (project_id), titre de la mission (lot 0c-4) :
+      // le nom d'une ligne de mission l'emporte sur le libellé d'une séquence ou d'un InMail.
+      if (candidate.projectId && candidate.jobTitle && (candidate.source === 'local' || !jobsMap.has(candidate.projectId))) {
+        jobsMap.set(candidate.projectId, candidate.jobTitle);
+      }
       (candidate.tags || []).forEach(t => tagsSet.add(t));
     });
     return {
@@ -210,11 +188,11 @@ export default function ATS() {
       jobs: Array.from(jobsMap.entries()).map(([id, title]) => ({ id, title })),
       tags: Array.from(tagsSet).sort(),
     };
-  }, [pipelineCandidates]);
+  }, [candidates]);
 
   // Filter candidates
   const filteredCandidates = useMemo(() => {
-    return pipelineCandidates.filter(candidate => {
+    return candidates.filter(candidate => {
       if (filters.search) {
         const search = filters.search.toLowerCase();
         if (!candidate.name?.toLowerCase().includes(search) &&
@@ -224,7 +202,7 @@ export default function ATS() {
       }
       if (filters.stage.length > 0 && !filters.stage.includes(candidate.stage)) return false;
       if (filters.source.length > 0 && !filters.source.includes(candidate.source)) return false;
-      if (filters.job.length > 0 && candidate.jobId && !filters.job.includes(candidate.jobId)) return false;
+      if (filters.job.length > 0 && !(candidate.projectId && filters.job.includes(candidate.projectId))) return false;
       if (filters.tag.length > 0) {
         const candidateTags = candidate.tags || [];
         if (!filters.tag.some(t => candidateTags.includes(t))) return false;
@@ -232,13 +210,13 @@ export default function ATS() {
       if (filters.hasReminder && !candidate.hasReminder) return false;
       return true;
     });
-  }, [pipelineCandidates, filters]);
+  }, [candidates, filters]);
 
   // Group by stage for Kanban
   const kanbanData = useMemo(() => {
     const grouped: Record<string, ATSCandidate[]> = {};
     ATS_STAGES.forEach(stage => { grouped[stage.key] = []; });
-    filteredCandidates.forEach(candidate => grouped[candidate.stage].push(candidate));
+    filteredCandidates.forEach(candidate => (grouped[candidate.stage] ?? grouped.Nouveau).push(candidate));
     return grouped;
   }, [filteredCandidates]);
 
@@ -288,7 +266,7 @@ export default function ATS() {
           illustration="recherche"
           title="Aucun candidat pour l'instant"
           headingLevel={2}
-          description="Les candidats apparaissent ici dès que vous les ajoutez à une mission ou que vous les contactez."
+          description="Les candidats apparaissent ici dès que vous les triez dans une mission ou que vous les contactez. Les profils trouvés par une recherche restent dans le Sourcing de la mission tant qu'ils ne sont pas triés."
           action={
             <Button asChild variant="outline" size="sm">
               <Link to="/missions">Aller aux missions</Link>

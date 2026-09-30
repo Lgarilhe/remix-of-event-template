@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { SourcingProject, useProjectCandidates } from '@/hooks/useSourcingProjects';
-import { useProjectStats } from '@/hooks/useProjectStats';
+import { SourcingProject, useProjectCandidates, type ProjectCandidateRow } from '@/hooks/useSourcingProjects';
+import { useMissionStageCounts } from '@/hooks/useMissionStageCounts';
 import { ProjectFunnel } from '@/components/outreach/projects/ProjectFunnel';
+import { toProjectStats } from '@/lib/missionStatsAdapter';
+import { cumulativeText, stageLabel } from '@/lib/stageDisplay';
+import { plural } from '@/lib/plural';
+import { timeAgo } from '@/lib/relativeTime';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import {
@@ -11,8 +17,6 @@ import {
   missionEnrollmentJobIds,
   RESPONSE_RATE_MIN_CONTACTED,
 } from '@/lib/sequenceErrorMessages';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 
 interface MissionInsightsProps {
@@ -27,11 +31,14 @@ interface Insight {
   priority: 'high' | 'medium' | 'low';
 }
 
-const statusLabels: Record<string, string> = {
-  untreated: 'sourcé',
-  messaged: 'contacté',
-  shortlisted: 'shortlisté',
-  dismissed: 'écarté',
+/** Pastille de l'activité récente, par étape générale. */
+const STAGE_DOT: Record<string, string> = {
+  retained: 'bg-warning',
+  contacted: 'bg-muted-foreground',
+  replied: 'bg-brand',
+  interviewing: 'bg-foreground',
+  hired: 'bg-success',
+  rejected: 'bg-destructive/40',
 };
 
 const MetricCard = ({ label, value, sublabel, color }: {
@@ -49,7 +56,6 @@ const MetricCard = ({ label, value, sublabel, color }: {
 
 const EmptyInsightsState = () => (
   <div className="flex flex-col items-center justify-center py-16 text-center">
-    <span className="text-3xl mb-3">💡</span>
     <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Pas encore de données</h3>
     <p className="text-xs text-muted-foreground max-w-sm">
       Lancez une recherche dans l'onglet Sourcing pour commencer à voir les insights de cette mission.
@@ -59,8 +65,10 @@ const EmptyInsightsState = () => (
 
 export const MissionInsights = ({ project }: MissionInsightsProps) => {
   const [, setSearchParams] = useSearchParams();
-  const { data: candidates = [] } = useProjectCandidates(project.id);
-  const { data: stats } = useProjectStats(project.id);
+  const { data: candidatesData } = useProjectCandidates(project.id);
+  const candidates: ProjectCandidateRow[] = useMemo(() => candidatesData ?? [], [candidatesData]);
+  const countsQuery = useMissionStageCounts([project.id]);
+  const stats = useMemo(() => toProjectStats(countsQuery.data?.[project.id]), [countsQuery.data, project.id]);
 
   const [enrollmentStats, setEnrollmentStats] = useState({
     total: 0, active: 0, completed: 0, replied: 0, contacted: 0, avgResponseDays: null as number | null,
@@ -140,37 +148,17 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
     const list: Insight[] = [];
     if (!stats) return list;
 
-    const daysSinceLastSearch = project.last_search_at
-      ? Math.floor((Date.now() - new Date(project.last_search_at).getTime()) / (1000 * 60 * 60 * 24))
-      : null;
-
+    // Plus d'alerte « aucune recherche lancée » : last_search_at n'a aucun
+    // écrivain (lot 0c, conception 5.4).
     const daysSinceCreation = Math.floor(
       (Date.now() - new Date(project.created_at).getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    if (daysSinceLastSearch === null && daysSinceCreation > 3) {
-      list.push({
-        icon: '⏸️',
-        title: 'Mission sans activité',
-        description: `Aucune recherche lancée depuis la création il y a ${daysSinceCreation} jours. Lancez votre première recherche pour trouver des candidats.`,
-        action: { label: 'Lancer le sourcing', tab: 'sourcing' },
-        priority: 'high',
-      });
-    } else if (daysSinceLastSearch !== null && daysSinceLastSearch > 7) {
-      list.push({
-        icon: '⏸️',
-        title: `Inactive depuis ${daysSinceLastSearch} jours`,
-        description: 'Relancez une recherche pour enrichir votre pipeline avec de nouveaux profils.',
-        action: { label: 'Relancer le sourcing', tab: 'sourcing' },
-        priority: 'high',
-      });
-    }
-
     if (stats.untreated > 3) {
       list.push({
         icon: '💡',
-        title: `${stats.untreated} profils non contactés`,
-        description: `Vous avez ${stats.untreated} profils sourcés qui n'ont pas encore été contactés. Créez une séquence pour les approcher.`,
+        title: `${plural(stats.untreated, 'profil à trier', 'profils à trier')}`,
+        description: 'Ces profils ne sont encore ni retenus, ni contactés, ni écartés. Retenez les meilleurs, puis créez une séquence pour les approcher.',
         action: { label: 'Créer une séquence', tab: 'outreach' },
         priority: stats.untreated > 10 ? 'high' : 'medium',
       });
@@ -180,7 +168,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
       list.push({
         icon: '⚡',
         title: 'Peu de profils sourcés',
-        description: `Seulement ${stats.total} profils trouvés. Essayez d'élargir vos filtres dans le Brief (expérience, localisation, titres).`,
+        description: `Seulement ${plural(stats.total, 'profil sourcé', 'profils sourcés')}. Essayez d'élargir vos filtres dans le Brief (expérience, localisation, titres).`,
         action: { label: 'Modifier le brief', tab: 'brief' },
         priority: 'medium',
       });
@@ -215,33 +203,29 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
       });
     }
 
-    if (stats.messaged >= 5 && stats.shortlisted === 0) {
-      list.push({
-        icon: '📋',
-        title: 'Aucun candidat shortlisté',
-        description: `${stats.messaged} candidats contactés mais aucun shortlisté. Revoyez les réponses reçues dans le pipeline.`,
-        action: { label: 'Voir le pipeline', tab: 'pipeline' },
-        priority: 'medium',
-      });
-    }
-
     return list.sort((a, b) => {
       const order = { high: 0, medium: 1, low: 2 };
       return order[a.priority] - order[b.priority];
     });
   }, [stats, project, responseRate, enoughContacted]);
 
+  // Activité récente : datée sur l'entrée dans l'étape (stage_entered_at), que
+  // ni une note ni un enrichissement ne font bouger, comme updated_at.
   const recentActivity = useMemo(() => {
+    const dateOf = (c: ProjectCandidateRow) => c.stage_entered_at ?? c.updated_at ?? c.created_at;
+    const time = (c: ProjectCandidateRow) => {
+      const t = new Date(dateOf(c) ?? 0).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
     return [...candidates]
-      .sort((a: any, b: any) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+      .sort((a, b) => time(b) - time(a))
       .slice(0, 15)
-      .map((c: any) => ({
+      .map((c) => ({
         id: c.id,
         name: c.candidate_name || 'Candidat inconnu',
-        status: c.status,
+        stage: c.general_stage,
         score: c.score,
-        date: c.updated_at || c.created_at,
-        linkedinUrl: c.linkedin_profile_url,
+        date: dateOf(c),
       }));
   }, [candidates]);
 
@@ -257,10 +241,10 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
     <div className="bg-background border border-border p-4 sm:p-6 space-y-6">
       {hasData ? (
         <>
-          {/* Section 1: Funnel */}
+          {/* Section 1 : entonnoir */}
           <div className="border border-border p-4 sm:p-6">
             <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-4">
-              📊 Funnel de conversion
+              Entonnoir de conversion
             </h3>
             <ProjectFunnel
               totalFound={stats.total}
@@ -292,13 +276,13 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
             <MetricCard
               label="Taux de contact"
               value={`${contactRate}%`}
-              sublabel={`${stats.messaged}/${stats.total} sourcés`}
+              sublabel={`${cumulativeText('ever_contacted', stats.messaged)} sur ${plural(stats.total, 'sourcé')}`}
               color="text-foreground"
             />
             <MetricCard
               label="Conversion globale"
               value={`${conversionRate}%`}
-              sublabel={`${stats.shortlisted} shortlistés`}
+              sublabel={cumulativeText('ever_retained', stats.shortlisted)}
               color={conversionRate >= 5 ? 'text-success' : 'text-foreground'}
             />
           </div>
@@ -307,7 +291,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
           {insights.length > 0 && (
             <div className="border border-border p-4 sm:p-6">
               <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-4">
-                🤖 Recommandations
+                Recommandations
               </h3>
               <div className="space-y-3">
                 {insights.map((insight, i) => (
@@ -340,22 +324,19 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
           {recentActivity.length > 0 && (
             <div className="border border-border p-4 sm:p-6">
               <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-4">
-                🕐 Activité récente
+                Activité récente
               </h3>
               <div className="space-y-2">
                 {recentActivity.map((item) => (
                   <div key={item.id} className="flex items-center gap-3 py-1.5 border-b border-border/5 last:border-0">
                     <span className={cn(
                       "w-2 h-2 rounded-full shrink-0",
-                      item.status === 'shortlisted' ? "bg-brand-purple" :
-                      item.status === 'messaged' ? "bg-info" :
-                      item.status === 'dismissed' ? "bg-destructive/40" :
-                      "bg-muted-foreground/30"
+                      (item.stage && STAGE_DOT[item.stage]) || "bg-muted-foreground/30"
                     )} />
                     <div className="flex-1 min-w-0">
                       <span className="text-xs font-medium text-foreground">{item.name}</span>
                       <span className="text-xs text-muted-foreground ml-2">
-                        {statusLabels[item.status] || item.status}
+                        {stageLabel(item.stage) ?? ''}
                       </span>
                       {item.score !== null && (
                         <span className={cn(
@@ -369,7 +350,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                       )}
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {formatDistanceToNow(new Date(item.date), { addSuffix: true, locale: fr })}
+                      {timeAgo(item.date) ?? ''}
                     </span>
                   </div>
                 ))}
@@ -377,6 +358,21 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
             </div>
           )}
         </>
+      ) : countsQuery.isError ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center" role="status">
+          <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Chiffres indisponibles</h3>
+          <p className="text-xs text-muted-foreground max-w-sm">
+            Les chiffres de cette mission n'ont pas pu être chargés.
+          </p>
+          <Button variant="outline" size="xs" className="mt-3" onClick={() => { void countsQuery.refetch(); }}>
+            Réessayer
+          </Button>
+        </div>
+      ) : countsQuery.isPending ? (
+        <div className="space-y-3" aria-busy="true" aria-label="Chargement des chiffres">
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
       ) : (
         <EmptyInsightsState />
       )}

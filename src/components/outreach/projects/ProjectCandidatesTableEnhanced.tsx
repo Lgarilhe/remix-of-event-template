@@ -68,28 +68,41 @@ import { pausedLabel, pauseReasonHint } from '@/lib/sequenceLabels';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  GENERAL_STAGES,
+  isGeneralStage,
   setCandidateStages,
   skippedStageMessage,
   stageErrorMessage,
   type GeneralStage,
 } from '@/lib/candidateStage';
+import { GENERAL_STAGE_LABEL, invalidateStageReaders } from '@/lib/stageDisplay';
 import { plural } from '@/lib/plural';
+import { patchProjectCandidateStages } from '@/hooks/useSourcingProjects';
 
-// Étapes de départ de « Shortlister » : jamais un recul depuis Contacté ou plus loin.
+// Étapes de départ de « Retenir » : jamais un recul depuis Contacté ou plus loin.
 const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
 
+// Ligne de la vue mission_candidate_rows (lot 0c) : une par candidat ;
+// group_ids porte toutes ses lignes dans la mission, qu'un geste écrit ensemble.
 interface ProjectCandidate {
   id: string;
   candidate_id: string;
   candidate_name: string | null;
   candidate_headline: string | null;
   linkedin_profile_url: string | null;
-  status: string;
+  general_stage: string | null;
+  group_ids: string[] | null;
   score: number | null;
   recommendation: string | null;
   skip_reason: string | null;
   created_at: string;
 }
+
+/** Lignes du candidat dans la mission (la ligne affichée seule si la vue ne les rend pas). */
+const groupIdsOf = (c: ProjectCandidate): string[] => (c.group_ids && c.group_ids.length > 0 ? c.group_ids : [c.id]);
+
+/** Étape générale d'une ligne ; À trier pour une valeur inconnue. */
+const stageOf = (c: ProjectCandidate): GeneralStage => (isGeneralStage(c.general_stage) ? c.general_stage : 'to_sort');
 
 interface ProjectCandidatesTableEnhancedProps {
   candidates: ProjectCandidate[];
@@ -124,14 +137,17 @@ interface CandidateMissionEnrollments {
 const isResumableFromPipeline = (e: MissionEnrollment) => !e.pause_reason || e.pause_reason === 'manual'
   || isSequencePauseResumable(e.status, e.pause_reason, e.sequence_active);
 
-const statusConfig = {
-  untreated: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
-  discovered: { label: 'Non traité', className: 'bg-muted text-muted-foreground' },
-  scored: { label: 'Scoré', className: 'bg-info/10 text-info' },
-  messaged: { label: 'Contacté', className: 'bg-success/10 text-success-foreground' },
-  replied: { label: 'A répondu', className: 'bg-success/10 text-success' },
-  dismissed: { label: 'Écarté', className: 'bg-destructive/10 text-destructive' },
-  shortlisted: { label: 'Shortlisté', className: 'bg-brand-purple/10 text-brand-purple' },
+// Pastille de l'étape générale (lot 0c), libellés de src/lib/stageDisplay.ts.
+// Mêmes couleurs que la liste de la nouvelle page mission (CandidateListRow),
+// pour qu'un même mot ait la même couleur d'un écran à l'autre.
+const STAGE_BADGE_CLASS: Record<GeneralStage, string> = {
+  replied: 'bg-brand/15 text-brand',
+  retained: 'bg-warning-muted text-warning',
+  hired: 'bg-success-muted text-success',
+  interviewing: 'bg-muted text-foreground',
+  contacted: 'bg-muted/50 text-muted-foreground',
+  to_sort: 'bg-muted/50 text-muted-foreground',
+  rejected: 'bg-muted/30 text-muted-foreground',
 };
 
 export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnhancedProps> = ({
@@ -335,7 +351,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
         c.candidate_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.candidate_headline?.toLowerCase().includes(searchQuery.toLowerCase());
       
-      const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
+      const matchesStatus = statusFilter === 'all' || stageOf(c) === statusFilter;
       
       return matchesSearch && matchesStatus;
     });
@@ -361,21 +377,36 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
   };
 
   // Lot 0b-4 (N4, N5) : l'étape passe par set_candidate_stages (origine user).
-  // « Shortlister » ne retient que les candidats à trier, retenus ou écartés :
+  // « Retenir » ne retient que les candidats à trier, retenus ou écartés :
   // un candidat déjà contacté ou plus loin reste à son étape, et c'est annoncé.
+  // Lot 0c : chaque geste écrit toutes les lignes du candidat (group_ids) ; les
+  // comptes suivent la ligne affichée, un candidat compté une fois. « Retenir »
+  // n'écrit que les candidats dont la ligne affichée est à une étape de départ
+  // admise : un doublon À trier ou Écarté d'un candidat déjà Contacté ne passe
+  // pas Retenu à part.
   const stageTargetOf = (newStatus: 'shortlisted' | 'dismissed') =>
     newStatus === 'shortlisted'
       ? { target: { stage: 'retained' as const }, from: RETAIN_FROM_STAGES }
       : { target: { stage: 'rejected' as const }, from: undefined };
 
-  const applyStageChange = async (ids: string[], newStatus: 'shortlisted' | 'dismissed'): Promise<boolean> => {
+  const applyStageChange = async (rows: ProjectCandidate[], newStatus: 'shortlisted' | 'dismissed'): Promise<boolean> => {
     const { target, from } = stageTargetOf(newStatus);
-    const outcome = await setCandidateStages(ids, target, from);
-    const moved = outcome.updated + outcome.unchanged;
-    if (moved > 0 || outcome.skipped > 0) {
-      queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
+    const eligible = from ? rows.filter(c => from.includes(stageOf(c))) : rows;
+    const outcome = await setCandidateStages(eligible.flatMap(groupIdsOf), target, from, { surface: 'mission-table' });
+    const resultOf = new Map(outcome.rows.map(r => [r.id, r.result]));
+    let moved = 0;
+    let skippedCount = rows.length - eligible.length;
+    for (const c of eligible) {
+      const result = resultOf.get(c.id);
+      if (result === 'updated' || result === 'unchanged') moved += 1;
+      else if (result === 'skipped') skippedCount += 1;
+    }
+    if (outcome.updated + outcome.unchanged > 0) {
+      // Les lignes restent à leur étape affichée pendant la relecture de la vue.
+      patchProjectCandidateStages(queryClient, projectId, outcome.rows);
+    }
+    if (outcome.updated + outcome.unchanged > 0 || outcome.skipped > 0) {
+      void invalidateStageReaders(queryClient);
     }
     const failure = outcome.error ?? outcome.rows.find(r => r.result === 'error') ?? null;
     if (failure) {
@@ -383,7 +414,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       toast.error(stageErrorMessage(failure.hint));
       return false;
     }
-    const skipped = skippedStageMessage(outcome.skipped);
+    const skipped = skippedStageMessage(skippedCount);
     if (moved > 0) {
       toast.success(`${plural(moved, 'candidat')} mis à jour.${skipped ? ` ${skipped}` : ''}`);
     } else if (skipped) {
@@ -395,7 +426,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
   // Bulk actions
   const bulkUpdateStatus = async (newStatus: 'shortlisted' | 'dismissed') => {
     if (selectedIds.size === 0) return;
-    const ok = await applyStageChange(Array.from(selectedIds), newStatus);
+    const ok = await applyStageChange(candidates.filter(c => selectedIds.has(c.id)), newStatus);
     if (ok) setSelectedIds(new Set());
   };
 
@@ -404,12 +435,12 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       ? filteredCandidates.filter(c => selectedIds.has(c.id))
       : filteredCandidates;
     
-    const headers = ['Nom', 'Titre', 'Score', 'Statut', 'URL LinkedIn', 'Ajouté le'];
+    const headers = ['Nom', 'Titre', 'Score', 'Étape', 'URL LinkedIn', 'Ajouté le'];
     const rows = dataToExport.map(c => [
       c.candidate_name || '',
       c.candidate_headline || '',
       c.score?.toString() || '',
-      statusConfig[c.status as keyof typeof statusConfig]?.label || c.status,
+      GENERAL_STAGE_LABEL[stageOf(c)],
       c.linkedin_profile_url || '',
       new Date(c.created_at).toLocaleDateString('fr-FR'),
     ]);
@@ -423,11 +454,11 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
     link.href = URL.createObjectURL(blob);
     link.download = `candidats-projet-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
-    toast.success(`${dataToExport.length} candidat(s) exporté(s)`);
+    toast.success(`${plural(dataToExport.length, 'candidat exporté', 'candidats exportés')}`);
   };
 
-  const updateCandidateStatus = async (candidateId: string, newStatus: 'shortlisted' | 'dismissed') => {
-    await applyStageChange([candidateId], newStatus);
+  const updateCandidateStatus = async (candidate: ProjectCandidate, newStatus: 'shortlisted' | 'dismissed') => {
+    await applyStageChange([candidate], newStatus);
   };
 
   // Retirer un candidat de la mission met aussi en pause ses séquences de la
@@ -449,10 +480,13 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
         }
       }
 
+      // Lot 0c : toutes les lignes du candidat dans la mission, sinon un doublon
+      // le garderait affiché.
+      const groupIds = groupIdsOf(candidate);
       const { data, error } = await supabase
         .from('job_candidate_status')
         .update({ project_id: null })
-        .eq('id', candidate.id)
+        .in('id', groupIds)
         .select('id');
 
       if (error) throw error;
@@ -465,9 +499,11 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
         return;
       }
 
-      queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
+      void invalidateStageReaders(queryClient);
+      if (data.length < groupIds.length) {
+        toast.warning(`${name} n'a pas pu être retiré entièrement de la mission. Réessayez.`);
+        return;
+      }
       toast.success(
         pausedCount > 0
           ? `${name} a été retiré de la mission, sa séquence est en pause`
@@ -525,15 +561,14 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[140px] h-9">
-            <SelectValue placeholder="Statut" />
+          <SelectTrigger className="w-[150px] h-9" aria-label="Filtrer par étape">
+            <SelectValue placeholder="Étape" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous</SelectItem>
-            <SelectItem value="untreated">Non traité</SelectItem>
-            <SelectItem value="shortlisted">Shortlisté</SelectItem>
-            <SelectItem value="messaged">Contacté</SelectItem>
-            <SelectItem value="dismissed">Écarté</SelectItem>
+            <SelectItem value="all">Toutes les étapes</SelectItem>
+            {GENERAL_STAGES.map(stage => (
+              <SelectItem key={stage} value={stage}>{GENERAL_STAGE_LABEL[stage]}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Button 
@@ -551,17 +586,17 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 p-3 bg-info/10 border border-info/20 rounded-lg">
           <span className="text-sm font-medium text-info-foreground">
-            {selectedIds.size} sélectionné(s)
+            {plural(selectedIds.size, 'sélectionné', 'sélectionnés')}
           </span>
           <div className="flex gap-2 ml-auto">
             <Button 
               size="sm" 
               variant="outline"
               onClick={() => bulkUpdateStatus('shortlisted')}
-              className="gap-1.5 text-brand-purple border-brand-purple/30 hover:bg-brand-purple/10"
+              className="gap-1.5 text-warning border-warning/30 hover:bg-warning-muted"
             >
               <UserCheck className="w-3.5 h-3.5" />
-              Shortlister
+              Retenir
             </Button>
             <Button 
               size="sm" 
@@ -583,8 +618,8 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
         </div>
       )}
 
-      {/* Table — hauteur adaptée au viewport : 350px fixes gâchaient la vue
-          pleine page du workspace V2 (4 candidats visibles sur 400+) */}
+      {/* Tableau : hauteur adaptée au viewport (350 px fixes gâchaient la vue
+          pleine page du workspace V2 : 4 candidats visibles sur 400 et plus) */}
       <ScrollArea className="h-[calc(100vh-400px)] min-h-[350px]">
         <Table>
           <TableHeader>
@@ -597,14 +632,14 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
               </TableHead>
               <TableHead>Candidat</TableHead>
               <TableHead className="w-[80px] text-center">Score</TableHead>
-              <TableHead className="w-[100px]">Statut</TableHead>
+              <TableHead className="w-[110px]">Étape</TableHead>
               <TableHead className="w-[100px]">Ajouté</TableHead>
               <TableHead className="w-[60px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredCandidates.map((candidate) => {
-              const status = statusConfig[candidate.status as keyof typeof statusConfig] || statusConfig.untreated;
+              const stage = stageOf(candidate);
               const isSelected = selectedIds.has(candidate.id);
               
               return (
@@ -663,20 +698,20 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                           </Badge>
                         </TooltipTrigger>
                         <TooltipContent>
-                          {candidate.recommendation === 'top' && 'Profil top – très bon match'}
+                          {candidate.recommendation === 'top' && 'Profil top : très bon match'}
                           {candidate.recommendation === 'good' && 'Profil prometteur'}
                           {candidate.recommendation === 'maybe' && 'À considérer'}
                           {candidate.recommendation === 'skip' && candidate.skip_reason}
                         </TooltipContent>
                       </Tooltip>
                     ) : (
-                      <span className="text-muted-foreground text-xs">—</span>
+                      <span className="text-muted-foreground text-xs">Pas de note</span>
                     )}
                   </TableCell>
 
                   <TableCell>
-                    <Badge className={status.className}>
-                      {status.label}
+                    <Badge className={STAGE_BADGE_CLASS[stage]}>
+                      {GENERAL_STAGE_LABEL[stage]}
                     </Badge>
                   </TableCell>
 
@@ -700,20 +735,20 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-52">
-                        {candidate.status !== 'shortlisted' && (
-                          <DropdownMenuItem onClick={() => updateCandidateStatus(candidate.id, 'shortlisted')}>
-                            <UserCheck className="w-4 h-4 mr-2 text-brand-purple" />
-                            Shortlister
+                        {stage !== 'retained' && (
+                          <DropdownMenuItem onClick={() => updateCandidateStatus(candidate, 'shortlisted')}>
+                            <UserCheck className="w-4 h-4 mr-2 text-warning" />
+                            Retenir
                           </DropdownMenuItem>
                         )}
-                        {candidate.status !== 'messaged' && (
-                          <DropdownMenuItem onClick={() => onOpenMessage?.(candidate)}>
+                        {stage !== 'contacted' && onOpenMessage && (
+                          <DropdownMenuItem onClick={() => onOpenMessage(candidate)}>
                             <MessageSquare className="w-4 h-4 mr-2 text-success-foreground" />
                             Envoyer un message
                           </DropdownMenuItem>
                         )}
-                        {candidate.status !== 'dismissed' && (
-                          <DropdownMenuItem onClick={() => updateCandidateStatus(candidate.id, 'dismissed')}>
+                        {stage !== 'rejected' && (
+                          <DropdownMenuItem onClick={() => updateCandidateStatus(candidate, 'dismissed')}>
                             <UserX className="w-4 h-4 mr-2 text-destructive" />
                             Écarter
                           </DropdownMenuItem>
@@ -817,7 +852,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
 
       {/* Results count */}
       <div className="text-xs text-muted-foreground text-center">
-        {filteredCandidates.length} sur {candidates.length} candidat(s)
+        {filteredCandidates.length} sur {plural(candidates.length, 'candidat')}
       </div>
 
       <AlertDialog

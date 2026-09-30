@@ -5,6 +5,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAgent } from '@/contexts/AgentContext';
 import { CandidateDetailModal } from './CandidateDetailModal';
 import { ATSCandidate, useATSData } from '@/hooks/useATSData';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
+import { atsColumnTitle } from '@/lib/stageDisplay';
 import { cn } from '@/lib/utils';
 import { computeJobSequenceStats, responseRatePercent, type JobSequenceStat } from '@/lib/jobSequenceStats';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -129,10 +131,14 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
   const [ragCount, setRagCount] = useState<number | null>(null);
 
   /* ─── job candidates ─── */
+  // Une mission s'ouvre sous « project:<id> », alors que la ligne d'un candidat
+  // porte son job_id brut (les deux formes existent en base) : on rapproche par
+  // la mission (project_id), puis par le job_id tel quel.
+  const missionId = missionIdOfJob(jobId);
   const jobCandidates = useMemo(() => {
     if (!jobId) return [];
-    return allCandidates.filter(c => c.jobId === jobId);
-  }, [allCandidates, jobId]);
+    return allCandidates.filter(c => (missionId && c.projectId === missionId) || c.jobId === jobId);
+  }, [allCandidates, jobId, missionId]);
 
   const stageCounts = useMemo(() => {
     const map: Record<string, number> = {};
@@ -221,7 +227,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
       const { data: enrollments, error } = await supabase
         .from('sequence_enrollments')
         .select('id, sequence_id, status, outreach_sequences (id, name), sequence_step_executions (status, sequence_steps (action_type))')
-        .eq('job_id', jobId);
+        .in('job_id', missionId ? [missionId, `project:${missionId}`] : [jobId]);
       if (cancelled) return;
       if (error) {
         console.error('[JobDetailSheet] séquences du poste indisponibles:', error);
@@ -234,7 +240,7 @@ export function JobDetailSheet({ jobId, open, onOpenChange }: JobDetailSheetProp
     };
     void load();
     return () => { cancelled = true; };
-  }, [jobId, open, tab, seqAttempt]);
+  }, [jobId, missionId, open, tab, seqAttempt]);
 
   /* ─── load RAG count ─── */
   useEffect(() => {
@@ -504,7 +510,7 @@ function CandidatsTab({
       <div className="flex flex-wrap gap-1.5">
         {stageEntries.map(([stage, count]) => (
           <Badge key={stage} variant="outline" className="tabular-nums">
-            {count} {stage}
+            {count} {atsColumnTitle(stage)}
           </Badge>
         ))}
       </div>
@@ -527,7 +533,7 @@ function CandidatsTab({
                 <p className="truncate text-xs text-muted-foreground">{candidate.headline}</p>
               )}
             </div>
-            <Badge variant="muted" className="shrink-0">{candidate.stage}</Badge>
+            <Badge variant="muted" className="shrink-0">{atsColumnTitle(candidate.stage)}</Badge>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true" />
           </button>
         ))}

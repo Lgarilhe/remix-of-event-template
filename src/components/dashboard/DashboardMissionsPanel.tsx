@@ -8,6 +8,10 @@
  * visible, déplie la progression (part des candidats retenus et contactés au
  * total) et la date de dernière activité. Préférence de dépliage mémorisée
  * dans le navigateur.
+ *
+ * Dernière activité (lot 0c) : la plus récente de updated_at et de la
+ * dernière entrée d'un candidat dans une étape (get_mission_stage_counts),
+ * comme la liste des missions. Elle range aussi les missions.
  */
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
@@ -18,6 +22,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
+import { useMissionStageCounts } from '@/hooks/useMissionStageCounts';
+import { missionActivityAt } from '@/lib/stageDisplay';
 import { MissionCompanyLogo } from './MissionCompanyLogo';
 import { plural } from '@/lib/plural';
 import { timeAgo } from '@/lib/relativeTime';
@@ -56,16 +62,19 @@ const ProgressRow: React.FC<{ label: string; value: number; total: number }> = (
 
 const MissionRow: React.FC<{
   project: SourcingProject;
+  /** Date de dernière activité (updated_at ou dernière entrée dans une étape). */
+  activityAt: string | null;
   expanded: boolean;
   onToggleExpand: () => void;
-}> = ({ project, expanded, onToggleExpand }) => {
+}> = ({ project, activityAt, expanded, onToggleExpand }) => {
   const total = project.stats_total_found || 0;
   const messaged = project.stats_messaged || 0;
   const shortlisted = project.stats_shortlisted || 0;
   const detailsId = `mission-details-${project.id}`;
 
-  const lastActivity = project.last_search_at || project.updated_at;
-  const lastActivityLabel = timeAgo(lastActivity);
+  const lastActivityLabel = timeAgo(activityAt);
+  // Client du brief, sinon celui de la mission (comme la liste des missions).
+  const clientName = project.jd_client || project.client_name;
 
   return (
     <li className="rounded-lg transition-colors hover:bg-accent/60">
@@ -74,11 +83,11 @@ const MissionRow: React.FC<{
           to={`/missions/${project.id}`}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <MissionCompanyLogo company={project.client_name || project.name} size={32} />
+          <MissionCompanyLogo company={clientName || project.name} size={32} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-foreground">{project.name}</span>
             <span className="block truncate text-xs text-muted-foreground">
-              {project.client_name && `${project.client_name} · `}
+              {clientName && `${clientName} · `}
               {plural(total, 'sourcé')} · {plural(shortlisted, 'retenu')} au total · {plural(messaged, 'contacté')} au total
             </span>
           </span>
@@ -141,16 +150,20 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
     writeExpanded(expandedIds);
   }, [expandedIds]);
 
+  const active = useMemo(() => projects.filter((p) => p.status === 'active'), [projects]);
+  const { data: counts } = useMissionStageCounts(active.map((p) => p.id));
+  const activityOf = useCallback(
+    (p: SourcingProject) => missionActivityAt(p.updated_at, counts?.[p.id]?.lastStageMoveAt ?? null),
+    [counts],
+  );
+
   const activeProjects = useMemo(() => {
-    return projects
-      .filter((p) => p.status === 'active')
-      .sort((a, b) => {
-        const aTime = new Date(a.last_search_at || a.updated_at).getTime();
-        const bTime = new Date(b.last_search_at || b.updated_at).getTime();
-        return bTime - aTime;
-      })
-      .slice(0, 5);
-  }, [projects]);
+    const time = (p: SourcingProject) => {
+      const t = new Date(activityOf(p) ?? 0).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    return [...active].sort((a, b) => time(b) - time(a)).slice(0, 5);
+  }, [active, activityOf]);
 
   const allExpanded = activeProjects.length > 0 && activeProjects.every((p) => expandedIds.has(p.id));
 
@@ -228,6 +241,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
               <MissionRow
                 key={project.id}
                 project={project}
+                activityAt={activityOf(project)}
                 expanded={expandedIds.has(project.id)}
                 onToggleExpand={() => toggleOne(project.id)}
               />

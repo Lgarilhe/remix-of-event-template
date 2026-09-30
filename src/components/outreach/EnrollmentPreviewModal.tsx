@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useId } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { useEnrollmentPreview, SequenceStepPreview } from '@/hooks/useEnrollmentPreview';
+import { useEnrollmentPreview, SequenceStepPreview, missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { BulkEnrichButton } from '@/components/outreach/result-card/BulkEnrichButton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -284,23 +284,51 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   // Fetch scores for all candidates at mount
   useEffect(() => {
     if (scoreFetchedRef.current || !job?.id || profiles.length === 0) return;
+    // En contexte de mission, la lecture attend l'organisation.
+    if (missionIdOfJob(job.id) && !organizationId) return;
     scoreFetchedRef.current = true;
 
     const fetchScores = async () => {
-      const { data } = await supabase
-        .from('job_candidate_status')
-        .select('candidate_id, score, recommendation')
-        .eq('job_id', job!.id)
-        .in('candidate_id', profiles.map(p => p.id));
+      // Contexte de mission (lot 0c-4) : la note par mission et organisation,
+      // quelle que soit la forme du job_id ou l'auteur de la ligne ; sinon le poste.
+      const missionId = missionIdOfJob(job!.id);
+      const ids = profiles.map(p => p.id);
+      type ScoreRow = { candidate_id: string; score: number | null; recommendation: string | null };
+      // Par lots de 100 : un envoi groupé peut compter des centaines de profils.
+      const readBy = async (column: 'project_id' | 'job_id', value: string): Promise<ScoreRow[]> => {
+        const rows: ScoreRow[] = [];
+        for (let i = 0; i < ids.length; i += 100) {
+          let query = supabase
+            .from('job_candidate_status')
+            .select('candidate_id, score, recommendation')
+            .in('candidate_id', ids.slice(i, i + 100))
+            .eq(column, value);
+          if (column === 'project_id' && organizationId) query = query.eq('organization_id', organizationId);
+          const { data, error } = await query;
+          if (error) throw error;
+          rows.push(...((data ?? []) as ScoreRow[]));
+        }
+        return rows;
+      };
 
-      if (data) {
+      try {
+        let rows = missionId ? await readBy('project_id', missionId) : [];
+        // Un job_id ancien n'est pas une mission : repli sur le poste.
+        if (rows.length === 0) rows = await readBy('job_id', job!.id);
         const map = new Map<string, { score: number | null; recommendation: string | null }>();
-        data.forEach((r: any) => map.set(r.candidate_id, { score: r.score, recommendation: r.recommendation }));
+        // Doublons d'un candidat dans la mission : la ligne notée l'emporte.
+        rows.forEach((r) => {
+          if (map.get(r.candidate_id)?.score != null && r.score == null) return;
+          map.set(r.candidate_id, { score: r.score, recommendation: r.recommendation });
+        });
         setScoreCache(map);
+      } catch (err) {
+        // Sans note affichée, l'aperçu reste utilisable : on journalise seulement.
+        console.warn('[EnrollmentPreviewModal] lecture des notes impossible :', err);
       }
     };
     fetchScores();
-  }, [job?.id, profiles]);
+  }, [job?.id, profiles, organizationId]);
 
   const getCandidateState = useCallback((id: string): CandidateState =>
     candidateStates.get(id) || { removed: false, skipped: false }, [candidateStates]);
@@ -1226,6 +1254,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                               <ScoringPopover
                                 candidateId={p.id}
                                 jobId={job?.id}
+                                projectId={missionIdOfJob(job?.id)}
+                                organizationId={organizationId}
                                 isOpen={scoringPopoverId === p.id}
                                 onOpenChange={open => setScoringPopoverId(open ? p.id : null)}
                               >

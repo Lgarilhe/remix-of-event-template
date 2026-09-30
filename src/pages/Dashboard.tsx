@@ -15,13 +15,13 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { differenceInDays, parseISO } from 'date-fns';
 import { Check, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { SEOHead } from '@/components/SEOHead';
 import { PageLayout, Section, ErrorState } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useATSData, type ATSCandidate } from '@/hooks/useATSData';
+import { useATSData, daysInStage, stagnantDays, type ATSCandidate } from '@/hooks/useATSData';
+import { STALE_EXEMPT_STAGES } from '@/lib/stageDisplay';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
 import { useAllReminders } from '@/hooks/useAllReminders';
@@ -39,30 +39,19 @@ import { DashboardWeekHighlight } from '@/components/dashboard/DashboardWeekHigh
 import { DashboardActivityFeed } from '@/components/dashboard/DashboardActivityFeed';
 import { DashboardSortableItem } from '@/components/dashboard/DashboardSortableItem';
 
-// Délais indicatifs par étape, au-delà desquels un candidat est « stagnant ».
-const STAGE_GUIDE_TIMES: Record<string, number> = {
-  'Nouveau': 3, 'Contacté': 5, 'Répondu': 3, 'Pressenti': 5,
-  'Pré-qualif': 7, 'CV envoyé': 5, 'ITW en cours': 10, 'Offre': 7,
-};
-
+// Stagnant : même règle que la carte, le tableau et l'analyse du /pipeline
+// (délais de useATSData, jours depuis l'entrée dans l'étape). À trier et Retenu
+// sont exemptés (plan 0c, section 6.4), comme les étapes terminales.
 const isStagnant = (c: ATSCandidate): boolean => {
-  const guide = STAGE_GUIDE_TIMES[c.stage];
-  if (!guide || !c.lastActivity) return false;
-  try {
-    return differenceInDays(new Date(), parseISO(c.lastActivity)) > guide;
-  } catch {
-    return false;
-  }
+  if (c.generalStage && STALE_EXEMPT_STAGES.has(c.generalStage)) return false;
+  return stagnantDays(c) !== null;
 };
 
+// À relancer : a répondu, et sans suite depuis un jour ou plus dans l'étape.
 const isPendingResponse = (c: ATSCandidate): boolean => {
   if (c.stage !== 'Répondu') return false;
-  if (!c.lastActivity) return true;
-  try {
-    return differenceInDays(new Date(), parseISO(c.lastActivity)) >= 1;
-  } catch {
-    return true;
-  }
+  const days = daysInStage(c);
+  return days === null || days >= 1;
 };
 
 const SECTION_LABELS: Record<DashboardSectionKey, string> = {
@@ -138,9 +127,15 @@ export default function Dashboard() {
     remindersToday: remindersError ? null : groupedReminders.today.length + groupedReminders.overdue.length,
   }), [candidates, candidatesUnavailable, remindersError, groupedReminders.today.length, groupedReminders.overdue.length]);
 
-  // Candidats actifs : hors étapes terminales.
+  // Candidats actifs : hors étapes terminales, une personne comptée une fois
+  // même présente dans deux missions. Les profils jamais ouverts sont déjà
+  // exclus par useATSData.
   const activeCandidatesCount = useMemo(
-    () => candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu').length,
+    () => new Set(
+      candidates
+        .filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu')
+        .map(c => c.candidateId || c.id),
+    ).size,
     [candidates],
   );
 
@@ -296,7 +291,8 @@ export default function Dashboard() {
 
       {selectedCandidate && (
         <CandidateDetailModal
-          candidate={selectedCandidate}
+          // Ligne courante : après un changement d'étape, la fiche montre la nouvelle étape.
+          candidate={candidates.find(c => c.id === selectedCandidate.id) ?? selectedCandidate}
           onClose={() => setSelectedCandidate(null)}
           onStageChange={handleStageChange}
           onTagsChange={handleTagsChange}

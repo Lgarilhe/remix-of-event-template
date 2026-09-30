@@ -48,6 +48,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ATSCandidate } from '@/hooks/useATSData';
+import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { useOrganization } from '@/hooks/useOrganization';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
@@ -555,15 +556,23 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   // ─── Génération par l'IA Konekt ───
   const buildJobContext = useCallback(async (stage: string | undefined) => {
     const jobContext: Record<string, unknown> = { title: candidate.jobTitle || 'Non spécifié' };
-    if (candidate.jobId) {
-      const { data: project } = await supabase
+    // Mission par son id (lot 0c-4 : une mission V2 n'a pas de job_id) ; le job_id
+    // d'une ancienne mission reste lu par la même requête, comme ScorecardFullPage.
+    let projectId: string | null = null;
+    const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId);
+    if (missionKey || candidate.jobId) {
+      const projectQuery = supabase
         .from('sourcing_projects')
-        .select('job_title, client_name, description, filters_snapshot, job_details')
-        .eq('job_id', candidate.jobId)
+        .select('id, job_title, client_name, description, job_details');
+      const { data: project, error: projectError } = await (missionKey
+        ? projectQuery.or(`id.eq.${missionKey},job_id.eq.${missionKey}`)
+        : projectQuery.eq('job_id', candidate.jobId as string))
         .limit(1)
         .maybeSingle();
+      if (projectError) console.error('[ScorecardTab] mission illisible, génération sans poste :', projectError);
 
       if (project) {
+        projectId = project.id;
         const jd = ((project as { job_details?: unknown }).job_details || {}) as BriefFields;
         jobContext.title = jd.title || project.job_title || jobContext.title;
         jobContext.client = jd.client?.name || project.client_name;
@@ -574,6 +583,8 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
         jobContext.mustHave = (jd.skills_must_have || []).join(', ');
         jobContext.shouldHave = (jd.skills_should_have || []).join(', ');
         jobContext.niceToHave = (jd.skills_nice_to_have || []).join(', ');
+        // Clé lue par la fonction : compétences recherchées, indispensables d'abord.
+        jobContext.skills = [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])];
         // Critères d'évaluation du manager, transmis à l'IA.
         if ((jd.evaluation_criteria?.length ?? 0) > 0) {
           jobContext.managerCriteria = jd.evaluation_criteria;
@@ -582,34 +593,42 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
       }
     }
 
-    // Étapes du process de la mission, pour situer l'entretien.
-    if (candidate.jobId && stage) {
+    // Étapes du process de la mission, pour situer l'entretien : lues dès que la
+    // mission est connue, qu'un type d'entretien soit choisi ou non.
+    if (projectId) {
       try {
-        const { data: projectForSteps } = await supabase
-          .from('sourcing_projects')
-          .select('id')
-          .eq('job_id', candidate.jobId)
-          .limit(1)
-          .maybeSingle();
-        if (projectForSteps) {
-          const { data: processSteps } = await supabase
-            .from('mission_process_steps')
-            .select('name, description, objectives, evaluation_criteria, is_eliminatory')
-            .eq('project_id', projectForSteps.id)
-            .order('step_order', { ascending: true });
-          if (processSteps?.length) {
-            jobContext.processSteps = processSteps;
-            const currentStep = processSteps.find((s) => s.name.toLowerCase().includes(stage.toLowerCase()));
-            if (currentStep) {
-              jobContext.currentStepObjectives = currentStep.objectives;
-              jobContext.currentStepIsEliminatory = currentStep.is_eliminatory;
-            }
+        const { data: processSteps, error: stepsError } = await supabase
+          .from('mission_process_steps')
+          .select('id, name, description, objectives, evaluation_criteria, is_eliminatory')
+          .eq('project_id', projectId)
+          .order('step_order', { ascending: true });
+        if (stepsError) throw stepsError;
+        if (processSteps?.length) {
+          jobContext.processSteps = processSteps.map(({ id: _id, ...step }) => step);
+          // Étape courante : celle du candidat (process_step_id), à défaut le type
+          // d'entretien choisi (son libellé ou sa clé), retrouvé dans le nom de l'étape.
+          const byStage = stage
+            ? processSteps.find((s) => {
+                const name = s.name.toLowerCase();
+                return name.includes(interviewTypeLabel(stage).toLowerCase()) || name.includes(stage.toLowerCase());
+              })
+            : undefined;
+          const currentStep = (candidate.processStepId
+            ? processSteps.find((s) => s.id === candidate.processStepId)
+            : undefined) ?? byStage;
+          if (currentStep) {
+            jobContext.currentStepName = currentStep.name;
+            jobContext.currentStepObjectives = currentStep.objectives;
+            jobContext.currentStepIsEliminatory = currentStep.is_eliminatory;
           }
         }
-      } catch { /* facultatif */ }
+      } catch (err) {
+        // Facultatif : la grille se génère sans les étapes.
+        console.error('[ScorecardTab] étapes du process illisibles :', err);
+      }
     }
     return jobContext;
-  }, [candidate.jobId, candidate.jobTitle]);
+  }, [candidate.projectId, candidate.jobId, candidate.jobTitle, candidate.processStepId]);
 
   const requestCriteria = useCallback(async (stage: InterviewStage | undefined): Promise<Criterion[]> => {
     const candidateProfile = {
@@ -821,8 +840,14 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
       });
       return;
     }
-    navigate(`/ats/scorecard/${candidate.candidateId}${coaching ? '?coaching=1' : ''}`);
-  }, [activeKey, flush, navigate, candidate.candidateId]);
+    // La mission suit dans l'adresse : un candidat présent dans deux missions
+    // garde, en plein écran, le poste et les étapes de la grille ouverte.
+    const params = new URLSearchParams();
+    if (candidate.projectId) params.set('mission', candidate.projectId);
+    if (coaching) params.set('coaching', '1');
+    const query = params.toString();
+    navigate(`/ats/scorecard/${candidate.candidateId}${query ? `?${query}` : ''}`);
+  }, [activeKey, flush, navigate, candidate.candidateId, candidate.projectId]);
 
   const openCoaching = useCallback(() => {
     // Déjà en plein écran : l'assistant s'ouvre sur place.

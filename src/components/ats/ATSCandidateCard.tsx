@@ -2,11 +2,12 @@
  * Carte d'un candidat dans les colonnes du pipeline global (revue design E-18,
  * E-19, E-22, E-43).
  *
- * Trois lignes : le nom et le score ; le poste (un bouton qui ouvre la fiche du
- * poste) ou, à défaut, l'intitulé du candidat ; un seul signal daté (« Sans
- * mouvement depuis 6 j », « A répondu il y a 2 h », le statut de séquence
- * traduit, sinon la dernière action). La colonne porte l'étape : la carte ne
- * la répète pas.
+ * Trois lignes : le nom et le score ; la mission (un bouton qui ouvre la fiche de
+ * la mission, avec le nom de l'étape d'entretien en sous-titre pour En
+ * entretien) ou, à défaut, l'intitulé du candidat ; un seul signal daté (« A
+ * répondu il y a 2 h », le statut de séquence traduit, sinon « Dans cette étape
+ * depuis 6 j », en warning au-delà du délai de l'étape). La colonne porte
+ * l'étape : la carte ne la répète pas.
  *
  * Un seul arrêt de tabulation pour la carte : le nom, un bouton qui couvre
  * toute la carte. Entrée ouvre la fiche, Espace saisit la carte pour la
@@ -31,7 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
-import { type ATSCandidate, stagnantDays } from '@/hooks/useATSData';
+import { type ATSCandidate, daysInStage, stagnantDays } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/relativeTime';
 
@@ -73,21 +74,29 @@ const REPLY_LABELS: Record<string, string> = {
 const STAGES_BEFORE_REPLY = new Set(['Nouveau', 'Contacté']);
 
 type CardSignal =
-  | { kind: 'stagnant' | 'reply' | 'activity'; text: string }
+  | { kind: 'stagnant' | 'reply' | 'age' | 'activity'; text: string }
   | { kind: 'sequence'; status: string; ago: string | null };
 
 function cardSignal(candidate: ATSCandidate, now: Date): CardSignal | null {
+  // Plan 0c, section 6.4 : le temps se compte depuis l'entrée dans l'étape.
   const stagnant = stagnantDays(candidate, now);
-  if (stagnant !== null) return { kind: 'stagnant', text: `Sans mouvement depuis ${stagnant}\u00a0j` };
+  if (stagnant !== null) return { kind: 'stagnant', text: `Dans cette étape depuis ${stagnant}\u00a0j` };
 
   const ago = timeAgo(candidate.lastActivity || candidate.createdAt, { now });
   const reply =
-    REPLY_LABELS[candidate.outreachStatus ?? ''] ?? (candidate.sequenceStatus === 'replied' ? REPLY_LABELS.replied : null);
+    REPLY_LABELS[candidate.outreachStatus ?? ''] ??
+    (candidate.repliedAt || candidate.sequenceStatus === 'replied' ? REPLY_LABELS.replied : null);
   if (reply && STAGES_BEFORE_REPLY.has(candidate.stage)) {
     return { kind: 'reply', text: ago ? `${reply} ${ago}` : reply };
   }
   if (candidate.sequenceStatus && candidate.sequenceStatus !== 'replied') {
     return { kind: 'sequence', status: candidate.sequenceStatus, ago };
+  }
+  // Une ligne de mission porte sa date d'entrée dans l'étape ; un candidat de
+  // séquence ou d'InMail n'a que sa dernière action.
+  if (candidate.stageEnteredAt) {
+    const days = daysInStage(candidate, now);
+    if (days !== null) return { kind: 'age', text: `Dans cette étape depuis ${days}\u00a0j` };
   }
   return ago ? { kind: 'activity', text: `Dernière action ${ago}` } : null;
 }
@@ -124,6 +133,8 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
   overlay = false,
 }) => {
   const signal = cardSignal(candidate, new Date());
+  // Nom de l'étape d'entretien de la mission, sous la mission : colonne En entretien seulement.
+  const stepName = candidate.stage === 'ITW en cours' ? candidate.processStepName : null;
   const jobClickable = !overlay && !!candidate.jobTitle && !!candidate.jobId && !!onJobClick;
 
   // Le glisser part de toute la carte, sauf de ses contrôles et des menus ouverts
@@ -170,6 +181,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
         {(candidate.jobTitle || candidate.headline) && (
           <p className="mt-1 truncate text-xs text-foreground-secondary">{candidate.jobTitle || candidate.headline}</p>
         )}
+        {stepName && <p className="mt-1 truncate text-xs text-muted-foreground">{stepName}</p>}
         {signalLine && <div className="mt-2">{signalLine}</div>}
       </div>
     );
@@ -231,12 +243,13 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           className={cn(CONTROL, JOB_CHIP, 'mt-1.5')}
         >
           <Briefcase aria-hidden="true" />
-          <span className="sr-only">Voir le poste </span>
+          <span className="sr-only">Voir la mission </span>
           <span className="truncate">{candidate.jobTitle}</span>
         </Button>
       ) : candidate.jobTitle || candidate.headline ? (
         <p className="mt-1 truncate text-xs text-foreground-secondary">{candidate.jobTitle || candidate.headline}</p>
       ) : null}
+      {stepName && <p className="mt-1 truncate text-xs text-muted-foreground">{stepName}</p>}
 
       {(signalLine || (stages && onMove)) && (
         <div className="mt-2 flex min-h-7 items-center justify-between gap-2">

@@ -196,6 +196,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   // Load notes + reminders + project notes
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       try {
@@ -203,25 +204,38 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           supabase.from('candidate_notes').select('*').eq('candidate_id', candidate.candidateId).order('created_at', { ascending: false }),
           supabase.from('candidate_reminders').select('*').eq('candidate_id', candidate.candidateId).order('due_at', { ascending: true }),
         ]);
+        if (cancelled) return;
         setNotes(notesData || []);
         setReminders(remindersData || []);
-        if (candidate.jobId) {
-          const { data: projectData } = await supabase
-            .from('sourcing_projects')
-            .select('notes')
-            .eq('job_id', candidate.jobId)
+        // Notes de la mission, lue par son id (lot 0c-4) ; le job_id d'une
+        // ancienne mission reste lu par la même requête.
+        const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId);
+        let projectData: { notes: string | null } | null = null;
+        if (missionKey || candidate.jobId) {
+          const projectQuery = supabase.from('sourcing_projects').select('notes');
+          const { data, error: projectError } = await (missionKey
+            ? projectQuery.or(`id.eq.${missionKey},job_id.eq.${missionKey}`)
+            : projectQuery.eq('job_id', candidate.jobId as string))
+            .limit(1)
             .maybeSingle();
-          if (projectData) setProjectNotes(projectData.notes || null);
+          if (projectError) console.warn('[CandidateDetailModal] notes de mission illisibles :', projectError);
+          projectData = data;
         }
-      } finally { setLoading(false); }
+        if (!cancelled) setProjectNotes(projectData?.notes || null);
+      } catch (err) {
+        console.warn('[CandidateDetailModal] chargement des notes impossible :', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
-    fetchData();
-  }, [candidate.candidateId, candidate.jobId]);
+    void fetchData();
+    return () => { cancelled = true; };
+  }, [candidate.candidateId, candidate.jobId, candidate.projectId]);
 
   const handleAddNote = async (content: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
+    if (!organizationId) { toast.error('Organisation introuvable. Rechargez la page.'); return; }
     const { error: insertErr } = await supabase.from('candidate_notes').insert({
       candidate_id: candidate.candidateId,
       content, created_by: user.id, organization_id: organizationId,
@@ -244,7 +258,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const handleAddReminder = async (title: string, date: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
+    if (!organizationId) { toast.error('Organisation introuvable. Rechargez la page.'); return; }
     const { error: insertErr } = await supabase.from('candidate_reminders').insert({
       candidate_id: candidate.candidateId, candidate_name: candidate.name,
       job_id: candidate.jobId,
@@ -271,7 +285,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     try {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) return;
-      if (!organizationId) throw new Error('organisation introuvable, recharge la page');
+      if (!organizationId) throw new Error('Organisation introuvable. Rechargez la page.');
       const { data: tokenData, error: insertError } = await supabase
         .from('candidate_portal_tokens')
         .insert({

@@ -33,10 +33,13 @@ const stubs = {
   name: 'stubs',
   setup(b) {
     b.onResolve({ filter: /integrations\/supabase\/client$/ }, () => ({ path: 'client', namespace: 'stub' }));
+    // analytics.ts lit import.meta.env au chargement : indéfini hors de Vite.
+    b.onResolve({ filter: /lib\/analytics$/ }, () => ({ path: 'analytics', namespace: 'stub' }));
     b.onResolve({ filter: /^(react|@tanstack\/react-query)$/ }, (args) => ({ path: args.path, namespace: 'stub' }));
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
       contents: [
         'export const supabase = { rpc: (fn, args) => globalThis.__rpc(fn, args) };',
+        'export const trackEvent = () => {};',
         'export const useMemo = (f) => f();',
         'export const useQuery = (o) => o;',
       ].join('\n'),

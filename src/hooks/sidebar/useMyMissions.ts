@@ -27,8 +27,12 @@ import { useMissionPins } from './useMissionPins';
 
 const SIDEBAR_REFRESH_MS = 5 * 60_000;
 
-const TEAM_SELECT =
-  'project_id, sourcing_projects(id, name, client_name, organization_id, kind, status, job_title, created_by, updated_at, stats_total_found, stats_messaged, hunt_mode, hunt_status)';
+// Poste, client et lieu du brief (jd_*) : mêmes colonnes que la liste de
+// l'organisation (useSourcingProjects, lot 0c). Tri de la barre inchangé.
+// Typée string : l'analyse du littéral (chemins JSON compris) dépasse la
+// profondeur admise par TypeScript ; le résultat est relu comme TeamRow[].
+const TEAM_SELECT: string =
+  'project_id, sourcing_projects(id, name, client_name, organization_id, kind, status, job_title, created_by, updated_at, stats_total_found, stats_messaged, hunt_mode, hunt_status, jd_title:job_details->>title, jd_client:job_details->client->>name, jd_location:job_details->>location)';
 
 export function missionTeamQueryKey(userId: string | null, organizationId: string | null) {
   return ['sidebar', 'mission-team', userId, organizationId] as const;
@@ -89,7 +93,7 @@ export function useMyMissions(opts: UseMyMissionsOptions): MyMissions {
         .eq('user_id', userId)
         .limit(100);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as TeamRow[];
     },
     enabled: enabled && !!userId && !!organizationId,
     staleTime: 60_000,
