@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { Check, ChevronRight, Loader2, Mail, Maximize2, Search, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
 import { BulkEnrichButton } from '@/components/outreach/result-card/BulkEnrichButton';
 import type { LinkedInProfile } from '@/components/outreach/types';
@@ -514,17 +515,22 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
         )}
 
         <div ref={scrollAreaRef} className="relative mt-2.5 min-h-0 flex-1 lg:overflow-y-auto">
-          {richCompact && renderCompact && toSort.length > 0 && renderCompact({
-            profiles: toSort.map((row) => row.profile),
-            allSelected: allToSortSelected,
-            onToggleSelectAll: () => onSetSelection(allToSortSelected ? [] : toSort.map((row) => row.profile.id)),
-          })}
-          {richDetailed && renderCard && (
-            <div className="space-y-3">
-              {toSort.map((row, index) => (
-                <div key={row.profile.id}>{renderCard(row.profile, index)}</div>
-              ))}
-            </div>
+          {(richCompact || richDetailed) && (
+            // Une erreur d'affichage ne bloque pas le reste du Sourcing : « Tri » reste disponible.
+            <SectionErrorBoundary key={view} fallbackTitle="Cet affichage n'a pas pu s'afficher. Passez en Tri.">
+              {richCompact && renderCompact && toSort.length > 0 && renderCompact({
+                profiles: toSort.map((row) => row.profile),
+                allSelected: allToSortSelected,
+                onToggleSelectAll: () => onSetSelection(allToSortSelected ? [] : toSort.map((row) => row.profile.id)),
+              })}
+              {richDetailed && renderCard && (
+                <div className="space-y-3">
+                  {toSort.map((row, index) => (
+                    <div key={row.profile.id}>{renderCard(row.profile, index)}</div>
+                  ))}
+                </div>
+              )}
+            </SectionErrorBoundary>
           )}
           {!richCompact && !richDetailed && (
           <table className="w-full table-fixed border-collapse text-left">
