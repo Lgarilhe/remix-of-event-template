@@ -1,22 +1,23 @@
 // Refonte mission, lots 1 et 2 : entrée de la route des missions (/missions/:id et ses écrans).
 //
-// Interrupteur éteint (défaut) : l'ancienne page MissionWorkspace, intacte.
-// Allumé : la nouvelle page (MissionWorkspaceV3).
+// Interrupteur allumé (défaut) : la nouvelle page (MissionWorkspaceV3).
+// Éteint : l'ancienne page MissionWorkspace, intacte.
 //
-// ?nouvelle-mission=1 allume, ?nouvelle-mission=0 éteint, puis le paramètre
-// quitte l'adresse. Les adresses de l'autre page sont converties par
-// remplacement, dans un effet, à chaque changement d'adresse : jamais de
-// composant de redirection rendu à la place de la page, qui démonterait l'écran affiché (et
-// le cache du Sourcing). Les composants réutilisés qui écrivent encore ?tab=
-// arrivent ainsi au bon écran sans être modifiés.
+// ?nouvelle-mission=1 allume, ?nouvelle-mission=0 éteint (retour à l'ancienne
+// page, gardé par navigateur), puis le paramètre quitte l'adresse. Les
+// adresses de l'autre page sont converties par remplacement, dans un effet, à
+// chaque changement d'adresse : jamais de composant de redirection rendu à la
+// place de la page, qui démonterait l'écran affiché (et le cache du Sourcing).
+// Les composants réutilisés qui écrivent encore ?tab= arrivent ainsi au bon
+// écran sans être modifiés.
 //
 // La page affichée pour une mission est figée : un changement de
 // l'interrupteur dans un autre onglet ne la remplace pas en pleine saisie. Elle
 // suit seulement ?nouvelle-mission= et « Revenir à l'ancienne page » dans cet
 // onglet, et relit l'interrupteur à chaque changement de mission.
 //
-// L'ancienne page est importée avec l'entrée (un seul fichier à charger quand
-// l'interrupteur est éteint) ; la nouvelle reste chargée à la demande.
+// L'ancienne page reste importée avec l'entrée ; la nouvelle est chargée à la
+// demande.
 import { lazy, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMissionBeta } from '@/hooks/useMissionBeta';

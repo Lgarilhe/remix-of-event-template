@@ -131,7 +131,9 @@ This applies to (non-exhaustive) :
 ```
 /dashboard               → Dashboard (stats + welcome CTA if no missions)
 /missions                → Outreach page (liste des missions)
-/missions/:id            → MissionWorkspace → MissionWorkspaceV2 (3 phases, sous-onglets via ?tab=)
+/missions/:id/*          → MissionEntry : nouvelle page MissionWorkspaceV3 par défaut (/missions/:id, /sourcing, /cadrage) ;
+                           ancienne page MissionWorkspace → MissionWorkspaceV2 (3 phases, sous-onglets via ?tab=) pour un
+                           navigateur qui l'a choisie (?nouvelle-mission=0, clé konekt.mission-v3 = '0', src/lib/missionBeta.ts)
 /mission-invite/:token   → AcceptMissionInvite
 /sourcing                → SourcingSearches (recherches hors mission)
 /sourcing/:id            → SourcingSearchPage
@@ -155,7 +157,7 @@ Legacy: /outreach → /missions, /ats → /pipeline, /index → /
 ```
 
 ### Mission Flow
-Un seul parcours mission : V2, 3 phases linéaires (`src/components/missions/v2/`). Plus de flag `mission_v2` ni de composants V1.
+Un seul parcours mission : V2, 3 phases linéaires (`src/components/missions/v2/`). Plus de flag `mission_v2` ni de composants V1. Depuis le 2026-09-30, la nouvelle page (`src/components/missions/v3/`, refonte mission) est la page par défaut ; l'arbre ci-dessous décrit l'ancienne page, gardée derrière `?nouvelle-mission=0` jusqu'aux lots de retrait.
 ```
 MissionWorkspace (src/pages/MissionWorkspace.tsx : loading / introuvable / rendu V2)
 └── MissionWorkspaceV2       — PhaseStepper (3 phases) + sous-onglets, lus/écrits via ?tab=

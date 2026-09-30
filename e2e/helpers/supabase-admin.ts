@@ -6,7 +6,7 @@
  * (deleteOrg fait le ménage en cascade des données rattachées).
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { E2E, authStorageKey } from './env';
+import { E2E, authStorageKey, missionPageEntries, type MissionPageChoice } from './env';
 
 export type OrgType = 'enterprise' | 'agency' | 'freelance';
 export type OrgRole = 'owner' | 'admin' | 'member' | 'collaborator';
@@ -394,14 +394,14 @@ export async function signIn(email: string, password: string) {
  * même forme que writeStorageState de global.setup.ts, sans fichier.
  * À passer à `browser.newContext({ storageState })`.
  */
-export async function storageStateForUser(user: TestUser) {
+export async function storageStateForUser(user: TestUser, missionPage: MissionPageChoice = 'legacy') {
   const session = await signIn(user.email, user.password);
   return {
     cookies: [],
     origins: [
       {
         origin: new URL(E2E.baseUrl).origin,
-        localStorage: [{ name: authStorageKey(), value: JSON.stringify(session) }],
+        localStorage: [{ name: authStorageKey(), value: JSON.stringify(session) }, ...missionPageEntries(missionPage)],
       },
     ],
   };

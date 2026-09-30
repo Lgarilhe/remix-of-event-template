@@ -79,37 +79,41 @@ test('lot12 : clé konekt.mission-v3, paramètre nouvelle-mission', () => {
   assert.equal(beta.MISSION_BETA_PARAM, 'nouvelle-mission');
 });
 
-test('lot12 : lecture protégée, éteint par défaut', () => {
-  assert.equal(beta.readMissionBeta(memoryStorage()), false);
+test('lot12 : lecture protégée, allumé par défaut', () => {
+  assert.equal(beta.MISSION_BETA_DEFAULT, true);
+  assert.equal(beta.readMissionBeta(memoryStorage()), true, 'jamais choisi : nouvelle page');
   assert.equal(beta.readMissionBeta(memoryStorage({ initial: { 'konekt.mission-v3': '1' } })), true);
-  assert.equal(beta.readMissionBeta(memoryStorage({ initial: { 'konekt.mission-v3': 'true' } })), false);
-  assert.equal(beta.readMissionBeta(memoryStorage({ fail: true })), false, 'stockage refusé : éteint, sans erreur');
-  assert.equal(beta.readMissionBeta(null), false);
-  assert.equal(beta.readMissionBeta(), false, 'hors navigateur : éteint');
+  assert.equal(beta.readMissionBeta(memoryStorage({ initial: { 'konekt.mission-v3': '0' } })), false, 'choix de l\'ancienne page gardé');
+  assert.equal(beta.readMissionBeta(memoryStorage({ initial: { 'konekt.mission-v3': 'true' } })), true, 'valeur inconnue : défaut');
+  assert.equal(beta.readMissionBeta(memoryStorage({ fail: true })), true, 'stockage refusé : défaut, sans erreur');
+  assert.equal(beta.readMissionBeta(null), true);
+  assert.equal(beta.readMissionBeta(), true, 'hors navigateur : défaut');
 });
 
-test('lot12 : écriture protégée, éteindre retire la clé', () => {
+test('lot12 : écriture protégée, le choix est gardé dans les deux sens', () => {
   const s = memoryStorage();
   assert.equal(beta.writeMissionBeta(true, s), true);
   assert.equal(s.data.get('konekt.mission-v3'), '1');
   assert.equal(beta.writeMissionBeta(false, s), true);
-  assert.equal(s.data.has('konekt.mission-v3'), false);
+  assert.equal(s.data.get('konekt.mission-v3'), '0', 'ancienne page : « 0 » écrit, jamais la clé retirée');
+  assert.equal(beta.readMissionBeta(s), false);
   assert.equal(beta.writeMissionBeta(true, memoryStorage({ fail: true })), false, 'refus rendu, jamais levé');
+  assert.equal(beta.writeMissionBeta(false, null), false);
 });
 
 test('lot12 : magasin du module, abonnés prévenus une fois par changement', () => {
   beta.resetMissionBetaForTests();
-  assert.equal(beta.getMissionBeta(), false);
+  assert.equal(beta.getMissionBeta(), true, 'défaut : nouvelle page');
   let calls = 0;
   const off = beta.subscribeMissionBeta(() => { calls += 1; });
-  beta.setMissionBeta(true);
-  assert.equal(beta.getMissionBeta(), true, 'vaut pour la session même sans stockage');
-  beta.setMissionBeta(true);
-  assert.equal(calls, 1, 'même valeur : aucune notification');
   beta.setMissionBeta(false);
+  assert.equal(beta.getMissionBeta(), false, 'vaut pour la session même sans stockage');
+  beta.setMissionBeta(false);
+  assert.equal(calls, 1, 'même valeur : aucune notification');
+  beta.setMissionBeta(true);
   assert.equal(calls, 2);
   off();
-  beta.setMissionBeta(true);
+  beta.setMissionBeta(false);
   assert.equal(calls, 2, 'désabonné');
   beta.resetMissionBetaForTests();
 });

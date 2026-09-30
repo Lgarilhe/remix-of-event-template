@@ -2,11 +2,12 @@
 // correspondance des adresses entre l'ancienne page (?tab=) et la nouvelle
 // (/missions/:id, /missions/:id/sourcing, /missions/:id/cadrage).
 //
-// Interrupteur par navigateur, éteint par défaut : clé konekt.mission-v3 du
-// stockage local ('1' = allumé). ?nouvelle-mission=1 l'allume, ?nouvelle-mission=0
-// l'éteint ; la page retire ensuite le paramètre de l'adresse. Stockage
-// indisponible (navigation privée, sites bloqués) : l'interrupteur vaut pour la
-// session en cours, jamais d'erreur.
+// Interrupteur par navigateur, allumé par défaut : clé konekt.mission-v3 du
+// stockage local ('1' = nouvelle page, '0' = ancienne page, absente = valeur
+// par défaut). ?nouvelle-mission=1 allume, ?nouvelle-mission=0 éteint (retour
+// à l'ancienne page) ; la page retire ensuite le paramètre de l'adresse.
+// Stockage indisponible (navigation privée, sites bloqués) : la valeur par
+// défaut vaut pour la session en cours, jamais d'erreur.
 //
 // Module pur, sans import : lu par la mise en page (clé de page), la barre
 // latérale et l'entrée de la page mission.
@@ -15,6 +16,8 @@
 
 export const MISSION_BETA_STORAGE_KEY = 'konekt.mission-v3';
 export const MISSION_BETA_PARAM = 'nouvelle-mission';
+/** Valeur d'un navigateur qui n'a jamais choisi : la nouvelle page. */
+export const MISSION_BETA_DEFAULT = true;
 
 export type MissionBetaStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -26,22 +29,28 @@ function defaultStorage(): MissionBetaStorage | null {
   }
 }
 
-/** Lecture protégée : '1' allume, toute autre valeur ou une erreur éteint. */
+/** '1' allume, '0' éteint, toute autre valeur (absente comprise) : la valeur par défaut. */
+function parseStored(raw: string | null | undefined): boolean {
+  if (raw === '1') return true;
+  if (raw === '0') return false;
+  return MISSION_BETA_DEFAULT;
+}
+
+/** Lecture protégée : un stockage absent ou qui refuse rend la valeur par défaut. */
 export function readMissionBeta(storage: MissionBetaStorage | null = defaultStorage()): boolean {
-  if (!storage) return false;
+  if (!storage) return MISSION_BETA_DEFAULT;
   try {
-    return storage.getItem(MISSION_BETA_STORAGE_KEY) === '1';
+    return parseStored(storage.getItem(MISSION_BETA_STORAGE_KEY));
   } catch {
-    return false;
+    return MISSION_BETA_DEFAULT;
   }
 }
 
-/** Écriture protégée : rend false si le stockage a refusé. */
+/** Écriture protégée : le choix est gardé dans les deux sens ; rend false si le stockage a refusé. */
 export function writeMissionBeta(on: boolean, storage: MissionBetaStorage | null = defaultStorage()): boolean {
   if (!storage) return false;
   try {
-    if (on) storage.setItem(MISSION_BETA_STORAGE_KEY, '1');
-    else storage.removeItem(MISSION_BETA_STORAGE_KEY);
+    storage.setItem(MISSION_BETA_STORAGE_KEY, on ? '1' : '0');
     return true;
   } catch {
     return false;
@@ -63,7 +72,7 @@ function notify(): void {
 
 function onStorage(event: StorageEvent): void {
   if (event.key !== null && event.key !== MISSION_BETA_STORAGE_KEY) return;
-  const next = event.newValue === '1';
+  const next = parseStored(event.newValue);
   if (cached === next) return;
   cached = next;
   notify();

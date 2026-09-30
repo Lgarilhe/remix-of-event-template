@@ -1,6 +1,7 @@
 /**
- * Refonte mission, lots 1 et 2 : nouvelle page mission derrière l'interrupteur
- * par navigateur (clé konekt.mission-v3 du stockage local, src/lib/missionBeta.ts).
+ * Refonte mission, lots 1 et 2 : nouvelle page mission, allumée par défaut, avec
+ * l'interrupteur par navigateur (clé konekt.mission-v3 du stockage local,
+ * src/lib/missionBeta.ts) pour revenir à l'ancienne page.
  *
  * Parcours vérifiés dans le navigateur, sur la vraie base :
  *  1. /missions/:id ouvre la nouvelle page, Pipeline actif, sans le stepper ;
@@ -16,8 +17,8 @@
  *  7. profils jamais ouverts absents de la liste, de À trier et du kanban,
  *     lien « 1 profil trouvé » vers le Sourcing ;
  *  8. anciennes adresses ?tab= converties, interrupteur allumé ;
- *  9. interrupteur éteint : l'ancienne page, telle qu'aujourd'hui ;
- *     ?nouvelle-mission=1|0 ; « Revenir à l'ancienne page » ;
+ *  9. nouvelle page par défaut (rien d'écrit dans le stockage) ;
+ *     ?nouvelle-mission=0|1 ; « Revenir à l'ancienne page », choix gardé ;
  * 10. barre latérale allumée : pas de chevron des vues sur la mission.
  *
  * Harnais : stack locale (e2e/local-stack), comme stage-0b4-gestes.spec.ts.
@@ -213,14 +214,15 @@ const json = (route: Route, body: unknown) =>
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
 /**
- * Page connectée en propriétaire. `beta` : interrupteur posé une seule fois
- * par onglet, avant le premier chargement (marqueur de session), pour que les
- * rechargements suivants gardent ce que la page a décidé (?nouvelle-mission=0,
- * « Revenir à l'ancienne page »).
+ * Page connectée en propriétaire. `beta` : valeur de l'interrupteur posée avec
+ * la session, avant le premier chargement (true : nouvelle page, false :
+ * ancienne page, 'default' : rien d'écrit, la valeur par défaut de l'application).
+ * Les changements faits ensuite par la page (?nouvelle-mission=0, « Revenir à
+ * l'ancienne page ») restent dans le contexte, rechargements compris.
  */
-async function openAs(browser: Browser, ws: Workspace, opts: { beta: boolean }): Promise<Page> {
+async function openAs(browser: Browser, ws: Workspace, opts: { beta: boolean | 'default' }): Promise<Page> {
   const context = await browser.newContext({
-    storageState: await storageStateForUser(ws.org.owner),
+    storageState: await storageStateForUser(ws.org.owner, opts.beta === 'default' ? 'default' : opts.beta ? 'v3' : 'legacy'),
     timezoneId: 'Europe/Paris',
   });
   contexts.push(context);
@@ -238,15 +240,6 @@ async function openAs(browser: Browser, ws: Workspace, opts: { beta: boolean }):
   const page = await context.newPage();
   // Tutoriel vidéo du pipeline de l'ancienne page déjà vu.
   await page.addInitScript(() => { try { localStorage.setItem('konekt:tuto:seen:pipeline', '1'); } catch { /* sans stockage */ } });
-  if (opts.beta) {
-    await page.addInitScript((key) => {
-      try {
-        if (sessionStorage.getItem('e2e:mission-v3:init') === '1') return;
-        sessionStorage.setItem('e2e:mission-v3:init', '1');
-        localStorage.setItem(key, '1');
-      } catch { /* sans stockage */ }
-    }, BETA_KEY);
-  }
   return page;
 }
 
@@ -584,26 +577,40 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(shell(page)).toBeVisible();
   });
 
-  // ═══ 9 : interrupteur éteint ════════════════════════════════════════════
+  // ═══ 9 : interrupteur ═══════════════════════════════════════════════════
 
-  test('interrupteur éteint : ancienne page ; ?nouvelle-mission=1|0 ; « Revenir à l’ancienne page »', async ({ browser }) => {
+  test('interrupteur : nouvelle page par défaut ; ?nouvelle-mission=0|1 ; « Revenir à l’ancienne page »', async ({ browser }) => {
     const ws = await workspace('E2E V3 interrupteur');
-    const page = await openAs(browser, ws, { beta: false });
+    const page = await openAs(browser, ws, { beta: 'default' });
 
-    // Éteint par défaut : l'ancienne page, telle qu'aujourd'hui.
+    // Navigateur sans choix : la nouvelle page, et rien d'écrit dans le stockage.
     await page.goto(missionUrl(ws), { waitUntil: 'domcontentloaded' });
-    await expect(oldStepper(page)).toBeVisible({ timeout: 30_000 });
-    await expect(shell(page)).toHaveCount(0);
+    await expect(shell(page)).toBeVisible({ timeout: 30_000 });
+    await expect(oldStepper(page)).toHaveCount(0);
     await expect(page).toHaveURL(urlIs(ws));
     expect(await betaValue(page)).toBeNull();
 
-    // Une adresse de la nouvelle page revient à l'ancienne vue.
+    // Une ancienne adresse mène à l'écran correspondant de la nouvelle page.
+    await page.goto(missionUrl(ws, '?tab=sourcing'), { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(pathIs(ws, '/sourcing'), { timeout: 30_000 });
+    await expect(shell(page)).toBeVisible({ timeout: 30_000 });
+
+    // ?nouvelle-mission=0 : l'ancienne page, choix gardé, paramètre retiré.
+    await page.goto(missionUrl(ws, '?nouvelle-mission=0'), { waitUntil: 'domcontentloaded' });
+    await expect(oldStepper(page)).toBeVisible({ timeout: 30_000 });
+    await expect(shell(page)).toHaveCount(0);
+    await expect(page).toHaveURL(urlIs(ws));
+    expect(await betaValue(page)).toBe('0');
+
+    // Le choix survit au rechargement ; une adresse de la nouvelle page revient à l'ancienne vue.
+    await page.goto(missionUrl(ws), { waitUntil: 'domcontentloaded' });
+    await expect(oldStepper(page)).toBeVisible({ timeout: 30_000 });
     await page.goto(missionUrl(ws, '/sourcing'), { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(urlIs(ws, '?tab=sourcing'), { timeout: 30_000 });
     await expect(oldStepper(page)).toBeVisible({ timeout: 30_000 });
     await expect(shell(page)).toHaveCount(0);
 
-    // ?nouvelle-mission=1 allume, puis quitte l'adresse.
+    // ?nouvelle-mission=1 rallume, puis quitte l'adresse.
     await page.goto(missionUrl(ws, '?nouvelle-mission=1'), { waitUntil: 'domcontentloaded' });
     await expect(shell(page)).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(urlIs(ws));
@@ -618,7 +625,7 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(page).toHaveURL(urlIs(ws, '?tab=sourcing'), { timeout: 30_000 });
     await expect(oldStepper(page)).toBeVisible({ timeout: 30_000 });
     await expect(shell(page)).toHaveCount(0);
-    expect(await betaValue(page)).toBeNull();
+    expect(await betaValue(page)).toBe('0');
 
     // ?nouvelle-mission=0 depuis une adresse de la nouvelle page : éteint, ancienne vue.
     await page.goto(missionUrl(ws, '?nouvelle-mission=1'), { waitUntil: 'domcontentloaded' });
@@ -627,7 +634,7 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(page).toHaveURL(urlIs(ws, '?tab=process'), { timeout: 30_000 });
     await expect(oldStepper(page)).toBeVisible({ timeout: 30_000 });
     await expect(shell(page)).toHaveCount(0);
-    expect(await betaValue(page)).toBeNull();
+    expect(await betaValue(page)).toBe('0');
 
     // Barre latérale éteinte : le chevron des vues reste (témoin du test suivant).
     await showSidebarMissions(page);
