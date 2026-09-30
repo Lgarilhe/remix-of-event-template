@@ -245,6 +245,7 @@ Périmètre : `/onboarding` et `src/components/onboarding/**`, `WelcomeOnboardin
 - Qualification : statut d'enregistrement visible (non enregistré, en cours, enregistré à HH:mm, échec avec « Réessayer »), notes enregistrées 10 s après la frappe, chaque écriture relue ; verdicts « Qualifié », « Non qualifié », « À revoir », « En attente » en groupe radio, sans emoji ; vouvoiement (B-67, B-85 partiel, B-13 et B-30 pour cet écran, E-50 partiel).
 - Marketplace : une anatomie de carte, une action par carte, champs du kit reliés à leur libellé, squelettes et états vides, en-tête `PageHeader` (F-26 à F-30, F-31 partiel).
 - Tuiles et onglets du kit (B-87, B-88) ; cibles de 44 px sur téléphone.
+- Refonte de l'onboarding du 29/09/2026 (exception du § 11 de `01-direction.md`) : parcours en neuf scènes autour du bureau illustré, fiche société en arrière-plan, brief lu par l'IA, première mission, LinkedIn, premiers candidats et premier message. Les confettis, le fond animé et les illustrations retirés ici reviennent, bornés à l'onboarding.
 
 Reste : l'adresse d'équipe du Cercle partenaires (F-31) ; côté base, l'appel `update-candidate-stage` de la Qualification ne correspond pas au contrat de la fonction (échec désormais signalé par un toast, correction attendue avec la table d'étapes, E-01) ; l'enregistrement automatique des notes repasse une qualification terminée en « en cours » ; `accept-mission-invitation` devrait renvoyer un code d'erreur distinct pour « autre adresse ».
 

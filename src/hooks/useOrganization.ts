@@ -195,7 +195,7 @@ export const useOrganization = () => {
 
       // F3 — garde anti-doublon : un utilisateur déjà membre d'un espace ne
       // peut en créer un second qu'après confirmation explicite (AlertDialog
-      // dans SceneOrganization, ou `?new=1` posé par l'accueil collaborateur).
+      // dans SceneStructure, ou `?new=1` posé par l'accueil collaborateur).
       // Vérifié ici (et pas seulement via `organization` du hook) car ce hook
       // peut être en erreur transitoire au moment où l'onboarding est affiché.
       if (!confirmSecond) {

@@ -37,7 +37,7 @@ const aiHook = read('src/hooks/useAiContext.ts');
 const aiCard = read('src/components/settings/AiContextSettings.tsx');
 const onboarding = read('src/pages/Onboarding.tsx');
 const onboardingStorage = read('src/components/onboarding/onboardingStorage.ts');
-const sceneOrg = read('src/components/onboarding/SceneOrganization.tsx');
+const sceneStructure = read('src/components/onboarding/scenes/SceneStructure.tsx');
 const useOrg = read('src/hooks/useOrganization.ts');
 
 const VENDORS = /Unipile|Apollo|Anthropic|Claude|Resend|Stripe|BetterContact|Clearbit|PostgREST|Supabase/;
@@ -223,53 +223,43 @@ test('R4 — le type est écrit dans l’INSERT de l’organisation', () => {
   assert.match(between(mutation, '.insert(', '.select()'), /org_type: orgType/);
   assert.match(mutation, /orgType: 'enterprise' \| 'agency' \| 'freelance';/);
   assert.doesNotMatch(mutation, /orgType\?:/, 'paramètre obligatoire : pas d’organisation sans type');
-  assert.match(between(sceneOrg, 'const handleContinue', 'onComplete('), /\borgType,/);
-  assert.match(onboarding, /<SceneOrganization orgType=\{orgType\}/);
+  // La scène du nom passe le type choisi à la création, pour les trois profils.
+  assert.match(between(sceneStructure, 'await createOrganization({', '});'), /\borgType,/);
+  assert.match(onboarding, /<SceneStructure\s+orgType=\{orgType\}/);
 });
 
-test('R4 — plus d’UPDATE de type non attendu à la création', () => {
-  const created = between(onboarding, 'const handleOrgCreated', 'const handleLinkedInNext');
-  assert.doesNotMatch(created, /\.update\(|updateOrganization\(/);
-  assert.equal(count(onboarding, /updateOrganization\(/g), 1, 'seule l’activité de l’indépendant reste en UPDATE');
+test('R4 — aucune écriture du type après la création', () => {
+  for (const [name, src] of [['Onboarding.tsx', onboarding], ['SceneStructure.tsx', sceneStructure]]) {
+    for (const call of src.match(/updateOrganization\([^)]*\)/g) ?? []) {
+      assert.doesNotMatch(call, /org_type/, `${name} : ${call}`);
+    }
+  }
+  // Le seul UPDATE du parcours : le logo et le site trouvés pour l’entreprise, jamais devinés.
+  assert.equal(count(onboarding, /updateOrganization\(/g), 1);
+  const logoSync = between(onboarding, 'const logoSyncedRef', '// ─── Handlers de scènes');
+  assert.match(logoSync, /company\.logoUrl/);
+  assert.doesNotMatch(logoSync, /clearbit|logo\.dev|brandfetch/i);
 });
 
-test('R4 — indépendant : erreur lue, pas d’avancée sans écriture', () => {
-  const submit = between(onboarding, 'const handleSpecializationsSubmitted', 'const handleOrgCreated');
-  assert.match(submit, /orgType: 'freelance'/);
-  assert.match(submit, /let orgId = createdOrgId;/, 'réessai sans recréer l’espace');
-  const details = between(submit, 'await updateOrganization(orgId', '} catch (err) {');
-  assert.match(details, /catch \(detailsErr\)[\s\S]*toast\.error\([\s\S]*return;/);
-  assert.match(between(submit, '} catch (err) {', '} finally {'), /return;/);
-  assert.ok(
-    submit.indexOf("markCompleted('specializations')") > submit.indexOf('} finally {'),
-    'la scène n’est marquée terminée qu’après succès',
-  );
-  assert.doesNotMatch(submit, /as any/);
-});
-
-test('C2 — indépendant : l’espace créé est sauvegardé avec la progression', () => {
+test('C2 — l’espace créé est sauvegardé avec la progression', () => {
   assert.match(onboardingStorage, /createdOrgId\?: string \| null;/);
   assert.doesNotMatch(onboarding, /createdOrgIdRef/, 'un ref se perdait au rechargement');
   assert.match(onboarding, /useState<string \| null>\(restored\?\.createdOrgId \?\? null\)/, 'repris de la progression sauvegardée');
-  const persist = between(onboarding, 'saveOnboardingProgress({', '}, [');
+  const persist = between(onboarding, 'const progress: PersistedProgress = {', '};');
   assert.match(persist, /\bcreatedOrgId,/, 'écrit dans la progression');
-  assert.match(between(onboarding, 'saveOnboardingProgress({', ']);'), /completedScenes, createdOrgId$/, 'l’effet de sauvegarde suit createdOrgId');
-  const submit = between(onboarding, 'const handleSpecializationsSubmitted', 'const handleOrgCreated');
-  assert.match(submit, /setCreatedOrgId\(orgId\)/);
-  assert.ok(
-    submit.indexOf('setCreatedOrgId(orgId)') < submit.indexOf('await updateOrganization(orgId'),
-    'l’id est gardé avant l’écriture de l’activité, qui peut échouer',
-  );
-  assert.match(between(onboarding, 'const handleOrgCreated', 'const handleLinkedInNext'), /setCreatedOrgId\(data\.orgId\)/);
+  assert.match(between(onboarding, 'saveOnboardingProgress(progressRef.current);\n  }, [', ']);'), /\bcreatedOrgId\b/, 'l’effet de sauvegarde suit createdOrgId');
+  assert.match(between(onboarding, 'const handleStructureCreated', 'const handleClientCommit'), /setCreatedOrgId\(orgId\)/);
+  // Retour arrière ou rechargement : la scène corrige le nom de l’espace, elle ne le recrée pas.
+  assert.match(sceneStructure, /let orgId = createdOrgId;/);
+  assert.match(between(sceneStructure, 'if (orgId) {', '} else {'), /updateOrganization\(orgId, \{ name \}\)/);
 });
 
-test('C2 — « déjà membre » : l’espace indépendant créé par l’utilisateur est repris, pas bloqué', () => {
-  const submit = between(onboarding, 'const handleSpecializationsSubmitted', 'const handleOrgCreated');
-  const reuse = between(submit, '} catch (createErr) {', 'setCreatedOrgId(orgId)');
+test('C2 — « déjà membre » : l’espace créé par l’utilisateur, du même type, est repris et non bloqué', () => {
+  const reuse = between(sceneStructure, '} catch (createErr) {', 'setConfirmSecondOpen(true)');
   assert.match(reuse, /code !== ORG_ALREADY_EXISTS\) throw createErr/, 'les autres échecs restent signalés');
   assert.match(reuse, /await refetchOrganization\(\)/);
-  assert.match(reuse, /own\.created_by !== user\.id/);
-  assert.match(reuse, /own\.org_type !== 'freelance'/);
+  assert.match(reuse, /own\.created_by === user\.id/);
+  assert.match(reuse, /own\.org_type === orgType/);
   assert.match(reuse, /orgId = own\.id;/);
 });
 

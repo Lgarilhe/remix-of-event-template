@@ -44,6 +44,14 @@
     --brand-solid: 181 34% 29%;
     --brand-solid-foreground: 0 0% 100%;
 
+    /* ── Papier des objets du kit d'illustrations ──
+       Encre sur papier crème et kraft : les mêmes dans les deux thèmes, ce sont
+       des objets posés sur le bureau de l'onboarding, pas des surfaces de l'app. */
+    --paper: 37 62% 93%;
+    --paper-shade: 30 41% 77%;
+    --paper-ink: 32 26% 13%;
+    --paper-ink-soft: 34 26% 34%;
+
     /* ── Filets et focus ──
        En sombre, les filets sont un blanc transparent. Teinte et opacité sont
        aussi séparées (-hsl, -alpha) : Tailwind multiplie l'opacité, ce qui
@@ -264,6 +272,12 @@
     width: 100%;
     min-width: 0;
     overflow-x: auto;
+  }
+
+  /* L'onboarding colle son bureau (position: sticky) : html et body ne doivent pas y être des conteneurs de défilement. */
+  html.stage-open,
+  html.stage-open body {
+    overflow-x: clip;
   }
 
   /* Titres : même famille que le texte, graisse 600. La taille est posée par classe. */
