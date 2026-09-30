@@ -245,6 +245,13 @@ test('lots 1-2 : les fichiers de l\'ancienne page sont toujours là', () => {
   assert.match(code('src/components/missions/v2/MissionWorkspaceV2.tsx'), /<PhaseStepper\b/);
 });
 
+test('lots 1-2 : l\'ancienne page propose de passer à la nouvelle en un clic', () => {
+  const legacy = code('src/pages/MissionWorkspace.tsx');
+  assert.match(legacy, /import \{ setMissionBeta \} from ['"]@\/lib\/missionBeta['"]/);
+  assert.match(legacy, /onClick=\{\(\) => setMissionBeta\(true\)\}/);
+  assert.match(legacy, /Passer à la nouvelle page/);
+});
+
 // ─── Nouvelle page : écritures de l'étape ───────────────────────────────────
 
 test('lots 1-2 : fichiers de la nouvelle page présents', () => {

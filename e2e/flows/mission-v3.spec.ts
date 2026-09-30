@@ -610,7 +610,13 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(oldStepper(page)).toBeVisible({ timeout: 30_000 });
     await expect(shell(page)).toHaveCount(0);
 
-    // ?nouvelle-mission=1 rallume, puis quitte l'adresse.
+    // Depuis l'ancienne page, « Passer à la nouvelle page » rallume en un clic, au même endroit.
+    await page.getByRole('button', { name: 'Passer à la nouvelle page', exact: true }).click();
+    await expect(page).toHaveURL(pathIs(ws, '/sourcing'), { timeout: 30_000 });
+    await expect(shell(page)).toBeVisible({ timeout: 30_000 });
+    expect(await betaValue(page)).toBe('1');
+
+    // ?nouvelle-mission=1 rallume aussi, puis quitte l'adresse.
     await page.goto(missionUrl(ws, '?nouvelle-mission=1'), { waitUntil: 'domcontentloaded' });
     await expect(shell(page)).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(urlIs(ws));
