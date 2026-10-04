@@ -366,6 +366,78 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     expect(count).toBe(0);
   });
 
+  test('Cadrage allégé : « Préciser » écrit Qui recrute, « Rédhibitoire » apparaît au clavier et s’enregistre, aucune colonne d’effectifs sans candidat', async ({ browser }) => {
+    const ws = await workspace('E2E V3 cadrage allege');
+    await processSteps(ws, ['Étape vide']);
+    const page = await openAs(browser, ws, { beta: true });
+    await page.goto(missionUrl(ws, '/cadrage'), { waitUntil: 'domcontentloaded' });
+    const criteria = page.locator('#cadrage-criteres');
+    await expect(criteria).toBeVisible({ timeout: 30_000 });
+    const readJob = async () => {
+      const { data } = await admin().from('sourcing_projects').select('job_details').eq('id', ws.missionId).single();
+      return (data?.job_details ?? {}) as {
+        outreach_config?: { recruitment_mode?: string };
+        evaluation_criteria?: Array<{ label: string; deal_breaker?: boolean }>;
+      };
+    };
+
+    // Étapes : la colonne « En ce moment » n'existe que si une étape a des candidats, jamais de « Aucun ».
+    const steps = page.locator('#cadrage-etapes');
+    await expect(steps.getByRole('textbox', { name: "Nom de l'étape 1" })).toBeVisible({ timeout: 30_000 });
+    await expect(steps.getByText('En ce moment')).toHaveCount(0);
+    await expect(steps.getByText('Aucun', { exact: true })).toHaveCount(0);
+
+    // Équipe : l'état vide et « Assigner » tiennent sur une ligne.
+    const team = page.locator('#cadrage-equipe');
+    await expect(team.getByText('Aucun membre assigné à cette mission.')).toBeVisible({ timeout: 30_000 });
+    await expect(team.getByRole('button', { name: 'Assigner', exact: true })).toBeVisible();
+
+    // Qui recrute : une ligne, les deux choix sous « Préciser », écriture inchangée (outreach_config).
+    const poste = page.locator('#cadrage-poste');
+    await expect(poste.getByText(/^Qui recrute : non précisé\./)).toBeVisible();
+    await expect(poste.getByRole('radio')).toHaveCount(0);
+    await poste.getByRole('button', { name: 'Préciser', exact: true }).click();
+    await poste.getByRole('radio', { name: 'Vous, en interne' }).click();
+    await expect(poste.getByText('Qui recrute : vous, en interne.')).toBeVisible();
+    await expect(poste.getByRole('radio')).toHaveCount(0);
+    await expect(poste.getByRole('button', { name: 'Modifier', exact: true })).toBeFocused();
+    await expect.poll(async () => (await readJob()).outreach_config?.recruitment_mode ?? null, { timeout: 15_000 }).toBe('internal');
+
+    // Critère : « Rédhibitoire » est caché au repos, visible au focus clavier, enregistré par la barre d'espace.
+    await criteria.getByRole('button', { name: 'Ajouter un critère' }).click();
+    const label = criteria.getByRole('textbox', { name: 'Libellé du critère 1' });
+    await label.fill('Paie');
+    const deal = criteria.getByRole('checkbox', { name: 'Rédhibitoire : Paie' });
+    const dealLabel = criteria.locator('label').filter({ has: page.getByRole('checkbox', { name: 'Rédhibitoire : Paie' }) });
+    await label.evaluate((el) => (el as HTMLElement).blur());
+    await page.mouse.move(0, 0);
+    await expect(dealLabel, 'caché au repos').toHaveCSS('opacity', '0');
+    await label.focus();
+    for (let i = 0; i < 4; i++) await page.keyboard.press('Tab'); // trois choix d'importance, puis la case
+    await expect(deal, 'atteignable au clavier').toBeFocused();
+    await expect(dealLabel, 'visible au focus').toHaveCSS('opacity', '1');
+    await page.keyboard.press('Space');
+    await expect(deal).toBeChecked();
+    await expect
+      .poll(async () => ((await readJob()).evaluation_criteria ?? []).map((c) => [c.label, !!c.deal_breaker]), { timeout: 15_000 })
+      .toEqual([['Paie', true]]);
+    // Rédhibitoire : la case reste visible sans survol.
+    await deal.evaluate((el) => (el as HTMLElement).blur());
+    await page.mouse.move(0, 0);
+    await expect(dealLabel, 'un critère rédhibitoire garde sa case visible').toHaveCSS('opacity', '1');
+
+    // Confirmation de suppression : Échap et Annuler rendent le focus à la corbeille, jamais à la page.
+    const trash = criteria.getByRole('button', { name: 'Supprimer le critère Paie' });
+    await trash.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(trash, 'Échap : le focus revient à la corbeille').toBeFocused();
+    await page.keyboard.press('Enter');
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Annuler' }).click();
+    await expect(trash, 'Annuler : le focus revient à la corbeille').toBeFocused();
+  });
+
   // ═══ 3 : fiche ════════════════════════════════════════════════════════════
 
   test('clic sur une ligne : fiche à droite avec quatre onglets ; Retour et Échap la ferment', async ({ browser }) => {
@@ -659,5 +731,178 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     const sidebar = page.locator('#sidebar-panel');
     await expect(sidebar.getByText(ws.missionName, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('button', { name: `Afficher les vues de ${ws.missionName}`, exact: true })).toHaveCount(0);
+  });
+
+  // ═══ 11 : Sourcing allégé (design simplifié) ═════════════════════════════
+
+  test('Sourcing : puces d’état sans zéro, « Noter » seul bouton plein avec son coût, tableau sans tiret, une phrase en pied de liste', async ({ browser }) => {
+    const ws = await workspace('E2E V3 sourcing');
+    // « Noter » demande un poste décrit.
+    const { error } = await admin().from('sourcing_projects').update({
+      job_details: {
+        title: 'Responsable RH',
+        context: 'Le groupe passe de 180 à 320 salariés.',
+        mission_description: 'Structurer la fonction RH : paie, droit social, recrutement.',
+        skills_must_have: ['Paie', 'Droit social'],
+      },
+    }).eq('id', ws.missionId);
+    if (error) throw new Error(`job_details : ${error.message}`);
+    const people = ['Camille Fontaine', 'Hugo Lambert', 'Inès Moreau'].map((name, i) => ({ id: `ACoAAV3S${i}${rand()}`, name }));
+
+    const page = await openAs(browser, ws, { beta: true });
+    await page.context().route('**/functions/v1/unipile-search', (route) => json(route, actionOf(route) === 'search'
+      ? {
+          success: true,
+          cursor: null,
+          total: people.length,
+          results: people.map((p) => ({
+            ...p,
+            first_name: p.name.split(' ')[0],
+            last_name: p.name.split(' ').slice(1).join(' '),
+            headline: 'Responsable paie',
+            location: 'Lyon, France',
+            network_distance: 'SECOND_DEGREE',
+          })),
+        }
+      : { success: true, items: [] }));
+    await page.goto(missionUrl(ws, '/sourcing'), { waitUntil: 'domcontentloaded' });
+    // Écran de départ : le bouton plein est noir (jamais la couleur de marque) dès qu'une phrase est écrite.
+    const prompt = page.getByRole('textbox', { name: 'Décrivez le profil recherché' });
+    await prompt.fill('Responsable paie, Lyon', { timeout: 30_000 });
+    const launch = page.getByRole('button', { name: 'Générer les filtres et chercher', exact: true });
+    await expect(launch).toHaveClass(/bg-primary/);
+    await expect(launch).not.toHaveClass(/k-accent/);
+    await prompt.fill('');
+    await page.getByText('générer les filtres depuis le poste').click({ timeout: 30_000 });
+    for (const p of people) {
+      await expect(page.getByRole('checkbox', { name: `Sélectionner ${p.name}`, exact: true })).toBeVisible({ timeout: 30_000 });
+    }
+
+    // Puces d'état : le chiffre nul ne s'écrit pas, le nom accessible le garde.
+    const tabsRow = page.getByRole('tablist', { name: 'Groupes de résultats' });
+    await expect(tabsRow.getByRole('tab', { name: 'À trier 3', exact: true })).toHaveText(/À trier\s*3/);
+    await expect(tabsRow.getByRole('tab', { name: 'Retenus 0', exact: true })).toHaveText('Retenus');
+    await expect(tabsRow.getByRole('tab', { name: 'Écartés 0', exact: true })).toHaveText('Écartés');
+    // Bascule d'affichage : mêmes noms.
+    const views = page.getByRole('group', { name: 'Affichage des profils à trier' });
+    await expect(views.getByRole('button', { name: 'Liste', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    // « Noter » : le seul bouton plein de la liste, le coût écrit à côté.
+    const panelGroup = page.locator('#sourcing-groupe');
+    const score = panelGroup.getByRole('button', { name: 'Noter les 3 profils non notés', exact: true });
+    await expect(score).toBeVisible();
+    await expect(score).toHaveClass(/bg-primary/);
+    await expect(panelGroup.locator('button.bg-primary')).toHaveCount(1);
+    await expect(panelGroup.getByText('au moins 6 crédits', { exact: true })).toBeVisible();
+
+    // Tableau : sans tiret, colonnes par défaut réduites, résumé sans « colonnes ».
+    const table = panelGroup.locator('table');
+    await expect(table.getByRole('columnheader', { name: 'Nom' })).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: 'Lieu' })).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: 'Avis' })).toHaveCount(0);
+    await expect(table.getByRole('columnheader', { name: 'Statut' })).toHaveCount(0);
+    expect(await table.innerText()).not.toContain('—');
+    await expect(panelGroup.getByText(/^3 profils/)).toBeVisible();
+    await expect(panelGroup.getByText(/colonnes/)).toHaveCount(0);
+    await expect(table.getByText('Responsable paie')).toHaveCount(3);
+
+    // Pied de liste : une seule phrase, qui ne répète pas « Noter ».
+    await expect(panelGroup.getByText('Tous les profils de cette recherche sont chargés.', { exact: false })).toHaveCount(1);
+    await expect(panelGroup.getByText(/pas encore notés/)).toHaveCount(0);
+
+    // « Colonnes » ajoute « Avis » ; le choix reste dans une clé à part (rien n'est écrit dans celle de l'ancienne page).
+    await panelGroup.getByRole('button', { name: 'Colonnes', exact: true }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Avis' }).click();
+    await page.keyboard.press('Escape');
+    await expect(table.getByRole('columnheader', { name: 'Avis' })).toBeVisible();
+    const stored = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('konekt_table_columns_')));
+    expect(stored.every((k) => k.startsWith('konekt_table_columns_v3_'))).toBe(true);
+    // Le choix n'enregistre que ce que la personne a fait : l'absence de notes ou de lieux n'en fait pas partie.
+    const choice = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((k) => k.startsWith('konekt_table_columns_v3_'));
+      return key ? (JSON.parse(localStorage.getItem(key) ?? '[]') as string[]) : [];
+    });
+    expect(choice).toContain('konekt_status');
+    for (const shown of ['recommendation', 'score', 'location', 'years_exp']) expect(choice).not.toContain(shown);
+
+    // Détaillé : une ligne à filet par profil (ni carte, ni contour), aucun second bouton plein.
+    await views.getByRole('button', { name: 'Détaillé', exact: true }).click();
+    const cards = panelGroup.getByRole('button', { name: /^Candidat / });
+    await expect(cards).toHaveCount(3);
+    await expect(cards.first()).toHaveCSS('border-top-width', '0px');
+    await expect(cards.first()).toHaveCSS('border-bottom-width', '1px');
+    await expect(panelGroup.locator('button.bg-primary')).toHaveCount(1);
+    await views.getByRole('button', { name: 'Liste', exact: true }).click();
+
+    // Zone Filtres : puces sans cadre, texte de 14 px, plus de « booléen ».
+    await page.getByRole('button', { name: /^Filtres/ }).click();
+    const quick = page.getByRole('switch', { name: 'Prêts à bouger' });
+    await expect(quick).toBeVisible();
+    await expect(quick).toHaveCSS('border-top-width', '0px');
+    await expect(quick).toHaveCSS('font-size', '14px');
+    await expect(page.getByText('booléen', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: /^Filtres/ }).click();
+
+    // Téléphone : aucune barre horizontale de page, cibles de 44 px pour « Noter » et les puces.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(score).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    const box = await score.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(43);
+
+    // Un choix fait avant la notation ne cache pas la colonne Note une fois les profils notés.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // La recherche a déjà inscrit ces profils À trier : on y écrit la note, comme le ferait la notation.
+    for (const p of people) {
+      const { error: noteError } = await admin()
+        .from('job_candidate_status')
+        .update({ score: 80, recommendation: 'go' })
+        .eq('organization_id', ws.org.orgId)
+        .eq('project_id', ws.missionId)
+        .eq('candidate_id', p.id);
+      if (noteError) throw new Error(`note de ${p.name} : ${noteError.message}`);
+    }
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByText('générer les filtres depuis le poste').click({ timeout: 30_000 });
+    const scoredTable = page.locator('#sourcing-groupe table');
+    await expect(scoredTable.getByRole('columnheader', { name: 'Note' })).toBeVisible({ timeout: 30_000 });
+    await expect(scoredTable.getByRole('columnheader', { name: 'Avis' })).toBeVisible();
+    await expect(scoredTable.getByLabel('Note 80', { exact: true })).toHaveCount(3);
+  });
+
+  test('Sourcing : « Voir la suite » reste en place pendant le chargement, le focus ne se perd pas et le chargement est annoncé', async ({ browser }) => {
+    const ws = await workspace('E2E V3 sourcing suite');
+    const first = ['Camille Fontaine', 'Hugo Lambert'].map((name) => ({ id: `ACoAAV3F${rand()}`, name }));
+    const next = [{ id: `ACoAAV3G${rand()}`, name: 'Inès Moreau' }];
+    const asResult = (p: { id: string; name: string }) => ({
+      ...p,
+      first_name: p.name.split(' ')[0],
+      last_name: p.name.split(' ').slice(1).join(' '),
+      headline: 'Responsable paie',
+      location: 'Lyon, France',
+      network_distance: 'SECOND_DEGREE',
+    });
+    const page = await openAs(browser, ws, { beta: true });
+    await page.context().route('**/functions/v1/unipile-search', async (route) => {
+      if (actionOf(route) !== 'search') return json(route, { success: true, items: [] });
+      const more = (route.request().postDataJSON() as { cursor?: string } | null)?.cursor;
+      if (more) await new Promise((resolve) => setTimeout(resolve, 1500));
+      return json(route, { success: true, cursor: more ? 'CUR3' : 'CUR2', total: 1245, results: (more ? next : first).map(asResult) });
+    });
+    await page.goto(missionUrl(ws, '/sourcing'), { waitUntil: 'domcontentloaded' });
+    await page.getByText('générer les filtres depuis le poste').click({ timeout: 30_000 });
+    const panelGroup = page.locator('#sourcing-groupe');
+    const more = panelGroup.getByRole('button', { name: 'Voir la suite', exact: true });
+    await expect(more).toBeVisible({ timeout: 30_000 });
+    await more.focus();
+    await page.keyboard.press('Enter');
+    // Pendant le chargement : le même bouton, désactivé pour la souris et les lecteurs d'écran, garde le focus.
+    const loading = panelGroup.getByRole('button', { name: 'Chargement de la suite', exact: true });
+    await expect(loading).toBeFocused();
+    await expect(loading).toHaveAttribute('aria-disabled', 'true');
+    // Une fois les lignes arrivées : le bouton revient, le focus est resté dessus, le total est annoncé.
+    await expect(more).toBeFocused({ timeout: 90_000 });
+    await expect(panelGroup.getByRole('checkbox', { name: 'Sélectionner Inès Moreau', exact: true })).toBeVisible();
+    await expect(panelGroup.getByRole('status').filter({ hasText: /3 profils chargés sur 1.245/ })).toHaveCount(1);
   });
 });

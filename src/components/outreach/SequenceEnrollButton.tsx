@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import {
   AlertCircle,
   GitBranch,
@@ -61,6 +62,8 @@ interface SequenceEnrollButtonProps {
   onCreateSequence?: () => void;
   /** Libellé du bouton ; « Séquence » par défaut. */
   triggerLabel?: string;
+  /** Nouvelle page mission : bouton discret, sans contour, cible de 44 px sur téléphone. */
+  quiet?: boolean;
 }
 
 /** Identifiant de mission (sourcing_projects.id) d'un poste synthétique « project:{uuid} ». */
@@ -75,6 +78,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
   onSuccess,
   onCreateSequence,
   triggerLabel = 'Séquence',
+  quiet = false,
 }) => {
   const [sequences, setSequences] = useState<SequenceOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -217,10 +221,10 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
       >
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
+            variant={quiet ? 'ghost' : 'outline'}
             size="sm"
             title="Inscrire dans une séquence"
-            className="shrink-0"
+            className={cn('shrink-0', quiet && 'text-foreground-secondary hover:text-foreground max-sm:min-h-11')}
           >
             <GitBranch aria-hidden="true" />
             {triggerLabel}

@@ -21,6 +21,7 @@ import {
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { classifyFromProfile } from '@/lib/companyClassification';
 import { CompanyLogo } from '@/components/candidates/CompanyLogo';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 
 // Sub-components
 import { CardStatusBadges } from './result-card/CardStatusBadges';
@@ -36,6 +37,8 @@ interface ExtendedResultCardProps extends LinkedInResultCardProps {
   /** Mode d'affichage : 'compact' = scan rapide (cache exp/edu/skills),
       'detailed' = mini-CV complet (default). Persisté en localStorage par le parent. */
   viewMode?: 'compact' | 'detailed';
+  /** Nouvelle page mission : une ligne à filet au lieu d'une carte, note en anneau, boutons discrets. */
+  variant?: 'default' | 'mission-v3';
 }
 
 export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
@@ -57,7 +60,9 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
   onOpenDetail,
   isBatchScoring = false,
   viewMode = 'detailed',
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
   const isCompactMode = viewMode === 'compact';
   const [isScoring, setIsScoring] = useState(false);
   const [scoreFlash, setScoreFlash] = useState<'go' | 'maybe' | 'skip' | null>(null);
@@ -180,11 +185,15 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
 
   return (
     <div
-      className={`group relative max-w-full cursor-pointer rounded-xl border bg-card transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
-        isSelected
-          ? 'border-brand/55 bg-brand/10'
-          : 'border-border hover:border-border-strong'
-      }`}
+      className={isV3
+        ? `group relative max-w-full cursor-pointer border-b border-border/50 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+          isSelected ? 'bg-muted/60' : 'hover:bg-muted/40'
+        }`
+        : `group relative max-w-full cursor-pointer rounded-xl border bg-card transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+          isSelected
+            ? 'border-brand/55 bg-brand/10'
+            : 'border-border hover:border-border-strong'
+        }`}
       style={{ wordBreak: 'break-word' }}
       role="button"
       tabIndex={0}
@@ -209,7 +218,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       }}
     >
       {/* High score indicator — left accent bar */}
-      {hasHighScore && (
+      {hasHighScore && !isV3 && (
         <div className="absolute bottom-0 left-0 top-0 w-1 rounded-l-xl bg-brand" />
       )}
 
@@ -248,7 +257,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
       )}
       {/* Main card content — padding reduit (p-2 sm:p-3 au lieu de p-2.5 sm:p-4)
           pour gagner ~8px hauteur globale par card */}
-      <div className={`p-2 sm:p-3 transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
+      <div className={`${isV3 ? 'px-2 py-3' : 'p-2 sm:p-3'} transition-all duration-300 ${showScoringOverlay ? 'select-none pointer-events-none' : ''}`}>
         <div className="relative flex items-start gap-2 sm:gap-3 min-w-0 w-full">
           {/* Checkbox - top-right on mobile, left column on desktop.
               Renforcée : h-5 w-5 + border-2 + bg-background pour ressortir
@@ -260,7 +269,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 {jobScore?.recommendation === 'skip' ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className="flex h-5 w-5 cursor-not-allowed items-center justify-center rounded border border-border bg-muted">
+                      <div className={`flex ${isV3 ? 'h-4 w-4' : 'h-5 w-5'} cursor-not-allowed items-center justify-center rounded border border-border bg-muted`}>
                         <X className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                       </div>
                     </TooltipTrigger>
@@ -287,14 +296,21 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                     checked={isSelected}
                     onCheckedChange={onToggleSelect}
                     aria-label={`Sélectionner ${fullName || 'ce profil'}`}
-                    className="h-6 w-6"
+                    className={isV3 ? 'relative h-6 w-6 before:absolute before:-inset-2.5' : 'h-6 w-6'}
                   />
                 )}
               </div>
             </>
           )}
 
+          {/* Nouvelle page : un seul visage, de taille fixe, à tous les écrans. */}
+          {isV3 && (
+            <div className="shrink-0">
+              <PersonAvatar name={fullName} src={profile.profile_picture_url} size={40} />
+            </div>
+          )}
           {/* Avatar - separate column on desktop only */}
+          {!isV3 && (
           <div className="relative shrink-0 hidden sm:block">
             <Avatar className="h-12 w-12 border border-border">
               <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
@@ -308,6 +324,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               </span>
             )}
           </div>
+          )}
 
           {/* Info */}
           <div className="flex-1 min-w-0">
@@ -316,6 +333,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 max-w-full">
                   {/* Avatar inline next to name on mobile */}
+                  {!isV3 && (
                   <div className="relative shrink-0 sm:hidden">
                     <Avatar className="h-8 w-8 border border-border">
                       <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
@@ -329,6 +347,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                       </span>
                     )}
                   </div>
+                  )}
                   <h3 className="break-words text-md font-semibold leading-tight text-foreground sm:truncate">
                     {fullName || 'Profil LinkedIn'}
                   </h3>
@@ -341,6 +360,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                     jobScore={jobScore}
                     isLikelyToRespond={isLikelyToRespond}
                     enrollmentInfo={enrollmentInfo}
+                    variant={variant}
                   />
                 </div>
               </div>
@@ -361,12 +381,13 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                   onArchive={onArchive}
                   onSequenceEnroll={onSequenceEnroll}
                   onProfileTreated={onProfileTreated}
+                  variant={variant}
                 />
               </div>
             </div>
 
             {/* Row 2: Headline */}
-            <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 leading-snug break-words">
+            <p className={`${isV3 ? 'text-sm' : 'text-xs sm:text-sm'} text-muted-foreground line-clamp-2 mt-0.5 leading-snug break-words`}>
               {profile.headline || currentRole || 'Profil LinkedIn'}
             </p>
 
@@ -375,7 +396,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 Après : single line wrapping avec puces • séparatrices,
                 icône uniquement sur le 1er item (Building2/logo), tabular-nums
                 sur chiffres pour alignement vertical entre cards. */}
-            <div className="flex items-center gap-x-1.5 gap-y-0.5 mt-1.5 text-xs text-muted-foreground flex-wrap min-w-0">
+            <div className={`flex items-center gap-x-1.5 gap-y-0.5 mt-1.5 ${isV3 ? 'text-sm' : 'text-xs'} text-muted-foreground flex-wrap min-w-0`}>
               {currentCompany && (
                 <span className="flex min-w-0 items-center gap-1.5 text-foreground-secondary">
                   {profileData.currentJob?.logo ? (
@@ -395,6 +416,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 <>
                   <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
                   <span className="shrink-0">{currentJobTenure}</span>
+                </>
+              )}
+              {isV3 && networkDistance && networkDistance <= 3 && (
+                <>
+                  <span className="text-muted-foreground select-none" aria-hidden="true">•</span>
+                  <span className="shrink-0 tabular-nums" title="Degré de relation LinkedIn">{networkDistance}°</span>
                 </>
               )}
               {profile.location && (
@@ -512,10 +539,12 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
                 onSequenceEnroll={onSequenceEnroll}
                 onProfileTreated={onProfileTreated}
                 compact
+                variant={variant}
               />
             </div>
 
-            {/* "Voir détails" */}
+            {/* "Voir détails" : la ligne entière ouvre déjà la fiche ; pas de lien en plus sur la nouvelle page. */}
+            {!isV3 && (
             <div
               className="mt-1.5 text-xs text-primary font-medium sm:text-primary/60 sm:opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer py-0.5"
               onClick={(e) => { e.stopPropagation(); onOpenDetail?.(); }}
@@ -523,6 +552,7 @@ export const LinkedInResultCard: React.FC<ExtendedResultCardProps> = ({
               <ExternalLink className="w-3 h-3" />
               Voir les détails
             </div>
+            )}
           </div>
         </div>
       </div>

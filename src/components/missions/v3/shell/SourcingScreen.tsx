@@ -3,11 +3,13 @@
 // (rangée Affiner, Filtres, Nouvelle recherche ; résultats en trois groupes,
 // src/components/missions/v3/sourcing/**). Même recherche et mêmes écritures ;
 // l'ancienne page et /sourcing/:id gardent leur rendu. Mission archivée : fermé, avec « Réactiver » (il n'a pas de mode
-// lecture seule). Sans compte LinkedIn utilisable : une carte « Relier LinkedIn »
-// à la place de la recherche, une fois les comptes chargés (conception 5.3).
+// lecture seule). Sans compte LinkedIn utilisable : un message « Relier LinkedIn »
+// à la place de la recherche, une fois les comptes chargés (conception 5.3) ;
+// design simplifié (04/10/2026) : sans cadre, pastille d'icône, un seul bouton plein.
 import { Link } from 'react-router-dom';
 import { Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconTile } from '@/components/ui/IconTile';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { MissionSourcing } from '@/components/missions/MissionSourcing';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
@@ -29,16 +31,14 @@ export function SourcingScreen() {
     return (
       <section
         aria-labelledby="sourcing-linkedin-titre"
-        className="mx-auto mt-16 flex w-full max-w-[460px] flex-col items-start gap-2.5 rounded-xl border border-border bg-card px-7 py-6"
+        className="mx-auto mt-16 flex w-full max-w-[460px] flex-col items-center gap-2.5 px-4 text-center"
       >
-        <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground-secondary">
-          <Link2 className="h-4 w-4" />
-        </span>
-        <h2 id="sourcing-linkedin-titre" className="text-base font-semibold text-foreground">
+        <IconTile icon={Link2} size="lg" aria-hidden="true" className="mb-1" />
+        <h2 id="sourcing-linkedin-titre" className="text-lg font-semibold text-foreground">
           Pour chercher des profils, reliez votre compte LinkedIn.
         </h2>
-        <p className="text-sm text-foreground-secondary">Le Pipeline et le Cadrage restent disponibles.</p>
-        <Button asChild className="mt-1.5">
+        <p className="text-md text-muted-foreground">Le Pipeline et le Cadrage restent disponibles.</p>
+        <Button asChild variant="primary" className="mt-2 max-sm:min-h-11">
           <Link to="/settings/account/connections">Relier LinkedIn</Link>
         </Button>
       </section>

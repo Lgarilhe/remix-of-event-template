@@ -16,6 +16,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import type { ProcessStep } from '@/hooks/useMissionProcess';
 import { useMissionInvitations } from '@/hooks/useMissionInvitations';
 import { MARKETPLACE_FROZEN } from '@/lib/marketplaceFreeze';
@@ -459,6 +461,21 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
 
   const assignedIds = new Set(team.map((m: any) => m.user_id));
   const availableMembers = orgMembers.filter(m => !assignedIds.has(m.user_id));
+  const canAssign = !readOnly && availableMembers.length > 0 && !showAssign;
+  const memberName = (userId: string) => getTeamMemberName(userId, getMemberName(userId));
+
+  // Rendu `embedded` (nouvelle page mission, design simplifié du 04/10/2026) : « Assigner » est un bouton discret.
+  const assignButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => setShowAssign(true)}
+      className="-ml-3 text-muted-foreground hover:text-foreground max-sm:min-h-11"
+    >
+      <Plus aria-hidden="true" /> Assigner
+    </Button>
+  );
 
   const handleAssign = async () => {
     if (!selectedUserId) return;
@@ -473,16 +490,15 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
 
   return (
     <div className={embedded ? undefined : 'mt-6 pt-6 border-t border-border'}>
-      <div className={cn('flex items-center justify-between', embedded ? (!readOnly && availableMembers.length > 0 && !showAssign ? 'mb-3' : undefined) : 'mb-4')}>
-        {!embedded && (
+      {!embedded && (
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
             Équipe mission ({team.length})
           </h3>
         </div>
-        )}
-        {!readOnly && availableMembers.length > 0 && !showAssign && (
+        {canAssign && (
           <button
             onClick={() => setShowAssign(true)}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
@@ -491,6 +507,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           </button>
         )}
       </div>
+      )}
 
       {/* Assign form */}
       {showAssign && (
@@ -499,7 +516,10 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             aria-label={embedded ? 'Membre à assigner' : undefined}
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
-            className="flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors"
+            className={cn(
+              'flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors',
+              embedded && 'max-sm:h-11',
+            )}
           >
             <option value="">Sélectionner un membre...</option>
             {availableMembers.map((m: any) => (
@@ -510,7 +530,10 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
             aria-label={embedded ? 'Rôle dans la mission' : undefined}
-            className="h-9 px-3 rounded-lg text-xs font-medium border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10"
+            className={cn(
+              'h-9 px-3 rounded-lg text-xs font-medium border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10',
+              embedded && 'text-sm font-normal max-sm:h-11',
+            )}
           >
             <option value="lead">{roleLabels?.lead || 'Lead'}</option>
             <option value="sourcer">{roleLabels?.sourcer || 'Sourcer'}</option>
@@ -520,16 +543,21 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <button
             onClick={handleAssign}
             disabled={!selectedUserId}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-xs font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
+            className={cn(
+              'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-xs font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm',
+              embedded && 'rounded-lg bg-transparent text-sm font-semibold text-foreground shadow-none hover:bg-accent max-sm:min-h-11',
+            )}
           >
             {embedded ? 'Assigner' : 'OK'}
           </button>
           <button
             onClick={() => { setShowAssign(false); setSelectedUserId(''); }}
             aria-label={embedded ? 'Annuler' : undefined}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-2xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className={embedded
+              ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-11 max-sm:w-11'
+              : 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-2xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors'}
           >
-            ×
+            {embedded ? <X className="h-4 w-4" aria-hidden="true" /> : '×'}
           </button>
         </div>
       )}
@@ -539,36 +567,57 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <div className="w-4 h-4 rounded-full border-2 border-border border-t-foreground animate-spin" />
         </div>
       ) : team.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Aucun membre assigné à cette mission.</p>
+        embedded ? (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-sm text-muted-foreground">Aucun membre assigné à cette mission.</p>
+            {canAssign && assignButton}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Aucun membre assigné à cette mission.</p>
+        )
       ) : (
-        <div className="space-y-2">
+        <div className={embedded ? 'flex flex-col' : 'space-y-2'}>
           {team.map((member: any) => (
-            <div key={member.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border bg-card">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                <User className="w-4 h-4 text-muted-foreground" />
-              </div>
+            <div
+              key={member.id}
+              className={embedded
+                ? 'group flex items-center gap-3 border-t border-border py-2 first:border-t-0 max-sm:min-h-11'
+                : 'flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border bg-card'}
+            >
+              {embedded ? (
+                <PersonAvatar name={memberName(member.user_id)} size={32} />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">
-                  {getTeamMemberName(member.user_id, getMemberName(member.user_id))}
+                  {memberName(member.user_id)}
                 </p>
               </div>
-              <span className="px-2 py-0.5 text-xs font-medium rounded-md border border-border text-muted-foreground bg-muted/50">
+              <span className={embedded
+                ? 'text-sm text-muted-foreground'
+                : 'px-2 py-0.5 text-xs font-medium rounded-md border border-border text-muted-foreground bg-muted/50'}>
                 {roleLabel(member.role)}
               </span>
               {!readOnly && !isExternalMember(member.user_id) && (
                 <button
                   onClick={() => setRemoveTarget({
                     id: member.id,
-                    name: getTeamMemberName(member.user_id, getMemberName(member.user_id)),
+                    name: memberName(member.user_id),
                   })}
-                  aria-label={embedded ? `Retirer ${getTeamMemberName(member.user_id, getMemberName(member.user_id))} de l'équipe` : undefined}
-                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                  aria-label={embedded ? `Retirer ${memberName(member.user_id)} de l'équipe` : undefined}
+                  className={embedded
+                    ? 'grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-opacity duration-150 hover:bg-accent hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-11 max-sm:w-11 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none'
+                    : 'text-muted-foreground hover:text-destructive transition-colors shrink-0'}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className={embedded ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
                 </button>
               )}
             </div>
           ))}
+          {embedded && canAssign && <div className="border-t border-border pt-1">{assignButton}</div>}
         </div>
       )}
 

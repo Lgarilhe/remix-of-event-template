@@ -3,16 +3,18 @@
 // encore (poste de la recherche, notation, messages) : rien n'est rendu
 // inaccessible. Référence interne, urgence et transcription de la dictée ne
 // sont plus affichées (aucun lecteur) ; leurs données restent en base.
+// Design simplifié (04/10/2026) : ni filet ni cadre autour du lien de dépli,
+// des mots sans bordure, des cibles de 44 px sur téléphone.
 import { useId, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { JobDetails } from '@/types/jobDetails';
 import { cn } from '@/lib/utils';
 import { CLIENT_SIZE_OPTIONS, parseAmount } from './cadrageModel';
-import { FIELD_LABEL_CLASS, Field, NativeSelect } from './JobSection';
+import { FIELD_LABEL_CLASS, Field, FieldInput, NativeSelect } from './JobSection';
+import { TOUCH } from './sectionUi';
 
 /** Liste de mots (compétences, certifications) : Entrée ajoute, la croix retire. */
 function TagsField({
@@ -55,7 +57,7 @@ function TagsField({
         {values.map((v) => (
           <span
             key={v}
-            className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-muted/50 py-0.5 pl-2.5 pr-1 text-xs text-foreground"
+            className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted py-0.5 pl-3 pr-1 text-sm text-foreground"
           >
             <span className="truncate">{v}</span>
             {!readOnly && (
@@ -63,17 +65,17 @@ function TagsField({
                 type="button"
                 onClick={() => onChange(values.filter((x) => x !== v))}
                 aria-label={`Retirer ${v}`}
-                className="grid h-5 w-5 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:h-8 max-sm:w-8"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </button>
             )}
           </span>
         ))}
-        {values.length === 0 && readOnly && <span className="text-xs text-muted-foreground">Aucune</span>}
+        {values.length === 0 && readOnly && <span className="text-sm text-muted-foreground">Aucune</span>}
       </div>
       {!readOnly && (
-        <Input
+        <FieldInput
           id={inputId}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -102,7 +104,7 @@ function NumberInput({
   label?: string;
 }) {
   return (
-    <Input
+    <FieldInput
       id={id}
       aria-label={label}
       type="number"
@@ -133,11 +135,12 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
     updateField({ languages: languages.map((l, j) => (j === i ? { ...l, ...change } : l)) });
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="border-t border-border pt-3">
+    <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger
         className={cn(
-          'group inline-flex items-center gap-1.5 rounded-md text-left text-sm font-medium text-muted-foreground',
-          'hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+          'group -ml-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-muted-foreground',
+          'hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          TOUCH,
         )}
       >
         Plus de détails sur le poste
@@ -146,7 +149,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
           className="h-3.5 w-3.5 shrink-0 transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
         />
       </CollapsibleTrigger>
-      <CollapsibleContent className="pt-3.5">
+      <CollapsibleContent className="pt-4">
         <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-4">
           <Field
             label="Description des missions"
@@ -211,7 +214,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
           </div>
 
           <Field label="Séniorité" htmlFor={id('seniorite')} className="sm:col-span-2">
-            <Input
+            <FieldInput
               id={id('seniorite')}
               value={jd.seniority ?? ''}
               onChange={(e) => updateField({ seniority: e.target.value })}
@@ -240,10 +243,10 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
             <span id={id('langues')} className={FIELD_LABEL_CLASS}>
               Langues
             </span>
-            {languages.length === 0 && <span className="text-xs text-muted-foreground">Aucune langue demandée.</span>}
+            {languages.length === 0 && <span className="text-sm text-muted-foreground">Aucune langue demandée.</span>}
             {languages.map((l, i) => (
               <div key={i} className="flex gap-2">
-                <Input
+                <FieldInput
                   aria-label={`Langue ${i + 1}`}
                   placeholder="Langue"
                   value={l?.language ?? ''}
@@ -252,7 +255,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
                   autoComplete="off"
                   className="min-w-0 flex-1"
                 />
-                <Input
+                <FieldInput
                   aria-label={`Niveau de la langue ${i + 1}`}
                   placeholder="Niveau"
                   value={l?.level ?? ''}
@@ -268,7 +271,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
                     size="icon"
                     aria-label={`Retirer la langue ${i + 1}`}
                     onClick={() => updateField({ languages: languages.filter((_, j) => j !== i) })}
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    className="shrink-0 text-muted-foreground hover:text-destructive max-sm:min-h-11 max-sm:min-w-11"
                   >
                     <X aria-hidden="true" />
                   </Button>
@@ -281,7 +284,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
                 variant="ghost"
                 size="sm"
                 onClick={() => updateField({ languages: [...languages, { language: '', level: '' }] })}
-                className="-ml-2.5 self-start text-muted-foreground hover:text-foreground"
+                className={cn('-ml-3 self-start text-muted-foreground hover:text-foreground', TOUCH)}
               >
                 <Plus aria-hidden="true" />
                 Ajouter une langue
@@ -299,7 +302,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
           </div>
 
           <Field label="Avantages" htmlFor={id('avantages')} className="sm:col-span-2">
-            <Input
+            <FieldInput
               id={id('avantages')}
               value={jd.benefits ?? ''}
               onChange={(e) => updateField({ benefits: e.target.value })}
@@ -308,7 +311,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
             />
           </Field>
           <Field label="Participation au capital" htmlFor={id('capital')}>
-            <Input
+            <FieldInput
               id={id('capital')}
               value={jd.equity ?? ''}
               onChange={(e) => updateField({ equity: e.target.value })}
@@ -317,7 +320,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
             />
           </Field>
           <Field label="Date de démarrage" htmlFor={id('demarrage')}>
-            <Input
+            <FieldInput
               id={id('demarrage')}
               value={jd.start_date ?? ''}
               onChange={(e) => updateField({ start_date: e.target.value })}
@@ -327,7 +330,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
           </Field>
 
           <Field label="Secteur du client" htmlFor={id('secteur')}>
-            <Input
+            <FieldInput
               id={id('secteur')}
               value={client.sector ?? ''}
               onChange={(e) => setClient({ sector: e.target.value })}
@@ -353,7 +356,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
             </NativeSelect>
           </Field>
           <Field label="Site du client" htmlFor={id('site')} className="sm:col-span-2">
-            <Input
+            <FieldInput
               id={id('site')}
               type="url"
               inputMode="url"
@@ -376,7 +379,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
           </Field>
 
           <Field label="Rattachement" htmlFor={id('rattachement')} className="sm:col-span-2">
-            <Input
+            <FieldInput
               id={id('rattachement')}
               value={jd.reports_to ?? ''}
               onChange={(e) => updateField({ reports_to: e.target.value })}

@@ -32,6 +32,8 @@ interface AddToProjectButtonProps {
   jobId: string;
   activeProject?: SourcingProject | null;
   compact?: boolean;
+  /** Nouvelle page mission : bouton discret, sans contour, cible de 44 px sur téléphone. */
+  quiet?: boolean;
   onAdded?: () => void; // Callback when profile is added to project
 }
 
@@ -46,6 +48,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
   jobId,
   activeProject,
   compact = false,
+  quiet = false,
   onAdded,
 }) => {
   const { projects } = useSourcingProjects();
@@ -140,10 +143,10 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
     if (compact) {
       return (
         <Button
-          variant={isAdded ? "ghost" : "outline"}
+          variant={isAdded || quiet ? "ghost" : "outline"}
           size="sm"
           title={isAdded ? `Déjà retenu pour « ${activeProject.name} »` : `Retenir pour « ${activeProject.name} »`}
-          className={`shrink-0 ${isAdded ? 'text-success hover:text-success' : ''}`}
+          className={`shrink-0 ${isAdded ? 'text-success hover:text-success' : quiet ? 'text-foreground-secondary hover:text-foreground' : ''}${quiet ? ' max-sm:min-h-11' : ''}`}
           onClick={() => !isAdded && addToProject(activeProject)}
           disabled={isAdding || isAdded}
         >

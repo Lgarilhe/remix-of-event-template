@@ -1,17 +1,22 @@
-// Refonte mission, écran Cadrage : Le poste (conception 5.6). Qui recrute,
-// intitulé, client, contrat, lieu et télétravail, rémunération, contexte,
-// interlocuteur ; puis « Vos messages » (rôle de l'expéditeur, lien de prise
+// Refonte mission, écran Cadrage : Le poste (conception 5.6). Intitulé, client,
+// contrat, lieu et télétravail, rémunération, contexte, interlocuteur, « Qui
+// recrute » en une ligne ; puis « Vos messages » (rôle de l'expéditeur, lien de prise
 // de rendez-vous, anonymisation du client) ; « Plus de détails sur le poste »
-// (JobMoreDetails) vient en bas de la carte, passé par l'écran.
+// (JobMoreDetails) vient en bas de la section, passé par l'écran.
 // Tout passe par updateField (une seule instance de useJobDetailsAutosave),
 // sauf le lien de rendez-vous, colonne de la mission, enregistré à la sortie
 // du champ par onCalendlyCommit.
-import { useEffect, useId, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
+//
+// Design simplifié (04/10/2026) : pas de carte autour de la section, des
+// champs qui gardent leur bordure, « Qui recrute » en une ligne (« Préciser »
+// ou « Modifier » montre les deux choix, qui se referment une fois choisis).
+import { forwardRef, useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 import * as RadioGroupPrimitive from '@radix-ui/react-radio-group';
 import { ChevronDown } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
+import { Input, type InputProps } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useOrganization } from '@/hooks/useOrganization';
 import type { JobDetails, SenderRole } from '@/types/jobDetails';
 import { cn } from '@/lib/utils';
 import {
@@ -23,11 +28,14 @@ import {
   anonymizeHelp,
   parseAmount,
   recruitmentModeHelp,
+  recruitmentModeLine,
 } from './cadrageModel';
+import { SectionHeader } from './SectionHeader';
+import { SECTION_CLASS, TOUCH_FIELD } from './sectionUi';
 
 // ------------------------------------------------------------ briques de champ
 
-export const FIELD_LABEL_CLASS = 'text-xs text-muted-foreground';
+export const FIELD_LABEL_CLASS = 'text-sm text-muted-foreground';
 
 /** Libellé au-dessus du champ ; `htmlFor` relie le libellé au champ principal. */
 export function Field({
@@ -70,6 +78,7 @@ export function NativeSelect({
         {...props}
         className={cn(
           'h-9 w-full min-w-0 appearance-none rounded-lg border border-input bg-background py-1.5 pl-3 pr-8 text-base text-foreground md:text-sm',
+          TOUCH_FIELD,
           'transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground',
           'focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20',
           'disabled:cursor-not-allowed disabled:opacity-50',
@@ -84,6 +93,11 @@ export function NativeSelect({
     </span>
   );
 }
+
+/** Champ de saisie du Cadrage : le même que partout, 44 px de haut sur téléphone. */
+export const FieldInput = forwardRef<HTMLInputElement, InputProps>(function FieldInput({ className, ...props }, ref) {
+  return <Input ref={ref} className={cn(TOUCH_FIELD, className)} {...props} />;
+});
 
 /**
  * Texte enregistré à la sortie du champ (colonne de la mission, hors job_details).
@@ -106,7 +120,7 @@ function CommitInput({
     if (draft.trim() !== value.trim()) onCommit(draft.trim());
   };
   return (
-    <Input
+    <FieldInput
       {...props}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
@@ -133,8 +147,100 @@ export interface JobSectionProps {
   readOnly: boolean;
   calendlyLink: string;
   onCalendlyCommit: (value: string) => void;
-  /** Bas de la carte : « Plus de détails sur le poste ». */
+  /** Bas de la section : « Plus de détails sur le poste ». */
   children?: ReactNode;
+}
+
+/**
+ * Qui recrute, en une ligne. Les deux choix (les seuls que la donnée porte)
+ * n'apparaissent que sous « Préciser » ou « Modifier », et se referment une
+ * fois l'un choisi ; le focus revient au lien. Même écriture en base qu'avant
+ * (outreach_config.recruitment_mode).
+ */
+function RecruitmentModeLine({
+  mode,
+  readOnly,
+  onChange,
+}: {
+  mode: unknown;
+  readOnly: boolean;
+  onChange: (mode: 'internal' | 'client') => void;
+}) {
+  const { orgType } = useOrganization();
+  const uid = useId();
+  const [choosing, setChoosing] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const help = recruitmentModeHelp(mode);
+  const close = () => {
+    setChoosing(false);
+    window.requestAnimationFrame(() => trigger.current?.focus());
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-foreground-secondary">
+        {recruitmentModeLine(mode, orgType)}
+        {!readOnly && (
+          <>
+            {' '}
+            <button
+              ref={trigger}
+              type="button"
+              aria-expanded={choosing}
+              aria-controls={`${uid}-choix`}
+              onClick={() => setChoosing((v) => !v)}
+              className={cn(
+                'relative rounded-md px-1 text-brand underline-offset-4 hover:underline',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                // Cible de 44 px sur téléphone sans grossir l'interligne de la phrase.
+                'max-sm:before:absolute max-sm:before:-inset-x-2 max-sm:before:-inset-y-3',
+              )}
+            >
+              {mode === 'internal' || mode === 'client' ? 'Modifier' : 'Préciser'}
+            </button>
+          </>
+        )}
+      </p>
+      {choosing && !readOnly && (
+        <div id={`${uid}-choix`} className="flex flex-col gap-2">
+          <RadioGroupPrimitive.Root
+            aria-label="Qui recrute ?"
+            aria-describedby={help ? `${uid}-aide` : undefined}
+            value={typeof mode === 'string' ? mode : ''}
+            onValueChange={(v) => {
+              onChange(v as 'internal' | 'client');
+              close();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') close();
+            }}
+            orientation="horizontal"
+            className="flex w-fit max-w-full flex-wrap gap-0.5 rounded-lg bg-muted/60 p-0.5"
+          >
+            {RECRUITMENT_MODE_OPTIONS.map((o) => (
+              <RadioGroupPrimitive.Item
+                key={o.value}
+                value={o.value}
+                className={cn(
+                  'inline-flex h-7 items-center whitespace-nowrap rounded-md px-3 text-sm transition-colors duration-150 max-sm:min-h-11',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'text-muted-foreground hover:text-foreground',
+                  'data-[state=checked]:bg-background data-[state=checked]:font-semibold data-[state=checked]:text-foreground',
+                )}
+              >
+                {o.label}
+              </RadioGroupPrimitive.Item>
+            ))}
+          </RadioGroupPrimitive.Root>
+          {help && (
+            <span id={`${uid}-aide`} className="text-sm text-muted-foreground">
+              {help}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendlyCommit, children }: JobSectionProps) {
@@ -153,55 +259,16 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
     updateField({ outreach_config: { ...config, ...change } });
 
   return (
-    <section id="cadrage-poste" aria-labelledby="cadrage-poste-titre" className="flex scroll-mt-4 flex-col gap-2.5">
-      <h2 id="cadrage-poste-titre" className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Le poste
-      </h2>
-      <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-card px-4 py-4 sm:px-[18px]">
-        {/* Qui recrute ? Deux options : les seules que la donnée porte. */}
-        <div className="flex flex-col gap-2 border-b border-border pb-3.5">
-          <span id={id('qui')} className={FIELD_LABEL_CLASS}>
-            Qui recrute ?
-          </span>
-          <RadioGroupPrimitive.Root
-            aria-labelledby={id('qui')}
-            aria-describedby={id('qui-aide')}
-            value={config.recruitment_mode ?? ''}
-            onValueChange={(v) => setConfig({ recruitment_mode: v as 'internal' | 'client' })}
-            disabled={readOnly}
-            orientation="horizontal"
-            className="flex flex-wrap gap-1.5"
-          >
-            {RECRUITMENT_MODE_OPTIONS.map((o) => (
-              <RadioGroupPrimitive.Item
-                key={o.value}
-                value={o.value}
-                className={cn(
-                  'group flex h-[34px] items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-sm transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
-                  'disabled:cursor-not-allowed disabled:opacity-60',
-                  'border-border text-muted-foreground hover:text-foreground',
-                  'data-[state=checked]:border-foreground/40 data-[state=checked]:bg-accent data-[state=checked]:font-semibold data-[state=checked]:text-foreground',
-                )}
-              >
-                <span
-                  aria-hidden="true"
-                  className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-[1.5px] border-muted-foreground group-data-[state=checked]:border-foreground"
-                >
-                  <RadioGroupPrimitive.Indicator className="h-1.5 w-1.5 rounded-full bg-foreground" />
-                </span>
-                {o.label}
-              </RadioGroupPrimitive.Item>
-            ))}
-          </RadioGroupPrimitive.Root>
-          <span id={id('qui-aide')} className="text-xs text-muted-foreground">
-            {recruitmentModeHelp(config.recruitment_mode)}
-          </span>
-        </div>
-
+    <section id="cadrage-poste" aria-labelledby="cadrage-poste-titre" className={SECTION_CLASS}>
+      <SectionHeader
+        id="cadrage-poste-titre"
+        title="Le poste"
+        help="Ce que l'IA lit pour chercher, noter et écrire aux candidats."
+      />
+      <div className="flex flex-col gap-8">
         <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-4">
           <Field label="Intitulé du poste" htmlFor={id('intitule')} className="sm:col-span-2">
-            <Input
+            <FieldInput
               id={id('intitule')}
               value={jd.title ?? ''}
               onChange={(e) => updateField({ title: e.target.value })}
@@ -210,7 +277,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
             />
           </Field>
           <Field label="Client" htmlFor={id('client')}>
-            <Input
+            <FieldInput
               id={id('client')}
               value={client.name ?? ''}
               onChange={(e) => setClient({ name: e.target.value })}
@@ -236,7 +303,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
 
           <Field label="Lieu et télétravail" htmlFor={id('lieu')} className="sm:col-span-2">
             <div className="flex flex-wrap gap-2">
-              <Input
+              <FieldInput
                 id={id('lieu')}
                 value={jd.location ?? ''}
                 onChange={(e) => updateField({ location: e.target.value })}
@@ -262,7 +329,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
             </div>
             {jd.remote_policy === 'hybrid' && (
               <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Input
+                <FieldInput
                   type="number"
                   inputMode="numeric"
                   min={0}
@@ -280,7 +347,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
 
           <Field label="Rémunération" htmlFor={id('remu-min')} className="sm:col-span-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Input
+              <FieldInput
                 id={id('remu-min')}
                 type="number"
                 inputMode="numeric"
@@ -295,7 +362,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
               <span className="text-sm text-muted-foreground" aria-hidden="true">
                 à
               </span>
-              <Input
+              <FieldInput
                 type="number"
                 inputMode="numeric"
                 min={0}
@@ -342,7 +409,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
               Interlocuteur chez le client
             </span>
             <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-              <Input
+              <FieldInput
                 aria-label="Nom de l'interlocuteur"
                 placeholder="Nom"
                 value={manager.name ?? ''}
@@ -350,7 +417,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
                 disabled={readOnly}
                 autoComplete="off"
               />
-              <Input
+              <FieldInput
                 type="email"
                 aria-label="E-mail de l'interlocuteur"
                 placeholder="E-mail"
@@ -363,13 +430,17 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
           </div>
         </div>
 
+        <RecruitmentModeLine
+          mode={config.recruitment_mode}
+          readOnly={readOnly}
+          onChange={(mode) => setConfig({ recruitment_mode: mode })}
+        />
+
         {/* Vos messages : ce que la rédaction des messages lit (outreach_config, calendly_link). */}
-        <div className="flex flex-col gap-2.5 border-t border-border pt-3.5">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-            <h3 className="text-sm font-semibold text-foreground">Vos messages</h3>
-            <span className="text-xs text-muted-foreground">
-              L'IA s'en sert pour rédiger les messages de cette mission.
-            </span>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-md font-semibold text-foreground">Vos messages</h3>
+            <p className="text-sm text-muted-foreground">L'IA s'en sert pour rédiger les messages de cette mission.</p>
           </div>
           <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-4">
             <Field label="Rôle de l'expéditeur" htmlFor={id('role')} className="sm:col-span-2">
@@ -407,13 +478,13 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
               onCheckedChange={(v) => setConfig({ anonymize_client: v === true })}
               disabled={readOnly || (!clientName && !anonymize)}
               aria-describedby={id('anon-aide')}
-              className="mt-0.5"
+              className="mt-0.5 max-sm:mt-3.5"
             />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <label htmlFor={id('anon')} className="cursor-pointer text-sm text-foreground">
+              <label htmlFor={id('anon')} className="cursor-pointer text-sm text-foreground max-sm:py-3">
                 Anonymiser le client
               </label>
-              <span id={id('anon-aide')} className="text-xs text-muted-foreground">
+              <span id={id('anon-aide')} className="text-sm text-muted-foreground">
                 {anonymizeHelp(anonymize, config.anonymized_alias, client.name)}
               </span>
               {anonymize && (
@@ -421,7 +492,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
                   <label htmlFor={id('alias')} className={FIELD_LABEL_CLASS}>
                     Nom utilisé à la place du client
                   </label>
-                  <Input
+                  <FieldInput
                     id={id('alias')}
                     value={config.anonymized_alias ?? ''}
                     onChange={(e) => setConfig({ anonymized_alias: e.target.value })}

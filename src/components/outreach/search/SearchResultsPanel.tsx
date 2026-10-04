@@ -531,6 +531,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               onOpenDetail={openProfileDetail}
               onArchive={selectedJob ? (profile) => { void onDismissProfiles([profile]); } : undefined}
               storageKey={selectedJob?.id || 'no-job'}
+              variant="mission-v3"
             />
           )}
           renderCard={(profile) => (
@@ -540,6 +541,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               isSelected={selectedProfiles.has(profile.id)}
               isBatchScoring={scoringInProgress}
               viewMode="detailed"
+              variant="mission-v3"
               onToggleSelect={() => onToggleProfileSelection(profile.id)}
               jobScore={jobScores[profile.id] || (treatedCandidates.get(profile.id)?.score != null ? {
                 profile_name: treatedCandidates.get(profile.id)!.candidate_name || profile.name || '',

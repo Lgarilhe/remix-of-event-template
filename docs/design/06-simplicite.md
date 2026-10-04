@@ -41,7 +41,7 @@ Elles valent pour chaque écran repris. La maquette « Konekt simplifié » (can
 | F · Fondations | Paliers de texte (rien sous 12 px), tailles écrites à la main remplacées, titre de page à 28 px, `PersonAvatar` et `AvatarStack`, icônes qui attendent | PR #258 |
 | A · Accueil | « À faire » en pastilles et piles de visages, tâches en retard avec visage ou logo, missions avec logo et visages en entretien | en revue |
 | T · Tâches | Visage ou logo par tâche, réveil sur « En retard » | à faire |
-| M · Page mission | En-tête avec logo, visages, note en anneau, avancement en cinq crans, bandeau « à trier », point qui pulse ; cadrage avec pastilles de section et anneau d'avancement. Avec la session de la refonte mission | Pipeline livré le 04/10/2026 (carte « Maintenant » allégée, puces sur une rangée, liste avec visages et anneau de note, boutons discrets) ; en-tête de mission, Cadrage et Sourcing à faire |
+| M · Page mission | En-tête avec logo, visages, note en anneau, avancement en cinq crans, bandeau « à trier », point qui pulse ; cadrage avec pastilles de section et anneau d'avancement. Avec la session de la refonte mission | Pipeline, Cadrage et Sourcing livrés le 04/10/2026 (carte « Maintenant » allégée, puces sur une rangée, liste avec visages et anneau de note, boutons discrets ; Cadrage sans cartes avec bandeau d'état en une ligne ; Sourcing en puces sans cadre et tableau réduit) ; en-tête de mission et liste des missions à faire |
 | P · Photos | Copie privée des photos LinkedIn : capture (recherche, notation, messagerie, extension, assistant), effacement RGPD, purge, export, rattrapage des candidats sans photo | à faire |
 | Suite | Pipeline global, messagerie, Paramètres, mêmes règles | à faire |
 

@@ -3,11 +3,17 @@
 // enregistrés dans job_details.evaluation_criteria, que la notation lit. Les
 // autres champs d'un critère (description, catégorie, niveaux, étape) sont
 // gardés tels quels. Un profil déjà noté garde sa note (aucune renotation).
+//
+// Design simplifié (04/10/2026) : pas de carte, des filets fins entre les
+// lignes. L'essentiel d'abord (libellé et importance) ; « Rédhibitoire » et la
+// corbeille n'apparaissent qu'au survol, au focus clavier ou sur écran tactile
+// (REVEAL_ON_ROW : l'opacité seule change, ils restent dans l'ordre de
+// tabulation). Un critère rédhibitoire garde sa case visible : c'est une
+// information, pas un réglage.
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import type { JobDetails } from '@/types/jobDetails';
 import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
@@ -21,6 +27,9 @@ import {
   weightOfImportance,
   type Criterion,
 } from './cadrageModel';
+import { FieldInput } from './JobSection';
+import { SectionHeader } from './SectionHeader';
+import { REVEAL_ON_ROW, SECTION_CLASS, TOUCH, useReturnFocus } from './sectionUi';
 
 export interface CriteriaSectionProps {
   jd: JobDetails;
@@ -34,6 +43,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
   const [focusId, setFocusId] = useState<string | null>(null);
   const inputs = useRef(new Map<string, HTMLInputElement>());
   const addButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useReturnFocus();
 
   // Nouveau critère : le curseur va dans son libellé.
   useEffect(() => {
@@ -62,30 +72,27 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
   const skillCount = convertibleSkillCount(jd);
 
   return (
-    <section id="cadrage-criteres" aria-labelledby="cadrage-criteres-titre" className="flex scroll-mt-4 flex-col gap-2.5">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <h2 id="cadrage-criteres-titre" className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Critères
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          La notation lit ces critères, avec les compétences et la description du poste. Les profils déjà notés gardent leur note.
-        </span>
-      </div>
+    <section id="cadrage-criteres" aria-labelledby="cadrage-criteres-titre" className={SECTION_CLASS}>
+      <SectionHeader
+        id="cadrage-criteres-titre"
+        title="Critères"
+        help="La notation lit ces critères, avec les compétences et la description du poste. Les profils déjà notés gardent leur note."
+      />
 
-      <div className="flex flex-col rounded-xl border border-border bg-card px-4 py-1">
+      <div className="flex flex-col">
         {criteria.map((c, i) => {
           const name = (c.label ?? '').trim() || 'sans libellé';
           const importance = importanceOfWeight(c.weight);
-          const dealId = `cadrage-critere-${c.id}-redhibitoire`;
+          const dealBreaker = !!c.deal_breaker;
           return (
             <div
               key={c.id}
               className={cn(
-                'flex flex-wrap items-center gap-x-3.5 gap-y-2 py-1.5 sm:grid sm:min-h-11 sm:grid-cols-[minmax(0,1fr)_auto_auto_32px]',
+                'group flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-x-4',
                 i > 0 && 'border-t border-border',
               )}
             >
-              <Input
+              <FieldInput
                 ref={(el) => {
                   if (el) inputs.current.set(c.id, el);
                   else inputs.current.delete(c.id);
@@ -96,13 +103,9 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
                 aria-label={`Libellé du critère ${i + 1}`}
                 placeholder="Nouveau critère"
                 autoComplete="off"
-                className="h-[34px] min-w-0 basis-full sm:basis-auto"
+                className="min-w-0 basis-full sm:basis-auto"
               />
-              <div
-                role="group"
-                aria-label={`Importance du critère ${name}`}
-                className="flex rounded-lg border border-border bg-background p-0.5"
-              >
+              <div role="group" aria-label={`Importance du critère ${name}`} className="inline-flex rounded-lg bg-muted/60 p-0.5">
                 {IMPORTANCE_OPTIONS.map((o) => {
                   const pressed = importance === o.value;
                   return (
@@ -115,10 +118,10 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
                         if (!pressed) patch(c.id, { weight: weightOfImportance(o.value) });
                       }}
                       className={cn(
-                        'h-7 whitespace-nowrap rounded-md px-2.5 text-xs transition-colors',
+                        'h-7 whitespace-nowrap rounded-md px-2.5 text-sm transition-colors duration-150 max-sm:h-11',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         'disabled:cursor-not-allowed',
-                        pressed ? 'bg-accent font-semibold text-foreground' : 'font-medium text-muted-foreground hover:text-foreground',
+                        pressed ? 'bg-background font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
                       {o.label}
@@ -126,38 +129,48 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
                   );
                 })}
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id={dealId}
-                  checked={!!c.deal_breaker}
-                  onCheckedChange={(v) => patch(c.id, { deal_breaker: v === true })}
-                  disabled={readOnly}
-                  aria-label={`Rédhibitoire : ${name}`}
-                />
-                <label htmlFor={dealId} className="cursor-pointer whitespace-nowrap text-xs text-muted-foreground" aria-hidden="true">
-                  Rédhibitoire
-                </label>
+              <div className="ml-auto flex items-center gap-1 sm:ml-0 sm:min-w-[9.5rem] sm:justify-end">
+                {(!readOnly || dealBreaker) && (
+                  <label
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2 rounded-md px-1.5 text-sm text-muted-foreground',
+                      readOnly && 'cursor-default',
+                      TOUCH,
+                      dealBreaker ? 'text-foreground' : REVEAL_ON_ROW,
+                    )}
+                  >
+                    <Checkbox
+                      checked={dealBreaker}
+                      onCheckedChange={(v) => patch(c.id, { deal_breaker: v === true })}
+                      disabled={readOnly}
+                      aria-label={`Rédhibitoire : ${name}`}
+                    />
+                    <span aria-hidden="true">Rédhibitoire</span>
+                  </label>
+                )}
+                {!readOnly && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Supprimer le critère ${name}`}
+                    onClick={() => {
+                      if (!(c.label ?? '').trim()) return remove(c.id);
+                      returnFocus.remember();
+                      setConfirm({ id: c.id, label: c.label.trim() });
+                    }}
+                    className={cn('text-muted-foreground hover:text-destructive max-sm:min-h-11 max-sm:min-w-11', REVEAL_ON_ROW)}
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </Button>
+                )}
               </div>
-              {readOnly ? (
-                <span className="hidden sm:block" aria-hidden="true" />
-              ) : (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Supprimer le critère ${name}`}
-                  onClick={() => ((c.label ?? '').trim() ? setConfirm({ id: c.id, label: c.label.trim() }) : remove(c.id))}
-                  className="ml-auto text-muted-foreground hover:text-destructive sm:ml-0"
-                >
-                  <Trash2 aria-hidden="true" />
-                </Button>
-              )}
             </div>
           );
         })}
 
         {criteria.length === 0 && (
-          <div className="flex flex-col items-start gap-2 py-4 text-sm text-muted-foreground">
+          <div className="flex flex-col items-start gap-2 py-2 text-sm text-muted-foreground">
             <p>
               Aucun critère.{' '}
               {skillCount > 0
@@ -167,9 +180,10 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
             {!readOnly && skillCount > 0 && (
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => write(skillsToCriteria(jd, Date.now()))}
+                className={cn('-ml-3 text-foreground', TOUCH)}
               >
                 {skillCount > 1
                   ? `Reprendre les ${plural(skillCount, 'compétence')} comme critères`
@@ -180,14 +194,14 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
         )}
 
         {!readOnly && (
-          <div className={cn('py-1', criteria.length > 0 && 'border-t border-border')}>
+          <div className={cn('pt-1', criteria.length > 0 && 'border-t border-border')}>
             <Button
               ref={addButton}
               type="button"
               variant="ghost"
               size="sm"
               onClick={add}
-              className="-ml-2.5 text-muted-foreground hover:text-foreground"
+              className={cn('-ml-3 mt-1 text-muted-foreground hover:text-foreground', TOUCH)}
             >
               <Plus aria-hidden="true" />
               Ajouter un critère
@@ -199,8 +213,13 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
       <ConfirmDeleteDialog
         open={!!confirm}
         title={confirm ? `Supprimer le critère « ${confirm.label} » ?` : ''}
-        onCancel={() => setConfirm(null)}
+        // Annuler ou Échap : le focus revient à la corbeille qui a ouvert la fenêtre.
+        onCancel={() => {
+          setConfirm(null);
+          returnFocus.restore();
+        }}
         onConfirm={() => {
+          returnFocus.forget();
           if (confirm) remove(confirm.id);
           setConfirm(null);
         }}

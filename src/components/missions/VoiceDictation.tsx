@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Mic, Square, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { toast } from 'sonner';
@@ -12,9 +13,16 @@ interface VoiceDictationProps {
   /** Facultatif : prévenu quand l'écoute commence (connexion comprise) et s'arrête. */
   onRecordingChange?: (active: boolean) => void;
   className?: string;
+  /**
+   * Nouvelle page mission (design simplifié du 04/10/2026) : textes en casse
+   * normale à 14 px, boutons de 44 px sur téléphone, couleurs du système, rien
+   * d'encadré. Défaut : le rendu d'aujourd'hui (brief de l'ancienne page).
+   */
+  variant?: 'default' | 'mission-v3';
 }
 
-export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, onComplete, onRecordingChange, className }) => {
+export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, onComplete, onRecordingChange, className, variant = 'default' }) => {
+  const v3 = variant === 'mission-v3';
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [interimText, setInterimText] = useState('');
@@ -164,6 +172,45 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
       onComplete(fullTranscriptRef.current.trim());
     }
   }, [onComplete]);
+
+  if (v3) {
+    return (
+      <div className={cn('flex flex-col gap-3', className)}>
+        <div className="flex flex-wrap items-center gap-3">
+          {!isRecording ? (
+            <Button type="button" variant="primary" onClick={startRecording} loading={isConnecting} className="max-sm:h-11">
+              {!isConnecting && <Mic aria-hidden="true" />}
+              {isConnecting ? 'Connexion au micro...' : 'Dicter le brief'}
+            </Button>
+          ) : (
+            <>
+              <Button type="button" variant="destructive" onClick={stopRecording} className="max-sm:h-11">
+                <Square aria-hidden="true" />
+                Arrêter
+              </Button>
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-danger opacity-75 motion-safe:animate-ping" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-danger" />
+                </span>
+                <span className="text-sm font-medium tabular-nums text-foreground">{elapsedDisplay}</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Texte en cours (direct) */}
+        {(isRecording || interimText) && (
+          <div className="min-h-16 rounded-lg bg-background p-3">
+            {interimText && <p className="text-sm italic text-muted-foreground">{interimText}</p>}
+            {isRecording && !interimText && (
+              <p className="text-sm text-muted-foreground motion-safe:animate-pulse">En écoute. Parlez naturellement.</p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={cn("space-y-3", className)}>

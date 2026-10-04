@@ -8,12 +8,20 @@
 // useJobCandidateStatus, qui écrit l'étape par src/lib/candidateStage.ts).
 // Pas de date de recherche ni de tri un par un (lot 4), pas d'« Annuler » dans
 // les messages (annulation non branchée), pas de raisons d'écart au choix.
+//
+// Design simplifié (04/10/2026, docs/design/06-simplicite.md) : une seule rangée
+// (puces d'état sans cadre, comme au Pipeline, et bascule d'affichage sur fond
+// neutre) ; « Noter » est le seul bouton plein de l'écran, son coût écrit à côté ;
+// lignes avec visage et note en anneau ; décisions en boutons discrets ; une
+// seule phrase de pied de liste, qui dit combien de profils sont chargés.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, ChevronRight, Loader2, Mail, Maximize2, Search, Sparkles, X } from 'lucide-react';
+import { Check, Loader2, Mail, Maximize2, Search, Sparkles, Undo2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { IconTile } from '@/components/ui/IconTile';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { SequenceEnrollButton } from '@/components/outreach/SequenceEnrollButton';
 import { BulkEnrichButton } from '@/components/outreach/result-card/BulkEnrichButton';
@@ -23,11 +31,11 @@ import type { JobCandidateStatus } from '@/hooks/useJobCandidateStatus';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import type { Job } from '@/types/jobs';
 import { ACTION_COSTS } from '@/types/aiCredits';
-import type { GeneralStage } from '@/lib/candidateStage';
 import { GENERAL_STAGE_LABEL } from '@/lib/stageDisplay';
 import { missionV3Path } from '@/lib/missionBeta';
 import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
+import { ScorePill } from '../pipeline/CandidateListRow';
 import {
   SOURCING_GROUPS,
   SOURCING_GROUP_LABEL,
@@ -39,7 +47,8 @@ import {
   recommendationOf,
   rejectedReasonOf,
   retainedStageOf,
-  scoreButtonLabel,
+  scoreButtonText,
+  scoreCostText,
   sortToSort,
   sourcingGroupOf,
   type ReasonTone,
@@ -64,15 +73,21 @@ const VIEW_OPTIONS: ReadonlyArray<{ value: SourcingView; label: string }> = [
   { value: 'detailed', label: 'Détaillé' },
 ];
 
-const STAGE_PILL: Record<GeneralStage, string> = {
-  to_sort: 'bg-muted/50 text-muted-foreground',
-  retained: 'bg-warning-muted text-warning',
-  contacted: 'bg-muted/60 text-muted-foreground',
-  replied: 'bg-brand/15 text-brand',
-  interviewing: 'bg-muted text-foreground',
-  hired: 'bg-success-muted text-success',
-  rejected: 'bg-muted/30 text-muted-foreground',
-};
+/** Puces d'état : mêmes formes que la barre d'étapes du Pipeline (32 px, cible de 44 px sur téléphone). */
+const CHIP_SHAPE =
+  'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm transition-colors duration-150 ease-out ' +
+  'before:absolute before:inset-x-0 before:-inset-y-1.5 sm:before:hidden ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const CHIP_ACTIVE = 'bg-muted font-semibold text-foreground';
+const CHIP_IDLE = 'text-foreground-secondary hover:bg-accent hover:text-foreground';
+
+/** Zone de toucher de 44 px autour d'une case de 16 px, sur téléphone. */
+const TAP_CHECKBOX = 'relative before:absolute before:-inset-3.5 sm:before:hidden';
+
+/** Boutons de décision d'une ligne : sans cadre, 44 px sur téléphone. */
+const DECISION_BUTTON =
+  'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 max-sm:h-11 max-sm:w-11';
 
 const REASON_TONE: Record<ReasonTone, string> = {
   muted: 'text-muted-foreground',
@@ -158,6 +173,9 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
   const aiTriggerRef = useRef<HTMLButtonElement>(null);
   const selectAllRef = useRef<HTMLButtonElement>(null);
   const wasConfirmingRef = useRef(false);
+  // Annonce vocale du chargement de la suite : le bouton « Voir la suite » reste en place (le focus ne se perd pas).
+  const [loadAnnouncement, setLoadAnnouncement] = useState('');
+  const wasLoadingMoreRef = useRef(false);
 
   const rows = useMemo<Row[]>(() => profiles.map((profile) => {
     const status = treatedCandidates.get(profile.id);
@@ -189,6 +207,20 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
     () => groups.retained.filter((row) => retainedStageOf(row.status) === 'retained'),
     [groups.retained],
   );
+
+  const loadedLabel = `${plural(results.length, 'profil chargé', 'profils chargés')}${
+    total !== null && total > results.length ? ` sur ${total.toLocaleString('fr-FR')}` : ''
+  }`;
+  useEffect(() => {
+    if (loadingMore) {
+      wasLoadingMoreRef.current = true;
+      setLoadAnnouncement('Chargement de la suite');
+      return;
+    }
+    if (!wasLoadingMoreRef.current) return;
+    wasLoadingMoreRef.current = false;
+    setLoadAnnouncement(`${loadedLabel}.`);
+  }, [loadingMore, loadedLabel]);
 
   // Fin de notation : plus de « Notation en cours » sur les lignes lancées.
   useEffect(() => {
@@ -307,19 +339,17 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
   if (hasSearched && !loading && profiles.length === 0) {
     return (
       <div className="flex flex-col items-center px-4 py-16 text-center">
-        <span aria-hidden="true" className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-          <Search className="h-5 w-5" />
-        </span>
+        <IconTile icon={Search} size="lg" aria-hidden="true" className="mb-4" />
         <p className="text-base font-semibold text-foreground">Aucun profil trouvé</p>
         <p className="mt-1 max-w-md text-sm text-muted-foreground">Essayez d'ajuster vos filtres pour élargir votre recherche.</p>
         {chipsDirty && onRerun && (
-          <Button className="mt-4" onClick={onRerun} disabled={loading}>
+          <Button variant="primary" className="mt-4" onClick={onRerun} disabled={loading}>
             Relancer avec les nouveaux filtres
           </Button>
         )}
         {selectedJob && (
           <Button
-            variant={chipsDirty && onRerun ? 'outline' : 'default'}
+            variant={chipsDirty && onRerun ? 'ghost' : 'primary'}
             className={cn('gap-2', chipsDirty && onRerun ? 'mt-2' : 'mt-4')}
             onClick={() => onRefineSearch('expand')}
             disabled={refineLoading}
@@ -334,9 +364,6 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
 
   // ------------------------------------------------------------ résultats
 
-  const loadedLabel = `${plural(results.length, 'profil chargé', 'profils chargés')}${
-    total !== null && total > results.length ? ` sur ${total.toLocaleString('fr-FR')}` : ''
-  }`;
   const canLoadMore = hasMoreResults && !!cursor;
   const allToSortSelected = toSort.length > 0 && selectedRows.length === toSort.length;
   const someToSortSelected = selectedRows.length > 0 && !allToSortSelected;
@@ -346,57 +373,17 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
   const richAvailable = !!renderCompact && !!renderCard && tab === 'to_sort';
   const richCompact = richAvailable && view === 'compact';
   const richDetailed = richAvailable && view === 'detailed';
+  // Écartés : la colonne « Raison » n'existe que si au moins une ligne a une raison à lire.
+  const showReason = tab === 'to_sort' || (tab === 'rejected' && groups.rejected.some((row) => rejectedReasonOf(row.status) !== ''));
 
   return (
     <div className="flex min-h-[420px] w-full min-w-0 flex-col lg:h-full lg:min-h-0">
-      {/* Rangée B : volume chargé, un seul bouton, trois groupes. */}
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
-        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">{loadedLabel}</span>
-        {chipsDirty && onRerun ? (
-          <button
-            type="button"
-            onClick={onRerun}
-            disabled={loading}
-            className="rounded-md px-1.5 py-0.5 text-sm text-brand underline underline-offset-2 hover:text-brand/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-          >
-            {loading ? 'Recherche en cours' : 'Relancer avec les nouveaux filtres'}
-          </button>
-        ) : canLoadMore || loadingMore ? (
-          <button
-            type="button"
-            onClick={onLoadMore}
-            disabled={loadingMore || loading}
-            className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-sm text-brand underline underline-offset-2 hover:text-brand/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-          >
-            {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-            {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}
-          </button>
-        ) : null}
-        {renderCompact && renderCard && onViewChange && (
-          <div role="group" aria-label="Affichage des profils à trier" className="ml-auto flex shrink-0 rounded-lg border border-border bg-card p-0.5">
-            {VIEW_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={view === option.value}
-                onClick={() => onViewChange(option.value)}
-                className={cn(
-                  'flex h-7 items-center rounded-md px-2.5 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  view === option.value ? 'bg-muted font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        )}
-        <div
-          role="tablist"
-          aria-label="Groupes de résultats"
-          className={cn('flex shrink-0 rounded-lg border border-border bg-card p-0.5', !(renderCompact && renderCard && onViewChange) && 'ml-auto')}
-        >
+      {/* Rangée B : une seule rangée, comme au Pipeline : puces d'état sans cadre et bascule d'affichage. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+        <div role="tablist" aria-label="Groupes de résultats" className="flex shrink-0 items-center gap-1">
           {SOURCING_GROUPS.map((group) => {
             const selected = group === tab;
+            const count = groups[group].length;
             return (
               <button
                 key={group}
@@ -404,28 +391,60 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 type="button"
                 role="tab"
                 id={`sourcing-onglet-${group}`}
+                // Le nom garde le chiffre, zéro compris : seul l'affichage l'omet.
+                aria-label={`${SOURCING_GROUP_LABEL[group]} ${count}`}
                 aria-selected={selected}
                 aria-controls="sourcing-groupe"
                 tabIndex={selected ? 0 : -1}
                 onClick={() => pickTab(group)}
                 onKeyDown={onTabKey}
-                className={cn(
-                  'flex h-7 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
+                className={cn(CHIP_SHAPE, selected ? CHIP_ACTIVE : CHIP_IDLE)}
               >
-                <span>{SOURCING_GROUP_LABEL[group]}</span>
-                <span className="font-semibold tabular-nums">{groups[group].length}</span>
+                <span className={cn(count === 0 && !selected && 'text-muted-foreground')}>{SOURCING_GROUP_LABEL[group]}</span>
+                {count > 0 && (
+                  <span className="font-semibold tabular-nums text-foreground" aria-hidden="true">
+                    {count.toLocaleString('fr-FR')}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
+        {chipsDirty && onRerun && (
+          <button
+            type="button"
+            onClick={onRerun}
+            disabled={loading}
+            className="inline-flex h-8 items-center rounded-md px-1 text-sm text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 max-sm:min-h-11"
+          >
+            {loading ? 'Recherche en cours' : 'Relancer avec les nouveaux filtres'}
+          </button>
+        )}
+        {renderCompact && renderCard && onViewChange && (
+          <div role="group" aria-label="Affichage des profils à trier" className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-muted/60 p-0.5">
+            {VIEW_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={view === option.value}
+                onClick={() => onViewChange(option.value)}
+                className={cn(
+                  'relative inline-flex h-8 items-center rounded-md px-3 text-sm transition-colors duration-150 ease-out before:absolute before:inset-x-0 before:-inset-y-1.5 sm:before:hidden',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  view === option.value ? 'bg-background font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <section id="sourcing-groupe" role="tabpanel" aria-labelledby={activeTabId} className="flex min-h-0 flex-1 flex-col">
         {/* Rangée C : actions du groupe. */}
         {tab === 'to_sort' && !confirmAi && (
-          <div role="toolbar" aria-label="Actions sur les profils à trier" className="mt-2.5 flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1.5 pl-2">
+          <div role="toolbar" aria-label="Actions sur les profils à trier" className={cn('mt-3 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-2', !richCompact && 'pl-2')}>
             {!richCompact && (
               <Checkbox
                 ref={selectAllRef}
@@ -433,21 +452,33 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 disabled={toSort.length === 0}
                 onCheckedChange={(value) => onSetSelection(value === true ? toSort.map((row) => row.profile.id) : [])}
                 aria-label="Tout sélectionner"
-                className="mr-1.5"
+                className={cn('mr-1.5', TAP_CHECKBOX)}
               />
             )}
             {selectedJob && canBatchScore && (scoringInProgress ? (
-              <Button variant="outline" size="sm" disabled className="h-8 gap-2 text-sm font-normal">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              <Button variant="ghost" size="sm" disabled className="max-sm:min-h-11">
+                <Loader2 className="animate-spin" aria-hidden="true" />
                 Notation en cours
               </Button>
             ) : toScore.length > 0 ? (
-              <Button variant="outline" size="sm" onClick={() => scoreRows(toScore)} className="h-8 text-sm font-normal tabular-nums">
-                {scoreButtonLabel(toScore.length, unscored.length, SCORING_FLOOR)}
-              </Button>
+              // Le seul bouton plein de l'écran ; le coût s'écrit à côté, en texte discret.
+              <>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => scoreRows(toScore)}
+                  aria-describedby="sourcing-cout-notation"
+                  className="tabular-nums max-sm:min-h-11"
+                >
+                  {scoreButtonText(toScore.length, unscored.length)}
+                </Button>
+                <span id="sourcing-cout-notation" className="text-sm tabular-nums text-muted-foreground">
+                  {scoreCostText(toScore.length, SCORING_FLOOR)}
+                </span>
+              </>
             ) : null)}
             {aiSuggestions.length > 0 && (
-              <Button ref={aiTriggerRef} variant="outline" size="sm" onClick={() => setConfirmAi(true)} className="h-8 text-sm font-normal">
+              <Button ref={aiTriggerRef} variant="ghost" size="sm" onClick={() => setConfirmAi(true)} className="text-foreground-secondary hover:text-foreground max-sm:min-h-11">
                 {aiSuggestions.length > 1
                   ? `Écarter les ${aiSuggestions.length} suggestions de l'IA`
                   : "Écarter la suggestion de l'IA"}
@@ -460,7 +491,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             role="group"
             aria-labelledby="sourcing-confirmation-ia"
             onKeyDown={(e) => { if (e.key === 'Escape') setConfirmAi(false); }}
-            className="mt-2.5 flex min-h-8 flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 py-1 pl-3 pr-1"
+            className="mt-3 flex min-h-8 flex-wrap items-center gap-2 rounded-lg bg-muted/60 py-1 pl-3 pr-1"
           >
             <span id="sourcing-confirmation-ia" className="min-w-0 flex-1 text-sm text-foreground">
               Écarter {joinNames(aiSuggestions.map((row) => row.name))}, selon l'IA ? La décision vous revient.
@@ -469,7 +500,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
               ref={confirmRef}
               size="sm"
               variant="destructive"
-              className="h-7 text-xs"
+              className="max-sm:min-h-11"
               disabled={aiSuggestions.some((row) => pending.has(row.profile.id))}
               onClick={async () => {
                 const list = aiSuggestions;
@@ -479,13 +510,13 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             >
               {aiSuggestions.length > 1 ? `Écarter les ${aiSuggestions.length}` : 'Écarter'}
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setConfirmAi(false)}>
+            <Button size="sm" variant="ghost" className="max-sm:min-h-11" onClick={() => setConfirmAi(false)}>
               Annuler
             </Button>
           </div>
         )}
         {tab === 'retained' && (
-          <div className="mt-2.5 flex min-h-8 flex-wrap items-center gap-2 pl-2">
+          <div className="mt-3 flex min-h-8 flex-wrap items-center gap-2 pl-2 max-sm:flex-col max-sm:items-start">
             <span className="min-w-0 flex-1 text-sm text-muted-foreground">
               Profils retenus depuis vos recherches. Les retenus suivent leur étape dans le Pipeline, avec ceux de toute l'équipe.
             </span>
@@ -498,24 +529,25 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 triggerLabel={newlyRetained.length > 1
                   ? `Contacter les ${newlyRetained.length} nouveaux retenus`
                   : `Contacter ${newlyRetained[0].name}`}
+                quiet
               />
             )}
             {activeProject && (
-              <Button asChild variant="outline" size="sm" className="h-8 text-sm font-normal">
+              <Button asChild variant="ghost" size="sm" className="text-foreground-secondary hover:text-foreground max-sm:min-h-11">
                 <Link to={missionV3Path(activeProject.id)}>Ouvrir le Pipeline</Link>
               </Button>
             )}
           </div>
         )}
         {tab === 'rejected' && (
-          <div className="mt-2.5 flex min-h-8 items-center pl-2">
+          <div className="mt-3 flex min-h-8 items-center pl-2">
             <span className="text-sm text-muted-foreground">
               Profils écartés depuis vos recherches. Remettre à trier renvoie le profil dans À trier et efface sa note.
             </span>
           </div>
         )}
 
-        <div ref={scrollAreaRef} className="relative mt-2.5 min-h-0 flex-1 lg:overflow-y-auto">
+        <div ref={scrollAreaRef} className="relative mt-3 min-h-0 flex-1 lg:overflow-y-auto">
           {(richCompact || richDetailed) && (
             // Une erreur d'affichage ne bloque pas le reste du Sourcing : « Tri » reste disponible.
             <SectionErrorBoundary key={view} fallbackTitle="Cet affichage n'a pas pu s'afficher. Passez en Tri.">
@@ -536,18 +568,18 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
           {!richCompact && !richDetailed && (
           <table className="w-full table-fixed border-collapse text-left">
             <thead>
-              <tr className="h-[30px] border-b border-border text-xs text-muted-foreground">
+              <tr className="h-[34px] border-b border-border text-sm text-muted-foreground">
                 {tab === 'to_sort' && <th scope="col" className="w-9 pl-2 font-normal"><span className="sr-only">Sélection</span></th>}
-                <th scope="col" className={cn('pr-3 font-normal sm:w-[26%]', tab !== 'to_sort' && 'pl-2')}>Nom</th>
-                <th scope="col" className="hidden pr-3 font-normal sm:table-cell">Poste</th>
-                <th scope="col" className="w-12 pr-3 text-right font-normal">Note</th>
+                <th scope="col" className={cn('pr-3 font-normal sm:w-[40%] xl:w-[28%]', tab !== 'to_sort' && 'pl-2')}>Nom</th>
+                <th scope="col" className="hidden pr-3 font-normal xl:table-cell">Poste</th>
+                <th scope="col" className="w-14 pr-3 text-right font-normal">Note</th>
                 {tab === 'retained' ? (
                   <th scope="col" className="w-[7.5rem] pr-2 font-normal sm:w-[22%]">Étape</th>
-                ) : (
+                ) : showReason && (
                   <th scope="col" className="hidden pr-3 font-normal md:table-cell md:w-[30%]">Raison</th>
                 )}
-                {tab === 'to_sort' && <th scope="col" className="w-[72px] pr-2 font-normal"><span className="sr-only">Décision</span></th>}
-                {tab === 'rejected' && <th scope="col" className="w-[9.5rem] pr-2 font-normal"><span className="sr-only">Action</span></th>}
+                {tab === 'to_sort' && <th scope="col" className="w-[76px] pr-2 font-normal max-sm:w-[104px]"><span className="sr-only">Décision</span></th>}
+                {tab === 'rejected' && <th scope="col" className="w-[9.5rem] pr-2 font-normal max-sm:w-14"><span className="sr-only">Action</span></th>}
               </tr>
             </thead>
             <tbody ref={tbodyRef}>
@@ -567,7 +599,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                     data-row-id={id}
                     onClick={() => onOpenProfile(row.profile)}
                     className={cn(
-                      'h-[52px] cursor-pointer border-b border-border/50 transition-colors',
+                      'h-14 cursor-pointer border-b border-border/50 transition-colors',
                       selected ? 'bg-muted/60' : 'hover:bg-muted/40',
                       busy && 'opacity-60',
                     )}
@@ -578,41 +610,47 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                           checked={selected}
                           onCheckedChange={() => onToggleProfileSelection(id)}
                           aria-label={`Sélectionner ${row.name}`}
+                          className={TAP_CHECKBOX}
                         />
                       </td>
                     )}
                     <td className={cn('min-w-0 py-1.5 pr-3 align-middle', tab !== 'to_sort' && 'pl-2')}>
-                      <span className="flex min-w-0 items-center gap-2">
-                        <button
-                          type="button"
-                          data-row-name=""
-                          onClick={(e) => { e.stopPropagation(); onOpenProfile(row.profile); }}
-                          className="min-w-0 truncate rounded-sm text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {row.name}
-                        </button>
-                        {recommended && tab === 'to_sort' && (
-                          <span className="shrink-0 rounded-[5px] bg-success-muted px-1.5 text-2xs text-success">Recommandé</span>
-                        )}
+                      <span className="flex min-w-0 items-center gap-3">
+                        <PersonAvatar name={row.name} src={row.profile.profile_picture_url} size={32} className="max-[359px]:hidden" />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <button
+                              type="button"
+                              data-row-name=""
+                              onClick={(e) => { e.stopPropagation(); onOpenProfile(row.profile); }}
+                              className="min-w-0 truncate rounded-sm text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-words"
+                            >
+                              {row.name}
+                            </button>
+                          </span>
+                          {/* Deuxième ligne : le lieu quand le titre a sa colonne (grand écran), sinon le titre. L'avis de l'IA s'y lit
+                              à la suite : il ne prend plus de place sur la ligne du nom, qui ne se coupe plus à la taille d'une tablette. */}
+                          <span className="flex min-w-0 items-baseline gap-1.5 text-sm text-muted-foreground">
+                            {row.profile.location && <span className="hidden min-w-0 truncate xl:block">{row.profile.location}</span>}
+                            {headline && <span className="min-w-0 truncate max-sm:line-clamp-2 max-sm:whitespace-normal xl:hidden">{headline}</span>}
+                            {recommended && tab === 'to_sort' && (
+                              <span className="shrink-0 text-success max-sm:hidden">Recommandé</span>
+                            )}
+                          </span>
+                        </span>
                       </span>
-                      {row.profile.location && (
-                        <span className="hidden truncate text-xs text-muted-foreground sm:block">{row.profile.location}</span>
-                      )}
-                      {headline && <span className="block truncate text-xs text-muted-foreground sm:hidden">{headline}</span>}
                     </td>
-                    <td className="hidden truncate pr-3 align-middle text-sm text-foreground-secondary sm:table-cell" title={headline || undefined}>
+                    <td className="hidden truncate pr-3 align-middle text-sm text-foreground-secondary xl:table-cell" title={headline || undefined}>
                       {headline}
                     </td>
-                    <td className="pr-3 text-right align-middle text-sm font-semibold tabular-nums text-foreground">
-                      {row.note ?? ''}
+                    <td className="pr-3 text-right align-middle">
+                      <ScorePill score={row.note} />
                     </td>
                     {tab === 'retained' ? (
                       <td className="pr-2 align-middle">
-                        <span className={cn('inline-block max-w-full truncate rounded-md px-2 py-0.5 text-xs', STAGE_PILL[stage])}>
-                          {GENERAL_STAGE_LABEL[stage]}
-                        </span>
+                        <span className="block truncate text-sm text-foreground-secondary">{GENERAL_STAGE_LABEL[stage]}</span>
                       </td>
-                    ) : (
+                    ) : showReason && (
                       <td className={cn('hidden truncate pr-3 align-middle text-sm md:table-cell', REASON_TONE[reason.tone])} title={reason.text || undefined}>
                         {reason.text}
                       </td>
@@ -626,9 +664,9 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                             onClick={() => void run([row], onRetainProfiles, index)}
                             aria-label={`Retenir ${row.name}`}
                             title="Retenir"
-                            className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-success/40 hover:bg-success-muted hover:text-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                            className={cn(DECISION_BUTTON, 'hover:bg-success-muted hover:text-success')}
                           >
-                            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                            <Check className="h-4 w-4" aria-hidden="true" />
                           </button>
                           <button
                             type="button"
@@ -636,9 +674,9 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                             onClick={() => void run([row], onDismissProfiles, index)}
                             aria-label={`Écarter ${row.name}`}
                             title="Écarter"
-                            className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-danger/40 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                            className={DECISION_BUTTON}
                           >
-                            <X className="h-3.5 w-3.5" aria-hidden="true" />
+                            <X className="h-4 w-4" aria-hidden="true" />
                           </button>
                         </span>
                       </td>
@@ -646,15 +684,19 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                     {tab === 'rejected' && (
                       <td className="pr-2 text-right align-middle" onClick={(e) => e.stopPropagation()}>
                         {onRestoreCandidate && (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             disabled={busy}
                             onClick={() => void run([row], async (list) => { await onRestoreCandidate(list[0].id); }, index)}
                             aria-label={`Remettre ${row.name} à trier`}
-                            className="h-[30px] whitespace-nowrap rounded-lg border border-border px-2.5 text-xs text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                            title="Remettre à trier"
+                            className="text-foreground-secondary hover:text-foreground max-sm:h-11 max-sm:w-11 max-sm:px-0"
                           >
-                            Remettre à trier
-                          </button>
+                            <Undo2 aria-hidden="true" className="sm:hidden" />
+                            <span className="max-sm:hidden">Remettre à trier</span>
+                          </Button>
                         )}
                       </td>
                     )}
@@ -662,7 +704,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 );
               })}
               {tab === 'to_sort' && loadingMore && [0, 1, 2].map((i) => (
-                <tr key={`suite-${i}`} aria-hidden="true" className="h-[52px] border-b border-border/50">
+                <tr key={`suite-${i}`} aria-hidden="true" className="h-14 border-b border-border/50">
                   <td colSpan={6} className="px-2">
                     <span className="block h-3 w-1/2 rounded bg-muted/60" />
                   </td>
@@ -671,27 +713,37 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             </tbody>
           </table>
           )}
-          {loadingMore && <span role="status" className="sr-only">Chargement de la suite</span>}
+          <span role="status" className="sr-only">{loadAnnouncement}</span>
 
           {groups[tab].length === 0 && (
             <p className="px-2 py-5 text-sm text-muted-foreground">
               {tab === 'to_sort'
                 ? hasSearched && results.length === 0
                   ? 'Aucun profil à trier. Cette recherche ne trouve aucun profil : ajustez vos filtres.'
-                  : `Aucun profil à trier.${canLoadMore ? ' Voir la suite charge les profils suivants de la recherche.' : ''}`
+                  : 'Aucun profil à trier.'
                 : tab === 'retained' ? 'Aucun profil retenu.' : 'Aucun profil écarté.'}
             </p>
           )}
+          {/* Pied de liste : une seule phrase, qui dit où en est le chargement. */}
           {tab === 'to_sort' && !hasMoreResults && results.length > 0 && groups.to_sort.length > 0 && (
-            <p className="px-2 py-4 text-xs text-muted-foreground">
+            <p className="px-2 py-4 text-sm text-muted-foreground">
               Tous les profils de cette recherche sont chargés. Élargissez vos filtres pour en trouver d'autres.
             </p>
           )}
-          {tab === 'to_sort' && canLoadMore && !loadingMore && groups.to_sort.length > 0 && (
-            <div className="px-2 py-3">
-              <Button variant="ghost" size="sm" onClick={onLoadMore} className="gap-1.5 text-sm font-normal text-muted-foreground hover:text-foreground">
-                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                Voir la suite
+          {tab === 'to_sort' && (canLoadMore || loadingMore) && (
+            <div className="flex flex-wrap items-center gap-x-1 px-2 py-3 text-sm text-muted-foreground">
+              <span>{loadedLabel}.</span>
+              {/* Le bouton reste en place pendant le chargement (aria-disabled, jamais disabled) : le focus ne tombe pas sur la page. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadingMore ? undefined : onLoadMore}
+                disabled={loading && !loadingMore}
+                aria-disabled={loadingMore || undefined}
+                className={cn('text-foreground-secondary hover:text-foreground max-sm:min-h-11', loadingMore && 'cursor-default hover:bg-transparent')}
+              >
+                {loadingMore ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}
               </Button>
             </div>
           )}
@@ -702,13 +754,15 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
               <div
                 role="toolbar"
                 aria-label="Actions sur la sélection"
-                className="pointer-events-auto flex w-fit max-w-full flex-wrap items-center gap-1.5 rounded-xl border border-border-strong bg-popover py-2 pl-3.5 pr-2 text-popover-foreground shadow-lg"
+                className="pointer-events-auto flex w-fit max-w-full flex-wrap items-center gap-1 rounded-xl border border-border bg-popover py-2 pl-3.5 pr-2 text-popover-foreground shadow-lg"
               >
                 <span className="mr-1.5 text-sm font-semibold tabular-nums text-foreground">
                   {plural(selectedRows.length, 'sélectionné', 'sélectionnés')}
                 </span>
                 <Button
                   size="sm"
+                  variant="secondary"
+                  className="max-sm:min-h-11"
                   disabled={selectedRows.some((row) => pending.has(row.profile.id))}
                   onClick={() => void run(selectedRows, onRetainProfiles)}
                 >
@@ -716,8 +770,8 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="text-danger hover:text-danger"
+                  variant="ghost"
+                  className="max-sm:min-h-11"
                   disabled={selectedRows.some((row) => pending.has(row.profile.id))}
                   onClick={() => void run(selectedRows, onDismissProfiles)}
                 >
@@ -730,22 +784,24 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                     selectedJob={selectedJob}
                     onSuccess={onSequenceEnrollSuccess}
                     triggerLabel="Contacter"
+                    quiet
                   />
                 )}
                 {selectedJob && canBatchScore && (
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="ghost"
+                    className="max-sm:min-h-11"
                     disabled={scoringInProgress}
                     onClick={() => scoreRows(selectedRows)}
                   >
-                    {scoringInProgress ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />}
+                    {scoringInProgress ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
                     Noter
                   </Button>
                 )}
                 {selectedAccount && (
-                  <Button size="sm" variant="outline" onClick={onOpenInMail}>
-                    <Mail className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                  <Button size="sm" variant="ghost" className="max-sm:min-h-11" onClick={onOpenInMail}>
+                    <Mail aria-hidden="true" />
                     InMail
                   </Button>
                 )}
@@ -753,7 +809,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-8 w-8"
+                  className="h-8 w-8 max-sm:h-11 max-sm:w-11"
                   aria-label="Tout désélectionner"
                   onClick={() => onSetSelection([])}
                 >

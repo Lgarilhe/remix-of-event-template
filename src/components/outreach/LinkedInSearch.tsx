@@ -5,6 +5,7 @@ import { SearchFiltersPanel, type FilterSuggestions } from './search/SearchFilte
 import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { LinkedInReconnectBanner } from './search/LinkedInReconnectBanner';
 import { SmartOverlays } from './search/SmartOverlays';
+import { quickChipV3 } from '@/components/missions/v3/sourcing/quickChip';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { refreshProjectEnrollments } from '@/hooks/useProjectEnrollments';
@@ -1415,27 +1416,25 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
               searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
             />
             <SmartOverlays
+              variant="mission-v3"
               filters={search.filters}
               onFiltersEdit={handleChipsEdit}
               suggestedCompanies={effectiveSuggestions?.alt_companies || []}
               searchSource={searchSource === 'database' ? 'database' : 'linkedin'}
-            />
-            {openToWorkSupported && (
-              <div>
+              trailing={openToWorkSupported ? (
+                // Même puce que les filtres rapides : elle rejoint leur rangée au lieu de rester seule sur une ligne.
                 <button
                   type="button"
                   onClick={handleToggleOpenToWork}
                   disabled={search.loading}
                   aria-pressed={openToWorkActive}
                   title="Relance la recherche limitée aux profils à l'écoute"
-                  className={openToWorkActive
-                    ? 'inline-flex items-center rounded-full border border-success/40 bg-success-muted px-2.5 py-1 text-xs font-medium text-success disabled:opacity-60'
-                    : 'inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-60'}
+                  className={quickChipV3(openToWorkActive)}
                 >
                   À l'écoute
                 </button>
-              </div>
-            )}
+              ) : undefined}
+            />
             {pedigreeBanner}
           </div>
         </SourcingTopBar>

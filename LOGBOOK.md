@@ -32,6 +32,19 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-04 — REFACTOR — Refonte mission, Cadrage et Sourcing allégés
+
+**Contexte** : suite de l'allègement du Pipeline (retour « trop chargé, on comprend mal »), mêmes règles (`docs/design/06-simplicite.md`, lot M). Travail mené par deux agents en parallèle (un par écran), relu par trois angles indépendants (règles de design, non-régression, accessibilité), puis corrigé.
+**Décision / Fait** : Cadrage sans cartes, bandeau d'état en une ligne, contrôles secondaires visibles au survol, au focus ou au toucher, « Qui recrute » sur une ligne, Réglages sans cartes. Sourcing : puces d'état et bascule sans cadre, « Noter les N profils » seul bouton plein, tableau sans carte et colonnes par défaut réduites, vue Détaillé et zone Filtres allégées. Composants partagés avec l'ancienne page modifiés seulement derrière un drapeau (`variant`, `embedded`, `quiet`), rendu par défaut comparé à celui de HEAD par un rendu serveur des composants (aucun écart relevé, mesure des agents).
+**Raison** : trois cadres et quarante contrôles au Cadrage, dix colonnes presque vides au Sourcing, jargon (« 18/46 colonnes », phrase technique sur le type d'organisation).
+**Impact** : `src/components/missions/v3/cadrage/**`, `v3/sourcing/**`, `SourcingScreen.tsx`, `outreach/search/*`, `LinkedInResultCard`, `VoiceDictation`, `MissionConfigV2` et ses deux sections (`embedded`), `process/shared.tsx`, tests `lot12-cadrage` et `lot12-sourcing`, `e2e/flows/mission-v3.spec.ts`. Vérifié : tsc à la baseline de 11, c1 235, ux 1270, cliquet de dette design en baisse, lint sans nouveau problème.
+**Reste à faire** :
+- [ ] En-tête de mission et liste des missions (lot M).
+- [ ] Mission archivée : « Réactiver » s'affiche deux fois, cibles de 44 px (`ArchivedNotice`, `MissionStateBanner`, hors périmètre des agents).
+- [ ] Photos réelles à la place des initiales (lot P).
+
+---
+
 ## 2026-10-04 — REFACTOR — Refonte mission, écran Pipeline allégé (retour « trop chargé »)
 
 **Contexte** : après le lot 3, le propriétaire trouve la page mission chargée et difficile à comprendre. Captures du banc local avant et après, direction `docs/design/06-simplicite.md` (lot M, partie Pipeline).

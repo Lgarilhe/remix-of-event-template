@@ -3,6 +3,9 @@
 // droit, elle n'existe pas ; pendant le chargement, un bloc gris garde sa place.
 // Réemploie MissionTeamSection (assignation, retrait confirmé, invitations
 // existantes), sans son en-tête et avec les rôles en français.
+// Design simplifié (04/10/2026) : pas de carte ; « Assigner » est un bouton
+// discret et l'état vide tient sur une ligne (rendu `embedded` de
+// MissionTeamSection, qui garde celui d'aujourd'hui pour l'ancienne page).
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,6 +18,8 @@ import { useSubscriptionState } from '@/hooks/useSubscriptionState';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { hasFeature, hasPlanFeature } from '@/lib/featureGates';
 import { TEAM_ROLE_LABELS } from './cadrageModel';
+import { SectionHeader } from './SectionHeader';
+import { SECTION_CLASS } from './sectionUi';
 
 /**
  * Membres de l'organisation de la mission et leur nom affiché (profiles.display_name),
@@ -59,33 +64,30 @@ export function TeamSection({ project, readOnly }: { project: SourcingProject; r
   if (!loading && !allowed) return null;
 
   return (
-    <section id="cadrage-equipe" aria-labelledby="cadrage-equipe-titre" className="flex scroll-mt-4 flex-col gap-2.5">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <h2 id="cadrage-equipe-titre" className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Équipe
-        </h2>
-        <span className="text-xs text-muted-foreground">Les personnes de votre organisation qui travaillent sur la mission.</span>
-      </div>
+    <section id="cadrage-equipe" aria-labelledby="cadrage-equipe-titre" className={SECTION_CLASS}>
+      <SectionHeader
+        id="cadrage-equipe-titre"
+        title="Équipe"
+        help="Les personnes de votre organisation qui travaillent sur la mission."
+      />
       {loading ? (
-        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-16 w-full rounded-xl" />
       ) : (
-        <div className="rounded-xl border border-border bg-card px-4 py-3.5">
-          <MissionTeamSection
-            embedded
-            roleLabels={TEAM_ROLE_LABELS}
-            team={team}
-            loadingTeam={loadingTeam}
-            readOnly={readOnly}
-            getMemberName={nameOf}
-            getTeamMemberName={getTeamMemberName}
-            isExternalMember={(userId) => externalIds.has(userId)}
-            orgMembers={members}
-            projectId={project.id}
-            projectName={project.name}
-            onAdd={addTeamMember as (input: { user_id: string; role: string }) => Promise<unknown>}
-            onRemove={removeTeamMember}
-          />
-        </div>
+        <MissionTeamSection
+          embedded
+          roleLabels={TEAM_ROLE_LABELS}
+          team={team}
+          loadingTeam={loadingTeam}
+          readOnly={readOnly}
+          getMemberName={nameOf}
+          getTeamMemberName={getTeamMemberName}
+          isExternalMember={(userId) => externalIds.has(userId)}
+          orgMembers={members}
+          projectId={project.id}
+          projectName={project.name}
+          onAdd={addTeamMember as (input: { user_id: string; role: string }) => Promise<unknown>}
+          onRemove={removeTeamMember}
+        />
       )}
     </section>
   );

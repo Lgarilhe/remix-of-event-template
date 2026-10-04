@@ -9,6 +9,9 @@
 // Réglages n'y écrivent plus (hideMessageSettings), d'où plus de course entre
 // deux chemins d'enregistrement. ?section=criteres|poste|etapes|equipe|reglages
 // fait défiler jusqu'à la section, et reglages la déplie.
+//
+// Design simplifié (04/10/2026) : un bandeau d'état d'une ligne, puis des
+// sections sans carte (titre, phrase d'aide, filet fin et de l'espace).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
@@ -27,6 +30,8 @@ import { CriteriaSection } from './CriteriaSection';
 import { InterviewStepsSection } from './InterviewStepsSection';
 import { JobMoreDetails } from './JobMoreDetails';
 import { JobSection } from './JobSection';
+import { SectionHeader } from './SectionHeader';
+import { SECTION_CLASS, TOUCH } from './sectionUi';
 import { TeamSection } from './TeamSection';
 
 const SECTION_ID: Record<CadrageSection, string> = {
@@ -36,9 +41,6 @@ const SECTION_ID: Record<CadrageSection, string> = {
   equipe: 'cadrage-equipe',
   reglages: 'cadrage-reglages',
 };
-
-// En-tête de section : petites capitales grises (même style que « En ce moment » du Pipeline).
-const SECTION_TITLE_CLASS = 'text-2xs font-semibold uppercase tracking-wider text-muted-foreground';
 
 /** Lien de prise de rendez-vous (colonne de la mission), enregistré à la sortie du champ. */
 function useCalendlyLinkSave(projectId: string, readOnly: boolean) {
@@ -116,7 +118,7 @@ export function CadrageScreen(): JSX.Element | null {
   const stepsState = loadingSteps ? 'loading' : stepsError ? 'error' : 'ready';
 
   return (
-    <div className="mx-auto flex w-full max-w-[920px] flex-col gap-5 pb-12 pt-2">
+    <div className="mx-auto flex w-full max-w-[920px] flex-col gap-8 pb-12 pt-2">
       <CadrageReadOnlyBanner />
 
       <CadrageReadiness
@@ -154,28 +156,26 @@ export function CadrageScreen(): JSX.Element | null {
       </SectionErrorBoundary>
 
       <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen} asChild>
-        <section id={SECTION_ID.reglages} aria-labelledby="cadrage-reglages-titre" className="scroll-mt-4">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        <section id={SECTION_ID.reglages} aria-labelledby="cadrage-reglages-titre" className={SECTION_CLASS}>
+          <div className="flex flex-col gap-1">
             <h2 id="cadrage-reglages-titre">
               <CollapsibleTrigger
                 className={cn(
-                  'group inline-flex items-center gap-1.5 rounded-md text-left',
-                  SECTION_TITLE_CLASS,
-                  'hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  'group inline-flex items-center gap-2 rounded-md text-left text-lg font-semibold text-foreground',
+                  'hover:text-foreground-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                  TOUCH,
                 )}
               >
                 Réglages
                 <ChevronDown
                   aria-hidden="true"
-                  className="h-3.5 w-3.5 shrink-0 transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
+                  className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
                 />
               </CollapsibleTrigger>
             </h2>
-            <span className="text-xs text-muted-foreground">
-              Nom de la mission, notes internes, portail client et autres réglages.
-            </span>
+            <p className="text-sm text-muted-foreground">Nom de la mission, notes internes, portail client et autres réglages.</p>
           </div>
-          <CollapsibleContent className="pt-2.5">
+          <CollapsibleContent>
             <SectionErrorBoundary fallbackTitle="Erreur dans les Réglages">
               <MissionConfigV2 project={project} readOnly={!canEditBrief} hideStatus hideMessageSettings embedded />
             </SectionErrorBoundary>

@@ -29,6 +29,8 @@ interface CardActionsProps {
   onSequenceEnroll?: () => void;
   onProfileTreated?: () => void;
   compact?: boolean;
+  /** Nouvelle page mission : boutons discrets (aucun bouton plein ni contour), cibles de 44 px sur téléphone. */
+  variant?: 'default' | 'mission-v3';
 }
 
 /**
@@ -66,7 +68,9 @@ export const CardActions: React.FC<CardActionsProps> = ({
   onSequenceEnroll,
   onProfileTreated,
   compact = false,
+  variant = 'default',
 }) => {
+  const isV3 = variant === 'mission-v3';
   const iconSize = compact ? 'w-3.5 h-3.5' : 'w-4 h-4';
 
   // Détermine le CTA primaire selon l'état du profil.
@@ -80,13 +84,13 @@ export const CardActions: React.FC<CardActionsProps> = ({
       {/* Action principale : noter le profil sur les critères du poste. */}
       {showScore && (
         <Button
-          variant="primary"
+          variant={isV3 ? 'ghost' : 'primary'}
           size={compact ? 'xs' : 'sm'}
           onClick={onScoreProfile}
           loading={isScoring}
           title={isScoring ? 'Notation en cours' : `Noter pour ${selectedJob?.title}`}
           aria-busy={isScoring}
-          className="shrink-0"
+          className={isV3 ? 'shrink-0 text-foreground-secondary hover:text-foreground max-sm:min-h-11' : 'shrink-0'}
         >
           {!isScoring && <Sparkles aria-hidden="true" />}
           {isScoring ? 'Notation…' : 'Noter'}
@@ -102,6 +106,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
             onSequenceEnroll?.();
             onProfileTreated?.();
           }}
+          quiet={isV3}
         />
       )}
 
@@ -110,10 +115,10 @@ export const CardActions: React.FC<CardActionsProps> = ({
           + shadow pour ressortir du fond blanc de la card. */}
       {selectedJob && !showScore && !compact && (
         <Button
-          variant="outline"
+          variant={isV3 ? 'ghost' : 'outline'}
           size="sm"
           onClick={onOpenMessage}
-          className="shrink-0"
+          className={isV3 ? 'shrink-0 text-foreground-secondary hover:text-foreground max-sm:min-h-11' : 'shrink-0'}
           title="Composer un message d'approche"
         >
           <PenLine className={iconSize} aria-hidden="true" />
@@ -134,6 +139,7 @@ export const CardActions: React.FC<CardActionsProps> = ({
           jobId={selectedJob.id}
           activeProject={activeProject}
           compact
+          quiet={isV3}
           onAdded={onProfileTreated}
         />
       )}
@@ -143,7 +149,11 @@ export const CardActions: React.FC<CardActionsProps> = ({
           Si profil a déjà un email/phone (Unipile contact_info ou cache), affiche
           directement, sinon bouton qui lance l'enrichment async via Better Contact. */}
       {!compact && profileUrl && (
-        <EnrichContactButton profile={profile} compact />
+        <EnrichContactButton
+          profile={profile}
+          compact
+          className={isV3 ? 'text-foreground-secondary border-transparent hover:border-transparent max-sm:min-h-11' : undefined}
+        />
       )}
 
       {/* ═══ OVERFLOW MENU ⋯ ═══ */}
@@ -152,7 +162,9 @@ export const CardActions: React.FC<CardActionsProps> = ({
           <Button
             variant="ghost"
             size="icon"
-            className={`${compact ? 'h-7 w-7' : 'h-8 w-8'} bg-muted border border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all`}
+            className={isV3
+              ? 'h-8 w-8 max-sm:h-11 max-sm:w-11'
+              : `${compact ? 'h-7 w-7' : 'h-8 w-8'} bg-muted border border-foreground/30 shadow-sm hover:bg-accent hover:border-foreground/50 hover:shadow-md transition-all`}
             aria-label={`Plus d'actions pour ${fullName}`}
           >
             <MoreHorizontal className={iconSize} aria-hidden="true" />

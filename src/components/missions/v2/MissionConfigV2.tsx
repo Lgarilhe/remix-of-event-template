@@ -114,20 +114,22 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
           </div>
         )}
 
-        <div className="space-y-4">
+        <div className={embedded ? 'space-y-6' : 'space-y-4'}>
           {/* Section Infos mission */}
           <SectionCard
+            bare={embedded}
             emoji={embedded ? undefined : '⚙️'}
             title="Infos mission"
             subtitle={embedded ? 'Nom, client affiché et notes internes' : 'Identité et statut'}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Nom de la mission" required>
+              <Field label="Nom de la mission" required plain={embedded}>
                 <DebouncedInput
                   defaultValue={project.name}
                   onCommit={(v) => handleUpdate({ name: v.trim() || project.name })}
                   placeholder="Ex: Lead Engineer @ Doctolib"
                   readOnly={readOnly}
+                  touch={embedded}
                 />
               </Field>
 
@@ -135,18 +137,20 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
                 <Field
                   label={embedded ? 'Client affiché dans vos listes' : 'Client'}
                   hint={embedded ? "Nom affiché dans l'en-tête et la liste des missions. Les messages utilisent le client du poste." : undefined}
+                  plain={embedded}
                 >
                   <DebouncedInput
                     defaultValue={project.client_name || ''}
                     onCommit={(v) => handleUpdate({ client_name: v || null })}
                     placeholder="Ex: Doctolib"
                     readOnly={readOnly}
+                    touch={embedded}
                   />
                 </Field>
               )}
 
               {!hideStatus && (
-              <Field label="Statut">
+              <Field label="Statut" plain={embedded}>
                 <select
                   value={project.status}
                   onChange={(e) => handleUpdate({ status: e.target.value as SourcingProject['status'] })}
@@ -168,6 +172,7 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
               <Field
                 label="Lien Calendly"
                 hint="Le lien sera utilisé pour le bouton 'Programmer un RDV' sur les conversations candidat"
+                plain={embedded}
               >
                 <DebouncedInput
                   defaultValue={project.calendly_link || ''}
@@ -175,15 +180,17 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
                   placeholder="https://calendly.com/..."
                   type="url"
                   readOnly={readOnly}
+                  touch={embedded}
                 />
               </Field>
               )}
             </div>
 
-            <div className="pt-3 border-t border-border">
+            <div className={embedded ? undefined : 'pt-3 border-t border-border'}>
               <Field
                 label="Notes internes"
                 hint={embedded ? 'Notes privées sur cette mission, visibles par votre équipe seulement.' : 'Notes privées sur cette mission (visibles uniquement par ton équipe)'}
+                plain={embedded}
               >
                 <DebouncedTextarea
                   defaultValue={project.notes || ''}
@@ -205,8 +212,8 @@ export const MissionConfigV2: React.FC<MissionConfigV2Props> = ({ project, readO
           )}
 
           {/* Mode Hunt et Portail client — composants déjà cards rounded-xl */}
-          {!readOnly && <MissionHuntMode project={project} />}
-          {!readOnly && <MissionClientPortal project={project} />}
+          {!readOnly && <MissionHuntMode project={project} embedded={embedded} />}
+          {!readOnly && <MissionClientPortal project={project} embedded={embedded} />}
         </div>
       </div>
 
@@ -313,8 +320,12 @@ const SectionCard: React.FC<{
   emoji?: string;
   title: string;
   subtitle?: string;
+  /** Rendu intégré : ni carte ni titre, la section qui l'accueille porte le sien. */
+  bare?: boolean;
   children: React.ReactNode;
-}> = ({ emoji, title, subtitle, children }) => (
+}> = ({ emoji, title, subtitle, bare, children }) => bare ? (
+  <div className="space-y-4">{children}</div>
+) : (
   <div className="bg-card border border-border rounded-xl overflow-hidden">
     <div className="px-5 py-3 border-b border-border flex items-center gap-3">
       {emoji && <span className="text-base">{emoji}</span>}
@@ -331,15 +342,17 @@ const Field: React.FC<{
   label: string;
   required?: boolean;
   hint?: string;
+  /** Rendu intégré à la nouvelle page mission : libellé et aide à 14 px, sans majuscules. */
+  plain?: boolean;
   children: React.ReactNode;
-}> = ({ label, required, hint, children }) => (
-  <div>
-    <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
+}> = ({ label, required, hint, plain, children }) => (
+  <div className={plain ? 'flex flex-col gap-1.5' : undefined}>
+    <label className={plain ? 'text-sm text-muted-foreground' : 'text-2xs uppercase tracking-wider text-muted-foreground font-semibold'}>
       {label}
       {required && <span className="text-destructive ml-0.5">*</span>}
     </label>
-    <div className="mt-1">{children}</div>
-    {hint && <p className="text-2xs text-muted-foreground mt-1.5 leading-snug">{hint}</p>}
+    <div className={plain ? undefined : 'mt-1'}>{children}</div>
+    {hint && <p className={plain ? 'text-sm text-muted-foreground' : 'text-2xs text-muted-foreground mt-1.5 leading-snug'}>{hint}</p>}
   </div>
 );
 
@@ -350,7 +363,9 @@ const DebouncedInput: React.FC<{
   placeholder?: string;
   type?: string;
   readOnly?: boolean;
-}> = ({ defaultValue, onCommit, placeholder, type = 'text', readOnly }) => (
+  /** Rendu intégré : 44 px de haut sur téléphone (cible tactile). */
+  touch?: boolean;
+}> = ({ defaultValue, onCommit, placeholder, type = 'text', readOnly, touch }) => (
   <input
     type={type}
     defaultValue={defaultValue}
@@ -363,6 +378,7 @@ const DebouncedInput: React.FC<{
       'w-full h-9 px-3 rounded-md border border-border bg-background text-sm',
       'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
       readOnly && 'bg-muted/30 cursor-not-allowed',
+      touch && 'max-sm:h-11',
     )}
   />
 );

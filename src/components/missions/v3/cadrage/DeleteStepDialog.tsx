@@ -32,11 +32,13 @@ export interface DeleteStepDialogProps {
   steps: readonly ProcessStep[];
   deleteStep: (id: string) => Promise<unknown>;
   onClose: () => void;
+  /** Appelé une fois l'étape supprimée, juste avant onClose. */
+  onDeleted?: () => void;
 }
 
 const stepLabel = (s: Pick<ProcessStep, 'name'>) => s.name?.trim() || 'sans nom';
 
-export function DeleteStepDialog({ projectId, step, steps, deleteStep, onClose }: DeleteStepDialogProps) {
+export function DeleteStepDialog({ projectId, step, steps, deleteStep, onClose, onDeleted }: DeleteStepDialogProps) {
   const open = step !== null;
   const selectId = useId();
   const others = useMemo(() => steps.filter((s) => s.id !== step?.id), [steps, step?.id]);
@@ -92,6 +94,7 @@ export function DeleteStepDialog({ projectId, step, steps, deleteStep, onClose }
     try {
       await deleteStep(step.id);
       toast.success(`Étape « ${name} » supprimée.`);
+      onDeleted?.();
       onClose();
     } catch {
       // Refus déjà annoncé par useMissionProcess.

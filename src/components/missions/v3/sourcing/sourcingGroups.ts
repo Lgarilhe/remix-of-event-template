@@ -9,6 +9,7 @@
 
 import type { GeneralStage } from '@/lib/candidateStage';
 import { GENERAL_STAGE_LABEL } from '@/lib/stageDisplay';
+import { plural } from '@/lib/plural';
 
 export type SourcingGroup = 'to_sort' | 'retained' | 'rejected';
 
@@ -195,10 +196,14 @@ export function joinNames(names: readonly string[], max = 3): string {
   return `${list.slice(0, max).join(', ')} et ${rest} ${rest > 1 ? 'autres' : 'autre'}`;
 }
 
-/** Libellé du bouton de notation (plancher de 2 crédits par profil, ACTION_COSTS.scoring). */
-export function scoreButtonLabel(count: number, totalUnscored: number, floorPerProfile: number): string {
-  const credits = count * floorPerProfile;
-  if (count <= 1) return `Noter le profil non noté (au moins ${credits} crédits)`;
-  if (count < totalUnscored) return `Noter les ${count} premiers (au moins ${credits} crédits)`;
-  return `Noter les ${count} profils non notés (au moins ${credits} crédits)`;
+/** Libellé du bouton de notation (le coût s'écrit à côté, voir scoreCostText). */
+export function scoreButtonText(count: number, totalUnscored: number): string {
+  if (count <= 1) return 'Noter le profil non noté';
+  if (count < totalUnscored) return `Noter les ${count} premiers`;
+  return `Noter les ${count} profils non notés`;
+}
+
+/** Coût annoncé à côté du bouton (plancher de 2 crédits par profil, ACTION_COSTS.scoring). */
+export function scoreCostText(count: number, floorPerProfile: number): string {
+  return `au moins ${plural(count * floorPerProfile, 'crédit', 'crédits')}`;
 }

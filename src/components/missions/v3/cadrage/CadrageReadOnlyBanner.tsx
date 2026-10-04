@@ -1,7 +1,8 @@
 // Refonte mission, lot 1 : bandeau de lecture seule de Cadrage (conception
 // 5.6 et 9). Il dit pourquoi le cadrage n'est pas modifiable, et à qui
 // s'adresser. Rien tant que l'organisation charge : jamais de blocage affiché
-// avant de le savoir.
+// avant de le savoir. Design simplifié (04/10/2026) : une bande douce, sans
+// filet (même forme que la carte « Maintenant » du Pipeline).
 import { Eye } from 'lucide-react';
 import type { OrgType } from '@/lib/featureGates';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -46,7 +47,7 @@ export function CadrageReadOnlyBanner() {
     <div
       role="status"
       data-testid="cadrage-read-only"
-      className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-foreground"
+      className="flex items-start gap-3 rounded-xl bg-muted/50 px-4 py-3 text-sm text-foreground"
     >
       <Eye className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <p className="min-w-0">{reason}</p>

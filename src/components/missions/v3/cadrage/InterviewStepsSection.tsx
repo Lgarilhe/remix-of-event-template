@@ -1,11 +1,17 @@
 // Refonte mission, écran Cadrage : Étapes d'entretien (conception 5.6).
-// Tableau : nom, intervieweur, candidats « En ce moment » (get_mission_stage_counts,
+// Liste : nom, intervieweur, candidats « En ce moment » (get_mission_stage_counts,
 // même lecture que la barre d'étapes du Pipeline, jamais de zéro inventé),
 // réordonnancement au clavier (Monter, Descendre), suppression confirmée qui
 // déplace d'abord les candidats de l'étape (DeleteStepDialog). Écritures des
 // étapes : mutations de useMissionProcess. Les champs de réunion (durée,
 // format, visio, adresse, éliminatoire, objectifs) ne sont plus affichés :
 // leurs données restent en base.
+//
+// Design simplifié (04/10/2026) : pas de carte, des filets fins ; la colonne
+// « En ce moment » n'existe que si une étape a des candidats (et n'écrit que
+// les nombres supérieurs à zéro) ; la poignée et la corbeille n'apparaissent
+// qu'au survol, au focus clavier ou sur écran tactile (opacité seule : elles
+// restent dans l'ordre de tabulation).
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,11 +33,20 @@ import { useOrganization } from '@/hooks/useOrganization';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { cn } from '@/lib/utils';
 import { initialsOf, movedOrder, stepCountLabel } from './cadrageModel';
+import { SectionHeader } from './SectionHeader';
+import { REVEAL_ON_ROW, SECTION_CLASS, TOUCH, TOUCH_FIELD, useReturnFocus } from './sectionUi';
 import { DeleteStepDialog } from './DeleteStepDialog';
 import { useOrgMemberNames } from './TeamSection';
 
-const ROW_GRID =
-  'grid grid-cols-[28px_18px_minmax(0,1fr)_32px] items-center gap-x-3 gap-y-1.5 sm:grid-cols-[28px_18px_minmax(0,0.8fr)_minmax(0,1.5fr)_104px_32px]';
+/** Grille d'une ligne : poignée, numéro, nom, intervieweur, effectif (si la colonne existe), corbeille. */
+function rowGrid(withCounts: boolean): string {
+  return cn(
+    'grid grid-cols-[28px_18px_minmax(0,1fr)_44px] items-center gap-x-3 gap-y-1.5',
+    withCounts
+      ? 'sm:grid-cols-[28px_18px_minmax(0,0.8fr)_minmax(0,1.5fr)_104px_32px]'
+      : 'sm:grid-cols-[28px_18px_minmax(0,0.8fr)_minmax(0,1.5fr)_32px]',
+  );
+}
 
 type CountState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; byStep: Record<string, number> };
 
@@ -76,7 +91,7 @@ function StepNameInput({
       aria-label={`Nom de l'étape ${index + 1}`}
       placeholder="Nom de l'étape"
       autoComplete="off"
-      className="h-[34px] min-w-0 font-medium"
+      className="h-[34px] min-w-0 font-medium max-sm:h-11"
     />
   );
 }
@@ -125,7 +140,7 @@ function ExternalNameInput({
       aria-label={`Nom et fonction de l'intervieweur de l'étape ${stepName}`}
       placeholder="Nom et fonction"
       autoComplete="off"
-      className="h-[34px] min-w-0 text-sm"
+      className="h-[34px] min-w-0 text-sm max-sm:h-11"
     />
   );
 }
@@ -160,6 +175,8 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
+  const addStepButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useReturnFocus();
 
   const stepIds = steps.map((s) => s.id).join(',');
   const sameSet = order !== null && order.length === steps.length && order.every((id) => steps.some((s) => s.id === id));
@@ -184,6 +201,9 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
       ? { kind: 'ready', byStep: countsQuery.data[project.id].interviewingByStep }
       : { kind: 'error' };
 
+  // La colonne « En ce moment » n'existe que si une étape a des candidats : jamais de colonne de « Aucun ».
+  const withCounts = counts.kind === 'ready' && Object.entries(counts.byStep).some(([id, n]) => n > 0 && steps.some((s) => s.id === id));
+  const ROW_GRID = rowGrid(withCounts);
   const teamIds = new Set(team.map((m) => m.user_id));
   const orgLabel = organizationName?.trim() || 'votre organisation';
 
@@ -219,38 +239,33 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
   const stepsFailed = stepsError && !loadingSteps && steps.length === 0;
 
   return (
-    <section id="cadrage-etapes" aria-labelledby="cadrage-etapes-titre" className="flex scroll-mt-4 flex-col gap-2.5">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <h2 id="cadrage-etapes-titre" className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Étapes d'entretien
-        </h2>
-        <span className="text-xs text-muted-foreground">Dans l'ordre où le candidat les passe.</span>
-      </div>
+    <section id="cadrage-etapes" aria-labelledby="cadrage-etapes-titre" className={SECTION_CLASS}>
+      <SectionHeader id="cadrage-etapes-titre" title="Étapes d'entretien" help="Dans l'ordre où le candidat les passe." />
 
-      <div ref={listRef} className="flex flex-col rounded-xl border border-border bg-card px-4 py-1">
+      <div ref={listRef} className="flex flex-col">
         <p className="sr-only" aria-live="polite">
           {announce}
         </p>
 
         {loadingSteps ? (
-          <div className="flex flex-col gap-2 py-2.5" aria-hidden="true">
+          <div className="flex flex-col gap-2 py-1" aria-hidden="true">
             <Skeleton className="h-9 w-full" />
             <Skeleton className="h-9 w-full" />
             <Skeleton className="h-9 w-3/4" />
           </div>
         ) : stepsFailed ? (
-          <div className="flex flex-wrap items-center gap-3 py-4 text-sm text-muted-foreground" role="alert">
+          <div className="flex flex-wrap items-center gap-3 py-2 text-sm text-muted-foreground" role="alert">
             <span>Impossible de charger les étapes pour l'instant.</span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void refetchSteps()}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void refetchSteps()} className={TOUCH}>
               Réessayer
             </Button>
           </div>
         ) : displayed.length === 0 ? (
-          <div className="flex flex-col gap-3 py-4">
+          <div className="flex flex-col gap-3 py-2">
             <p className="text-sm text-muted-foreground">Aucune étape. Ajoutez au moins une étape pour suivre les entretiens.</p>
             {!readOnly && (
               <div className="flex flex-col gap-2">
-                <span className="text-xs text-muted-foreground">Ou partez d'un modèle :</span>
+                <span className="text-sm text-muted-foreground">Ou partez d'un modèle :</span>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {Object.entries(PROCESS_TEMPLATES).map(([key, tpl]) => (
                     <button
@@ -259,13 +274,13 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                       disabled={isAdding}
                       onClick={() => void initializeFromTemplate(tpl.steps, tpl.label)}
                       className={cn(
-                        'flex flex-col gap-0.5 rounded-lg border border-border bg-background px-3 py-2 text-left transition-colors',
-                        'hover:border-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        'flex flex-col gap-0.5 rounded-lg bg-muted/50 px-3 py-2.5 text-left transition-colors duration-150',
+                        'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         'disabled:cursor-not-allowed disabled:opacity-50',
                       )}
                     >
                       <span className="text-sm font-medium text-foreground">{tpl.label}</span>
-                      <span className="text-xs text-muted-foreground">{tpl.steps.map((s) => s.name).join(', ')}</span>
+                      <span className="text-sm text-muted-foreground">{tpl.steps.map((s) => s.name).join(', ')}</span>
                     </button>
                   ))}
                 </div>
@@ -279,7 +294,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
               <span />
               <span>Étape</span>
               <span>Intervieweur</span>
-              <span>En ce moment</span>
+              {withCounts && <span>En ce moment</span>}
               <span />
             </div>
             {displayed.map((step, index) => {
@@ -292,21 +307,14 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                 : step.interviewer_name?.trim() || (step.interviewer_type === 'panel' ? 'Plusieurs personnes' : '');
               const whoLabel = whoName || (isExt ? 'Nom à préciser' : 'À préciser');
               const current = userId ? `member:${userId}` : isExt ? 'external' : 'none';
-              const count =
-                counts.kind === 'loading' ? (
-                  <Skeleton className="h-4 w-16" />
-                ) : counts.kind === 'error' ? (
-                  <span className="text-muted-foreground">indisponible</span>
-                ) : (
-                  stepCountLabel(counts.byStep[step.id] ?? 0)
-                );
+              const countLabel = counts.kind === 'ready' ? stepCountLabel(counts.byStep[step.id] ?? 0) : null;
 
               return (
                 <div key={step.id} className={cn('flex flex-col border-t border-border', index === 0 && 'max-sm:border-t-0')}>
                   <div
                     className={cn(
                       ROW_GRID,
-                      '-mx-2 rounded-lg px-2 py-1.5 sm:min-h-11',
+                      'group -mx-2 rounded-lg px-2 py-1.5 sm:min-h-11',
                       moving && 'bg-accent',
                     )}
                   >
@@ -319,9 +327,9 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                         aria-label={`Réordonner l'étape ${name}`}
                         onClick={() => setMovingId(moving ? null : step.id)}
                         className={cn(
-                          'grid h-8 w-7 place-items-center rounded-md transition-colors hover:bg-accent',
+                          'grid h-8 w-7 place-items-center rounded-md transition-colors hover:bg-accent max-sm:h-11',
                           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                          moving ? 'text-foreground' : 'text-muted-foreground',
+                          moving ? 'text-foreground' : cn('text-muted-foreground', REVEAL_ON_ROW),
                         )}
                       >
                         <GripVertical className="h-4 w-4" aria-hidden="true" />
@@ -343,7 +351,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                             type="button"
                             aria-label={`Intervieweur de l'étape ${name} : ${whoLabel}${isExt ? ', hors Konekt' : ''}`}
                             className={cn(
-                              'flex h-[34px] w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-left text-sm transition-colors',
+                              'flex h-[34px] w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-left text-sm transition-colors max-sm:h-11',
                               'hover:border-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20',
                               'disabled:cursor-not-allowed disabled:opacity-60',
                             )}
@@ -417,10 +425,21 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <span className="col-start-3 row-start-3 text-xs tabular-nums text-muted-foreground sm:col-start-auto sm:row-start-auto sm:text-foreground/80">
-                      <span className="sm:sr-only">En ce moment : </span>
-                      {count}
-                    </span>
+                    {withCounts && (
+                      <span
+                        className={cn(
+                          'col-start-3 row-start-3 text-sm tabular-nums text-foreground-secondary sm:col-start-auto sm:row-start-auto',
+                          !countLabel && 'max-sm:hidden',
+                        )}
+                      >
+                        {countLabel && (
+                          <>
+                            <span className="sm:sr-only">En ce moment : </span>
+                            {countLabel}
+                          </>
+                        )}
+                      </span>
+                    )}
                     {readOnly ? (
                       <span aria-hidden="true" className="col-start-4 row-start-1 sm:col-start-auto sm:row-start-auto" />
                     ) : (
@@ -429,8 +448,14 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                         variant="ghost"
                         size="icon-sm"
                         aria-label={`Supprimer l'étape ${name}`}
-                        onClick={() => setDeleting(step)}
-                        className="col-start-4 row-start-1 text-muted-foreground hover:text-destructive sm:col-start-auto sm:row-start-auto"
+                        onClick={() => {
+                          returnFocus.remember();
+                          setDeleting(step);
+                        }}
+                        className={cn(
+                          'col-start-4 row-start-1 text-muted-foreground hover:text-destructive sm:col-start-auto sm:row-start-auto max-sm:min-h-11 max-sm:min-w-11',
+                          REVEAL_ON_ROW,
+                        )}
                       >
                         <Trash2 aria-hidden="true" />
                       </Button>
@@ -438,7 +463,14 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                   </div>
 
                   {isExt && (
-                    <div className="pb-2.5 pl-[70px] sm:grid sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.5fr)_104px_32px] sm:gap-x-3">
+                    <div
+                      className={cn(
+                        'pb-2.5 pl-[70px] sm:grid sm:gap-x-3',
+                        withCounts
+                          ? 'sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.5fr)_104px_32px]'
+                          : 'sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.5fr)_32px]',
+                      )}
+                    >
                       <span className="hidden sm:block" aria-hidden="true" />
                       <ExternalNameInput
                         step={step}
@@ -454,22 +486,24 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                     <div className="flex flex-wrap items-center gap-1.5 pb-2.5 sm:pl-[70px]">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="xs"
                         data-move={`${step.id}:up`}
                         disabled={index === 0 || reordering}
                         onClick={() => void move(step, 'up')}
+                        className={cn('bg-muted/60 hover:bg-muted', TOUCH)}
                       >
                         <ArrowUp aria-hidden="true" />
                         Monter
                       </Button>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="xs"
                         data-move={`${step.id}:down`}
                         disabled={index === displayed.length - 1 || reordering}
                         onClick={() => void move(step, 'down')}
+                        className={cn('bg-muted/60 hover:bg-muted', TOUCH)}
                       >
                         <ArrowDown aria-hidden="true" />
                         Descendre
@@ -480,6 +514,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                         size="xs"
                         data-move={`${step.id}:done`}
                         onClick={() => setMovingId(null)}
+                        className={TOUCH}
                       >
                         Terminer
                       </Button>
@@ -514,9 +549,9 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                   aria-label="Nom de la nouvelle étape"
                   placeholder="Nom de l'étape"
                   autoComplete="off"
-                  className="h-8 min-w-0 flex-[1_1_12rem]"
+                  className={cn('h-8 min-w-0 flex-[1_1_12rem]', TOUCH_FIELD)}
                 />
-                <Button type="submit" variant="primary" size="sm" disabled={!newName.trim() || isAdding} loading={isAdding}>
+                <Button type="submit" variant="ghost" size="sm" disabled={!newName.trim() || isAdding} loading={isAdding} className={cn('font-semibold', TOUCH)}>
                   Ajouter
                 </Button>
                 <Button
@@ -527,17 +562,19 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                     setAdding(false);
                     setNewName('');
                   }}
+                  className={cn('text-muted-foreground hover:text-foreground', TOUCH)}
                 >
                   Annuler
                 </Button>
               </form>
             ) : (
               <Button
+                ref={addStepButton}
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => setAdding(true)}
-                className="-ml-2.5 text-muted-foreground hover:text-foreground"
+                className={cn('-ml-3 text-muted-foreground hover:text-foreground', TOUCH)}
               >
                 <Plus aria-hidden="true" />
                 Ajouter une étape
@@ -552,7 +589,12 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
         step={deleting}
         steps={displayed}
         deleteStep={deleteStep}
-        onClose={() => setDeleting(null)}
+        // Annuler ou Échap : le focus revient à la corbeille ; étape supprimée : à « Ajouter une étape ».
+        onDeleted={returnFocus.forget}
+        onClose={() => {
+          setDeleting(null);
+          returnFocus.restore(() => addStepButton.current);
+        }}
       />
     </section>
   );

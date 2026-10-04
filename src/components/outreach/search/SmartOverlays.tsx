@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { LinkedInFiltersState } from '@/components/outreach/types';
+import { quickChipV3 } from '@/components/missions/v3/sourcing/quickChip';
 import {
   TOP_ENGINEERING_SCHOOLS, TOP_BUSINESS_SCHOOLS, ESN_BOOLEAN_GROUPS,
 } from './smartOverlayData';
@@ -73,6 +74,10 @@ interface SmartOverlaysProps {
   /** alt_companies suggérées par l'IA (jamais affichées ailleurs) */
   suggestedCompanies: string[];
   searchSource: 'linkedin' | 'database';
+  /** Nouvelle page mission : puces sans cadre (fond neutre quand actives), texte de 14 px, cibles de 44 px sur téléphone. */
+  variant?: 'default' | 'mission-v3';
+  /** Nouvelle page mission : puces ajoutées à la suite des filtres rapides (« À l'écoute »). */
+  trailing?: React.ReactNode;
 }
 
 interface OverlayDef {
@@ -203,8 +208,9 @@ const OVERLAYS: OverlayDef[] = [
 ];
 
 export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
-  filters, onFiltersEdit, suggestedCompanies, searchSource,
+  filters, onFiltersEdit, suggestedCompanies, searchSource, variant = 'default', trailing,
 }) => {
+  const isV3 = variant === 'mission-v3';
   const vivier = suggestedCompanies.filter(c => c?.trim()).slice(0, 6);
 
   /* ── Picker « A levé des fonds » ── */
@@ -282,11 +288,11 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
       } as OverlayDef;
     });
 
-  if (!defs.length) return null;
+  if (!defs.length && !trailing) return null;
 
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-xs text-muted-foreground">
+    <div className={isV3 ? 'flex flex-wrap items-center gap-x-1 gap-y-3 sm:gap-y-1.5' : 'mb-2 flex flex-wrap items-center gap-1.5'}>
+      <span className={isV3 ? 'mr-1 text-sm text-muted-foreground' : 'mr-1 text-xs text-muted-foreground'}>
         Filtres rapides
       </span>
       {defs.map(d => {
@@ -299,7 +305,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
             aria-checked={isActive}
             title={d.title}
             onClick={() => onFiltersEdit(f => d.toggle(f, d.active(f)))}
-            className={cn(
+            className={isV3 ? quickChipV3(isActive) : cn(
               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150',
               isActive
                 ? 'bg-[var(--k-accent-tint)] border-[color-mix(in_srgb,var(--k-accent)_40%,var(--k-hairline))] text-[var(--k-text)]'
@@ -307,7 +313,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
             )}
           >
             {isActive && (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className="w-2.5 h-2.5 text-[var(--k-accent)]"><path d="M20 7 10 17l-5-5" /></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className={cn('w-2.5 h-2.5', !isV3 && 'text-[var(--k-accent)]')}><path d="M20 7 10 17l-5-5" /></svg>
             )}
             {d.label}
           </button>
@@ -321,7 +327,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
             type="button"
             title="Boîte actuelle parmi les sociétés financées connues (annuaire Konekt, EU, rafraîchi chaque mois). Choisissez le stade de levée."
             onClick={() => setStageOpen(o => !o)}
-            className={cn(
+            className={isV3 ? quickChipV3(anyStageActive) : cn(
               'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150',
               anyStageActive
                 ? 'bg-[var(--k-accent-tint)] border-[color-mix(in_srgb,var(--k-accent)_40%,var(--k-hairline))] text-[var(--k-text)]'
@@ -329,7 +335,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
             )}
           >
             {anyStageActive && (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className="w-2.5 h-2.5 text-[var(--k-accent)]"><path d="M20 7 10 17l-5-5" /></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} className={cn('w-2.5 h-2.5', !isV3 && 'text-[var(--k-accent)]')}><path d="M20 7 10 17l-5-5" /></svg>
             )}
             A levé
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-2.5 h-2.5"><path d="m7 10 5 5 5-5" /></svg>
@@ -393,6 +399,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
           )}
         </span>
       )}
+      {trailing}
     </div>
   );
 };
