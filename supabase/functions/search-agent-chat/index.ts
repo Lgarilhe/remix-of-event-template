@@ -1076,7 +1076,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `et récentes : actualité/levée de fonds d'une entreprise, tendances marché, salaires, ` +
         `personne publique. Utilise-la quand la réponse dépend d'infos hors de Konekt et ` +
         `cite tes sources (liens). Max 3 recherches par réponse — sois précis dans tes requêtes. ` +
-        `Des CONNECTEURS EXTERNES configurés par l'organisation (Notion, Slack, calendrier, ` +
+        `Des CONNECTEURS EXTERNES configurés par l'organisation ou le membre (wiki, messagerie d'équipe, calendrier, ` +
         `outils internes…) peuvent exposer des outils supplémentaires. Ces connecteurs sont ` +
         `STRICTEMENT EN LECTURE SEULE et limités à une liste blanche validée par un administrateur. ` +
         `N'essaie JAMAIS d'écrire, créer, modifier, supprimer ou envoyer quoi que ce soit via un ` +

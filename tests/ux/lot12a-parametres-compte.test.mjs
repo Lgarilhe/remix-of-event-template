@@ -43,7 +43,8 @@ const FILES = {
   linkedin: 'src/components/settings/MyLinkedInAccount.tsx',
   safety: 'src/components/settings/LinkedInSafetySettings.tsx',
   email: 'src/components/settings/MyEmailAccount.tsx',
-  notion: 'src/components/settings/NotionConnectionCard.tsx',
+  notion: 'src/components/settings/NotionConnectorRow.tsx',
+  connectors: 'src/components/settings/AssistantConnectorsCard.tsx',
   extension: 'src/components/settings/ExtensionTokens.tsx',
   aiContext: 'src/components/settings/AiContextSettings.tsx',
   templates: 'src/components/settings/MessageTemplatesSettings.tsx',
@@ -51,7 +52,7 @@ const FILES = {
   journal: 'src/components/settings/AgentActionsSettings.tsx',
 };
 const src = Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, code(rel)]));
-const CARDS = ['linkedin', 'safety', 'email', 'notion', 'extension', 'aiContext', 'templates', 'signatures', 'journal'];
+const CARDS = ['linkedin', 'safety', 'email', 'connectors', 'notion', 'extension', 'aiContext', 'templates', 'signatures', 'journal'];
 
 // ---------------------------------------------------------------- F-01
 test('F-01 — un seul titre de carte : 13 px, graisse 600, casse de phrase, action à droite', () => {
@@ -190,7 +191,7 @@ test('F-10 — extension : plus de procédure de développeur, une phrase neutre
 // ---------------------------------------------------------------- F-11
 test('F-11 — vouvoiement : Notion, Journal, extension', () => {
   const TU = /\b(?:Clique|Réessaie|Relance la|Choisis|Colle|Ouvre|Active|Sélectionne|approuve-la)\b|\btu (?:vas|pourras)\b|\bTu\b|\bt’est\b|\btes accès\b|\bton assistant\b/;
-  for (const key of ['notion', 'journal', 'extension']) {
+  for (const key of ['connectors', 'notion', 'journal', 'extension']) {
     for (const text of visibleStrings(src[key])) assert.doesNotMatch(text, TU, `${FILES[key]} : « ${text} »`);
   }
   assert.match(src.notion, /Réessayez ou choisissez un autre espace de travail\./);
@@ -285,6 +286,7 @@ test('F-20 — vocabulaire : « l’assistant », « organisation », « modèle
   assert.doesNotMatch(texts('safety'), /Cap d'actions|capez|&/);
   assert.doesNotMatch(texts('email'), /\bemails?\b|outreach/i);
   assert.doesNotMatch(texts('notion'), /assistant IA/);
+  assert.doesNotMatch(texts('connectors'), /assistant IA/);
   assert.doesNotMatch(texts('journal'), /Recherche RAG|CRM|Stats organisation|Outreach candidat|Envoyer un email|Action \$\{action\}/);
   // Un statut au singulier sur la carte, au pluriel dans les compteurs et le filtre.
   assert.match(src.journal, /executed: \{ label: 'Exécutée', plural: 'Exécutées'/);
@@ -380,9 +382,10 @@ test('Règles — e2e : les textes que cliquent les tests de parcours restent', 
   assert.match(src.journal, /Annuler la programmation/);
   assert.match(src.journal, /\n\s*Relancer\n/);
   assert.match(between(src.journal, 'function ActionRow', ''), /<Card>/, 'une carte par action (div.rounded-xl.bg-card)');
-  // e2e/flows/notion-connection.spec.ts.
-  assert.match(src.notion, /Disponible immédiatement dans le chat IA/);
-  assert.match(src.notion, /` · workspace @\$\{connection\.email_domain\}`/);
+  // e2e/flows/notion-connection.spec.ts : Notion, une ligne de « Applications connectées ».
+  assert.match(src.connectors, /<CardTitle className="text-sm font-semibold">Applications connectées<\/CardTitle>/);
+  assert.match(src.connectors, /<NotionConnectorRow \/>/);
+  assert.match(src.notion, /`Espace @\$\{connection\.email_domain\}`/);
   assert.match(src.notion, /'Modifier l’accès' : needsReconnect \? 'Reconnecter' : 'Connecter'/);
   assert.match(src.notion, /access_denied: 'Connexion Notion annulée\. Aucun accès n’a été ajouté\.'/);
 });

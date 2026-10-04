@@ -2,7 +2,8 @@
  * AgentConnectorsSettings — Connecteurs MCP du Copilot (P3.1).
  *
  * Rendu dans Paramètres › Règles de l’assistant (ancre #connecteurs), sous les ICP.
- * La carte Notion n'est plus ici : elle est dans Paramètres › Connexions.
+ * Les applications que chaque membre connecte lui-même (Notion…) sont dans
+ * Paramètres › Connexions, liste « Applications connectées » (#applications).
  * Un connecteur = un serveur MCP distant (Model Context Protocol, standard
  * ouvert) : Notion, Slack, calendrier, outil interne… Ses outils deviennent
  * disponibles dans le chat du Copilot.

@@ -39,7 +39,7 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
     ? `Ajouter un fichier ou gérer les connecteurs, ${activeCount} actif${activeCount > 1 ? 's' : ''}`
     : 'Ajouter un fichier ou gérer les connecteurs, aucun actif';
 
-  const manageConnectors = (href = '/settings/account/connections#notion') => {
+  const manageConnectors = (href = '/settings/account/connections#applications') => {
     setOpen(false);
     navigate(href);
     closeAgent();
@@ -106,7 +106,8 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
             const isEmailConnector = connector.kind === 'gmail'
               || connector.kind === 'outlook'
               || connector.kind === 'email';
-            const canConnectEmail = isEmailConnector
+            // Une application non connectée (Notion, e-mail) propose « Connecter », comme toutes les autres.
+            const canConnect = connector.kind !== 'mcp'
               && !connector.connected
               && connector.status !== 'checking';
 
@@ -149,12 +150,12 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
                             : 'En pause'}
                   </span>
                 </span>
-                {canConnectEmail ? (
+                {canConnect ? (
                   <Button
                     type="button"
                     variant="outline"
                     size="xs"
-                    onClick={() => manageConnectors(connector.manageHref ?? '/settings/account/connections#email')}
+                    onClick={() => manageConnectors(connector.manageHref)}
                     aria-label={`Connecter ${connector.label}`}
                     className="shrink-0 max-md:h-11"
                   >

@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { ExternalLink, Loader2, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
+import { ExternalLink, Loader2, RefreshCw, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
 
 import notionLogo from '@/assets/notion-logo.webp';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/layout/ErrorState';
 import {
   AlertDialog,
@@ -74,7 +73,12 @@ function NotionStatus({ state }: { state: NotionState }) {
   );
 }
 
-export function NotionConnectionCard() {
+/**
+ * Notion, une ligne de la liste « Applications connectées » (AssistantConnectorsCard) :
+ * un connecteur parmi d'autres, sans carte à part (décision du 04/10/2026).
+ * Seul lecteur du retour de connexion (notion_oauth, notion_error).
+ */
+export function NotionConnectorRow() {
   const { organizationId } = useOrganization();
   const { user } = useAuthReady();
   const queryClient = useQueryClient();
@@ -153,18 +157,23 @@ export function NotionConnectionCard() {
   };
 
   return (
-    <Card>
-      {/* Anatomie commune des cartes : titre, état, actions à droite (revue design F-01). */}
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            {/* Logo officiel, noir : posé sur sa plaque blanche pour rester lisible en thème sombre. */}
-            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-sm border border-border bg-white" aria-hidden="true">
-              <img src={notionLogo} alt="" className="h-4 w-4 object-contain" />
-            </span>
-            Notion
-          </CardTitle>
-          <NotionStatus state={state} />
+    <div className="space-y-2 px-3 py-3">
+      {/* Anatomie des lignes de la liste : logo, nom et état, actions à droite. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {/* Logo officiel, noir : posé sur sa plaque blanche pour rester lisible en thème sombre. */}
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-border bg-white" aria-hidden="true">
+            <img src={notionLogo} alt="" className="h-5 w-5 object-contain" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-foreground">Notion</h3>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <NotionStatus state={state} />
+              {connected && connection?.email_domain && (
+                <span className="text-xs text-muted-foreground">{`Espace @${connection.email_domain}`}</span>
+              )}
+            </div>
+          </div>
         </div>
 
         {canManage && ready && (
@@ -212,46 +221,23 @@ export function NotionConnectionCard() {
             )}
           </div>
         )}
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Connectez votre compte Notion personnel pour que l’assistant puisse chercher et lire les contenus auxquels vous avez accès.
+      {statusQuery.isError && (
+        <ErrorState
+          variant="compact"
+          title="Impossible de vérifier la connexion Notion."
+          description="Vérifiez votre connexion, puis réessayez."
+          onRetry={() => { void statusQuery.refetch(); }}
+          retrying={statusQuery.isFetching}
+        />
+      )}
+
+      {!canManage && ready && (
+        <p className="text-xs text-muted-foreground">
+          La connexion Notion n’est pas disponible pour ce compte.
         </p>
-
-        {statusQuery.isError && (
-          <ErrorState
-            variant="compact"
-            title="Impossible de vérifier la connexion Notion."
-            description="Vérifiez votre connexion, puis réessayez."
-            onRetry={() => { void statusQuery.refetch(); }}
-            retrying={statusQuery.isFetching}
-          />
-        )}
-
-        {connected && (
-          <div className="flex items-start gap-2.5 rounded-lg bg-muted p-3">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <div className="min-w-0">
-              {/* « chat IA » et « workspace » : textes lus par e2e/flows/notion-connection.spec.ts. */}
-              <p className="text-xs font-medium text-foreground">
-                Disponible immédiatement dans le chat IA
-                {connection?.email_domain ? ` · workspace @${connection.email_domain}` : ''}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-foreground-secondary">
-                Cette connexion vous est personnelle : les autres membres ne peuvent pas utiliser vos accès Notion.
-                Konekt autorise uniquement la recherche et la lecture, jamais la modification.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {!canManage && ready && (
-          <p className="text-xs text-muted-foreground">
-            La connexion Notion n’est pas disponible pour ce compte.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
