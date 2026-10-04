@@ -60,3 +60,13 @@ test('prompt de l’assistant : les exemples de connecteurs ne citent plus Notio
   assert.doesNotMatch(block, /Notion/);
   assert.doesNotMatch(block, /liste blanche validée par un administrateur\. /, 'une connexion personnelle a une liste fixée par Konekt');
 });
+
+test('connexion Notion : les erreurs montrées à l’écran sont en français, au vouvoiement', () => {
+  const source = read('supabase/functions/notion-mcp-oauth/index.ts');
+  const messages = [...source.matchAll(/new HttpError\(\d+, (['`])([^'`]*)\1\)/g)].map((m) => m[2]);
+  assert.ok(messages.length >= 8, 'messages d’erreur relevés');
+  for (const message of messages) {
+    assert.doesNotMatch(message, /\bTu\b|\bta\b|\bton\b|\btes\b/, `tutoiement : « ${message} »`);
+    assert.doesNotMatch(message, /\b(?:failed|refused|did not|does not|metadata|discovery|exchange)\b/i, `anglais : « ${message} »`);
+  }
+});

@@ -123,6 +123,9 @@ This applies to (non-exhaustive) :
 
 **Before merging any UI change** : grep for `Unipile`, `Apollo`, `PDL`, `People Data Labs` in user-visible strings (JSX text, toast/sonner messages, tooltips, labels, placeholders).
 
+### Notion : un connecteur parmi d'autres (décision du 2026-10-04)
+Notion n'apparaît dans l'application que comme connecteur de l'assistant : une ligne de la liste « Applications connectées » (Paramètres › Connexions, `#applications`, `AssistantConnectorsCard` et `NotionConnectorRow`), son interrupteur dans le menu des connecteurs du chat et ses cartes d'outils (« Recherche dans Notion »). Rien d'autre : pas de carte à part, pas d'exemple « Notion » dans les textes ni dans les prompts, et jamais de mention de l'organisation interne de Konekt dans Notion, qui sert de modèle aux agents sans être une référence visible. Un connecteur d'organisation ne peut pas prendre un nom réservé (`RESERVED_BUILTIN_CONNECTORS`, `src/lib/assistantConnectors.ts`). Garde statique : `tests/ux/notion-connecteur-liste.test.mjs`.
+
 ---
 
 ## Code Map

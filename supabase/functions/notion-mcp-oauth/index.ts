@@ -144,7 +144,9 @@ async function firstJson(urls: string[]): Promise<Record<string, unknown>> {
       // Try the next standards-compatible discovery location.
     }
   }
-  throw new HttpError(502, `Notion OAuth discovery failed (${lastStatus || 'network'})`);
+  // Détail technique au journal, phrase au vouvoiement pour l'écran.
+  console.warn(`[notion-mcp-oauth] discovery failed (${lastStatus || 'network'})`);
+  throw new HttpError(502, 'Notion ne répond pas pour le moment. Réessayez dans un instant.');
 }
 
 async function discoverOAuth(): Promise<{
@@ -163,7 +165,8 @@ async function discoverOAuth(): Promise<{
     ? protectedResource.authorization_servers.filter((value): value is string => typeof value === 'string')
     : [];
   if (authorizationServers.length === 0) {
-    throw new HttpError(502, 'Notion did not advertise an authorization server');
+    console.warn('[notion-mcp-oauth] no authorization server advertised');
+    throw new HttpError(502, 'Notion n’a pas pu préparer la connexion. Réessayez dans un instant.');
   }
 
   const authorizationServer = authorizationServers[0];
@@ -176,13 +179,15 @@ async function discoverOAuth(): Promise<{
 
   const metadata = metadataRaw as unknown as OAuthMetadata;
   if (!metadata.authorization_endpoint || !metadata.token_endpoint || !metadata.registration_endpoint) {
-    throw new HttpError(502, 'Notion OAuth metadata is incomplete');
+    console.warn('[notion-mcp-oauth] incomplete OAuth metadata');
+    throw new HttpError(502, 'Notion n’a pas pu préparer la connexion. Réessayez dans un instant.');
   }
   if (
     Array.isArray(metadata.code_challenge_methods_supported) &&
     !metadata.code_challenge_methods_supported.includes('S256')
   ) {
-    throw new HttpError(502, 'Notion OAuth does not advertise PKCE S256');
+    console.warn('[notion-mcp-oauth] PKCE S256 not advertised');
+    throw new HttpError(502, 'Notion n’a pas pu préparer la connexion. Réessayez dans un instant.');
   }
 
   const resource = typeof protectedResource.resource === 'string'
@@ -228,7 +233,8 @@ async function getOrCreateOAuthClient(adminClient: AdminClient): Promise<OAuthCl
   });
   const registration = await readJson(registrationResponse);
   if (!registrationResponse.ok || typeof registration.client_id !== 'string') {
-    throw new HttpError(502, 'Notion refused the secure connection registration');
+    console.warn(`[notion-mcp-oauth] client registration refused (${registrationResponse.status})`);
+    throw new HttpError(502, 'Notion a refusé de préparer la connexion. Réessayez dans un instant.');
   }
 
   const encryptedClientSecret = typeof registration.client_secret === 'string'
@@ -294,7 +300,7 @@ async function handleStart(
   corsHeaders: Record<string, string>,
 ) {
   const role = await getRole(adminClient, userId, organizationId);
-  if (!isMember(role)) throw new HttpError(403, 'Tu ne fais pas partie de cette organisation.');
+  if (!isMember(role)) throw new HttpError(403, 'Vous ne faites pas partie de cette organisation.');
 
   const returnTo = normalizeNotionReturnUrl(body.return_to, APP_URL, EXTRA_RETURN_ORIGINS);
   if (!returnTo) throw new HttpError(400, 'Adresse de retour Konekt invalide.');
@@ -380,7 +386,7 @@ async function handleDisconnect(
   corsHeaders: Record<string, string>,
 ) {
   const role = await getRole(adminClient, userId, organizationId);
-  if (!isMember(role)) throw new HttpError(403, 'Tu ne fais pas partie de cette organisation.');
+  if (!isMember(role)) throw new HttpError(403, 'Vous ne faites pas partie de cette organisation.');
 
   const [{ data: connection }, { data: oauthClient }] = await Promise.all([
     adminClient
@@ -500,7 +506,8 @@ async function exchangeCode(
   });
   const payload = await readJson(response);
   if (!response.ok || typeof payload.access_token !== 'string' || typeof payload.refresh_token !== 'string') {
-    throw new HttpError(502, 'Notion token exchange failed');
+    console.warn(`[notion-mcp-oauth] token exchange failed (${response.status})`);
+    throw new HttpError(502, 'Notion n’a pas pu finaliser la connexion.');
   }
   return payload;
 }
