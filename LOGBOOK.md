@@ -32,6 +32,19 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-04 — SHIP — Design simplifié, lot A : l'accueil comme la maquette
+
+**Contexte** : deuxième lot du design simplifié (`docs/design/06-simplicite.md`), après les fondations (PR #258). Le propriétaire a choisi l'accueil « comme la maquette ».
+**Décision / Fait** : deux sections. « À faire » : une ligne par chose qui attend (compte LinkedIn à reconnecter, réponses à lire, candidats qui attendent une réponse, candidats qui n'avancent plus), avec visages et lien d'action, puis les tâches en retard sous le réveil et la journée. « Missions en cours » : cinq missions, visages des candidats en entretien, cumuls « au total ». Retirés : cartes des canaux, « Cette semaine », activité récente, « Personnaliser la page ». `PageHeader` : actions sur leur propre ligne sous 640 px. `AvatarStack` : chevauchement de 6 px. Cibles de 44 px sur téléphone.
+**Impact** : `src/pages/Dashboard.tsx`, `src/components/dashboard/*`, `PageHeader.tsx`, `person-avatar.tsx`. Retirés : `DashboardConnections`, `DashboardWeekHighlight`, `DashboardActivityFeed`, `DashboardSortableItem`, `Sparkline`, `useDashboardLayout`.
+**Recette `qa.md`** (banc local) : Guillaume PASS (liens vers messagerie, analyse, connexions, tâches, agenda et mission ; case cochée sur place ; page prête en 2 s). Claire PASS (aucun terme technique ni nom de fournisseur, « Nouvelle mission » en haut sans défiler). Théo PASS (compte vide : états vides, aucun zéro inventé ; `@critical` multi-tenant vert). Sophie PASS (iPhone 13 : aucun débordement, toutes les cibles de l'accueil à 44 px, cases des tâches comprises).
+**Reste à faire** :
+- [ ] Photos dans la pile « réponses à lire » : la notification ne porte pas le candidat (lot P).
+- [ ] Bandeau d'essai, hors accueil : « Choisir un plan » (20 px) et « Fermer le bandeau » (36 px) sous 44 px sur téléphone.
+**Refs** : PR #259.
+
+---
+
 ## 2026-10-04 — SHIP — Refonte mission, lots 0c-3 et 0c-4 : écrans de mission, /pipeline, fiches, annulation
 
 **Contexte** : les écrans lisent la vue `mission_candidate_rows` et `get_mission_stage_counts` (lots 0c-1 et 0c-2). Livrés avant le lot 0b-5 (repli « ordre B » du plan 0c).

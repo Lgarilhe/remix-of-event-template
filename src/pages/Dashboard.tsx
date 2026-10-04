@@ -1,25 +1,28 @@
 /**
- * Dashboard — page d'accueil de l'application.
+ * Dashboard — page d'accueil de l'application (design simplifié,
+ * docs/design/06-simplicite.md).
  *
- * Une page d'action plutôt qu'un mur de chiffres : l'en-tête, puis cinq
- * sections dans l'ordre choisi par l'utilisateur (mode « Personnaliser »,
- * mémorisé par useDashboardLayout) :
- *   1. Canaux        — état de LinkedIn et de l'e-mail
- *   2. Pour aujourd'hui — ce qui attend une action
- *   3. Missions et journée — missions actives, programme du jour
- *   4. Cette semaine — variation et chiffres de la semaine
- *   5. Activité      — derniers mouvements sur les candidats
+ * L'en-tête, puis deux sections :
+ *   1. À faire — ce qui attend une action (compte LinkedIn à reconnecter,
+ *      réponses, relances, candidats qui n'avancent plus), puis les tâches en
+ *      retard et la journée (entretiens, envois, tâches).
+ *   2. Missions en cours — une ligne par mission, visages des candidats en
+ *      entretien, chiffres au total.
  *
- * Chaque section a ses états : chargement (squelette à hauteur fixe), erreur
- * avec « Réessayer », vide avec la prochaine action (docs/design/01-direction.md, § 8).
+ * Décision du propriétaire (04/10/2026) : plus de cartes des canaux (une ligne
+ * « À faire » quand LinkedIn est à reconnecter), plus de « Cette semaine » ni
+ * d'activité récente sur l'accueil (Pipeline, onglet Analyse, et la fiche de
+ * chaque candidat), plus de réordonnancement des sections.
+ *
+ * Chaque section a ses états : chargement (squelette), erreur avec
+ * « Réessayer », vide avec la prochaine action (docs/design/01-direction.md, § 8).
  */
 
-import React, { useMemo, useState } from 'react';
-import { Check, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
-import { PageLayout, Section, ErrorState } from '@/components/layout';
+import { PageLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useATSData, daysInStage, stagnantDays, countPeople, type ATSCandidate } from '@/hooks/useATSData';
 import { STALE_EXEMPT_STAGES } from '@/lib/stageDisplay';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
@@ -28,16 +31,11 @@ import { useAllReminders } from '@/hooks/useAllReminders';
 import { useSidebarNotifications } from '@/hooks/sidebar/useSidebarNotifications';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useDashboardConnections } from '@/hooks/useDashboardConnections';
-import { useDashboardLayout, type DashboardSectionKey } from '@/hooks/useDashboardLayout';
-import { CandidateDetailModal } from '@/components/ats/CandidateDetailModal';
+import { useCandidateAvatars } from '@/hooks/useCandidateAvatars';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
-import { DashboardFocusPanel } from '@/components/dashboard/DashboardFocusPanel';
-import { DashboardConnections } from '@/components/dashboard/DashboardConnections';
-import { DashboardMissionsPanel } from '@/components/dashboard/DashboardMissionsPanel';
+import { DashboardFocusPanel, type FocusPerson } from '@/components/dashboard/DashboardFocusPanel';
+import { DashboardMissionsPanel, type InterviewingPeople } from '@/components/dashboard/DashboardMissionsPanel';
 import { DashboardTodayPanel } from '@/components/dashboard/DashboardTodayPanel';
-import { DashboardWeekHighlight } from '@/components/dashboard/DashboardWeekHighlight';
-import { DashboardActivityFeed } from '@/components/dashboard/DashboardActivityFeed';
-import { DashboardSortableItem } from '@/components/dashboard/DashboardSortableItem';
 
 // Stagnant : même règle que la carte, le tableau et l'analyse du /pipeline
 // (délais de useATSData, jours depuis l'entrée dans l'étape). À trier et Retenu
@@ -54,44 +52,27 @@ const isPendingResponse = (c: ATSCandidate): boolean => {
   return days === null || days >= 1;
 };
 
-const SECTION_LABELS: Record<DashboardSectionKey, string> = {
-  connections: 'Vos canaux',
-  focus: "Pour aujourd'hui",
-  'missions-today': 'Missions et journée',
-  week: 'Cette semaine',
-  activity: 'Activité récente',
+// Ligne de job_candidate_status qui porte la photo enregistrée du candidat.
+const photoKeyOf = (c: ATSCandidate): string =>
+  c.source === 'local' && c.id.startsWith('local-') ? c.id.slice('local-'.length) : c.sourceId;
+
+// Visages montrés par pile : trois personnes distinctes au plus.
+const STACK_FACES = 3;
+const firstPeople = (list: ATSCandidate[]): ATSCandidate[] => {
+  const seen = new Set<string>();
+  const out: ATSCandidate[] = [];
+  for (const c of list) {
+    const key = c.candidateId || c.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+    if (out.length === STACK_FACES) break;
+  }
+  return out;
 };
 
-/** Section dont les données chargent ou n'ont pas pu être lues. */
-const PanelPlaceholder: React.FC<{
-  title: string;
-  loading: boolean;
-  error: string | null;
-  errorTitle: string;
-  onRetry: () => void;
-}> = ({ title, loading, error, errorTitle, onRetry }) => (
-  <Section headingLevel={2} title={title}>
-    <div className="p-3">
-      {loading ? (
-        <div role="status" aria-label="Chargement">
-          <Skeleton className="h-32 rounded-lg" />
-        </div>
-      ) : (
-        <ErrorState
-          variant="compact"
-          className="border-0 bg-transparent"
-          title={errorTitle}
-          description="Vérifiez votre connexion, puis réessayez."
-          detail={error}
-          onRetry={onRetry}
-        />
-      )}
-    </div>
-  </Section>
-);
-
 export default function Dashboard() {
-  const { candidates, loading, error: candidatesError, handleStageChange, handleTagsChange, refetch } = useATSData();
+  const { candidates, loading, error: candidatesError } = useATSData();
   const { projects, isLoading: projectsLoading, error: projectsError, refetch: refetchProjects } = useSourcingProjects();
   const {
     data: scheduledMessages = [],
@@ -110,22 +91,46 @@ export default function Dashboard() {
   // les lignes en gras de la section Réponses. null : inconnu.
   const { replies } = useSidebarNotifications();
   const unreadMessages = replies.data ? replies.data.candidates.filter((c) => c.counted).length : null;
+  const unreadPeople = replies.data?.candidates.filter((c) => c.counted).slice(0, STACK_FACES).map((r) => ({ name: r.name }));
   const unreadMessagesUnavailable = replies.status === 'error' || replies.status === 'offline';
   const { displayName } = useCurrentProfile();
   const connections = useDashboardConnections();
-  const { order, setOrder, resetOrder, isCustomized } = useDashboardLayout();
-
-  const [selectedCandidate, setSelectedCandidate] = useState<ATSCandidate | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [announcement, setAnnouncement] = useState('');
 
   const candidatesUnavailable = !!candidatesError && candidates.length === 0;
 
-  const focusCounters = useMemo(() => ({
-    stagnant: candidatesUnavailable ? null : candidates.filter(isStagnant).length,
-    pending: candidatesUnavailable ? null : candidates.filter(isPendingResponse).length,
-    remindersToday: remindersError ? null : groupedReminders.today.length + groupedReminders.overdue.length,
-  }), [candidates, candidatesUnavailable, remindersError, groupedReminders.today.length, groupedReminders.overdue.length]);
+  const pendingList = useMemo(() => (candidatesUnavailable ? [] : candidates.filter(isPendingResponse)), [candidates, candidatesUnavailable]);
+  const stagnantList = useMemo(() => (candidatesUnavailable ? [] : candidates.filter(isStagnant)), [candidates, candidatesUnavailable]);
+
+  // Candidats en entretien en ce moment, par mission (étape générale du lot 0c).
+  const interviewingByMission = useMemo(() => {
+    const byMission = new Map<string, ATSCandidate[]>();
+    for (const c of candidates) {
+      if (c.generalStage !== 'interviewing' || !c.projectId) continue;
+      byMission.set(c.projectId, [...(byMission.get(c.projectId) ?? []), c]);
+    }
+    return byMission;
+  }, [candidates]);
+
+  // Une seule lecture des photos pour toutes les piles de visages.
+  const shown = useMemo(() => {
+    const lists = [firstPeople(pendingList), firstPeople(stagnantList)];
+    for (const list of interviewingByMission.values()) lists.push(firstPeople(list));
+    return lists;
+  }, [pendingList, stagnantList, interviewingByMission]);
+  const photoKeys = useMemo(() => Array.from(new Set(shown.flat().map(photoKeyOf).filter(Boolean))), [shown]);
+  const photos = useCandidateAvatars(photoKeys);
+  const personOf = (c: ATSCandidate): FocusPerson => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null });
+
+  const interviewing = useMemo(() => {
+    const out: Record<string, InterviewingPeople> = {};
+    for (const [projectId, list] of interviewingByMission) {
+      out[projectId] = {
+        people: firstPeople(list).map((c) => ({ name: c.name, src: photos.get(photoKeyOf(c)) ?? null })),
+        total: countPeople(list),
+      };
+    }
+    return out;
+  }, [interviewingByMission, photos]);
 
   // Candidats actifs : hors étapes terminales, une personne comptée une fois
   // même présente dans deux missions. Les profils jamais ouverts sont déjà
@@ -140,6 +145,12 @@ export default function Dashboard() {
     [projects],
   );
 
+  // Client d'une mission, pour les initiales d'une tâche sans candidat.
+  const missionClientOf = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p.jd_client || p.client_name || null]));
+    return (jobId: string) => byId.get(jobId.replace(/^project:/, '')) ?? null;
+  }, [projects]);
+
   // Tâches du jour : aujourd'hui et en retard, non terminées.
   const remindersToday = useMemo(
     () => [...groupedReminders.overdue, ...groupedReminders.today],
@@ -152,77 +163,8 @@ export default function Dashboard() {
     void refetchMessages();
   };
 
-  const moveSection = (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[index], next[target]] = [next[target], next[index]];
-    setOrder(next);
-    setAnnouncement(`${SECTION_LABELS[next[target]]} : position ${target + 1} sur ${next.length}.`);
-  };
-
-  const sections: Record<DashboardSectionKey, React.ReactNode> = {
-    connections: (
-      <DashboardConnections linkedin={connections.linkedin} email={connections.email} isLoading={connections.isLoading} />
-    ),
-    focus: (
-      <DashboardFocusPanel
-        isLoading={loading || remindersLoading}
-        unreadMessages={unreadMessages}
-        unreadMessagesUnavailable={unreadMessagesUnavailable}
-        stagnantCandidates={focusCounters.stagnant}
-        remindersToday={focusCounters.remindersToday}
-        pendingResponses={focusCounters.pending}
-      />
-    ),
-    'missions-today': (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <DashboardMissionsPanel
-            projects={projects}
-            isLoading={projectsLoading}
-            error={projectsError ? (projectsError as { message?: string }).message ?? 'Erreur' : null}
-            onRetry={() => void refetchProjects()}
-          />
-        </div>
-        <DashboardTodayPanel
-          scheduledMessages={scheduledMessages}
-          remindersToday={remindersToday}
-          isLoading={messagesLoading || remindersLoading}
-          error={todayError}
-          onRetry={retryToday}
-          onToggleReminder={toggleComplete}
-        />
-      </div>
-    ),
-    week:
-      loading || candidatesUnavailable ? (
-        <PanelPlaceholder
-          title="Cette semaine"
-          loading={loading}
-          error={candidatesError}
-          errorTitle="Impossible de calculer la semaine"
-          onRetry={refetch}
-        />
-      ) : candidates.length > 0 ? (
-        <DashboardWeekHighlight candidates={candidates} />
-      ) : null,
-    activity:
-      loading || candidatesUnavailable ? (
-        <PanelPlaceholder
-          title="Activité récente"
-          loading={loading}
-          error={candidatesError}
-          errorTitle="Impossible de charger l'activité"
-          onRetry={refetch}
-        />
-      ) : (
-        <DashboardActivityFeed candidates={candidates} onCandidateClick={(c) => setSelectedCandidate(c)} />
-      ),
-  };
-
   return (
-    <PageLayout maxWidth="2xl">
+    <PageLayout maxWidth="md">
       <SEOHead
         title="Tableau de bord | Konekt"
         description="Votre point de départ : ce qui demande votre attention aujourd'hui."
@@ -234,73 +176,46 @@ export default function Dashboard() {
         activeMissionsCount={activeMissionsCount}
       />
 
-      {editing && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/60 px-4 py-3">
-          <p className="text-sm text-foreground">Réordonnez les sections avec les flèches. L'ordre est enregistré pour vous.</p>
-          <div className="flex items-center gap-2">
-            {isCustomized && (
-              <Button type="button" variant="ghost" size="sm" onClick={resetOrder}>
-                <RotateCcw aria-hidden="true" />
-                Rétablir l'ordre par défaut
-              </Button>
-            )}
-            <Button type="button" variant="primary" size="sm" onClick={() => setEditing(false)}>
-              <Check aria-hidden="true" />
-              Terminé
+      <div className="mt-4 space-y-12">
+        <section aria-labelledby="dashboard-todo">
+          <div className="flex flex-wrap items-baseline justify-between gap-4 pb-1">
+            <h2 id="dashboard-todo" className="text-lg font-semibold text-foreground">
+              À faire
+            </h2>
+            <Button asChild variant="link" size="sm" className="min-h-11 px-0 text-muted-foreground md:min-h-0">
+              <Link to="/tasks">Toutes les tâches</Link>
             </Button>
           </div>
-        </div>
-      )}
+          <DashboardFocusPanel
+            isLoading={loading}
+            linkedinIssue={connections.linkedin.status === 'error'}
+            unreadMessages={unreadMessages}
+            unreadMessagesUnavailable={unreadMessagesUnavailable}
+            unreadPeople={unreadPeople}
+            pendingResponses={candidatesUnavailable ? null : pendingList.length}
+            pendingPeople={firstPeople(pendingList).map(personOf)}
+            stagnantCandidates={candidatesUnavailable ? null : stagnantList.length}
+            stagnantPeople={firstPeople(stagnantList).map(personOf)}
+          />
+          <DashboardTodayPanel
+            scheduledMessages={scheduledMessages}
+            remindersToday={remindersToday}
+            missionClientOf={missionClientOf}
+            isLoading={messagesLoading || remindersLoading}
+            error={todayError}
+            onRetry={retryToday}
+            onToggleReminder={toggleComplete}
+          />
+        </section>
 
-      <ul className="space-y-6">
-        {order.map((key, index) => {
-          const content = sections[key];
-          if (!content) return null;
-          return (
-            <DashboardSortableItem
-              key={key}
-              label={SECTION_LABELS[key]}
-              editing={editing}
-              isFirst={index === 0}
-              isLast={index === order.length - 1}
-              onMoveUp={() => moveSection(index, -1)}
-              onMoveDown={() => moveSection(index, 1)}
-            >
-              {content}
-            </DashboardSortableItem>
-          );
-        })}
-      </ul>
-
-      <p className="sr-only" aria-live="polite">
-        {announcement}
-      </p>
-
-      {!editing && (
-        <div className="mt-6 flex justify-end">
-          <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
-            <SlidersHorizontal aria-hidden="true" />
-            Personnaliser la page
-          </Button>
-        </div>
-      )}
-
-      {selectedCandidate && (
-        <CandidateDetailModal
-          // Ligne courante : après un changement d'étape, la fiche montre la nouvelle étape.
-          // Si la ligne canonique du groupe de doublons a changé d'id, on retrouve le
-          // candidat de la même mission avant de se rabattre sur l'ancien instantané.
-          candidate={
-            candidates.find(c => c.id === selectedCandidate.id)
-            ?? candidates.find(c => c.candidateId === selectedCandidate.candidateId && c.projectId === selectedCandidate.projectId)
-            ?? selectedCandidate
-          }
-          onClose={() => setSelectedCandidate(null)}
-          onStageChange={handleStageChange}
-          onTagsChange={handleTagsChange}
-          onRefresh={refetch}
+        <DashboardMissionsPanel
+          projects={projects}
+          interviewing={interviewing}
+          isLoading={projectsLoading}
+          error={projectsError ? (projectsError as { message?: string }).message ?? 'Erreur' : null}
+          onRetry={() => void refetchProjects()}
         />
-      )}
+      </div>
     </PageLayout>
   );
 }
