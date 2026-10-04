@@ -23,8 +23,10 @@ declare global {
   }
 }
 
-const PLAUSIBLE_DOMAIN = import.meta.env.VITE_PLAUSIBLE_DOMAIN as string | undefined;
-const PLAUSIBLE_SRC = (import.meta.env.VITE_PLAUSIBLE_SRC as string | undefined)
+// import.meta.env peut manquer hors de Vite (tests Node qui chargent un module
+// appelant trackEvent) : la mesure ne doit jamais empêcher le chargement.
+const PLAUSIBLE_DOMAIN = import.meta.env?.VITE_PLAUSIBLE_DOMAIN as string | undefined;
+const PLAUSIBLE_SRC = (import.meta.env?.VITE_PLAUSIBLE_SRC as string | undefined)
   || 'https://plausible.io/js/script.js';
 
 let loaded = false;

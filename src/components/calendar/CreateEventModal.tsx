@@ -293,7 +293,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       await queryClient.invalidateQueries({ queryKey: ['ats-candidates'] });
       if (pipelineRowCreated && projectId) {
         await queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
-        await queryClient.invalidateQueries({ queryKey: ['project-stats', projectId] });
+        await queryClient.invalidateQueries({ queryKey: ['mission-stage-counts'] });
       }
       resetForm();
       onOpenChange(false);

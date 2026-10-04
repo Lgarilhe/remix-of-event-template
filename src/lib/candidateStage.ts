@@ -174,29 +174,6 @@ export function missionColumnToStage(key: string, stepIds: ReadonlySet<string>):
   }
 }
 
-/**
- * Cible exacte d'une ligne, pour la restaurer (annulation au /pipeline) :
- * general_stage, process_step_id (en entretien seulement), et pipeline_stage
- * seulement s'il est un libellé admis pour cette étape et qu'aucune étape
- * d'entretien n'est portée.
- */
-export function exactTarget(row: {
-  general_stage: string;
-  process_step_id: string | null;
-  pipeline_stage: string | null;
-}): StageTarget {
-  if (!isGeneralStage(row.general_stage)) {
-    throw new Error(`Étape inconnue : ${row.general_stage}`);
-  }
-  const stage = row.general_stage;
-  const processStepId = stage === 'interviewing' && row.process_step_id ? row.process_step_id : null;
-  const legacyStage =
-    !processStepId && row.pipeline_stage && LEGACY_LABELS_BY_STAGE[stage].includes(row.pipeline_stage)
-      ? row.pipeline_stage
-      : null;
-  return { stage, processStepId, legacyStage };
-}
-
 const DEFAULT_STAGE_ERROR = "Le changement d'étape n'a pas été enregistré. Réessayez.";
 
 const STAGE_ERROR_MESSAGES: Readonly<Record<string, string>> = {

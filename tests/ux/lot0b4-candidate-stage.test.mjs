@@ -2,7 +2,7 @@
  * Refonte mission, lot 0b-4 : src/lib/candidateStage.ts, seule porte du
  * navigateur vers l'étape d'un candidat (origine user).
  *
- * - fonctions pures (ATS_LABEL_TO_STAGE, missionColumnToStage, exactTarget,
+ * - fonctions pures (ATS_LABEL_TO_STAGE, missionColumnToStage,
  *   stageErrorMessage, skippedStageMessage) : module empaqueté par esbuild
  *   (alias @/ résolus par tsconfig.app.json), le client Supabase remplacé par
  *   un faux client dont rpc est scripté par le test ;
@@ -76,7 +76,6 @@ const {
   LEGACY_LABELS_BY_STAGE,
   STAGE_BATCH_SIZE,
   missionColumnToStage,
-  exactTarget,
   stageErrorMessage,
   skippedStageMessage,
   setCandidateStage,
@@ -179,35 +178,6 @@ test('0b-4 : missionColumnToStage, colonnes fixes et étapes d\'entretien', () =
   }
   assert.throws(() => missionColumnToStage('qualification', steps), /Colonne inconnue/);
   assert.throws(() => missionColumnToStage(step, new Set()), /Colonne inconnue/);
-});
-
-// ------------------------------------------------------------ exactTarget
-test('0b-4 : exactTarget garde un libellé admis pour l\'étape, et lui seul', () => {
-  assert.deepEqual(exactTarget({ general_stage: 'interviewing', process_step_id: null, pipeline_stage: 'Offre' }),
-    { stage: 'interviewing', processStepId: null, legacyStage: 'Offre' });
-  assert.deepEqual(exactTarget({ general_stage: 'hired', process_step_id: null, pipeline_stage: 'Gagné' }),
-    { stage: 'hired', processStepId: null, legacyStage: 'Gagné' });
-  assert.deepEqual(exactTarget({ general_stage: 'hired', process_step_id: null, pipeline_stage: 'hired' }),
-    { stage: 'hired', processStepId: null, legacyStage: 'hired' });
-  assert.deepEqual(exactTarget({ general_stage: 'retained', process_step_id: null, pipeline_stage: 'Pressenti' }),
-    { stage: 'retained', processStepId: null, legacyStage: 'Pressenti' });
-  // Libellé d'une autre étape, ou inconnu : non envoyé (sinon STAGE_LEGACY_MISMATCH).
-  assert.deepEqual(exactTarget({ general_stage: 'rejected', process_step_id: null, pipeline_stage: 'Contacté' }),
-    { stage: 'rejected', processStepId: null, legacyStage: null });
-  assert.deepEqual(exactTarget({ general_stage: 'to_sort', process_step_id: null, pipeline_stage: null }),
-    { stage: 'to_sort', processStepId: null, legacyStage: null });
-  assert.deepEqual(exactTarget({ general_stage: 'contacted', process_step_id: null, pipeline_stage: 'contacté' }),
-    { stage: 'contacted', processStepId: null, legacyStage: null }, 'comparaison exacte, comme la base');
-});
-
-test('0b-4 : exactTarget, étape d\'entretien sans libellé, jamais hors entretien', () => {
-  const step = '4a1b2c3d-0000-4000-8000-000000000002';
-  assert.deepEqual(exactTarget({ general_stage: 'interviewing', process_step_id: step, pipeline_stage: step }),
-    { stage: 'interviewing', processStepId: step, legacyStage: null });
-  // Une étape d'entretien restée sur une ligne hors entretien n'est pas envoyée (STAGE_STEP_WITHOUT_INTERVIEW).
-  assert.deepEqual(exactTarget({ general_stage: 'rejected', process_step_id: step, pipeline_stage: 'Perdu' }),
-    { stage: 'rejected', processStepId: null, legacyStage: 'Perdu' });
-  assert.throws(() => exactTarget({ general_stage: 'qualification', process_step_id: null, pipeline_stage: null }), /Étape inconnue/);
 });
 
 // --------------------------------------------------------------- messages

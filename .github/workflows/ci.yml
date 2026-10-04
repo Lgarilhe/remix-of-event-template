@@ -52,6 +52,10 @@ jobs:
       # l'assistant, purge RGPD en compte seulement), un bloc par sous-lot.
       - name: Lot 0c regression tests (lectures)
         run: node --test tests/c1/lot0c-lectures.test.mjs
+      # Refonte mission, lot 0c-3 et 0c-4 : écrans de mission, /pipeline,
+      # fiches et annulation sur la vue mission_candidate_rows.
+      - name: Lot 0c-3 et 0c-4 regression tests (écrans)
+        run: node --test tests/c1/lot0c-socle-ecrans.test.mjs tests/c1/lot0c3-kanban.test.mjs tests/c1/lot0c3-vues.test.mjs tests/c1/lot0c4-pipeline.test.mjs tests/c1/lot0c4-fiches.test.mjs
       # Refonte mission, lots 1 et 2 : nouvelle page mission derrière
       # l'interrupteur (route, redirections en effet, ancienne page intacte,
       # aucune écriture directe de l'étape, jamais ouverts exclus, textes).
