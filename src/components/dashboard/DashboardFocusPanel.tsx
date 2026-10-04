@@ -65,7 +65,7 @@ const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people,
         <div className="flex items-center gap-4">
           {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} />}
           {action && (
-            <Button asChild variant="link" size="sm" className="px-0 font-semibold">
+            <Button asChild variant="link" size="sm" className="min-h-11 min-w-11 px-0 font-semibold md:min-h-0 md:min-w-0">
               <Link to={action.href}>{action.label}</Link>
             </Button>
           )}

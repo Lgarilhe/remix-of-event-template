@@ -252,13 +252,20 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="icon-xs" onClick={() => setCreateTaskOpen(true)} aria-label="Ajouter une tâche">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setCreateTaskOpen(true)}
+                  aria-label="Ajouter une tâche"
+                  className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
+                >
                   <Plus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Ajouter une tâche</TooltipContent>
             </Tooltip>
-            <Button asChild variant="ghost" size="xs">
+            <Button asChild variant="ghost" size="xs" className="min-h-11 md:min-h-0">
               <Link to="/calendar">
                 Agenda
                 <ArrowRight aria-hidden="true" />

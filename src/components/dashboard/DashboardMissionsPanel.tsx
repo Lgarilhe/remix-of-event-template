@@ -123,7 +123,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
         <h2 id="dashboard-missions" className="text-lg font-semibold text-foreground">
           Missions en cours
         </h2>
-        <Button asChild variant="link" size="sm" className="px-0 text-muted-foreground">
+        <Button asChild variant="link" size="sm" className="min-h-11 px-0 text-muted-foreground md:min-h-0">
           <Link to="/missions">Toutes les missions</Link>
         </Button>
       </div>
