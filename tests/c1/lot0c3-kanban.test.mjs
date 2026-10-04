@@ -241,3 +241,44 @@ test('0c-3 src : plus aucun compteur stats_replied, stats_qualified ni stats_hir
     assert.doesNotMatch(src, /stats_replied|stats_qualified|stats_hired/, `${file} lit un compteur qui n'existe pas`);
   }
 });
+
+test('0c-3 MissionPipeline : la carte déposée reste dans la colonne visée pendant l\'écriture', () => {
+  const src = code(PIPELINE);
+  assert.match(src, /pendingMoves/);
+  assert.match(src, /pendingMoves\[c\.id\] \?\? baseColumnOf\(c\)/);
+  // Posé avant l'attente de l'écriture, retiré au retour (succès, refus ou exception).
+  assert.match(src, /setPendingMoves\(prev => \(\{ \.\.\.prev, \[candidateId\]: targetColumn \}\)\)[\s\S]*await updateStage[\s\S]*finally[\s\S]*setPendingMoves/);
+  // Une carte en cours de déplacement ne se reprend pas.
+  assert.match(src, /pendingMoves\[candidateId\]/);
+});
+
+test('0c-3 MissionPipeline : mission sans ligne de compteurs = lecture réussie, pas un chargement sans fin', () => {
+  const src = code(PIPELINE);
+  assert.match(src, /countsKnown = stageCountsQuery\.isSuccess/);
+  assert.doesNotMatch(src, /countsKnown = stageCountsQuery\.data/);
+});
+
+test('0c-3 MissionPipeline : l\'erreur des étapes ne remplace l\'écran que sans étape lue', () => {
+  const src = code(PIPELINE);
+  assert.match(src, /stepsError && steps\.length === 0/);
+});
+
+test('0c-3 MissionPipeline : l\'ancienneté de la carte est un texte visible', () => {
+  const src = code(PIPELINE);
+  assert.match(src, /stageAgeText\(days\)/);
+  assert.match(src, /dans la même étape depuis/);
+});
+
+test('0c-3 recommandations : les valeurs écrites par la notation ont un libellé (tableau et carte)', () => {
+  const types = code(TYPES);
+  for (const v of ['STRONG_MATCH', 'GOOD_MATCH', 'POSSIBLE_MATCH', 'WEAK_MATCH', 'NO_MATCH']) {
+    assert.match(types, new RegExp(`'${v}'`), `${v} sans libellé`);
+  }
+  assert.match(code(TABLE), /recommendationLabel\(/);
+  assert.match(code(PIPELINE), /recommendationLabel\(/);
+});
+
+test('0c-3 useMissionProcess : le toast ne reprend pas le nombre brut de lignes remappées', () => {
+  const src = code(PROCESS);
+  assert.doesNotMatch(src, /\$\{remapped\} candidat/);
+});

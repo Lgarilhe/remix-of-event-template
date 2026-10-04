@@ -45,6 +45,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { setCandidateStage, stageErrorMessage } from '@/lib/candidateStage';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
+import { invalidateStageReaders } from '@/lib/stageDisplay';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { CandidateAvatar } from '@/components/dashboard/CandidateAvatar';
 import {
@@ -292,8 +293,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       await queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       await queryClient.invalidateQueries({ queryKey: ['ats-candidates'] });
       if (pipelineRowCreated && projectId) {
-        await queryClient.invalidateQueries({ queryKey: ['project-candidates', projectId] });
-        await queryClient.invalidateQueries({ queryKey: ['mission-stage-counts'] });
+        await invalidateStageReaders(queryClient);
       }
       resetForm();
       onOpenChange(false);

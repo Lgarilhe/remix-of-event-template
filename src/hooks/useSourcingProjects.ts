@@ -401,7 +401,7 @@ export const useProjectCandidates = (projectId: string | null) => {
 
       // Par pages de 1 000 lignes jusqu'à une page courte : un seul select
       // coupait en silence les plus anciens candidats d'une grosse mission.
-      // Ordre complet (created_at puis id) pour qu'une ligne ne change pas de
+      // Tri sur created_at puis id pour qu'une ligne ne change pas de
       // page entre deux lectures.
       const rows: ProjectCandidateRow[] = [];
       for (let from = 0; from < PROJECT_CANDIDATES_MAX_ROWS; from += PROJECT_CANDIDATES_PAGE_SIZE) {

@@ -50,34 +50,59 @@ test('0c-4 : la grille IA reçoit le poste et les étapes, étape courante par p
   assert.match(src, /jobContext\.currentStepObjectives = /);
   // Clé lue par generate-scorecard : compétences recherchées.
   assert.match(src, /jobContext\.skills = \[/);
+  // Critères du manager : la fonction ne lit que « requirements ».
+  assert.match(src, /jobContext\.requirements = /);
+});
+
+test('0c-4 : generate-scorecard lit les étapes d\'entretien que la fiche envoie', () => {
+  const tab = code('src/components/ats/ScorecardTab.tsx');
+  const fn = code('supabase/functions/generate-scorecard/index.ts');
+  // Chaque clé envoyée par la fiche pour situer l'entretien est lue par la fonction.
+  for (const key of ['processSteps', 'currentStepName', 'currentStepObjectives', 'currentStepIsEliminatory']) {
+    assert.match(tab, new RegExp(`jobContext\\.${key} = `), `${key} envoyée par la fiche`);
+    assert.match(fn, new RegExp(`jobContext\\.${key}`), `${key} lue par la fonction`);
+  }
+  assert.match(fn, /Étapes du process/);
+  // Texte borné : nombre d'étapes et longueur de chaque champ.
+  assert.match(fn, /processSteps\.slice\(0, 10\)/);
+  assert.match(fn, /clip\(jobContext\.currentStepObjectives, 300\)/);
 });
 
 test('0c-4 : le plein écran garde la mission de la fiche (?mission=)', () => {
   const tab = code('src/components/ats/ScorecardTab.tsx');
-  assert.match(tab, /params\.set\('mission', candidate\.projectId\)/);
+  // Même repli que buildJobContext : une fiche sans projectId garde sa mission par le job_id.
+  assert.match(tab, /const missionKey = candidate\.projectId \?\? missionIdOfJob\(candidate\.jobId\);\s*if \(missionKey\) params\.set\('mission', missionKey\)/);
+  assert.match(tab, /\[activeKey, flush, navigate, candidate\.candidateId, candidate\.projectId, candidate\.jobId\]/);
   const page = code('src/pages/ScorecardFullPage.tsx');
   assert.match(page, /missionIdOfJob\(searchParams\.get\('mission'\)\)/);
-  assert.match(page, /\.eq\('project_id', missionParam\)/);
+  assert.match(page, /\.eq\('project_id', mission\)/);
+  // Une ancienne mission n'a pas de project_id : repli sans la mission.
+  assert.match(page, /readRow\(null\)/);
   assert.match(page, /\[candidateId, missionParam, reloadTick\]/);
 });
 
-test('0c-4 : CandidateDetailModal lit les notes de mission par projectId', () => {
+test('0c-4 : CandidateDetailModal ne lit plus de notes de mission que rien n\'affiche', () => {
   const src = code('src/components/ats/CandidateDetailModal.tsx');
   assert.doesNotMatch(src, /\.eq\('job_id', candidate\.jobId\)/);
-  assert.match(src, /candidate\.projectId \?\? missionIdOfJob\(candidate\.jobId\)/);
-  assert.match(src, /\[candidate\.candidateId, candidate\.jobId, candidate\.projectId\]/);
-  assert.match(src, /setProjectNotes\(projectData\?\.notes \|\| null\)/, 'notes remises à null sans mission trouvée');
+  assert.doesNotMatch(src, /projectNotes|setProjectNotes/, 'état écrit et jamais lu');
+  assert.doesNotMatch(src, /from\('sourcing_projects'\)/, 'lecture inutile qui retardait la liste des notes');
+  assert.match(src, /\[candidate\.candidateId\]\);/);
   assert.match(src, /let cancelled = false/);
   assert.doesNotMatch(src, /recharge la page/i, 'vouvoiement');
 });
 
 test('0c-4 : ScorecardFullPage range par l\'étape générale et porte la mission', () => {
   const src = code('src/pages/ScorecardFullPage.tsx');
-  assert.match(src, /stage: atsColumnOf\(data\)/);
+  assert.match(src, /stage: atsColumnOf\(src\)/);
   assert.doesNotMatch(src, /pipeline_stage \|\| 'Nouveau'/);
-  assert.match(src, /generalStage: isGeneralStage\(data\.general_stage\)/);
+  assert.match(src, /generalStage: isGeneralStage\(src\.general_stage\)/);
+  // Ligne canonique du groupe de doublons (vue), comme la fiche d'origine.
+  assert.match(src, /\.from\('mission_candidate_rows'\)/);
+  assert.match(src, /const src = canon \?\? data;/);
+  assert.match(src, /processStepId: src\.process_step_id/);
+  assert.match(src, /score: src\.score/);
   assert.match(src, /projectId: data\.project_id/);
-  assert.match(src, /jd\.title \|\| proj\.job_title \|\| proj\.name/, 'même intitulé de poste que la fiche');
+  assert.match(src, /jd\.title \|\| proj\.job_title \|\| proj\.name/);
   assert.doesNotMatch(src, /Télétravail/, 'mode de travail écrit en mot, jamais « Télétravail : true »');
   assert.match(src, /REMOTE_LABELS\[jd\.remote_policy\]/);
 });
@@ -103,6 +128,9 @@ test('0c-4 : EnrollmentPreviewModal lit la note par project_id et organization_i
   assert.match(src, /readBy\('project_id', missionId\)/);
   assert.match(src, /readBy\('job_id', job!\.id\)/, 'repli sur le poste pour un job_id ancien');
   assert.match(src, /i \+= 100/, 'lots de 100 identifiants');
+  // Doublons : la ligne notée la plus récente (lignes lues de la plus récente).
+  assert.match(src, /query\.order\('updated_at', \{ ascending: false \}\)/);
+  assert.match(src, /prev && !\(prev\.score == null && r\.score != null\)/);
   assert.match(src, /<ScoringPopover[\s\S]*?projectId=\{missionIdOfJob\(job\?\.id\)\}[\s\S]*?organizationId=\{organizationId\}/);
 });
 
@@ -113,7 +141,10 @@ test('0c-4 : ScoringPopover lit la note par mission et organisation, ligne noté
   assert.match(src, /\.eq\(column, value\)/);
   assert.match(src, /query\.eq\('organization_id', organizationId\)/);
   assert.match(src, /readBy\('project_id', projectId\)/);
-  assert.match(src, /order\('score', \{ ascending: false, nullsFirst: false \}\)/);
+  // Règle de la vue : la ligne notée la plus récente, pas la note la plus haute.
+  assert.doesNotMatch(src, /order\('score'/);
+  assert.match(src, /order\('updated_at', \{ ascending: false \}\)/);
+  assert.match(src, /found\?\.find\(\(r\) => r\.score != null\) \?\? found\?\.\[0\]/);
   // Plus de requête à résultat ignoré ni de colonnes inutilisées.
   assert.doesNotMatch(src, /if \(jobId\) query\.eq/);
   assert.doesNotMatch(src, /pipeline_stage, status/);
@@ -127,6 +158,8 @@ test('0c-4 : Dashboard compte la stagnation comme le /pipeline (stage_entered_at
   assert.doesNotMatch(src, /STAGE_GUIDE_TIMES/, 'table de délais dupliquée');
   assert.doesNotMatch(src, /differenceInDays|parseISO/);
   assert.doesNotMatch(src, /\.lastActivity/, 'plus de date d\'étape tirée de updated_at');
+  // La fiche rouverte retrouve la ligne canonique si l'id de la carte a changé.
+  assert.match(src, /c\.candidateId === selectedCandidate\.candidateId && c\.projectId === selectedCandidate\.projectId/);
   assert.match(src, /import \{[^}]*\bstagnantDays\b[^}]*\} from '@\/hooks\/useATSData'/);
   assert.match(src, /import \{[^}]*\bdaysInStage\b[^}]*\} from '@\/hooks\/useATSData'/);
   assert.match(src, /STALE_EXEMPT_STAGES\.has\(c\.generalStage\)/, 'À trier et Retenu exemptés');

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { AlertTriangle, BarChart3, Lightbulb, TrendingUp, Zap, type LucideIcon } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { SourcingProject, useProjectCandidates, type ProjectCandidateRow } from '@/hooks/useSourcingProjects';
 import { useMissionStageCounts } from '@/hooks/useMissionStageCounts';
@@ -24,7 +25,7 @@ interface MissionInsightsProps {
 }
 
 interface Insight {
-  icon: string;
+  icon: LucideIcon;
   title: string;
   description: string;
   action?: { label: string; tab: string };
@@ -156,7 +157,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
 
     if (stats.untreated > 3) {
       list.push({
-        icon: '💡',
+        icon: Lightbulb,
         title: `${plural(stats.untreated, 'profil à trier', 'profils à trier')}`,
         description: 'Ces profils ne sont encore ni retenus, ni contactés, ni écartés. Retenez les meilleurs, puis créez une séquence pour les approcher.',
         action: { label: 'Créer une séquence', tab: 'outreach' },
@@ -166,7 +167,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
 
     if (stats.total > 0 && stats.total < 5 && daysSinceCreation > 2) {
       list.push({
-        icon: '⚡',
+        icon: Zap,
         title: 'Peu de profils sourcés',
         description: `Seulement ${plural(stats.total, 'profil sourcé', 'profils sourcés')}. Essayez d'élargir vos filtres dans le Brief (expérience, localisation, titres).`,
         action: { label: 'Modifier le brief', tab: 'brief' },
@@ -176,7 +177,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
 
     if (enoughContacted && responseRate >= 25) {
       list.push({
-        icon: '🔥',
+        icon: TrendingUp,
         title: `Excellent taux de réponse (${responseRate}%)`,
         description: 'Votre approche fonctionne bien. Continuez à enrichir le pipeline avec de nouveaux profils.',
         action: { label: 'Sourcer plus', tab: 'sourcing' },
@@ -186,7 +187,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
 
     if (enoughContacted && responseRate < 8) {
       list.push({
-        icon: '⚠️',
+        icon: AlertTriangle,
         title: `Taux de réponse bas (${responseRate}%)`,
         description: 'Essayez de personnaliser davantage vos messages, de varier les canaux (InMail vs invitation), ou de cibler des profils avec un meilleur score.',
         priority: 'high',
@@ -195,7 +196,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
 
     if (stats.total >= 10 && stats.dismissed > stats.total * 0.5) {
       list.push({
-        icon: '📊',
+        icon: BarChart3,
         title: `${Math.round((stats.dismissed / stats.total) * 100)}% de profils écartés`,
         description: 'Plus de la moitié des profils sont écartés. Affinez vos critères de recherche dans le Brief pour améliorer la pertinence.',
         action: { label: 'Affiner le brief', tab: 'brief' },
@@ -262,7 +263,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
               value={enrollmentStatsError || response.rate === null ? '—' : `${response.rate}%`}
               sublabel={enrollmentStatsError
                 ? 'Chiffre indisponible'
-                : `${response.replied}/${response.contacted} contactés`}
+                : `${response.replied} sur ${response.contacted} contactés par séquence`}
               color={enrollmentStatsError || !enoughContacted
                 ? 'text-foreground'
                 : responseRate >= 20 ? 'text-success' : responseRate >= 10 ? 'text-warning' : 'text-destructive'}
@@ -301,7 +302,7 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
                     insight.priority === 'medium' ? "border-warning/40 bg-warning/10" :
                     "border-success/40 bg-success/10"
                   )}>
-                    <span className="text-lg shrink-0">{insight.icon}</span>
+                    <insight.icon className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-foreground">{insight.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{insight.description}</p>
@@ -358,11 +359,11 @@ export const MissionInsights = ({ project }: MissionInsightsProps) => {
             </div>
           )}
         </>
-      ) : countsQuery.isError ? (
+      ) : countsQuery.isError || (!countsQuery.isPending && !stats) ? (
         <div className="flex flex-col items-center justify-center py-16 text-center" role="status">
           <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Chiffres indisponibles</h3>
           <p className="text-xs text-muted-foreground max-w-sm">
-            Les chiffres de cette mission n'ont pas pu être chargés.
+            Les chiffres de cette mission ne sont pas disponibles.
           </p>
           <Button variant="outline" size="xs" className="mt-3" onClick={() => { void countsQuery.refetch(); }}>
             Réessayer

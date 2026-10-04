@@ -49,6 +49,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ATSCandidate } from '@/hooks/useATSData';
 import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
+import type { JobDetails } from '@/types/jobDetails';
 import { useOrganization } from '@/hooks/useOrganization';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import {
@@ -126,7 +127,7 @@ interface BriefFields {
   skills_must_have?: string[];
   skills_should_have?: string[];
   skills_nice_to_have?: string[];
-  evaluation_criteria?: unknown[];
+  evaluation_criteria?: JobDetails['evaluation_criteria'];
   evaluation_weights?: unknown;
 }
 
@@ -585,8 +586,12 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
         jobContext.niceToHave = (jd.skills_nice_to_have || []).join(', ');
         // Clé lue par la fonction : compétences recherchées, indispensables d'abord.
         jobContext.skills = [...(jd.skills_must_have || []), ...(jd.skills_should_have || [])];
-        // Critères d'évaluation du manager, transmis à l'IA.
+        // Critères d'évaluation du manager : la fonction ne lit que « requirements »,
+        // ils y sont donc écrits en texte (le critère rédhibitoire est signalé).
         if ((jd.evaluation_criteria?.length ?? 0) > 0) {
+          jobContext.requirements = (jd.evaluation_criteria ?? [])
+            .map((c) => `${c.label}${c.deal_breaker ? ' (rédhibitoire)' : ''}${c.description ? ` : ${c.description}` : ''}`)
+            .join(' | ');
           jobContext.managerCriteria = jd.evaluation_criteria;
           jobContext.evaluationWeights = jd.evaluation_weights;
         }
@@ -843,11 +848,13 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     // La mission suit dans l'adresse : un candidat présent dans deux missions
     // garde, en plein écran, le poste et les étapes de la grille ouverte.
     const params = new URLSearchParams();
-    if (candidate.projectId) params.set('mission', candidate.projectId);
+    // Même repli que buildJobContext : une fiche sans projectId garde sa mission par le job_id.
+    const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId);
+    if (missionKey) params.set('mission', missionKey);
     if (coaching) params.set('coaching', '1');
     const query = params.toString();
     navigate(`/ats/scorecard/${candidate.candidateId}${query ? `?${query}` : ''}`);
-  }, [activeKey, flush, navigate, candidate.candidateId, candidate.projectId]);
+  }, [activeKey, flush, navigate, candidate.candidateId, candidate.projectId, candidate.jobId]);
 
   const openCoaching = useCallback(() => {
     // Déjà en plein écran : l'assistant s'ouvre sur place.

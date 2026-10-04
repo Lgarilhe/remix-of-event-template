@@ -7,7 +7,7 @@
  *  - 23 : sous un autre identifiant, une inscription close depuis plus de
  *    90 jours n'empêche pas la réinscription, avec un avertissement ; en deçà,
  *    le candidat n'est pas réinscrit et l'interface l'explique (21) ;
- *  - 29 : le kanban du pipeline d'une mission a une colonne « Répondu » ;
+ *  - 29 : le kanban du pipeline d'une mission a une colonne « A répondu » ;
  *  - 31 : la fiche candidat masque à un collaborateur les actions sur les
  *    inscriptions d'un autre membre, comme le suivi des inscrits ;
  *  - 32 : pas d'activation de séquence tant que l'état de l'abonnement n'est
@@ -398,7 +398,7 @@ test.describe('Décision 23 : réinscription sous un autre identifiant', () => {
   });
 });
 
-// ═══ Décision 29 : colonne « Répondu » du kanban de mission ═════════════════
+// ═══ Décision 29 : colonne « A répondu » du kanban de mission ═════════════════
 
 /** Colonne du kanban de la mission (aria-label « Colonne <libellé>, N candidat(s) »). */
 const column = (page: Page, label: string) => page.locator(`[aria-label^="Colonne ${label},"]`);
@@ -449,8 +449,8 @@ async function seedPipelineRows(ws: Workspace, rows: Array<{ name: string; statu
   return new Map((data as Array<{ id: string; candidate_name: string }>).map((d) => [d.candidate_name, d.id]));
 }
 
-test.describe('Décision 29 : colonne « Répondu » du pipeline de mission', () => {
-  test('board générique : « Répondu » après « Contacté » reçoit l’étape « Répondu » et les réponses restées à une étape de départ ; glisser vers « Répondu » et en sortir écrit étape et statut', async ({ browser }) => {
+test.describe('Décision 29 : colonne « A répondu » du pipeline de mission', () => {
+  test('board générique : « A répondu » après « Contacté » reçoit l’étape « A répondu » et les réponses restées à une étape de départ ; glisser vers « A répondu » et en sortir écrit étape et statut', async ({ browser }) => {
     const ws = await workspace('E2E déc-ui kanban');
     const ids = await seedPipelineRows(ws, [
       { name: 'Alice Etape', status: 'replied', pipeline_stage: 'Répondu' },
@@ -463,32 +463,32 @@ test.describe('Décision 29 : colonne « Répondu » du pipeline de mission', ()
     const page = await openAs(browser, ws.org.owner, [ws.accountId]);
     await openMissionKanban(page, ws.missionId, 'Alice Etape');
 
-    expect(await columnLabels(page)).toEqual(['Sourcé', 'Contacté', 'Répondu', 'Shortlisté', 'Écarté']);
+    expect(await columnLabels(page)).toEqual(['À trier', 'Retenu', 'Contacté', 'A répondu', 'En entretien', 'Embauché', 'Écarté']);
     // Lot 0b-4 : le kanban range par l'étape générale. Un candidat qui a répondu
-    // reste « Répondu » même avec l'ancien libellé « shortlisted » (Retenu vient
+    // reste « A répondu » même avec l'ancien libellé « shortlisted » (Retenu vient
     // avant Contacté dans le modèle du lot 0a).
-    await expect(column(page, 'Répondu')).toHaveAttribute('aria-label', 'Colonne Répondu, 4 candidats');
+    await expect(column(page, 'A répondu')).toHaveAttribute('aria-label', 'Colonne A répondu, 4 candidats');
     for (const name of ['Alice Etape', 'Bruno Statut', 'Chloe Contactee', 'Farid Shortlist']) {
-      await expect(column(page, 'Répondu').getByText(name, { exact: true })).toBeVisible();
+      await expect(column(page, 'A répondu').getByText(name, { exact: true })).toBeVisible();
     }
     await expect(column(page, 'Contacté')).toHaveAttribute('aria-label', 'Colonne Contacté, 1 candidat');
     await expect(column(page, 'Contacté').getByText('David Attente', { exact: true })).toBeVisible();
-    await expect(column(page, 'Sourcé').getByText('Emma Source', { exact: true })).toBeVisible();
-    await expect(column(page, 'Shortlisté').getByText('Farid Shortlist', { exact: true })).toHaveCount(0);
+    await expect(column(page, 'À trier').getByText('Emma Source', { exact: true })).toBeVisible();
+    await expect(column(page, 'Retenu').getByText('Farid Shortlist', { exact: true })).toHaveCount(0);
 
-    await dragCard(page, 'David Attente', 'Répondu');
-    await expect(toast(page, 'David Attente déplacé vers « Répondu »')).toBeVisible({ timeout: 15_000 });
+    await dragCard(page, 'David Attente', 'A répondu');
+    await expect(toast(page, 'David Attente déplacé vers « A répondu »')).toBeVisible({ timeout: 15_000 });
     await expect.poll(() => pipelineRow(ids.get('David Attente')!), { timeout: 15_000 }).toMatchObject({ status: 'replied', general_stage: 'replied' });
-    await expect(column(page, 'Répondu').getByText('David Attente', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(column(page, 'A répondu').getByText('David Attente', { exact: true })).toBeVisible({ timeout: 15_000 });
 
     await dragCard(page, 'Alice Etape', 'Contacté');
     await expect(toast(page, 'Alice Etape déplacé vers « Contacté »')).toBeVisible({ timeout: 15_000 });
     await expect.poll(() => pipelineRow(ids.get('Alice Etape')!), { timeout: 15_000 }).toMatchObject({ status: 'messaged', general_stage: 'contacted' });
     await expect(column(page, 'Contacté').getByText('Alice Etape', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(column(page, 'Répondu')).toHaveAttribute('aria-label', 'Colonne Répondu, 4 candidats');
+    await expect(column(page, 'A répondu')).toHaveAttribute('aria-label', 'Colonne A répondu, 4 candidats');
   });
 
-  test('avec des étapes d’entretien : « Répondu » suit « Contacté », un candidat en entretien qui a répondu reste dans son étape', async ({ browser }) => {
+  test('avec des étapes d’entretien : « A répondu » suit « Contacté », un candidat en entretien qui a répondu reste dans son étape', async ({ browser }) => {
     const ws = await workspace('E2E déc-ui kanban process');
     const { data: steps, error } = await admin().from('mission_process_steps').insert([
       { project_id: ws.missionId, organization_id: ws.org.orgId, step_order: 0, name: 'Préqualif', duration_minutes: 30 },
@@ -504,14 +504,14 @@ test.describe('Décision 29 : colonne « Répondu » du pipeline de mission', ()
     const page = await openAs(browser, ws.org.owner, [ws.accountId]);
     await openMissionKanban(page, ws.missionId, 'Gaelle Entretien');
 
-    expect(await columnLabels(page)).toEqual(['Sourcé', 'Contacté', 'Répondu', 'Préqualif', 'Entretien client', 'Embauché', 'Écarté']);
+    expect(await columnLabels(page)).toEqual(['À trier', 'Retenu', 'Contacté', 'A répondu', 'Préqualif', 'Entretien client', 'Embauché', 'Écarté']);
     await expect(column(page, 'Entretien client').getByText('Gaelle Entretien', { exact: true })).toBeVisible();
-    await expect(column(page, 'Répondu').getByText('Hugo Source', { exact: true })).toBeVisible();
+    await expect(column(page, 'A répondu').getByText('Hugo Source', { exact: true })).toBeVisible();
     await expect(column(page, 'Contacté').getByText('Ines Contactee', { exact: true })).toBeVisible();
-    await expect(column(page, 'Répondu')).toHaveAttribute('aria-label', 'Colonne Répondu, 1 candidat');
+    await expect(column(page, 'A répondu')).toHaveAttribute('aria-label', 'Colonne A répondu, 1 candidat');
   });
 
-  test('de bout en bout : un candidat de la colonne « Contacté » marqué « a répondu » depuis sa fiche passe dans « Répondu »', async ({ browser }) => {
+  test('de bout en bout : un candidat de la colonne « Contacté » marqué « a répondu » depuis sa fiche passe dans « A répondu »', async ({ browser }) => {
     const ws = await workspace('E2E déc-ui kanban réponse');
     const seq = await missionSequence(ws, 'Kanban réponse', { steps: 2 });
     const profileId = `ACoAADUIKR${rand()}`;
@@ -537,7 +537,7 @@ test.describe('Décision 29 : colonne « Répondu » du pipeline de mission', ()
     await expect.poll(() => pipelineRow(jcs!.id as string), { timeout: 15_000 }).toMatchObject({ status: 'replied' });
 
     await openMissionKanban(page, ws.missionId, name);
-    await expect(column(page, 'Répondu').getByText(name, { exact: true })).toBeVisible();
+    await expect(column(page, 'A répondu').getByText(name, { exact: true })).toBeVisible();
     await expect(column(page, 'Contacté').getByText(name, { exact: true })).toHaveCount(0);
   });
 });

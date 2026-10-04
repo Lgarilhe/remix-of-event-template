@@ -32,8 +32,8 @@ import {
 } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { ATSCandidate } from '@/hooks/useATSData';
-import { atsColumnTitle } from '@/lib/stageDisplay';
+import { ATSCandidate, ATS_STAGES, STAGNATION_DAYS, stagnantDays } from '@/hooks/useATSData';
+import { atsColumnTitle, candidateColumnKey } from '@/lib/stageDisplay';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { CandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { listCVs, CandidateCV } from '@/lib/cvStorage';
@@ -66,20 +66,9 @@ interface Props {
   organizationId: string | null;
 }
 
-// Étapes "stagnantes" si le candidat y reste plus de X jours.
-// Exemple : un candidat dans "Contacté" depuis 18 jours sans réponse →
-// recruter doit relancer ou passer à la suite. Pas de seuil pour À trier
-// (Nouveau) ni Retenu (Pressenti) : plan 0c, section 6.4, comme le kanban de mission.
-const STAGNATION_THRESHOLDS_DAYS: Record<string, number> = {
-  'Contacté': 14,
-  'Répondu': 5,
-  'Pré-qualif': 7,
-  'CV envoyé': 14,
-  'ITW en cours': 21,
-  'Offre': 14,
-};
-// Étapes terminales — pas de stagnation à signaler
-const TERMINAL_STAGES = new Set(['Gagné', 'Perdu']);
+// Étapes « sans mouvement » : les délais sont ceux de la carte du /pipeline
+// (STAGNATION_DAYS, une seule table). Pas de délai pour À trier ni Retenu :
+// plan 0c, section 6.4, comme le kanban de mission.
 
 export const OverviewTab: React.FC<Props> = ({
   candidate, enrichedProfile, fullProfile, notes, reminders, organizationId,
@@ -129,24 +118,21 @@ export const OverviewTab: React.FC<Props> = ({
     const result: Alert[] = [];
 
     // 1. Stagnation : combien de jours dans cette étape ? Depuis l'entrée dans
-    //    l'étape (lot 0c-4), à défaut depuis la dernière action.
-    const stageSince = candidate.stageEnteredAt || candidate.lastActivity;
-    if (
-      stageSince &&
-      !TERMINAL_STAGES.has(candidate.stage) &&
-      STAGNATION_THRESHOLDS_DAYS[candidate.stage]
-    ) {
-      const daysIdle = differenceInDays(new Date(), parseISO(stageSince));
-      const threshold = STAGNATION_THRESHOLDS_DAYS[candidate.stage];
-      if (daysIdle >= threshold) {
-        result.push({
-          key: 'stagnation',
-          severity: daysIdle >= threshold * 2 ? 'critical' : 'warning',
-          icon: Clock,
-          title: `Stagnation : ${daysIdle} jours à l'étape « ${atsColumnTitle(candidate.stage)} »`,
-          detail: `Seuil habituel à ${threshold} j\u00a0: il faut faire bouger ou archiver.`,
-        });
-      }
+    //    l'étape (lot 0c-4), à défaut depuis la dernière action. Même délai que la carte.
+    const stageKey = candidateColumnKey(candidate);
+    const daysIdle = stagnantDays({ ...candidate, stage: stageKey });
+    if (daysIdle !== null) {
+      const threshold = STAGNATION_DAYS[stageKey];
+      result.push({
+        key: 'stagnation',
+        severity: daysIdle >= threshold * 2 ? 'critical' : 'warning',
+        icon: Clock,
+        // Sans date d'entrée dans l'étape (séquence ou InMail), le délai part de la dernière action.
+        title: candidate.stageEnteredAt
+          ? `Stagnation : ${daysIdle} jours à l'étape « ${atsColumnTitle(stageKey)} »`
+          : `Stagnation : aucune action depuis ${daysIdle} jours (étape « ${atsColumnTitle(stageKey)} »)`,
+        detail: `Au-delà de ${threshold}\u00a0j dans cette étape\u00a0: il faut faire bouger ou archiver.`,
+      });
     }
 
     // 2. A répondu mais pas de retour de notre part
@@ -231,7 +217,13 @@ export const OverviewTab: React.FC<Props> = ({
         jobId: sr.jobId,
         jobTitle: sr.jobTitle || sr.jobId,
         score: sr.score,
-        stage: sr.pipelineStage,
+        // Étape de la mission ouverte : celle de la colonne. Les autres missions n'ont que
+        // pipeline_stage, qui n'est une colonne que pour certaines étapes (À trier, Retenu,
+        // Contacté, Écarté le laissent vide, une étape d'entretien y met son identifiant) :
+        // une valeur qui n'est pas une colonne se masque, jamais une clé brute.
+        stage: sr.jobId === candidate.jobId
+          ? candidateColumnKey(candidate)
+          : ATS_STAGES.some(st => st.key === sr.pipelineStage) ? sr.pipelineStage : null,
         recommendation: sr.recommendation,
         lastUpdate: sr.updatedAt,
       });
@@ -243,7 +235,7 @@ export const OverviewTab: React.FC<Props> = ({
         jobId: candidate.jobId,
         jobTitle: candidate.jobTitle || candidate.jobId,
         score: candidate.score ?? null,
-        stage: candidate.stage,
+        stage: candidateColumnKey(candidate),
         recommendation: candidate.recommendation ?? null,
         lastUpdate: candidate.lastActivity,
       });

@@ -237,10 +237,16 @@ test('0c-4 : la carte dit « Dans cette étape depuis N j » et montre la missio
   const hook = code(HOOK);
   const table = hook.slice(hook.indexOf('export const STAGNATION_DAYS'), hook.indexOf('};', hook.indexOf('export const STAGNATION_DAYS')));
   assert.doesNotMatch(table, /'Nouveau'|'Pressenti'|'Gagné'|'Perdu'/);
-  const thresholds = code(OVERVIEW).match(/const STAGNATION_THRESHOLDS_DAYS[^{]*\{([^}]*)\}/)[1];
-  assert.doesNotMatch(thresholds, /'Nouveau'|'Pressenti'/);
+  // La fiche lit la même table que la carte (plus de seuils propres) et range par l'étape générale.
+  const overview = code(OVERVIEW);
+  assert.doesNotMatch(overview, /STAGNATION_THRESHOLDS_DAYS|TERMINAL_STAGES/, 'seuils propres à la fiche');
+  assert.match(overview, /STAGNATION_DAYS\[stageKey\]/);
+  assert.match(overview, /stagnantDays\(\{ \.\.\.candidate, stage: stageKey \}\)/);
+  assert.equal((overview.match(/candidateColumnKey\(candidate\)/g) || []).length, 3, 'mission ouverte : jamais la clé brute de la colonne de mission');
+  assert.doesNotMatch(overview, /stage: candidate\.stage,/);
   assert.match(code(ANALYTICS), /STAGNATION_DAYS\[stage\.key\] \?\? null/);
-  assert.match(code(OVERVIEW), /candidate\.stageEnteredAt \|\| candidate\.lastActivity/);
+  // L'ancienneté (stageEnteredAt, à défaut dernière action) est celle de stagnantDays.
+  assert.match(code(OVERVIEW), /stagnantDays\(/);
   assert.match(code(ANALYTICS), /daysInStage\(c, now\)/);
 });
 
@@ -249,7 +255,11 @@ test('0c-4 : le panneau de mission rapproche les candidats par project_id, les s
   assert.match(src, /import \{ missionIdOfJob \} from '@\/hooks\/useEnrollmentPreview';/);
   assert.match(src, /const missionId = missionIdOfJob\(jobId\);/);
   assert.match(src, /\(missionId && c\.projectId === missionId\) \|\| c\.jobId === jobId/);
-  assert.match(src, /\.in\('job_id', missionId \? \[missionId, `project:\$\{missionId\}`\] : \[jobId\]\)/);
+  assert.match(src, /\.in\('job_id', \[\.\.\.\(missionId \? \[missionId, `project:\$\{missionId\}`\] : \[jobId\]\), \.\.\.\(rawJobId \? \[rawJobId\] : \[\]\)\]\)/);
+  // Le job_id brut de la mission (sourcing_projects.job_id) garde le poste Airtable et les passages de l'assistant.
+  assert.match(src, /const missionJobId = \(proj as \{ job_id\?: string \| null \} \| null\)\?\.job_id \|\| null;/);
+  assert.match(src, /\.in\('airtable_id', missionJobId && missionJobId !== jobId \? \[jobId, missionJobId\] : \[jobId\]\)/);
+  assert.match(src, /\.in\('entity_id', rawJobId \? \[jobId, rawJobId\] : \[jobId\]\)/);
   assert.doesNotMatch(src, /\.eq\('job_id', jobId\);\s*\n\s*if \(cancelled\)/, 'séquences : plus de job_id seul');
 });
 
@@ -295,4 +305,31 @@ test('0c-4 : aucun nom de prestataire, aucune confirmation du navigateur dans le
     assert.doesNotMatch(src, /\b(Unipile|Apollo|People Data Labs)\b/, `${file} : nom de prestataire`);
     assert.doesNotMatch(src, /window\.confirm\(/, `${file} : window.confirm`);
   }
+});
+
+test('0c-4 (revue) : déplacé se juge sur l\'état d\'avant, annulation et déplacement groupé sans faux bilan', () => {
+  const hook = code('src/hooks/useATSData.ts');
+  const page = code('src/pages/ATS.tsx');
+  const bar = code('src/components/ats/BulkActionsBar.tsx');
+  // « Déplacé » : étape, étape d'entretien ou colonne changée (buildUndoMoves), pas result === 'updated'.
+  assert.doesNotMatch(hook, /groupRows\.some\(r => r\.result === 'updated'\)\) moved/);
+  assert.match(hook, /moves\.length > 0 \|\| writtenRows\.some\(r => !snapshots\.has\(r\.id\)\)/);
+  // Pas d'« Annuler » pour un candidat sans ligne avant le geste (état d'avant lu sur la ligne neuve).
+  assert.match(hook, /if \(c\.source === 'local' && moves\.length > 0\) undoGroups\.push\(moves\);/);
+  // Un candidat qui n'a pas bougé retrouve sa dernière action, sans « maintenant » affiché.
+  assert.match(hook, /unchangedIds\.has\(c\.id\) \? previous\.get\(c\.id\)\?\.lastActivity/);
+  // Une ligne en double non écrite : dite dans le toast du lot, candidats gardés cochés.
+  assert.match(hook, /partialIds,/);
+  assert.match(page, /new Set\(\[\.\.\.result\.failedIds, \.\.\.result\.partialIds\]\)/);
+  assert.match(page, /partial: result\.partial,/);
+  assert.match(bar, /une ligne en double non mise à jour/);
+});
+
+test('0c-4 (revue) : la fiche et la carte ne disent pas « dans cette étape » sans date d\'entrée, jamais une clé brute', () => {
+  const card = code(CARD);
+  assert.match(card, /candidate\.stageEnteredAt \? `Dans cette étape depuis \$\{stagnant\}\\u00a0j` : `Dernière action il y a \$\{stagnant\}\\u00a0j`/);
+  assert.match(code(TABLE), /candidate\.stageEnteredAt \? `Dans cette étape depuis/);
+  const overview = code('src/components/ats/candidate-detail/OverviewTab.tsx');
+  assert.match(overview, /sr\.jobId === candidate\.jobId\s*\? candidateColumnKey\(candidate\)\s*: ATS_STAGES\.some\(st => st\.key === sr\.pipelineStage\) \? sr\.pipelineStage : null/);
+  assert.match(overview, /candidate\.stageEnteredAt\s*\? `Stagnation : \$\{daysIdle\} jours à l'étape/);
 });

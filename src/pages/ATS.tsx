@@ -117,8 +117,8 @@ export default function ATS() {
   // lu en base juste avant le geste (lot 0c-4), par undo_candidate_stages.
   const handleBulkStageChange = useCallback(async (ids: string[], newStage: string): Promise<BulkMoveResult> => {
     const result = await moveCandidates(ids, newStage);
-    // Les candidats non déplacés restent cochés, pour réessayer.
-    setSelectedIds(new Set(result.failedIds));
+    // Les candidats non déplacés, ou dont une ligne en double n'a pas été écrite, restent cochés, pour réessayer.
+    setSelectedIds(new Set([...result.failedIds, ...result.partialIds]));
     if (result.moved > 0 || result.partial > 0) {
       refreshStageReaders().catch((e) => console.error('[ATS] relecture après déplacement groupé :', e));
     }
@@ -134,6 +134,7 @@ export default function ATS() {
     return {
       moved: result.moved,
       unchanged: result.unchanged,
+      partial: result.partial,
       failed: result.failedIds.length,
       undo: groups.length > 0 ? undo : undefined,
     };

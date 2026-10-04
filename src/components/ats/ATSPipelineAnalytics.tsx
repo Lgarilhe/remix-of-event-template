@@ -14,7 +14,7 @@ import { Section, StatGrid, StatTile } from '@/components/layout';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InfoHint } from '@/components/ui/info-hint';
-import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, daysInStage } from '@/hooks/useATSData';
+import { ATS_STAGES, type ATSCandidate, STAGNATION_DAYS, countPeople, daysInStage } from '@/hooks/useATSData';
 import { atsColumnTitle } from '@/lib/stageDisplay';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
@@ -135,7 +135,8 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
     });
 
     // KPI summary
-    const totalActive = candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu').length;
+    // Personnes distinctes, comme le tableau de bord : un candidat présent dans deux missions compte pour un.
+    const totalActive = countPeople(candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu'));
     const totalWon = candidates.filter(c => c.stage === 'Gagné').length;
     const totalLost = candidates.filter(c => c.stage === 'Perdu').length;
     const totalEnded = totalWon + totalLost;
@@ -163,7 +164,7 @@ export const ATSPipelineAnalytics: React.FC<Props> = ({ candidates }) => {
         <StatTile
           label="Candidats actifs"
           value={kpis.totalActive}
-          trailing={<Definition label="Candidats actifs">Candidats ni embauchés ni écartés. {plural(kpis.totalWon, 'embauché')} en ce moment.</Definition>}
+          trailing={<Definition label="Candidats actifs">Personnes ni embauchées ni écartées, comptées une fois même présentes dans deux missions. {plural(kpis.totalWon, 'embauché')} en ce moment.</Definition>}
         />
         <StatTile
           label="Taux de réussite"

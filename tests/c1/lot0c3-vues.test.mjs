@@ -197,3 +197,26 @@ test('0c-3 : aucun libellé de cumul sans « au total » dans les vues', () => {
     assert.doesNotMatch(src, /label=['"]Contactés['"]|label=['"]Retenus['"]|label: ['"]Contactés['"]|label: ['"]Retenus['"]/, f);
   }
 });
+
+test('0c-3 : liste, le menu d\'une ligne n\'ouvre pas la mission et la recherche garde les archives dépliées', () => {
+  const src = code(LIST);
+  // Le contenu du menu est dans un portail : l'évènement remonte jusqu'au <tr onClick>.
+  assert.match(src, /<DropdownMenuContent[^>]*onClick=\{\(e\) => e\.stopPropagation\(\)\}/);
+  // Pendant une recherche, le bouton des archives ne touche pas à l'état mémorisé.
+  assert.match(src, /if \(!searchActive\) setShowArchive/);
+});
+
+test('0c-3 : une mission non rendue par la base est « indisponible », jamais un état vide ni des cases muettes', () => {
+  const insights = code(INSIGHTS);
+  assert.match(insights, /countsQuery\.isError \|\| \(!countsQuery\.isPending && !stats\)/);
+  assert.doesNotMatch(insights, /\$\{response\.replied\}\/\$\{response\.contacted\} contactés`/);
+  assert.match(insights, /contactés par séquence/);
+  const overview = code(OVERVIEW);
+  assert.match(overview, /countsQuery\.isError \|\| \(!countsQuery\.isPending && !counts\)/);
+  // Un Skeleton est un <div> : jamais dans un <p>.
+  assert.doesNotMatch(overview, /<p\s[^>]*>\s*\{s\.value === null/);
+});
+
+test('0c-3 : Analyses sans emoji d\'interface', () => {
+  assert.doesNotMatch(code(INSIGHTS), /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}]/u);
+});

@@ -288,7 +288,7 @@ test('SEQ-048 — « Shortlister sans message » écrit organization_id et annon
   assert.match(body, /\.in\('job_id', jobIdForms\)/);
   assert.match(rowsPayload, /activeProfiles\.filter\(profile => !existingCandidates\.has\(profile\.id\)\);\s*const rows = missingProfiles\.map\(profile => \(\{/);
   assert.match(body, /const ids = \[\.\.\.\(existingRows \?\? \[\]\)\.map\(r => r\.id\), \.\.\.written\.map\(r => r\.id\)\];/);
-  assert.match(body, /setCandidateStages\(ids, \{ stage: 'retained' \}, RETAIN_FROM_STAGES\)/);
+  assert.match(body, /setCandidateStages\(ids, \{ stage: 'retained' \}, RETAIN_FROM_STAGES, \{ surface: 'enrollment' \}\)/);
   assert.match(previewModal, /const RETAIN_FROM_STAGES: GeneralStage\[\] = \['to_sort', 'retained', 'rejected'\];/);
   assert.match(body, /skippedStageMessage\(outcome\.skipped\)/);
   // Sur échec total, la fenêtre reste ouverte : onSuccess n'est pas appelé.

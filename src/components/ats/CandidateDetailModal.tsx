@@ -89,7 +89,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
   const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
-  const [projectNotes, setProjectNotes] = useState<string | null>(null);
 
   // Mobile profile overlay : utile quand la modale rend le ProfileTab dans
   // un onglet (sur mobile l'écran est petit donc on l'ouvre full-screen).
@@ -194,7 +193,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   const enrichLoading = snapshotLoading && !candidateWithProfileData.linkedinProfileData;
 
-  // Load notes + reminders + project notes
+  // Load notes + reminders
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {
@@ -207,21 +206,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
         if (cancelled) return;
         setNotes(notesData || []);
         setReminders(remindersData || []);
-        // Notes de la mission, lue par son id (lot 0c-4) ; le job_id d'une
-        // ancienne mission reste lu par la même requête.
-        const missionKey = candidate.projectId ?? missionIdOfJob(candidate.jobId);
-        let projectData: { notes: string | null } | null = null;
-        if (missionKey || candidate.jobId) {
-          const projectQuery = supabase.from('sourcing_projects').select('notes');
-          const { data, error: projectError } = await (missionKey
-            ? projectQuery.or(`id.eq.${missionKey},job_id.eq.${missionKey}`)
-            : projectQuery.eq('job_id', candidate.jobId as string))
-            .limit(1)
-            .maybeSingle();
-          if (projectError) console.warn('[CandidateDetailModal] notes de mission illisibles :', projectError);
-          projectData = data;
-        }
-        if (!cancelled) setProjectNotes(projectData?.notes || null);
       } catch (err) {
         console.warn('[CandidateDetailModal] chargement des notes impossible :', err);
       } finally {
@@ -230,7 +214,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     };
     void fetchData();
     return () => { cancelled = true; };
-  }, [candidate.candidateId, candidate.jobId, candidate.projectId]);
+  }, [candidate.candidateId]);
 
   const handleAddNote = async (content: string) => {
     const { data: { user } } = await supabase.auth.getUser();

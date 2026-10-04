@@ -126,15 +126,18 @@ export default function ScorecardFullPage() {
     let cancelled = false;
     const load = async () => {
       setLoadState('loading');
-      let rowQuery = supabase
-        .from('job_candidate_status')
-        .select('*')
-        .eq('candidate_id', candidateId);
-      if (missionParam) rowQuery = rowQuery.eq('project_id', missionParam);
-      const { data, error } = await rowQuery
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const readRow = (mission: string | null) => {
+        let rowQuery = supabase
+          .from('job_candidate_status')
+          .select('*')
+          .eq('candidate_id', candidateId);
+        if (mission) rowQuery = rowQuery.eq('project_id', mission);
+        return rowQuery.order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      };
+      let { data, error } = await readRow(missionParam);
+      // Une ancienne mission porte un job_id, pas un project_id : sans ligne pour
+      // la mission demandée, repli sur la ligne la plus récente du candidat.
+      if (!error && !data && missionParam) ({ data, error } = await readRow(null));
 
       if (cancelled) return;
       if (error) {
@@ -147,8 +150,36 @@ export default function ScorecardFullPage() {
         return;
       }
 
+      // Ligne canonique du groupe de doublons (vue mission_candidate_rows), comme la
+      // fiche d'origine : étape, étape d'entretien, note et détail de la note. Sans
+      // mission, ou si la vue ne rend rien, la ligne lue plus haut reste la source.
+      let canon: {
+        id: string | null;
+        general_stage: string | null;
+        pipeline_stage: string | null;
+        process_step_id: string | null;
+        stage_entered_at: string | null;
+        score: number | null;
+        recommendation: string | null;
+        scoring_details: unknown;
+      } | null = null;
+      if (data.project_id && data.organization_id) {
+        const { data: viewRow, error: viewError } = await supabase
+          .from('mission_candidate_rows')
+          .select('id, general_stage, pipeline_stage, process_step_id, stage_entered_at, score, recommendation, scoring_details')
+          .eq('organization_id', data.organization_id)
+          .eq('project_id', data.project_id)
+          .eq('candidate_id', data.candidate_id)
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        if (viewError) console.warn('[ScorecardFullPage] ligne canonique illisible, ligne la plus récente utilisée :', viewError);
+        else canon = viewRow;
+      }
+      const src = canon ?? data;
+
       const c: ATSCandidate = {
-        id: data.id,
+        id: src.id ?? data.id,
         candidateId: data.candidate_id,
         name: data.candidate_name || 'Candidat',
         email: null,
@@ -158,21 +189,21 @@ export default function ScorecardFullPage() {
         expertise: [],
         // Colonne du /pipeline tirée de l'étape générale (lot 0c-4), jamais
         // pipeline_stage brut (identifiant d'étape d'entretien, clé de mission).
-        stage: atsColumnOf(data),
-        generalStage: isGeneralStage(data.general_stage) ? data.general_stage : null,
-        processStepId: data.process_step_id,
-        stageEnteredAt: data.stage_entered_at,
+        stage: atsColumnOf(src),
+        generalStage: isGeneralStage(src.general_stage) ? src.general_stage : null,
+        processStepId: src.process_step_id,
+        stageEnteredAt: src.stage_entered_at,
         projectId: data.project_id,
         entity: null,
         source: 'local',
-        sourceId: data.id,
+        sourceId: src.id ?? data.id,
         jobId: data.job_id,
         jobTitle: null,
         lastActivity: data.updated_at,
         createdAt: data.created_at,
-        score: data.score,
-        recommendation: data.recommendation,
-        scoringDetails: data.scoring_details as unknown as ATSCandidate['scoringDetails'],
+        score: src.score,
+        recommendation: src.recommendation,
+        scoringDetails: src.scoring_details as unknown as ATSCandidate['scoringDetails'],
         linkedinProfileData: data.linkedin_profile_data,
         tags: data.tags || [],
       };
@@ -191,7 +222,7 @@ export default function ScorecardFullPage() {
         if (projError) console.error('[ScorecardFullPage] mission illisible :', projError);
         if (proj) {
           const jd: JobDetails = (proj.job_details as JobDetails | null) ?? {};
-          // Même intitulé que la fiche : titre du brief, puis poste, puis nom de la mission.
+          // Intitulé : titre du brief, puis poste, puis nom de la mission.
           c.jobTitle = jd.title || proj.job_title || proj.name || null;
           const clientName = jd.client?.name || proj.client_name;
           job = {

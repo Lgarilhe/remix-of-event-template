@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrganization } from '@/hooks/useOrganization';
@@ -9,6 +10,7 @@ import {
   stageErrorMessage,
   type GeneralStage,
 } from '@/lib/candidateStage';
+import { invalidateStageReaders } from '@/lib/stageDisplay';
 
 export type CandidateStatus = 'discovered' | 'dismissed' | 'messaged' | 'replied' | 'shortlisted' | 'scored';
 
@@ -85,12 +87,16 @@ function statusAfterScore(
   return (isScoringStatus(status) ? 'scored' : status) as CandidateStatus;
 }
 
+/** Geste venu du Sourcing, pour la mesure d'usage (format de SURFACE_PATTERN). */
+const SOURCING_GESTURE = { surface: 'sourcing' } as const;
+
 export function useJobCandidateStatus(jobId: string | null) {
   const [statusState, setStatusState] = useState<StatusState>(EMPTY_STATUS_STATE);
   const { statuses, dismissedIds, treatedIds } = statusState;
   const [loading, setLoading] = useState(false);
   const { organizationId } = useOrganization();
   const { isReady, user } = useAuthReady();
+  const queryClient = useQueryClient();
 
   // Helper setters that update individual parts of the batched state
   const setStatuses = useCallback((updater: Map<string, JobCandidateStatus> | ((prev: Map<string, JobCandidateStatus>) => Map<string, JobCandidateStatus>)) => {
@@ -310,12 +316,13 @@ export function useJobCandidateStatus(jobId: string | null) {
       const rowId = saved?.[0]?.id;
       if (!rowId) throw new Error('Ligne candidat introuvable après enregistrement');
 
-      const outcome = await setCandidateStage(rowId, { stage: 'rejected' });
+      const outcome = await setCandidateStage(rowId, { stage: 'rejected' }, SOURCING_GESTURE);
       if (!outcome.ok) {
         console.error('Error dismissing candidate:', outcome);
         toast.error(stageErrorMessage('hint' in outcome ? outcome.hint : null));
         return false;
       }
+      void invalidateStageReaders(queryClient);
 
       // Update local state (note et identité déjà connues gardées)
       const now = new Date().toISOString();
@@ -350,7 +357,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       toast.error('Erreur lors de l\'archivage');
       return false;
     }
-  }, [jobId, organizationId]);
+  }, [jobId, organizationId, queryClient]);
 
   // Archivage en lot (Sourcing). Lot 0b-4 (N7) : upsert de l'identité seule,
   // sans statut ni note (une note déjà en base est gardée), puis écart par
@@ -403,7 +410,8 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (error) throw error;
 
       const candidateByRow = new Map((saved ?? []).map(row => [row.id, row.candidate_id]));
-      const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'rejected' });
+      const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'rejected' }, undefined, SOURCING_GESTURE);
+      if (outcome.updated + outcome.unchanged > 0) void invalidateStageReaders(queryClient);
 
       const dismissedNow = outcome.rows
         .filter(row => row.result === 'updated' || row.result === 'unchanged')
@@ -458,7 +466,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       toast.error('Erreur lors de l\'archivage en lot');
       return { dismissed: 0, failed: uniqueCandidates.length };
     }
-  }, [jobId, organizationId, statuses]);
+  }, [jobId, organizationId, statuses, queryClient]);
 
   // Restore a dismissed candidate → back to « À trier » (preserves linkedin_profile_data).
   // Lot 0b-4 (N9) : la note est effacée en écriture directe (l'étape ne change
@@ -482,12 +490,13 @@ export function useJobCandidateStatus(jobId: string | null) {
       const rowId = rows?.[0]?.id;
       if (!rowId) throw new Error('Ligne candidat introuvable');
 
-      const outcome = await setCandidateStage(rowId, { stage: 'to_sort' });
+      const outcome = await setCandidateStage(rowId, { stage: 'to_sort' }, SOURCING_GESTURE);
       if (!outcome.ok) {
         console.error('Error restoring candidate:', outcome);
         toast.error(stageErrorMessage('hint' in outcome ? outcome.hint : null));
         return;
       }
+      void invalidateStageReaders(queryClient);
 
       // Update local state
       setDismissedIds(prev => {
@@ -509,7 +518,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       console.error('Error restoring candidate:', error);
       toast.error('Erreur lors de la restauration');
     }
-  }, [jobId]);
+  }, [jobId, queryClient]);
 
   // Save score for a candidate (le statut n'est changé que pour un profil pas
   // encore traité, voir markScored)
@@ -854,7 +863,8 @@ export function useJobCandidateStatus(jobId: string | null) {
     }
 
     const candidateByRow = new Map((saved ?? []).map(row => [row.id, row.candidate_id]));
-    const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'retained' }, RETAIN_FROM_STAGES);
+    const outcome = await setCandidateStages([...candidateByRow.keys()], { stage: 'retained' }, RETAIN_FROM_STAGES, SOURCING_GESTURE);
+    if (outcome.updated + outcome.unchanged > 0) void invalidateStageReaders(queryClient);
 
     const retained = new Set<string>();
     let added = 0;
@@ -913,7 +923,7 @@ export function useJobCandidateStatus(jobId: string | null) {
       failed: Math.max(0, failed),
       ...(failure ? { error: stageErrorMessage(failure.hint) } : {}),
     };
-  }, [jobId, statuses, organizationId, setStatuses, setTreatedIds, setDismissedIds]);
+  }, [jobId, statuses, organizationId, setStatuses, setTreatedIds, setDismissedIds, queryClient]);
 
   return {
     statuses,

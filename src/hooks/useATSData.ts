@@ -125,6 +125,15 @@ export const STAGNATION_DAYS: Record<string, number> = {
   'Offre': 7,
 };
 
+/**
+ * Personnes distinctes d'une liste de lignes (une ligne par candidat et par
+ * mission) : un candidat présent dans deux missions compte pour un. Le mot
+ * « candidats » des chiffres du tableau de bord et du /pipeline a ce sens.
+ */
+export function countPeople(candidates: ReadonlyArray<Pick<ATSCandidate, 'candidateId' | 'id'>>): number {
+  return new Set(candidates.map((c) => c.candidateId || c.id)).size;
+}
+
 const timeOf = (iso: string | null | undefined): number | null => {
   if (!iso) return null;
   const time = new Date(iso).getTime();
@@ -495,13 +504,15 @@ export interface StageMoveResult {
   failedIds: string[];
   /** Candidats déplacés dont une ligne en double n'a pas pu être écrite. */
   partial: number;
+  /** Les mêmes candidats (ATSCandidate.id), pour les laisser cochés et réessayer. */
+  partialIds: string[];
   /** Éléments d'annulation, un groupe par candidat déplacé ; vide si rien n'est annulable. */
   undoGroups: UndoMove[][];
   /** Première cause d'échec, pour la phrase du toast d'un déplacement seul. */
   failure: { kind: 'target' | 'mission' | 'write'; hint: string | null } | null;
 }
 
-const EMPTY_RESULT: StageMoveResult = { moved: 0, unchanged: 0, failedIds: [], partial: 0, undoGroups: [], failure: null };
+const EMPTY_RESULT: StageMoveResult = { moved: 0, unchanged: 0, failedIds: [], partial: 0, partialIds: [], undoGroups: [], failure: null };
 
 export function useATSData() {
   const queryClient = useQueryClient();
@@ -570,8 +581,9 @@ export function useATSData() {
       return { ...EMPTY_RESULT, failedIds: selected.map(s => s.id), failure: { kind: 'target', hint: null } };
     }
 
-    // Un candidat venu d'une séquence ou d'un InMail sans mission n'a pas de
-    // ligne où porter une étape : refus annoncé, rien n'est écrit.
+    // Un candidat venu d'une séquence ou d'un InMail sans mission (projet) n'a pas
+    // de ligne où porter une étape, et la vue ne rendrait pas la ligne créée pour
+    // un poste qui ne se résout à aucune mission : refus annoncé, rien n'est écrit.
     const failedIds: string[] = [];
     let failure: StageMoveResult['failure'] = null;
     const eligible: ATSCandidate[] = [];
@@ -579,7 +591,7 @@ export function useATSData() {
       if (!candidate) {
         failedIds.push(id);
         failure ??= { kind: 'write', hint: null };
-      } else if (candidate.source !== 'local' && !candidate.jobId) {
+      } else if (candidate.source !== 'local' && !candidate.projectId) {
         failedIds.push(id);
         failure ??= { kind: 'mission', hint: null };
       } else {
@@ -678,6 +690,8 @@ export function useATSData() {
       let moved = 0;
       let unchanged = 0;
       let partial = 0;
+      const partialIds: string[] = [];
+      const unchangedIds = new Set<string>();
       const undoGroups: UndoMove[][] = [];
       const done = new Map<string, { generalStage: GeneralStage | null; processStepId: string | null; stageEnteredAt: string | null }>();
       const failedNow = new Set<string>();
@@ -693,12 +707,26 @@ export function useATSData() {
         // Une ligne en double refusée ou non traitée : la vue la ferait réapparaître au refetch.
         if (ids.some(id => rowById.get(id)?.result === 'error' || !rowById.has(id))) {
           partial += 1;
+          partialIds.push(c.id);
           console.error('[useATSData] ligne en double non écrite pour un candidat déplacé');
         }
-        if (groupRows.some(r => r.result === 'updated')) moved += 1;
-        else unchanged += 1;
+        // « Déplacé » se juge sur l'état d'avant (étape, étape d'entretien, colonne), comme
+        // l'annulation : un geste qui confirme l'étape déjà occupée rend « updated » (l'origine
+        // passe à user) sans que rien ne bouge. Un candidat de séquence ou d'InMail change de
+        // colonne dès que sa ligne est écrite : sa ligne neuve n'a pas l'étape affichée avant.
         const moves = buildUndoMoves(snapshots, groupRows, { target });
-        if (moves.length > 0) undoGroups.push(moves);
+        const writtenRows = groupRows.filter(r => r.result === 'updated');
+        const changed = c.source === 'local'
+          ? moves.length > 0 || writtenRows.some(r => !snapshots.has(r.id))
+          : writtenRows.length > 0;
+        if (changed) moved += 1;
+        else {
+          unchanged += 1;
+          unchangedIds.add(c.id);
+        }
+        // Pas d'« Annuler » pour un candidat sans ligne avant le geste : l'état d'avant lu serait
+        // la ligne À trier tout juste créée, pas la colonne où il était affiché.
+        if (c.source === 'local' && moves.length > 0) undoGroups.push(moves);
         done.set(c.id, { generalStage: main.generalStage, processStepId: main.processStepId, stageEnteredAt: main.stageEnteredAt });
       }
       const failedCandidates = [...failedIds, ...failedNow];
@@ -716,15 +744,17 @@ export function useATSData() {
               // Le nom de la nouvelle étape d'entretien vient de la relecture qui suit.
               processStepName: row.processStepId && row.processStepId === c.processStepId ? c.processStepName ?? null : null,
               stageEnteredAt: row.stageEnteredAt ?? c.stageEnteredAt,
+              // Rien n'a bougé : pas d'action « maintenant » affichée jusqu'à la prochaine relecture.
+              lastActivity: unchangedIds.has(c.id) ? previous.get(c.id)?.lastActivity ?? c.lastActivity : c.lastActivity,
             };
           }
           return failedNow.has(c.id) ? { ...c, ...previous.get(c.id) } : c;
         }) ?? []
       );
-      return { moved, unchanged, failedIds: failedCandidates, partial, undoGroups, failure };
+      return { moved, unchanged, failedIds: failedCandidates, partial, partialIds, undoGroups, failure };
     } catch (e) {
       console.error('Error updating stage:', e);
-      // Revert optimistic update — restaurer l'étape, la date et lastActivity
+      // Revert optimistic update : restaurer l'étape, la date et lastActivity
       revert(eligibleIds);
       return {
         ...EMPTY_RESULT,

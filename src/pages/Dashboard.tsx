@@ -20,7 +20,7 @@ import { SEOHead } from '@/components/SEOHead';
 import { PageLayout, Section, ErrorState } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useATSData, daysInStage, stagnantDays, type ATSCandidate } from '@/hooks/useATSData';
+import { useATSData, daysInStage, stagnantDays, countPeople, type ATSCandidate } from '@/hooks/useATSData';
 import { STALE_EXEMPT_STAGES } from '@/lib/stageDisplay';
 import { useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
@@ -131,11 +131,7 @@ export default function Dashboard() {
   // même présente dans deux missions. Les profils jamais ouverts sont déjà
   // exclus par useATSData.
   const activeCandidatesCount = useMemo(
-    () => new Set(
-      candidates
-        .filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu')
-        .map(c => c.candidateId || c.id),
-    ).size,
+    () => countPeople(candidates.filter(c => c.stage !== 'Gagné' && c.stage !== 'Perdu')),
     [candidates],
   );
 
@@ -292,7 +288,13 @@ export default function Dashboard() {
       {selectedCandidate && (
         <CandidateDetailModal
           // Ligne courante : après un changement d'étape, la fiche montre la nouvelle étape.
-          candidate={candidates.find(c => c.id === selectedCandidate.id) ?? selectedCandidate}
+          // Si la ligne canonique du groupe de doublons a changé d'id, on retrouve le
+          // candidat de la même mission avant de se rabattre sur l'ancien instantané.
+          candidate={
+            candidates.find(c => c.id === selectedCandidate.id)
+            ?? candidates.find(c => c.candidateId === selectedCandidate.candidateId && c.projectId === selectedCandidate.projectId)
+            ?? selectedCandidate
+          }
           onClose={() => setSelectedCandidate(null)}
           onStageChange={handleStageChange}
           onTagsChange={handleTagsChange}

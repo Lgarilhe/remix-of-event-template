@@ -197,3 +197,40 @@ test('0c-4 : la réponse de la fonction est lue ligne par ligne, un élément sa
   assert.match(sql, /'result', 'unchanged'/);
   assert.match(sql, /'result', 'error', 'hint'/);
 });
+
+test('0c-4 : plus de get_project_stats, get_multiple_project_stats ni useProjectStats nulle part dans src', () => {
+  // Plan 10.1 (0c-4) et 4.5 : les deux fonctions restent en base jusqu'au lot 0c-6,
+  // mais aucun lecteur du navigateur ne les appelle. Le fichier de types généré les déclare.
+  const offenders = sourceFiles()
+    .filter((rel) => rel !== 'src/integrations/supabase/types.ts')
+    .filter((rel) => /get_project_stats|get_multiple_project_stats|useProjectStats/.test(code(rel)));
+  assert.deepEqual(offenders, []);
+});
+
+test('0c-4 : les gestes du Sourcing et de l\'inscription rafraîchissent les lectures d\'étape et portent leur surface', () => {
+  const hook = code('src/hooks/useJobCandidateStatus.ts');
+  assert.match(hook, /const SOURCING_GESTURE = \{ surface: 'sourcing' \} as const;/);
+  assert.equal([...hook.matchAll(/SOURCING_GESTURE\)/g)].length, 4, 'quatre gestes d\'étape');
+  assert.equal([...hook.matchAll(/invalidateStageReaders\(queryClient\)/g)].length, 4, 'une relecture par geste');
+  const enroll = code('src/components/outreach/EnrollmentPreviewModal.tsx');
+  assert.match(enroll, /\{ surface: 'enrollment' \}/);
+  assert.match(enroll, /invalidateStageReaders\(queryClient\)/);
+  assert.match(code('src/components/calendar/CreateEventModal.tsx'), /invalidateStageReaders\(queryClient\)/);
+});
+
+test('0c-4 : « Cette semaine » et l\'activité récente du tableau de bord lisent les jalons et l\'étape générale', () => {
+  const week = code('src/components/dashboard/DashboardWeekHighlight.tsx');
+  assert.doesNotMatch(week, /outreachStatus|sequenceStatus|lastActivity|c\.stage\b/, 'ni statut hérité ni dernière modification');
+  assert.match(week, /c\.contactedAt/);
+  assert.match(week, /c\.repliedAt/);
+  assert.match(week, /c\.hiredAt/);
+  assert.match(week, /label="Contactés cette semaine"/);
+  assert.match(week, /label="Ont répondu cette semaine"/);
+  assert.match(week, /label="Embauchés cette semaine"/);
+  const feed = code('src/components/dashboard/DashboardActivityFeed.tsx');
+  assert.doesNotMatch(feed, /outreachStatus|verb: 'placé'|verb: 'perdu'/);
+  assert.match(feed, /c\.generalStage === 'hired'/);
+  assert.match(feed, /verb: 'embauché'/);
+  assert.match(feed, /verb: 'écarté'/);
+  assert.match(feed, /c\.stageEnteredAt/);
+});

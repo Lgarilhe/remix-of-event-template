@@ -34,6 +34,7 @@ import {
   stageAgeDays,
 } from '@/lib/stageDisplay';
 import { plural } from '@/lib/plural';
+import { recommendationLabel } from '@/types/projects';
 import { List, LayoutGrid, Clock, MessageSquare, ChevronRight, Linkedin, Users, Send, ListChecks, ArrowRight, UserSearch, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -132,7 +133,7 @@ const initials = (name?: string | null) => {
 // created_at. « Sans mouvement » : Contacté, A répondu ou En entretien depuis
 // STALE_AFTER_DAYS jours ou plus (isStale, src/lib/stageDisplay.ts).
 const daysInStage = (c: ProjectCandidate) => stageAgeDays(c) ?? 0;
-const formatStageAge = (d: number) => (d < 1 ? 'auj.' : d < 7 ? `${d}j` : d < 30 ? `${Math.floor(d / 7)}sem` : `${Math.floor(d / 30)}mois`);
+const stageAgeText = (d: number) => (d < 1 ? "Dans cette étape depuis aujourd'hui" : `Dans cette étape depuis ${d}\u00a0j`);
 
 const EMPTY_COPY: Record<string, string> = {
   [MISSION_COLUMN_KEY.to_sort]: 'Aucun candidat à trier',
@@ -170,7 +171,7 @@ const KanbanCard = React.memo(({ candidate, isOverlay, dimmed }: { candidate: Pr
         </div>
         {candidate.score != null && (
           <span
-            title={candidate.recommendation ?? undefined}
+            title={recommendationLabel(candidate.recommendation, candidate.skip_reason)}
             className={cn(
               "inline-flex items-center h-[18px] px-1.5 rounded-full text-2xs font-bold tabular-nums shrink-0 ring-1 ring-inset",
               candidate.score >= 70 ? "bg-success/10 text-success ring-success/20" :
@@ -188,9 +189,8 @@ const KanbanCard = React.memo(({ candidate, isOverlay, dimmed }: { candidate: Pr
         )}
         <span
           className={cn("inline-flex items-center gap-1 text-3xs tabular-nums", stale ? "text-warning font-semibold" : "text-muted-foreground/70")}
-          title={`Dans cette étape depuis ${days}\u00a0j`}
         >
-          <Clock className="w-3 h-3" /> {formatStageAge(days)}
+          <Clock className="w-3 h-3" aria-hidden="true" /> {stageAgeText(days)}
         </span>
         {candidate.linkedin_profile_url && (
           <a
@@ -361,8 +361,9 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   const stageCountsQuery = useMissionStageCounts([project.id]);
   // Profils trouvés par une recherche, jamais ouverts : au Sourcing. 0 tant que
   // le compteur charge ou a échoué : l'écran ne conclut « rien » qu'à la lecture
-  // réussie (countsKnown).
-  const countsKnown = stageCountsQuery.data?.[project.id] !== undefined;
+  // réussie (countsKnown). Une mission que la base ne rend pas (autre
+  // organisation) n'a pas de ligne : lecture réussie, zéro profil.
+  const countsKnown = stageCountsQuery.isSuccess;
   const unopened = stageCountsQuery.data?.[project.id]?.unopened ?? 0;
   const { steps, loadingSteps, stepsError, refetchSteps } = useMissionProcess(project.id);
 
@@ -383,7 +384,16 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
 
   // Colonne d'une carte : étape générale et étape d'entretien seulement
   // (missionColumnOf). La même pour le rangement, le glisser et la fiche.
-  const displayColumnOf = useCallback((c: ProjectCandidate): string => missionColumnOf(c, stepIds), [stepIds]);
+  const baseColumnOf = useCallback((c: ProjectCandidate): string => missionColumnOf(c, stepIds), [stepIds]);
+
+  // Déplacements en attente de la réponse de la base (id de carte vers colonne
+  // visée) : la carte reste dans la colonne visée pendant l'écriture, et une
+  // carte en cours de déplacement ne se reprend pas.
+  const [pendingMoves, setPendingMoves] = useState<Record<string, string>>({});
+  const displayColumnOf = useCallback(
+    (c: ProjectCandidate): string => pendingMoves[c.id] ?? baseColumnOf(c),
+    [pendingMoves, baseColumnOf],
+  );
 
   // Group candidates by column
   const candidatesByColumn = useMemo(() => {
@@ -479,10 +489,22 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
     if (!targetColumn) return;
 
     const candidate = candidates.find(c => c.id === candidateId);
-    if (!candidate || displayColumnOf(candidate) === targetColumn) return;
+    if (!candidate || pendingMoves[candidateId] || displayColumnOf(candidate) === targetColumn) return;
 
+    // Carte rangée dans la colonne visée dès le dépôt ; elle revient à sa place
+    // si la base refuse (le cache est alors resté tel quel).
+    setPendingMoves(prev => ({ ...prev, [candidateId]: targetColumn }));
+    let saved = false;
+    try {
+      saved = await updateStage(groupIdsOf(candidate), targetColumn, 'mission-kanban');
+    } finally {
+      setPendingMoves(prev => {
+        const { [candidateId]: _done, ...rest } = prev;
+        return rest;
+      });
+    }
     // Toast après l'enregistrement : jamais « déplacé » sur un déplacement refusé.
-    if (!(await updateStage(groupIdsOf(candidate), targetColumn, 'mission-kanban'))) return;
+    if (!saved) return;
     const colLabel = [...boardColumns, DISMISSED_COLUMN].find(c => c.key === targetColumn)?.label || targetColumn;
     const who = candidate.candidate_name ?? 'Candidat';
     toast.success(targetColumn === HIRED_COLUMN.key ? `${who} embauché !` : `${who} déplacé vers « ${colLabel} »`);
@@ -497,7 +519,9 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
   if (candidatesQuery.isError && candidates.length === 0) {
     return <PipelineLoadError message="Impossible de charger les candidats de cette mission." onRetry={() => void candidatesQuery.refetch()} />;
   }
-  if (stepsError) {
+  // Une relecture en échec garde les étapes déjà lues : l'erreur ne remplace
+  // l'écran que sans aucune étape lue.
+  if (stepsError && steps.length === 0) {
     return <PipelineLoadError message="Impossible de charger les étapes d'entretien de cette mission." onRetry={() => void refetchSteps()} />;
   }
 
@@ -576,7 +600,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
                 className="inline-flex items-center gap-1 h-6 px-2 rounded-full bg-warning/10 text-warning text-2xs font-medium"
                 title={`Contactés, ayant répondu ou en entretien, dans la même étape depuis ${STALE_AFTER_DAYS}\u00a0j ou plus`}
               >
-                <Clock className="w-3 h-3" /><span className="tabular-nums font-semibold">{staleCount}</span> depuis {STALE_AFTER_DAYS}{'\u00a0'}j ou plus
+                <Clock className="w-3 h-3" /><span className="tabular-nums font-semibold">{staleCount}</span> dans la même étape depuis {STALE_AFTER_DAYS}{'\u00a0'}j ou plus
               </span>
             )}
             <div className="flex-1" />
@@ -722,7 +746,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
         </>
       )}
 
-      {/* Fiche candidat complète (profil, messages, notes, rappels) :
+      {/* Fiche candidat détaillée (profil, messages, notes, rappels) :
           réutilise le modal ATS en lui passant les étapes de CE pipeline */}
       {detailCandidate && (
         <CandidateDetailModal

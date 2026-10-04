@@ -173,7 +173,9 @@ const MissionRow: React.FC<MissionRowProps> = ({
               <MoreHorizontal aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          {/* Le contenu du menu est dans un portail, mais l'évènement remonte par l'arbre React
+              jusqu'à la ligne : sans cet arrêt, chaque action ouvrirait aussi la mission. */}
+          <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
             {project.status !== 'active' && (
               <DropdownMenuItem onClick={() => onStatusChange('active')}>
                 <Play className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Activer
@@ -377,7 +379,8 @@ export const ProjectsListV2: React.FC = () => {
   // état d'erreur, jamais l'état vide non plus.
   // Une recherche déplie les terminées et archivées : sans cela, un résultat
   // qui s'y trouve resterait caché sans message.
-  const archiveOpen = showArchive || searchQuery.trim() !== '';
+  const searchActive = searchQuery.trim() !== '';
+  const archiveOpen = showArchive || searchActive;
   const isLoading = spLoading || (!hasData && !listError);
   const loadFailed = !hasData && listError;
 
@@ -505,7 +508,7 @@ export const ProjectsListV2: React.FC = () => {
         <section className="mb-8" aria-labelledby="missions-archivees">
           <button
             type="button"
-            onClick={() => setShowArchive(s => !s)}
+            onClick={() => { if (!searchActive) setShowArchive(s => !s); }}
             aria-expanded={archiveOpen}
             className="mb-2 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-semibold hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >

@@ -142,6 +142,16 @@ export function atsColumnOf(row: { general_stage?: string | null; pipeline_stage
   return ATS_COLUMN_BY_STAGE[row.general_stage];
 }
 
+/**
+ * Colonne du /pipeline d'un candidat de fiche. Une ligne de mission porte sa
+ * colonne de mission dans `stage` (« messaged », identifiant d'étape…) : la
+ * colonne se tire alors de l'étape générale, jamais d'une clé brute. Sans étape
+ * générale (séquence, InMail), `stage` est déjà une colonne du /pipeline.
+ */
+export function candidateColumnKey(c: { stage: string; generalStage?: string | null }): string {
+  return isGeneralStage(c.generalStage) ? atsColumnOf({ general_stage: c.generalStage, pipeline_stage: c.stage }) : c.stage;
+}
+
 const ATS_COLUMN_TITLE: Readonly<Record<string, string>> = {
   Nouveau: GENERAL_STAGE_LABEL.to_sort,
   Pressenti: GENERAL_STAGE_LABEL.retained,

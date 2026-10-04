@@ -248,8 +248,9 @@ export const useMissionProcess = (projectId: string | undefined) => {
       queryClient.invalidateQueries({ queryKey: ['mission-process-steps', projectId] });
       // Candidats repositionnés : kanban, compteurs et /pipeline à relire.
       void invalidateStageReaders(queryClient);
-      const plural = remapped > 1 ? 's' : '';
-      const suffix = remapped > 0 ? ` · ${remapped} candidat${plural} repositionné${plural}` : '';
+      // Le nombre brut de la fonction compte des lignes (doublons et écartés compris),
+      // pas des candidats : on ne l'annonce pas, la boîte de confirmation a donné le compte.
+      const suffix = remapped > 0 ? ' · candidats repositionnés' : '';
       toast.success((label ? `Process « ${label} » appliqué` : 'Process créé') + suffix);
     },
     onError: (err: Error) => toast.error(err.message),

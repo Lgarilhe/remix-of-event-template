@@ -109,7 +109,7 @@ const MissionRow: React.FC<{
         <div id={detailsId} className="space-y-2 px-2.5 pb-3 pl-[3.25rem]">
           <ProgressRow label="Retenus au total" value={shortlisted} total={total} />
           <ProgressRow label="Contactés au total" value={messaged} total={total} />
-          {lastActivityLabel && <p className="text-xs text-muted-foreground">Dernière activité {lastActivityLabel}</p>}
+          {lastActivityLabel && <p className="text-xs text-muted-foreground">Dernière activité {/^(il y a|à l'instant)/.test(lastActivityLabel) ? lastActivityLabel : `le ${lastActivityLabel}`}</p>}
         </div>
       )}
     </li>

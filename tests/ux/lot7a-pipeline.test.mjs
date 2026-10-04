@@ -246,7 +246,7 @@ test('E-23 : survol sobre, un seul toast groupé, retour arrière sur échec', (
   assert.match(PAGE, /await moveCandidates\(ids, newStage\)/);
   assert.match(BULK, /plural\(failed, 'échec'\)/);
   assert.match(BULK, /déjà à cette étape/, 'les candidats déjà à l\'étape sont dits à part');
-  assert.equal((BULK.match(/toast\.(success|error|warning|info)\(/g) || []).length, 5, 'un toast par issue, pas par candidat');
+  assert.equal((BULK.match(/toast\.(success|error|warning|info)\(/g) || []).length, 6, 'un toast par issue, pas par candidat');
   assert.match(HOOK, /if \(upsertError\) throw upsertError;/);
   assert.match(HOOK, /if \(options\.silent\) return ok;/);
 });
@@ -264,7 +264,7 @@ test('0b-4 (N2, N3) : le /pipeline change l\'étape par set_candidate_stages, ja
   assert.match(HOOK, /const PIPELINE_SURFACE = 'pipeline';/);
   assert.match(HOOK, /stageErrorMessage\(hint\)/);
   // N3 : sans mission, refus annoncé ; sinon insertion À trier (un seul envoi pour le lot), relecture, puis l'étape.
-  assert.match(fn, /candidate\.source !== 'local' && !candidate\.jobId/);
+  assert.match(fn, /candidate\.source !== 'local' && !candidate\.projectId/);
   assert.match(HOOK, /n'est rattaché à aucune mission/);
   assert.equal((HOOK.match(/\.upsert\(/g) || []).length, 1, 'un seul upsert');
   assert.match(fn, /organization_id: organizationId/);

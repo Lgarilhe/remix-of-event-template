@@ -46,7 +46,7 @@ export function ScoringPopover({ candidateId, jobId, projectId, organizationId, 
       try {
         // Mission : la ligne notée de ce candidat dans la mission, quelle que soit la
         // forme du job_id ou l'auteur (comme la note de la carte). Sinon : le poste.
-        // Une ligne notée passe avant une ligne sans note, puis la plus récente.
+        // Une ligne notée passe avant une ligne sans note, puis la plus récente (règle de la vue).
         const readBy = async (column: 'project_id' | 'job_id', value: string) => {
           let query = supabase
             .from('job_candidate_status')
@@ -54,12 +54,12 @@ export function ScoringPopover({ candidateId, jobId, projectId, organizationId, 
             .eq('candidate_id', candidateId)
             .eq(column, value);
           if (column === 'project_id' && organizationId) query = query.eq('organization_id', organizationId);
+          // Règle de la vue mission_candidate_rows : la ligne notée la plus récente,
+          // à défaut la plus récente (les doublons d'un candidat sont peu nombreux).
           const { data: found, error: readError } = await query
-            .order('score', { ascending: false, nullsFirst: false })
-            .order('updated_at', { ascending: false })
-            .limit(1);
+            .order('updated_at', { ascending: false });
           if (readError) throw readError;
-          return found?.[0] ?? null;
+          return found?.find((r) => r.score != null) ?? found?.[0] ?? null;
         };
         let row = projectId ? await readBy('project_id', projectId) : null;
         // Un job_id ancien n'est pas une mission : repli sur le poste.

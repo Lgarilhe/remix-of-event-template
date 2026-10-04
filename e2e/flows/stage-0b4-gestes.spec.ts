@@ -11,8 +11,8 @@
  *
  * Écrans :
  *  - kanban de mission : vers une étape d'entretien, vers Écarté, puis retour
- *    dans Sourcé (restauration), toast émis après l'enregistrement ;
- *  - tableau de mission : « Shortlister » groupé (un candidat déjà contacté
+ *    dans À trier (restauration), toast émis après l'enregistrement ;
+ *  - tableau de mission : « Retenir » groupé (un candidat déjà contacté
  *    reste à son étape, et c'est annoncé), « Écarter » d'une ligne ;
  *  - /pipeline : déplacement puis « Annuler », qui restaure la cible exacte
  *    (étape d'entretien comprise) ; déplacement groupé depuis une étape de
@@ -20,7 +20,7 @@
  *  - Sourcing : « Shortlister » et « Archiver » depuis les résultats.
  *    « Restaurer » un profil archivé n'a pas d'entrée dans cet écran
  *    (onRestoreCandidate n'est branché sur aucun bouton) : la restauration est
- *    couverte par le kanban (Écarté vers Sourcé).
+ *    couverte par le kanban (Écarté vers À trier).
  *
  * Harnais : stack locale (e2e/local-stack), vraie base, migrations du lot 0b-1
  * appliquées (journal et garde). Seuls la liste des comptes LinkedIn, la
@@ -223,7 +223,7 @@ async function moveCard(page: Page, name: string, label: string) {
 // ═══ Kanban de mission ══════════════════════════════════════════════════════
 
 test.describe('Lot 0b-4 : kanban de mission', () => {
-  test('vers une étape d’entretien, vers Écarté, puis retour dans Sourcé : set_candidate_stage, toast après l’enregistrement, aucune écriture directe', async ({ browser }) => {
+  test('vers une étape d’entretien, vers Écarté, puis retour dans À trier : set_candidate_stage, toast après l’enregistrement, aucune écriture directe', async ({ browser }) => {
     const ws = await workspace('E2E 0b4 kanban');
     const steps = await processSteps(ws, ['Préqualif', 'Entretien client']);
     const interview = steps.get('Entretien client')!;
@@ -234,7 +234,7 @@ test.describe('Lot 0b-4 : kanban de mission', () => {
     // carte et la colonne visée restent à l'écran pendant le glisser.
     const page = await openAs(browser, ws, { width: 2400, height: 1100 });
     await openMissionPipeline(page, ws.missionId, name, 'kanban');
-    await expect(column(page, 'Sourcé').getByText(name, { exact: true })).toBeVisible();
+    await expect(column(page, 'À trier').getByText(name, { exact: true })).toBeVisible();
     const mark = await journalMark();
 
     // 1. Vers une étape d'entretien : interviewing et l'étape de la colonne.
@@ -250,11 +250,11 @@ test.describe('Lot 0b-4 : kanban de mission', () => {
     expect(await stageOf(rowId)).toEqual({ stage: 'rejected', step: null, source: 'user' });
     await expect(column(page, 'Écarté').getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
 
-    // 3. Restauration : d'Écarté vers Sourcé, À trier.
-    await dragCard(page, name, 'Sourcé');
-    await expect(toast(page, `${name} déplacé vers « Sourcé »`)).toBeVisible({ timeout: 15_000 });
+    // 3. Restauration : d'Écarté vers À trier.
+    await dragCard(page, name, 'À trier');
+    await expect(toast(page, `${name} déplacé vers « À trier »`)).toBeVisible({ timeout: 15_000 });
     expect(await stageOf(rowId)).toEqual({ stage: 'to_sort', step: null, source: 'user' });
-    await expect(column(page, 'Sourcé').getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(column(page, 'À trier').getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
 
     await expectNoDirectWrite(ws, mark);
   });
@@ -263,7 +263,7 @@ test.describe('Lot 0b-4 : kanban de mission', () => {
 // ═══ Tableau de mission (vue par défaut de l'onglet Pipeline) ═══════════════
 
 test.describe('Lot 0b-4 : tableau de mission', () => {
-  test('« Shortlister » groupé retient le candidat à trier et laisse le contacté à son étape ; « Écarter » d’une ligne écarte', async ({ browser }) => {
+  test('« Retenir » groupé retient le candidat à trier et laisse le contacté à son étape ; « Écarter » d’une ligne écarte', async ({ browser }) => {
     const ws = await workspace('E2E 0b4 tableau');
     const toSort = 'Chloe Atrier';
     const contacted = 'Denis Contacte';
@@ -277,7 +277,7 @@ test.describe('Lot 0b-4 : tableau de mission', () => {
     for (const name of [toSort, contacted]) {
       await page.getByRole('row').filter({ hasText: name }).getByRole('checkbox').click();
     }
-    await page.getByRole('button', { name: 'Shortlister', exact: true }).click();
+    await page.getByRole('button', { name: 'Retenir', exact: true }).click();
     await expect(toast(page, '1 candidat mis à jour. 1 candidat déjà plus loin, laissé à son étape.')).toBeVisible({ timeout: 15_000 });
     expect(await stageOf(toSortId)).toEqual({ stage: 'retained', step: null, source: 'user' });
     expect((await stageOf(contactedId)).stage, 'un candidat contacté ne recule pas vers Retenu').toBe('contacted');
@@ -295,7 +295,7 @@ test.describe('Lot 0b-4 : tableau de mission', () => {
 // ═══ /pipeline ══════════════════════════════════════════════════════════════
 
 test.describe('Lot 0b-4 : /pipeline', () => {
-  test('déplacement vers « Perdu » puis « Annuler » : la cible exacte revient, étape d’entretien comprise', async ({ browser }) => {
+  test('déplacement vers « Écarté » puis « Annuler » : la cible exacte revient, étape d’entretien comprise', async ({ browser }) => {
     const ws = await workspace('E2E 0b4 pipeline annuler');
     const steps = await processSteps(ws, ['Entretien RH', 'Entretien client']);
     const interview = steps.get('Entretien client')!;
@@ -308,10 +308,10 @@ test.describe('Lot 0b-4 : /pipeline', () => {
     await expect(page.locator('[aria-label^="Colonne ITW en cours,"]').getByText(name, { exact: true })).toBeVisible();
     const mark = await journalMark();
 
-    await moveCard(page, name, 'Perdu');
-    const moved = toast(page, `${name} est maintenant à l'étape\u00a0«\u00a0Perdu\u00a0»`);
+    await moveCard(page, name, 'Écarté');
+    const moved = toast(page, `${name} est maintenant à l'étape\u00a0«\u00a0Écarté\u00a0»`);
     await expect(moved).toBeVisible({ timeout: 15_000 });
-    expect(await stageOf(rowId), 'Perdu enregistré avant le toast').toEqual({ stage: 'rejected', step: null, source: 'user' });
+    expect(await stageOf(rowId), 'Écarté enregistré avant le toast').toEqual({ stage: 'rejected', step: null, source: 'user' });
 
     await moved.getByRole('button', { name: 'Annuler', exact: true }).click();
     await expect.poll(() => stageOf(rowId), { timeout: 15_000 }).toEqual({ stage: 'interviewing', step: interview, source: 'user' });
@@ -342,16 +342,16 @@ test.describe('Lot 0b-4 : /pipeline', () => {
     }
     const bar = page.getByRole('toolbar', { name: 'Actions sur 2 candidats sélectionnés' });
     await bar.getByRole('button', { name: 'Déplacer vers…' }).click();
-    await page.getByRole('menuitem', { name: 'Perdu', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Écarté', exact: true }).click();
 
-    const moved = toast(page, '2 candidats déplacés vers «\u00a0Perdu\u00a0»');
+    const moved = toast(page, '2 candidats déplacés vers «\u00a0Écarté\u00a0»');
     await expect(moved).toBeVisible({ timeout: 20_000 });
     for (const id of [firstId, secondId]) {
       expect(await stageOf(id)).toEqual({ stage: 'rejected', step: null, source: 'user' });
     }
 
     await moved.getByRole('button', { name: 'Annuler', exact: true }).click();
-    await expect(toast(page, 'Déplacement annulé\u00a0: 2 candidats remis à leur étape précédente')).toBeVisible({ timeout: 20_000 });
+    await expect(toast(page, '2 candidats sont revenus à leur étape précédente.')).toBeVisible({ timeout: 20_000 });
     expect(await stageOf(firstId), 'première étape d’entretien restaurée').toEqual({ stage: 'interviewing', step: hr, source: 'user' });
     expect(await stageOf(secondId), 'seconde étape d’entretien restaurée').toEqual({ stage: 'interviewing', step: client, source: 'user' });
 

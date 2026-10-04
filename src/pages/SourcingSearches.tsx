@@ -38,7 +38,8 @@ const SearchCard = ({
   onDelete: () => void;
 }) => {
   const stats = [
-    { icon: Users, value: search.stats_total_found, label: 'profils' },
+    // Une ligne par candidat trouvé : « Sourcés » ailleurs, « profils trouvés » ne désigne que les jamais ouverts.
+    { icon: Users, value: search.stats_total_found, label: search.stats_total_found > 1 ? 'sourcés' : 'sourcé' },
     // Cumuls depuis le début (lot 0c-1) : d'où « au total ».
     { icon: Star, value: search.stats_shortlisted, label: search.stats_shortlisted > 1 ? 'retenus au total' : 'retenu au total' },
     { icon: Send, value: search.stats_messaged, label: search.stats_messaged > 1 ? 'contactés au total' : 'contacté au total' },

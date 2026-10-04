@@ -80,7 +80,14 @@ type CardSignal =
 function cardSignal(candidate: ATSCandidate, now: Date): CardSignal | null {
   // Plan 0c, section 6.4 : le temps se compte depuis l'entrée dans l'étape.
   const stagnant = stagnantDays(candidate, now);
-  if (stagnant !== null) return { kind: 'stagnant', text: `Dans cette étape depuis ${stagnant}\u00a0j` };
+  // Un candidat de séquence ou d'InMail n'a pas de date d'entrée dans l'étape : le délai
+  // vient de sa dernière action, et la phrase le dit.
+  if (stagnant !== null) {
+    return {
+      kind: 'stagnant',
+      text: candidate.stageEnteredAt ? `Dans cette étape depuis ${stagnant}\u00a0j` : `Dernière action il y a ${stagnant}\u00a0j`,
+    };
+  }
 
   const ago = timeAgo(candidate.lastActivity || candidate.createdAt, { now });
   const reply =

@@ -223,7 +223,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
       {/* ── Header : pills + titre + meta ── */}
       <div className="konekt-fade-up">
         <div className="flex items-center gap-2 mb-2 flex-wrap">
-          {created && <Pill variant="muted">Créée {created}</Pill>}
+          {created && <Pill variant="muted">Créée {/^(il y a|à l'instant)/.test(created) ? created : `le ${created}`}</Pill>}
           {hasFiltersSnapshot && (
             <Pill variant="ai" icon={Sparkles}>Brief structuré par IA</Pill>
           )}
@@ -322,7 +322,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
             )}
             {topSkills.length === 0 && !jd.experience_min && !jd.seniority && (
               <p className="text-muted-foreground text-[12px] italic">
-                Pas encore de détails — complète le brief pour les voir apparaître ici.
+                Pas encore de détails. Complétez le brief pour les voir apparaître ici.
               </p>
             )}
           </div>
@@ -371,7 +371,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
                   : 'border-border bg-card/50',
               )}
             >
-              <p
+              <div
                 className={cn(
                   'font-display text-[20px] font-bold',
                   !s.value ? 'text-muted-foreground/40' : 'text-foreground',
@@ -382,12 +382,12 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
                     ? <Skeleton className="mx-auto h-6 w-8" aria-hidden="true" />
                     : <span className="sr-only">Indisponible</span>)
                   : s.value}
-              </p>
+              </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
-        {countsQuery.isError && (
+        {(countsQuery.isError || (!countsQuery.isPending && !counts)) && (
           <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground" role="status">
             Chiffres indisponibles.
             <Button variant="outline" size="xs" onClick={() => { void countsQuery.refetch(); }}>
@@ -431,7 +431,7 @@ const ProcessSummary: React.FC<{ project: SourcingProject }> = ({ project }) => 
           ))}
         </div>
         <p className="text-[10px] text-muted-foreground italic mt-2 pt-2 border-t border-border">
-          Process par défaut — personnalise dans l'onglet Process.
+          Process par défaut. Personnalisez-le dans l'onglet Process.
         </p>
       </div>
     );

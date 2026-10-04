@@ -205,7 +205,9 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </TableCell>
                 <TableCell className="whitespace-nowrap px-3 py-2.5">
                   {stagnant !== null ? (
-                    <span className="text-xs font-medium text-warning">Dans cette étape depuis {stagnant}{'\u00a0'}j</span>
+                    <span className="text-xs font-medium text-warning">
+                      {candidate.stageEnteredAt ? `Dans cette étape depuis ${stagnant}\u00a0j` : `Dernière action il y a ${stagnant}\u00a0j`}
+                    </span>
                   ) : activity ? (
                     <time
                       dateTime={activity}

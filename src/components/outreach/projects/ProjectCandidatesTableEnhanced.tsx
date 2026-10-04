@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { recommendationLabel } from '@/types/projects';
 import {
   ExternalLink,
   Target,
@@ -698,10 +699,7 @@ export const ProjectCandidatesTableEnhanced: React.FC<ProjectCandidatesTableEnha
                           </Badge>
                         </TooltipTrigger>
                         <TooltipContent>
-                          {candidate.recommendation === 'top' && 'Profil top : très bon match'}
-                          {candidate.recommendation === 'good' && 'Profil prometteur'}
-                          {candidate.recommendation === 'maybe' && 'À considérer'}
-                          {candidate.recommendation === 'skip' && candidate.skip_reason}
+                          {recommendationLabel(candidate.recommendation, candidate.skip_reason) ?? `Note ${candidate.score}`}
                         </TooltipContent>
                       </Tooltip>
                     ) : (
