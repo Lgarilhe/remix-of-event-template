@@ -8,6 +8,9 @@ import { ScoreBadge } from '@/components/ui/score-badge';
 interface Props {
   candidateId: string;
   jobId?: string;
+  /** Mission (uuid sans « project: »), quand le poste en est une : la note se lit par mission et organisation. */
+  projectId?: string;
+  organizationId?: string | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   /** Élément auquel la fenêtre s'accroche (la ligne du candidat). */
@@ -19,31 +22,49 @@ interface Props {
  * sert d'ancre, pas de déclencheur : un clic sur le candidat affiche ses
  * aperçus, il n'ouvre pas cette fenêtre.
  */
-export function ScoringPopover({ candidateId, jobId, isOpen, onOpenChange, children }: Props) {
+export function ScoringPopover({ candidateId, jobId, projectId, organizationId, isOpen, onOpenChange, children }: Props) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
 
+  // Un autre candidat, une autre mission ou une autre organisation : la note lue ne vaut plus.
+  useEffect(() => {
+    setData(null);
+  }, [candidateId, jobId, projectId, organizationId]);
+
   useEffect(() => {
     if (!isOpen || data) return;
     let cancelled = false;
     setLoading(true);
     setFailed(false);
+    // En contexte de mission, la lecture attend l'organisation.
+    if (projectId && !organizationId) return () => { cancelled = true; };
 
     const fetch = async () => {
       try {
-        const query = supabase
-          .from('job_candidate_status')
-          .select('score, recommendation, scoring_details, pipeline_stage, status')
-          .eq('candidate_id', candidateId);
-
-        if (jobId) query.eq('job_id', jobId);
-
-        const { data: rows, error } = await query.order('updated_at', { ascending: false }).limit(1);
-        if (error) throw error;
-        if (!cancelled) setData(rows?.[0] || null);
+        // Mission : la ligne notée de ce candidat dans la mission, quelle que soit la
+        // forme du job_id ou l'auteur (comme la note de la carte). Sinon : le poste.
+        // Une ligne notée passe avant une ligne sans note, puis la plus récente (règle de la vue).
+        const readBy = async (column: 'project_id' | 'job_id', value: string) => {
+          let query = supabase
+            .from('job_candidate_status')
+            .select('score, recommendation, scoring_details')
+            .eq('candidate_id', candidateId)
+            .eq(column, value);
+          if (column === 'project_id' && organizationId) query = query.eq('organization_id', organizationId);
+          // Règle de la vue mission_candidate_rows : la ligne notée la plus récente,
+          // à défaut la plus récente (les doublons d'un candidat sont peu nombreux).
+          const { data: found, error: readError } = await query
+            .order('updated_at', { ascending: false });
+          if (readError) throw readError;
+          return found?.find((r) => r.score != null) ?? found?.[0] ?? null;
+        };
+        let row = projectId ? await readBy('project_id', projectId) : null;
+        // Un job_id ancien n'est pas une mission : repli sur le poste.
+        if (!row && jobId) row = await readBy('job_id', jobId);
+        if (!cancelled) setData(row);
       } catch (err) {
         console.warn('[ScoringPopover] score fetch failed:', err);
         if (!cancelled) setFailed(true);
@@ -53,7 +74,7 @@ export function ScoringPopover({ candidateId, jobId, isOpen, onOpenChange, child
     };
     fetch();
     return () => { cancelled = true; };
-  }, [isOpen, candidateId, jobId, data, attempt]);
+  }, [isOpen, candidateId, jobId, projectId, organizationId, data, attempt]);
 
   const strengths: string[] = data?.scoring_details?.strengths ?? [];
   const concerns: string[] = data?.scoring_details?.concerns ?? [];

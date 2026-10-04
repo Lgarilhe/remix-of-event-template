@@ -23,6 +23,9 @@ import {
   buildChatSearchText,
 } from './useMessagesInboxHelpers';
 
+/** Identifiant de mission (sourcing_projects.id). */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Types
 export interface ChatAttendee {
   id?: string; // Unipile attendee ID (needed for fetching profile picture)
@@ -1357,10 +1360,15 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
 
           if (cancelled) return;
           if (enrollment?.job_id) {
-            const { data: project } = await supabase
+            // Mission par son id ou par son job_id, préfixe « project: » retiré
+            // (lot 0c-4) : un poste de mission V2 n'a pas de job_id.
+            const jobKey = enrollment.job_id.replace(/^project:/, '');
+            const projectQuery = supabase
               .from('sourcing_projects')
-              .select('calendly_link')
-              .eq('job_id', enrollment.job_id)
+              .select('calendly_link');
+            const { data: project } = await (UUID_PATTERN.test(jobKey)
+              ? projectQuery.or(`id.eq.${jobKey},job_id.eq.${jobKey}`)
+              : projectQuery.eq('job_id', jobKey))
               .not('calendly_link', 'is', null)
               .limit(1)
               .maybeSingle();

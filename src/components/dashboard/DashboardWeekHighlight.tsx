@@ -27,20 +27,14 @@ interface WeekStats {
   won: number;
 }
 
-const isContactedHelper = (c: ATSCandidate) => {
-  if (['messaged', 'replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
-  if (['Contacté', 'Répondu'].includes(c.stage)) return true;
-  if (c.sequenceStatus && ['active', 'completed', 'replied'].includes(c.sequenceStatus)) return true;
-  if (c.source === 'inmail' && c.stage !== 'Nouveau') return true;
-  return false;
-};
-
-const isRepliedHelper = (c: ATSCandidate) => {
-  if (['Répondu', 'Pré-qualif', 'CV envoyé', 'ITW en cours', 'Offre', 'Gagné'].includes(c.stage)) return true;
-  if (['replied', 'interested', 'not_interested'].includes(c.outreachStatus || '')) return true;
-  if (c.sequenceStatus === 'replied') return true;
-  return false;
-};
+// Chiffres de la semaine : un événement daté par sa date vraie (jalons
+// contactedAt, repliedAt, hiredAt de la ligne candidat), jamais par l'étape du
+// moment ni par la dernière modification (une note la fait bouger).
+type DateOf = (c: ATSCandidate) => string | null | undefined;
+const createdOf: DateOf = (c) => c.createdAt;
+const contactedOf: DateOf = (c) => c.contactedAt;
+const repliedOf: DateOf = (c) => c.repliedAt;
+const hiredOf: DateOf = (c) => c.hiredAt;
 
 const inWindow = (createdAt: string | null | undefined, start: Date, end: Date) => {
   if (!createdAt) return false;
@@ -52,17 +46,12 @@ const inWindow = (createdAt: string | null | undefined, start: Date, end: Date) 
   }
 };
 
-/** Build a 7-day sparkline of a metric. */
-const buildSparkline = (
-  candidates: ATSCandidate[],
-  predicate: (c: ATSCandidate) => boolean,
-  useLastActivity: boolean = false,
-): number[] => {
+/** Courbe sur sept jours : les candidats dont la date donnée tombe ce jour-là. */
+const buildSparkline = (candidates: ATSCandidate[], dateOf: DateOf): number[] => {
   const now = new Date();
   const buckets: number[] = Array(7).fill(0);
   candidates.forEach((c) => {
-    if (!predicate(c)) return;
-    const dateField = useLastActivity ? c.lastActivity || c.createdAt : c.createdAt;
+    const dateField = dateOf(c);
     if (!dateField) return;
     try {
       const d = parseISO(dateField);
@@ -71,7 +60,7 @@ const buildSparkline = (
         buckets[6 - daysAgo] += 1;
       }
     } catch {
-      // skip
+      // date illisible : ignorée
     }
   });
   return buckets;
@@ -122,41 +111,27 @@ export const DashboardWeekHighlight: React.FC<DashboardWeekHighlightProps> = ({ 
     const weekStart = subDays(now, 7);
     const prevWeekStart = subDays(now, 14);
 
-    const currentCohort = candidates.filter((c) => inWindow(c.createdAt, weekStart, now));
-    const previousCohort = candidates.filter((c) => inWindow(c.createdAt, prevWeekStart, weekStart));
-
-    const repliedThisWeek = candidates.filter((c) => {
-      if (!isRepliedHelper(c)) return false;
-      const date = c.lastActivity || c.createdAt;
-      if (!date) return false;
-      return inWindow(date, weekStart, now);
-    }).length;
-    const repliedPrevWeek = candidates.filter((c) => {
-      if (!isRepliedHelper(c)) return false;
-      const date = c.lastActivity || c.createdAt;
-      if (!date) return false;
-      return inWindow(date, prevWeekStart, weekStart);
-    }).length;
+    const countIn = (dateOf: DateOf, start: Date, end: Date) => candidates.filter((c) => inWindow(dateOf(c), start, end)).length;
 
     const cur: WeekStats = {
-      added: currentCohort.length,
-      contacted: currentCohort.filter(isContactedHelper).length,
-      replied: repliedThisWeek,
-      won: currentCohort.filter((c) => c.stage === 'Gagné').length,
+      added: countIn(createdOf, weekStart, now),
+      contacted: countIn(contactedOf, weekStart, now),
+      replied: countIn(repliedOf, weekStart, now),
+      won: countIn(hiredOf, weekStart, now),
     };
     const prev: WeekStats = {
-      added: previousCohort.length,
-      contacted: previousCohort.filter(isContactedHelper).length,
-      replied: repliedPrevWeek,
-      won: previousCohort.filter((c) => c.stage === 'Gagné').length,
+      added: countIn(createdOf, prevWeekStart, weekStart),
+      contacted: countIn(contactedOf, prevWeekStart, weekStart),
+      replied: countIn(repliedOf, prevWeekStart, weekStart),
+      won: countIn(hiredOf, prevWeekStart, weekStart),
     };
 
     // Courbes sur sept jours
     const sparklines = {
-      added: buildSparkline(candidates, () => true, false),
-      contacted: buildSparkline(candidates, isContactedHelper, false),
-      replied: buildSparkline(candidates, isRepliedHelper, true),
-      won: buildSparkline(candidates, (c) => c.stage === 'Gagné', true),
+      added: buildSparkline(candidates, createdOf),
+      contacted: buildSparkline(candidates, contactedOf),
+      replied: buildSparkline(candidates, repliedOf),
+      won: buildSparkline(candidates, hiredOf),
     };
 
     // La variation la plus nette donne la phrase d'en-tête
@@ -178,7 +153,7 @@ export const DashboardWeekHighlight: React.FC<DashboardWeekHighlightProps> = ({ 
 
     if (repliedDelta !== null && Math.abs(repliedDelta) >= 10) {
       candidates_metrics.push({
-        label: 'réponses',
+        label: 'candidats ayant répondu',
         cur: cur.replied,
         prev: prev.replied,
         delta: repliedDelta,
@@ -235,9 +210,9 @@ export const DashboardWeekHighlight: React.FC<DashboardWeekHighlightProps> = ({ 
       <p className="border-b border-border px-4 py-3 text-md font-medium text-foreground">{headline}</p>
       <div className="grid grid-cols-2 divide-border max-lg:[&>*:nth-child(-n+2)]:border-b max-lg:[&>*:nth-child(odd)]:border-r lg:grid-cols-4 lg:divide-x">
         <StatCell label="Candidats ajoutés" cur={current.added} prev={previous.added} sparkline={sparklines.added} />
-        <StatCell label="Contactés" cur={current.contacted} prev={previous.contacted} sparkline={sparklines.contacted} />
-        <StatCell label="Réponses" cur={current.replied} prev={previous.replied} sparkline={sparklines.replied} />
-        <StatCell label="Placements" cur={current.won} prev={previous.won} threshold={1} sparkline={sparklines.won} />
+        <StatCell label="Contactés cette semaine" cur={current.contacted} prev={previous.contacted} sparkline={sparklines.contacted} />
+        <StatCell label="Ont répondu cette semaine" cur={current.replied} prev={previous.replied} sparkline={sparklines.replied} />
+        <StatCell label="Embauchés cette semaine" cur={current.won} prev={previous.won} threshold={1} sparkline={sparklines.won} />
       </div>
     </Section>
   );

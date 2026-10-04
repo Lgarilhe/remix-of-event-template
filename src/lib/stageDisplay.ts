@@ -142,6 +142,16 @@ export function atsColumnOf(row: { general_stage?: string | null; pipeline_stage
   return ATS_COLUMN_BY_STAGE[row.general_stage];
 }
 
+/**
+ * Colonne du /pipeline d'un candidat de fiche. Une ligne de mission porte sa
+ * colonne de mission dans `stage` (« messaged », identifiant d'étape…) : la
+ * colonne se tire alors de l'étape générale, jamais d'une clé brute. Sans étape
+ * générale (séquence, InMail), `stage` est déjà une colonne du /pipeline.
+ */
+export function candidateColumnKey(c: { stage: string; generalStage?: string | null }): string {
+  return isGeneralStage(c.generalStage) ? atsColumnOf({ general_stage: c.generalStage, pipeline_stage: c.stage }) : c.stage;
+}
+
 const ATS_COLUMN_TITLE: Readonly<Record<string, string>> = {
   Nouveau: GENERAL_STAGE_LABEL.to_sort,
   Pressenti: GENERAL_STAGE_LABEL.retained,
@@ -227,8 +237,6 @@ export function missionActivityAt(
 /**
  * Lectures touchées par un changement d'étape : compteurs de mission, kanban
  * et tableau de mission, /pipeline, listes et fiche de mission (stats_*).
- * project-stats et projects-stats-batch : anciennes lectures, jusqu'au retrait
- * de useProjectStats (0c-4).
  */
 export const STAGE_READER_KEYS: readonly (readonly string[])[] = [
   ['mission-stage-counts'],
@@ -236,8 +244,6 @@ export const STAGE_READER_KEYS: readonly (readonly string[])[] = [
   ['ats-candidates'],
   ['sourcing-projects'],
   ['sourcing-project'],
-  ['project-stats'],
-  ['projects-stats-batch'],
 ];
 
 /** À appeler après chaque geste d'étape et chaque annulation. */

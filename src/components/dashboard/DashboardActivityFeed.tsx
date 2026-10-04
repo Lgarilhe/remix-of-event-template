@@ -1,6 +1,6 @@
 /**
  * DashboardActivityFeed — les huit derniers mouvements sur vos candidats :
- * placement, candidat perdu, réponse, avancée d'étape, prise de contact,
+ * embauche, candidat écarté, réponse, avancée d'étape, prise de contact,
  * ajout, note. Chaque ligne ouvre la fiche du candidat.
  */
 
@@ -26,6 +26,7 @@ import type { ATSCandidate } from '@/hooks/useATSData';
 import { useCandidateAvatars } from '@/hooks/useCandidateAvatars';
 import { CandidateAvatar } from './CandidateAvatar';
 import { timeAgo } from '@/lib/relativeTime';
+import { atsColumnTitle } from '@/lib/stageDisplay';
 
 interface DashboardActivityFeedProps {
   candidates: ATSCandidate[];
@@ -38,7 +39,7 @@ interface ActivityEntry {
   verb: string;
   description: string;
   icon: LucideIcon;
-  /** Seuls un placement et un candidat perdu portent une couleur de statut. */
+  /** Seules une embauche et un candidat écarté portent une couleur de statut. */
   tone?: 'success' | 'danger';
 }
 
@@ -49,62 +50,63 @@ const buildActivityEntries = (candidates: ATSCandidate[]): ActivityEntry[] => {
     const lastDate = c.lastActivity || c.createdAt;
     if (!lastDate) return;
 
+    // Un mouvement d'étape est daté de l'entrée dans l'étape (une note ou une
+    // modification n'avance pas la date) ; une note, de la dernière activité.
+    const stageDate = c.stageEnteredAt || lastDate;
     let date: Date;
+    let stageParsed: Date;
     try {
       date = parseISO(lastDate);
+      stageParsed = parseISO(stageDate);
     } catch {
       return;
     }
 
     let entry: ActivityEntry | null = null;
 
-    if (c.stage === 'Gagné') {
+    if (c.generalStage === 'hired') {
       entry = {
         candidate: c,
-        date,
-        verb: 'placé',
-        description: c.jobTitle ? `Sur ${c.jobTitle}` : 'Placement confirmé',
+        date: stageParsed,
+        verb: 'embauché',
+        description: c.jobTitle ? `Sur ${c.jobTitle}` : 'Embauche confirmée',
         icon: CheckCircle2,
         tone: 'success',
       };
-    } else if (c.stage === 'Perdu') {
+    } else if (c.generalStage === 'rejected') {
       entry = {
         candidate: c,
-        date,
-        verb: 'perdu',
-        description: c.jobTitle ? `Sur ${c.jobTitle}` : 'Candidat fermé',
+        date: stageParsed,
+        verb: 'écarté',
+        description: c.jobTitle ? `Sur ${c.jobTitle}` : 'Candidat écarté',
         icon: XCircle,
         tone: 'danger',
       };
-    } else if (
-      ['replied', 'interested'].includes(c.outreachStatus || '') ||
-      c.stage === 'Répondu' ||
-      c.sequenceStatus === 'replied'
-    ) {
+    } else if (c.generalStage === 'replied') {
       entry = {
         candidate: c,
-        date,
+        date: stageParsed,
         verb: 'a répondu',
         description: c.headline || c.jobTitle || 'Nouvelle réponse',
         icon: MessageCircle,
       };
-    } else if (['ITW en cours', 'Pré-qualif', 'CV envoyé', 'Offre'].includes(c.stage)) {
+    } else if (c.generalStage === 'interviewing') {
       entry = {
         candidate: c,
-        date,
+        date: stageParsed,
         verb: 'avance',
-        description: `Étape : ${c.stage}`,
+        description: `Étape : ${atsColumnTitle(c.stage)}`,
         icon: TrendingUp,
       };
-    } else if (c.outreachStatus === 'messaged' || c.stage === 'Contacté') {
+    } else if (c.generalStage === 'contacted') {
       entry = {
         candidate: c,
-        date,
+        date: stageParsed,
         verb: 'contacté',
         description: c.sequenceName ? c.sequenceName : c.jobTitle || 'Premier message envoyé',
         icon: Send,
       };
-    } else if (c.stage === 'Nouveau' && c.createdAt === lastDate) {
+    } else if (c.generalStage === 'to_sort' && c.createdAt === lastDate) {
       entry = {
         candidate: c,
         date,
@@ -177,7 +179,7 @@ export const DashboardActivityFeed: React.FC<DashboardActivityFeedProps> = ({
             className="border-0"
             icon={Activity}
             title="Aucune activité récente"
-            description="Les mouvements de vos candidats (réponses, étapes, placements) s'afficheront ici."
+            description="Les mouvements de vos candidats (réponses, étapes, embauches) s'afficheront ici."
           />
         ) : (
           <ul className="space-y-0.5">

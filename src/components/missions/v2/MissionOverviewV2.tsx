@@ -20,9 +20,9 @@
  *   │  │ Démarrage: T3 2026    │  │ ④ Offre · 48h             │ │
  *   │  └─────────────────────┘  └─────────────────────────────┘ │
  *   │                                                              │
- *   │  ┌── Funnel ───────────────────────────────────────────┐  │
- *   │  │ Sourcés  Contactés  Répondu  Entretien  Offre       │  │
- *   │  │   38       12         5         2         0          │  │
+ *   │  ┌── Funnel (cumuls « au total ») ─────────────────────┐  │
+ *   │  │ Sourcés  Contactés  Ont répondu  Entretiens  Embauchés │  │
+ *   │  │   38       12         5            2           0        │  │
  *   │  └──────────────────────────────────────────────────────┘  │
  *   └──────────────────────────────────────────────────────────────┘
  */
@@ -32,6 +32,11 @@ import { Sparkles, Search, Zap, ArrowRight, Building2, MapPin, Euro, Clock, File
 import { cn } from '@/lib/utils';
 import { SourcingProject } from '@/hooks/useSourcingProjects';
 import { useMissionReadiness } from '@/hooks/useMissionReadiness';
+import { useMissionStageCounts } from '@/hooks/useMissionStageCounts';
+import { CUMULATIVE_LABEL } from '@/lib/stageDisplay';
+import { timeAgo } from '@/lib/relativeTime';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { JobDetails } from '@/types/jobDetails';
 import { CONTRACT_TYPE_LABELS, REMOTE_LABELS } from '@/types/jobDetails';
 import { Pill } from './Pill';
@@ -45,23 +50,6 @@ export interface MissionOverviewV2Props {
 }
 
 // ── Helpers ──
-
-function formatRelativeTime(iso: string | null | undefined): string {
-  if (!iso) return '';
-  try {
-    const ms = Date.now() - new Date(iso).getTime();
-    const min = Math.floor(ms / 60000);
-    if (min < 1) return "à l'instant";
-    if (min < 60) return `il y a ${min} min`;
-    const h = Math.floor(min / 60);
-    if (h < 24) return `il y a ${h}h`;
-    const d = Math.floor(h / 24);
-    if (d < 7) return `il y a ${d}j`;
-    return `il y a ${Math.floor(d / 7)} sem`;
-  } catch {
-    return '';
-  }
-}
 
 function formatSalary(jd: JobDetails): string | null {
   const min = jd.salary_min;
@@ -203,17 +191,23 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
   useMissionReadiness(project);
   const jd = (project.job_details || {}) as JobDetails;
 
-  const created = formatRelativeTime(project.created_at);
+  // Client : celui du brief, sinon celui de la mission (comme la liste des missions).
+  const clientName = jd.client?.name || project.client_name;
+  const created = timeAgo(project.created_at);
   const hasFiltersSnapshot = !!(project.filters_snapshot && Object.keys(project.filters_snapshot).length > 0);
 
-  // Stats funnel
-  const stats = [
+  // Stats funnel. Cumuls depuis le début, d'où « au total » : stats_messaged
+  // (lot 0c-1), puis les ever_* de get_mission_stage_counts (lot 0c-3).
+  // null tant que les compteurs ne sont pas lus : une attente, puis « Chiffres
+  // indisponibles » si la lecture échoue, jamais 0.
+  const countsQuery = useMissionStageCounts([project.id]);
+  const counts = countsQuery.data?.[project.id] ?? null;
+  const stats: { label: string; value: number | null }[] = [
     { label: 'Sourcés', value: project.stats_total_found || 0 },
-    // stats_messaged : cumul depuis le début (lot 0c-1), d'où « au total ».
     { label: 'Contactés au total', value: project.stats_messaged || 0 },
-    { label: 'Répondu', value: project.stats_replied || 0 },
-    { label: 'Entretien', value: project.stats_qualified || 0 },
-    { label: 'Offre', value: project.stats_hired || 0 },
+    { label: CUMULATIVE_LABEL.ever_replied, value: counts ? counts.everReplied : null },
+    { label: CUMULATIVE_LABEL.ever_interviewed, value: counts ? counts.everInterviewed : null },
+    { label: CUMULATIVE_LABEL.ever_hired, value: counts ? counts.everHired : null },
   ];
 
   // Salaire formatté
@@ -229,7 +223,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
       {/* ── Header : pills + titre + meta ── */}
       <div className="konekt-fade-up">
         <div className="flex items-center gap-2 mb-2 flex-wrap">
-          {created && <Pill variant="muted">Créée {created}</Pill>}
+          {created && <Pill variant="muted">Créée {/^(il y a|à l'instant)/.test(created) ? created : `le ${created}`}</Pill>}
           {hasFiltersSnapshot && (
             <Pill variant="ai" icon={Sparkles}>Brief structuré par IA</Pill>
           )}
@@ -238,15 +232,15 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
           {jd.title || project.name}
         </h1>
         <p className="text-sm text-muted-foreground inline-flex items-center gap-2 flex-wrap">
-          {project.client_name && (
+          {clientName && (
             <>
               <span className="inline-flex items-center gap-1.5">
                 <CompanyLogo
-                  name={project.client_name}
+                  name={clientName}
                   logoUrl={jd.client?.logo_url}
                   website={jd.client?.website}
                 />{' '}
-                {project.client_name}
+                {clientName}
               </span>
               <span className="text-muted-foreground/40">·</span>
             </>
@@ -328,7 +322,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
             )}
             {topSkills.length === 0 && !jd.experience_min && !jd.seniority && (
               <p className="text-muted-foreground text-xs italic">
-                Pas encore de détails — complète le brief pour les voir apparaître ici.
+                Pas encore de détails. Complétez le brief pour les voir apparaître ici.
               </p>
             )}
           </div>
@@ -356,7 +350,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
       <div className="bg-card border border-border rounded-xl p-4 konekt-fade-up" style={{ animationDelay: '180ms' }}>
         <div className="flex items-center justify-between mb-3">
           <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
-            Funnel
+            Entonnoir
           </p>
           {(project.stats_total_found || 0) === 0 ? (
             <Pill variant="muted">En attente du sourcing</Pill>
@@ -372,23 +366,35 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
               key={s.label}
               className={cn(
                 'text-center px-2 py-3 rounded-md border',
-                s.value === 0
+                !s.value
                   ? 'border-dashed border-border bg-background'
                   : 'border-border bg-card/50',
               )}
             >
-              <p
+              <div
                 className={cn(
                   'font-display text-xl font-bold',
-                  s.value === 0 ? 'text-muted-foreground/40' : 'text-foreground',
+                  !s.value ? 'text-muted-foreground/40' : 'text-foreground',
                 )}
               >
-                {s.value}
-              </p>
+                {s.value === null
+                  ? (countsQuery.isPending
+                    ? <Skeleton className="mx-auto h-6 w-8" aria-hidden="true" />
+                    : <span className="sr-only">Indisponible</span>)
+                  : s.value}
+              </div>
               <p className="text-2xs text-muted-foreground mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
+        {(countsQuery.isError || (!countsQuery.isPending && !counts)) && (
+          <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground" role="status">
+            Chiffres indisponibles.
+            <Button variant="outline" size="xs" onClick={() => { void countsQuery.refetch(); }}>
+              Réessayer
+            </Button>
+          </p>
+        )}
       </div>
     </div>
   );
@@ -425,7 +431,7 @@ const ProcessSummary: React.FC<{ project: SourcingProject }> = ({ project }) => 
           ))}
         </div>
         <p className="text-2xs text-muted-foreground italic mt-2 pt-2 border-t border-border">
-          Process par défaut — personnalise dans l'onglet Process.
+          Process par défaut. Personnalisez-le dans l'onglet Process.
         </p>
       </div>
     );

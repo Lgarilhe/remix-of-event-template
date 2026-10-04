@@ -33,10 +33,13 @@ const stubs = {
   name: 'stubs',
   setup(b) {
     b.onResolve({ filter: /integrations\/supabase\/client$/ }, () => ({ path: 'client', namespace: 'stub' }));
+    // analytics.ts lit import.meta.env au chargement : indéfini hors de Vite.
+    b.onResolve({ filter: /lib\/analytics$/ }, () => ({ path: 'analytics', namespace: 'stub' }));
     b.onResolve({ filter: /^(react|@tanstack\/react-query)$/ }, (args) => ({ path: args.path, namespace: 'stub' }));
     b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
       contents: [
         'export const supabase = { rpc: (fn, args) => globalThis.__rpc(fn, args) };',
+        'export const trackEvent = () => {};',
         'export const useMemo = (f) => f();',
         'export const useQuery = (o) => o;',
       ].join('\n'),
@@ -76,6 +79,7 @@ const {
   ATS_INTERVIEW_COLUMNS,
   atsColumnOf,
   atsColumnTitle,
+  candidateColumnKey,
   stageAgeDays,
   STALE_AFTER_DAYS,
   isStale,
@@ -173,6 +177,26 @@ test('0c : atsColumnOf suit la table de la section 6.5', () => {
   assert.equal(atsColumnOf({ general_stage: 'interviewing', pipeline_stage: STEP_A }), 'ITW en cours');
   assert.equal(atsColumnOf({ general_stage: 'interviewing', pipeline_stage: null }), 'ITW en cours');
   assert.equal(atsColumnOf({ general_stage: null, pipeline_stage: 'Offre' }), 'Nouveau');
+});
+
+test('0c : candidateColumnKey range une ligne de mission par son étape générale, jamais par sa clé brute', () => {
+  // Fiche ouverte depuis le kanban de mission : stage porte la colonne de mission.
+  assert.equal(candidateColumnKey({ stage: 'messaged', generalStage: 'contacted' }), 'Contacté');
+  assert.equal(candidateColumnKey({ stage: 'untreated', generalStage: 'to_sort' }), 'Nouveau');
+  assert.equal(candidateColumnKey({ stage: 'shortlisted', generalStage: 'retained' }), 'Pressenti');
+  assert.equal(candidateColumnKey({ stage: 'Répondu', generalStage: 'replied' }), 'Répondu');
+  assert.equal(candidateColumnKey({ stage: 'dismissed', generalStage: 'rejected' }), 'Perdu');
+  assert.equal(candidateColumnKey({ stage: STEP_A, generalStage: 'interviewing' }), 'ITW en cours');
+  // Fiche ouverte depuis le /pipeline : la colonne d'entretien est gardée.
+  assert.equal(candidateColumnKey({ stage: 'Offre', generalStage: 'interviewing' }), 'Offre');
+  // Séquence ou InMail : pas d'étape générale, la colonne est déjà celle du /pipeline.
+  assert.equal(candidateColumnKey({ stage: 'Contacté', generalStage: null }), 'Contacté');
+  assert.equal(candidateColumnKey({ stage: 'Contacté' }), 'Contacté');
+  // Le titre affiché est toujours un mot de la mission.
+  for (const stageKey of ['messaged', 'untreated', 'shortlisted', 'dismissed', STEP_A]) {
+    const general = { messaged: 'contacted', untreated: 'to_sort', shortlisted: 'retained', dismissed: 'rejected' }[stageKey] ?? 'interviewing';
+    assert.notEqual(atsColumnTitle(candidateColumnKey({ stage: stageKey, generalStage: general })), stageKey, stageKey);
+  }
 });
 
 test('0c : colonnes et titres du /pipeline, clés de ATS_STAGES inchangées', () => {

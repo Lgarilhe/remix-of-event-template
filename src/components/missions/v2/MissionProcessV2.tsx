@@ -84,7 +84,7 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
   const [suggestingAI, setSuggestingAI] = useState(false);
   // Remplacement d'un process existant : template en attente de confirmation + nb candidats impactés
   const [pendingTemplateKey, setPendingTemplateKey] = useState<string | null>(null);
-  const [impactedCandidates, setImpactedCandidates] = useState(0);
+  const [impactedCandidates, setImpactedCandidates] = useState<number | null>(0);
 
   const applyTemplate = async (templateKey: string) => {
     setSuggestingAI(true);
@@ -155,7 +155,9 @@ export const MissionProcessV2: React.FC<MissionProcessV2Props> = ({ project, rea
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingTemplateKey && `Le process « ${PROCESS_TEMPLATES[pendingTemplateKey].label} » remplacera les étapes existantes. `}
-              {impactedCandidates > 0
+              {impactedCandidates === null
+                ? 'Le nombre de candidats concernés n\'a pas pu être vérifié. '
+                : impactedCandidates > 0
                 ? `${impactedCandidates} candidat${impactedCandidates > 1 ? 's' : ''} positionné${impactedCandidates > 1 ? 's' : ''} sur une étape actuelle ${impactedCandidates > 1 ? 'seront repositionnés' : 'sera repositionné'} sur l'étape de même nom, ou sur la première étape. `
                 : 'Aucun candidat n\'est positionné sur une étape actuelle. '}
               Cette action est irréversible.

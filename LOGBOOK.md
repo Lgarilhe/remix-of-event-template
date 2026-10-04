@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-04 — SHIP — Refonte mission, lots 0c-3 et 0c-4 : écrans de mission, /pipeline, fiches, annulation
+
+**Contexte** : les écrans lisent la vue `mission_candidate_rows` et `get_mission_stage_counts` (lots 0c-1 et 0c-2). Livrés avant le lot 0b-5 (repli « ordre B » du plan 0c).
+**Décision / Fait** : un effectif porte le nom de l'étape, un cumul est écrit « au total ». Liste des missions sans « Brief incomplet », kanban avec Retenu et sans profils jamais ouverts, tableau de mission, /pipeline rangé par l'étape générale (même mots que la mission), « Dans cette étape depuis N j » sur `stage_entered_at`, annulation par `undo_candidate_stages`, grille IA qui reçoit le poste et les étapes d'entretien, tableau de bord (« Cette semaine » sur les jalons, activité récente sur l'étape générale). `get_project_stats` et `useProjectStats` n'ont plus de lecteur dans `src/`.
+**Impact** : `src/lib/stageDisplay.ts`, `src/lib/candidateStage.ts`, `src/hooks/useATSData.ts`, `MissionPipeline.tsx`, `ProjectsListV2.tsx`, `ATS.tsx`, `ScorecardTab.tsx`, `generate-scorecard`, specs `e2e/flows/stage-0b4-gestes.spec.ts`, `seq-decisions-ui.spec.ts`, `seq-reply-paths.spec.ts` mises aux nouveaux titres, `e2e/api/stage-0c-lectures.spec.ts` (A2 et C ajoutés).
+**Reste à faire** :
+- [ ] Recette `qa.md` : Guillaume (tableau « écran, libellé, nombre » : liste, kanban, tableau, /pipeline, tableau de bord ; annulation d'un geste), Théo (isolement de la vue, de la fonction et de l'annulation, refus anonyme), Sophie (kanban et liste sur téléphone).
+- [ ] Flow e2e `stage-0c-lectures.spec.ts` à rejouer sur la pile locale (`down.sh --reset`).
+- [ ] Fenêtre du lot 0b-5 : repart au 04/10/2026, au plus tôt le 09/10/2026 ; journal `jcs_direct_write_log` à lire avant de poser le mode `refuse`.
+- [ ] Lot 0c-6 : retrait de `get_project_stats` et `get_multiple_project_stats`, deux semaines au plus tôt après 0c-4.
+**Refs** : `docs/refonte-mission/conception.md` section 13.
+
+---
+
 ## 2026-07-07 — SHIP — Scoring à deux niveaux : éval. rapide (liste) vs éval. complète (fiche = visite de profil)
 
 **Contexte** : idée de Laurent — le scoring de masse ne dispose que des données de liste (pas de « À propos », pas de descriptions d'expériences) depuis que le robot d'enrichissement est éteint (décision 07/07) ; il affichait pourtant un score faussement précis. Le seul chemin légitime vers les données complètes est la visite de profil que l'user déclenche lui-même.

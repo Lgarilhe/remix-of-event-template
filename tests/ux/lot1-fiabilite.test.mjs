@@ -54,7 +54,7 @@ test('UX01 — batchShortlist retient par set_candidate_stages, sans statut dans
   // seulement depuis À trier, Retenu ou Écarté.
   assert.match(
     fn,
-    /setCandidateStages\(\[\.\.\.candidateByRow\.keys\(\)\], \{ stage: 'retained' \}, RETAIN_FROM_STAGES\)/,
+    /setCandidateStages\(\[\.\.\.candidateByRow\.keys\(\)\], \{ stage: 'retained' \}, RETAIN_FROM_STAGES, SOURCING_GESTURE\)/,
   );
   assert.match(candidateStatus, /const RETAIN_FROM_STAGES: GeneralStage\[\] = \['to_sort', 'retained', 'rejected'\];/);
   // L'état local ne passe à shortlisted que pour les lignes réellement retenues.
@@ -115,13 +115,13 @@ test('0b-4 — archiver et restaurer passent par set_candidate_stage(s), note ga
   const dismiss = body('dismissCandidate');
   assert.doesNotMatch(dismiss.slice(dismiss.indexOf('.upsert('), dismiss.indexOf('.select(')), /\bstatus:/);
   assert.match(dismiss, /\.\.\.\(candidateData\.score != null \? \{ score: candidateData\.score \} : \{\}\)/);
-  assert.match(dismiss, /setCandidateStage\(rowId, \{ stage: 'rejected' \}\)/);
+  assert.match(dismiss, /setCandidateStage\(rowId, \{ stage: 'rejected' \}, SOURCING_GESTURE\)/);
   assert.match(dismiss, /return true;/, 'l’appelant n’annonce l’archivage qu’après succès');
   // N7 : identité seule dans l'upsert, écart par lots (set_candidate_stages découpe par 200).
   const batch = body('batchDismiss');
   const records = batch.slice(batch.indexOf('const records'), batch.indexOf('.upsert('));
   assert.doesNotMatch(records, /\b(status|score|recommendation|skip_reason|scoring_details):/);
-  assert.match(batch, /setCandidateStages\(\[\.\.\.candidateByRow\.keys\(\)\], \{ stage: 'rejected' \}\)/);
+  assert.match(batch, /setCandidateStages\(\[\.\.\.candidateByRow\.keys\(\)\], \{ stage: 'rejected' \}, undefined, SOURCING_GESTURE\)/);
   assert.match(batch, /return \{ dismissed: dismissedNow\.length, failed \};/);
   // N8 : updateStatus supprimé (aucun appelant).
   assert.doesNotMatch(candidateStatus, /\bupdateStatus\b/);
@@ -129,7 +129,7 @@ test('0b-4 — archiver et restaurer passent par set_candidate_stage(s), note ga
   const restore = body('restoreCandidate');
   assert.match(restore, /\.update\(\{ score: null, recommendation: null, skip_reason: null \}\)/);
   assert.doesNotMatch(restore.slice(restore.indexOf('.update('), restore.indexOf('.select(')), /\bstatus:/);
-  assert.match(restore, /setCandidateStage\(rowId, \{ stage: 'to_sort' \}\)/);
+  assert.match(restore, /setCandidateStage\(rowId, \{ stage: 'to_sort' \}, SOURCING_GESTURE\)/);
   // Plus aucune écriture de 'dismissed' ou 'shortlisted' vers la base dans le hook.
   assert.doesNotMatch(candidateStatus, /status: 'shortlisted' as const/);
   // Le Sourcing n'annonce l'archivage qu'au vu du bilan.

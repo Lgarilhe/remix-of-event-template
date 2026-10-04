@@ -121,8 +121,7 @@ export const AddToProjectButton: React.FC<AddToProjectButtonProps> = ({
 
       setAddedToProject(project.id);
       queryClient.invalidateQueries({ queryKey: ['project-candidates', project.id] });
-      queryClient.invalidateQueries({ queryKey: ['project-stats', project.id] });
-      queryClient.invalidateQueries({ queryKey: ['projects-stats-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['mission-stage-counts'] });
       queryClient.invalidateQueries({ queryKey: ['sourcing-projects'] });
       toast.success(`${candidateName} ajouté à « ${project.name} »`);
       onAdded?.();

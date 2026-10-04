@@ -32,7 +32,8 @@ import {
 } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { ATSCandidate } from '@/hooks/useATSData';
+import { ATSCandidate, ATS_STAGES, STAGNATION_DAYS, stagnantDays } from '@/hooks/useATSData';
+import { atsColumnTitle, candidateColumnKey } from '@/lib/stageDisplay';
 import { EnrichedProfile } from '@/hooks/useProfileEnrichment';
 import { CandidateFullProfile } from '@/hooks/useCandidateFullProfile';
 import { listCVs, CandidateCV } from '@/lib/cvStorage';
@@ -65,21 +66,9 @@ interface Props {
   organizationId: string | null;
 }
 
-// Étapes "stagnantes" si pas d'activité depuis X jours.
-// Exemple : un candidat dans "Contacté" depuis 18 jours sans réponse →
-// recruter doit relancer ou passer à la suite.
-const STAGNATION_THRESHOLDS_DAYS: Record<string, number> = {
-  'Nouveau': 7,
-  'Contacté': 14,
-  'Répondu': 5,
-  'Pressenti': 14,
-  'Pré-qualif': 7,
-  'CV envoyé': 14,
-  'ITW en cours': 21,
-  'Offre': 14,
-};
-// Étapes terminales — pas de stagnation à signaler
-const TERMINAL_STAGES = new Set(['Gagné', 'Perdu']);
+// Étapes « sans mouvement » : les délais sont ceux de la carte du /pipeline
+// (STAGNATION_DAYS, une seule table). Pas de délai pour À trier ni Retenu :
+// plan 0c, section 6.4, comme le kanban de mission.
 
 export const OverviewTab: React.FC<Props> = ({
   candidate, enrichedProfile, fullProfile, notes, reminders, organizationId,
@@ -128,23 +117,22 @@ export const OverviewTab: React.FC<Props> = ({
   const alerts = useMemo(() => {
     const result: Alert[] = [];
 
-    // 1. Stagnation : combien de jours sur cette étape ?
-    if (
-      candidate.lastActivity &&
-      !TERMINAL_STAGES.has(candidate.stage) &&
-      STAGNATION_THRESHOLDS_DAYS[candidate.stage]
-    ) {
-      const daysIdle = differenceInDays(new Date(), parseISO(candidate.lastActivity));
-      const threshold = STAGNATION_THRESHOLDS_DAYS[candidate.stage];
-      if (daysIdle >= threshold) {
-        result.push({
-          key: 'stagnation',
-          severity: daysIdle >= threshold * 2 ? 'critical' : 'warning',
-          icon: Clock,
-          title: `Stagnation : ${daysIdle} jours sur "${candidate.stage}"`,
-          detail: `Seuil habituel à ${threshold} j — il faut faire bouger ou archiver.`,
-        });
-      }
+    // 1. Stagnation : combien de jours dans cette étape ? Depuis l'entrée dans
+    //    l'étape (lot 0c-4), à défaut depuis la dernière action. Même délai que la carte.
+    const stageKey = candidateColumnKey(candidate);
+    const daysIdle = stagnantDays({ ...candidate, stage: stageKey });
+    if (daysIdle !== null) {
+      const threshold = STAGNATION_DAYS[stageKey];
+      result.push({
+        key: 'stagnation',
+        severity: daysIdle >= threshold * 2 ? 'critical' : 'warning',
+        icon: Clock,
+        // Sans date d'entrée dans l'étape (séquence ou InMail), le délai part de la dernière action.
+        title: candidate.stageEnteredAt
+          ? `Stagnation : ${daysIdle} jours à l'étape « ${atsColumnTitle(stageKey)} »`
+          : `Stagnation : aucune action depuis ${daysIdle} jours (étape « ${atsColumnTitle(stageKey)} »)`,
+        detail: `Au-delà de ${threshold}\u00a0j dans cette étape\u00a0: il faut faire bouger ou archiver.`,
+      });
     }
 
     // 2. A répondu mais pas de retour de notre part
@@ -158,8 +146,8 @@ export const OverviewTab: React.FC<Props> = ({
           key: 'unanswered_reply',
           severity: daysSinceReply >= 3 ? 'critical' : 'warning',
           icon: MailWarning,
-          title: `Répondu il y a ${daysSinceReply}j — sans réponse de ta part`,
-          detail: `Sur la séquence "${repliedEnrollment.sequenceName}". Reprends la conversation.`,
+          title: `Répondu il y a ${daysSinceReply}\u00a0j, sans réponse de votre part`,
+          detail: `Sur la séquence "${repliedEnrollment.sequenceName}". Reprenez la conversation.`,
         });
       }
     }
@@ -175,7 +163,7 @@ export const OverviewTab: React.FC<Props> = ({
         severity: 'info',
         icon: FileQuestion,
         title: `Manque ${missing.join(' / ')}`,
-        detail: 'Enrichis le profil ou demande les infos directement au candidat.',
+        detail: 'Enrichissez le profil ou demandez les informations directement au candidat.',
       });
     }
 
@@ -186,7 +174,7 @@ export const OverviewTab: React.FC<Props> = ({
         severity: 'info',
         icon: Target,
         title: 'Pas encore scoré par l\'IA',
-        detail: 'Score le candidat depuis la mission pour avoir une recommandation.',
+        detail: 'Évaluez le candidat depuis la mission pour obtenir une recommandation.',
       });
     }
 
@@ -202,7 +190,7 @@ export const OverviewTab: React.FC<Props> = ({
           severity: 'warning',
           icon: PhoneOff,
           title: `Invitation LinkedIn pas acceptée depuis ${daysWaiting}j`,
-          detail: `Sur "${activeNotConnected.sequenceName}". Bascule vers InMail ou archive.`,
+          detail: `Sur "${activeNotConnected.sequenceName}". Passez à un InMail ou archivez.`,
         });
       }
     }
@@ -229,7 +217,13 @@ export const OverviewTab: React.FC<Props> = ({
         jobId: sr.jobId,
         jobTitle: sr.jobTitle || sr.jobId,
         score: sr.score,
-        stage: sr.pipelineStage,
+        // Étape de la mission ouverte : celle de la colonne. Les autres missions n'ont que
+        // pipeline_stage, qui n'est une colonne que pour certaines étapes (À trier, Retenu,
+        // Contacté, Écarté le laissent vide, une étape d'entretien y met son identifiant) :
+        // une valeur qui n'est pas une colonne se masque, jamais une clé brute.
+        stage: sr.jobId === candidate.jobId
+          ? candidateColumnKey(candidate)
+          : ATS_STAGES.some(st => st.key === sr.pipelineStage) ? sr.pipelineStage : null,
         recommendation: sr.recommendation,
         lastUpdate: sr.updatedAt,
       });
@@ -241,7 +235,7 @@ export const OverviewTab: React.FC<Props> = ({
         jobId: candidate.jobId,
         jobTitle: candidate.jobTitle || candidate.jobId,
         score: candidate.score ?? null,
-        stage: candidate.stage,
+        stage: candidateColumnKey(candidate),
         recommendation: candidate.recommendation ?? null,
         lastUpdate: candidate.lastActivity,
       });
@@ -501,7 +495,7 @@ export const OverviewTab: React.FC<Props> = ({
             ))}
             {(enrichedProfile!.experiences.length || 0) > 2 && (
               <p className="text-xs text-muted-foreground/70 italic pl-9">
-                +{enrichedProfile!.experiences.length - 2} autres positions — voir Profil
+                +{enrichedProfile!.experiences.length - 2} autres positions, voir Profil
               </p>
             )}
           </div>
@@ -884,7 +878,7 @@ function PositionRow({ position }: { position: { jobId: string; jobTitle: string
           {position.stage && (
             <span className="text-xs text-muted-foreground">
               <Target className="w-2.5 h-2.5 inline mr-0.5" />
-              {position.stage}
+              {atsColumnTitle(position.stage)}
             </span>
           )}
           {position.lastUpdate && (

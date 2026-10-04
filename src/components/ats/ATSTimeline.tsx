@@ -136,6 +136,9 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
 
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <Badge variant="muted">{stageLabel(candidate.stage)}</Badge>
+                          {candidate.stage === 'ITW en cours' && candidate.processStepName && (
+                            <span className="max-w-[220px] truncate text-xs text-muted-foreground">{candidate.processStepName}</span>
+                          )}
                           {candidate.jobTitle && (jobClickable ? (
                             <Button
                               type="button"
@@ -145,7 +148,7 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                               className="relative z-10 h-auto max-w-[220px] gap-1 rounded-full px-2 py-0.5 font-normal text-foreground-secondary hover:text-foreground [&_svg]:size-3"
                             >
                               <Briefcase aria-hidden="true" />
-                              <span className="sr-only">Voir le poste </span>
+                              <span className="sr-only">Voir la mission </span>
                               <span className="truncate">{candidate.jobTitle}</span>
                             </Button>
                           ) : (

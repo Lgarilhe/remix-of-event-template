@@ -41,3 +41,31 @@ export function toUnifiedProjects(sourcingProjects: SourcingProject[]): UnifiedP
     updatedAt: sp.updated_at,
   }));
 }
+
+/**
+ * Libellé d'une recommandation de note. Les notes actuelles portent
+ * STRONG_MATCH, GOOD_MATCH, POSSIBLE_MATCH, WEAK_MATCH ou NO_MATCH
+ * (score-profile-job) ; top, good, maybe et skip restent pour les lignes anciennes.
+ * undefined si la valeur est inconnue ou absente.
+ */
+export function recommendationLabel(recommendation: string | null | undefined, skipReason?: string | null): string | undefined {
+  switch (recommendation) {
+    case 'STRONG_MATCH':
+    case 'top':
+      return 'Profil top : très bon match';
+    case 'GOOD_MATCH':
+    case 'good':
+      return 'Profil prometteur';
+    case 'POSSIBLE_MATCH':
+    case 'maybe':
+      return 'À considérer';
+    case 'WEAK_MATCH':
+      return 'Correspondance faible';
+    case 'NO_MATCH':
+      return skipReason || 'Ne correspond pas à la mission';
+    case 'skip':
+      return skipReason || undefined;
+    default:
+      return undefined;
+  }
+}

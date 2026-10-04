@@ -9,14 +9,18 @@
  *      stats_total_found = 1 ;
  *   B. isolement : un membre de O1 ne lit ni les lignes ni les chiffres d'une
  *      mission de O2 (le refus anonyme est contrôlé par curl dans e2e.yml) ;
+ *   A2. doublon À trier d'une ligne en entretien, envoi par la file : le doublon
+ *      passe Contacté, la vue rend toujours En entretien ;
+ *   C. geste groupé puis annulation : état d'avant rendu, jalons effacés ;
+ *      avec une réponse entre les deux : moved_since, rien d'écrit ;
  *   D. InMail envoyé puis répondu : preuve d'envoi, la ligne Retenue passe
  *      « A répondu » ;
  *   E. rgpd-purge sans corps : compte seulement, rien supprimé ;
  *   F. assign_candidate_to_member sur une mission passée en project:<uuid> :
  *      accepté et exécuté.
  * E et F : stack locale seulement (e2e/local-stack/up.sh).
- * A2 (doublon et envoi par la file) et I (preuve d'envoi, autres cas) : bloc
- * V et I de supabase/tests/candidate_stage_readers_audit.sql.
+ * Les autres cas de la vue et de la preuve d'envoi : blocs V, U et I de
+ * supabase/tests/candidate_stage_readers_audit.sql.
  *
  * @critical
  */
@@ -47,7 +51,7 @@ test.afterEach(async () => {
   while (orgsToDelete.length) {
     const { org, extra } = orgsToDelete.pop()!;
     for (const table of ['agent_tool_executions', 'candidate_assignments', 'mission_conversations', 'inmail_queue',
-      'job_candidate_status', 'organization_subscriptions']) {
+      'job_candidate_status', 'mission_process_steps', 'organization_subscriptions']) {
       await admin().from(table).delete().eq('organization_id', org.orgId);
     }
     await deleteOrg(org, extra);
@@ -162,6 +166,111 @@ test.describe('lot 0c : vue et chiffres', () => {
     const state = await candidateRowState(id);
     expect(state.general_stage).toBe('replied');
     expect(state.contacted_at).not.toBeNull();
+  });
+
+  test('A2. doublon À trier d’une ligne en entretien, envoi Konekt : le doublon passe Contacté, la vue rend En entretien', async () => {
+    const org = await createOrg('agency', 'E2E 0c A2');
+    const member = await addMember(org.orgId, 'member', 'lect0c2');
+    track(org, member);
+    const accountId = await seedLinkedInAccount(org.orgId, org.owner.userId);
+    const missionId = await seedMission(org.orgId, org.owner.userId);
+    const { data: step, error: stepErr } = await admin().from('mission_process_steps').insert({
+      project_id: missionId, organization_id: org.orgId, step_order: 0, name: 'Entretien client', duration_minutes: 45,
+    }).select('id').single();
+    if (stepErr || !step) throw new Error(`mission_process_steps: ${stepErr?.message}`);
+    const candidate = newProfileId();
+    const interviewing = await seedCandidateRow({
+      orgId: org.orgId, createdBy: org.owner.userId, candidateId: candidate, missionId, stage: 'interviewing', stepId: step.id as string,
+    });
+    const duplicate = await seedCandidateRow({ orgId: org.orgId, createdBy: member.userId, candidateId: candidate, missionId });
+
+    const { error } = await admin().rpc('record_candidate_outbound', {
+      p_organization_id: org.orgId, p_account_id: accountId, p_candidate: { ids: [candidate] },
+      p_source: 'manual', p_project_id: missionId, p_chat_id: null, p_message_id: null,
+      p_created_by: null, p_pending: false, p_send_kind: 'message',
+    });
+    expect(error, error?.message).toBeNull();
+    expect((await candidateRowState(duplicate.id)).general_stage, 'le doublon est Contacté').toBe('contacted');
+    expect((await candidateRowState(interviewing.id)).general_stage, 'la ligne en entretien ne recule pas').toBe('interviewing');
+
+    const rows = await viewRows(await userClient(org.owner), missionId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ general_stage: 'interviewing', group_size: 2, is_unopened: false });
+  });
+
+  const MOVE_COLUMNS = 'id, general_stage, process_step_id, stage_entered_at, decision_source, rejected_at, rejected_from_stage, presented_at, contacted_at, replied_at';
+  type MoveRow = {
+    id: string; general_stage: string; process_step_id: string | null; stage_entered_at: string; decision_source: string | null;
+    rejected_at: string | null; rejected_from_stage: string | null; presented_at: string | null; contacted_at: string | null; replied_at: string | null;
+  };
+
+  /** Deux lignes À trier d'une mission, déplacées vers Contacté par le propriétaire (geste groupé du navigateur). */
+  async function groupedGesture(label: string) {
+    const org = track(await createOrg('agency', label));
+    const missionId = await seedMission(org.orgId, org.owner.userId);
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      ids.push((await seedCandidateRow({ orgId: org.orgId, createdBy: org.owner.userId, candidateId: newProfileId(), missionId })).id);
+    }
+    const { data: beforeRows, error: beforeErr } = await admin().from('job_candidate_status').select(MOVE_COLUMNS).in('id', ids);
+    if (beforeErr) throw new Error(`avant : ${beforeErr.message}`);
+    const before = new Map((beforeRows as MoveRow[]).map((r) => [r.id, r]));
+
+    const owner = await userClient(org.owner);
+    const { data: gesture, error } = await owner.rpc('set_candidate_stages', { p_ids: ids, p_stage: 'contacted', p_source: 'user' });
+    expect(error, error?.message).toBeNull();
+    const moves = (gesture as Array<{ id: string; result: string; stage_entered_at: string }>).map((g) => {
+      const b = before.get(g.id)!;
+      expect(g.result).toBe('updated');
+      return {
+        id: g.id,
+        after_entered_at: g.stage_entered_at,
+        before: {
+          general_stage: b.general_stage, process_step_id: b.process_step_id, legacy_stage: null,
+          stage_entered_at: b.stage_entered_at, decision_source: b.decision_source,
+          rejected_at: b.rejected_at, rejected_from_stage: b.rejected_from_stage, presented_at: b.presented_at,
+        },
+      };
+    });
+    for (const id of ids) {
+      const state = await candidateRowState(id);
+      expect(state.general_stage).toBe('contacted');
+      expect(state.contacted_at, 'jalon posé par le geste').not.toBeNull();
+    }
+    return { org, owner, ids, moves, before };
+  }
+
+  test('C. geste groupé puis annulation : l’état d’avant revient, les jalons du geste sont effacés', async () => {
+    const { owner, ids, moves, before } = await groupedGesture('E2E 0c C');
+    const { data, error } = await owner.rpc('undo_candidate_stages', { p_moves: moves });
+    expect(error, error?.message).toBeNull();
+    const result = (data as { rows: Array<{ id: string; result: string }> }).rows;
+    expect(result.map((r) => r.result)).toEqual(['updated', 'updated']);
+    const { data: afterRows } = await admin().from('job_candidate_status').select(MOVE_COLUMNS).in('id', ids);
+    for (const row of afterRows as MoveRow[]) {
+      const was = before.get(row.id)!;
+      expect(row.general_stage).toBe('to_sort');
+      expect(row.decision_source, 'origine d’avant').toBe(was.decision_source);
+      expect(new Date(row.stage_entered_at).getTime(), 'date d’entrée d’avant').toBe(new Date(was.stage_entered_at).getTime());
+      expect(row.contacted_at, 'jalon du geste effacé').toBeNull();
+    }
+  });
+
+  test('C. avec une réponse entre le geste et l’annulation : moved_since, rien n’est écrit', async () => {
+    const { org, owner, ids, moves } = await groupedGesture('E2E 0c C2');
+    // Réponse scriptée sur la première ligne : étape et date d'entrée changent.
+    const { error: replyErr } = await admin().rpc('set_candidate_stage', {
+      p_id: ids[0], p_stage: 'replied', p_source: 'system', p_organization_id: org.orgId,
+    });
+    expect(replyErr, replyErr?.message).toBeNull();
+
+    const { data, error } = await owner.rpc('undo_candidate_stages', { p_moves: moves });
+    expect(error, error?.message).toBeNull();
+    const byId = new Map((data as { rows: Array<{ id: string; result: string }> }).rows.map((r) => [r.id, r.result]));
+    expect(byId.get(ids[0])).toBe('moved_since');
+    expect(byId.get(ids[1])).toBe('updated');
+    expect((await candidateRowState(ids[0])).general_stage, 'la ligne répondue reste où elle est').toBe('replied');
+    expect((await candidateRowState(ids[1])).general_stage).toBe('to_sort');
   });
 });
 

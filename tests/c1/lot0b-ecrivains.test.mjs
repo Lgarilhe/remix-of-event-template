@@ -329,10 +329,12 @@ test('0b-2a : RGPD (effacement, purge, export) et lecture du /pipeline', () => {
   assert.doesNotMatch(erase.slice(erase.indexOf('// 9.')), /\bstatus:|pipeline_stage:/);
   assert.match(read('supabase/functions/rgpd-purge/index.ts'), /\.from\("mission_conversations"\)\s*\.delete\(\)/);
   assert.match(read('supabase/functions/export-org-data/index.ts'), /\.from\("mission_conversations"\)/);
-  const ats = read('src/pages/ATS.tsx');
-  const display = topLevelBody(ats, 'function displayStage(');
-  assert.match(display, /if \(PROCESS_STEP_ID\.test\(stage\)\) return 'ITW en cours';/);
-  assert.match(display, /if \(stage === 'hired'\) return 'Gagné';/);
+  // Lot 0c-4 : plus de displayStage dans ATS.tsx ; la colonne vient de l'étape
+  // générale par atsColumnOf (src/lib/stageDisplay.ts).
+  assert.doesNotMatch(read('src/pages/ATS.tsx'), /function displayStage\(/);
+  const stageDisplay = read('src/lib/stageDisplay.ts');
+  assert.match(stageDisplay, /interviewing: 'ITW en cours',/);
+  assert.match(stageDisplay, /hired: 'Gagné',/);
 });
 
 test('0b-2a : marqueur de build dans X-Client-Info (même clé que supabase-js)', () => {

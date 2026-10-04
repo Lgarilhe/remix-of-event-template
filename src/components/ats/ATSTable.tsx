@@ -45,6 +45,12 @@ const SOURCE_ICONS: Record<ATSCandidate['source'], React.ElementType> = {
 
 const stageLabel = (stage: string) => ATS_STAGES.find((s) => s.key === stage)?.label ?? stage;
 
+/** Rang de la colonne dans le pipeline (tri par étape : l'ordre des colonnes, pas l'ordre alphabétique des clés). */
+const stageRank = (stage: string) => {
+  const index = ATS_STAGES.findIndex((s) => s.key === stage);
+  return index === -1 ? ATS_STAGES.length : index;
+};
+
 /** Bouton du kit rendu comme un texte de cellule (nom, poste). */
 const TEXT_BUTTON = 'h-auto min-w-0 max-w-full justify-start gap-0 rounded-sm p-0 text-left underline-offset-2';
 
@@ -64,7 +70,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
 
       switch (sortKey) {
         case 'name': aVal = a.name?.toLowerCase() || ''; bVal = b.name?.toLowerCase() || ''; break;
-        case 'stage': aVal = a.stage; bVal = b.stage; break;
+        case 'stage': aVal = stageRank(a.stage); bVal = stageRank(b.stage); break;
         case 'source': aVal = a.source; bVal = b.source; break;
         case 'jobTitle': aVal = a.jobTitle?.toLowerCase() || ''; bVal = b.jobTitle?.toLowerCase() || ''; break;
         case 'lastActivity': aVal = a.lastActivity || ''; bVal = b.lastActivity || ''; break;
@@ -111,7 +117,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
             {sortHeader('Candidat', 'name', 'min-w-[220px]')}
             {sortHeader('Étape', 'stage')}
             {sortHeader('Source', 'source')}
-            {sortHeader('Poste', 'jobTitle', 'min-w-[160px]')}
+            {sortHeader('Mission', 'jobTitle', 'min-w-[160px]')}
             <TableHead className="h-10 px-3 text-xs font-medium">Séquence</TableHead>
             {sortHeader('Dernière action', 'lastActivity', 'min-w-[150px]')}
             <TableHead className="h-10 px-3 text-xs font-medium">Score</TableHead>
@@ -164,6 +170,9 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </TableCell>
                 <TableCell className="whitespace-nowrap px-3 py-2.5 text-sm text-foreground">
                   {stageLabel(candidate.stage)}
+                  {candidate.stage === 'ITW en cours' && candidate.processStepName && (
+                    <span className="block max-w-[160px] truncate text-xs text-muted-foreground">{candidate.processStepName}</span>
+                  )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap px-3 py-2.5">
                   <span className="inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
@@ -179,7 +188,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                       onClick={() => onJobClick(candidate.jobId as string)}
                       className={cn(TEXT_BUTTON, 'max-w-[200px] font-normal text-foreground-secondary hover:text-foreground')}
                     >
-                      <span className="sr-only">Voir le poste </span>
+                      <span className="sr-only">Voir la mission </span>
                       <span className="truncate">{candidate.jobTitle}</span>
                     </Button>
                   ) : (
@@ -196,7 +205,9 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                 </TableCell>
                 <TableCell className="whitespace-nowrap px-3 py-2.5">
                   {stagnant !== null ? (
-                    <span className="text-xs font-medium text-warning">Sans mouvement depuis {stagnant}{'\u00a0'}j</span>
+                    <span className="text-xs font-medium text-warning">
+                      {candidate.stageEnteredAt ? `Dans cette étape depuis ${stagnant}\u00a0j` : `Dernière action il y a ${stagnant}\u00a0j`}
+                    </span>
                   ) : activity ? (
                     <time
                       dateTime={activity}

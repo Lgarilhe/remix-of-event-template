@@ -89,7 +89,6 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
   const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
-  const [projectNotes, setProjectNotes] = useState<string | null>(null);
 
   // Mobile profile overlay : utile quand la modale rend le ProfileTab dans
   // un onglet (sur mobile l'écran est petit donc on l'ouvre full-screen).
@@ -194,8 +193,9 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
 
   const enrichLoading = snapshotLoading && !candidateWithProfileData.linkedinProfileData;
 
-  // Load notes + reminders + project notes
+  // Load notes + reminders
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       try {
@@ -203,25 +203,23 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
           supabase.from('candidate_notes').select('*').eq('candidate_id', candidate.candidateId).order('created_at', { ascending: false }),
           supabase.from('candidate_reminders').select('*').eq('candidate_id', candidate.candidateId).order('due_at', { ascending: true }),
         ]);
+        if (cancelled) return;
         setNotes(notesData || []);
         setReminders(remindersData || []);
-        if (candidate.jobId) {
-          const { data: projectData } = await supabase
-            .from('sourcing_projects')
-            .select('notes')
-            .eq('job_id', candidate.jobId)
-            .maybeSingle();
-          if (projectData) setProjectNotes(projectData.notes || null);
-        }
-      } finally { setLoading(false); }
+      } catch (err) {
+        console.warn('[CandidateDetailModal] chargement des notes impossible :', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
-    fetchData();
-  }, [candidate.candidateId, candidate.jobId]);
+    void fetchData();
+    return () => { cancelled = true; };
+  }, [candidate.candidateId]);
 
   const handleAddNote = async (content: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
+    if (!organizationId) { toast.error('Organisation introuvable. Rechargez la page.'); return; }
     const { error: insertErr } = await supabase.from('candidate_notes').insert({
       candidate_id: candidate.candidateId,
       content, created_by: user.id, organization_id: organizationId,
@@ -244,7 +242,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const handleAddReminder = async (title: string, date: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    if (!organizationId) { toast.error('Organisation introuvable, recharge la page'); return; }
+    if (!organizationId) { toast.error('Organisation introuvable. Rechargez la page.'); return; }
     const { error: insertErr } = await supabase.from('candidate_reminders').insert({
       candidate_id: candidate.candidateId, candidate_name: candidate.name,
       job_id: candidate.jobId,
@@ -271,7 +269,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     try {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) return;
-      if (!organizationId) throw new Error('organisation introuvable, recharge la page');
+      if (!organizationId) throw new Error('Organisation introuvable. Rechargez la page.');
       const { data: tokenData, error: insertError } = await supabase
         .from('candidate_portal_tokens')
         .insert({

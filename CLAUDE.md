@@ -34,7 +34,7 @@ Ces 5 principes l'emportent sur l'envie d'être proactif. Si tension entre "fair
 
 ## Before committing
 Les hooks pre-commit (`.claude/settings.json`) lancent **automatiquement** (⚠️ uniquement sur les `git commit` passés par l'outil Bash de Claude Code — un `git commit` humain ou un push direct les contourne ; le vrai filet obligatoire = CI de PR, à câbler) :
-- `npx tsc --noEmit -p tsconfig.app.json` — **ratchet** : bloque si le nombre d'erreurs TS dépasse la baseline (32 au 2026-07-15, après merge de main + régénération de `types.ts` depuis le schéma prod). Résorber la dette puis abaisser la baseline. ⚠️ Ne PAS revenir à `npx tsc --noEmit` sans `-p` : le `tsconfig.json` racine est solution-style (`"files": []`) → vérifie 0 fichier (hook vacant). Les 32 erreurs restantes sont de vraies anomalies code/schéma (ex. `profiles` n'a pas de colonnes `full_name`/`email` mais le code les interroge ; type `SourcingProject` désynchronisé) — à corriger au cas par cas, ne PAS masquer par `as any`. Régénérer `types.ts` via `supabase gen types typescript --linked` (ne PAS laisser la sortie CLI polluer le fichier).
+- `npx tsc --noEmit -p tsconfig.app.json` — **ratchet** : bloque si le nombre d'erreurs TS dépasse la baseline (11 au 2026-10-04, après les lots 0c-3 et 0c-4 ; 32 au 2026-07-15 après la régénération de `types.ts` depuis le schéma prod). Résorber la dette puis abaisser la baseline. ⚠️ Ne PAS revenir à `npx tsc --noEmit` sans `-p` : le `tsconfig.json` racine est solution-style (`"files": []`) → vérifie 0 fichier (hook vacant). Les 11 erreurs restantes sont de vraies anomalies code/schéma (ex. `profiles` n'a pas de colonnes `full_name`/`email` mais le code les interroge ; type `SourcingProject` désynchronisé) — à corriger au cas par cas, ne PAS masquer par `as any`. Régénérer `types.ts` via `supabase gen types typescript --linked` (ne PAS laisser la sortie CLI polluer le fichier).
 - `npx vite build` — bloque le commit si build prod échoue. ⚠️ esbuild strip les types → ce build ne type-check PAS (d'où le hook tsc ci-dessus).
 
 Vérif manuelle à faire en plus : **pas d'imports orphelins** (grep pour les noms de composants/fonctions supprimés).
@@ -221,8 +221,7 @@ job_candidate_status       — un candidat dans une mission : note et étape. Mo
                              candidat, jamais ouverts compris) ; stats_messaged = contactés au total ; stats_shortlisted =
                              retenus au total (cumuls : un candidat qui avance ou qu'on écarte ne les fait pas baisser) ;
                              stats_dismissed = écartés en ce moment ; stats_scored = notés. Affichés avec « au total »
-                             (tableau de bord, Vue d'ensemble, recherches, résumé du matin), jamais sous le nom d'une étape,
-                             sauf le repli de la liste des missions (ProjectsListV2) jusqu'au lot 0c-3.
+                             (tableau de bord, Vue d'ensemble, recherches, résumé du matin), jamais sous le nom d'une étape.
                              Garde stage_write_guard (lot 0b), en observation : une écriture directe qui change l'étape
                              dérivée (jeton authenticated, service_role ou anon, ou SET ROLE) est journalisée dans
                              jcs_direct_write_log (rôle, utilisateur, ligne, couples, x-client-info ; fermé à anon et
@@ -281,8 +280,8 @@ Cron : `expire-subscription-trials` (horaire) → `expire_subscription_trials()`
 `set_candidate_stage(p_id, p_stage, p_source, p_organization_id, p_process_step_id, p_legacy_stage)` (lot 0a, SECURITY INVOKER) :
 écriture de l'étape d'un candidat, qui tient aussi le couple status / pipeline_stage. Depuis le lot 0b-4, tous les écrivains y
 passent : navigateur par `src/lib/candidateStage.ts` (`setCandidateStage(s)`, origine `user` seulement, lots de 200,
-`ATS_LABEL_TO_STAGE` identique à la table de l'assistant, `missionColumnToStage`, `exactTarget` pour l'annulation du /pipeline,
-`stageErrorMessage` par HINT) ; serveur par `apply_mission_candidate_stage` (add-to-shortlist, outils de l'assistant) et les
+`ATS_LABEL_TO_STAGE` identique à la table de l'assistant, `missionColumnToStage`, l'annulation par `readStageSnapshots`, `buildUndoMoves` et `undoCandidateStages`,
+`stageErrorMessage` par HINT, option `surface` des gestes : événement `Stage Change`) ; serveur par `apply_mission_candidate_stage` (add-to-shortlist, outils de l'assistant) et les
 fonctions record_*. Plus aucune écriture directe de status ou pipeline_stage qui change l'étape (garde statique
 `tests/c1/lot0b-ecrivains.test.mjs`, liste blanche commentée). La RLS de l'appelant s'applique.
 Hors navigateur (clé de service), `p_organization_id` est obligatoire (HINT STAGE_ORG_REQUIRED) ; une ligne d'une autre
@@ -319,11 +318,11 @@ de zéros faux pour une mission visible par l'équipe de mission) ; service_role
 Effectifs `unopened`, `to_sort` (hors jamais ouverts) … `rejected`, `interviewing_by_step`, `scored` ; cumuls `ever_retained`,
 `ever_contacted`, `ever_replied`, `ever_interviewed`, `ever_presented`, `ever_hired` (jalon, étape, ou écart depuis l'étape par
 `rejected_from_stage`) ; `triaged_by_user`, `last_stage_move_at`. Source unique des `stats_*` (recompute_mission_stats).
-`get_project_stats` et `get_multiple_project_stats` restent jusqu'au lot 0c-6 (plus de lecteur après 0c-3 et 0c-4).
+`get_project_stats` et `get_multiple_project_stats` n'ont plus aucun lecteur dans `src/` (lots 0c-3 et 0c-4) ; elles restent en base jusqu'au lot 0c-6.
 `undo_candidate_stages(p_moves)` (SECURITY INVOKER, authenticated seulement, 200 lignes au plus) : annulation d'un geste ;
 remet l'étape (colonne d'entretien du /pipeline comprise), la date, l'origine et l'écart d'avant, efface les jalons posés par
 le geste ; `moved_since` si la ligne a bougé depuis ou si sa dernière décision n'est pas celle d'une personne,
-`unchanged` si elle est déjà à l'étape d'avant ; entrée invalide : HINT `STAGE_UNDO_INVALID`. Branchée au lot 0c-4.
+`unchanged` si elle est déjà à l'étape d'avant ; entrée invalide : HINT `STAGE_UNDO_INVALID`. Appelée par « Annuler » du /pipeline (lot 0c-4, `undoCandidateStages`).
 `rgpd_purge_candidate_rows(p_inactive_before, p_rejected_before, p_dry_run, p_limit)` (service_role seulement) : lignes
 candidat à purger (24 mois sans activité hors Embauché, 12 mois après un écart), `p_dry_run` vrai par défaut, fenêtres plus
 courtes refusées (HINT `PURGE_WINDOW_TOO_SHORT`). La fonction serveur rgpd-purge est en « compte seulement » par défaut
@@ -335,6 +334,11 @@ Outils de l'assistant (lot 0c-2) : `get_my_missions` et `get_mission_overview` c
 générale, jamais ouverts exclus) ; `assign_candidate_to_member` et `draft_outreach_message` cherchent le candidat par
 `project_id` et organisation, tous auteurs ; le nombre de profils annoncé par `start_background_scoring` a le périmètre du worker
 `process-agent-tasks` (organisation et `job_id` échantillon). Garde statique : `tests/c1/lot0c-lectures.test.mjs`.
+Écrans (lots 0c-3 et 0c-4) : le kanban et le tableau de l'ancienne page mission (`useProjectCandidates`) et le `/pipeline`
+(`useATSData`) lisent `mission_candidate_rows`, rangent par `general_stage` (`missionColumnOf`, `atsColumnOf`, `src/lib/stageDisplay.ts`)
+et écrivent tout le groupe (`group_ids`) ; « Dans cette étape depuis N j » compte sur `stage_entered_at`. La liste des missions et le
+tableau de bord lisent `get_mission_stage_counts` (`useMissionStageCounts`), Analyses et l'entonnoir passent par
+`src/lib/missionStatsAdapter.ts`. Gardes statiques : `tests/c1/lot0c-socle-ecrans.test.mjs`, `lot0c3-*.test.mjs`, `lot0c4-*.test.mjs`.
 
 ### Key Hooks
 ```

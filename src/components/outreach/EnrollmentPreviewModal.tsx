@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useId } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { LinkedInProfile } from '@/components/outreach/types';
-import { useEnrollmentPreview, SequenceStepPreview } from '@/hooks/useEnrollmentPreview';
+import { useEnrollmentPreview, SequenceStepPreview, missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { BulkEnrichButton } from '@/components/outreach/result-card/BulkEnrichButton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -73,6 +74,7 @@ import {
 import { gdprErasedEnrollLabel, refusedCandidatesLabel } from '@/lib/sequenceErrorMessages';
 import { plural } from '@/lib/plural';
 import { setCandidateStages, skippedStageMessage, stageErrorMessage, type GeneralStage } from '@/lib/candidateStage';
+import { invalidateStageReaders } from '@/lib/stageDisplay';
 
 // Étapes de départ de « Présélectionner sans message » : jamais un recul depuis Contacté ou plus loin.
 const RETAIN_FROM_STAGES: GeneralStage[] = ['to_sort', 'retained', 'rejected'];
@@ -243,6 +245,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   onSuccess,
 }) => {
   const { organizationId, isAdmin } = useOrganization();
+  const queryClient = useQueryClient();
   const steps = useMemo(() => mapSteps(sequence.steps), [sequence.steps]);
   const isSingle = profiles.length === 1;
   const isBulk = profiles.length > 10;
@@ -284,23 +287,54 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   // Fetch scores for all candidates at mount
   useEffect(() => {
     if (scoreFetchedRef.current || !job?.id || profiles.length === 0) return;
+    // En contexte de mission, la lecture attend l'organisation.
+    if (missionIdOfJob(job.id) && !organizationId) return;
     scoreFetchedRef.current = true;
 
     const fetchScores = async () => {
-      const { data } = await supabase
-        .from('job_candidate_status')
-        .select('candidate_id, score, recommendation')
-        .eq('job_id', job!.id)
-        .in('candidate_id', profiles.map(p => p.id));
+      // Contexte de mission (lot 0c-4) : la note par mission et organisation,
+      // quelle que soit la forme du job_id ou l'auteur de la ligne ; sinon le poste.
+      const missionId = missionIdOfJob(job!.id);
+      const ids = profiles.map(p => p.id);
+      type ScoreRow = { candidate_id: string; score: number | null; recommendation: string | null };
+      // Par lots de 100 : un envoi groupé peut compter des centaines de profils.
+      const readBy = async (column: 'project_id' | 'job_id', value: string): Promise<ScoreRow[]> => {
+        const rows: ScoreRow[] = [];
+        for (let i = 0; i < ids.length; i += 100) {
+          let query = supabase
+            .from('job_candidate_status')
+            .select('candidate_id, score, recommendation')
+            .in('candidate_id', ids.slice(i, i + 100))
+            .eq(column, value);
+          if (column === 'project_id' && organizationId) query = query.eq('organization_id', organizationId);
+          // Plus récente d'abord : la ligne notée la plus récente l'emporte plus bas.
+          const { data, error } = await query.order('updated_at', { ascending: false });
+          if (error) throw error;
+          rows.push(...((data ?? []) as ScoreRow[]));
+        }
+        return rows;
+      };
 
-      if (data) {
+      try {
+        let rows = missionId ? await readBy('project_id', missionId) : [];
+        // Un job_id ancien n'est pas une mission : repli sur le poste.
+        if (rows.length === 0) rows = await readBy('job_id', job!.id);
         const map = new Map<string, { score: number | null; recommendation: string | null }>();
-        data.forEach((r: any) => map.set(r.candidate_id, { score: r.score, recommendation: r.recommendation }));
+        // Doublons d'un candidat dans la mission, règle de la vue : la ligne notée la
+        // plus récente, à défaut la plus récente (les lignes arrivent de la plus récente).
+        rows.forEach((r) => {
+          const prev = map.get(r.candidate_id);
+          if (prev && !(prev.score == null && r.score != null)) return;
+          map.set(r.candidate_id, { score: r.score, recommendation: r.recommendation });
+        });
         setScoreCache(map);
+      } catch (err) {
+        // Sans note affichée, l'aperçu reste utilisable : on journalise seulement.
+        console.warn('[EnrollmentPreviewModal] lecture des notes impossible :', err);
       }
     };
     fetchScores();
-  }, [job?.id, profiles]);
+  }, [job?.id, profiles, organizationId]);
 
   const getCandidateState = useCallback((id: string): CandidateState =>
     candidateStates.get(id) || { removed: false, skipped: false }, [candidateStates]);
@@ -784,7 +818,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
   const handleShortlist = async () => {
     if (!job?.id) {
       toast.error('Aucune mission associée à ces candidats', {
-        description: 'Ouvrez la préparation depuis une mission pour les présélectionner.',
+        description: 'Ouvrez la préparation depuis une mission pour les retenir.',
       });
       return;
     }
@@ -842,8 +876,9 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       }
 
       const ids = [...(existingRows ?? []).map(r => r.id), ...written.map(r => r.id)];
-      const outcome = await setCandidateStages(ids, { stage: 'retained' }, RETAIN_FROM_STAGES);
+      const outcome = await setCandidateStages(ids, { stage: 'retained' }, RETAIN_FROM_STAGES, { surface: 'enrollment' });
       const saved = outcome.updated + outcome.unchanged;
+      if (saved > 0) void invalidateStageReaders(queryClient);
       const failure = outcome.error ?? outcome.rows.find(r => r.result === 'error') ?? null;
       if (failure) console.error('[EnrollmentPreviewModal] Shortlist stage failed:', failure);
 
@@ -854,7 +889,7 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
       }
       const failed = (existingRows ?? []).length + rows.length - saved - outcome.skipped;
       if (saved > 0) {
-        const added = plural(saved, 'candidat présélectionné', 'candidats présélectionnés');
+        const added = plural(saved, 'candidat retenu', 'candidats retenus');
         if (failed > 0) {
           toast.warning(added, {
             description: `${failed} candidat${failed > 1 ? 's' : ''} n'${failed > 1 ? 'ont' : 'a'} pas pu être enregistré${failed > 1 ? 's' : ''}.`,
@@ -1226,6 +1261,8 @@ export const EnrollmentPreviewModal: React.FC<EnrollmentPreviewModalProps> = ({
                               <ScoringPopover
                                 candidateId={p.id}
                                 jobId={job?.id}
+                                projectId={missionIdOfJob(job?.id)}
+                                organizationId={organizationId}
                                 isOpen={scoringPopoverId === p.id}
                                 onOpenChange={open => setScoringPopoverId(open ? p.id : null)}
                               >

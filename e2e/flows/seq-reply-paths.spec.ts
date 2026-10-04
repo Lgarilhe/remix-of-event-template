@@ -1,10 +1,10 @@
 /**
  * Lot « reply-paths » : après une réponse du candidat, le pipeline (kanban de
- * /pipeline) le montre « Répondu » pour la mission de l'inscription, et
+ * /pipeline) le montre « A répondu » pour la mission de l'inscription, et
  * « Contacté » pour une autre mission où il est aussi suivi.
  *
  * Contrat : CLAUDE.md, « Séquences : règles du moteur et de l'interface », et
- * docs/audit-2026-09-25-sequences.md : SEQ-006 (pipeline « Répondu » borné à
+ * docs/audit-2026-09-25-sequences.md : SEQ-006 (pipeline « A répondu » borné à
  * l'organisation et à la mission), SEQ-221 (« Marquer comme répondu » met à
  * jour le pipeline).
  *
@@ -20,7 +20,7 @@
  * est simulée dans le navigateur.
  *
  * L'observation se fait sur le kanban de /pipeline. Le kanban de l'onglet
- * « pipeline » d'une mission a aussi sa colonne « Répondu » depuis la décision
+ * « pipeline » d'une mission a aussi sa colonne « A répondu » depuis la décision
  * 29 (e2e/flows/seq-decisions-ui.spec.ts).
  */
 import type { Browser, BrowserContext, Page } from '@playwright/test';
@@ -164,7 +164,7 @@ async function enrollmentStatus(id: string) {
 
 test.describe('Réponse du candidat : pipeline de la mission', () => {
   // ui-kanban-repondu-apres-reponse (bouton « Marquer comme ayant répondu »)
-  test('« Marquer comme ayant répondu » dans le panneau des inscrits : carte « Répondu » pour la mission de la séquence, « Contacté » pour l’autre mission', async ({ browser }) => {
+  test('« Marquer comme ayant répondu » dans le panneau des inscrits : carte « A répondu » pour la mission de la séquence, « Contacté » pour l’autre mission', async ({ browser }) => {
     const s = await seedReplyScene('bouton');
     const page = await openAs(browser, s.org.owner, [s.accountId]);
 
@@ -184,12 +184,12 @@ test.describe('Réponse du candidat : pipeline de la mission', () => {
 
     await openPipeline(page, s.cardM2);
     // DÉFAUT moteur-pipeline-ignore-messaged : mark_replied laisse la ligne « messaged » / « Contacté » : carte M1 restée dans « Contacté ».
-    await expect.soft(kanbanColumn(page, 'Répondu').getByText(s.cardM1, { exact: true }), 'mission de la séquence : colonne « Répondu »').toBeVisible();
+    await expect.soft(kanbanColumn(page, 'A répondu').getByText(s.cardM1, { exact: true }), 'mission de la séquence : colonne « A répondu »').toBeVisible();
     await expect.soft(kanbanColumn(page, 'Contacté').getByText(s.cardM2, { exact: true }), 'autre mission : colonne « Contacté »').toBeVisible();
   });
 
   // ui-kanban-repondu-apres-reponse (réponse détectée par le webhook)
-  test('réponse LinkedIn reçue par webhook avant l’ouverture : carte « Répondu » pour la mission de la séquence, « Contacté » pour l’autre mission', async ({ browser }) => {
+  test('réponse LinkedIn reçue par webhook avant l’ouverture : carte « A répondu » pour la mission de la séquence, « Contacté » pour l’autre mission', async ({ browser }) => {
     const s = await seedReplyScene('webhook');
     const res = await postJson('/functions/v1/unipile-webhook', {
       event: 'message_received',
@@ -205,8 +205,8 @@ test.describe('Réponse du candidat : pipeline de la mission', () => {
 
     const page = await openAs(browser, s.org.owner, [s.accountId]);
     await openPipeline(page, s.cardM1);
-    await expect.soft(kanbanColumn(page, 'Répondu').getByText(s.cardM1, { exact: true }), 'mission de la séquence : colonne « Répondu »').toBeVisible();
-    // DÉFAUT webhook-pipeline-toutes-missions : le webhook passe aussi la ligne de M2 en « Répondu ».
+    await expect.soft(kanbanColumn(page, 'A répondu').getByText(s.cardM1, { exact: true }), 'mission de la séquence : colonne « A répondu »').toBeVisible();
+    // DÉFAUT webhook-pipeline-toutes-missions : le webhook passe aussi la ligne de M2 en « A répondu ».
     await expect.soft(kanbanColumn(page, 'Contacté').getByText(s.cardM2, { exact: true }), 'autre mission : colonne « Contacté »').toBeVisible();
   });
 });

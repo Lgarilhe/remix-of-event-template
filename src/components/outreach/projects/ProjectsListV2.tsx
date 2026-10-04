@@ -12,7 +12,9 @@
  * A répondu, En entretien), les mêmes que les colonnes du Pipeline, et
  * « N profils trouvés » (jamais ouverts, au Sourcing). Chiffres lus dans
  * get_mission_stage_counts (useMissionStageCounts) : jamais de zéro inventé,
- * un tiret tant qu'ils manquent. Aucune prochaine étape calculée ici (lot 3).
+ * une attente tant qu'ils se chargent, « indisponible » s'ils manquent. La
+ * liste elle-même a son attente et son état d'erreur : une lecture en échec ne
+ * s'affiche pas comme « aucune mission ». Aucune prochaine étape calculée ici (lot 3).
  */
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -33,6 +35,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { ErrorState } from '@/components/layout/ErrorState';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -69,12 +72,20 @@ const COUNT_COLUMNS: ReadonlyArray<{ label: string; of: (c: MissionStageCounts) 
   { label: GENERAL_STAGE_LABEL.interviewing, of: (c) => c.interviewing },
 ];
 
-/** Nombre, ou un tiret tant qu'il n'est pas connu ; jamais un zéro inventé. */
-const CountCell: React.FC<{ value: number | null }> = ({ value }) => (
-  <span className={cn('tabular-nums', value ? 'text-foreground' : 'text-muted-foreground')}>
-    {value === null ? '–' : value}
-  </span>
-);
+/**
+ * Nombre ; une attente tant qu'il se charge, une cellule vide (lue « indisponible »)
+ * si la lecture a échoué ou ne rend pas la mission. Jamais un zéro inventé.
+ */
+const CountCell: React.FC<{ value: number | null; pending: boolean }> = ({ value, pending }) => {
+  if (value === null) {
+    return pending
+      ? <Skeleton className="ml-auto h-4 w-6" aria-hidden="true" />
+      : <span className="sr-only">Indisponible</span>;
+  }
+  return (
+    <span className={cn('tabular-nums', value ? 'text-foreground' : 'text-muted-foreground')}>{value}</span>
+  );
+};
 
 // ── Ligne de mission ──
 
@@ -82,6 +93,8 @@ interface MissionRowProps {
   project: UnifiedProject;
   /** Compteurs de la mission ; null tant qu'ils ne sont pas lus (ou en échec). */
   counts: MissionStageCounts | null;
+  /** Compteurs en cours de lecture (attente plutôt que « indisponible »). */
+  countsPending: boolean;
   /** Date d'activité (updated_at ou dernière entrée dans une étape). */
   activityAt: string | null;
   onOpen: () => void;
@@ -92,7 +105,7 @@ interface MissionRowProps {
 }
 
 const MissionRow: React.FC<MissionRowProps> = ({
-  project, counts, activityAt, onOpen, onOpenSourcing, onStatusChange, onDelete, canDelete,
+  project, counts, countsPending, activityAt, onOpen, onOpenSourcing, onStatusChange, onDelete, canDelete,
 }) => {
   const activity = timeAgo(activityAt);
   const showJobTitle = !!project.jobTitle && project.jobTitle.trim().toLowerCase() !== project.name.trim().toLowerCase();
@@ -121,6 +134,7 @@ const MissionRow: React.FC<MissionRowProps> = ({
         </div>
         <p className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           {subline && <span className="truncate">{subline}</span>}
+          {activity && <span className="shrink-0 lg:hidden">Activité {activity}</span>}
           {counts && counts.unopened > 0 && (
             <button
               type="button"
@@ -135,12 +149,12 @@ const MissionRow: React.FC<MissionRowProps> = ({
         <p className="mt-0.5 truncate text-xs text-muted-foreground md:hidden">
           {counts
             ? COUNT_COLUMNS.map(({ label, of }) => `${label} ${of(counts)}`).join(' · ')
-            : 'Effectifs indisponibles'}
+            : countsPending ? 'Chargement des effectifs' : 'Effectifs indisponibles'}
         </p>
       </td>
       {COUNT_COLUMNS.map(({ label, of }) => (
         <td key={label} className="hidden py-2 pr-3 text-right text-sm md:table-cell">
-          <CountCell value={counts ? of(counts) : null} />
+          <CountCell value={counts ? of(counts) : null} pending={countsPending} />
         </td>
       ))}
       <td className="hidden py-2 pr-3 text-right text-xs tabular-nums text-muted-foreground lg:table-cell">
@@ -159,7 +173,9 @@ const MissionRow: React.FC<MissionRowProps> = ({
               <MoreHorizontal aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          {/* Le contenu du menu est dans un portail, mais l'évènement remonte par l'arbre React
+              jusqu'à la ligne : sans cet arrêt, chaque action ouvrirait aussi la mission. */}
+          <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
             {project.status !== 'active' && (
               <DropdownMenuItem onClick={() => onStatusChange('active')}>
                 <Play className="mr-2 h-3.5 w-3.5" aria-hidden="true" /> Activer
@@ -243,7 +259,10 @@ const LoadingRows: React.FC = () => (
 export const ProjectsListV2: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { projects: sourcingProjects, isLoading: spLoading, deleteProject, updateProject } = useSourcingProjects();
+  const {
+    projects: sourcingProjects, isLoading: spLoading, hasData, isError: listError, refetch: refetchProjects,
+    deleteProject, updateProject,
+  } = useSourcingProjects();
   const { canCreateJob, jobQuotaKnown, maxJobs } = useQuotaGate();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -329,25 +348,44 @@ export const ProjectsListV2: React.FC = () => {
     const known = rows.length > 0 && rows.every((c): c is MissionStageCounts => c !== null);
     const sum = (of: (c: MissionStageCounts) => number) =>
       known ? (rows as MissionStageCounts[]).reduce((n, c) => n + of(c), 0) : null;
-    const toSort = sum(c => c.toSort);
-    const replied = sum(c => c.replied);
-    return { toSort, replied };
+    return {
+      toSort: sum(c => c.toSort),
+      contacted: sum(c => c.contacted),
+      replied: sum(c => c.replied),
+      interviewing: sum(c => c.interviewing),
+    };
   }, [ongoingProjects, countsOf]);
 
-  const navigateToWorkspace = useCallback((project: UnifiedProject, tab?: string) => {
-    navigate(`/missions/${project.sourcingProject.id}${tab ? `?tab=${tab}` : ''}`);
+  // La mission s'ouvre sans ?tab= ; « N profils trouvés » va droit au Sourcing
+  // (MissionEntry convertit l'adresse pour l'ancienne page).
+  const navigateToWorkspace = useCallback((project: UnifiedProject) => {
+    navigate(`/missions/${encodeURIComponent(project.sourcingProject.id)}`);
+  }, [navigate]);
+  const navigateToSourcing = useCallback((project: UnifiedProject) => {
+    navigate(`/missions/${encodeURIComponent(project.sourcingProject.id)}/sourcing`);
   }, [navigate]);
 
   const handleStatusChange = (project: UnifiedProject) => async (newStatus: SourcingProject['status']) => {
-    if (project.sourcingProject) {
+    if (!project.sourcingProject) return;
+    try {
       await updateProject({ id: project.sourcingProject.id, status: newStatus });
+    } catch {
+      // le toast d'échec est posé par onError du hook
     }
   };
 
-  const isLoading = spLoading;
+  // Liste pas encore reçue (requête en cours, en attente du réseau ou pas encore
+  // activée) : une attente, jamais l'état vide. Liste en échec sans donnée : un
+  // état d'erreur, jamais l'état vide non plus.
+  // Une recherche déplie les terminées et archivées : sans cela, un résultat
+  // qui s'y trouve resterait caché sans message.
+  const searchActive = searchQuery.trim() !== '';
+  const archiveOpen = showArchive || searchActive;
+  const isLoading = spLoading || (!hasData && !listError);
+  const loadFailed = !hasData && listError;
 
   // Aucune mission : état vide de l'écran entier.
-  if (!isLoading && unifiedProjects.length === 0) {
+  if (hasData && unifiedProjects.length === 0) {
     return (
       <>
         {/* Missions confiées par une entreprise (cabinets et indépendants) :
@@ -374,10 +412,14 @@ export const ProjectsListV2: React.FC = () => {
     );
   }
 
-  const subtitle = [
+  // Effectifs « en ce moment », sous le nom de l'étape (À trier, Contacté,
+  // A répondu, En entretien), additionnés sur les missions En cours.
+  const subtitle = !hasData ? undefined : [
     plural(ongoingProjects.length, 'mission en cours', 'missions en cours'),
     summary.toSort !== null ? `${summary.toSort} à trier` : null,
-    summary.replied !== null && summary.replied > 0 ? plural(summary.replied, 'réponse à traiter', 'réponses à traiter') : null,
+    summary.contacted !== null ? plural(summary.contacted, 'contacté', 'contactés') : null,
+    summary.replied !== null ? plural(summary.replied, 'a répondu', 'ont répondu') : null,
+    summary.interviewing !== null ? `${summary.interviewing} en entretien` : null,
   ].filter(Boolean).join(', ');
 
   const renderRow = (project: UnifiedProject) => (
@@ -385,9 +427,10 @@ export const ProjectsListV2: React.FC = () => {
       key={project.key}
       project={project}
       counts={countsOf(project)}
+      countsPending={countsQuery.isPending}
       activityAt={activityOf(project)}
       onOpen={() => navigateToWorkspace(project)}
-      onOpenSourcing={() => navigateToWorkspace(project, 'sourcing')}
+      onOpenSourcing={() => navigateToSourcing(project)}
       onStatusChange={handleStatusChange(project)}
       onDelete={() => setDeleteTarget(project)}
       canDelete={!!project.sourcingProject}
@@ -438,6 +481,15 @@ export const ProjectsListV2: React.FC = () => {
 
       {isLoading && <LoadingRows />}
 
+      {loadFailed && (
+        <ErrorState
+          variant="compact"
+          title="Impossible de charger vos missions"
+          description="Vérifiez votre connexion, puis réessayez."
+          onRetry={() => { void refetchProjects(); }}
+        />
+      )}
+
       {/* ── En cours ── */}
       {!isLoading && groups.ongoing.length > 0 && (
         <section className="mb-8" aria-labelledby="missions-en-cours">
@@ -456,18 +508,18 @@ export const ProjectsListV2: React.FC = () => {
         <section className="mb-8" aria-labelledby="missions-archivees">
           <button
             type="button"
-            onClick={() => setShowArchive(s => !s)}
-            aria-expanded={showArchive}
+            onClick={() => { if (!searchActive) setShowArchive(s => !s); }}
+            aria-expanded={archiveOpen}
             className="mb-2 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-semibold hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronRight
-              className={cn('h-3.5 w-3.5 transition-transform duration-150', showArchive && 'rotate-90')}
+              className={cn('h-3.5 w-3.5 transition-transform duration-150', archiveOpen && 'rotate-90')}
               aria-hidden="true"
             />
             <span id="missions-archivees">Terminées, archivées</span>
             <span className="text-xs font-normal text-muted-foreground">{plural(groups.archive.length, 'mission')}</span>
           </button>
-          {showArchive && (
+          {archiveOpen && (
             <MissionTable caption="Missions terminées et archivées">{groups.archive.map(renderRow)}</MissionTable>
           )}
         </section>
@@ -514,7 +566,11 @@ export const ProjectsListV2: React.FC = () => {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (deleteTarget?.sourcingProject) {
-                  await deleteProject(deleteTarget.sourcingProject.id);
+                  try {
+                    await deleteProject(deleteTarget.sourcingProject.id);
+                  } catch {
+                    // le toast d'échec est posé par onError du hook
+                  }
                 }
                 setDeleteTarget(null);
               }}
