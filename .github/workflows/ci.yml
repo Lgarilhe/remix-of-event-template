@@ -57,6 +57,9 @@ jobs:
       # aucune écriture directe de l'étape, jamais ouverts exclus, textes).
       - name: Lots 1 et 2 regression tests (nouvelle page mission)
         run: node --test tests/c1/lot12-mission-v3.test.mjs
+      # Photos des candidats : la notation garde la photo LinkedIn enregistrée.
+      - name: Photos des candidats (notation)
+        run: node --test tests/ux/photos-candidats.test.mjs
 
   migrations:
     name: Migrations (versions uniques)
