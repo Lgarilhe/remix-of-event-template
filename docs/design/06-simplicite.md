@@ -10,6 +10,7 @@ Ses réponses aux questions de cadrage :
 - La page mission suit les mêmes règles que le reste, en accord avec la session de la refonte mission.
 - Les pastilles des candidats montrent leurs vraies photos LinkedIn. Konekt en garde une petite copie privée, supprimée avec le candidat.
 - La perte de la photo à la notation est corrigée tout de suite, à part (PR #257).
+- L'accueil suit la maquette : plus de cartes des canaux (une ligne « À faire » quand le compte LinkedIn est à reconnecter), plus de « Cette semaine », d'activité récente ni de « Personnaliser la page ». Les chiffres de la semaine restent dans le Pipeline (onglet Analyse), l'activité sur la fiche de chaque candidat.
 
 ## Le constat
 
@@ -37,8 +38,8 @@ Elles valent pour chaque écran repris. La maquette « Konekt simplifié » (can
 | Lot | Contenu | État |
 |---|---|---|
 | Photo | La notation garde la photo du candidat | PR #257 |
-| F · Fondations | Paliers de texte (rien sous 12 px), tailles écrites à la main remplacées, titre de page à 28 px, `PersonAvatar` et `AvatarStack`, icônes qui attendent | en cours |
-| A · Accueil | « À faire » en pastilles et piles de visages, tâches en retard avec visage ou logo, missions avec logo et visages en entretien | à faire |
+| F · Fondations | Paliers de texte (rien sous 12 px), tailles écrites à la main remplacées, titre de page à 28 px, `PersonAvatar` et `AvatarStack`, icônes qui attendent | PR #258 |
+| A · Accueil | « À faire » en pastilles et piles de visages, tâches en retard avec visage ou logo, missions avec logo et visages en entretien | en revue |
 | T · Tâches | Visage ou logo par tâche, réveil sur « En retard » | à faire |
 | M · Page mission | En-tête avec logo, visages, note en anneau, avancement en cinq crans, bandeau « à trier », point qui pulse ; cadrage avec pastilles de section et anneau d'avancement. Avec la session de la refonte mission | à faire |
 | P · Photos | Copie privée des photos LinkedIn : capture (recherche, notation, messagerie, extension, assistant), effacement RGPD, purge, export, rattrapage des candidats sans photo | à faire |

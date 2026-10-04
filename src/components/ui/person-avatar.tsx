@@ -8,7 +8,9 @@
  * - Décoratif par défaut, le nom étant écrit à côté ; `alt` le rend lisible.
  * - Rond pour une personne, carré pour une organisation (MissionCompanyLogo).
  *
- * AvatarStack : quelques visages qui se chevauchent, puis « +N ».
+ * AvatarStack : quelques visages qui se chevauchent, puis « +N ». Le
+ * chevauchement (6 px, plus l'anneau de 2 px) laisse lisibles les deux
+ * initiales d'un visage sans photo dès 30 px.
  */
 
 import * as React from 'react';
@@ -74,7 +76,7 @@ export interface AvatarStackProps {
   total?: number;
   /** Visages montrés avant « +N » (3 par défaut). */
   max?: number;
-  /** Côté de chaque visage en px (28 par défaut). */
+  /** Côté de chaque visage en px (30 par défaut). */
   size?: number;
   className?: string;
 }
@@ -86,7 +88,7 @@ function stackLabel(names: string[], rest: number): string {
   return `${names.slice(0, -1).join(', ')} et ${names[names.length - 1]}`;
 }
 
-export function AvatarStack({ people, total, max = 3, size = 28, className }: AvatarStackProps) {
+export function AvatarStack({ people, total, max = 3, size = 30, className }: AvatarStackProps) {
   const shown = people.slice(0, max);
   const rest = Math.max(0, (total ?? people.length) - shown.length);
   if (shown.length === 0 && rest === 0) return null;
@@ -100,7 +102,7 @@ export function AvatarStack({ people, total, max = 3, size = 28, className }: Av
           name={person.name}
           src={person.src}
           size={size}
-          className={cn('ring-2 ring-background', index > 0 && '-ml-2')}
+          className={cn('ring-2 ring-background', index > 0 && '-ml-1.5')}
         />
       ))}
       {rest > 0 && (
@@ -109,7 +111,7 @@ export function AvatarStack({ people, total, max = 3, size = 28, className }: Av
           style={{ height: size, minWidth: size }}
           className={cn(
             'inline-flex shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-2xs font-semibold tabular-nums text-foreground-secondary ring-2 ring-background',
-            shown.length > 0 && '-ml-2',
+            shown.length > 0 && '-ml-1.5',
           )}
         >
           +{rest}

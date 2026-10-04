@@ -158,8 +158,9 @@ test('0c-4 : Dashboard compte la stagnation comme le /pipeline (stage_entered_at
   assert.doesNotMatch(src, /STAGE_GUIDE_TIMES/, 'table de délais dupliquée');
   assert.doesNotMatch(src, /differenceInDays|parseISO/);
   assert.doesNotMatch(src, /\.lastActivity/, 'plus de date d\'étape tirée de updated_at');
-  // La fiche rouverte retrouve la ligne canonique si l'id de la carte a changé.
-  assert.match(src, /c\.candidateId === selectedCandidate\.candidateId && c\.projectId === selectedCandidate\.projectId/);
+  // La fiche ne s'ouvre plus depuis l'accueil : l'activité récente en est
+  // retirée (design simplifié, décision du propriétaire du 04/10/2026).
+  assert.doesNotMatch(src, /CandidateDetailModal/);
   assert.match(src, /import \{[^}]*\bstagnantDays\b[^}]*\} from '@\/hooks\/useATSData'/);
   assert.match(src, /import \{[^}]*\bdaysInStage\b[^}]*\} from '@\/hooks\/useATSData'/);
   assert.match(src, /STALE_EXEMPT_STAGES\.has\(c\.generalStage\)/, 'À trier et Retenu exemptés');

@@ -106,6 +106,10 @@ jobs:
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié
         run: node --test tests/ux/fondations-simplicite.test.mjs
+      # Design simplifié, lot A : l'accueil (À faire, Missions en cours), rendu
+      # des deux panneaux empaqueté avec esbuild.
+      - name: Accueil du design simplifié
+        run: node --test tests/ux/accueil-simplicite.test.mjs
       - name: Vite production build
         run: npx vite build
 

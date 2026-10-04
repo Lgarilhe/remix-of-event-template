@@ -53,7 +53,8 @@ export const PageHeader: React.FC<PageHeaderProps> = React.memo(({
         </div>
         {subtitle && <p className="max-w-2xl text-md text-muted-foreground">{subtitle}</p>}
       </div>
-      {actions && <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
+      {/* Téléphone : les actions prennent leur propre ligne, sinon le titre se coupe et le sous-titre s'étire en colonne. */}
+      {actions && <div className="flex min-w-0 basis-full flex-wrap items-center gap-2 sm:shrink-0 sm:basis-auto">{actions}</div>}
     </header>
   );
 });
