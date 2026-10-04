@@ -689,7 +689,10 @@ function evalRetained(ctx: Ctx): RankEval {
       ? n > 1 ? 'Contactez-les maintenant.' : 'Contactez-le maintenant.'
       : n > 1 ? 'Retrouvez-les dans la liste, filtrée sur Retenu.' : 'Retrouvez-le dans la liste, filtrée sur Retenu.',
     detail: `${plural(n, 'profil est', 'profils sont')} à l'étape Retenu, sans aucun message envoyé depuis Konekt.`,
-    short: n > 1 ? `Contacter les ${n.toLocaleString('fr-FR')} retenus` : 'Contacter le retenu',
+    // Forme courte (liste des missions) : le libellé dit ce que fait le clic.
+    short: allowed
+      ? n > 1 ? `Contacter les ${n.toLocaleString('fr-FR')} retenus` : 'Contacter le retenu'
+      : n > 1 ? `Voir les ${n.toLocaleString('fr-FR')} retenus` : 'Voir le retenu',
     button,
   });
   // Sans envoi permis, le geste est un filtre de la liste : il n'exige ni compte LinkedIn ni type d'organisation.

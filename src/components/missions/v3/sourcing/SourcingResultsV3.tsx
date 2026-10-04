@@ -35,6 +35,7 @@ import {
   joinNames,
   noteOf,
   reasonOf,
+  isGoRecommendation,
   recommendationOf,
   rejectedReasonOf,
   retainedStageOf,
@@ -554,7 +555,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 const id = row.profile.id;
                 const busy = pending.has(id);
                 const selected = tab === 'to_sort' && selectedProfiles.has(id);
-                const recommended = recommendationOf(row.score, row.status) === 'go';
+                const recommended = isGoRecommendation(recommendationOf(row.score, row.status));
                 const reason = tab === 'rejected'
                   ? { text: rejectedReasonOf(row.status), tone: 'default' as ReasonTone }
                   : reasonOf(row.score, row.status, { scoring: scoringInProgress && scoringIds.has(id) });

@@ -46,6 +46,7 @@ import {
   NothingInProgressToSort,
   PipelineLoading,
 } from './PipelineEmptyStates';
+import { rememberPanelTab } from '../panels/panelTabMemory';
 import { PipelineToolbar } from './PipelineToolbar';
 import { StageBar } from './StageBar';
 import { ToSortSection } from './ToSortSection';
@@ -294,7 +295,8 @@ export function PipelineScreen(): JSX.Element | null {
     (intent: ActionIntent) => {
       switch (intent.type) {
         case 'open_row':
-          // L'onglet Échanges n'a pas de paramètre d'adresse : la fiche s'ouvre sur l'onglet retenu.
+          // « Répondre » ouvre la fiche sur Échanges : l'onglet se choisit avant l'ouverture.
+          if (intent.tab === 'echanges') rememberPanelTab('echanges');
           ctx.openCandidate(intent.rowId);
           break;
         case 'open_conversation':

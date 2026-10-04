@@ -831,7 +831,7 @@ const listInput = (o = {}) => ({ now: NOW, mission: { id: P, status: 'active' },
 test('3 : liste des missions, la même règle en forme courte', () => {
   const l = (o) => missionListAction(listInput(o));
   assert.deepEqual(l({ counts: counts({ retained: 4 }) }), {
-    state: 'action', rank: '7', text: 'Contacter les 4 retenus', note: null,
+    state: 'action', rank: '7', text: 'Voir les 4 retenus', note: null,
     intent: { type: 'filter_stage', stage: 'retained' }, snoozeKey: 'retained_uncontacted',
   });
   assert.equal(l({ attention: withReplies([reply()]), counts: counts({ retained: 4 }) }).text, 'Répondre à Marc Moreau');
@@ -848,7 +848,7 @@ test('3 : liste des missions, la même règle en forme courte', () => {
   assert.equal(l({ mission: { id: P, status: 'archived' }, counts: counts({ retained: 4 }) }).state, 'none');
   // Réponses non vérifiées : un rang plus bas reste proposé, avec la mention.
   const partial = l({ attention: UNAVAILABLE, counts: counts({ retained: 4 }) });
-  assert.equal(partial.text, 'Contacter les 4 retenus');
+  assert.equal(partial.text, 'Voir les 4 retenus');
   assert.equal(partial.note, 'Réponses non vérifiées');
   // Report : la ligne passe à l'action suivante, tout est reporté : cellule vide.
   assert.equal(l({ counts: counts({ retained: 4 }), attention: att({ toSortScored: 2 }), snoozed: keysOf('retained_uncontacted') }).rank, '8');
@@ -873,7 +873,9 @@ test('3 : liste des missions et carte : la même action principale hors blocage'
     const list = missionListAction(listInput(c));
     const card = computeNowCard(input(c));
     assert.equal(list.rank, card.main?.rank ?? null, JSON.stringify(c));
-    assert.equal(list.text, card.main?.short ?? null);
+    // Rang 7 : la carte contacte, la liste n'a que le filtre Retenu et le dit.
+    if (list.rank === '7') assert.equal(list.text, (card.main?.short ?? '').replace(/^Contacter/, 'Voir'));
+    else assert.equal(list.text, card.main?.short ?? null);
   }
 });
 

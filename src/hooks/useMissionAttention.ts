@@ -11,7 +11,7 @@
 // l'onglet : une réponse reçue par le serveur apparaît sans geste.
 
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { missionStageCountIds } from '@/hooks/useMissionStageCounts';
 import { parseAttentionRow, type MissionAttention } from '@/lib/missionNextAction';
@@ -66,6 +66,9 @@ export function useMissionAttention(
       return parseMissionAttention(data);
     },
     enabled: ids.length > 0 && (options?.enabled ?? true),
+    // Marquer terminée, archiver ou créer change la liste des identifiants : on
+    // garde les signaux d'avant plutôt que de remettre chaque ligne en attente.
+    placeholderData: keepPreviousData,
     staleTime: MISSION_ATTENTION_STALE_TIME,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: true,

@@ -54,10 +54,8 @@ import { CandidateNotesSection } from './CandidateNotesSection';
 import { CandidatePanelHeader } from './CandidatePanelHeader';
 import { CandidateRemindersSection } from './CandidateRemindersSection';
 import { CandidatePanelTabs, type CandidatePanelTabKey } from './CandidatePanelTabs';
+import { getRememberedPanelTab, rememberPanelTab } from './panelTabMemory';
 
-// Onglet ouvert, gardé d'un candidat à l'autre pendant la session (la fiche est
-// remontée à chaque candidat).
-let rememberedTab: CandidatePanelTabKey = 'apercu';
 
 /** Couches ouvertes qui gardent les flèches pour elles (menus, listes, fenêtres). */
 const OPEN_LAYER_SELECTOR = [
@@ -208,11 +206,11 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
   const actions = useMissionStageActions(project.id);
   const { selectedAccount } = useFilteredLinkedInAccounts();
   const fullProfile = useCandidateFullProfile(row.candidateId, row.linkedinUrl);
-  const [tab, setTabState] = useState<CandidatePanelTabKey>(rememberedTab);
+  const [tab, setTabState] = useState<CandidatePanelTabKey>(getRememberedPanelTab);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const setTab = (key: CandidatePanelTabKey) => {
-    rememberedTab = key;
+    rememberPanelTab(key);
     setTabState(key);
   };
 
@@ -325,6 +323,7 @@ function CandidatePanelLoaded({ rowId, titleId, onClose, row, detail }: LoadedPr
               profileId={row.candidateId}
               profileName={name}
               projectId={project.id}
+              onMessageSent={() => void invalidateStageReaders(queryClient)}
             />
           </PanelSection>
           <PanelSection title="Séquences">
