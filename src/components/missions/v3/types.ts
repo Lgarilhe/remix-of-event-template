@@ -11,7 +11,7 @@
 
 import type React from 'react';
 import { isGeneralStage, type GeneralStage, type StageBatchOutcome, type StageTarget } from '@/lib/candidateStage';
-import { GENERAL_STAGE_LABEL, isStale, stageAgeDays } from '@/lib/stageDisplay';
+import { GENERAL_STAGE_LABEL } from '@/lib/stageDisplay';
 import { plural } from '@/lib/plural';
 import type { MissionStageCounts } from '@/hooks/useMissionStageCounts';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
@@ -294,35 +294,9 @@ export function stageFilterKey(filter: StageFilter | null): string {
 }
 
 // ------------------------------------------------------ prochaine action
-
-export interface ProvisionalNextAction {
-  /** Texte de la colonne « Prochaine action » ; null : rien à afficher (Écarté). */
-  text: string | null;
-  /** Jours pleins dans l'étape ; null sans date lisible. */
-  days: number | null;
-  /** Ligne engagée sans mouvement (isStale de stageDisplay) : mise en évidence discrète. */
-  stale: boolean;
-}
-
-/**
- * Règle PROVISOIRE (lot 2, conception 13) : « Aucune action depuis N j »
- * (0 j compris), « Aucune » pour Embauché, rien pour Écarté. La règle de la
- * section 4.3 arrive au lot 3 et remplacera ce texte ;
- * aucune phrase ici ne suppose un signal dont la source n'existe pas.
- */
-export function provisionalNextAction(
-  row: Pick<MissionCandidateRow, 'stage' | 'processStepId' | 'stageEnteredAt' | 'updatedAt' | 'createdAt'>,
-  now: number | Date = Date.now(),
-): ProvisionalNextAction {
-  const dated = { stage_entered_at: row.stageEnteredAt, updated_at: row.updatedAt, created_at: row.createdAt };
-  const days = stageAgeDays(dated, now);
-  const stale = isStale({ general_stage: row.stage, process_step_id: row.processStepId, ...dated }, now);
-  if (row.stage === 'rejected') return { text: null, days, stale: false };
-  if (row.stage === 'hired') return { text: 'Aucune', days, stale: false };
-  if (row.stage === 'to_sort') return { text: 'À trier', days, stale: false };
-  if (days === null) return { text: 'Aucune action enregistrée', days, stale };
-  return { text: `Aucune action depuis ${days} j`, days, stale };
-}
+// La règle (Répondre, Relancer, Contacter, sinon « Aucune action depuis N j »)
+// vit dans src/lib/missionNextAction.ts (rowNextAction) : elle sert la colonne
+// de la liste, les cartes du kanban et l'en-tête de la fiche.
 
 type OrderedRow = Pick<MissionCandidateRow, 'id' | 'stageEnteredAt' | 'score'> & Partial<Pick<MissionCandidateRow, 'stage'>>;
 

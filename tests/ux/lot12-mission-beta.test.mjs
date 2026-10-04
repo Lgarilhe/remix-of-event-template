@@ -52,6 +52,7 @@ const load = async (rel) => {
 
 const beta = await load('src/lib/missionBeta.ts');
 const v3 = await load('src/components/missions/v3/types.ts');
+const rule = await load('src/lib/missionNextAction.ts');
 
 const ID = '4a1b2c3d-0000-4000-8000-0000000000aa';
 const STEP_A = '4a1b2c3d-0000-4000-8000-00000000000a';
@@ -328,17 +329,24 @@ test('lot12 : liste par défaut = en cours, ni À trier ni Écarté', () => {
 });
 
 // ------------------------------------------------------ prochaine action
-test('lot12 : prochaine action provisoire, « Aucune action depuis N j »', () => {
+test('lot12 et lot 3 : prochaine action de la colonne, texte de repos de la règle', () => {
   const now = Date.parse('2026-09-29T12:00:00Z');
-  const at = (stage, iso) => v3.provisionalNextAction({ stage, processStepId: null, stageEnteredAt: iso, updatedAt: null, createdAt: null }, now);
-  assert.deepEqual(at('contacted', '2026-09-23T11:00:00Z'), { text: 'Aucune action depuis 6 j', days: 6, stale: false });
+  const signals = rule.buildRowSignals({ now, attention: null, snoozed: null, interlocutor: null, orgType: null });
+  const at = (stage, iso) => {
+    const next = rule.rowNextAction({ id: 'r', stage, processStepId: null, stageEnteredAt: iso, updatedAt: null, createdAt: null }, signals);
+    return { text: next.text, days: next.days, stale: next.stale };
+  };
+  assert.deepEqual(at('contacted', '2026-09-23T11:00:00Z'), { text: 'Aucune action depuis 6 j', days: 6, stale: false });
   assert.equal(at('replied', '2026-09-20T11:00:00Z').stale, true, '7 j et plus : sans mouvement');
   assert.equal(at('retained', '2026-09-01T11:00:00Z').stale, false, 'Retenu : jamais sans mouvement');
-  assert.equal(at('contacted', '2026-09-29T08:00:00Z').text, 'Aucune action depuis 0 j', 'même jour : 0 j, jamais une autre phrase');
+  assert.equal(at('retained', '2026-09-01T11:00:00Z').text, 'Contacter', 'Retenu : rang 7');
+  assert.equal(at('contacted', '2026-09-29T08:00:00Z').text, 'Aucune action depuis 0 j', 'même jour : 0 j, jamais une autre phrase');
   assert.equal(at('hired', '2026-09-01T11:00:00Z').text, 'Aucune');
   assert.equal(at('rejected', '2026-09-01T11:00:00Z').text, null);
   assert.equal(at('to_sort', '2026-09-01T11:00:00Z').text, 'À trier');
   assert.equal(at('contacted', null).text, 'Aucune action enregistrée');
+  // La règle remplace l'ancienne règle provisoire : plus de provisionalNextAction dans types.ts.
+  assert.equal(v3.provisionalNextAction, undefined);
 });
 
 test('lot12 : ordre de la liste, le même que la requête', () => {

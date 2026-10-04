@@ -1,8 +1,8 @@
 // Refonte mission, lot 2 : en-tête de la fiche candidat (conception 4.4,
 // maquette FicheCandidat). Rangée collante : le nom, la place dans la liste,
 // les flèches et la croix ; dessous le poste, le lieu et la note. Puis la
-// section Étape : l'étape et depuis quand, la prochaine action (règle
-// provisoire, lot 3), Contacter pour un Retenu, « Étape suivante »,
+// section Étape : l'étape et depuis quand, la prochaine action (règle de la
+// section 4.3, lot 3), Contacter pour un Retenu, « Étape suivante »,
 // « Déplacer vers », « Déjà contacté » et « Écarter ». Changer d'étape ne ferme
 // pas la fiche. Flèches : candidat précédent ou suivant dans la liste affichée.
 import { useEffect, useRef, type ReactNode } from 'react';
@@ -14,11 +14,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useMissionRowSignals } from '@/hooks/useMissionNow';
+import { rowNextAction } from '@/lib/missionNextAction';
 import { stageLabel } from '@/lib/stageDisplay';
+import { useMissionV3 } from '../MissionV3Context';
 import {
   moveOptions,
   nextStageOption,
-  provisionalNextAction,
   rowStageLabel,
   stageFilterParam,
   type MissionCandidateRow,
@@ -84,7 +86,8 @@ export function CandidatePanelHeader({
   contactAction,
 }: CandidatePanelHeaderProps) {
   const currentLabel = rowStageLabel(row, steps);
-  const action = provisionalNextAction(row);
+  const { project } = useMissionV3();
+  const action = rowNextAction(row, useMissionRowSignals(project));
   const since = sinceText(action.days);
   const options = moveOptions(steps);
   const contacted =
@@ -98,9 +101,10 @@ export function CandidatePanelHeader({
   const current = currentKey(row);
   const disabled = !canMove || isMoving;
   const milestones = milestoneTexts(row);
-  // Prochaine action (règle provisoire, lot 3) : seulement si elle ajoute
-  // quelque chose à la ligne d'étape (« depuis aujourd'hui » y est déjà dit).
-  const showAction = action.text !== null && action.text !== currentLabel && action.days !== 0;
+  // Prochaine action (règle de la section 4.3) : seulement si elle ajoute
+  // quelque chose à la ligne d'étape (« depuis aujourd'hui » y est déjà dit ;
+  // une action de la règle, comme « Répondre », s'affiche toujours).
+  const showAction = action.text !== null && action.text !== currentLabel && (action.days !== 0 || action.rank !== null);
   const rejectedFrom = row.stage === 'rejected' ? stageLabel(row.rejectedFromStage) : null;
 
   // « Écarter » disparaît quand la ligne est écartée : le focus qu'il avait

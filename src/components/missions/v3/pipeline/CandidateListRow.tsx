@@ -1,12 +1,14 @@
-// Refonte mission, lot 2 : une ligne de la liste des candidats (conception
-// 4.2, zone 5) : case, candidat, étape, prochaine action (règle provisoire),
-// ancienneté dans l'étape, note. Clic sur la ligne ou Entrée sur le nom : fiche.
+// Refonte mission, lots 2 et 3 : une ligne de la liste des candidats (conception
+// 4.2, zone 5) : case, candidat, étape, prochaine action (règle de la section
+// 4.3, src/lib/missionNextAction.ts), ancienneté dans l'étape, note. Clic sur
+// la ligne ou Entrée sur le nom : fiche.
 
 import { memo } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import type { GeneralStage } from '@/lib/candidateStage';
-import { provisionalNextAction, rowStageLabel, type MissionCandidateRow, type MissionStepRef } from '../types';
+import { buildRowSignals, rowNextAction, type RowSignals } from '@/lib/missionNextAction';
+import { rowStageLabel, type MissionCandidateRow, type MissionStepRef } from '../types';
 
 export const UNNAMED_CANDIDATE = 'Candidat sans nom';
 
@@ -36,6 +38,15 @@ const STAGE_PILL: Record<GeneralStage, string> = {
   rejected: 'bg-muted/30 text-muted-foreground',
 };
 
+/** Signaux vides : lignes d'une liste qui n'affiche pas la colonne (section À trier), sans réponse ni report. */
+let bareSignals: RowSignals | null = null;
+function signalsWithout(now: number): RowSignals {
+  if (bareSignals === null || bareSignals.now !== now) {
+    bareSignals = buildRowSignals({ now, attention: null, snoozed: null, interlocutor: null, orgType: null });
+  }
+  return bareSignals;
+}
+
 /** Colonnes affichées selon la place du tableau (CandidateList). */
 export interface CandidateListColumns {
   stage: boolean;
@@ -57,6 +68,8 @@ interface CandidateListRowProps {
   /** compact : lignes de la section À trier (nom, titre, note), séparées par un filet haut. */
   variant?: 'default' | 'compact';
   now: number;
+  /** Réponses, reports et interlocuteur de la mission, construits une fois pour toutes les lignes. */
+  signals?: RowSignals;
   onToggle: (row: MissionCandidateRow, checked: boolean) => void;
   onOpen: (rowId: string) => void;
 }
@@ -70,12 +83,13 @@ export const CandidateListRow = memo(function CandidateListRow({
   columns = ALL_COLUMNS,
   variant = 'default',
   now,
+  signals,
   onToggle,
   onOpen,
 }: CandidateListRowProps) {
   const name = candidateName(row);
   const stage = rowStageLabel(row, steps);
-  const next = provisionalNextAction(row, now);
+  const next = rowNextAction(row, signals ?? signalsWithout(now));
 
   const compact = variant === 'compact';
   // Sans colonne Étape, l'étape passe sous le nom ; inutile dans À trier (toutes les lignes y sont).

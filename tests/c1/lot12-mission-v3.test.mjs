@@ -143,6 +143,12 @@ const NEW_PAGE_FILES = [
   STAGE_ACTIONS,
   DETAIL_HOOK,
   ENTRY,
+  // Lot 3 : carte « Maintenant » (lectures, reports, règle de la prochaine action).
+  'src/hooks/useMissionNow.ts',
+  'src/hooks/useMissionAttention.ts',
+  'src/hooks/useMissionActionSnoozes.ts',
+  'src/lib/missionNextAction.ts',
+  'src/lib/missionSnooze.ts',
 ];
 
 function newPageFiles() {

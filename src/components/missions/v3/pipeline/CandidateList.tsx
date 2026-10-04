@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import type { RowSignals } from '@/lib/missionNextAction';
 import { useKnownStagesVersion, useMissionCandidateRows } from '@/hooks/useMissionCandidateRows';
 import {
   PIPELINE_PAGE_SIZE,
@@ -129,6 +130,8 @@ interface CandidateListProps {
   selectedIds: ReadonlySet<string>;
   activeRowId: string | null;
   now: number;
+  /** Signaux de la colonne « Prochaine action » ; absents : texte de repos seulement (section À trier, sans cette colonne). */
+  signals?: RowSignals;
   /** Nom du tableau (lecteurs d'écran). */
   caption: string;
   /** compact : section À trier, sans cadre ni en-tête visible, colonnes réduites au nom et à la note. */
@@ -188,6 +191,7 @@ export function CandidateList({
   selectedIds,
   activeRowId,
   now,
+  signals,
   caption,
   testId = 'candidate-list',
   variant = 'default',
@@ -271,6 +275,7 @@ export function CandidateList({
                   columns={columns}
                   variant={variant}
                   now={now}
+                  signals={signals}
                   onToggle={onToggleRow}
                   onOpen={onOpen}
                 />

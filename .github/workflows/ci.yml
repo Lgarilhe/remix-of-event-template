@@ -61,6 +61,11 @@ jobs:
       # aucune écriture directe de l'étape, jamais ouverts exclus, textes).
       - name: Lots 1 et 2 regression tests (nouvelle page mission)
         run: node --test tests/c1/lot12-mission-v3.test.mjs
+      # Refonte mission, lot 3 : règle de la prochaine action et reports
+      # « Plus tard » (modules purs, sans import), puis les gardes statiques
+      # de l'écran de la carte « Maintenant ».
+      - name: Lot 3 regression tests (carte Maintenant)
+        run: node --test tests/c1/lot3-*.test.mjs
       # Photos des candidats : la notation garde la photo LinkedIn enregistrée.
       - name: Photos des candidats (notation)
         run: node --test tests/ux/photos-candidats.test.mjs
@@ -102,6 +107,13 @@ jobs:
       # empaquette les modules avec esbuild.
       - name: Lots 1 et 2 tests (interrupteur de la nouvelle page mission)
         run: node --test tests/ux/lot12-mission-beta.test.mjs
+      # Refonte mission, lot 3 : comportement de la règle de la prochaine
+      # action (chaque rang, états des sources, reports, phrases). Dates
+      # locales : fuseau fixé.
+      - name: Lot 3 tests (règle de la prochaine action et reports)
+        env:
+          TZ: Europe/Paris
+        run: node --test tests/ux/lot3-maintenant.test.mjs
       # Design simplifié, fondations : paliers de texte (rien sous 12 px),
       # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
       - name: Fondations du design simplifié

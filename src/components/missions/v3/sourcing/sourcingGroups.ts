@@ -117,6 +117,16 @@ export function recommendationOf(score: SourcingScoreLike | null | undefined, st
   return score?.recommendation || status?.recommendation || null;
 }
 
+/**
+ * Recommandation positive : mêmes valeurs que is_go_recommendation (SQL, lot 3),
+ * pour que « dont N recommandés » de la carte Maintenant et la pastille
+ * « Recommandé » du Sourcing comptent les mêmes profils.
+ */
+export function isGoRecommendation(recommendation: string | null | undefined): boolean {
+  const value = (recommendation ?? '').trim().toLowerCase();
+  return value === 'go' || value === 'strong_match' || value === 'good_match';
+}
+
 /** Minuscule initiale, sauf pour un sigle (« IFRS » reste « IFRS »). */
 function firstLower(text: string): string {
   if (text.length === 0) return text;
