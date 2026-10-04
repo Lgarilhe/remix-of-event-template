@@ -1,19 +1,26 @@
-// Refonte mission, lot 2 : écran Pipeline de la nouvelle page mission
-// (conception 4.1 et 4.2, lot 2 de la section 13). De haut en bas : barre
-// d'étapes « En ce moment », ligne d'outils, Bilan, liste des candidats en
-// cours (ou kanban « Par étape »), section À trier repliée, barre d'actions
-// groupées. Données : mission_candidate_rows et get_mission_stage_counts ;
-// gestes par useMissionStageActions. Pas de carte « Maintenant » (lot 3).
-// Signature figée : export function PipelineScreen(), sans props.
+// Refonte mission, lots 2 et 3 : écran Pipeline de la nouvelle page mission
+// (conception 4.1 et 4.2). De haut en bas : carte « Maintenant » et ligne
+// « Ensuite » (lot 3, dans leur propre SectionErrorBoundary), barre d'étapes
+// « En ce moment », ligne d'outils, Bilan, liste des candidats en cours (ou
+// kanban « Par étape »), section À trier repliée, barre d'actions groupées.
+// Données : mission_candidate_rows et get_mission_stage_counts ; gestes par
+// useMissionStageActions. Les boutons de la carte sont des intentions de la
+// règle (src/lib/missionNextAction.ts) que runIntent traduit en gestes de
+// l'écran. Signature figée : export function PipelineScreen(), sans props.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
+import { useMissionCandidateRows } from '@/hooks/useMissionCandidateRows';
+import { useMissionRowSignals } from '@/hooks/useMissionNow';
 import { useMissionProcess } from '@/hooks/useMissionProcess';
 import { useMissionStageActions } from '@/hooks/useMissionStageActions';
 import { useMissionStageCounts, type MissionStageCounts } from '@/hooks/useMissionStageCounts';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
 import { V3_PARAM } from '@/lib/missionBeta';
+import type { ActionIntent, RowSignals } from '@/lib/missionNextAction';
+import { SETTINGS_PATHS } from '@/lib/settingsRoutes';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
 import { useMissionV3 } from '../MissionV3Context';
 import {
@@ -30,6 +37,7 @@ import { BilanCard } from './BilanCard';
 import { BulkActionBar, selectionText } from './BulkActionBar';
 import { CandidateList, useFrozenCandidateRows } from './CandidateList';
 import { MissionBoard } from './MissionBoard';
+import { NowCard } from './NowCard';
 import {
   EmptyFilter,
   ListError,
@@ -43,6 +51,10 @@ import { StageBar } from './StageBar';
 import { ToSortSection } from './ToSortSection';
 
 const EMPTY_ROWS: readonly MissionCandidateRow[] = [];
+
+const RETAINED_FILTER: StageFilter = { stage: 'retained', stepId: null };
+/** « Contacter les N » sélectionne les retenus par pages de 50, jusqu'à ce plafond (dit à l'écran quand il coupe). */
+const RETAINED_SELECTION_MAX = 400;
 
 function totalInMission(c: MissionStageCounts): number {
   return c.toSort + c.retained + c.contacted + c.replied + c.interviewing + c.hired + c.rejected;
@@ -89,6 +101,8 @@ export function PipelineScreen(): JSX.Element | null {
   const view: PipelineViewMode = location.view;
   const actions = useMissionStageActions(project.id);
   const [now] = useState(() => Date.now());
+  const navigate = useNavigate();
+  const rowSignals = useMissionRowSignals(project);
 
   // Paramètres de l'écran, par remplacement. Le marqueur d'historique d'un
   // panneau ouvert tombe : sa fermeture retire alors le panneau par
@@ -112,7 +126,12 @@ export function PipelineScreen(): JSX.Element | null {
 
   // ------------------------------------------------------------ sélection
   const [selection, setSelection] = useState<Map<string, MissionCandidateRow>>(() => new Map());
-  const clearSelection = useCallback(() => setSelection(new Map()), []);
+  // Note visible sous la barre d'outils : plafond ou échec de « Contacter les N » (vidée avec la sélection).
+  const [selectionNote, setSelectionNote] = useState<string | null>(null);
+  const clearSelection = useCallback(() => {
+    setSelection(new Map());
+    setSelectionNote(null);
+  }, []);
   const toggleRow = useCallback((row: MissionCandidateRow, checked: boolean) => {
     setSelection((prev) => {
       const next = new Map(prev);
@@ -185,15 +204,130 @@ export function PipelineScreen(): JSX.Element | null {
     [filter, setParams],
   );
 
+  // Ouvrir À trier : la section n'existe que dans la liste sans filtre. On
+  // efface donc la vue et l'étape d'abord, puis on défile dès qu'elle est posée.
+  const [sortRequest, setSortRequest] = useState(0);
+  const handledSort = useRef(0);
   const openToSort = useCallback(() => {
     setToSortOpen(true);
-    window.requestAnimationFrame(() => {
+    setParams({ [V3_PARAM.stage]: null, [V3_PARAM.view]: null });
+    setSortRequest((n) => n + 1);
+  }, [setParams]);
+  useEffect(() => {
+    if (sortRequest === handledSort.current || filterParam !== null || view !== 'liste') return;
+    handledSort.current = sortRequest;
+    const frame = window.requestAnimationFrame(() => {
       toSortRef.current?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
     });
-  }, []);
+    return () => window.cancelAnimationFrame(frame);
+  }, [sortRequest, filterParam, view]);
+
+  // « Contacter les N » (rang 7) : liste filtrée sur Retenu, retenus cochés, puis
+  // le focus va au « Contacter » de la barre d'actions, qui est le geste qui
+  // inscrit la sélection (le panneau de contact ne reçoit aucune sélection). La
+  // sélection est posée après le changement de filtre, qui la vide. Les retenus
+  // ne sont lus qu'à la demande, jusqu'à RETAINED_SELECTION_MAX.
+  const [contactRequest, setContactRequest] = useState(false);
+  const [focusContact, setFocusContact] = useState(false);
+  const retainedQuery = useMissionCandidateRows(project.id, RETAINED_FILTER, {
+    enabled: contactRequest && counts !== null && counts.retained > 0,
+  });
+  const contactRetained = useCallback(() => {
+    setParams({ [V3_PARAM.stage]: 'retained', [V3_PARAM.view]: null });
+    setSelectionNote(null);
+    setContactRequest(true);
+  }, [setParams]);
+  const { isPending: retainedPending, isError: retainedError, hasNextPage: retainedMore, isFetchingNextPage: retainedFetching, fetchStatus: retainedFetchStatus } = retainedQuery;
+  const { fetchNextPage: fetchMoreRetained } = retainedQuery;
+  const retainedPages = retainedQuery.data?.pages;
+  const retainedTotal = counts ? counts.retained : 0;
+  const countsKnown = counts !== null;
+  useEffect(() => {
+    if (!contactRequest || filterParam !== 'retained' || view !== 'liste') return;
+    // Plus aucun retenu (un geste entre-temps) : rien à cocher, la demande tombe.
+    if (countsKnown && retainedTotal === 0) {
+      setContactRequest(false);
+      return;
+    }
+    // Hors ligne, la lecture reste en attente : on le dit au lieu d'attendre sans fin.
+    if (retainedPending && retainedFetchStatus === 'paused') {
+      setContactRequest(false);
+      setSelectionNote('Hors ligne : les retenus ne peuvent pas être lus pour l\'instant.');
+      return;
+    }
+    if (retainedPending) return;
+    const rows = retainedPages?.flatMap((page) => page.rows) ?? [];
+    if (!retainedError && retainedMore && rows.length < RETAINED_SELECTION_MAX) {
+      if (!retainedFetching) void fetchMoreRetained();
+      return;
+    }
+    setContactRequest(false);
+    if (retainedError && rows.length === 0) {
+      setSelectionNote('Les retenus n\'ont pas pu être lus. Réessayez.');
+      return;
+    }
+    const picked = rows.slice(0, RETAINED_SELECTION_MAX);
+    setSelection(new Map(picked.map((row) => [row.id, row] as const)));
+    setSelectionNote(
+      retainedTotal > picked.length
+        ? `${picked.length.toLocaleString('fr-FR')} retenus sur ${retainedTotal.toLocaleString('fr-FR')} sont cochés : une sélection groupée est limitée à ${RETAINED_SELECTION_MAX.toLocaleString('fr-FR')}.`
+        : null,
+    );
+    setFocusContact(picked.length > 0);
+  }, [contactRequest, filterParam, view, retainedPending, retainedFetchStatus, retainedError, retainedMore, retainedFetching, retainedPages, retainedTotal, countsKnown, fetchMoreRetained]);
+  // La barre d'actions apparaît avec la sélection : le focus va à « Contacter », sans ouvrir de panneau.
+  useEffect(() => {
+    if (!focusContact || selection.size === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-bulk-bar] button'));
+      buttons.find((b) => !b.disabled && b.textContent?.trim().startsWith('Contacter'))?.focus();
+      setFocusContact(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusContact, selection.size]);
 
   const activeRowId = location.panel === 'fiche' ? location.candidateRowId : null;
   const goToSourcing = useCallback(() => ctx.goToScreen('sourcing'), [ctx]);
+
+  // Intention d'un bouton de la carte vers le geste existant de l'écran.
+  const runIntent = useCallback(
+    (intent: ActionIntent) => {
+      switch (intent.type) {
+        case 'open_row':
+          // L'onglet Échanges n'a pas de paramètre d'adresse : la fiche s'ouvre sur l'onglet retenu.
+          ctx.openCandidate(intent.rowId);
+          break;
+        case 'open_conversation':
+          navigate(`/inbox?chatId=${encodeURIComponent(intent.chatId)}`);
+          break;
+        case 'contact_retained':
+          contactRetained();
+          break;
+        case 'open_to_sort':
+          openToSort();
+          break;
+        case 'filter_stage':
+          setParams({ [V3_PARAM.stage]: intent.stage, [V3_PARAM.view]: null });
+          break;
+        case 'open_sourcing':
+          ctx.goToScreen('sourcing');
+          break;
+        case 'open_cadrage':
+          ctx.goToScreen('cadrage', { section: intent.section });
+          break;
+        case 'open_linkedin_connections':
+          navigate(SETTINGS_PATHS.connections);
+          break;
+        case 'open_org_settings':
+          navigate(SETTINGS_PATHS.general);
+          break;
+        case 'mailto':
+          window.location.assign(intent.href);
+          break;
+      }
+    },
+    [ctx, navigate, contactRetained, openToSort, setParams],
+  );
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-4 pt-1">
@@ -201,6 +335,10 @@ export function PipelineScreen(): JSX.Element | null {
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {selection.size > 0 ? selectionText(selection.size) : ''}
       </p>
+      <SectionErrorBoundary fallbackTitle="La carte « Maintenant » n'a pas pu s'afficher">
+        <NowCard project={project} isOwnMission={ctx.isOwnMission} onIntent={runIntent} />
+      </SectionErrorBoundary>
+
       <StageBar
         counts={counts}
         isLoading={countsQuery.isLoading}
@@ -233,6 +371,12 @@ export function PipelineScreen(): JSX.Element | null {
         />
       )}
 
+      {selectionNote && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {selectionNote}
+        </p>
+      )}
+
       {view === 'etapes' ? (
         <div className="pb-6">
           <MissionBoard
@@ -242,6 +386,7 @@ export function PipelineScreen(): JSX.Element | null {
             stepsFailed={stepsFailed}
             onRetrySteps={retrySteps}
             counts={counts}
+            signals={rowSignals}
             canMove={ctx.canMoveCandidates}
             moveDisabledReason={ctx.moveDisabledReason}
             actions={actions}
@@ -261,6 +406,7 @@ export function PipelineScreen(): JSX.Element | null {
             counts={counts}
             countsLoading={countsQuery.isLoading}
             steps={steps}
+            signals={rowSignals}
             selectedIds={selectedIds}
             activeRowId={activeRowId}
             now={now}
@@ -323,6 +469,7 @@ interface PipelineListViewProps {
   counts: MissionStageCounts | null;
   countsLoading: boolean;
   steps: readonly MissionStepRef[];
+  signals: RowSignals;
   selectedIds: ReadonlySet<string>;
   activeRowId: string | null;
   now: number;
@@ -343,6 +490,7 @@ function PipelineListView({
   counts,
   countsLoading,
   steps,
+  signals,
   selectedIds,
   activeRowId,
   now,
@@ -382,6 +530,7 @@ function PipelineListView({
       rows={list.rows}
       outOfFilter={list.outOfFilter}
       steps={steps}
+      signals={signals}
       selectedIds={selectedIds}
       activeRowId={activeRowId}
       now={now}

@@ -325,6 +325,12 @@ const PIPELINE_FILES = [
   'src/components/missions/v3/pipeline/BilanCard.tsx',
   'src/components/missions/v3/pipeline/PipelineEmptyStates.tsx',
   'src/components/missions/v3/pipeline/frozenOrder.ts',
+  // Lot 3 : carte « Maintenant », ligne « Ensuite » et leurs lectures.
+  'src/components/missions/v3/pipeline/NowCard.tsx',
+  'src/components/missions/v3/pipeline/ThenLine.tsx',
+  'src/hooks/useMissionNow.ts',
+  'src/hooks/useMissionAttention.ts',
+  'src/hooks/useMissionActionSnoozes.ts',
   'src/hooks/useMissionCandidateRows.ts',
   'src/hooks/useMissionStageActions.ts',
 ];
@@ -333,6 +339,10 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|
 test('textes du contrat présents', () => {
   const all = PIPELINE_FILES.map(read).join('\n');
   for (const text of [
+    'Maintenant',
+    'Ensuite : ',
+    'data-testid="now-card"',
+    'data-testid="then-line"',
     'En ce moment',
     'Sourcing et contact',
     'Suivi',

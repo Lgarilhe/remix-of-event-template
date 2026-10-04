@@ -39,12 +39,15 @@ function walk(dir, out = []) {
   return out;
 }
 
-test('0c-3 : plus de prochaine étape ni de « Brief incomplet » dans src/components/outreach/projects', () => {
+test('0c-3 : plus de prochaine étape à l\'ancienne ni de « Brief incomplet » dans src/components/outreach/projects', () => {
   const files = walk('src/components/outreach/projects').filter((f) => f.endsWith('.tsx'));
   assert.ok(files.includes(LIST), 'ProjectsListV2.tsx attendu');
   for (const f of files) {
     assert.doesNotMatch(code(f), /computeNextStep|getNarrativeBucket|NextStep|Brief incomplet/, f);
   }
+  // Lot 3 : la liste a une prochaine action, mais elle vient de la règle unique (missionListAction),
+  // jamais d'un calcul local d'étape suivante ni d'un état de brief.
+  assert.match(code(LIST), /missionListAction\(/);
 });
 
 test('0c-3 : la liste lit les compteurs d\'étapes, pas les anciennes statistiques', () => {

@@ -14,21 +14,38 @@
  * get_mission_stage_counts (useMissionStageCounts) : jamais de zéro inventé,
  * une attente tant qu'ils se chargent, « indisponible » s'ils manquent. La
  * liste elle-même a son attente et son état d'erreur : une lecture en échec ne
- * s'affiche pas comme « aucune mission ». Aucune prochaine étape calculée ici (lot 3).
+ * s'affiche pas comme « aucune mission ».
+ *
+ * Prochaine action (lot 3) : une ligne par mission En cours, calculée par
+ * missionListAction (src/lib/missionNextAction.ts, la règle de la carte
+ * « Maintenant ») à partir des compteurs ci-dessus, de get_mission_attention
+ * (une seule requête pour toutes les missions) et des « Plus tard » de la
+ * personne. Pas de blocage LinkedIn par ligne (il reste sur la carte de la
+ * mission) ni de tri par urgence. Attente : un bloc gris de hauteur réservée ;
+ * lecture impossible : « Impossible de vérifier » avec Réessayer, jamais un
+ * zéro ; rien à proposer : aucun texte (la hauteur reste), jamais « Rien ne presse ».
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Plus, Search, MoreHorizontal, Play, Pause, CheckCircle, Archive, Trash2,
-  ChevronRight, RefreshCw,
+  ChevronRight, RefreshCw, ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSourcingProjects, SourcingProject } from '@/hooks/useSourcingProjects';
 import { useQuotaGate } from '@/hooks/useQuotaGate';
 import { UnifiedProject, toUnifiedProjects } from '@/types/projects';
 import { useMissionStageCounts, type MissionStageCounts } from '@/hooks/useMissionStageCounts';
+import { useMissionAttention } from '@/hooks/useMissionAttention';
+import { useMissionActionSnoozes } from '@/hooks/useMissionActionSnoozes';
 import { GENERAL_STAGE_LABEL, missionActivityAt } from '@/lib/stageDisplay';
+import {
+  missionListAction, sourceOk, SOURCE_LOADING, SOURCE_UNAVAILABLE,
+  type ActionIntent, type MissionListAction, type SourceState,
+} from '@/lib/missionNextAction';
+import { snoozeChecker } from '@/lib/missionSnooze';
+import { missionV3Path, V3_PARAM } from '@/lib/missionBeta';
 import { plural } from '@/lib/plural';
 import { timeAgo } from '@/lib/relativeTime';
 import { Button } from '@/components/ui/button';
@@ -87,6 +104,117 @@ const CountCell: React.FC<{ value: number | null; pending: boolean }> = ({ value
   );
 };
 
+// ── Prochaine action ──
+
+const LOADING_ACTION: MissionListAction = {
+  state: 'loading', rank: null, text: null, note: null, intent: null, snoozeKey: null,
+};
+
+/** Une donnée lue, sinon une attente, sinon « indisponible » (jamais un zéro). */
+function sourceOfValue<T>(value: T | null, pending: boolean): SourceState<T> {
+  if (value !== null) return sourceOk(value);
+  return pending ? SOURCE_LOADING : SOURCE_UNAVAILABLE;
+}
+
+/**
+ * Adresse que vise la ligne d'action : la fiche d'un candidat quand l'intention
+ * est d'ouvrir une ligne, sinon l'écran de la mission qui convient. Les
+ * intentions que la liste ne produit pas (blocage, formule, e-mail) ouvrent la
+ * mission. « Trier » ouvre le Pipeline filtré sur À trier (?etape=to_sort) :
+ * la section À trier de la liste sans filtre est repliée et sous les autres
+ * étapes, et son ouverture n'a pas d'adresse.
+ */
+function actionPath(missionId: string, intent: ActionIntent | null): string {
+  switch (intent?.type) {
+    case 'open_row':
+      return missionV3Path(missionId, 'pipeline', { [V3_PARAM.panel]: 'fiche', [V3_PARAM.candidate]: intent.rowId });
+    case 'open_conversation':
+      return `/inbox?chatId=${encodeURIComponent(intent.chatId)}`;
+    case 'filter_stage':
+      return missionV3Path(missionId, 'pipeline', { [V3_PARAM.stage]: intent.stage });
+    case 'open_to_sort':
+      return missionV3Path(missionId, 'pipeline', { [V3_PARAM.stage]: 'to_sort' });
+    case 'contact_retained':
+      return missionV3Path(missionId, 'pipeline', { [V3_PARAM.stage]: 'retained' });
+    case 'open_sourcing':
+      return missionV3Path(missionId, 'sourcing');
+    case 'open_cadrage':
+      return missionV3Path(missionId, 'cadrage', { [V3_PARAM.section]: intent.section });
+    default:
+      return missionV3Path(missionId);
+  }
+}
+
+/**
+ * La ligne d'action d'une mission. Même hauteur dans tous les états, y compris
+ * quand il n'y a rien à proposer (un espace sans texte) : la liste ne saute pas
+ * quand les lectures arrivent. Sous 640 px, 32 px de haut pour le doigt.
+ * L'élément racine reste le même d'un état à l'autre : « Réessayer » lui passe
+ * le focus avant de relire, sinon le bouton démonté le ferait tomber sur la page.
+ */
+const ActionLine: React.FC<{
+  action: MissionListAction;
+  missionName: string;
+  onAction: () => void;
+  onRetry: () => void;
+}> = ({ action, missionName, onAction, onRetry }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const retry = () => {
+    rootRef.current?.focus();
+    onRetry();
+  };
+
+  let content: React.ReactNode = null;
+  if (action.state === 'loading') {
+    content = (
+      <>
+        <Skeleton className="h-3.5 w-44 max-w-full" aria-hidden="true" />
+        <span className="sr-only">Chargement de la prochaine action</span>
+      </>
+    );
+  } else if (action.state === 'unavailable') {
+    content = (
+      <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+        <span>Impossible de vérifier.</span>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); retry(); }}
+          className="rounded-sm text-brand underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-8"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  } else if (action.state !== 'none') {
+    content = (
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onAction(); }}
+          aria-label={`${action.text ?? ''}, ${missionName}`}
+          className="inline-flex min-w-0 items-center gap-1 rounded-sm text-left font-medium text-brand underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-8"
+        >
+          <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{action.text}</span>
+        </button>
+        {action.note && <span className="shrink-0 text-muted-foreground">{action.note}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      tabIndex={action.state === 'none' ? undefined : -1}
+      role={action.state === 'loading' ? 'status' : undefined}
+      aria-hidden={action.state === 'none' ? true : undefined}
+      className="mt-1 flex h-5 min-w-0 items-center text-xs outline-none max-sm:h-8"
+    >
+      {content}
+    </div>
+  );
+};
+
 // ── Ligne de mission ──
 
 interface MissionRowProps {
@@ -97,6 +225,10 @@ interface MissionRowProps {
   countsPending: boolean;
   /** Date d'activité (updated_at ou dernière entrée dans une étape). */
   activityAt: string | null;
+  /** Prochaine action ; null pour une mission qui n'est pas En cours (pas de ligne). */
+  action: MissionListAction | null;
+  onAction: () => void;
+  onRetryAction: () => void;
   onOpen: () => void;
   onOpenSourcing: () => void;
   onStatusChange: (status: SourcingProject['status']) => void;
@@ -105,7 +237,8 @@ interface MissionRowProps {
 }
 
 const MissionRow: React.FC<MissionRowProps> = ({
-  project, counts, countsPending, activityAt, onOpen, onOpenSourcing, onStatusChange, onDelete, canDelete,
+  project, counts, countsPending, activityAt, action, onAction, onRetryAction, onOpen, onOpenSourcing,
+  onStatusChange, onDelete, canDelete,
 }) => {
   const activity = timeAgo(activityAt);
   const showJobTitle = !!project.jobTitle && project.jobTitle.trim().toLowerCase() !== project.name.trim().toLowerCase();
@@ -145,6 +278,9 @@ const MissionRow: React.FC<MissionRowProps> = ({
             </button>
           )}
         </p>
+        {action && (
+          <ActionLine action={action} missionName={project.name} onAction={onAction} onRetry={onRetryAction} />
+        )}
         {/* Sous 768 px les colonnes d'effectifs disparaissent : une seule phrase les reprend. */}
         <p className="mt-0.5 truncate text-xs text-muted-foreground md:hidden">
           {counts
@@ -356,6 +492,46 @@ export const ProjectsListV2: React.FC = () => {
     };
   }, [ongoingProjects, countsOf]);
 
+  // Prochaine action de chaque mission En cours : la règle de la carte
+  // « Maintenant » en forme courte. Une seule requête d'attention pour toutes
+  // les missions ; les reports sont ceux de la personne, les mêmes que sur la
+  // carte. L'heure avance à la minute pour qu'un report finisse sans rechargement.
+  const ongoingIds = useMemo(() => ongoingProjects.map(p => p.sourcingProject.id), [ongoingProjects]);
+  const attentionQuery = useMissionAttention(ongoingIds);
+  const { index: snoozes, isLoading: snoozesWaiting } = useMissionActionSnoozes();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Hors ligne, React Query met la requête en pause : « indisponible », pas une attente sans fin.
+  const countsWaiting = countsQuery.isPending && countsQuery.fetchStatus !== 'paused';
+  const attentionWaiting = attentionQuery.isPending && attentionQuery.fetchStatus !== 'paused';
+  const attention = attentionQuery.data;
+  const actions = useMemo(() => {
+    const out = new Map<string, MissionListAction>();
+    for (const p of ongoingProjects) {
+      const id = p.sourcingProject.id;
+      // Un report non lu ferait paraître puis disparaître une action : on attend.
+      out.set(id, snoozesWaiting ? LOADING_ACTION : missionListAction({
+        now,
+        mission: { id, name: p.name, status: p.status },
+        counts: sourceOfValue(counts?.[id] ?? null, countsWaiting),
+        attention: sourceOfValue(attention?.[id] ?? null, attentionWaiting),
+        snoozed: snoozeChecker(snoozes, id, now),
+      }));
+    }
+    return out;
+  }, [ongoingProjects, counts, attention, snoozes, now, countsWaiting, attentionWaiting, snoozesWaiting]);
+
+  const refetchCounts = countsQuery.refetch;
+  const refetchAttention = attentionQuery.refetch;
+  const retryActions = useCallback(() => {
+    void refetchCounts();
+    void refetchAttention();
+  }, [refetchCounts, refetchAttention]);
+
   // La mission s'ouvre sans ?tab= ; « N profils trouvés » va droit au Sourcing
   // (MissionEntry convertit l'adresse pour l'ancienne page).
   const navigateToWorkspace = useCallback((project: UnifiedProject) => {
@@ -363,6 +539,9 @@ export const ProjectsListV2: React.FC = () => {
   }, [navigate]);
   const navigateToSourcing = useCallback((project: UnifiedProject) => {
     navigate(`/missions/${encodeURIComponent(project.sourcingProject.id)}/sourcing`);
+  }, [navigate]);
+  const navigateToAction = useCallback((project: UnifiedProject, action: MissionListAction | null) => {
+    navigate(actionPath(project.sourcingProject.id, action?.intent ?? null));
   }, [navigate]);
 
   const handleStatusChange = (project: UnifiedProject) => async (newStatus: SourcingProject['status']) => {
@@ -422,20 +601,26 @@ export const ProjectsListV2: React.FC = () => {
     summary.interviewing !== null ? `${summary.interviewing} en entretien` : null,
   ].filter(Boolean).join(', ');
 
-  const renderRow = (project: UnifiedProject) => (
-    <MissionRow
-      key={project.key}
-      project={project}
-      counts={countsOf(project)}
-      countsPending={countsQuery.isPending}
-      activityAt={activityOf(project)}
-      onOpen={() => navigateToWorkspace(project)}
-      onOpenSourcing={() => navigateToSourcing(project)}
-      onStatusChange={handleStatusChange(project)}
-      onDelete={() => setDeleteTarget(project)}
-      canDelete={!!project.sourcingProject}
-    />
-  );
+  const renderRow = (project: UnifiedProject) => {
+    const action = actions.get(project.sourcingProject.id) ?? null;
+    return (
+      <MissionRow
+        key={project.key}
+        project={project}
+        counts={countsOf(project)}
+        countsPending={countsQuery.isPending}
+        activityAt={activityOf(project)}
+        action={action}
+        onAction={() => navigateToAction(project, action)}
+        onRetryAction={retryActions}
+        onOpen={() => navigateToWorkspace(project)}
+        onOpenSourcing={() => navigateToSourcing(project)}
+        onStatusChange={handleStatusChange(project)}
+        onDelete={() => setDeleteTarget(project)}
+        canDelete={!!project.sourcingProject}
+      />
+    );
+  };
 
   return (
     <div className="mx-auto w-full max-w-[1200px]">

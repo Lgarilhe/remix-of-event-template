@@ -3756,6 +3756,44 @@ export type Database = {
           },
         ]
       }
+      mission_action_snoozes: {
+        Row: {
+          action_key: string
+          created_at: string
+          expires_at: string
+          id: string
+          project_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          action_key: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          project_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          action_key?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mission_action_snoozes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "sourcing_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mission_conversations: {
         Row: {
           account_id: string
@@ -6615,6 +6653,29 @@ export type Database = {
         }[]
       }
       get_marketplace_partner_state: { Args: never; Returns: Json }
+      get_mission_attention: {
+        Args: {
+          p_interview_days?: number
+          p_item_limit?: number
+          p_project_ids: string[]
+          p_reply_days?: number
+        }
+        Returns: {
+          has_own_account: boolean
+          interview_items: Json
+          interview_waiting: number
+          interview_waiting_oldest_at: string | null
+          job_described: boolean
+          project_id: string
+          replies_mine: number
+          replies_mine_oldest_at: string | null
+          replies_others: number
+          replies_others_oldest_at: string | null
+          reply_items: Json
+          to_sort_recommended: number
+          to_sort_scored: number
+        }[]
+      }
       get_mission_stage_counts: {
         Args: { p_project_ids: string[] }
         Returns: {
@@ -6922,6 +6983,7 @@ export type Database = {
         Args: { _user_id: string }
         Returns: boolean
       }
+      is_go_recommendation: { Args: { r: string }; Returns: boolean }
       is_marketplace_partner: {
         Args: { _user_id: string }
         Returns: boolean
@@ -6950,6 +7012,7 @@ export type Database = {
         }[]
       }
       jcs_stage_write_mode: { Args: never; Returns: string }
+      job_details_is_described: { Args: { jd: Json }; Returns: boolean }
       linkedin_url_slug: { Args: { p_url: string }; Returns: string }
       move_to_dlq: {
         Args: {

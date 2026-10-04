@@ -285,6 +285,50 @@ jobs:
             cat readers_anon.json; exit 1
           fi
 
+      # Refonte mission, lot 3 : la carte « Maintenant ». get_mission_attention (réponses
+      # sans suite, entretiens sans nouvelles, notés à trier, poste décrit) et ses deux
+      # aides, rejouées sur une base neuve. Appels anonymes réels par l'API : refus
+      # attendu (401, code 42501).
+      - name: Audit de l'attention (lot 3)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/mission_attention_audit.sql -c 'ROLLBACK;'
+          for call in \
+            'get_mission_attention|{"p_project_ids":[]}' \
+            'is_go_recommendation|{"r":"go"}' \
+            'job_details_is_described|{"jd":{}}'; do
+            fn="${call%%|*}"; body="${call#*|}"
+            code=$(curl -sS -o attention_anon.json -w '%{http_code}' -X POST \
+              "$E2E_SUPABASE_URL/rest/v1/rpc/$fn" \
+              -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "$body")
+            if [ "$code" != "401" ] || ! grep -q '"42501"' attention_anon.json; then
+              echo "::error::appel anonyme de $fn : HTTP $code (401 et 42501 attendus)"
+              cat attention_anon.json; exit 1
+            fi
+          done
+
+      # Refonte mission, lot 3 : reports « Plus tard » (mission_action_snoozes). Un report
+      # n'est lu et écrit que par son auteur, sur une mission de son organisation.
+      - name: Audit des reports Plus tard (lot 3)
+        if: steps.target.outputs.mode == 'local'
+        run: |
+          DB_URL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -c 'BEGIN;' -f supabase/tests/mission_action_snoozes_audit.sql -c 'ROLLBACK;'
+          code=$(curl -sS -o snoozes_anon.json -w '%{http_code}' \
+            "$E2E_SUPABASE_URL/rest/v1/mission_action_snoozes?select=id&limit=1" \
+            -H "apikey: $E2E_SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $E2E_SUPABASE_ANON_KEY")
+          if [ "$code" != "401" ] || ! grep -q '"42501"' snoozes_anon.json; then
+            echo "::error::lecture anonyme de mission_action_snoozes : HTTP $code (401 et 42501 attendus)"
+            cat snoozes_anon.json; exit 1
+          fi
+
       - name: Build front
         run: npm run build
         env:

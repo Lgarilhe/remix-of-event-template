@@ -14,6 +14,9 @@
 // première étape d'entretien et Embauché, la part des candidats de l'étape
 // d'avant qui l'ont atteinte, sur les cumuls « au total » de
 // get_mission_stage_counts (jalons datés), avec le calcul écrit.
+//
+// Prochaine action des cartes (lot 3) : la règle de la section 4.3
+// (rowNextAction), sur des signaux construits une fois par mission.
 
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
@@ -37,12 +40,12 @@ import type { MissionStageCounts } from '@/hooks/useMissionStageCounts';
 import { useKnownStagesVersion, useMissionBoardRows } from '@/hooks/useMissionCandidateRows';
 import type { StageTarget } from '@/lib/candidateStage';
 import { plural } from '@/lib/plural';
+import { buildRowSignals, rowNextAction, type RowSignals } from '@/lib/missionNextAction';
 import { GENERAL_STAGE_LABEL, MISSION_STEP_MISSING_LABEL } from '@/lib/stageDisplay';
 import { cn } from '@/lib/utils';
 import {
   NO_STEP,
   moveOptions,
-  provisionalNextAction,
   type MissionCandidateRow,
   type MissionStageActions,
   type MissionStepRef,
@@ -135,16 +138,16 @@ export function boardColumnOf(
 
 const BoardCard = memo(function BoardCard({
   row,
-  now,
+  signals,
   active,
   overlay,
 }: {
   row: MissionCandidateRow;
-  now: number;
+  signals: RowSignals;
   active?: boolean;
   overlay?: boolean;
 }) {
-  const next = provisionalNextAction(row, now);
+  const next = rowNextAction(row, signals);
   return (
     <div
       className={cn(
@@ -169,13 +172,13 @@ const BoardCard = memo(function BoardCard({
 
 function DraggableCard({
   row,
-  now,
+  signals,
   active,
   canDrag,
   onOpen,
 }: {
   row: MissionCandidateRow;
-  now: number;
+  signals: RowSignals;
   active: boolean;
   canDrag: boolean;
   onOpen: (rowId: string) => void;
@@ -206,7 +209,7 @@ function DraggableCard({
         isDragging && 'opacity-30',
       )}
     >
-      <BoardCard row={row} now={now} active={active} />
+      <BoardCard row={row} signals={signals} active={active} />
     </div>
   );
 }
@@ -214,7 +217,7 @@ function DraggableCard({
 function Column({
   column,
   rows,
-  now,
+  signals,
   activeRowId,
   canDrag,
   onOpen,
@@ -223,7 +226,7 @@ function Column({
 }: {
   column: BoardColumn;
   rows: MissionCandidateRow[];
-  now: number;
+  signals: RowSignals;
   activeRowId: string | null;
   canDrag: boolean;
   onOpen: (rowId: string) => void;
@@ -255,7 +258,7 @@ function Column({
       </header>
       <div className="-mx-1 flex-1 space-y-2 overflow-y-auto overscroll-contain px-1">
         {rows.map((row) => (
-          <DraggableCard key={row.id} row={row} now={now} active={row.id === activeRowId} canDrag={canDrag} onOpen={onOpen} />
+          <DraggableCard key={row.id} row={row} signals={signals} active={row.id === activeRowId} canDrag={canDrag} onOpen={onOpen} />
         ))}
         {rows.length === 0 && (
           <p className="rounded-lg border border-dashed border-border py-4 text-center text-xs text-muted-foreground">
@@ -276,6 +279,8 @@ interface MissionBoardProps {
   onRetrySteps?: () => void;
   /** Effectifs et cumuls de la mission, pour les taux de passage. */
   counts?: MissionStageCounts | null;
+  /** Réponses, reports et interlocuteur de la mission : la prochaine action des cartes (règle de la section 4.3). */
+  signals?: RowSignals;
   canMove: boolean;
   moveDisabledReason: string | null;
   actions: MissionStageActions;
@@ -291,6 +296,7 @@ export function MissionBoard({
   stepsFailed = false,
   onRetrySteps,
   counts = null,
+  signals: signalsProp,
   canMove,
   moveDisabledReason,
   actions,
@@ -301,7 +307,11 @@ export function MissionBoard({
   const query = useMissionBoardRows(projectId);
   const knownVersion = useKnownStagesVersion();
   const [dragged, setDragged] = useState<MissionCandidateRow | null>(null);
-  const [now] = useState(() => Date.now());
+  // Sans signaux fournis : texte de repos seulement, jamais de « Répondre » inventé.
+  const [bareSignals] = useState(() =>
+    buildRowSignals({ now: Date.now(), attention: null, snoozed: null, interlocutor: null, orgType: null }),
+  );
+  const signals = signalsProp ?? bareSignals;
   const dragHappened = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -432,7 +442,7 @@ export function MissionBoard({
               key={column.key}
               column={column}
               rows={byColumn.get(column.key) ?? []}
-              now={now}
+              signals={signals}
               activeRowId={activeRowId}
               canDrag={canDrag}
               onOpen={open}
@@ -441,10 +451,10 @@ export function MissionBoard({
           ))}
           {/* Écarté : zone de dépôt seulement pendant un glisser, sans ses cartes. */}
           {dragged !== null && (
-            <Column column={rejected} rows={[]} now={now} activeRowId={activeRowId} canDrag={canDrag} onOpen={open} aside />
+            <Column column={rejected} rows={[]} signals={signals} activeRowId={activeRowId} canDrag={canDrag} onOpen={open} aside />
           )}
         </div>
-        <DragOverlay dropAnimation={null}>{dragged ? <BoardCard row={dragged} now={now} overlay /> : null}</DragOverlay>
+        <DragOverlay dropAnimation={null}>{dragged ? <BoardCard row={dragged} signals={signals} overlay /> : null}</DragOverlay>
       </DndContext>
     </div>
   );
