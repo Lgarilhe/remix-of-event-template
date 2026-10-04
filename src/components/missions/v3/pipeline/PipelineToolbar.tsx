@@ -1,6 +1,9 @@
 // Refonte mission, lot 2 : ligne d'outils du Pipeline (conception 4.2) : lien
 // vers les profils jamais ouverts (au Sourcing), bascule Liste / Par étape,
-// Bilan, Prise de contact.
+// Bilan, Prise de contact. Design simplifié (04/10/2026) : aucun bouton encadré
+// (un seul bouton plein par écran, celui de la carte « Maintenant »), Bilan et
+// Prise de contact en boutons discrets ; sur téléphone, l'icône seule, le nom
+// restant lisible par les lecteurs d'écran.
 
 import { BarChart3, LayoutGrid, List, Send, UserSearch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -47,8 +50,8 @@ export function PipelineToolbar({
           {unopenedText}
         </button>
       )}
-      <div className="ml-auto flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Affichage" className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+      <div className="ml-auto flex items-center gap-1">
+        <div role="group" aria-label="Affichage" className="inline-flex items-center rounded-lg bg-muted/60 p-0.5">
           {TOGGLE.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
@@ -56,23 +59,36 @@ export function PipelineToolbar({
               aria-pressed={view === value}
               onClick={() => onViewChange(value)}
               className={cn(
-                'inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors duration-150 ease-out',
+                'inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm transition-colors duration-150 ease-out',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                view === value ? 'bg-muted font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
+                view === value ? 'bg-background font-semibold text-foreground' : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+              <Icon className="h-4 w-4" aria-hidden="true" />
               {label}
             </button>
           ))}
         </div>
-        <Button variant="outline" size="sm" aria-expanded={bilanOpen} onClick={onToggleBilan} className={cn(bilanOpen && 'bg-muted')}>
-          <BarChart3 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          Bilan
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Bilan"
+          aria-expanded={bilanOpen}
+          onClick={onToggleBilan}
+          className={cn('text-foreground-secondary hover:text-foreground max-sm:min-h-11 max-sm:min-w-11 max-sm:px-0', bilanOpen && 'bg-muted text-foreground')}
+        >
+          <BarChart3 className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
+          <span className="max-sm:hidden">Bilan</span>
         </Button>
-        <Button variant="outline" size="sm" onClick={onOpenContact}>
-          <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
-          Prise de contact
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Prise de contact"
+          onClick={onOpenContact}
+          className="text-foreground-secondary hover:text-foreground max-sm:min-h-11 max-sm:min-w-11 max-sm:px-0"
+        >
+          <Send className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
+          <span className="max-sm:hidden">Prise de contact</span>
         </Button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 // Refonte mission, lot 2 : section « À trier » repliée en bas de la liste
-// (conception 4.2). Un seul encadré : en-tête, puis, déplié, des lignes
+// (conception 4.2). Un filet fin au-dessus, sans cadre : en-tête, puis, déplié, des lignes
 // compactes (nom, titre, note) avec leurs cases (seul accès à Retenir et
 // Écarter en lot jusqu'au lot 4), pages de 50, lecture seulement une fois
 // dépliée. Pas de « Trier un par un » ni de suggestion de l'IA (lot 4).
@@ -40,7 +40,7 @@ export const ToSortSection = forwardRef<HTMLElement, ToSortSectionProps>(functio
   ref,
 ) {
   return (
-    <section ref={ref} aria-label="À trier" className="mt-3.5 scroll-mt-4 rounded-[10px] border border-border px-3.5 py-3">
+    <section ref={ref} aria-label="À trier" className="mt-4 scroll-mt-4 border-t border-border pt-3">
       <Collapsible open={open} onOpenChange={onOpenChange}>
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <CollapsibleTrigger asChild>
@@ -55,7 +55,7 @@ export const ToSortSection = forwardRef<HTMLElement, ToSortSectionProps>(functio
               {toSortTitle(count)}
             </button>
           </CollapsibleTrigger>
-          <span className="flex-1 text-xs text-muted-foreground">Profils notés, en attente de votre décision</span>
+          <span className="flex-1 text-sm text-muted-foreground">Profils notés, en attente de votre décision</span>
         </div>
         <CollapsibleContent className="pt-2">
           {open && (

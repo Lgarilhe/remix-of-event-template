@@ -4,8 +4,8 @@
 //
 // Colonnes selon la place réelle du tableau (barre latérale et fiche ouvertes
 // comprises), pas selon la largeur de l'écran : le nom du candidat garde
-// toujours au moins 180 px. Par ordre de priorité : Étape, Prochaine action,
-// Depuis. Sans la colonne Étape, l'étape passe sous le nom.
+// toujours au moins 180 px. Par ordre de priorité : Étape (avec l'ancienneté
+// dessous), Prochaine action. Sans la colonne Étape, l'étape passe sous le nom.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { RefreshCw } from 'lucide-react';
@@ -29,28 +29,25 @@ import { applyKnownStages, arrangeFrozen, frozenOrderKey, resetFrozenOrder, type
 const NO_ROWS: ArrangedRows<MissionCandidateRow> = { rows: [], outOfFilter: new Set(), orderDiffers: false };
 
 /**
- * Largeurs (px, grille de la maquette 2,2fr / 1fr / 1,6fr / 56 / 44 à 1 440 px) :
- * case 40, note 48, étape 192, prochaine action 304, depuis 56 ; nom 180 au moins.
+ * Largeurs (px) : case 40, note 56, étape 160, prochaine action 240 ; nom 180 au moins.
  */
-const FIXED_WIDTH = 40 + 48;
+const FIXED_WIDTH = 40 + 56;
 const NAME_MIN = 180;
-const STAGE_WIDTH = 192;
-const NEXT_WIDTH = 304;
-const SINCE_WIDTH = 56;
+const STAGE_WIDTH = 160;
+const NEXT_WIDTH = 240;
 
 /** Colonnes affichables dans `width` px de tableau. */
 export function listColumnsFor(width: number): CandidateListColumns {
   const stage = width >= FIXED_WIDTH + NAME_MIN + STAGE_WIDTH;
   const next = stage && width >= FIXED_WIDTH + NAME_MIN + STAGE_WIDTH + NEXT_WIDTH;
-  const since = next && width >= FIXED_WIDTH + NAME_MIN + STAGE_WIDTH + NEXT_WIDTH + SINCE_WIDTH;
-  return { stage, next, since };
+  return { stage, next };
 }
 
-/** Section À trier : ni étape, ni prochaine action, ni ancienneté. */
-const COMPACT_COLUMNS: CandidateListColumns = { stage: false, next: false, since: false };
+/** Section À trier : ni étape, ni prochaine action. */
+const COMPACT_COLUMNS: CandidateListColumns = { stage: false, next: false };
 
 function sameColumns(a: CandidateListColumns, b: CandidateListColumns): boolean {
-  return a.stage === b.stage && a.next === b.next && a.since === b.since;
+  return a.stage === b.stage && a.next === b.next;
 }
 
 /** Colonnes du tableau selon la largeur mesurée de son cadre (avant peinture, puis à chaque changement). */
@@ -156,9 +153,14 @@ function LoadingRows({ columns, compact }: { columns: CandidateListColumns; comp
           <td className="w-10 py-2 pl-2 pr-1">
             <Skeleton className="h-4 w-4" />
           </td>
-          <td className="h-[50px] py-2 pr-3">
-            <Skeleton className="h-4 w-40 max-w-full" />
-            <Skeleton className="mt-1.5 h-3 w-56 max-w-full" />
+          <td className="h-[56px] py-2 pr-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-4 w-40 max-w-full" />
+                <Skeleton className="mt-1.5 h-3 w-56 max-w-full" />
+              </div>
+            </div>
           </td>
           {columns.stage && (
             <td className="py-2 pr-3">
@@ -170,13 +172,8 @@ function LoadingRows({ columns, compact }: { columns: CandidateListColumns; comp
               <Skeleton className="h-4 w-40" />
             </td>
           )}
-          {columns.since && (
-            <td className="py-2 pr-3">
-              <Skeleton className="ml-auto h-4 w-8" />
-            </td>
-          )}
           <td className="py-2 pr-2">
-            <Skeleton className="ml-auto h-4 w-6" />
+            <Skeleton className="ml-auto h-8 w-8 rounded-full" />
           </td>
         </tr>
       ))}
@@ -237,14 +234,13 @@ export function CandidateList({
           <colgroup>
             <col className="w-10" />
             <col />
-            {columns.stage && <col className="w-48" />}
-            {columns.next && <col className="w-[19rem]" />}
-            {columns.since && <col className="w-14" />}
-            <col className="w-12" />
+            {columns.stage && <col className="w-40" />}
+            {columns.next && <col className="w-[15rem]" />}
+            <col className="w-14" />
           </colgroup>
           {/* compact ou étroite : en-tête pour les lecteurs d'écran ; « Tout sélectionner » le montre au focus clavier. */}
           <thead className={cn((compact || narrow) && 'sr-only focus-within:not-sr-only')}>
-            <tr className="h-[34px] border-b border-border text-left text-xs text-muted-foreground">
+            <tr className="h-[34px] border-b border-border text-left text-sm text-muted-foreground">
               <th scope="col" className={cn('w-10 pr-1 font-normal', compact ? 'pl-2' : 'pl-3 sm:pl-2')}>
                 <Checkbox
                   checked={allState}
@@ -254,10 +250,9 @@ export function CandidateList({
                 />
               </th>
               <th scope="col" className="min-w-[180px] pr-3 font-normal">Candidat</th>
-              {columns.stage && <th scope="col" className="w-48 pr-3 font-normal">Étape</th>}
-              {columns.next && <th scope="col" className="w-[19rem] pr-3 font-normal">Prochaine action</th>}
-              {columns.since && <th scope="col" className="w-14 pr-3 text-right font-normal">Depuis</th>}
-              <th scope="col" className={cn('w-12 text-right font-normal', compact ? 'pr-2' : 'pr-3 sm:pr-2')}>Note</th>
+              {columns.stage && <th scope="col" className="w-40 pr-3 font-normal">Étape</th>}
+              {columns.next && <th scope="col" className="w-[15rem] pr-3 font-normal">Prochaine action</th>}
+              <th scope="col" className={cn('w-14 text-right font-normal', compact ? 'pr-2' : 'pr-3 sm:pr-2')}>Note</th>
             </tr>
           </thead>
           <tbody>

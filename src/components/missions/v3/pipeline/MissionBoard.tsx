@@ -160,11 +160,17 @@ const BoardCard = memo(function BoardCard({
         <p className="min-w-0 truncate font-medium text-foreground">{candidateName(row)}</p>
         <ScorePill score={row.score} title={row.recommendation} />
       </div>
-      {next.text && (
-        <p className={cn('truncate text-xs', next.stale ? 'text-warning' : 'text-muted-foreground')}>
-          {next.text}
-          {next.stale && <span className="sr-only">, sans mouvement</span>}
-        </p>
+      {/* Une vraie action, sinon l'ancienneté d'un candidat qui n'avance plus ; jamais « Aucune action depuis 0 j ». */}
+      {next.rank !== null && next.text ? (
+        <p className={cn('truncate text-sm', next.rank === '3' ? 'text-warning' : 'text-foreground-secondary')}>{next.text}</p>
+      ) : (
+        next.stale &&
+        next.days !== null && (
+          <p className="truncate text-sm text-warning">
+            {`depuis\u00a0${next.days}\u00a0j`}
+            <span className="sr-only">, sans mouvement</span>
+          </p>
+        )
       )}
     </div>
   );

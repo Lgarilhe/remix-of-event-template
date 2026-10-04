@@ -6,9 +6,13 @@
 // le groupe Suivi reste gris (jamais une puce « En entretien » remplacée
 // ensuite) ; si leur lecture échoue, la barre le dit.
 //
-// Téléphone (sous sm) : une seule rangée de puces qui défile à l'horizontale,
-// sans titres de groupe visibles (les groupes gardent leur nom accessible),
-// précédée de « Tous » ; puces de 32 px dans une cible tactile de 44 px.
+// Design simplifié (retour du 04/10/2026, « trop chargé ») : une seule rangée de
+// puces sans cadre, sans titres de groupe visibles (les groupes gardent leur
+// nom accessible) ; l'effectif nul ne s'écrit pas (la puce reste, son nom
+// accessible dit « 0 »), la puce choisie se détache par un fond neutre.
+//
+// Téléphone (sous sm) : la rangée défile à l'horizontale, précédée de « Tous » ;
+// puces de 32 px dans une cible tactile de 44 px.
 
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -71,10 +75,12 @@ function chipsOf(counts: MissionStageCounts | null, steps: readonly MissionStepR
   return { sourcing, follow, rejected };
 }
 
-/** Forme des puces : 32 px et 13 px sur téléphone (cible de 44 px par ::before), 28 px ensuite. */
+/** Forme des puces : 32 px, texte de 14 px, sans cadre ; cible de 44 px par ::before sur téléphone. */
 const CHIP_SHAPE =
-  'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors duration-150 ease-out ' +
-  'before:absolute before:inset-x-0 before:-inset-y-1.5 sm:h-7 sm:max-w-full sm:shrink sm:px-2.5 sm:text-xs sm:before:hidden';
+  'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm transition-colors duration-150 ease-out ' +
+  'before:absolute before:inset-x-0 before:-inset-y-1.5 sm:max-w-full sm:shrink sm:before:hidden';
+const CHIP_ACTIVE = 'bg-muted font-semibold text-foreground';
+const CHIP_IDLE = 'text-foreground-secondary hover:bg-accent hover:text-foreground';
 
 function Chip({ chip, active, loading, onToggle }: { chip: StageChip; active: boolean; loading: boolean; onToggle: (f: StageFilter) => void }) {
   const zero = chip.count === 0;
@@ -88,16 +94,14 @@ function Chip({ chip, active, loading, onToggle }: { chip: StageChip; active: bo
       className={cn(
         CHIP_SHAPE,
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-        active
-          ? 'border-brand/55 bg-brand/15 text-foreground'
-          : 'border-border bg-transparent text-foreground hover:bg-accent',
+        active ? CHIP_ACTIVE : CHIP_IDLE,
       )}
     >
       <span className={cn('truncate', zero && !active && 'text-muted-foreground')}>{chip.label}</span>
       {loading ? (
         <Skeleton className="h-3 w-4" aria-hidden="true" />
-      ) : chip.count !== null ? (
-        <span className={cn('font-semibold tabular-nums', zero ? 'text-muted-foreground' : 'text-foreground')} aria-hidden="true">
+      ) : chip.count !== null && !zero ? (
+        <span className="font-semibold tabular-nums text-foreground" aria-hidden="true">
           {chip.count.toLocaleString('fr-FR')}
         </span>
       ) : null}
@@ -123,11 +127,11 @@ export function StageBar({
 
   return (
     <section data-testid="stage-bar" aria-labelledby="stage-bar-title" className="space-y-2">
-      <h2 id="stage-bar-title" className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <h2 id="stage-bar-title" className="sr-only">
         En ce moment
       </h2>
       {isError && !counts ? (
-        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-2">
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg bg-muted/50 px-3 py-2">
           <p className="text-sm text-muted-foreground">Effectifs indisponibles pour l'instant.</p>
           <Button variant="outline" size="xs" onClick={onRetry}>
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
@@ -135,7 +139,7 @@ export function StageBar({
           </Button>
         </div>
       ) : (
-        <div className="-mx-3 flex items-center gap-1.5 overflow-x-auto px-3 py-1.5 scrollbar-hide sm:mx-0 sm:flex-wrap sm:gap-x-[22px] sm:gap-y-2.5 sm:overflow-visible sm:p-0">
+        <div className="-mx-3 flex items-center gap-1 overflow-x-auto px-3 py-1.5 scrollbar-hide sm:mx-0 sm:flex-wrap sm:gap-y-1.5 sm:overflow-visible sm:p-0">
           {/* Téléphone : « Tous » retire le filtre d'étape (pas de chiffre : aucun total lu ici). */}
           <button
             type="button"
@@ -147,7 +151,7 @@ export function StageBar({
               CHIP_SHAPE,
               'sm:hidden',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-              activeFilter === null ? 'border-brand/55 bg-brand/15 text-foreground' : 'border-border bg-transparent text-foreground hover:bg-accent',
+              activeFilter === null ? CHIP_ACTIVE : CHIP_IDLE,
             )}
           >
             Tous
@@ -156,8 +160,7 @@ export function StageBar({
             { title: 'Sourcing et contact', chips: sourcing },
             { title: 'Suivi', chips: follow },
           ].map((group) => (
-            <div key={group.title} role="group" aria-label={group.title} className="flex shrink-0 items-center gap-1.5 sm:min-w-0 sm:shrink sm:flex-wrap">
-              <span className="mr-0.5 hidden text-xs text-muted-foreground sm:inline">{group.title}</span>
+            <div key={group.title} role="group" aria-label={group.title} className="flex shrink-0 items-center gap-1 sm:min-w-0 sm:shrink sm:flex-wrap">
               {group.chips === follow && stepsLoading ? (
                 <span className="contents" aria-busy="true" aria-label="Chargement des étapes d'entretien">
                   <Skeleton className="h-7 w-28 rounded-lg" aria-hidden="true" />
@@ -194,7 +197,7 @@ export function StageBar({
               )}
             </div>
           ))}
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1">
             <Chip chip={rejected} active={sameStageFilter(activeFilter, rejected.filter)} loading={loading} onToggle={onToggle} />
           </div>
         </div>

@@ -240,13 +240,15 @@ test('lot 3 écrans : un seul bouton plein, pas de barre fixe, pas de fenêtre s
     assert.doesNotMatch(src, /\bas any\b/, rel);
   }
   assert.equal([...code(CARD).matchAll(/variant="primary"/g)].length, 1, 'le bouton plein de la carte');
-  // Téléphone : bouton pleine largeur, cibles de 44 px, ligne « Ensuite » repliée sur « N autres ».
+  // Téléphone : bouton pleine largeur, cibles de 44 px. Design simplifié (04/10/2026) : la liste « Ensuite »
+  // vit dans le panneau « Pourquoi maintenant ? » de la carte, plus en ligne dessous.
   const card = code(CARD);
   assert.match(card, /w-full max-sm:h-11 sm:w-auto/);
   assert.match(card, /max-sm:min-h-11/);
   const then = code(THEN);
-  assert.match(then, /max-sm:hidden/);
-  assert.match(then, /aria-expanded=\{expanded\}/);
+  assert.match(then, /max-sm:min-h-11/);
+  const panelAt = card.indexOf('<CollapsibleContent>');
+  assert.ok(panelAt > 0 && card.indexOf('<ThenLine', panelAt) > panelAt, '« Ensuite » est dans le panneau « Pourquoi maintenant ? »');
 });
 
 test('lot 3 écrans : réserve de hauteur au chargement, source indisponible dite avec « Réessayer »', () => {
@@ -257,7 +259,7 @@ test('lot 3 écrans : réserve de hauteur au chargement, source indisponible dit
   assert.match(card, /role="status"/);
   assert.match(card, />\s*Réessayer\s*</);
   assert.match(code(THEN), /data-testid="then-line-loading"/);
-  assert.match(card, /loading=\{state === 'loading' \|\| result\.thenLoading\}/);
+  assert.match(card, /loading=\{result\.thenLoading\}/);
   // Mission archivée ou d'une autre organisation : aucune carte.
   assert.match(card, /if \(state === 'hidden'\) return null;/);
 });

@@ -1,9 +1,11 @@
 // Refonte mission, lot 3 : la carte « Maintenant » en tête de l'écran Pipeline,
 // au-dessus des deux vues (conception 4.2, zone 2) et sa ligne « Ensuite ».
 //
-// Une carte, une action, trois lignes au plus : le fait (noms et nombres), ce
-// que l'on propose, la donnée qui le justifie. Un seul bouton plein.
-// « Pourquoi maintenant ? » déplie la règle appliquée. « Plus tard » reporte
+// Une carte, une action : la phrase (noms et nombres), un seul bouton plein, et
+// deux petits liens. Design simplifié (retour du 04/10/2026, « trop chargé ») :
+// ce qui explique l'action (ce que l'on propose, la donnée qui la justifie, la
+// règle appliquée, la liste « Ensuite », ce qui n'est pas suivi) ne s'affiche
+// qu'à la demande, sous « Pourquoi maintenant ? ». « Plus tard » reporte
 // l'action au lendemain matin, pour la personne seulement, et fait monter la
 // suivante ; il n'écrit jamais dans les notifications ni sur le chiffre
 // d'À traiter. Une source qui ne répond pas est dite « indisponible » avec
@@ -14,17 +16,21 @@
 // bouton a disparu), « Plus tard » grisé sans perdre le focus pendant l'écriture.
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ListChecks, RefreshCw, Search, Send, FileText } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { HourglassIcon, TypingIcon } from '@/components/ui/animated-icons';
+import { IconTile } from '@/components/ui/IconTile';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMissionNow } from '@/hooks/useMissionNow';
 import type { SourcingProject } from '@/hooks/useSourcingProjects';
-import { LATER_LABEL, RESUME_LABEL, WHY_LABEL, type ActionIntent, type NextAction } from '@/lib/missionNextAction';
+import { LATER_LABEL, RESUME_LABEL, WHY_LABEL, type ActionIntent, type NextAction, type RankId } from '@/lib/missionNextAction';
 import { cn } from '@/lib/utils';
 import { ThenLine } from './ThenLine';
 
-const CARD = 'rounded-xl border border-border bg-card px-4 py-4 sm:px-5';
+/** Bande douce, sans filet : la carte se distingue du fond sans second cadre (design simplifié, règle 3). */
+const CARD = 'rounded-xl bg-muted/50 px-4 py-3.5 sm:px-5';
 /** Bouton grisé sans quitter l'ordre de tabulation : le focus reste dessus pendant l'écriture. */
 const SOFT_DISABLED = 'aria-disabled:pointer-events-none aria-disabled:opacity-50';
 /** Cible de 44 px sur téléphone. */
@@ -51,17 +57,25 @@ function signatureOf(state: string, main: NextAction | null): string {
 
 function CardLoading() {
   return (
-    <div className={CARD} aria-busy="true" data-testid="now-card-loading">
-      <div className="space-y-2">
+    <div className={cn(CARD, 'flex flex-col gap-3 sm:flex-row sm:items-center')} aria-busy="true" data-testid="now-card-loading">
+      <div className="flex flex-1 items-center gap-3">
+        <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
         <Skeleton className="h-5 w-3/4" />
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="h-3.5 w-1/2" />
       </div>
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Skeleton className="h-10 w-full sm:w-36" />
-        <Skeleton className="h-8 w-40 sm:ml-auto" />
-      </div>
+      <Skeleton className="h-10 w-full sm:w-36" />
     </div>
+  );
+}
+
+/** Icône de la pastille : celle qui bouge annonce une personne qui attend (réponse, entretien sans nouvelles). */
+function RankTile({ rank }: { rank: RankId }) {
+  const STATIC: Partial<Record<RankId, LucideIcon>> = { '0': AlertTriangle, '7': Send, '8': ListChecks, '8b': Search, '10': Search, '11': FileText };
+  const warning = rank === '0' || rank === '3' || rank === '6';
+  const Icon = STATIC[rank];
+  return (
+    <IconTile tone={warning ? 'warning' : 'default'} size="md" aria-hidden="true" icon={Icon}>
+      {rank === '3' ? <TypingIcon className="size-5" /> : rank === '6' ? <HourglassIcon className="size-5" /> : null}
+    </IconTile>
   );
 }
 
@@ -129,7 +143,7 @@ export function NowCard({ project, isOwnMission, onIntent }: NowCardProps): JSX.
         id="now-card-title"
         ref={titleRef}
         tabIndex={-1}
-        className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground outline-none"
+        className="sr-only"
       >
         Maintenant
       </h2>
@@ -142,70 +156,70 @@ export function NowCard({ project, isOwnMission, onIntent }: NowCardProps): JSX.
 
       {state === 'action' && main && (
         <Collapsible open={whyOpen} onOpenChange={setWhyOpen} className={CARD}>
-          <div className="space-y-1">
-            {main.rank === '0' && (
-              <p className="inline-flex items-center gap-1.5 text-xs font-medium text-warning">
-                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-                Blocage
-              </p>
-            )}
-            <p className="text-md font-semibold text-foreground">{main.phrase}</p>
-            <p className="text-sm text-foreground-secondary">{main.proposal}</p>
-            <p className="text-xs text-muted-foreground">{main.detail}</p>
-            {main.summary && (
-              <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">Résumé : </span>
-                {main.summary}
-              </p>
-            )}
-          </div>
-
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <RankTile rank={main.rank} />
+              <div className="min-w-0 flex-1">
+                <p className="text-md font-semibold text-foreground">
+                  {main.rank === '0' && <span className="sr-only">Blocage : </span>}
+                  {main.phrase}
+                </p>
+                {main.summary && (
+                  <p className="mt-0.5 text-sm text-foreground-secondary">
+                    <span className="font-medium text-foreground">Résumé : </span>
+                    {main.summary}
+                  </p>
+                )}
+                <div className="-ml-2.5 mt-0.5 flex flex-wrap items-center gap-x-1">
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className={cn('text-muted-foreground hover:text-foreground', TOUCH)}>
+                      {WHY_LABEL}
+                      <ChevronDown
+                        className={cn('h-3.5 w-3.5 transition-transform duration-150', whyOpen && 'rotate-180')}
+                        aria-hidden="true"
+                      />
+                    </Button>
+                  </CollapsibleTrigger>
+                  {main.snoozeKey !== null && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-disabled={busy || !online}
+                      title={online ? 'Retire cette action de votre vue jusqu\'à demain matin' : undefined}
+                      onClick={() => void later()}
+                      className={cn('text-muted-foreground hover:text-foreground', TOUCH, SOFT_DISABLED)}
+                    >
+                      {LATER_LABEL}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
             {button && (
               <Button
                 type={mail ? undefined : 'button'}
                 variant="primary"
                 size="lg"
                 asChild={mail}
-                className="w-full max-sm:h-11 sm:w-auto"
+                className="w-full max-sm:h-11 sm:w-auto sm:shrink-0"
                 onClick={mail ? undefined : () => onIntent(button.intent)}
               >
                 {button.intent.type === 'mailto' ? <a href={button.intent.href}>{button.label}</a> : button.label}
               </Button>
             )}
-            <div className="flex items-center gap-1 max-sm:-ml-2.5 sm:ml-auto">
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className={cn('text-foreground-secondary hover:text-foreground', TOUCH)}>
-                  {WHY_LABEL}
-                  <ChevronDown
-                    className={cn('h-3.5 w-3.5 opacity-70 transition-transform duration-150', whyOpen && 'rotate-180')}
-                    aria-hidden="true"
-                  />
-                </Button>
-              </CollapsibleTrigger>
-              {main.snoozeKey !== null && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-disabled={busy || !online}
-                  title={online ? 'Retire cette action de votre vue jusqu\'à demain matin' : undefined}
-                  onClick={() => void later()}
-                  className={cn('text-foreground-secondary hover:text-foreground', TOUCH, SOFT_DISABLED)}
-                >
-                  {LATER_LABEL}
-                </Button>
-              )}
-            </div>
           </div>
           {!online && main.snoozeKey !== null && (
             <p className="mt-2 text-xs text-muted-foreground">Hors ligne : « {LATER_LABEL} » n'est pas disponible. Réessayez à la reconnexion.</p>
           )}
 
           <CollapsibleContent>
-            <div className="mt-3 space-y-1.5 rounded-lg bg-muted/60 px-3 py-2.5 text-xs text-foreground-secondary">
-              <p>{main.why}</p>
-              <p>{`Non suivi : ${result.unmonitoredLine}`}</p>
+            {/* `why` reprend déjà la donnée (`detail`) : on ne l'écrit pas deux fois. Lignes de 65 caractères au plus. */}
+            <div className="mt-3 max-w-[65ch] space-y-3 border-t border-border pt-3 text-sm text-foreground-secondary">
+              <p className="text-foreground">{main.proposal}</p>
+              <p className="text-muted-foreground">{main.why}</p>
+              <ThenLine actions={result.then} loading={result.thenLoading} onRun={onIntent} />
+              <p className="text-muted-foreground">{`Non suivi : ${result.unmonitoredLine}`}</p>
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -215,10 +229,10 @@ export function NowCard({ project, isOwnMission, onIntent }: NowCardProps): JSX.
         <div className={CARD}>
           <p className="text-md font-semibold text-foreground">{result.stateLine}</p>
           {state === 'all_snoozed' ? (
-            <div className="mt-3">
+            <div className="mt-2 -ml-2.5">
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 aria-disabled={busy || !online}
                 onClick={() => void resumeAll()}
@@ -236,7 +250,7 @@ export function NowCard({ project, isOwnMission, onIntent }: NowCardProps): JSX.
       {result.unavailableLine && (
         <div
           role="status"
-          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-card px-3 py-2"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-muted/50 px-3 py-2"
         >
           <p className="text-sm text-muted-foreground">{result.unavailableLine}</p>
           <Button variant="outline" size="xs" onClick={retry} className={TOUCH}>
@@ -245,8 +259,6 @@ export function NowCard({ project, isOwnMission, onIntent }: NowCardProps): JSX.
           </Button>
         </div>
       )}
-
-      <ThenLine actions={result.then} loading={state === 'loading' || result.thenLoading} onRun={onIntent} />
     </section>
   );
 }

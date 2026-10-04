@@ -340,7 +340,7 @@ test('textes du contrat présents', () => {
   const all = PIPELINE_FILES.map(read).join('\n');
   for (const text of [
     'Maintenant',
-    'Ensuite : ',
+    'Ensuite</p>',
     'data-testid="now-card"',
     'data-testid="then-line"',
     'En ce moment',
