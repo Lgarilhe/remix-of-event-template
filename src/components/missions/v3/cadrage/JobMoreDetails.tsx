@@ -136,7 +136,7 @@ export function JobMoreDetails({ jd, updateField, readOnly }: JobMoreDetailsProp
     <Collapsible open={open} onOpenChange={setOpen} className="border-t border-border pt-3">
       <CollapsibleTrigger
         className={cn(
-          'group inline-flex items-center gap-1.5 rounded-md text-left text-[13px] font-medium text-muted-foreground',
+          'group inline-flex items-center gap-1.5 rounded-md text-left text-sm font-medium text-muted-foreground',
           'hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
         )}
       >

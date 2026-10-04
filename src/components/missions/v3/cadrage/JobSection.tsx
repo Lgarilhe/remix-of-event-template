@@ -27,7 +27,7 @@ import {
 
 // ------------------------------------------------------------ briques de champ
 
-export const FIELD_LABEL_CLASS = 'text-[12.5px] text-muted-foreground';
+export const FIELD_LABEL_CLASS = 'text-xs text-muted-foreground';
 
 /** Libellé au-dessus du champ ; `htmlFor` relie le libellé au champ principal. */
 export function Field({
@@ -177,7 +177,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
                 key={o.value}
                 value={o.value}
                 className={cn(
-                  'group flex h-[34px] items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-[13px] transition-colors',
+                  'group flex h-[34px] items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-sm transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
                   'disabled:cursor-not-allowed disabled:opacity-60',
                   'border-border text-muted-foreground hover:text-foreground',
@@ -261,7 +261,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
               </NativeSelect>
             </div>
             {jd.remote_policy === 'hybrid' && (
-              <span className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -292,7 +292,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
                 disabled={readOnly}
                 className="min-w-0 flex-[1_1_6rem] tabular-nums"
               />
-              <span className="text-[13px] text-muted-foreground" aria-hidden="true">
+              <span className="text-sm text-muted-foreground" aria-hidden="true">
                 à
               </span>
               <Input
@@ -307,7 +307,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
                 className="min-w-0 flex-[1_1_6rem] tabular-nums"
               />
               {jd.salary_currency && jd.salary_currency !== 'EUR' && (
-                <span className="text-[13px] text-muted-foreground">{jd.salary_currency}</span>
+                <span className="text-sm text-muted-foreground">{jd.salary_currency}</span>
               )}
               <NativeSelect
                 aria-label="Période de la rémunération"
@@ -367,7 +367,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
         <div className="flex flex-col gap-2.5 border-t border-border pt-3.5">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
             <h3 className="text-sm font-semibold text-foreground">Vos messages</h3>
-            <span className="text-[12.5px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               L'IA s'en sert pour rédiger les messages de cette mission.
             </span>
           </div>
@@ -413,7 +413,7 @@ export function JobSection({ jd, updateField, readOnly, calendlyLink, onCalendly
               <label htmlFor={id('anon')} className="cursor-pointer text-sm text-foreground">
                 Anonymiser le client
               </label>
-              <span id={id('anon-aide')} className="text-[12.5px] text-muted-foreground">
+              <span id={id('anon-aide')} className="text-xs text-muted-foreground">
                 {anonymizeHelp(anonymize, config.anonymized_alias, client.name)}
               </span>
               {anonymize && (

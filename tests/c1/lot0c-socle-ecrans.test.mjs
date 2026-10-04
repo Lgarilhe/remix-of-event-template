@@ -17,7 +17,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -218,19 +218,11 @@ test('0c-4 : les gestes du Sourcing et de l\'inscription rafraîchissent les lec
   assert.match(code('src/components/calendar/CreateEventModal.tsx'), /invalidateStageReaders\(queryClient\)/);
 });
 
-test('0c-4 : « Cette semaine » et l\'activité récente du tableau de bord lisent les jalons et l\'étape générale', () => {
-  const week = code('src/components/dashboard/DashboardWeekHighlight.tsx');
-  assert.doesNotMatch(week, /outreachStatus|sequenceStatus|lastActivity|c\.stage\b/, 'ni statut hérité ni dernière modification');
-  assert.match(week, /c\.contactedAt/);
-  assert.match(week, /c\.repliedAt/);
-  assert.match(week, /c\.hiredAt/);
-  assert.match(week, /label="Contactés cette semaine"/);
-  assert.match(week, /label="Ont répondu cette semaine"/);
-  assert.match(week, /label="Embauchés cette semaine"/);
-  const feed = code('src/components/dashboard/DashboardActivityFeed.tsx');
-  assert.doesNotMatch(feed, /outreachStatus|verb: 'placé'|verb: 'perdu'/);
-  assert.match(feed, /c\.generalStage === 'hired'/);
-  assert.match(feed, /verb: 'embauché'/);
-  assert.match(feed, /verb: 'écarté'/);
-  assert.match(feed, /c\.stageEnteredAt/);
+test('0c-4 : « Cette semaine » et l\'activité récente ont quitté l\'accueil (design simplifié)', () => {
+  // Elles lisaient les jalons et l'étape générale. Décision du propriétaire du
+  // 04/10/2026 : retirées de l'accueil (Pipeline, onglet Analyse, et la fiche
+  // de chaque candidat gardent ces informations).
+  assert.ok(!existsSync(join(ROOT, 'src/components/dashboard/DashboardWeekHighlight.tsx')));
+  assert.ok(!existsSync(join(ROOT, 'src/components/dashboard/DashboardActivityFeed.tsx')));
+  assert.doesNotMatch(code('src/pages/Dashboard.tsx'), /DashboardWeekHighlight|DashboardActivityFeed/);
 });

@@ -87,7 +87,7 @@ export function BulkActionBar({
       className="sticky bottom-6 z-20 flex w-fit max-w-full flex-wrap items-center gap-1.5 rounded-xl border border-border-strong bg-popover py-2 pl-3.5 pr-2 text-popover-foreground shadow-lg motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in-0 motion-safe:duration-200"
     >
       {/* Annoncé par la zone permanente de PipelineScreen. */}
-      <span className="mr-1.5 text-[13px] font-semibold text-foreground">{selectionText(count)}</span>
+      <span className="mr-1.5 text-sm font-semibold text-foreground">{selectionText(count)}</span>
       <ContactSelectionButton rows={rows} project={project} disabled={disabled} onSuccess={onContacted} />
       <Button
         variant="outline"

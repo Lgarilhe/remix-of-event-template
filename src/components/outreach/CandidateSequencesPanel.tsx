@@ -327,7 +327,7 @@ function EnrollmentCard({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="font-semibold text-[13.5px] tracking-tight truncate">
+            <h4 className="font-semibold text-sm tracking-tight truncate">
               {enrollment.sequence_name || 'Séquence'}
             </h4>
             <Badge variant="outline" className={cn('text-3xs px-1.5 h-5', statusStyle.color)}>

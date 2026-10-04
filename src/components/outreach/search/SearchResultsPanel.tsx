@@ -576,7 +576,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       {((hasSearched && !activeProject) || (poolCount > 0 && onSetShowPoolView)) && (
         <div className="flex items-center gap-3 px-4 py-2 border-b border-border shrink-0 min-w-0">
           {hasSearched && !activeProject && (
-            <div className="flex items-baseline gap-1.5 text-[12.5px] whitespace-nowrap">
+            <div className="flex items-baseline gap-1.5 text-xs whitespace-nowrap">
               <span className="font-display font-bold text-foreground tabular-nums">{displayResults.length}</span>
               <span className="text-muted-foreground">candidat{displayResults.length > 1 ? 's' : ''} affiché{displayResults.length > 1 ? 's' : ''}</span>
               {total !== null && total > displayResults.length && (
@@ -594,7 +594,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               variant={showPoolView ? 'secondary' : 'ghost'}
               size="sm"
               onClick={() => onSetShowPoolView(!showPoolView)}
-              className="h-7 px-2.5 text-[11.5px] gap-1.5 rounded-full shrink-0"
+              className="h-7 px-2.5 text-2xs gap-1.5 rounded-full shrink-0"
               title={showPoolView ? 'Voir les nouveaux résultats' : 'Voir les profils déjà connus'}
             >
               <Database className="w-3 h-3" />
@@ -610,7 +610,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
       {selectedJob && hasSearched && (displayResults.length > 0 || openToWorkActive) && (
         <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border shrink-0 min-w-0 overflow-x-auto no-scrollbar">
           {/* Eyebrow label */}
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden md:inline">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden md:inline">
             Filtrer
           </span>
 
@@ -632,13 +632,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   key={value}
                   onClick={() => onSetStatusFilter(value)}
                   title={tooltip}
-                  className={`inline-flex items-center gap-1 h-6 px-2 text-[11.5px] rounded-full transition-colors shrink-0 ${
+                  className={`inline-flex items-center gap-1 h-6 px-2 text-2xs rounded-full transition-colors shrink-0 ${
                     isActive
                       ? 'bg-foreground text-background font-semibold'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                   }`}
                 >
-                  <span className="text-[11px]">{icon}</span>
+                  <span className="text-2xs">{icon}</span>
                   <span className="hidden lg:inline">{label}</span>
                   {count > 0 && (
                     <span className={`tabular-nums ${isActive ? 'opacity-90' : 'text-muted-foreground/80'}`}>
@@ -659,13 +659,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 title={openToWorkActive
                   ? 'Recherche limitée aux profils à l\'écoute — cliquer pour désactiver et relancer'
                   : 'Relancer la recherche limitée aux profils à l\'écoute (Open to Work)'}
-                className={`inline-flex items-center gap-1 h-6 px-2 text-[11.5px] rounded-full transition-colors shrink-0 ${
+                className={`inline-flex items-center gap-1 h-6 px-2 text-2xs rounded-full transition-colors shrink-0 ${
                   openToWorkActive
                     ? 'bg-success text-success-foreground font-semibold'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                 }`}
               >
-                <span className="text-[11px]">🟢</span>
+                <span className="text-2xs">🟢</span>
                 <span className="hidden lg:inline">À l'écoute</span>
               </button>
             )}
@@ -690,7 +690,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 highTier.forEach(id => onToggleProfileSelection(id));
                 toast.success(`${highTier.length} profils à haut potentiel sélectionnés`);
               }}
-              className="h-7 px-3 text-[11.5px] gap-1.5 rounded-full text-emerald-500 hover:bg-emerald-500/10 shrink-0 font-medium"
+              className="h-7 px-3 text-2xs gap-1.5 rounded-full text-emerald-500 hover:bg-emerald-500/10 shrink-0 font-medium"
               disabled={scoringInProgress}
               title="Sélectionne automatiquement les profils détectés comme à haut potentiel par l'IA pré-scoring (avant LLM)"
             >
@@ -709,7 +709,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                 firstBatchIds.forEach(id => onToggleProfileSelection(id));
                 onBatchScore(firstBatchIds);
               }}
-              className="h-7 px-3 text-[11.5px] gap-1.5 rounded-full text-foreground hover:bg-foreground/10 shrink-0 font-medium"
+              className="h-7 px-3 text-2xs gap-1.5 rounded-full text-foreground hover:bg-foreground/10 shrink-0 font-medium"
               disabled={scoringInProgress}
               title="Sélectionne les premiers profils non scorés et lance le scoring par lot"
             >
@@ -725,14 +725,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               avec labels visibles à partir de md (pas juste des icônes). */}
           {selectedProfiles.size > 0 && (
             <div className="flex items-center gap-1 shrink-0 bg-foreground/[0.04] rounded-lg border border-border px-2 py-1">
-              <span className="text-[11px] font-semibold text-foreground px-1.5 py-0.5 rounded-md bg-foreground/10">
+              <span className="text-2xs font-semibold text-foreground px-1.5 py-0.5 rounded-md bg-foreground/10">
                 {selectedProfiles.size} sélectionné{selectedProfiles.size > 1 ? 's' : ''}
               </span>
               <div className="w-px h-4 bg-border mx-0.5" aria-hidden="true" />
               <button
                 onClick={() => onBatchScore()}
                 disabled={scoringInProgress}
-                className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 h-7 px-2 text-2xs font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors disabled:opacity-40"
                 title="Scorer les profils sélectionnés"
               >
                 {scoringInProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Target className="w-3.5 h-3.5" />}
@@ -755,7 +755,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               {activeProject && (
                 <button
                   onClick={onBulkAddToProject}
-                  className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-success hover:bg-success/10 transition-colors"
+                  className="inline-flex items-center gap-1.5 h-7 px-2 text-2xs font-medium rounded-md text-success hover:bg-success/10 transition-colors"
                   title="Shortlister pour cette mission"
                 >
                   <FolderPlus className="w-3.5 h-3.5" />
@@ -773,7 +773,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               {selectedAccount && (
                 <button
                   onClick={() => onSetShowBulkInMailModal(true)}
-                  className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors"
+                  className="inline-flex items-center gap-1.5 h-7 px-2 text-2xs font-medium rounded-md text-foreground hover:bg-foreground/10 transition-colors"
                   title="Envoyer un InMail groupé"
                 >
                   <Mail className="w-3.5 h-3.5" />
@@ -782,7 +782,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
               )}
               <button
                 onClick={onBulkDismiss}
-                className="inline-flex items-center gap-1.5 h-7 px-2 text-[11px] font-medium rounded-md text-destructive hover:bg-destructive/10 transition-colors"
+                className="inline-flex items-center gap-1.5 h-7 px-2 text-2xs font-medium rounded-md text-destructive hover:bg-destructive/10 transition-colors"
                 title="Archiver les profils sélectionnés"
               >
                 <Archive className="w-3.5 h-3.5" />
@@ -795,7 +795,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           <div className="flex-1" />
 
           {/* Eyebrow label "Affichage" */}
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden lg:inline">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold shrink-0 hidden lg:inline">
             Affichage
           </span>
 
@@ -807,7 +807,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           >
             <button
               onClick={() => setViewMode('compact')}
-              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full transition-colors ${
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full transition-colors ${
                 viewMode === 'compact'
                   ? 'bg-foreground text-background font-semibold'
                   : 'text-muted-foreground hover:text-foreground'
@@ -820,7 +820,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             </button>
             <button
               onClick={() => setViewMode('detailed')}
-              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full transition-colors ${
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full transition-colors ${
                 viewMode === 'detailed'
                   ? 'bg-foreground text-background font-semibold'
                   : 'text-muted-foreground hover:text-foreground'
@@ -837,7 +837,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           {Object.keys(jobScores).length > 0 && (
             <button
               onClick={() => onSetSortByScore(!sortByScore)}
-              className={`inline-flex items-center gap-1.5 h-6 px-2 text-[11.5px] rounded-full border transition-colors shrink-0 ${
+              className={`inline-flex items-center gap-1.5 h-6 px-2 text-2xs rounded-full border transition-colors shrink-0 ${
                 sortByScore
                   ? 'bg-foreground text-background border-foreground font-semibold'
                   : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-foreground/30'
@@ -1006,14 +1006,14 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       value={total}
                       className="text-base sm:text-lg font-black text-foreground tabular-nums tracking-tight leading-none"
                     />
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">
                       profils
                     </span>
-                    <span className="text-[11px] text-muted-foreground/70">
+                    <span className="text-2xs text-muted-foreground/70">
                       · {displayResults.length} affichés
                     </span>
                     {statusCounts.untreated === 0 && displayResults.length > 0 && cursor && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-500">
+                      <span className="inline-flex items-center gap-1 text-2xs font-bold uppercase tracking-wider text-emerald-500">
                         <CheckCircle2 className="w-3 h-3" />
                         traité
                       </span>
@@ -1030,7 +1030,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       size="sm"
                       onClick={() => onRefineSearch('expand')}
                       disabled={refineLoading}
-                      className="h-6 px-2 gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                      className="h-6 px-2 gap-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                     >
                       {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Maximize2 className="w-3 h-3" />}
                       Élargir
@@ -1040,7 +1040,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                       size="sm"
                       onClick={() => onRefineSearch('narrow')}
                       disabled={refineLoading}
-                      className="h-6 px-2 gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                      className="h-6 px-2 gap-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                     >
                       {refineLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Minimize2 className="w-3 h-3" />}
                       Affiner
@@ -1135,7 +1135,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   className="border border-accent/30 bg-accent/5 rounded-md px-3 py-1 flex items-center gap-2 mb-2"
                 >
                   <span className="text-xs shrink-0">🎯</span>
-                  <p className="text-[11.5px] text-foreground/80 flex-1 min-w-0 truncate">
+                  <p className="text-2xs text-foreground/80 flex-1 min-w-0 truncate">
                     Sélectionnez les profils intéressants puis <strong className="text-foreground">Score</strong> pour les évaluer.
                   </p>
                   <button
@@ -1156,7 +1156,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   className="border border-accent/30 bg-accent/5 rounded-md px-3 py-1 flex items-center gap-2 mb-2"
                 >
                   <span className="text-xs shrink-0">🟢</span>
-                  <p className="text-[11.5px] text-foreground/80 flex-1 min-w-0 truncate">
+                  <p className="text-2xs text-foreground/80 flex-1 min-w-0 truncate">
                     Profils scorés. Les <strong className="text-accent">Go</strong> sont les meilleurs matchs — messagez-les ou ajoutez au pipeline.
                   </p>
                   <button
@@ -1197,7 +1197,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
                   id="select-all"
                   className="w-5 h-5 border-2 border-foreground/50 bg-background hover:border-foreground hover:bg-muted shadow data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-colors"
                 />
-                <label htmlFor="select-all" className="text-[11.5px] text-foreground cursor-pointer select-none font-medium">
+                <label htmlFor="select-all" className="text-2xs text-foreground cursor-pointer select-none font-medium">
                   Tout sélectionner
                 </label>
               </div>

@@ -554,7 +554,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
                     className="flex flex-col gap-1 shrink-0 rounded-lg px-3 py-1.5 min-w-[84px] text-left transition-colors hover:bg-muted/40"
                   >
                     <span className={cn(
-                      "font-display text-[20px] leading-none font-bold tabular-nums",
+                      "font-display text-xl leading-none font-bold tabular-nums",
                       count === 0 ? "text-muted-foreground/40" : "text-foreground"
                     )}>
                       {count}
@@ -573,7 +573,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
                 onClick={() => focusColumn(DISMISSED_COLUMN.key)}
                 className="flex flex-col gap-1 shrink-0 rounded-lg px-3 py-1.5 min-w-[72px] text-left transition-colors hover:bg-muted/40"
               >
-                <span className="font-display text-[20px] leading-none font-bold tabular-nums text-muted-foreground">{dismissedCount}</span>
+                <span className="font-display text-xl leading-none font-bold tabular-nums text-muted-foreground">{dismissedCount}</span>
                 <span className="inline-flex items-center gap-1.5 text-3xs uppercase tracking-wider font-semibold text-muted-foreground">
                   <span className="w-1.5 h-1.5 rounded-full bg-destructive/60" />{DISMISSED_COLUMN.label}
                 </span>
@@ -583,7 +583,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           {/* Rangée 2 : méta + profils trouvés + ancienneté + toggle de vue */}
           <div className="flex items-center gap-3 px-4 min-h-10 py-1.5 flex-wrap border-t border-border">
             <span className="text-2xs text-muted-foreground">
-              <span className="font-display text-[13px] font-bold tabular-nums text-foreground">{inPipeline}</span> dans le Pipeline
+              <span className="font-display text-sm font-bold tabular-nums text-foreground">{inPipeline}</span> dans le Pipeline
               <span className="text-muted-foreground/60"> · {plural(dismissedCount, 'écarté')}</span>
             </span>
             {unopened > 0 && (
@@ -679,7 +679,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           </span>
           {unopened > 0 ? (
             <>
-              <h3 className="font-display text-[14px] font-bold mb-1">{unopenedLabel} à trier dans le Sourcing</h3>
+              <h3 className="font-display text-md font-bold mb-1">{unopenedLabel} à trier dans le Sourcing</h3>
               <p className="text-2xs text-muted-foreground max-w-sm mb-3">
                 Retenez ou contactez les profils qui vous intéressent : ils rejoindront ce pipeline.
               </p>
@@ -693,7 +693,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
             </>
           ) : (
             <>
-              <h3 className="font-display text-[14px] font-bold mb-1">Votre pipeline attend ses premiers candidats</h3>
+              <h3 className="font-display text-md font-bold mb-1">Votre pipeline attend ses premiers candidats</h3>
               <p className="text-2xs text-muted-foreground max-w-sm">
                 Lancez une recherche dans l'onglet Sourcing pour ajouter des candidats à cette mission.
               </p>

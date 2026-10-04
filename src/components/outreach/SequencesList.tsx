@@ -108,6 +108,13 @@ interface SequencesListProps {
   createRequestId?: number;
   /** Appelé après chaque rechargement réussi de la liste (inscriptions, pauses, reprises). */
   onDataChanged?: () => void;
+  /**
+   * « compact » : la forme téléphone (colonnes empilées sous le nom) quelle
+   * que soit la largeur de l'écran, pour un conteneur étroit comme le panneau
+   * « Prise de contact » de la page mission (440 px). Les colonnes d'ordinateur
+   * n'y tiennent pas : le nom s'y écrivait une lettre par ligne.
+   */
+  layout?: 'auto' | 'compact';
 }
 
 // Conditions d'arrêt affichées par défaut dans l'éditeur : ce qui est montré
@@ -243,7 +250,10 @@ export const SequencesList: React.FC<SequencesListProps> = ({
   projectId,
   createRequestId = 0,
   onDataChanged,
+  layout = 'auto',
 }) => {
+  // Colonnes à partir de 1 024 px, sauf dans un conteneur étroit.
+  const wide = layout === 'auto';
   // organization_id est exigé par la policy INSERT d'outreach_sequences
   // (WITH CHECK organization_id = get_user_org_id(auth.uid())) : sans lui, la
   // création et la duplication étaient refusées par RLS.
@@ -1267,7 +1277,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     return (
       <li
         key={seq.id}
-        className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors duration-150 hover:bg-accent/40 lg:items-center lg:gap-x-4 ${ROW_GRID}`}
+        className={cn('grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 px-4 py-3 transition-colors duration-150 hover:bg-accent/40', wide && `lg:items-center lg:gap-x-4 ${ROW_GRID}`)}
       >
         {/* Activation (revue design D-25). D3 : interrupteur verrouillé d'un
             collaborateur laissé cliquable (aria-disabled) : requestToggle dit
@@ -1288,7 +1298,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
           ) : (
             <Lock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           )}
-          {activationBlocked && <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground lg:hidden" aria-hidden="true" />}
+          {activationBlocked && <Lock className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground', wide && 'lg:hidden')} aria-hidden="true" />}
         </div>
 
         {/* Nom, canaux, portée, description */}
@@ -1314,7 +1324,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
         </div>
 
         {/* Inscrits, répartition, date, actions : sous le nom sur téléphone, en colonnes à partir de 1 024 px */}
-        <div className="col-start-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 lg:contents">
+        <div className={cn('col-start-2 flex flex-wrap items-center gap-x-3 gap-y-1.5', wide && 'lg:contents')}>
           <div>
             <Button
               type="button"
@@ -1330,7 +1340,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
             </Button>
           </div>
           {/* Répartition réelle par état d'inscription */}
-          <div className="flex flex-wrap items-center gap-1 lg:justify-center">
+          <div className={cn('flex flex-wrap items-center gap-1', wide && 'lg:justify-center')}>
             {detailError.counts ? (
               <span className="text-xs text-muted-foreground" title="Compteurs indisponibles">–</span>
             ) : total > 0 ? (
@@ -1355,13 +1365,13 @@ export const SequencesList: React.FC<SequencesListProps> = ({
               </Button>
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground lg:text-center">
-            <span className="lg:sr-only">Créée </span>
+          <p className={cn('text-xs text-muted-foreground', wide && 'lg:text-center')}>
+            <span className={wide ? 'lg:sr-only' : undefined}>Créée </span>
             <time dateTime={seq.created_at} title={format(createdAt, "d MMMM yyyy 'à' HH:mm", { locale: fr })}>
               {timeAgo(createdAt)}
             </time>
           </p>
-          <div className="ml-auto lg:ml-0 lg:justify-self-end">
+          <div className={cn('ml-auto', wide && 'lg:ml-0 lg:justify-self-end')}>
             <DropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1441,7 +1451,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
     if (loading) {
       return (
         <div role="status" aria-label="Chargement des séquences" className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="hidden border-b border-border bg-muted/40 px-4 py-2.5 lg:block">
+          <div className={cn('hidden border-b border-border bg-muted/40 px-4 py-2.5', wide && 'lg:block')}>
             <Skeleton className="h-3 w-40" />
           </div>
           {[0, 1, 2].map(i => (
@@ -1451,8 +1461,8 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 <Skeleton className="h-4 w-1/3" />
                 <Skeleton className="h-3 w-1/2" />
               </div>
-              <Skeleton className="hidden h-7 w-24 lg:block" />
-              <Skeleton className="hidden h-5 w-36 lg:block" />
+              <Skeleton className={cn('hidden h-7 w-24', wide && 'lg:block')} />
+              <Skeleton className={cn('hidden h-5 w-36', wide && 'lg:block')} />
             </div>
           ))}
         </div>
@@ -1582,7 +1592,7 @@ export const SequencesList: React.FC<SequencesListProps> = ({
                 {/* En-tête de colonnes, à partir de 1 024 px ; chaque cellule se lit aussi seule */}
                 <div
                   aria-hidden="true"
-                  className={`hidden gap-4 border-b border-border bg-muted/40 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid ${ROW_GRID}`}
+                  className={cn('hidden gap-4 border-b border-border bg-muted/40 px-4 py-2.5 text-xs font-medium text-muted-foreground', wide && `lg:grid ${ROW_GRID}`)}
                 >
                   <div>Active</div>
                   <div>Séquence</div>

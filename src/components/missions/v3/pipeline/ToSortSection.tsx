@@ -46,7 +46,7 @@ export const ToSortSection = forwardRef<HTMLElement, ToSortSectionProps>(functio
           <CollapsibleTrigger asChild>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13.5px] font-semibold text-foreground transition-colors duration-150 ease-out hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm font-semibold text-foreground transition-colors duration-150 ease-out hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ChevronRight
                 className={cn('h-3.5 w-3.5 transition-transform duration-150', open && 'rotate-90')}
@@ -55,7 +55,7 @@ export const ToSortSection = forwardRef<HTMLElement, ToSortSectionProps>(functio
               {toSortTitle(count)}
             </button>
           </CollapsibleTrigger>
-          <span className="flex-1 text-[12.5px] text-muted-foreground">Profils notés, en attente de votre décision</span>
+          <span className="flex-1 text-xs text-muted-foreground">Profils notés, en attente de votre décision</span>
         </div>
         <CollapsibleContent className="pt-2">
           {open && (

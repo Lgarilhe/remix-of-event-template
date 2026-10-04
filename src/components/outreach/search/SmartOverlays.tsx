@@ -346,7 +346,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                       onClick={() => setFundedScope(sc)}
                       title={sc === 'FR' ? 'Sociétés collectées via la recherche France' : 'Toute la collecte européenne (FR, DE, UK, ES, NL, BE, CH, IT)'}
                       className={cn(
-                        'px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+                        'px-1.5 py-0.5 text-2xs font-medium transition-colors',
                         fundedScope === sc
                           ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
                           : 'text-[var(--k-text-muted)] hover:text-[var(--k-text-2)]',
@@ -368,11 +368,11 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                     aria-checked={active}
                     disabled={stageLoading !== null}
                     onClick={() => toggleStage(s.value)}
-                    className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-[13px] text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] disabled:opacity-60"
+                    className="flex items-center gap-2 w-full text-left rounded-md px-2 py-1.5 text-sm text-[var(--k-text-2)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)] disabled:opacity-60"
                   >
                     <span className="flex-1 min-w-0 truncate">{s.label}</span>
                     {entry && (
-                      <span className="font-mono text-[10px] text-[var(--k-text-muted)]">
+                      <span className="font-mono text-2xs text-[var(--k-text-muted)]">
                         {entry.list.length === 0 ? 'en résolution…'
                           : entry.total > entry.list.length ? `top ${entry.list.length} / ${entry.total}`
                           : `${entry.list.length} boîtes`}
@@ -384,7 +384,7 @@ export const SmartOverlays: React.FC<SmartOverlaysProps> = ({
                   </button>
                 );
               })}
-              <p className="px-2 pt-1 pb-0.5 text-[11px] leading-snug text-[var(--k-text-muted)]">
+              <p className="px-2 pt-1 pb-0.5 text-2xs leading-snug text-[var(--k-text-muted)]">
                 Top = les {FUNDED_CAP} boîtes du stade dont l'effectif croît le plus vite
                 (6 derniers mois), celles qui recrutent maintenant. Injectées comme boîte
                 actuelle, élagables une à une dans la pilule Boîte.

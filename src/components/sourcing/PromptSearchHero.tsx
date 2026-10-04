@@ -114,7 +114,7 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
       className="w-full max-w-2xl mx-auto py-8 sm:py-14"
     >
       <div className="rounded-xl border border-border bg-card p-5 sm:p-8">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1.5">
+        <p className="text-2xs uppercase tracking-wider text-muted-foreground font-medium mb-1.5">
           Recherche assistée par IA
         </p>
         <h2 className="font-display text-xl sm:text-2xl font-bold text-foreground tracking-tight mb-1">
@@ -142,7 +142,7 @@ export const PromptSearchHero = ({ project, hasExistingFilters, onGenerated, onS
               type="button"
               disabled={generating}
               onClick={() => setPrompt(ex)}
-              className="h-6 px-2 rounded-full bg-muted text-[11.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors max-w-full truncate"
+              className="h-6 px-2 rounded-full bg-muted text-2xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors max-w-full truncate"
               title={ex}
             >
               {ex.slice(0, 52)}…

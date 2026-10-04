@@ -2,16 +2,16 @@
  * DashboardGreeting — en-tête du tableau de bord.
  *
  * Salutation selon l'heure, date du jour et récapitulatif d'une ligne
- * (« 28 candidats actifs sur 4 missions »), puis les trois actions les plus
- * fréquentes. Pas d'emoji, pas de décor : l'en-tête suit PageHeader comme les
- * autres pages (docs/design/01-direction.md).
+ * (« 28 candidats actifs sur 4 missions »), puis un seul bouton plein :
+ * « Nouvelle mission » (design simplifié, docs/design/06-simplicite.md).
+ * La recherche et la messagerie restent dans la barre latérale.
  */
 
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Plus, Search, MessageSquare } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { PageHeader } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { plural } from '@/lib/plural';
@@ -62,26 +62,12 @@ export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
       title={title}
       subtitle={summary}
       actions={
-        <>
-          <Button asChild variant="primary">
-            <Link to="/missions?create=brief">
-              <Plus aria-hidden="true" />
-              Nouvelle mission
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/sourcing">
-              <Search aria-hidden="true" />
-              Rechercher
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/inbox">
-              <MessageSquare aria-hidden="true" />
-              Messagerie
-            </Link>
-          </Button>
-        </>
+        <Button asChild variant="primary" size="lg" className="min-h-11 md:min-h-0">
+          <Link to="/missions?create=brief">
+            <Plus aria-hidden="true" />
+            Nouvelle mission
+          </Link>
+        </Button>
       }
     />
   );

@@ -64,7 +64,7 @@ export function TeamSection({ project, readOnly }: { project: SourcingProject; r
         <h2 id="cadrage-equipe-titre" className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           Équipe
         </h2>
-        <span className="text-[12.5px] text-muted-foreground">Les personnes de votre organisation qui travaillent sur la mission.</span>
+        <span className="text-xs text-muted-foreground">Les personnes de votre organisation qui travaillent sur la mission.</span>
       </div>
       {loading ? (
         <Skeleton className="h-24 w-full rounded-xl" />

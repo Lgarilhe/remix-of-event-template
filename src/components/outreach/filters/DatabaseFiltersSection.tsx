@@ -173,7 +173,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
           onChange={e => onChange({ ...filters, db_org_job_titles: e.target.value })}
           className="h-8 text-xs"
         />
-        <p className="text-[10px] text-muted-foreground mt-1">
+        <p className="text-2xs text-muted-foreground mt-1">
           Filtrer les profils dont l'entreprise recrute pour ces postes
         </p>
       </FilterGroup>
@@ -240,7 +240,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
             </Badge>
           ))}
         </div>
-        <p className="text-[10px] text-muted-foreground mt-1">
+        <p className="text-2xs text-muted-foreground mt-1">
           Startup (&lt;50), Scale-up (50-500), Enterprise (500+)
         </p>
       </FilterGroup>
@@ -262,7 +262,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const v = techMustInput.trim(); if (v && !filters.db_tech_must_have_all?.includes(v)) onChange({ ...filters, db_tech_must_have_all: [...(filters.db_tech_must_have_all || []), v] }); setTechMustInput(''); } }}
           className="h-8 text-xs"
         />
-        <p className="text-[10px] text-muted-foreground mt-1">Mode AND : le profil doit maîtriser TOUTES ces technos</p>
+        <p className="text-2xs text-muted-foreground mt-1">Mode AND : le profil doit maîtriser TOUTES ces technos</p>
       </FilterGroup>
 
       {/* Technologies à exclure */}
@@ -330,7 +330,7 @@ export const DatabaseFiltersSection: React.FC<Props> = ({ filters, onChange, isO
           onChange={e => onChange({ ...filters, db_latest_funding_date_min: e.target.value })}
           className="h-8 text-xs"
         />
-        <p className="text-[10px] text-muted-foreground mt-1">Levée de fonds après cette date</p>
+        <p className="text-2xs text-muted-foreground mt-1">Levée de fonds après cette date</p>
       </FilterGroup>
 
       {/* Funding total */}

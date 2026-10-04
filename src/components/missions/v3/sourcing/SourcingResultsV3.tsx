@@ -310,7 +310,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
         <span aria-hidden="true" className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
           <Search className="h-5 w-5" />
         </span>
-        <p className="text-[15px] font-semibold text-foreground">Aucun profil trouvé</p>
+        <p className="text-base font-semibold text-foreground">Aucun profil trouvé</p>
         <p className="mt-1 max-w-md text-sm text-muted-foreground">Essayez d'ajuster vos filtres pour élargir votre recherche.</p>
         {chipsDirty && onRerun && (
           <Button className="mt-4" onClick={onRerun} disabled={loading}>
@@ -351,13 +351,13 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
     <div className="flex min-h-[420px] w-full min-w-0 flex-col lg:h-full lg:min-h-0">
       {/* Rangée B : volume chargé, un seul bouton, trois groupes. */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
-        <span className="whitespace-nowrap text-[13.5px] font-semibold tabular-nums text-foreground">{loadedLabel}</span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">{loadedLabel}</span>
         {chipsDirty && onRerun ? (
           <button
             type="button"
             onClick={onRerun}
             disabled={loading}
-            className="rounded-md px-1.5 py-0.5 text-[13px] text-brand underline underline-offset-2 hover:text-brand/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            className="rounded-md px-1.5 py-0.5 text-sm text-brand underline underline-offset-2 hover:text-brand/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
           >
             {loading ? 'Recherche en cours' : 'Relancer avec les nouveaux filtres'}
           </button>
@@ -366,7 +366,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             type="button"
             onClick={onLoadMore}
             disabled={loadingMore || loading}
-            className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[13px] text-brand underline underline-offset-2 hover:text-brand/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-sm text-brand underline underline-offset-2 hover:text-brand/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
           >
             {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
             {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}
@@ -410,7 +410,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 onClick={() => pickTab(group)}
                 onKeyDown={onTabKey}
                 className={cn(
-                  'flex h-7 items-center gap-1.5 rounded-md px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'flex h-7 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
@@ -437,17 +437,17 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
               />
             )}
             {selectedJob && canBatchScore && (scoringInProgress ? (
-              <Button variant="outline" size="sm" disabled className="h-8 gap-2 text-[13px] font-normal">
+              <Button variant="outline" size="sm" disabled className="h-8 gap-2 text-sm font-normal">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                 Notation en cours
               </Button>
             ) : toScore.length > 0 ? (
-              <Button variant="outline" size="sm" onClick={() => scoreRows(toScore)} className="h-8 text-[13px] font-normal tabular-nums">
+              <Button variant="outline" size="sm" onClick={() => scoreRows(toScore)} className="h-8 text-sm font-normal tabular-nums">
                 {scoreButtonLabel(toScore.length, unscored.length, SCORING_FLOOR)}
               </Button>
             ) : null)}
             {aiSuggestions.length > 0 && (
-              <Button ref={aiTriggerRef} variant="outline" size="sm" onClick={() => setConfirmAi(true)} className="h-8 text-[13px] font-normal">
+              <Button ref={aiTriggerRef} variant="outline" size="sm" onClick={() => setConfirmAi(true)} className="h-8 text-sm font-normal">
                 {aiSuggestions.length > 1
                   ? `Écarter les ${aiSuggestions.length} suggestions de l'IA`
                   : "Écarter la suggestion de l'IA"}
@@ -462,14 +462,14 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             onKeyDown={(e) => { if (e.key === 'Escape') setConfirmAi(false); }}
             className="mt-2.5 flex min-h-8 flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 py-1 pl-3 pr-1"
           >
-            <span id="sourcing-confirmation-ia" className="min-w-0 flex-1 text-[13px] text-foreground">
+            <span id="sourcing-confirmation-ia" className="min-w-0 flex-1 text-sm text-foreground">
               Écarter {joinNames(aiSuggestions.map((row) => row.name))}, selon l'IA ? La décision vous revient.
             </span>
             <Button
               ref={confirmRef}
               size="sm"
               variant="destructive"
-              className="h-7 text-[12.5px]"
+              className="h-7 text-xs"
               disabled={aiSuggestions.some((row) => pending.has(row.profile.id))}
               onClick={async () => {
                 const list = aiSuggestions;
@@ -479,14 +479,14 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             >
               {aiSuggestions.length > 1 ? `Écarter les ${aiSuggestions.length}` : 'Écarter'}
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-[12.5px]" onClick={() => setConfirmAi(false)}>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setConfirmAi(false)}>
               Annuler
             </Button>
           </div>
         )}
         {tab === 'retained' && (
           <div className="mt-2.5 flex min-h-8 flex-wrap items-center gap-2 pl-2">
-            <span className="min-w-0 flex-1 text-[13px] text-muted-foreground">
+            <span className="min-w-0 flex-1 text-sm text-muted-foreground">
               Profils retenus depuis vos recherches. Les retenus suivent leur étape dans le Pipeline, avec ceux de toute l'équipe.
             </span>
             {selectedAccount && newlyRetained.length > 0 && (
@@ -501,7 +501,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
               />
             )}
             {activeProject && (
-              <Button asChild variant="outline" size="sm" className="h-8 text-[13px] font-normal">
+              <Button asChild variant="outline" size="sm" className="h-8 text-sm font-normal">
                 <Link to={missionV3Path(activeProject.id)}>Ouvrir le Pipeline</Link>
               </Button>
             )}
@@ -509,7 +509,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
         )}
         {tab === 'rejected' && (
           <div className="mt-2.5 flex min-h-8 items-center pl-2">
-            <span className="text-[13px] text-muted-foreground">
+            <span className="text-sm text-muted-foreground">
               Profils écartés depuis vos recherches. Remettre à trier renvoie le profil dans À trier et efface sa note.
             </span>
           </div>
@@ -587,12 +587,12 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                           type="button"
                           data-row-name=""
                           onClick={(e) => { e.stopPropagation(); onOpenProfile(row.profile); }}
-                          className="min-w-0 truncate rounded-sm text-left text-[13.5px] font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="min-w-0 truncate rounded-sm text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {row.name}
                         </button>
                         {recommended && tab === 'to_sort' && (
-                          <span className="shrink-0 rounded-[5px] bg-success-muted px-1.5 text-[11.5px] text-success">Recommandé</span>
+                          <span className="shrink-0 rounded-[5px] bg-success-muted px-1.5 text-2xs text-success">Recommandé</span>
                         )}
                       </span>
                       {row.profile.location && (
@@ -600,10 +600,10 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                       )}
                       {headline && <span className="block truncate text-xs text-muted-foreground sm:hidden">{headline}</span>}
                     </td>
-                    <td className="hidden truncate pr-3 align-middle text-[13px] text-foreground-secondary sm:table-cell" title={headline || undefined}>
+                    <td className="hidden truncate pr-3 align-middle text-sm text-foreground-secondary sm:table-cell" title={headline || undefined}>
                       {headline}
                     </td>
-                    <td className="pr-3 text-right align-middle text-[13.5px] font-semibold tabular-nums text-foreground">
+                    <td className="pr-3 text-right align-middle text-sm font-semibold tabular-nums text-foreground">
                       {row.note ?? ''}
                     </td>
                     {tab === 'retained' ? (
@@ -613,7 +613,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                         </span>
                       </td>
                     ) : (
-                      <td className={cn('hidden truncate pr-3 align-middle text-[13px] md:table-cell', REASON_TONE[reason.tone])} title={reason.text || undefined}>
+                      <td className={cn('hidden truncate pr-3 align-middle text-sm md:table-cell', REASON_TONE[reason.tone])} title={reason.text || undefined}>
                         {reason.text}
                       </td>
                     )}
@@ -651,7 +651,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                             disabled={busy}
                             onClick={() => void run([row], async (list) => { await onRestoreCandidate(list[0].id); }, index)}
                             aria-label={`Remettre ${row.name} à trier`}
-                            className="h-[30px] whitespace-nowrap rounded-lg border border-border px-2.5 text-[12.5px] text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                            className="h-[30px] whitespace-nowrap rounded-lg border border-border px-2.5 text-xs text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                           >
                             Remettre à trier
                           </button>
@@ -674,7 +674,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
           {loadingMore && <span role="status" className="sr-only">Chargement de la suite</span>}
 
           {groups[tab].length === 0 && (
-            <p className="px-2 py-5 text-[13.5px] text-muted-foreground">
+            <p className="px-2 py-5 text-sm text-muted-foreground">
               {tab === 'to_sort'
                 ? hasSearched && results.length === 0
                   ? 'Aucun profil à trier. Cette recherche ne trouve aucun profil : ajustez vos filtres.'
@@ -689,7 +689,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
           )}
           {tab === 'to_sort' && canLoadMore && !loadingMore && groups.to_sort.length > 0 && (
             <div className="px-2 py-3">
-              <Button variant="ghost" size="sm" onClick={onLoadMore} className="gap-1.5 text-[13px] font-normal text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="sm" onClick={onLoadMore} className="gap-1.5 text-sm font-normal text-muted-foreground hover:text-foreground">
                 <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                 Voir la suite
               </Button>
@@ -704,7 +704,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
                 aria-label="Actions sur la sélection"
                 className="pointer-events-auto flex w-fit max-w-full flex-wrap items-center gap-1.5 rounded-xl border border-border-strong bg-popover py-2 pl-3.5 pr-2 text-popover-foreground shadow-lg"
               >
-                <span className="mr-1.5 text-[13px] font-semibold tabular-nums text-foreground">
+                <span className="mr-1.5 text-sm font-semibold tabular-nums text-foreground">
                   {plural(selectedRows.length, 'sélectionné', 'sélectionnés')}
                 </span>
                 <Button

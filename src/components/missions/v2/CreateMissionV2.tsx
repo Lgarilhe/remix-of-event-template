@@ -593,12 +593,12 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               </div>
             )}
             <div className="min-w-0">
-              <p className="font-display text-[16px] font-bold leading-tight truncate">
+              <p className="font-display text-base font-bold leading-tight truncate">
                 {mode === 'choose' && 'Nouvelle mission'}
                 {mode === 'brief' && 'Brief IA'}
                 {mode === 'manual' && 'Création manuelle'}
               </p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {mode === 'choose' && 'Comment veux-tu décrire la mission ?'}
                 {mode === 'brief' && 'Colle ta fiche de poste, l\'IA extrait l\'essentiel'}
                 {mode === 'manual' && 'Remplis les champs un par un'}
@@ -652,7 +652,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
         {/* Footer (selon mode) */}
         {mode === 'brief' && (
           <div className="border-t border-border bg-card/50 px-6 py-3 flex items-center justify-between gap-3 flex-shrink-0">
-            <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 min-w-0">
+            <div className="text-2xs text-muted-foreground inline-flex items-center gap-1.5 min-w-0">
               <Clock className="w-3 h-3 flex-shrink-0" />
               <span className="truncate">
                 {analysis
@@ -668,7 +668,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
                   type="button"
                   onClick={handleAnalyze}
                   disabled={analyzing || briefText.trim().length < 20}
-                  className="h-9 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
+                  className="h-9 px-5 rounded-full text-sm font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
                 >
                   {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" strokeWidth={2.5} />}
                   Analyser avec l'IA
@@ -678,7 +678,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
                   type="button"
                   onClick={handleCreateFromBrief}
                   disabled={creating}
-                  className="h-9 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
+                  className="h-9 px-5 rounded-full text-sm font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
                 >
                   {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" strokeWidth={2.5} />}
                   Créer la mission
@@ -694,7 +694,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
             <button
               type="button"
               onClick={onClose}
-              className="h-9 px-4 rounded-full text-[13px] font-medium border border-border hover:bg-accent transition-colors"
+              className="h-9 px-4 rounded-full text-sm font-medium border border-border hover:bg-accent transition-colors"
             >
               Annuler
             </button>
@@ -702,7 +702,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               type="button"
               onClick={handleCreateManual}
               disabled={creating || !briefName.trim()}
-              className="h-9 px-5 rounded-full text-[13px] font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
+              className="h-9 px-5 rounded-full text-sm font-semibold text-white inline-flex items-center gap-1.5 konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
             >
               {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" strokeWidth={2.5} />}
               Créer la mission
@@ -720,15 +720,15 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
 const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick }) => (
   <div className="px-8 py-10">
     <div className="text-center max-w-md mx-auto mb-10 konekt-fade-up">
-      <div className="inline-flex items-center gap-1.5 mb-4 px-3 py-1 rounded-full text-[11px] font-medium konekt-skalr-bg-soft" style={{ border: '1px solid hsl(271 81% 56% / 0.25)' }}>
+      <div className="inline-flex items-center gap-1.5 mb-4 px-3 py-1 rounded-full text-2xs font-medium konekt-skalr-bg-soft" style={{ border: '1px solid hsl(271 81% 56% / 0.25)' }}>
         <Sparkles className="w-3 h-3" style={{ color: 'hsl(330 81% 70%)' }} />
         <span className="konekt-skalr-text">Brief en 60 secondes</span>
       </div>
-      <h2 className="font-display text-[28px] sm:text-[32px] font-bold leading-tight mb-2">
+      <h2 className="font-display text-title sm:text-3xl font-bold leading-tight mb-2">
         Décris la mission,{' '}
         <span className="font-editorial italic font-normal">l'IA fait le reste.</span>
       </h2>
-      <p className="text-[13px] text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Colle une fiche de poste ou remplis les champs manuellement. À toi de choisir.
       </p>
     </div>
@@ -751,7 +751,7 @@ const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick })
             {opt.badge && (
               <span
                 className={cn(
-                  'absolute top-3 right-3 text-[10px] px-1.5 py-0.5 rounded-full font-bold',
+                  'absolute top-3 right-3 text-2xs px-1.5 py-0.5 rounded-full font-bold',
                   opt.recommended ? 'text-white konekt-skalr-bg' : 'bg-muted text-muted-foreground',
                 )}
               >
@@ -767,8 +767,8 @@ const ChooseMode: React.FC<{ onPick: (mode: EntryMode) => void }> = ({ onPick })
               <Icon className={cn('w-4 h-4', opt.recommended ? 'text-white' : 'text-muted-foreground')} strokeWidth={2.5} />
             </div>
             <div>
-              <p className="font-semibold text-[14px] mb-1">{opt.label}</p>
-              <p className="text-[11.5px] text-muted-foreground leading-relaxed">{opt.desc}</p>
+              <p className="font-semibold text-md mb-1">{opt.label}</p>
+              <p className="text-2xs text-muted-foreground leading-relaxed">{opt.desc}</p>
             </div>
           </button>
         );
@@ -822,7 +822,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
     <div className="p-6 space-y-3 lg:border-r border-border">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
             Nom (optionnel)
           </label>
           <input
@@ -833,7 +833,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
           />
         </div>
         <div>
-          <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
             Client (optionnel)
           </label>
           <input
@@ -847,14 +847,14 @@ const BriefMode: React.FC<BriefModeProps> = ({
 
       {/* Import shortcuts */}
       <div className="flex items-center gap-2 flex-wrap">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1">
+        <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mr-1">
           Importer depuis
         </p>
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploadingFile}
-          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50"
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-2xs font-medium border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50"
         >
           {uploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
           Un fichier
@@ -863,14 +863,14 @@ const BriefMode: React.FC<BriefModeProps> = ({
           type="button"
           onClick={() => setShowUrlInput(s => !s)}
           className={cn(
-            'h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium border transition-colors',
+            'h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-2xs font-medium border transition-colors',
             showUrlInput ? 'bg-foreground text-background border-foreground' : 'border-border bg-card hover:bg-accent',
           )}
         >
           <Link2 className="w-3 h-3" />
           Une URL
         </button>
-        <span className="text-[10px] text-muted-foreground/70 flex-1 text-right">
+        <span className="text-2xs text-muted-foreground/70 flex-1 text-right">
           TXT · MD · WTTJ · LinkedIn Jobs · careers
         </span>
         <input
@@ -894,7 +894,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             value={manualUrl}
             onChange={(e) => setManualUrl(e.target.value)}
             placeholder="https://www.welcometothejungle.com/fr/companies/…"
-            className="flex-1 h-8 px-2 text-[12px] bg-transparent focus:outline-none"
+            className="flex-1 h-8 px-2 text-xs bg-transparent focus:outline-none"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && manualUrl.trim() && isValidUrl(manualUrl.trim())) {
                 onScanUrl(manualUrl.trim());
@@ -914,7 +914,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
               }
             }}
             disabled={!manualUrl.trim() || !isValidUrl(manualUrl.trim()) || scanningUrl}
-            className="h-7 px-3 rounded-md text-[11px] font-medium bg-foreground text-background hover:opacity-90 disabled:opacity-40 transition-opacity"
+            className="h-7 px-3 rounded-md text-2xs font-medium bg-foreground text-background hover:opacity-90 disabled:opacity-40 transition-opacity"
           >
             {scanningUrl ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Scanner'}
           </button>
@@ -931,7 +931,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
           }}
         >
           <span className="text-base">{sourceInfo.emoji}</span>
-          <p className="text-[12px] flex-1 min-w-0 truncate">
+          <p className="text-xs flex-1 min-w-0 truncate">
             <span className="font-semibold konekt-skalr-text">{sourceInfo.label}</span>
             <span className="text-muted-foreground ml-1">détecté — pré-remplir titre + entreprise ?</span>
           </p>
@@ -939,7 +939,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             type="button"
             onClick={() => onScanUrl()}
             disabled={scanningUrl}
-            className="h-7 px-3 rounded-full text-[11px] font-semibold text-white konekt-skalr-bg konekt-shine flex-shrink-0 disabled:opacity-50"
+            className="h-7 px-3 rounded-full text-2xs font-semibold text-white konekt-skalr-bg konekt-shine flex-shrink-0 disabled:opacity-50"
           >
             {scanningUrl ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Pré-remplir →'}
           </button>
@@ -952,7 +952,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
         onDrop={handleDrop}
         className={cn('relative rounded-md transition-all', dragActive && 'ring-2 ring-foreground/40')}
       >
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
           Fiche de poste / Brief
         </label>
         <textarea
@@ -960,7 +960,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
           onChange={(e) => setBriefText(e.target.value)}
           placeholder={`Colle ta fiche de poste ici, glisse-dépose un fichier, ou tape ton brief...\n\nEx:\nSenior Software Engineer pour Doctolib.\nStack React + TypeScript + Node.\n5+ ans d'expérience, idéalement passé par une scale-up santé ou fintech.\nParis ou full-remote France. Démarrage T3 2026.`}
           rows={10}
-          className="w-full mt-1 px-3 py-2 text-[13px] leading-relaxed rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+          className="w-full mt-1 px-3 py-2 text-sm leading-relaxed rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
         />
         {dragActive && (
           <div className="absolute inset-0 mt-5 flex items-center justify-center rounded-md bg-background/90 border-2 border-dashed border-foreground/40 pointer-events-none">
@@ -971,7 +971,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             </div>
           </div>
         )}
-        <p className="text-[10.5px] text-muted-foreground mt-1.5">
+        <p className="text-2xs text-muted-foreground mt-1.5">
           {briefText.length} caractères · {briefText.trim().length < 20 ? 'minimum 20' : 'prêt pour analyse'}
         </p>
       </div>
@@ -983,7 +983,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
         <div className="h-6 w-6 rounded-md grid place-items-center konekt-skalr-bg flex-shrink-0">
           <Sparkles className="w-3 h-3 text-white" strokeWidth={2.5} />
         </div>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
           {analyzing ? "L'assistant analyse…" : analysis ? "L'assistant a détecté" : 'Assistant prêt'}
         </p>
         {analyzing && (
@@ -997,10 +997,10 @@ const BriefMode: React.FC<BriefModeProps> = ({
 
       {!analysis && !analyzing && (
         <div className="text-center py-12 text-muted-foreground">
-          <p className="text-[12px] leading-relaxed">
+          <p className="text-xs leading-relaxed">
             Colle ton brief à gauche et clique sur <strong className="text-foreground">Analyser avec l'IA</strong>.
           </p>
-          <p className="text-[11px] mt-2 opacity-70">
+          <p className="text-2xs mt-2 opacity-70">
             En quelques secondes, l'IA détecte le titre, les compétences clés, l'expérience, la localisation et génère les filtres de recherche.
           </p>
         </div>
@@ -1030,8 +1030,8 @@ const BriefMode: React.FC<BriefModeProps> = ({
               >
                 <Icon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{f.label}</p>
-                  <p className="text-[12px] font-medium truncate">{f.value}</p>
+                  <p className="text-2xs uppercase tracking-wider text-muted-foreground">{f.label}</p>
+                  <p className="text-xs font-medium truncate">{f.value}</p>
                 </div>
                 <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: 'hsl(var(--status-success))' }} strokeWidth={3} />
               </div>
@@ -1060,7 +1060,7 @@ const ManualMode: React.FC<ManualModeProps> = ({
 }) => (
   <div className="px-8 py-8 max-w-xl mx-auto space-y-4 konekt-fade-up">
     <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
         Titre de la mission <span className="text-destructive">*</span>
       </label>
       <input
@@ -1072,7 +1072,7 @@ const ManualMode: React.FC<ManualModeProps> = ({
       />
     </div>
     <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
         Client / Entreprise (optionnel)
       </label>
       <input
@@ -1083,7 +1083,7 @@ const ManualMode: React.FC<ManualModeProps> = ({
       />
     </div>
     <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
         Description (optionnel)
       </label>
       <textarea
@@ -1094,7 +1094,7 @@ const ManualMode: React.FC<ManualModeProps> = ({
         className="w-full mt-1 px-3 py-2 text-sm rounded-md border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
       />
     </div>
-    <p className="text-[11px] text-muted-foreground">
+    <p className="text-2xs text-muted-foreground">
       Tu pourras compléter le brief, ajouter des compétences et lancer l'analyse IA après création.
     </p>
   </div>

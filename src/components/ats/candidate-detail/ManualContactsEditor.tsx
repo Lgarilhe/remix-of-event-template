@@ -118,7 +118,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-medium border border-border bg-background hover:bg-accent transition-colors"
+          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-2xs font-medium border border-border bg-background hover:bg-accent transition-colors"
           title="Ajouter ou modifier email / téléphone manuellement"
         >
           <Pencil className="w-3 h-3" />
@@ -127,10 +127,10 @@ export const ManualContactsEditor: React.FC<Props> = ({
       </PopoverTrigger>
       <PopoverContent className="w-80 p-4 space-y-3" align="start">
         <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mb-0.5">
+          <p className="text-2xs uppercase tracking-wider font-bold text-muted-foreground mb-0.5">
             Contacts manuels
           </p>
-          <p className="text-[11px] text-muted-foreground leading-snug">
+          <p className="text-2xs text-muted-foreground leading-snug">
             Saisis l'email ou le téléphone du candidat. Sauvegardé pour
             <span className="font-semibold"> toutes les missions</span> de ce candidat dans ton organisation.
           </p>
@@ -139,16 +139,16 @@ export const ManualContactsEditor: React.FC<Props> = ({
         {/* Existing contacts (info read-only) */}
         {(existingEmails.length > 0 || existingPhones.length > 0) && (
           <div className="rounded-lg bg-muted/30 border border-border/60 px-2.5 py-2 space-y-1">
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">
+            <p className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground/80">
               Déjà connu (LinkedIn / enrichissement)
             </p>
             {existingEmails.map(e => (
-              <p key={e} className="text-[11px] text-foreground/80 inline-flex items-center gap-1">
+              <p key={e} className="text-2xs text-foreground/80 inline-flex items-center gap-1">
                 <Mail className="w-2.5 h-2.5" /> {e}
               </p>
             ))}
             {existingPhones.map(p => (
-              <p key={p} className="text-[11px] text-foreground/80 inline-flex items-center gap-1">
+              <p key={p} className="text-2xs text-foreground/80 inline-flex items-center gap-1">
                 <Phone className="w-2.5 h-2.5" /> {p}
               </p>
             ))}
@@ -163,7 +163,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
         ) : (
           <div className="space-y-2.5">
             <div>
-              <Label htmlFor="manual-email" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 flex items-center gap-1 mb-1">
+              <Label htmlFor="manual-email" className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground/80 flex items-center gap-1 mb-1">
                 <Mail className="w-3 h-3" /> Email
               </Label>
               <Input
@@ -172,11 +172,11 @@ export const ManualContactsEditor: React.FC<Props> = ({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="prenom.nom@example.com"
-                className="h-8 text-[12.5px]"
+                className="h-8 text-xs"
               />
             </div>
             <div>
-              <Label htmlFor="manual-phone" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 flex items-center gap-1 mb-1">
+              <Label htmlFor="manual-phone" className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground/80 flex items-center gap-1 mb-1">
                 <Phone className="w-3 h-3" /> Téléphone
               </Label>
               <Input
@@ -185,11 +185,11 @@ export const ManualContactsEditor: React.FC<Props> = ({
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+33 6 12 34 56 78"
-                className="h-8 text-[12.5px]"
+                className="h-8 text-xs"
               />
             </div>
             <div>
-              <Label htmlFor="manual-notes" className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80 mb-1 block">
+              <Label htmlFor="manual-notes" className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground/80 mb-1 block">
                 Note (optionnelle)
               </Label>
               <Textarea
@@ -197,12 +197,12 @@ export const ManualContactsEditor: React.FC<Props> = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Ex: email pro, téléphone perso, pas de SMS le soir…"
-                className="min-h-[50px] text-[12px]"
+                className="min-h-[50px] text-xs"
               />
             </div>
 
             {contacts?.updatedAt && (
-              <p className="text-[10px] text-muted-foreground italic">
+              <p className="text-2xs text-muted-foreground italic">
                 Dernière mise à jour : {new Date(contacts.updatedAt).toLocaleString('fr-FR')}
                 {sourceLabel && ` (${sourceLabel})`}
               </p>
@@ -214,7 +214,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
                   type="button"
                   onClick={handleClear}
                   disabled={saving}
-                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive transition-colors px-2 py-1.5"
+                  className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1.5"
                   title="Effacer tous les contacts manuels"
                 >
                   <X className="w-3 h-3" />
@@ -225,7 +225,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
+                className="text-2xs text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5"
               >
                 Annuler
               </button>
@@ -233,7 +233,7 @@ export const ManualContactsEditor: React.FC<Props> = ({
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1 text-2xs font-semibold bg-foreground text-background px-3 py-1.5 rounded-md hover:bg-foreground/90 transition-colors disabled:opacity-50"
               >
                 {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                 Enregistrer

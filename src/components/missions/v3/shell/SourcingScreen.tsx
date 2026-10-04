@@ -34,7 +34,7 @@ export function SourcingScreen() {
         <span aria-hidden="true" className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-foreground-secondary">
           <Link2 className="h-4 w-4" />
         </span>
-        <h2 id="sourcing-linkedin-titre" className="text-[15px] font-semibold text-foreground">
+        <h2 id="sourcing-linkedin-titre" className="text-base font-semibold text-foreground">
           Pour chercher des profils, reliez votre compte LinkedIn.
         </h2>
         <p className="text-sm text-foreground-secondary">Le Pipeline et le Cadrage restent disponibles.</p>

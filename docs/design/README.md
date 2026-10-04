@@ -11,6 +11,7 @@ Konekt a ses fonctionnalités. Ce chantier reprend l'interface écran par écran
 | `03-lots.md` | Le plan : qui fait quoi, ce que chaque lot doit remplir, le contenu des lots 1 à 11. |
 | `04-contre-revue.md` | Le protocole de relecture par une seconde IA, avec la demande prête à copier. |
 | `05-banc-visuel.md` | L'environnement local qui capture chaque écran en sombre, en clair, sur ordinateur et sur téléphone. |
+| `06-simplicite.md` | Le design simplifié (octobre 2026) : la demande, le constat chiffré, les huit règles, les lots. |
 | `audit/` | Les sept revues (zones A à F, design system G), avec preuves et captures citées. |
 
 ## Les sources

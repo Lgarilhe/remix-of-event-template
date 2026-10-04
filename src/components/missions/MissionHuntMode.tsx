@@ -167,8 +167,8 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             <Target className="w-4 h-4 text-foreground" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-display text-[14px] font-bold leading-tight">Mode chasse</h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <h3 className="font-display text-md font-bold leading-tight">Mode chasse</h3>
+            <p className="text-2xs text-muted-foreground mt-0.5">
               {frozen
                 ? "Proposer cette mission aux recruteurs partenaires du cercle Konekt n'est pas encore disponible."
                 : "Proposez cette mission aux recruteurs partenaires du cercle Konekt. Ils postulent, vous choisissez. Le recruteur cherche de son côté : la présentation de candidats dans Konekt n'est pas encore disponible."}
@@ -181,7 +181,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             onClick={handleToggle}
             disabled={busy}
             className={cn(
-              'h-9 px-4 rounded-full text-[12px] font-semibold inline-flex items-center gap-1.5 border transition-colors flex-shrink-0',
+              'h-9 px-4 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 border transition-colors flex-shrink-0',
               isEnabled
                 ? 'bg-foreground text-background border-foreground hover:opacity-90'
                 : 'bg-background text-foreground border-border hover:bg-accent',
@@ -192,7 +192,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
             {isEnabled ? 'Activé' : 'Désactivé'}
           </button>
         ) : (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {isEnabled ? 'Mode chasse activé' : 'Mode chasse désactivé'}
           </span>
         )}
@@ -203,16 +203,16 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
           {/* Statut et compteurs */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Statut :</span>
+              <span className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Statut :</span>
               <span
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-medium"
                 style={{ background: statusColors.bg, color: statusColors.color }}
               >
                 {HUNT_STATUS_LABELS[huntStatus] || huntStatus}
               </span>
             </div>
             {huntStatus !== 'draft' && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
                 <Users className="w-3 h-3" /> {acceptedCount}/{maxCount} recruteurs
               </span>
             )}
@@ -251,7 +251,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
           {/* Réglages */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-border">
             <div>
-              <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+              <label className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
                 <Percent className="w-3 h-3" /> Rémunération (% du salaire annuel)
               </label>
               <input
@@ -265,7 +265,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               />
             </div>
             <div>
-              <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+              <label className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
                 <Users className="w-3 h-3" /> Recruteurs maximum
               </label>
               <input
@@ -279,7 +279,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               />
             </div>
             <div>
-              <label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+              <label className="flex items-center gap-1.5 text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
                 <Calendar className="w-3 h-3" /> Date limite
               </label>
               <input
@@ -291,14 +291,14 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               />
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground -mt-2">
+          <p className="text-2xs text-muted-foreground -mt-2">
             Le recruteur facture ce pourcentage directement à votre entreprise à l'embauche. Konekt ne prend pas de commission pendant la bêta.
           </p>
 
           {/* Actions de statut */}
           <div className="flex items-center gap-2 pt-3 border-t border-border flex-wrap">
             {!isAdmin && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 Seul un administrateur peut modifier ces réglages.
               </p>
             )}
@@ -307,7 +307,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 type="button"
                 onClick={() => { void handleSave(true); }}
                 disabled={busy || !canPublishPlan}
-                className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
+                className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-xs font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
                 Publier sur la marketplace
@@ -319,7 +319,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                   type="button"
                   onClick={() => { void handleSave(false); }}
                   disabled={busy}
-                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-xs font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
                   {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Enregistrer les réglages
@@ -328,7 +328,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                   type="button"
                   onClick={() => setPendingStatus('filled')}
                   disabled={busy}
-                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-medium border border-border hover:bg-accent disabled:opacity-50 transition-colors"
+                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-xs font-medium border border-border hover:bg-accent disabled:opacity-50 transition-colors"
                 >
                   Mission pourvue
                 </button>
@@ -336,7 +336,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                   type="button"
                   onClick={() => setPendingStatus('draft')}
                   disabled={busy}
-                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-medium border border-border hover:bg-accent disabled:opacity-50 transition-colors"
+                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-xs font-medium border border-border hover:bg-accent disabled:opacity-50 transition-colors"
                 >
                   Remettre en brouillon
                 </button>
@@ -344,7 +344,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                   type="button"
                   onClick={() => setPendingStatus('cancelled')}
                   disabled={busy}
-                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-medium border border-border text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+                  className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-xs font-medium border border-border text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
                 >
                   Annuler la publication
                 </button>
@@ -355,7 +355,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 type="button"
                 onClick={() => setPendingStatus('draft')}
                 disabled={busy}
-                className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-medium border border-border hover:bg-accent disabled:opacity-50 transition-colors"
+                className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-xs font-medium border border-border hover:bg-accent disabled:opacity-50 transition-colors"
               >
                 Remettre en brouillon
               </button>
@@ -364,7 +364,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
 
           {/* Candidatures reçues */}
           <div className="pt-3 border-t border-border">
-            <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+            <h4 className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
               Candidatures ({others.filter((a) => a.status === 'pending').length} en attente)
             </h4>
             {loadingApplicants ? (
@@ -388,7 +388,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                 {others.map((a) => (
                   <ApplicantCard key={a.id} applicant={a}>
                     {a.status === 'pending' && !isAdmin ? (
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-2xs text-muted-foreground">
                         Seul un administrateur peut répondre.
                       </span>
                     ) : a.status === 'pending' ? (
@@ -404,7 +404,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                                 ? 'Nombre maximal de recruteurs atteint'
                                 : undefined
                           }
-                          className="h-8 px-3 rounded-full text-[11.5px] font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50"
+                          className="h-8 px-3 rounded-full text-2xs font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50"
                         >
                           Accepter
                         </button>
@@ -412,13 +412,13 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                           type="button"
                           onClick={() => setPendingApplicant({ kind: 'rejected', applicant: a })}
                           disabled={isResponding}
-                          className="h-8 px-3 rounded-full text-[11.5px] font-medium border border-border hover:bg-accent disabled:opacity-50"
+                          className="h-8 px-3 rounded-full text-2xs font-medium border border-border hover:bg-accent disabled:opacity-50"
                         >
                           Refuser
                         </button>
                       </div>
                     ) : (
-                      <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full bg-muted text-muted-foreground">
+                      <span className="px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider rounded-full bg-muted text-muted-foreground">
                         {applicationStatusLabel(a.status)}
                       </span>
                     )}
@@ -434,7 +434,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
               pouvoir mettre fin à la collaboration. */}
           {(!frozen || accepted.length > 0) && (
           <div className="pt-3 border-t border-border">
-            <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+            <h4 className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
               Recruteurs partenaires ({acceptedCount}/{maxCount})
             </h4>
             {accepted.length === 0 ? (
@@ -448,7 +448,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{a.display_name || 'Recruteur partenaire'}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">
+                      <p className="text-2xs text-muted-foreground truncate">
                         {a.organization_name || orgTypeLabel(a.org_type)}
                         {a.responded_at ? ` · accepté le ${formatDate(a.responded_at)}` : ''}
                       </p>
@@ -458,7 +458,7 @@ export const MissionHuntMode: React.FC<MissionHuntModeProps> = ({ project }) => 
                         type="button"
                         onClick={() => setPendingApplicant({ kind: 'end', applicant: a })}
                         disabled={isResponding}
-                        className="h-8 px-3 rounded-full text-[11.5px] font-medium border border-border text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                        className="h-8 px-3 rounded-full text-2xs font-medium border border-border text-destructive hover:bg-destructive/10 disabled:opacity-50"
                       >
                         Mettre fin
                       </button>
@@ -548,14 +548,14 @@ const ApplicantCard: React.FC<{ applicant: HuntApplicant; children: React.ReactN
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-medium text-foreground">{a.display_name || 'Recruteur partenaire'}</p>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {a.organization_name || 'Organisation'} · {orgTypeLabel(a.org_type)}
           </span>
         </div>
         {a.recruiter_headline && (
-          <p className="text-[12px] text-foreground/80 mt-0.5">{a.recruiter_headline}</p>
+          <p className="text-xs text-foreground/80 mt-0.5">{a.recruiter_headline}</p>
         )}
-        <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+        <p className="text-2xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
           {typeof a.years_experience === 'number' && a.years_experience > 0 && (
             <span>{a.years_experience} an{a.years_experience > 1 ? 's' : ''} d'expérience</span>
           )}
@@ -577,17 +577,17 @@ const ApplicantCard: React.FC<{ applicant: HuntApplicant; children: React.ReactN
         {a.specializations && a.specializations.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {a.specializations.map((s) => (
-              <span key={s} className="px-1.5 py-0.5 text-[10px] rounded-full border border-border bg-muted/50 text-foreground">
+              <span key={s} className="px-1.5 py-0.5 text-2xs rounded-full border border-border bg-muted/50 text-foreground">
                 {s}
               </span>
             ))}
           </div>
         )}
         {a.recruiter_bio && (
-          <p className="text-[11.5px] text-muted-foreground mt-1.5 whitespace-pre-line">{a.recruiter_bio}</p>
+          <p className="text-2xs text-muted-foreground mt-1.5 whitespace-pre-line">{a.recruiter_bio}</p>
         )}
         {a.message && (
-          <p className="text-[12px] text-foreground mt-2 border-l-2 border-border pl-3 whitespace-pre-line">{a.message}</p>
+          <p className="text-xs text-foreground mt-2 border-l-2 border-border pl-3 whitespace-pre-line">{a.message}</p>
         )}
       </div>
       <div className="shrink-0">{children}</div>

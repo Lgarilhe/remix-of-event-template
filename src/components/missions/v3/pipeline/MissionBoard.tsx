@@ -151,7 +151,7 @@ const BoardCard = memo(function BoardCard({
   return (
     <div
       className={cn(
-        'flex flex-col gap-0.5 rounded-lg border bg-muted p-2.5 text-left text-[13px] transition-colors duration-150 ease-out',
+        'flex flex-col gap-0.5 rounded-lg border bg-muted p-2.5 text-left text-sm transition-colors duration-150 ease-out',
         active ? 'border-brand ring-1 ring-brand' : 'border-border hover:border-border-strong',
         overlay && 'cursor-grabbing shadow-lg',
       )}
@@ -245,7 +245,7 @@ function Column({
       )}
     >
       <header className="shrink-0">
-        <div className="flex items-baseline justify-between gap-2 text-[12.5px] text-muted-foreground">
+        <div className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
           <h3 className="truncate font-semibold">{column.label}</h3>
           <span className="tabular-nums">{rows.length.toLocaleString('fr-FR')}</span>
         </div>

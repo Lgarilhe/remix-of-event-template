@@ -48,7 +48,7 @@ function MissionStatusMenu() {
   const enabled = canEditBrief && !control.saving;
 
   const baseClass =
-    'ml-2 inline-flex h-[26px] shrink-0 items-center gap-1.5 rounded-full border border-border-strong pl-2.5 pr-2 text-[12.5px] text-foreground/90 outline-none ' +
+    'ml-2 inline-flex h-[26px] shrink-0 items-center gap-1.5 rounded-full border border-border-strong pl-2.5 pr-2 text-xs text-foreground/90 outline-none ' +
     'transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring';
 
   if (!canEditBrief) {
@@ -114,7 +114,7 @@ export function MissionHeader() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border pl-3 pr-2 sm:pl-6 sm:pr-5">
-      <div className="flex min-w-0 flex-1 basis-0 items-center gap-1.5 text-[13.5px]">
+      <div className="flex min-w-0 flex-1 basis-0 items-center gap-1.5 text-sm">
         <Link
           to="/missions"
           className="hidden shrink-0 rounded-md py-1 text-muted-foreground outline-none transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"

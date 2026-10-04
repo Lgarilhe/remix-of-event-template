@@ -127,7 +127,7 @@ test('L3-8 — modèles de messages sans variables personnalisées', () => {
 
 // ---------------------------------------------------------------- 9. Tableau de bord
 test('L3-9 — tableau de bord sans WhatsApp', () => {
-  assert.doesNotMatch(read('src/components/dashboard/DashboardConnections.tsx'), /whatsapp/i);
+  assert.doesNotMatch(read('src/components/dashboard/DashboardFocusPanel.tsx'), /whatsapp/i);
   assert.ok(!read('src/pages/Dashboard.tsx').includes('whatsapp='));
 });
 

@@ -110,11 +110,11 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
         {/* Header avec actions */}
         <div className="flex items-start justify-between mb-5 gap-3 flex-wrap">
           <div>
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-1">
               Étape 1 · Cadrage
             </p>
-            <h2 className="font-display text-[24px] font-bold leading-tight">Brief de mission</h2>
-            <p className="text-[12px] text-muted-foreground mt-0.5">
+            <h2 className="font-display text-2xl font-bold leading-tight">Brief de mission</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
               Plus le brief est précis, meilleur sera le sourcing et le scoring des candidats.
             </p>
           </div>
@@ -124,7 +124,7 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
                 type="button"
                 onClick={() => setShowVoice(s => !s)}
                 className={cn(
-                  'h-9 px-3 inline-flex items-center gap-1.5 rounded-full text-[12px] font-medium border transition-colors',
+                  'h-9 px-3 inline-flex items-center gap-1.5 rounded-full text-xs font-medium border transition-colors',
                   showVoice
                     ? 'bg-foreground text-background border-foreground'
                     : 'border-border hover:bg-accent',
@@ -138,7 +138,7 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
                 type="button"
                 onClick={handleAnalyze}
                 disabled={isAnalyzing || completion.percent < 20}
-                className="h-9 px-4 inline-flex items-center gap-1.5 rounded-full text-[12px] font-semibold text-white konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
+                className="h-9 px-4 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold text-white konekt-skalr-bg konekt-shine transition-transform active:scale-[0.97] disabled:opacity-50"
                 title={completion.percent < 20 ? 'Remplis au moins le titre + description' : 'Lance l\'analyse IA'}
               >
                 {isAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" strokeWidth={2.5} />}
@@ -153,7 +153,7 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
           <div className="mb-5 bg-card border border-border rounded-xl p-4 konekt-fade-up">
             <div className="flex items-center gap-2 mb-3">
               <Mic className="w-4 h-4 text-muted-foreground" />
-              <p className="text-[12px] font-semibold">Dictée vocale</p>
+              <p className="text-xs font-semibold">Dictée vocale</p>
               <button onClick={() => setShowVoice(false)} className="ml-auto h-7 w-7 grid place-items-center rounded-md hover:bg-accent text-muted-foreground">
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -167,7 +167,7 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
             />
             {voiceTranscript && (
               <div className="mt-3 border border-border rounded-md p-3 max-h-[150px] overflow-y-auto bg-background">
-                <p className="text-[12px] leading-relaxed whitespace-pre-wrap">{voiceTranscript}</p>
+                <p className="text-xs leading-relaxed whitespace-pre-wrap">{voiceTranscript}</p>
               </div>
             )}
           </div>
@@ -193,25 +193,25 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
             {saveStatus === 'saving' && (
               <>
                 <CloudUpload className="w-3.5 h-3.5 text-info animate-pulse" />
-                <span className="text-[11px] text-muted-foreground">Enregistrement…</span>
+                <span className="text-2xs text-muted-foreground">Enregistrement…</span>
               </>
             )}
             {saveStatus === 'saved' && (
               <>
                 <Check className="w-3.5 h-3.5" style={{ color: 'hsl(var(--status-success))' }} />
-                <span className="text-[11px]" style={{ color: 'hsl(var(--status-success))' }}>Enregistré</span>
+                <span className="text-2xs" style={{ color: 'hsl(var(--status-success))' }}>Enregistré</span>
               </>
             )}
             {saveStatus === 'idle' && (
               <>
                 <Cloud className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-[11px] text-muted-foreground">Auto-sauvegarde activée</span>
+                <span className="text-2xs text-muted-foreground">Auto-sauvegarde activée</span>
               </>
             )}
             {saveStatus === 'error' && (
               <>
                 <AlertCircle className="w-3.5 h-3.5 text-destructive" />
-                <span className="text-[11px] text-destructive">Erreur de sauvegarde</span>
+                <span className="text-2xs text-destructive">Erreur de sauvegarde</span>
               </>
             )}
           </div>
@@ -219,7 +219,7 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
 
         {/* Completion */}
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">
             État du brief
           </p>
           <div className="flex items-center gap-3 mb-3">
@@ -239,14 +239,14 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
                 />
               </svg>
               <div className="absolute inset-0 grid place-items-center">
-                <span className="font-display text-[13px] font-bold">{completion.percent}%</span>
+                <span className="font-display text-sm font-bold">{completion.percent}%</span>
               </div>
             </div>
             <div className="min-w-0">
-              <p className="text-[12px] font-semibold">
+              <p className="text-xs font-semibold">
                 {completion.filled}/{completion.total} champs
               </p>
-              <p className="text-[10.5px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {completion.percent >= 60 ? 'Prêt à analyser' : 'À compléter'}
               </p>
             </div>
@@ -254,10 +254,10 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
 
           {completion.criticalMissing.length > 0 && (
             <div className="border-t border-border pt-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-warning mb-1.5">
+              <p className="text-2xs font-bold uppercase tracking-wider text-warning mb-1.5">
                 Critique
               </p>
-              <ul className="space-y-1 text-[11px]">
+              <ul className="space-y-1 text-2xs">
                 {completion.criticalMissing.map(m => (
                   <li key={m} className="inline-flex items-center gap-1.5">
                     <span className="h-1 w-1 rounded-full bg-warning" />
@@ -271,10 +271,10 @@ export const MissionBriefV2: React.FC<MissionBriefV2Props> = ({ project, readOnl
 
         {/* Tips */}
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
             💡 Conseil
           </p>
-          <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             Les <strong className="text-foreground">compétences must-have</strong> et la <strong className="text-foreground">description de mission</strong> sont les fields les plus impactants pour le scoring IA des candidats.
           </p>
         </div>
@@ -307,8 +307,8 @@ const SectionCard: React.FC<{
     <div className="px-5 py-3 border-b border-border flex items-center gap-3">
       <span className="text-base">{emoji}</span>
       <div>
-        <h3 className="font-display text-[14px] font-bold leading-tight">{title}</h3>
-        {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
+        <h3 className="font-display text-md font-bold leading-tight">{title}</h3>
+        {subtitle && <p className="text-2xs text-muted-foreground mt-0.5">{subtitle}</p>}
       </div>
     </div>
     <div className="p-5 space-y-3">{children}</div>
@@ -318,7 +318,7 @@ const SectionCard: React.FC<{
 // ─── Reusable Field components ──────────────────────────────────────
 
 const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean }> = ({ children, required }) => (
-  <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+  <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
     {children}
     {required && <span className="text-destructive ml-0.5">*</span>}
   </label>
@@ -415,7 +415,7 @@ const TagsInput: React.FC<{
       {values.map(t => (
         <span
           key={t}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11.5px] font-medium"
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium"
           style={{ background: colors.bg, color: colors.color }}
         >
           {t}
@@ -441,7 +441,7 @@ const TagsInput: React.FC<{
             }}
             onBlur={() => input.trim() && add()}
             placeholder={placeholder}
-            className="h-7 w-44 px-2 text-[12px] border border-dashed border-border bg-transparent rounded-md focus:outline-none focus:border-foreground/50"
+            className="h-7 w-44 px-2 text-xs border border-dashed border-border bg-transparent rounded-md focus:outline-none focus:border-foreground/50"
           />
           {input.trim() && (
             <button onClick={add} className="text-muted-foreground hover:text-foreground" aria-label="Ajouter">
@@ -602,7 +602,7 @@ const SectionClient: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDeta
 
       {/* Hiring manager */}
       <div className="pt-3 border-t border-border">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+        <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
           Hiring manager
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -682,7 +682,7 @@ const SectionProfil: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDeta
 
       {/* Salaire */}
       <div className="pt-3 border-t border-border">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Rémunération</p>
+        <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">Rémunération</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <FieldLabel>Salaire min</FieldLabel>
@@ -739,15 +739,15 @@ const SectionProfil: React.FC<{ jd: JobDetails; updateField: (p: Partial<JobDeta
       {/* Langues */}
       <div className="pt-3 border-t border-border">
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Langues requises</p>
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Langues requises</p>
           {!readOnly && (
-            <button onClick={addLanguage} className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+            <button onClick={addLanguage} className="text-2xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
               <Plus className="w-3 h-3" /> Ajouter
             </button>
           )}
         </div>
         {languages.length === 0 && (
-          <p className="text-[11px] text-muted-foreground italic">Aucune langue spécifiée</p>
+          <p className="text-2xs text-muted-foreground italic">Aucune langue spécifiée</p>
         )}
         <div className="space-y-2">
           {languages.map((lang, i) => (
@@ -922,7 +922,7 @@ const SectionEvaluation: React.FC<{ jd: JobDetails; updateField: (p: Partial<Job
   return (
     <SectionCard emoji="🎯" title="Critères d'évaluation" subtitle="Ce que tu vas évaluer en entretien — utilisé pour la scorecard et l'IA">
       {criteria.length === 0 && (
-        <p className="text-[12px] text-muted-foreground italic">
+        <p className="text-xs text-muted-foreground italic">
           Aucun critère défini. L'IA peut en proposer automatiquement quand tu lances l'analyse.
         </p>
       )}
@@ -969,7 +969,7 @@ const SectionEvaluation: React.FC<{ jd: JobDetails; updateField: (p: Partial<Job
               rows={2}
               readOnly={readOnly}
             />
-            <div className="flex items-center gap-2 text-[11px]">
+            <div className="flex items-center gap-2 text-2xs">
               <Pill variant={c.weight === 3 ? 'warning' : c.weight === 2 ? 'info' : 'muted'}>
                 {WEIGHT_LABELS[c.weight] || 'Important'}
               </Pill>
@@ -979,7 +979,7 @@ const SectionEvaluation: React.FC<{ jd: JobDetails; updateField: (p: Partial<Job
               {!readOnly && (
                 <button
                   onClick={() => updateCriterion(idx, { deal_breaker: !c.deal_breaker })}
-                  className="text-[10px] text-muted-foreground hover:text-foreground ml-auto"
+                  className="text-2xs text-muted-foreground hover:text-foreground ml-auto"
                 >
                   {c.deal_breaker ? 'Retirer deal-breaker' : 'Marquer deal-breaker'}
                 </button>
@@ -991,7 +991,7 @@ const SectionEvaluation: React.FC<{ jd: JobDetails; updateField: (p: Partial<Job
       {!readOnly && (
         <button
           onClick={addCriterion}
-          className="mt-3 w-full h-9 rounded-md border border-dashed border-border text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground inline-flex items-center justify-center gap-1.5 transition-colors"
+          className="mt-3 w-full h-9 rounded-md border border-dashed border-border text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground inline-flex items-center justify-center gap-1.5 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
           Ajouter un critère
