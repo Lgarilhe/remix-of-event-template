@@ -85,6 +85,52 @@ function statusAfterScore(
   return (isScoringStatus(status) ? 'scored' : status) as CandidateStatus;
 }
 
+// Photo du candidat dans le profil enregistré (linkedin_profile_data).
+const PICTURE_KEYS = ['profile_picture_url', 'profile_picture_url_large'] as const;
+type StoredPicture = Partial<Record<typeof PICTURE_KEYS[number], string>>;
+
+// Une note ne remplace jamais une photo enregistrée par du vide : un profil
+// noté sans photo reprend celle de la ligne que l'upsert va réécrire (même
+// job_id, même candidat, même auteur). Une lecture, pour ces profils seulement.
+async function keepStoredPictures<T extends { id: string; linkedinProfileData?: Record<string, unknown> | null }>(
+  jobId: string,
+  userId: string,
+  candidates: T[],
+): Promise<T[]> {
+  const missing = candidates
+    .filter(c => c.linkedinProfileData && !PICTURE_KEYS.some(key => c.linkedinProfileData[key]))
+    .map(c => c.id);
+  if (missing.length === 0) return candidates;
+
+  // La photo seule, pas tout le profil. Chaîne typée string : sinon l'analyse
+  // du select par le client typé dépasse la profondeur permise (TS2589).
+  const columns: string = 'candidate_id, profile_picture_url:linkedin_profile_data->>profile_picture_url, profile_picture_url_large:linkedin_profile_data->>profile_picture_url_large';
+  const stored = new Map<string, StoredPicture>();
+  for (let i = 0; i < missing.length; i += STATUS_UPDATE_CHUNK) {
+    const { data, error } = await supabase
+      .from('job_candidate_status')
+      .select(columns)
+      .eq('job_id', jobId)
+      .eq('created_by', userId)
+      .in('candidate_id', missing.slice(i, i + STATUS_UPDATE_CHUNK))
+      .overrideTypes<Array<{ candidate_id: string } & Record<typeof PICTURE_KEYS[number], string | null>>, { merge: false }>();
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const picture: StoredPicture = {};
+      for (const key of PICTURE_KEYS) {
+        const url = row[key];
+        if (url) picture[key] = url;
+      }
+      if (Object.keys(picture).length > 0) stored.set(row.candidate_id, picture);
+    }
+  }
+
+  return candidates.map(c => {
+    const picture = stored.get(c.id);
+    return picture ? { ...c, linkedinProfileData: { ...c.linkedinProfileData, ...picture } } : c;
+  });
+}
+
 export function useJobCandidateStatus(jobId: string | null) {
   const [statusState, setStatusState] = useState<StatusState>(EMPTY_STATUS_STATE);
   const { statuses, dismissedIds, treatedIds } = statusState;
@@ -533,6 +579,9 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (!user) return;
 
       const existing = statuses.get(candidateId);
+      const [{ linkedinProfileData }] = await keepStoredPictures(jobId, user.id, [
+        { id: candidateId, linkedinProfileData: candidateData.linkedinProfileData },
+      ]);
 
       // Note seule, sans statut. skip_reason seulement si présent : une raison
       // posée ailleurs n'est pas effacée par une nouvelle note.
@@ -548,7 +597,7 @@ export function useJobCandidateStatus(jobId: string | null) {
           recommendation: candidateData.recommendation,
           ...(candidateData.skipReason ? { skip_reason: candidateData.skipReason } : {}),
           scoring_details: candidateData.scoringDetails || null,
-          linkedin_profile_data: candidateData.linkedinProfileData || null,
+          linkedin_profile_data: linkedinProfileData || null,
            created_by: user.id,
            organization_id: organizationId,
         }, {
@@ -608,9 +657,9 @@ export function useJobCandidateStatus(jobId: string | null) {
       if (!user) return;
 
       // Un upsert groupé ne peut pas toucher deux fois la même ligne.
-      const uniqueCandidates = Array.from(
+      const uniqueCandidates = await keepStoredPictures(jobId, user.id, Array.from(
         new Map(candidates.map(c => [c.id, c])).values()
-      );
+      ));
 
       const toRecord = (c: typeof uniqueCandidates[number]) => {
         const existing = statuses.get(c.id);
