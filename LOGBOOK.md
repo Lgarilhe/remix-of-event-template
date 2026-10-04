@@ -32,6 +32,18 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-04 — REFACTOR — Refonte mission, écran Pipeline allégé (retour « trop chargé »)
+
+**Contexte** : après le lot 3, le propriétaire trouve la page mission chargée et difficile à comprendre. Captures du banc local avant et après, direction `docs/design/06-simplicite.md` (lot M, partie Pipeline).
+**Décision / Fait** : la carte « Maintenant » garde une phrase, un bouton plein et deux liens ; proposition, règle, « Ensuite » et « Non suivi » passent sous « Pourquoi maintenant ? ». Puces d'étapes sur une rangée sans titres de groupe ni effectif nul. Bilan et Prise de contact sans cadre (icône seule sur téléphone). Liste : visage (initiales), étape avec l'ancienneté dessous, action seulement quand il y en a une, note en anneau, colonne « Depuis » retirée.
+**Raison** : trois blocs de texte plus une ligne « Ensuite » au-dessus de la liste, deux titres de groupe, puces et boutons encadrés, « Aucune action depuis 0 j » à chaque ligne.
+**Impact** : `src/components/missions/v3/pipeline/` (NowCard, ThenLine, StageBar, PipelineToolbar, CandidateList, CandidateListRow, MissionBoard, ToSortSection), `tests/c1/lot3-ecrans.test.mjs`, `tests/ux/lot12-pipeline.test.mjs`, `e2e/flows/mission-now.spec.ts` (ouvre « Pourquoi maintenant ? » avant de lire la proposition). `rowNextAction` et la règle des rangs inchangées. Vérifié : c1 235, ux 1244, e2e mission-now 16 sur 16 et mission-v3 vert, tsc à la baseline de 11.
+**Reste à faire** :
+- [ ] En-tête de mission, Cadrage, Sourcing et liste des missions suivent les mêmes règles (lot M).
+- [ ] Photos réelles à la place des initiales (lot P).
+
+---
+
 ## 2026-10-04 — SHIP — Design simplifié, lot A : l'accueil comme la maquette
 
 **Contexte** : deuxième lot du design simplifié (`docs/design/06-simplicite.md`), après les fondations (PR #258). Le propriétaire a choisi l'accueil « comme la maquette ».

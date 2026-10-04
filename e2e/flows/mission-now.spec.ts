@@ -233,6 +233,16 @@ const why = (card: Locator) => card.getByRole('button', { name: 'Pourquoi mainte
 const later = (card: Locator) => card.getByRole('button', { name: 'Plus tard', exact: true });
 
 /**
+ * Ouvre « Pourquoi maintenant ? ». Depuis l'allègement du 04/10/2026, la proposition, la règle, la ligne
+ * « Ensuite » et « Non suivi » n'y sont qu'à la demande ; la carte ne montre que la phrase et le bouton.
+ */
+async function openWhy(card: Locator) {
+  const button = why(card);
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+}
+
+/**
  * Observateur de DOM posé avant le premier chargement : consigne chaque état
  * distinct du texte de la carte (squelette compris) pour prouver qu'aucun état
  * intermédiaire faux (blocage, mauvaise action) n'a clignoté.
@@ -265,8 +275,9 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
 
     await expect(card.getByRole('heading', { name: 'Maintenant', exact: true })).toBeVisible();
     await expect(card).toContainText("Aucun profil n'a encore été trouvé pour cette mission.");
-    await expect(card).toContainText('Le poste est décrit : lancez une première recherche.');
-    await expect(card).toContainText('La mission ne compte aucun profil, et le poste est décrit.');
+    // Une phrase et un bouton : la proposition et la donnée ne s'affichent pas avant « Pourquoi maintenant ? ».
+    await expect(card).not.toContainText('Le poste est décrit : lancez une première recherche.');
+    await expect(card).not.toContainText('Non suivi');
     await expect(card).not.toContainText('Blocage');
 
     const primary = card.getByRole('button', { name: 'Chercher des profils', exact: true });
@@ -280,6 +291,8 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     await expect(whyButton).toHaveAttribute('aria-expanded', 'false');
     await whyButton.click();
     await expect(whyButton).toHaveAttribute('aria-expanded', 'true');
+    await expect(card).toContainText('Le poste est décrit : lancez une première recherche.');
+    await expect(card).toContainText('La mission ne compte aucun profil, et le poste est décrit.');
     await expect(card).toContainText('Le poste est décrit et la mission ne compte aucun profil.');
     await expect(card).toContainText('Aucun blocage ne l\'empêche.');
     await expect(card).toContainText('Non suivi : ');
@@ -299,6 +312,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     const card = nowCard(page);
 
     await expect(card).toContainText("Le poste n'est pas encore décrit.");
+    await openWhy(card);
     await expect(card).toContainText('Décrivez-le pour commencer');
     await expect(page.getByText('Rien ne presse')).toHaveCount(0);
     const button = card.getByRole('button', { name: 'Décrire le poste', exact: true });
@@ -324,6 +338,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     const card = nowCard(page);
 
     await expect(card).toContainText('2 candidats retenus attendent un premier message.');
+    await openWhy(card);
     await expect(card).toContainText('Contactez-les maintenant.');
     await expect(card).toContainText('2 profils sont à l\'étape Retenu, sans aucun message envoyé depuis Konekt.');
     await expect(filledButtons(card)).toHaveCount(1);
@@ -360,6 +375,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
 
     await expect(card).toContainText('2 candidats retenus attendent un premier message.');
     await expect(card.getByRole('button', { name: /^Contacter/ })).toHaveCount(0);
+    await openWhy(card);
     await expect(card).toContainText('Retrouvez-les dans la liste, filtrée sur Retenu.');
     const button = card.getByRole('button', { name: 'Voir les retenus', exact: true });
     await expect(button).toBeVisible();
@@ -390,10 +406,11 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     const card = nowCard(page);
 
     await expect(card).toContainText('3 nouveaux profils notés, dont 2 recommandés.');
+    await openWhy(card);
     await expect(card).toContainText('Triez-les pour garder les meilleurs.');
     await expect(card).toContainText('2 sont recommandés par la notation.');
     await expect(filledButtons(card)).toHaveCount(1);
-    // Le profil jamais ouvert est annoncé en dessous (rang 8b) : « Ensuite », jamais la carte.
+    // Le profil jamais ouvert est annoncé dans « Ensuite » (rang 8b), jamais sur la carte.
     await expect(thenLine(page)).toContainText('Passer en revue 1 profil trouvé');
 
     await expect(toSortList(page)).toHaveCount(0);
@@ -424,10 +441,11 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     const card = nowCard(page);
 
     await expect(card).toContainText(/Rose Repondu vous a répondu (hier|aujourd'hui|\w+)\./);
+    await openWhy(card);
     await expect(card).toContainText('Répondez-lui pour garder la conversation active.');
     await expect(card).toContainText('vous n\'y avez pas encore répondu');
     await expect(filledButtons(card)).toHaveCount(1);
-    // La suite : les profils notés à trier.
+    // La suite : les profils notés à trier (dans le panneau ouvert).
     await expect(thenLine(page)).toContainText('Trier 1 profil noté');
 
     // « Répondre » : la fiche s'ouvre sur l'onglet Échanges.
@@ -468,6 +486,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     await expect(card).not.toContainText('Cora Collegue vous a répondu');
     await expect(card.getByRole('button', { name: 'Répondre' })).toHaveCount(0);
     await expect(card).toContainText('1 nouveau profil noté.');
+    await openWhy(card);
     const then = thenLine(page);
     await expect(then).toContainText('1 réponse reçue par un collègue');
     // Sans bouton ni lien : un simple texte.
@@ -493,6 +512,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     expect(text).not.toMatch(/a eu lieu|s'est tenu|s'est déroulé|est passé|a passé/i);
     expect(text, 'Eva, depuis 5 jours exactement, n\'est pas signalée').not.toContain('Eva Cinqjours');
     expect(text).not.toContain('autre candidat');
+    await openWhy(card);
     await expect(card).toContainText('au-delà du seuil de 5 jours');
     await expect(filledButtons(card)).toHaveCount(1);
     await expect(card.getByRole('button', { name: 'Ouvrir la fiche', exact: true })).toBeVisible();
@@ -517,6 +537,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     if (error) throw new Error(`sourcing_projects: ${error.message}`);
     await reloadPipeline(page);
     await expect(card).toContainText('Eric Entretien est en entretien depuis 6 jours.');
+    await openWhy(card);
     await expect(card).toContainText('Relancez Marie Dupont pour connaître la suite.');
     const mail = card.getByRole('link', { name: 'Relancer Marie Dupont', exact: true });
     await expect(mail).toBeVisible();
@@ -566,6 +587,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     await openPipeline(page, ws);
     const card = nowCard(page);
     await expect(card).toContainText('2 candidats retenus attendent un premier message.');
+    await openWhy(card);
     await expect(thenLine(page)).toContainText('Trier 1 profil noté');
     // Chiffre d'« À traiter » avant : lu dans la barre latérale.
     await expect(todoTab(page)).toHaveAttribute('aria-label', 'À traiter, 1 élément', { timeout: 30_000 });
@@ -575,6 +597,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     await later(card).click();
     await expect(card).toContainText('1 nouveau profil noté.', { timeout: 15_000 });
     await expect(card).not.toContainText('candidats retenus attendent');
+    await openWhy(card);
     await expect(thenLine(page)).toHaveCount(0);
     await expect.poll(async () => (await snoozesOf(ws.org.owner.userId)).map((s) => s.action_key), { timeout: 15_000 }).toEqual(['retained_uncontacted']);
     const [snooze] = await snoozesOf(ws.org.owner.userId);
@@ -586,6 +609,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     await reloadPipeline(page);
     await expect(card).toContainText('1 nouveau profil noté.');
     await expect(card).not.toContainText('candidats retenus attendent');
+    await openWhy(card);
     await expect(thenLine(page)).toHaveCount(0);
 
     // La liste des missions : la ligne reportée a disparu, la suivante la remplace.
@@ -622,6 +646,7 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     await card.getByRole('button', { name: 'Les reprendre', exact: true }).click();
     await expect(card).toContainText('2 candidats retenus attendent un premier message.', { timeout: 15_000 });
     await expect.poll(async () => (await snoozesOf(ws.org.owner.userId)).length, { timeout: 15_000 }).toBe(0);
+    await openWhy(card);
     await expect(thenLine(page)).toContainText('Trier 1 profil noté');
 
     // Toujours rien dans les notifications ni les rappels, et le chiffre n'a pas bougé.
@@ -641,11 +666,11 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
 
     await expect(card).toContainText('Blocage');
     await expect(card).toContainText('Votre compte LinkedIn est déconnecté.');
-    await expect(card).toContainText('Reconnectez-le pour pouvoir chercher des profils et écrire aux candidats.');
-    await expect(card).toContainText('Cela empêche : contacter');
     await expect(filledButtons(card)).toHaveCount(1);
     await expect(card.getByRole('button', { name: 'Contacter ce candidat' })).toHaveCount(0);
-    await why(card).click();
+    await openWhy(card);
+    await expect(card).toContainText('Reconnectez-le pour pouvoir chercher des profils et écrire aux candidats.');
+    await expect(card).toContainText('Cela empêche : contacter');
     await expect(card).toContainText('Un blocage');
     await expect(card).toContainText('empêche l\'action suivante');
     await card.getByRole('button', { name: 'Reconnecter', exact: true }).click();
@@ -754,10 +779,11 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
 
   // ═══ 10 : colonne « Prochaine action » ════════════════════════════════════
 
-  test('10. colonne « Prochaine action » : « Répondre » pour la ligne qui attend une réponse, « Aucune action depuis N j » sinon', async ({ browser }) => {
+  test('10. colonne « Prochaine action » : « Répondre » pour la ligne qui attend une réponse, rien d\'écrit sinon ; l\'ancienneté passe sous l\'étape', async ({ browser }) => {
     const ws = await workspace('E2E now 10');
     const rose = await candidate(ws, 'Rose Repondu', 'contacted');
-    await candidate(ws, 'Carl Contacte', 'contacted');
+    const carl = await candidate(ws, 'Carl Contacte', 'contacted');
+    backdateStageEntered(carl.rowId, 8);
     await candidate(ws, 'Rita Retenue', 'retained');
     await seedMissionConversation({
       orgId: ws.org.orgId,
@@ -776,8 +802,13 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     const roseRow = listRows(page).filter({ hasText: 'Rose Repondu' });
     await expect(roseRow).toContainText(/Répondre \((aujourd'hui|hier|il y a \d+ j)\)/);
     const carlRow = listRows(page).filter({ hasText: 'Carl Contacte' });
-    await expect(carlRow).toContainText(/Aucune action depuis \d+ j/);
+    // Pas de « Aucune action depuis N j » : l'ancienneté se lit sous l'étape, en orange et dite « sans mouvement ».
+    await expect(carlRow).not.toContainText('Aucune action');
     await expect(carlRow).not.toContainText('Répondre');
+    await expect(carlRow).toContainText(/Contacté\s*depuis\s8\sj/);
+    await expect(carlRow).toContainText('sans mouvement');
+    // Une ligne récente (moins d'un jour) n'écrit aucune ancienneté.
+    await expect(listRows(page).filter({ hasText: 'Rita Retenue' })).not.toContainText(/depuis\s\d+\sj/);
     await expect(listRows(page).filter({ hasText: 'Rita Retenue' })).toContainText('Contacter');
   });
 
