@@ -277,14 +277,38 @@ export function PipelineScreen(): JSX.Element | null {
     setFocusContact(picked.length > 0);
   }, [contactRequest, filterParam, view, retainedPending, retainedFetchStatus, retainedError, retainedMore, retainedFetching, retainedPages, retainedTotal, countsKnown, fetchMoreRetained]);
   // La barre d'actions apparaît avec la sélection : le focus va à « Contacter », sans ouvrir de panneau.
+  // « Contacter » est grisé tant que le compte LinkedIn n'est pas lu : on attend qu'il s'active
+  // (au plus 4 s), au lieu d'abandonner à la première image.
   useEffect(() => {
     if (!focusContact || selection.size === 0) return;
-    const frame = window.requestAnimationFrame(() => {
-      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-bulk-bar] button'));
-      buttons.find((b) => !b.disabled && b.textContent?.trim().startsWith('Contacter'))?.focus();
+    const findContact = () =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>('[data-bulk-bar] button')).find(
+        (b) => !b.disabled && b.textContent?.trim().startsWith('Contacter'),
+      );
+    let finished = false;
+    const observer = new MutationObserver(() => attempt());
+    const timer = window.setTimeout(() => finish(), 4000);
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      observer.disconnect();
+      window.clearTimeout(timer);
       setFocusContact(false);
-    });
-    return () => window.cancelAnimationFrame(frame);
+    };
+    const attempt = () => {
+      const button = findContact();
+      if (!button) return;
+      button.focus();
+      finish();
+    };
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] });
+    const frame = window.requestAnimationFrame(attempt);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      finished = true;
+      observer.disconnect();
+      window.clearTimeout(timer);
+    };
   }, [focusContact, selection.size]);
 
   const activeRowId = location.panel === 'fiche' ? location.candidateRowId : null;
