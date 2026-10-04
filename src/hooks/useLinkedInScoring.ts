@@ -619,6 +619,9 @@ function serializeProfileForStorage(profile: LinkedInProfile): any {
     public_profile_url: profile.public_profile_url,
     profile_url: profile.profile_url,
     connections_count: profile.connections_count,
+    // Photo du candidat : sans elle, la note effaçait celle enregistrée à la découverte.
+    profile_picture_url: profile.profile_picture_url,
+    profile_picture_url_large: profile.profile_picture_url_large,
   };
 }
 
