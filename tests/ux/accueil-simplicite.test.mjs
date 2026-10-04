@@ -206,6 +206,13 @@ test('téléphone : titre entier, chiffres sans coupure, visages alignés sur le
   const today = read('src/components/dashboard/DashboardTodayPanel.tsx');
   assert.match(today, /aria-label="Ajouter une tâche"\s*className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"/);
   assert.match(today, /className="min-h-11 md:min-h-0">\s*<Link to="\/calendar">/);
+  assert.match(today, /onClick=\{\(\) => setCreateTaskOpen\(true\)\} className="min-h-11 md:min-h-0">/, 'journée vide');
+  assert.match(today, /className="flex min-h-11 min-w-0 flex-1 flex-col justify-center [^"]*md:min-h-0"/, 'titre d\'une tâche');
+  // Case d'une tâche : 16 px à l'écran, 44 px au toucher, la ligne ne bouge pas.
+  assert.match(today, /<label className="-m-3\.5 flex shrink-0 items-center justify-center p-3\.5 md:m-0 md:p-0">\s*<Checkbox/);
+  assert.match(read('src/components/dashboard/DashboardGreeting.tsx'), /<Button asChild variant="primary" size="lg" className="min-h-11 md:min-h-0">/);
+  const empty = render(kit.DashboardMissionsPanel, { projects: [] });
+  assert.match(empty, /<a class="[^"]*\bmin-h-11\b[^"]*\bmd:min-h-0\b[^"]*" href="\/missions\?create=brief">/, 'aucune mission');
 });
 
 test('page d\'accueil : deux sections, plus de canaux, de semaine, d\'activité ni de réordonnancement', () => {

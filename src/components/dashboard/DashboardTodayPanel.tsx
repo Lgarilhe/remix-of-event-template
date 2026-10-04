@@ -288,7 +288,7 @@ export const DashboardTodayPanel: React.FC<DashboardTodayPanelProps> = ({
             title="Rien de prévu aujourd'hui"
             description="Aucun entretien, envoi ni tâche pour aujourd'hui."
             action={
-              <Button type="button" variant="outline" size="sm" onClick={() => setCreateTaskOpen(true)}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setCreateTaskOpen(true)} className="min-h-11 md:min-h-0">
                 <Plus aria-hidden="true" />
                 Ajouter une tâche
               </Button>
@@ -338,15 +338,18 @@ const TaskRow: React.FC<{
   return (
     <li className={cn('flex items-center gap-3.5 py-3', isDone && 'opacity-60')}>
       {time}
-      <Checkbox
-        checked={isDone}
-        onCheckedChange={() => onToggle(r)}
-        aria-label={isDone ? `Rouvrir la tâche « ${r.title} »` : `Marquer la tâche « ${r.title} » comme faite`}
-      />
+      {/* Sur téléphone, la case se touche sur 44 px sans déplacer la ligne. */}
+      <label className="-m-3.5 flex shrink-0 items-center justify-center p-3.5 md:m-0 md:p-0">
+        <Checkbox
+          checked={isDone}
+          onCheckedChange={() => onToggle(r)}
+          aria-label={isDone ? `Rouvrir la tâche « ${r.title} »` : `Marquer la tâche « ${r.title} » comme faite`}
+        />
+      </label>
       {visual}
       <Link
         to={r.candidate_id ? `/pipeline?candidate=${r.candidate_id}` : '/tasks'}
-        className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
       >
         <span className={cn('block truncate text-md text-foreground', isDone && 'line-through')}>{r.title}</span>
         {context && <span className="block truncate text-sm text-muted-foreground">{context}</span>}

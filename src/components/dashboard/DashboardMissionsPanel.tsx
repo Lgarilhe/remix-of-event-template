@@ -151,7 +151,7 @@ export const DashboardMissionsPanel: React.FC<DashboardMissionsPanelProps> = ({
           title="Aucune mission active"
           description="Créez une mission pour commencer à sourcer."
           action={
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm" className="min-h-11 md:min-h-0">
               <Link to="/missions?create=brief">
                 <Plus aria-hidden="true" />
                 Créer une mission

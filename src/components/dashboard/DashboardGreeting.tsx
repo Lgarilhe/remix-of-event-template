@@ -62,7 +62,7 @@ export const DashboardGreeting: React.FC<DashboardGreetingProps> = ({
       title={title}
       subtitle={summary}
       actions={
-        <Button asChild variant="primary" size="lg">
+        <Button asChild variant="primary" size="lg" className="min-h-11 md:min-h-0">
           <Link to="/missions?create=brief">
             <Plus aria-hidden="true" />
             Nouvelle mission
