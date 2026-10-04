@@ -92,7 +92,7 @@ type StoredPicture = Partial<Record<typeof PICTURE_KEYS[number], string>>;
 // Une note ne remplace jamais une photo enregistrée par du vide : un profil
 // noté sans photo reprend celle de la ligne que l'upsert va réécrire (même
 // job_id, même candidat, même auteur). Une lecture, pour ces profils seulement.
-async function keepStoredPictures<T extends { id: string; linkedinProfileData?: any }>(
+async function keepStoredPictures<T extends { id: string; linkedinProfileData?: Record<string, unknown> | null }>(
   jobId: string,
   userId: string,
   candidates: T[],
