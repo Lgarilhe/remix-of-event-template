@@ -281,6 +281,8 @@ test.describe('Lot 0c-4 : fiche candidat', () => {
     });
 
     await page.goto(`/pipeline/scorecard/${candidateId}?mission=${ws.missionId}`, { waitUntil: 'domcontentloaded' });
+    // Sans grille, la fiche propose d'en créer une ; la génération est ensuite offerte sur la grille vide.
+    await page.getByRole('button', { name: 'Créer une grille' }).first().click({ timeout: 30_000 });
     await page.getByRole('button', { name: 'Générer la grille' }).click({ timeout: 30_000 });
     await expect.poll(() => sent.length, { timeout: 20_000 }).toBeGreaterThan(0);
 
