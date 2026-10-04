@@ -73,8 +73,8 @@ function chipsOf(counts: MissionStageCounts | null, steps: readonly MissionStepR
 
 /** Forme des puces : 32 px et 13 px sur téléphone (cible de 44 px par ::before), 28 px ensuite. */
 const CHIP_SHAPE =
-  'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-[13px] transition-colors duration-150 ease-out ' +
-  'before:absolute before:inset-x-0 before:-inset-y-1.5 sm:h-7 sm:max-w-full sm:shrink sm:px-2.5 sm:text-[12.5px] sm:before:hidden';
+  'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors duration-150 ease-out ' +
+  'before:absolute before:inset-x-0 before:-inset-y-1.5 sm:h-7 sm:max-w-full sm:shrink sm:px-2.5 sm:text-xs sm:before:hidden';
 
 function Chip({ chip, active, loading, onToggle }: { chip: StageChip; active: boolean; loading: boolean; onToggle: (f: StageFilter) => void }) {
   const zero = chip.count === 0;

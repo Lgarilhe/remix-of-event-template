@@ -171,7 +171,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               type="button"
               onClick={() => onSearchSourceChange('linkedin')}
               className={cn(
-                'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
+                'text-sm font-medium py-1.5 rounded-[7px] transition-colors',
                 searchSource !== 'database' || !baseKonektUsable
                   ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
                   : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
@@ -183,7 +183,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
               type="button"
               onClick={() => baseKonektUsable ? onSearchSourceChange('database') : setBaseKonektDialogOpen(true)}
               className={cn(
-                'text-[13px] font-medium py-1.5 rounded-[7px] transition-colors',
+                'text-sm font-medium py-1.5 rounded-[7px] transition-colors',
                 baseKonektUsable && searchSource === 'database'
                   ? 'bg-[var(--k-surface-2)] border border-[var(--k-hairline)] text-[var(--k-text)] shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
                   : 'text-[var(--k-text-muted)] hover:text-[var(--k-text)]'
@@ -538,7 +538,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
           type="button"
           onClick={() => setAdvancedOpen(o => !o)}
           aria-expanded={advancedOpen}
-          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] transition-colors"
         >
           <svg
             viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round"
@@ -547,7 +547,7 @@ export const SearchFiltersPanel: React.FC<SearchFiltersPanelProps> = ({
             <path d="M9.5 7 15 12l-5.5 5" />
           </svg>
           Options avancées
-          <span className="ml-auto font-mono text-[11px] text-[var(--k-text-muted)]">booléen · séniorité · école · spotlights</span>
+          <span className="ml-auto font-mono text-2xs text-[var(--k-text-muted)]">booléen · séniorité · école · spotlights</span>
         </button>
       </div>
 

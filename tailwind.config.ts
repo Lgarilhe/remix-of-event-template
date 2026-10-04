@@ -166,14 +166,17 @@ export default {
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
-  		// Six paliers (docs/design/01-direction.md, § 3). sm vaut 13 px, le corps
-  		// des maquettes ; md (14 px) sert aux titres de carte et au texte de lecture.
+  		// Paliers du design simplifié (docs/design/01-direction.md, § 3) : rien
+  		// sous 12 px, corps à 14 px (sm), texte de liste et de lecture à 15 px (md),
+  		// titre de page à 28 px (title). 3xs et 2xs valent tous deux 12 px.
   		// Bannit l'usage de text-[Npx] arbitraires.
   		fontSize: {
-  			'3xs': ['0.625rem', { lineHeight: '0.875rem' }], // 10px / 14px
-  			'2xs': ['0.6875rem', { lineHeight: '0.9375rem' }], // 11px / 15px
-  			sm: ['0.8125rem', { lineHeight: '1.25rem' }], // 13px / 20px
-  			md: ['0.875rem', { lineHeight: '1.25rem' }], // 14px / 20px
+  			'3xs': ['0.75rem', { lineHeight: '1rem' }], // 12px / 16px
+  			'2xs': ['0.75rem', { lineHeight: '1rem' }], // 12px / 16px
+  			xs: ['0.8125rem', { lineHeight: '1.125rem' }], // 13px / 18px
+  			sm: ['0.875rem', { lineHeight: '1.25rem' }], // 14px / 20px
+  			md: ['0.9375rem', { lineHeight: '1.375rem' }], // 15px / 22px
+  			title: ['1.75rem', { lineHeight: '2.25rem', letterSpacing: '-0.01em' }], // 28px / 36px
   		},
   		// Calques nommés : l'ordre reprend les valeurs en place (dialogues à 9998-9999).
   		zIndex: {
@@ -302,6 +305,30 @@ export default {
   					transform: 'translateX(100%)'
   				}
   			},
+  			// Icônes qui attendent (src/components/ui/animated-icons.tsx) : chaque boucle
+  			// finit sur la pose fixe de l'icône, celle qui reste en mouvement réduit.
+  			'typing-dot': {
+  				'0%, 60%, 100%': { transform: 'translateY(0)', opacity: '0.45' },
+  				'30%': { transform: 'translateY(-2.5px)', opacity: '1' }
+  			},
+  			'hourglass-flip': {
+  				'0%, 42%': { transform: 'rotate(0deg)' },
+  				'50%, 92%': { transform: 'rotate(180deg)' },
+  				'100%': { transform: 'rotate(360deg)' }
+  			},
+  			'alarm-ring': {
+  				'0%, 70%, 100%': { transform: 'rotate(0deg)' },
+  				'74%': { transform: 'rotate(-14deg)' },
+  				'78%': { transform: 'rotate(12deg)' },
+  				'82%': { transform: 'rotate(-9deg)' },
+  				'86%': { transform: 'rotate(7deg)' },
+  				'90%': { transform: 'rotate(-3deg)' }
+  			},
+  			twinkle: {
+  				'0%, 72%, 100%': { transform: 'scale(1)' },
+  				'80%': { transform: 'scale(0.72)' },
+  				'90%': { transform: 'scale(1.12)' }
+  			},
   			// Pièces d'une illustration (src/components/ui/illustration.tsx) : l'état de
   			// départ vient des variables --illu-*, la place est l'état du dessin fixe, la
   			// sortie d'une boucle vaut l'état de départ sauf --illu-x2, --illu-y2, --illu-r2.
@@ -385,6 +412,12 @@ export default {
   			'illu-drift': 'illu-drift var(--illu-duration, 3200ms) var(--illu-ease, cubic-bezier(0.45, 0, 0.55, 1)) var(--illu-delay, 0ms) infinite both',
   			'illu-draw': 'illu-draw var(--illu-duration, 3600ms) var(--illu-ease, cubic-bezier(0.22, 1, 0.36, 1)) var(--illu-delay, 0ms) infinite both',
   			'illu-settle': 'illu-enter var(--illu-duration, 500ms) var(--illu-ease, cubic-bezier(0.22, 1, 0.36, 1)) var(--illu-delay, 0ms) both, illu-float 4s cubic-bezier(0.45, 0, 0.55, 1) var(--illu-duration, 500ms) infinite',
+  			// Icônes qui attendent (docs/design/01-direction.md, § 7).
+  			'typing-dot': 'typing-dot 1.4s ease-in-out infinite',
+  			'hourglass-flip': 'hourglass-flip 4.2s cubic-bezier(0.45, 0, 0.55, 1) infinite',
+  			'alarm-ring': 'alarm-ring 3.2s ease-in-out infinite',
+  			twinkle: 'twinkle 3.6s ease-in-out infinite',
+  			'ping-slow': 'ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite',
   		},
   		boxShadow: {
   			'2xs': 'var(--shadow-2xs)',

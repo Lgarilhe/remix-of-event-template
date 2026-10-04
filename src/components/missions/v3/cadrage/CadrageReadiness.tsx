@@ -85,7 +85,7 @@ export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetr
           {markers.map((m) => (
             <li
               key={m.id}
-              className={cn('flex items-center gap-1.5 text-[12.5px]', m.state === 'done' ? 'text-foreground' : 'text-muted-foreground')}
+              className={cn('flex items-center gap-1.5 text-xs', m.state === 'done' ? 'text-foreground' : 'text-muted-foreground')}
             >
               {m.state === 'done' ? (
                 <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />
@@ -130,7 +130,7 @@ export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetr
 
       {canDictate && dictating && (
         <div id={panelId} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-          <p className="text-[12.5px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Votre dictée est enregistrée comme description libre du poste, à la place de la précédente. Elle sert à la
             notation des profils ; elle ne remplit pas les champs.
           </p>
@@ -143,7 +143,7 @@ export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetr
             }}
           />
           {transcript && (
-            <p className="max-h-[150px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-[12.5px] leading-relaxed">
+            <p className="max-h-[150px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-xs leading-relaxed">
               {transcript}
             </p>
           )}

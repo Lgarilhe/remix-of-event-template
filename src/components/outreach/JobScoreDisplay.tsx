@@ -208,7 +208,7 @@ const ScoreRing: React.FC<{ score: number; size?: number; label?: string; tone?:
           <span className={size <= 40 ? "text-sm font-bold text-foreground tabular-nums" : "text-lg font-bold text-foreground tabular-nums"}>{displayedScore}</span>
         </div>
       </div>
-      {label && <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>}
+      {label && <span className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>}
     </div>
   );
 };
@@ -515,7 +515,7 @@ export const JobScoreDisplay: React.FC<JobScoreDisplayProps> = ({ result, jobTit
           {result.switchSignals && result.switchSignals.length > 0 && (
             <div className="basis-full flex flex-wrap gap-1 mt-1">
               {result.switchSignals.slice(0, 5).map((signal, i) => (
-                <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted/50 text-muted-foreground rounded">
+                <span key={i} className="text-2xs px-1.5 py-0.5 bg-muted/50 text-muted-foreground rounded">
                   {typeof signal === 'string' ? signal : ''}
                 </span>
               ))}
@@ -570,7 +570,7 @@ const CompatChip: React.FC<{ icon: React.ElementType; label: string; value: stri
   >
     <Icon className={cn('w-4 h-4 shrink-0', ok ? 'text-emerald-500' : 'text-muted-foreground')} />
     <div className="flex-1 min-w-0">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</p>
+      <p className="text-2xs font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</p>
       <p className={cn('text-xs font-semibold mt-0.5 truncate', ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground')}>
         {value}
       </p>

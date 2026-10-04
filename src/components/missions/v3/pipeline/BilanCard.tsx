@@ -28,16 +28,16 @@ export function BilanCard({ counts, isLoading, isError, onRetry }: BilanCardProp
         <h2 id="bilan-title" className="text-sm font-semibold text-foreground">
           Bilan
         </h2>
-        <span className="text-[12.5px] text-muted-foreground">{BILAN_TITLE}, calculé sur les dates de chaque étape</span>
+        <span className="text-xs text-muted-foreground">{BILAN_TITLE}, calculé sur les dates de chaque étape</span>
       </div>
       {counts ? (
         <ul className="mt-3 grid gap-3 sm:grid-cols-3">
           {bilanRates(counts).map((rate) => (
             <li key={rate.key} title={rate.detail} className="flex flex-col gap-1.5 rounded-[10px] bg-muted/60 px-3.5 py-3">
               {rate.percent !== null && (
-                <p className="text-[22px] font-semibold leading-tight tabular-nums text-foreground">{rate.percent} %</p>
+                <p className="text-2xl font-semibold leading-tight tabular-nums text-foreground">{rate.percent} %</p>
               )}
-              <p className="text-[13px] text-foreground/90">{rate.text}</p>
+              <p className="text-sm text-foreground/90">{rate.text}</p>
               <p className="sr-only">{rate.detail}</p>
               <span className="block h-1 rounded-full bg-foreground/10" aria-hidden="true">
                 <span className="block h-1 rounded-full bg-brand" style={{ width: `${rate.percent ?? 0}%` }} />

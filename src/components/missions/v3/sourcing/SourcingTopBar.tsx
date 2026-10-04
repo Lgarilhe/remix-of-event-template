@@ -64,7 +64,7 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
             aria-label="Affiner la recherche en langage naturel"
             placeholder="Affiner : par exemple, plutôt des profils passés par un fonds"
             className={cn(
-              'h-9 w-full min-w-0 rounded-lg border border-border bg-background pl-9 pr-[4.5rem] text-[13.5px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
+              'h-9 w-full min-w-0 rounded-lg border border-border bg-background pl-9 pr-[4.5rem] text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
               busy && 'opacity-60',
             )}
           />
@@ -78,14 +78,14 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
               type="button"
               onClick={() => void submit()}
               aria-label="Valider la demande (Entrée)"
-              className="absolute right-1.5 h-6 rounded-md border border-border bg-muted px-2 text-[11.5px] text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute right-1.5 h-6 rounded-md border border-border bg-muted px-2 text-2xs text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Entrée
             </button>
           ) : (
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute right-2.5 rounded-[5px] border border-border px-1.5 py-px text-[11.5px] text-muted-foreground"
+              className="pointer-events-none absolute right-2.5 rounded-[5px] border border-border px-1.5 py-px text-2xs text-muted-foreground"
             >
               Entrée
             </span>
@@ -97,7 +97,7 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
           aria-expanded={open}
           aria-controls={zoneId}
           className={cn(
-            'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium tabular-nums text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium tabular-nums text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             open ? 'border-border-strong bg-muted/60' : 'border-border bg-transparent',
           )}
         >
@@ -108,7 +108,7 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
           type="button"
           onClick={onNewSearch}
           disabled={disabled}
-          className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-transparent px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+          className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-transparent px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         >
           Nouvelle recherche
         </button>

@@ -107,20 +107,20 @@ LinkedIn et WhatsApp se reconnaissent à leur logo officiel, l'e-mail et l'appel
 
 Une seule famille dans l'application : Instrument Sans, graisses 500 (corps), 600 (emphase, titres), 700 (grands chiffres d'un tableau de bord, titre de page principal). Space Mono pour les identifiants, raccourcis clavier et chiffres alignés. Bricolage Grotesque, police de marque, est réservée aux titres des pages publiques (accueil, tarifs). Outfit, Space Grotesk et Instrument Serif sont retirés.
 
-Six paliers :
+Paliers du design simplifié (octobre 2026, `06-simplicite.md`) : rien sous 12 px, le corps passe de 13 à 14 px.
 
 | Palier | Classe | Taille / interligne | Emploi |
 |---|---|---|---|
-| caption | `text-3xs` | 10 / 14 | compteurs, badges denses |
-| micro | `text-2xs` | 11 / 15 | métadonnées, intitulés de section en capitales |
-| body-sm | `text-xs` | 12 / 16 | tableaux, cartes denses |
-| body | `text-sm` | 13 / 20 | corps courant, boutons, champs |
-| body-lg | `text-md` | 14 / 20 | titres de carte, texte de lecture |
-| title | `text-base` à `text-3xl` | 16 à 30 | titres de page (20, graisse 600) et de section |
+| caption | `text-3xs`, `text-2xs` | 12 / 16 | compteurs, badges, intitulés de section (deux noms pour un palier, à fondre dans `text-xs` au fil des lots) |
+| body-sm | `text-xs` | 13 / 18 | métadonnées, en-têtes de colonne, tableaux denses |
+| body | `text-sm` | 14 / 20 | corps courant, boutons, champs |
+| body-lg | `text-md` | 15 / 22 | texte principal d'une ligne de liste, texte de lecture |
+| section | `text-lg` | 18 / 28 | titre de section |
+| title | `text-title` | 28 / 36 | titre de page (graisse 600, `PageHeader`) |
 
-`text-sm` vaut désormais 13 px, comme le corps des maquettes. Les tailles arbitraires `text-[11px]` sont proscrites : chaque valeur a son palier nommé.
+Les tailles arbitraires `text-[11px]` sont proscrites : chaque valeur a son palier nommé. Le lot des fondations les a toutes remplacées (480 dans 60 fichiers), avec le même décalage d'un pixel que les paliers. `text-title` est déclarée à `tailwind-merge` dans `cn` (`src/lib/utils.ts`) : sans cela, elle serait prise pour une couleur.
 
-Intitulé de section : la classe `eyebrow` (11 px, graisse 600, capitales, espacement 0,08 em, couleur `muted-foreground`). C'est le seul usage des capitales. Pas de titre ni de bouton en capitales.
+Intitulé de section : la classe `eyebrow` (12 px, graisse 600, capitales, espacement 0,08 em, couleur `muted-foreground`). C'est le seul usage des capitales. Pas de titre ni de bouton en capitales.
 
 ## 4. Espace, rayons, élévation
 
@@ -167,6 +167,13 @@ Badges : variantes `success`, `warning`, `info`, `danger`, `brand`, `muted`, `ou
 
 Toasts : un seul système, sonner (`import { toast } from "sonner"`). L'ancienne API `useToast` passe par lui. L'action d'un toast (« Annuler ») reste cliquable quand un dialogue est ouvert, et ce clic ne ferme pas le dialogue.
 
+Visages et pastilles (design simplifié, `06-simplicite.md`) :
+
+- Une ligne montre de qui ou de quoi elle parle : le visage d'une personne, le logo d'une mission (`MissionCompanyLogo`).
+- `PersonAvatar` (`src/components/ui/person-avatar.tsx`) : la photo LinkedIn du candidat, ou sa copie Konekt ; sinon ses initiales, y compris quand le lien a expiré ou que l'image ne charge pas. Décoratif quand le nom est écrit à côté. `CandidateAvatar` (tableau de bord, et forme par taille nommée) passe par lui.
+- `AvatarStack` (même fichier) : quelques visages qui se chevauchent, puis « +N », avec la liste des noms en nom accessible.
+- `IconTile` (`src/components/ui/IconTile.tsx`) : pastille d'icône sur fond teinté en tête d'une chose à faire. Le ton dit l'urgence : `brand` par défaut, `warning` quand quelque chose attend, `destructive` quand c'est en retard.
+
 ## 7. Mouvement
 
 | Usage | Durée | Courbe |
@@ -178,7 +185,17 @@ Toasts : un seul système, sonner (`import { toast } from "sonner"`). L'ancienne
 
 Retour d'appui : un bouton descend d'un pixel ou passe à 98 % de sa taille pendant l'appui. Une carte cliquable s'éclaire au survol (fond et filet), sans se soulever de plus d'un pixel.
 
-Aucune animation en boucle hors indicateur de chargement et illustrations (§ Illustrations, décision du propriétaire du 29/09/2026). Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
+Aucune animation en boucle hors indicateur de chargement, illustrations (§ Illustrations, décision du propriétaire du 29/09/2026) et icônes qui attendent. Avec `prefers-reduced-motion`, toutes les animations et transitions sont coupées globalement (règle dans `src/index.css`).
+
+Icônes qui attendent (design simplifié, demande du propriétaire du 04/10/2026) : `src/components/ui/animated-icons.tsx`. Une icône ne bouge que si quelque chose attend l'utilisateur, et chaque boucle finit sur la pose fixe de l'icône, celle qui reste quand le mouvement est réduit.
+
+| Icône | Situation | Mouvement |
+|---|---|---|
+| `TypingIcon` | des candidats attendent une réponse | trois points s'écrivent dans la bulle |
+| `HourglassIcon` | des candidats n'avancent plus | le sablier se retourne |
+| `AlarmIcon` | des tâches sont en retard | le réveil sonne |
+| `PingDot` | une ligne attend une réponse | le halo du point s'élargit |
+| `SparkleIcon` | l'assistant | l'étoile scintille |
 
 ## 8. États d'écran
 

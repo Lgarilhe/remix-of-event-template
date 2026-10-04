@@ -55,7 +55,7 @@ export const ProfileDetailedTab: React.FC<Props> = ({ linkedinProfileData, enric
       {/* ═══ À PROPOS ═══ */}
       {summary && (
         <Section title="À propos" icon={Sparkles}>
-          <p className="text-[13.5px] leading-relaxed text-foreground/90 whitespace-pre-line">
+          <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
             {summary}
           </p>
         </Section>
@@ -96,7 +96,7 @@ export const ProfileDetailedTab: React.FC<Props> = ({ linkedinProfileData, enric
                 {skills.map((skill, i) => (
                   <span
                     key={i}
-                    className="inline-flex items-center text-[12px] px-2.5 py-1 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
+                    className="inline-flex items-center text-xs px-2.5 py-1 rounded-full bg-foreground/[0.06] text-foreground/85 border border-border"
                   >
                     {skill}
                   </span>
@@ -114,7 +114,7 @@ export const ProfileDetailedTab: React.FC<Props> = ({ linkedinProfileData, enric
                 {languages.map((lang, i) => (
                   <span
                     key={i}
-                    className="inline-flex items-center text-[12px] px-2.5 py-1 rounded-full bg-info/10 text-info border border-info/30 font-medium"
+                    className="inline-flex items-center text-xs px-2.5 py-1 rounded-full bg-info/10 text-info border border-info/30 font-medium"
                   >
                     {lang}
                   </span>
@@ -147,11 +147,11 @@ function Section({
           <Icon className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-display font-bold text-[14px] tracking-tight text-foreground leading-tight">
+          <h3 className="font-display font-bold text-md tracking-tight text-foreground leading-tight">
             {title}
           </h3>
           {subtitle && (
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70">
+            <p className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground/70">
               {subtitle}
             </p>
           )}
@@ -201,7 +201,7 @@ function ExperienceList({ experiences }: { experiences: RawExperience[] }) {
       {hidden > 0 && !showAll && (
         <button
           onClick={() => setShowAll(true)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground border border-dashed border-border hover:border-foreground/30 py-2 rounded-lg transition-colors"
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border hover:border-foreground/30 py-2 rounded-lg transition-colors"
         >
           <ChevronDown className="w-3.5 h-3.5" />
           Voir {hidden} expérience{hidden > 1 ? 's' : ''} de plus
@@ -210,7 +210,7 @@ function ExperienceList({ experiences }: { experiences: RawExperience[] }) {
       {showAll && sorted.length > 3 && (
         <button
           onClick={() => setShowAll(false)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground py-1.5 transition-colors"
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1.5 transition-colors"
         >
           <ChevronUp className="w-3.5 h-3.5" />
           Réduire
@@ -246,11 +246,11 @@ function ExperienceItem({ exp }: { exp: RawExperience }) {
       <div className="flex-1 min-w-0">
         {/* Titre du poste — 14px font-display */}
         <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="font-display font-bold text-[14px] text-foreground tracking-tight leading-tight">
+          <h4 className="font-display font-bold text-md text-foreground tracking-tight leading-tight">
             {role}
           </h4>
           {isCurrent && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/15 text-success border border-success/30">
+            <span className="inline-flex items-center gap-1 text-2xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-success/15 text-success border border-success/30">
               <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
               Actuel
             </span>
@@ -258,11 +258,11 @@ function ExperienceItem({ exp }: { exp: RawExperience }) {
         </div>
 
         {/* Entreprise + lieu + période */}
-        <p className="text-[12.5px] text-foreground/70 mt-0.5 font-medium">
+        <p className="text-xs text-foreground/70 mt-0.5 font-medium">
           {company}
         </p>
 
-        <div className="flex items-center gap-3 mt-1 text-[11.5px] text-muted-foreground flex-wrap">
+        <div className="flex items-center gap-3 mt-1 text-2xs text-muted-foreground flex-wrap">
           {period && (
             <span className="inline-flex items-center gap-1 tabular-nums">
               <Calendar className="w-3 h-3" />
@@ -280,7 +280,7 @@ function ExperienceItem({ exp }: { exp: RawExperience }) {
 
         {/* Description du poste — affichée si présente, line-clamp 4 */}
         {exp.description && (
-          <p className="text-[12px] leading-relaxed text-foreground/75 mt-2 whitespace-pre-line line-clamp-4">
+          <p className="text-xs leading-relaxed text-foreground/75 mt-2 whitespace-pre-line line-clamp-4">
             {exp.description}
           </p>
         )}
@@ -322,7 +322,7 @@ function EducationList({ education }: { education: RawEducation[] }) {
       {hidden > 0 && !showAll && (
         <button
           onClick={() => setShowAll(true)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground border border-dashed border-border hover:border-foreground/30 py-2 rounded-lg transition-colors"
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border hover:border-foreground/30 py-2 rounded-lg transition-colors"
         >
           <ChevronDown className="w-3.5 h-3.5" />
           Voir {hidden} formation{hidden > 1 ? 's' : ''} de plus
@@ -331,7 +331,7 @@ function EducationList({ education }: { education: RawEducation[] }) {
       {showAll && sorted.length > 2 && (
         <button
           onClick={() => setShowAll(false)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground py-1.5 transition-colors"
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1.5 transition-colors"
         >
           <ChevronUp className="w-3.5 h-3.5" />
           Réduire
@@ -372,22 +372,22 @@ function EducationItem({ edu }: { edu: RawEducation }) {
       )}
 
       <div className="flex-1 min-w-0">
-        <h4 className="font-display font-bold text-[14px] text-foreground tracking-tight leading-tight">
+        <h4 className="font-display font-bold text-md text-foreground tracking-tight leading-tight">
           {schoolName}
         </h4>
         {(degree || field) && (
-          <p className="text-[12.5px] text-foreground/70 mt-0.5 font-medium">
+          <p className="text-xs text-foreground/70 mt-0.5 font-medium">
             {[degree, field].filter(Boolean).join(' · ')}
           </p>
         )}
         {(startYear || endYear) && (
-          <p className="text-[11.5px] text-muted-foreground mt-1 tabular-nums inline-flex items-center gap-1">
+          <p className="text-2xs text-muted-foreground mt-1 tabular-nums inline-flex items-center gap-1">
             <Calendar className="w-3 h-3" />
             {startYear || '?'} — {endYear || 'en cours'}
           </p>
         )}
         {edu.description && (
-          <p className="text-[12px] leading-relaxed text-foreground/75 mt-2 whitespace-pre-line line-clamp-3">
+          <p className="text-xs leading-relaxed text-foreground/75 mt-2 whitespace-pre-line line-clamp-3">
             {edu.description}
           </p>
         )}

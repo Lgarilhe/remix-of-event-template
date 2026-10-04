@@ -144,6 +144,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
               isVisible={tab === 'sequences'}
               projectId={project.id}
               createRequestId={0}
+              layout="compact"
             />
           </SectionErrorBoundary>
         </div>

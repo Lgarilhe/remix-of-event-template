@@ -125,7 +125,7 @@ function ExternalNameInput({
       aria-label={`Nom et fonction de l'intervieweur de l'étape ${stepName}`}
       placeholder="Nom et fonction"
       autoComplete="off"
-      className="h-[34px] min-w-0 text-[13px]"
+      className="h-[34px] min-w-0 text-sm"
     />
   );
 }
@@ -224,7 +224,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
         <h2 id="cadrage-etapes-titre" className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           Étapes d'entretien
         </h2>
-        <span className="text-[12.5px] text-muted-foreground">Dans l'ordre où le candidat les passe.</span>
+        <span className="text-xs text-muted-foreground">Dans l'ordre où le candidat les passe.</span>
       </div>
 
       <div ref={listRef} className="flex flex-col rounded-xl border border-border bg-card px-4 py-1">
@@ -239,7 +239,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
             <Skeleton className="h-9 w-3/4" />
           </div>
         ) : stepsFailed ? (
-          <div className="flex flex-wrap items-center gap-3 py-4 text-[13px] text-muted-foreground" role="alert">
+          <div className="flex flex-wrap items-center gap-3 py-4 text-sm text-muted-foreground" role="alert">
             <span>Impossible de charger les étapes pour l'instant.</span>
             <Button type="button" variant="outline" size="sm" onClick={() => void refetchSteps()}>
               Réessayer
@@ -247,7 +247,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
           </div>
         ) : displayed.length === 0 ? (
           <div className="flex flex-col gap-3 py-4">
-            <p className="text-[13px] text-muted-foreground">Aucune étape. Ajoutez au moins une étape pour suivre les entretiens.</p>
+            <p className="text-sm text-muted-foreground">Aucune étape. Ajoutez au moins une étape pour suivre les entretiens.</p>
             {!readOnly && (
               <div className="flex flex-col gap-2">
                 <span className="text-xs text-muted-foreground">Ou partez d'un modèle :</span>
@@ -264,7 +264,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                         'disabled:cursor-not-allowed disabled:opacity-50',
                       )}
                     >
-                      <span className="text-[13px] font-medium text-foreground">{tpl.label}</span>
+                      <span className="text-sm font-medium text-foreground">{tpl.label}</span>
                       <span className="text-xs text-muted-foreground">{tpl.steps.map((s) => s.name).join(', ')}</span>
                     </button>
                   ))}
@@ -327,7 +327,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                         <GripVertical className="h-4 w-4" aria-hidden="true" />
                       </button>
                     )}
-                    <span className="text-right text-[12.5px] tabular-nums text-muted-foreground" aria-hidden="true">
+                    <span className="text-right text-xs tabular-nums text-muted-foreground" aria-hidden="true">
                       {index + 1}
                     </span>
                     <StepNameInput
@@ -343,7 +343,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                             type="button"
                             aria-label={`Intervieweur de l'étape ${name} : ${whoLabel}${isExt ? ', hors Konekt' : ''}`}
                             className={cn(
-                              'flex h-[34px] w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-left text-[13px] transition-colors',
+                              'flex h-[34px] w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-left text-sm transition-colors',
                               'hover:border-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20',
                               'disabled:cursor-not-allowed disabled:opacity-60',
                             )}
@@ -351,7 +351,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                             {userId && (
                               <span
                                 aria-hidden="true"
-                                className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-[10.5px] font-bold text-foreground"
+                                className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-2xs font-bold text-foreground"
                               >
                                 {initialsOf(whoName)}
                               </span>
@@ -360,7 +360,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                               {whoLabel}
                             </span>
                             {isExt && (
-                              <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-[11.5px] text-muted-foreground">
+                              <span className="shrink-0 rounded-md bg-muted px-1.5 py-px text-2xs text-muted-foreground">
                                 hors Konekt
                               </span>
                             )}
@@ -417,7 +417,7 @@ export function InterviewStepsSection({ project, readOnly }: { project: Sourcing
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <span className="col-start-3 row-start-3 text-[12.5px] tabular-nums text-muted-foreground sm:col-start-auto sm:row-start-auto sm:text-foreground/80">
+                    <span className="col-start-3 row-start-3 text-xs tabular-nums text-muted-foreground sm:col-start-auto sm:row-start-auto sm:text-foreground/80">
                       <span className="sm:sr-only">En ce moment : </span>
                       {count}
                     </span>

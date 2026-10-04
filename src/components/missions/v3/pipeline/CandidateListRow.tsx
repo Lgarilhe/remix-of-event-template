@@ -19,7 +19,7 @@ export function ScorePill({ score, title }: { score: number | null; title?: stri
   if (score === null) return null;
   const rounded = Math.round(score);
   return (
-    <span title={title ?? undefined} aria-label={`Note ${rounded}`} className="text-[13.5px] font-semibold tabular-nums text-foreground">
+    <span title={title ?? undefined} aria-label={`Note ${rounded}`} className="text-sm font-semibold tabular-nums text-foreground">
       {rounded}
     </span>
   );
@@ -114,14 +114,14 @@ export const CandidateListRow = memo(function CandidateListRow({
           }}
           className={cn(
             'block max-w-full truncate rounded-sm text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            narrow ? 'text-[15px]' : 'text-[13.5px]',
+            narrow ? 'text-base' : 'text-sm',
           )}
         >
           {name}
         </button>
         {!narrow && row.headline && <p className="truncate text-xs text-muted-foreground">{row.headline}</p>}
         {narrow ? (
-          <p className="mt-px truncate text-[13px]">
+          <p className="mt-px truncate text-sm">
             <span className="text-muted-foreground">{stageText}</span>
             {nextText && <span className="text-foreground"> · {nextText}</span>}
           </p>
@@ -145,7 +145,7 @@ export const CandidateListRow = memo(function CandidateListRow({
         <td className="w-[19rem] py-2 pr-3 align-middle">
           {next.text && (
             <span
-              className={cn('block truncate text-[13px]', next.stale ? 'text-warning' : 'text-muted-foreground')}
+              className={cn('block truncate text-sm', next.stale ? 'text-warning' : 'text-muted-foreground')}
               title={next.stale ? 'Sans mouvement' : undefined}
             >
               {next.text}

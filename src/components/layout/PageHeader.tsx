@@ -1,9 +1,9 @@
 /**
  * PageHeader : en-tête de page commun (docs/design/01-direction.md).
  *
- * - titre h1 en 20 px, graisse 600 ;
+ * - titre h1 en 28 px (text-title), graisse 600 ;
  * - méta optionnelle à droite du titre (compteur, statut) ;
- * - sous-titre en texte secondaire ;
+ * - sous-titre en texte secondaire, 15 px ;
  * - actions à droite, qui passent sous le titre sur téléphone.
  *
  * Usage :
@@ -48,10 +48,10 @@ export const PageHeader: React.FC<PageHeaderProps> = React.memo(({
               <Icon className="h-4 w-4" aria-hidden={true} />
             </span>
           )}
-          <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">{title}</h1>
+          <h1 className="truncate text-title font-semibold text-foreground">{title}</h1>
           {meta && <span className="shrink-0 text-sm text-muted-foreground">{meta}</span>}
         </div>
-        {subtitle && <p className="max-w-2xl text-sm text-muted-foreground">{subtitle}</p>}
+        {subtitle && <p className="max-w-2xl text-md text-muted-foreground">{subtitle}</p>}
       </div>
       {actions && <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
     </header>

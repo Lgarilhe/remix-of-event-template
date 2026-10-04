@@ -388,6 +388,8 @@ Existants, à employer partout (les deux sessions) :
 | Chargement ponctuel | `Spinner` (`src/components/ui/spinner.tsx`) |
 | Bandeau | `Banner` (`src/components/ui/banner.tsx`) |
 | Tuile d'icône | `IconTile` (`src/components/ui/IconTile.tsx`) |
+| Visage d'une personne, photo ou initiales ; pile de visages avec « +N » | `PersonAvatar`, `AvatarStack` (`src/components/ui/person-avatar.tsx`, design simplifié) |
+| Icône qui bouge quand quelque chose attend (bulle, sablier, réveil, point, étoile de l'assistant) | `src/components/ui/animated-icons.tsx` (design simplifié) |
 | Thème courant | `useAppTheme`, `setAppTheme` (`src/lib/theme.ts`) |
 | Choix exclusif visible (« Mes tâches / Équipe », vues) | `SegmentedControl` (`src/components/ui/segmented-control.tsx`, lot 5) |
 | Filtre à choix multiples dans une barre | `FilterPill`, `FilterOption` (`src/components/ui/filter-pill.tsx`, lot 5) |

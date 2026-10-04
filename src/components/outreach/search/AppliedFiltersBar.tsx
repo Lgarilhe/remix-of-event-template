@@ -103,7 +103,7 @@ export const AppliedFiltersBar: React.FC<AppliedFiltersBarProps> = ({
           <SlidersHorizontal className="w-4 h-4" />
           <span className="text-xs font-bold uppercase tracking-wider">Filtres</span>
           {activeCount > 0 && (
-            <span className="min-w-[20px] h-5 flex items-center justify-center px-1.5 text-[10px] font-bold bg-primary text-primary-foreground rounded-full">
+            <span className="min-w-[20px] h-5 flex items-center justify-center px-1.5 text-2xs font-bold bg-primary text-primary-foreground rounded-full">
               {activeCount}
             </span>
           )}

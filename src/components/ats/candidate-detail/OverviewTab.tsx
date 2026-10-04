@@ -732,14 +732,14 @@ function ProfileSummaryCard({
           <p className="text-xs text-muted-foreground">
             Résumé du profil
           </p>
-          <h3 className="font-display font-bold text-[15px] sm:text-[16px] tracking-tight text-foreground leading-tight mt-0.5">
+          <h3 className="font-display font-bold text-base sm:text-base tracking-tight text-foreground leading-tight mt-0.5">
             {candidate.name}
           </h3>
         </div>
       </div>
 
       {synthesis && (
-        <p className="text-[13px] leading-relaxed text-foreground/85 mt-3 whitespace-pre-line line-clamp-5">
+        <p className="text-sm leading-relaxed text-foreground/85 mt-3 whitespace-pre-line line-clamp-5">
           {synthesis}
         </p>
       )}
@@ -818,7 +818,7 @@ function StatCard({
           {label}
         </span>
       </div>
-      <p className="font-display text-[15px] font-bold text-foreground tracking-tight leading-tight tabular-nums">
+      <p className="font-display text-base font-bold text-foreground tracking-tight leading-tight tabular-nums">
         {primary}
       </p>
       {secondary && (
@@ -843,7 +843,7 @@ function SectionCard({
           <Icon className="w-3.5 h-3.5 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-display font-bold text-[13px] tracking-tight text-foreground">{title}</h3>
+          <h3 className="font-display font-bold text-sm tracking-tight text-foreground">{title}</h3>
           {eyebrow && (
             <p className="text-xs text-muted-foreground">
               {eyebrow}
@@ -964,7 +964,7 @@ function ExperienceRow({
         <p className="text-sm font-semibold text-foreground truncate leading-tight">
           {exp.title || 'Poste'}
         </p>
-        <p className="text-[11.5px] text-muted-foreground truncate">{exp.company || '—'}</p>
+        <p className="text-2xs text-muted-foreground truncate">{exp.company || '—'}</p>
         <p className="text-xs text-muted-foreground/70 tabular-nums mt-0.5">
           {exp.startDate || '?'} — {exp.isCurrent ? 'Actuel' : (exp.endDate || '?')}
         </p>
@@ -988,9 +988,9 @@ function EducationRow({
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold text-foreground truncate">{edu.school}</p>
+        <p className="text-sm font-semibold text-foreground truncate">{edu.school}</p>
         {(edu.degree || edu.field) && (
-          <p className="text-[11.5px] text-muted-foreground truncate">
+          <p className="text-2xs text-muted-foreground truncate">
             {[edu.degree, edu.field].filter(Boolean).join(' · ')}
           </p>
         )}

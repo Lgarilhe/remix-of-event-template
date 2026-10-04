@@ -69,7 +69,7 @@ export function missingLinkedInText(count: number): string | null {
 const FILLED = 'border-0 bg-foreground text-background hover:bg-foreground/90 hover:text-background';
 /** Même style imposé au déclencheur de SequenceEnrollButton (enfant direct). */
 const FILLED_TRIGGER =
-  '[&>button]:!h-8 [&>button]:!border-0 [&>button]:!bg-foreground [&>button]:!text-[13px] [&>button]:!text-background ' +
+  '[&>button]:!h-8 [&>button]:!border-0 [&>button]:!bg-foreground [&>button]:!text-sm [&>button]:!text-background ' +
   '[&>button]:!shadow-none [&>button:hover]:!bg-foreground/90';
 
 interface ContactSelectionButtonProps {

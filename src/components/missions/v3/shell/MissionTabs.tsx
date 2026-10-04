@@ -35,7 +35,7 @@ export function MissionTabsNav({ className, linkClassName }: { className?: strin
             onClick={onClick}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'inline-flex shrink-0 items-center border-b-2 px-3 text-[13.5px] outline-none',
+              'inline-flex shrink-0 items-center border-b-2 px-3 text-sm outline-none',
               'transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
               active
                 ? 'border-foreground font-semibold text-foreground'

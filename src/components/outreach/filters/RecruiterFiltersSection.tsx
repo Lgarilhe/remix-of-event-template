@@ -289,7 +289,7 @@ export const RecruiterFiltersSection: React.FC<RecruiterFiltersSectionProps> = (
                   />
                   <div>
                     <span className="text-xs font-medium">{item.label}</span>
-                    <p className="text-[10px] text-muted-foreground">{item.desc}</p>
+                    <p className="text-2xs text-muted-foreground">{item.desc}</p>
                   </div>
                 </div>
               ))}
