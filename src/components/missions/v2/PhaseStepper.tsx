@@ -84,7 +84,7 @@ export const PhaseStepper: React.FC<PhaseStepperProps> = ({
                 aria-current={state === 'active' ? 'step' : undefined}
               >
                 <span
-                  className="h-5 w-5 rounded-full grid place-items-center text-[10px] font-bold flex-shrink-0 transition-all duration-300"
+                  className="h-5 w-5 rounded-full grid place-items-center text-2xs font-bold flex-shrink-0 transition-all duration-300"
                   style={{
                     background:
                       state === 'done'
@@ -103,7 +103,7 @@ export const PhaseStepper: React.FC<PhaseStepperProps> = ({
                 </span>
                 <p
                   className={cn(
-                    'text-[12.5px] font-semibold leading-tight',
+                    'text-xs font-semibold leading-tight',
                     state === 'todo' && 'text-muted-foreground',
                   )}
                 >

@@ -92,15 +92,15 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
             <Link2 className="w-4 h-4 text-foreground" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-display text-[14px] font-bold leading-tight">
+            <h3 className="font-display text-md font-bold leading-tight">
               Portail client
               {projectTokens.length > 0 && (
-                <span className="ml-2 text-[11px] font-medium text-muted-foreground tabular-nums">
+                <span className="ml-2 text-2xs font-medium text-muted-foreground tabular-nums">
                   ({projectTokens.length})
                 </span>
               )}
             </h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-2xs text-muted-foreground mt-0.5">
               Le client voit les candidats retenus et au-delà, jamais les profils à trier, écartés ou seulement contactés. Chaque nouveau lien est valable {PORTAL_LINK_VALIDITY_DAYS} jours.
             </p>
           </div>
@@ -109,7 +109,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="h-9 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-medium border border-border hover:bg-accent transition-colors flex-shrink-0"
+            className="h-9 px-3 rounded-full inline-flex items-center gap-1.5 text-xs font-medium border border-border hover:bg-accent transition-colors flex-shrink-0"
           >
             <Plus className="w-3 h-3" /> Créer un accès
           </button>
@@ -121,7 +121,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
         <div className="rounded-lg border border-border p-4 space-y-3 bg-background konekt-fade-up">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                 Nom du client <span className="text-destructive">*</span>
               </label>
               <input
@@ -133,7 +133,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
               />
             </div>
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                 Email <span className="text-muted-foreground/70 normal-case tracking-normal">(optionnel)</span>
               </label>
               <input
@@ -150,7 +150,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
               type="button"
               onClick={handleCreate}
               disabled={isCreating || !clientName.trim()}
-              className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
+              className="h-9 px-4 rounded-full inline-flex items-center gap-1.5 text-xs font-semibold bg-foreground text-background hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {isCreating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {isCreating ? 'Création…' : 'Générer le lien'}
@@ -158,7 +158,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
             <button
               type="button"
               onClick={() => { setShowForm(false); setClientName(''); setClientEmail(''); }}
-              className="h-9 px-3 rounded-full text-[12px] text-muted-foreground hover:text-foreground border border-border transition-colors"
+              className="h-9 px-3 rounded-full text-xs text-muted-foreground hover:text-foreground border border-border transition-colors"
             >
               Annuler
             </button>
@@ -172,7 +172,7 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
           <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
         </div>
       ) : projectTokens.length === 0 && !showForm ? (
-        <p className="text-[12px] text-muted-foreground py-2 italic">
+        <p className="text-xs text-muted-foreground py-2 italic">
           Aucun accès client créé. Génère un lien pour donner accès au hiring manager.
         </p>
       ) : projectTokens.length > 0 ? (
@@ -186,18 +186,18 @@ export const MissionClientPortal: React.FC<MissionClientPortalProps> = ({ projec
               className="flex items-center gap-3 px-3 py-2 rounded-md border border-border bg-background hover:border-foreground/30 transition-colors"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium truncate">{t.client_name}</p>
+                <p className="text-sm font-medium truncate">{t.client_name}</p>
                 {t.client_email && (
-                  <p className="text-[11px] text-muted-foreground truncate">{t.client_email}</p>
+                  <p className="text-2xs text-muted-foreground truncate">{t.client_email}</p>
                 )}
-                <p className={cn('text-[11px] truncate', expired ? 'text-destructive' : 'text-muted-foreground')}>
+                <p className={cn('text-2xs truncate', expired ? 'text-destructive' : 'text-muted-foreground')}>
                   {t.expires_at && !Number.isNaN(new Date(t.expires_at).getTime())
                     ? `${expired ? 'Expiré le' : "Valable jusqu'au"} ${format(new Date(t.expires_at), 'd MMM yyyy', { locale: fr })}`
                     : 'Expiré'}
                 </p>
               </div>
               {t.last_accessed_at && (
-                <span className="text-[10.5px] text-muted-foreground shrink-0 hidden sm:block">
+                <span className="text-2xs text-muted-foreground shrink-0 hidden sm:block">
                   Vu {formatDistanceToNow(new Date(t.last_accessed_at), { addSuffix: true, locale: fr })}
                 </span>
               )}

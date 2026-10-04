@@ -184,11 +184,11 @@ export const StepCard: React.FC<StepCardProps> = ({
               const val = e.target.value.trim();
               if (val && val !== step.name) onUpdate({ id: step.id, name: val });
             }}
-            className="text-[14px] font-semibold text-foreground bg-transparent border-none focus:outline-none focus:bg-muted/30 rounded px-1 -mx-1 min-w-0 max-w-[60%] sm:max-w-none"
+            className="text-md font-semibold text-foreground bg-transparent border-none focus:outline-none focus:bg-muted/30 rounded px-1 -mx-1 min-w-0 max-w-[60%] sm:max-w-none"
           />
           {/* Format pill — toujours visible en collapsed */}
           <span
-            className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
+            className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
             title="Format"
           >
             <span>{getFormatLabel(step.meeting_format)}</span>
@@ -197,14 +197,14 @@ export const StepCard: React.FC<StepCardProps> = ({
 
         <div className="flex items-center gap-2 shrink-0">
           {step.is_eliminatory && (
-            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' }}>
+            <span className="hidden sm:inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'hsl(var(--status-warning-muted))', color: 'hsl(var(--status-warning))' }}>
               <Zap className="w-2.5 h-2.5" /> Éliminatoire
             </span>
           )}
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
             <Clock className="w-3 h-3" /> {step.duration_minutes}min
           </span>
-          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="hidden sm:inline-flex items-center gap-1 text-2xs text-muted-foreground">
             <User className="w-3 h-3" /> {step.interviewer_name || INTERVIEWER_TYPE_LABELS[step.interviewer_type]}
           </span>
           <button onClick={() => setExpanded(!expanded)} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors" aria-label={expanded ? 'Réduire' : 'Développer'}>
@@ -221,7 +221,7 @@ export const StepCard: React.FC<StepCardProps> = ({
         <div className="px-4 pb-4 pt-3 border-t border-border/50 space-y-4 bg-muted/20">
           {/* Description */}
           <div className="space-y-1">
-            <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Description</label>
+            <label className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">Description</label>
             <input
               defaultValue={step.description || ''}
               onBlur={(e) => onUpdate({ id: step.id, description: e.target.value || null })}
@@ -233,7 +233,7 @@ export const StepCard: React.FC<StepCardProps> = ({
           {/* Row: duration, type, interviewer, eliminatory */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Durée (min)</label>
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Durée (min)</label>
               <input
                 type="number"
                 defaultValue={step.duration_minutes}
@@ -242,7 +242,7 @@ export const StepCard: React.FC<StepCardProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Réalisé par</label>
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Réalisé par</label>
               <select
                 value={step.interviewer_type}
                 onChange={(e) => onUpdate({ id: step.id, interviewer_type: e.target.value as any })}
@@ -254,7 +254,7 @@ export const StepCard: React.FC<StepCardProps> = ({
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Interviewer</label>
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Interviewer</label>
               <input
                 defaultValue={step.interviewer_name || ''}
                 onBlur={(e) => onUpdate({ id: step.id, interviewer_name: e.target.value || null })}
@@ -263,7 +263,7 @@ export const StepCard: React.FC<StepCardProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Éliminatoire</label>
+              <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">Éliminatoire</label>
               <button
                 onClick={() => onUpdate({ id: step.id, is_eliminatory: !step.is_eliminatory })}
                 className={cn(
@@ -281,7 +281,7 @@ export const StepCard: React.FC<StepCardProps> = ({
 
           {/* Format de l'entretien — visio / téléphone / présentiel */}
           <div className="space-y-2 pt-1">
-            <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
               Format de l'entretien
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -301,11 +301,11 @@ export const StepCard: React.FC<StepCardProps> = ({
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="text-base">{opt.emoji}</span>
-                      <span className={cn('text-[12px] font-semibold', !isActive && 'text-muted-foreground')}>
+                      <span className={cn('text-xs font-semibold', !isActive && 'text-muted-foreground')}>
                         {opt.label}
                       </span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground/70">{opt.desc}</span>
+                    <span className="text-2xs text-muted-foreground/70">{opt.desc}</span>
                   </button>
                 );
               })}
@@ -314,7 +314,7 @@ export const StepCard: React.FC<StepCardProps> = ({
             {/* Sub-options selon le format */}
             {(step.meeting_format || 'video') === 'video' && (
               <div className="mt-2 pl-1 space-y-2 konekt-fade-up">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                   Outil de visio
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -326,7 +326,7 @@ export const StepCard: React.FC<StepCardProps> = ({
                         type="button"
                         onClick={() => onUpdate({ id: step.id, meeting_provider: prov.value })}
                         className={cn(
-                          'flex items-center gap-1.5 px-2.5 py-2 rounded-md border text-[11.5px] font-medium transition-colors',
+                          'flex items-center gap-1.5 px-2.5 py-2 rounded-md border text-2xs font-medium transition-colors',
                           isActive
                             ? 'border-foreground/40 bg-background text-foreground'
                             : 'border-border bg-background/40 text-muted-foreground hover:bg-background hover:text-foreground',
@@ -349,7 +349,7 @@ export const StepCard: React.FC<StepCardProps> = ({
                   />
                 )}
                 {step.meeting_provider && step.meeting_provider !== 'other' && (
-                  <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
+                  <p className="text-2xs text-muted-foreground inline-flex items-center gap-1.5">
                     <Sparkles className="w-3 h-3" />
                     Le lien {PROVIDER_OPTIONS.find(p => p.value === step.meeting_provider)?.label} sera généré automatiquement à chaque entretien planifié.
                   </p>
@@ -359,7 +359,7 @@ export const StepCard: React.FC<StepCardProps> = ({
 
             {step.meeting_format === 'onsite' && (
               <div className="mt-2 pl-1 space-y-1.5 konekt-fade-up">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <label className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                   Adresse (optionnel)
                 </label>
                 <input
@@ -368,14 +368,14 @@ export const StepCard: React.FC<StepCardProps> = ({
                   placeholder="Ex: 12 rue de Paris, 75002 — bureaux client"
                   className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-colors"
                 />
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   L'adresse sera incluse dans l'invitation calendar du candidat.
                 </p>
               </div>
             )}
 
             {step.meeting_format === 'phone' && (
-              <p className="text-[11px] text-muted-foreground pl-1 konekt-fade-up">
+              <p className="text-2xs text-muted-foreground pl-1 konekt-fade-up">
                 Le numéro de téléphone du candidat sera utilisé. L'interviewer recevra le numéro dans son invitation calendar.
               </p>
             )}
@@ -383,7 +383,7 @@ export const StepCard: React.FC<StepCardProps> = ({
 
           {/* Objectives */}
           <div className="space-y-1.5">
-            <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Objectifs</label>
+            <label className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">Objectifs</label>
             <div className="flex flex-wrap gap-1.5">
               {step.objectives.map((obj, i) => (
                 <span key={i} className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent/50 border border-border text-xs font-medium text-foreground">
@@ -477,7 +477,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
         {!embedded && (
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+          <h3 className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
             Équipe mission ({team.length})
           </h3>
         </div>
@@ -485,7 +485,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
         {!readOnly && availableMembers.length > 0 && !showAssign && (
           <button
             onClick={() => setShowAssign(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
           >
             <Plus className="w-3 h-3" /> Assigner
           </button>
@@ -510,7 +510,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
             aria-label={embedded ? 'Rôle dans la mission' : undefined}
-            className="h-9 px-3 rounded-lg text-[12px] font-medium border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10"
+            className="h-9 px-3 rounded-lg text-xs font-medium border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10"
           >
             <option value="lead">{roleLabels?.lead || 'Lead'}</option>
             <option value="sourcer">{roleLabels?.sourcer || 'Sourcer'}</option>
@@ -520,14 +520,14 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           <button
             onClick={handleAssign}
             disabled={!selectedUserId}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-xs font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
           >
             {embedded ? 'Assigner' : 'OK'}
           </button>
           <button
             onClick={() => { setShowAssign(false); setSelectedUserId(''); }}
             aria-label={embedded ? 'Annuler' : undefined}
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-[11.5px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-2xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             ×
           </button>
@@ -578,13 +578,13 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
       {!readOnly && (!MARKETPLACE_FROZEN || invitations.length > 0) && (
         <div className="mt-4 pt-4 border-t border-border">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+            <p className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
               Invitations externes ({invitations.filter(i => i.status === 'pending').length} en attente)
             </p>
             {!showInvite && !MARKETPLACE_FROZEN && (
               <button
                 onClick={() => setShowInvite(true)}
-                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[11.5px] font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-2xs font-medium border border-border bg-background text-foreground hover:bg-accent transition-colors"
               >
                 <Mail className="w-3 h-3" /> Inviter par email
               </button>
@@ -592,7 +592,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
           </div>
 
           {MARKETPLACE_FROZEN && (
-            <p className="text-[11px] text-muted-foreground mb-3">
+            <p className="text-2xs text-muted-foreground mb-3">
               L'invitation de recruteurs partenaires n'est pas encore disponible.
             </p>
           )}
@@ -625,7 +625,7 @@ export const MissionTeamSection: React.FC<MissionTeamSectionProps> = ({
                   }
                 }}
                 disabled={!inviteEmail.trim() || isSending}
-                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-[12px] font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
+                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-foreground text-background text-xs font-bold hover:bg-foreground/90 disabled:opacity-50 transition-colors shadow-sm"
               >
                 {isSending ? 'Envoi...' : 'Inviter'}
               </button>

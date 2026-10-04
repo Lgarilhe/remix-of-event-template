@@ -67,7 +67,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
         <h2 id="cadrage-criteres-titre" className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           Critères
         </h2>
-        <span className="text-[12.5px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           La notation lit ces critères, avec les compétences et la description du poste. Les profils déjà notés gardent leur note.
         </span>
       </div>
@@ -115,7 +115,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
                         if (!pressed) patch(c.id, { weight: weightOfImportance(o.value) });
                       }}
                       className={cn(
-                        'h-7 whitespace-nowrap rounded-md px-2.5 text-[12.5px] transition-colors',
+                        'h-7 whitespace-nowrap rounded-md px-2.5 text-xs transition-colors',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         'disabled:cursor-not-allowed',
                         pressed ? 'bg-accent font-semibold text-foreground' : 'font-medium text-muted-foreground hover:text-foreground',
@@ -134,7 +134,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
                   disabled={readOnly}
                   aria-label={`Rédhibitoire : ${name}`}
                 />
-                <label htmlFor={dealId} className="cursor-pointer whitespace-nowrap text-[12.5px] text-muted-foreground" aria-hidden="true">
+                <label htmlFor={dealId} className="cursor-pointer whitespace-nowrap text-xs text-muted-foreground" aria-hidden="true">
                   Rédhibitoire
                 </label>
               </div>
@@ -157,7 +157,7 @@ export function CriteriaSection({ jd, updateField, readOnly }: CriteriaSectionPr
         })}
 
         {criteria.length === 0 && (
-          <div className="flex flex-col items-start gap-2 py-4 text-[13px] text-muted-foreground">
+          <div className="flex flex-col items-start gap-2 py-4 text-sm text-muted-foreground">
             <p>
               Aucun critère.{' '}
               {skillCount > 0

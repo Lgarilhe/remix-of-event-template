@@ -234,10 +234,10 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
             <Pill variant="ai" icon={Sparkles}>Brief structuré par IA</Pill>
           )}
         </div>
-        <h1 className="font-display text-[28px] sm:text-[32px] font-bold leading-tight mb-1">
+        <h1 className="font-display text-title sm:text-3xl font-bold leading-tight mb-1">
           {jd.title || project.name}
         </h1>
-        <p className="text-[13px] text-muted-foreground inline-flex items-center gap-2 flex-wrap">
+        <p className="text-sm text-muted-foreground inline-flex items-center gap-2 flex-wrap">
           {project.client_name && (
             <>
               <span className="inline-flex items-center gap-1.5">
@@ -284,18 +284,18 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
         {/* Brief en bref */}
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
               Brief en bref
             </p>
             <button
               type="button"
               onClick={() => onNavigateToSub('brief')}
-              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Modifier →
             </button>
           </div>
-          <div className="space-y-2 text-[12.5px]">
+          <div className="space-y-2 text-xs">
             {topSkills.length > 0 && (
               <div className="flex gap-3">
                 <span className="text-muted-foreground w-20 flex-shrink-0">Stack</span>
@@ -327,7 +327,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
               </div>
             )}
             {topSkills.length === 0 && !jd.experience_min && !jd.seniority && (
-              <p className="text-muted-foreground text-[12px] italic">
+              <p className="text-muted-foreground text-xs italic">
                 Pas encore de détails — complète le brief pour les voir apparaître ici.
               </p>
             )}
@@ -337,13 +337,13 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
         {/* Process recruteur */}
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
               Process recruteur
             </p>
             <button
               type="button"
               onClick={() => onNavigateToSub('process')}
-              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Configurer →
             </button>
@@ -355,7 +355,7 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
       {/* ── Funnel KPI ── */}
       <div className="bg-card border border-border rounded-xl p-4 konekt-fade-up" style={{ animationDelay: '180ms' }}>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
             Funnel
           </p>
           {(project.stats_total_found || 0) === 0 ? (
@@ -379,13 +379,13 @@ export const MissionOverviewV2: React.FC<MissionOverviewV2Props> = ({
             >
               <p
                 className={cn(
-                  'font-display text-[20px] font-bold',
+                  'font-display text-xl font-bold',
                   s.value === 0 ? 'text-muted-foreground/40' : 'text-foreground',
                 )}
               >
                 {s.value}
               </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
+              <p className="text-2xs text-muted-foreground mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
@@ -414,17 +414,17 @@ const ProcessSummary: React.FC<{ project: SourcingProject }> = ({ project }) => 
         <div className="space-y-1.5">
           {defaultSteps.map((s, i) => (
             <div key={i} className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted/40">
-              <span className="h-5 w-5 rounded-full bg-muted text-[10px] font-bold grid place-items-center text-muted-foreground flex-shrink-0">
+              <span className="h-5 w-5 rounded-full bg-muted text-2xs font-bold grid place-items-center text-muted-foreground flex-shrink-0">
                 {i + 1}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-medium leading-tight">{s.label}</p>
-                <p className="text-[10.5px] text-muted-foreground leading-tight">{s.detail}</p>
+                <p className="text-xs font-medium leading-tight">{s.label}</p>
+                <p className="text-2xs text-muted-foreground leading-tight">{s.detail}</p>
               </div>
             </div>
           ))}
         </div>
-        <p className="text-[10px] text-muted-foreground italic mt-2 pt-2 border-t border-border">
+        <p className="text-2xs text-muted-foreground italic mt-2 pt-2 border-t border-border">
           Process par défaut — personnalise dans l'onglet Process.
         </p>
       </div>
@@ -435,15 +435,15 @@ const ProcessSummary: React.FC<{ project: SourcingProject }> = ({ project }) => 
     <div className="space-y-1.5">
       {steps.slice(0, 5).map((s: any, i: number) => (
         <div key={i} className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted/40">
-          <span className="h-5 w-5 rounded-full bg-muted text-[10px] font-bold grid place-items-center text-muted-foreground flex-shrink-0">
+          <span className="h-5 w-5 rounded-full bg-muted text-2xs font-bold grid place-items-center text-muted-foreground flex-shrink-0">
             {i + 1}
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-medium leading-tight truncate">
+            <p className="text-xs font-medium leading-tight truncate">
               {s.label || s.title || `Étape ${i + 1}`}
             </p>
             {(s.duration || s.detail) && (
-              <p className="text-[10.5px] text-muted-foreground leading-tight truncate">
+              <p className="text-2xs text-muted-foreground leading-tight truncate">
                 {s.duration || s.detail}
               </p>
             )}
@@ -451,7 +451,7 @@ const ProcessSummary: React.FC<{ project: SourcingProject }> = ({ project }) => 
         </div>
       ))}
       {steps.length > 5 && (
-        <p className="text-[10px] text-muted-foreground italic mt-1">
+        <p className="text-2xs text-muted-foreground italic mt-1">
           +{steps.length - 5} autre(s) étape(s)
         </p>
       )}

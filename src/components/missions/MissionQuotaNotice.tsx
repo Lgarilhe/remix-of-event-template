@@ -21,7 +21,7 @@ export function MissionQuotaNotice({ maxJobs, onNavigate, className }: MissionQu
   return (
     <div
       className={cn(
-        'rounded-lg border border-border bg-muted/50 px-3 py-2 text-[12.5px] text-muted-foreground',
+        'rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground',
         className,
       )}
     >

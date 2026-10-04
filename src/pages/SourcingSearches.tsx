@@ -61,14 +61,14 @@ const SearchCard = ({
           stats.map(({ icon: Icon, value, label }) => (
             <span
               key={label}
-              className="inline-flex items-center gap-1 h-6 px-2 rounded-full bg-muted text-[11.5px] font-medium text-foreground"
+              className="inline-flex items-center gap-1 h-6 px-2 rounded-full bg-muted text-2xs font-medium text-foreground"
             >
               <Icon className="w-3 h-3" />
               <span className="tabular-nums font-bold">{value}</span> {label}
             </span>
           ))
         ) : (
-          <span className="text-[11.5px] text-muted-foreground">Aucune recherche lancée</span>
+          <span className="text-2xs text-muted-foreground">Aucune recherche lancée</span>
         )}
       </div>
 
@@ -126,7 +126,7 @@ export default function SourcingSearches() {
         <div className="max-w-[1600px] mx-auto w-full min-w-0 px-3 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1">Sourcing</p>
+              <p className="text-2xs uppercase tracking-wider text-muted-foreground font-medium mb-1">Sourcing</p>
               <h1 className="font-display text-2xl font-bold text-foreground tracking-tight">Recherche</h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Source des candidats librement — transforme la recherche en mission quand elle devient sérieuse.

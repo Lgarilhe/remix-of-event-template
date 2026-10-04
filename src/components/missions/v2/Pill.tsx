@@ -52,7 +52,7 @@ export const Pill: React.FC<PillProps> = ({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap',
+        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-2xs font-medium whitespace-nowrap',
         className,
       )}
       style={VARIANT_STYLES[variant]}

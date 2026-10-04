@@ -518,7 +518,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
                     className="flex flex-col gap-1 shrink-0 rounded-lg px-3 py-1.5 min-w-[84px] text-left transition-colors hover:bg-muted/40"
                   >
                     <span className={cn(
-                      "font-display text-[20px] leading-none font-bold tabular-nums",
+                      "font-display text-xl leading-none font-bold tabular-nums",
                       count === 0 ? "text-muted-foreground/40" : "text-foreground"
                     )}>
                       {count}
@@ -537,7 +537,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
                 onClick={() => focusColumn('dismissed')}
                 className="flex flex-col gap-1 shrink-0 rounded-lg px-3 py-1.5 min-w-[72px] text-left transition-colors hover:bg-muted/40"
               >
-                <span className="font-display text-[20px] leading-none font-bold tabular-nums text-muted-foreground">{dismissedCount}</span>
+                <span className="font-display text-xl leading-none font-bold tabular-nums text-muted-foreground">{dismissedCount}</span>
                 <span className="inline-flex items-center gap-1.5 text-3xs uppercase tracking-wider font-semibold text-muted-foreground">
                   <span className="w-1.5 h-1.5 rounded-full bg-destructive/60" />Écarté
                 </span>
@@ -547,7 +547,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           {/* Rangée 2 — méta + staleness + toggle de vue */}
           <div className="flex items-center gap-3 px-4 h-10 border-t border-border">
             <span className="text-2xs text-muted-foreground">
-              <span className="font-display text-[13px] font-bold tabular-nums text-foreground">{totalCandidates}</span> candidat{totalCandidates > 1 ? 's' : ''}
+              <span className="font-display text-sm font-bold tabular-nums text-foreground">{totalCandidates}</span> candidat{totalCandidates > 1 ? 's' : ''}
               {steps.length > 0 && <span className="text-muted-foreground/60"> · {steps.length} étapes</span>}
             </span>
             {staleCount > 0 && (
@@ -615,7 +615,7 @@ export const MissionPipeline = ({ project }: MissionPipelineProps) => {
           <span className="h-10 w-10 rounded-full bg-info/10 text-info grid place-items-center mb-3">
             <Users className="w-5 h-5" />
           </span>
-          <h3 className="font-display text-[14px] font-bold mb-1">Votre pipeline attend ses premiers candidats</h3>
+          <h3 className="font-display text-md font-bold mb-1">Votre pipeline attend ses premiers candidats</h3>
           <p className="text-2xs text-muted-foreground max-w-sm">
             Lancez une recherche dans l'onglet Sourcing pour ajouter des candidats à cette mission.
           </p>

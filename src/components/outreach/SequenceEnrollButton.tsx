@@ -305,7 +305,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
                 )}
                 {visibleSequences.mission.length > 0 && (
                   <>
-                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <DropdownMenuLabel className="text-2xs uppercase tracking-wider text-muted-foreground">
                       Séquences de la mission
                     </DropdownMenuLabel>
                     {visibleSequences.mission.map(renderItem)}
@@ -314,7 +314,7 @@ export const SequenceEnrollButton: React.FC<SequenceEnrollButtonProps> = ({
                 {visibleSequences.others.length > 0 && (
                   <>
                     {visibleSequences.mission.length > 0 && (
-                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <DropdownMenuLabel className="text-2xs uppercase tracking-wider text-muted-foreground">
                         Autres séquences
                       </DropdownMenuLabel>
                     )}

@@ -295,7 +295,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
               <Mail className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Email professionnel</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   1 unité de forfait par profil, sinon 1 crédit si trouvé
                 </div>
               </div>
@@ -309,7 +309,7 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
               <Phone className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-foreground">Téléphone mobile</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   10 unités de forfait par profil, sinon 10 crédits si trouvé
                 </div>
               </div>
@@ -355,11 +355,11 @@ export const BulkEnrichButton: React.FC<BulkEnrichButtonProps> = ({
                 <span>Solde insuffisant pour la part hors forfait. Achetez un pack ou changez de forfait dans Paramètres › Abonnement et crédits.</span>
               </div>
             ) : beyondProfiles === 0 ? (
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-2xs text-muted-foreground">
                 Tout est compris dans votre forfait, aucun crédit ne sera débité.
               </div>
             ) : (
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-2xs text-muted-foreground">
                 Aucun crédit consommé pour les profils dont l'email ou le téléphone est déjà connu, ni si rien n'est trouvé.
               </div>
             )}

@@ -98,6 +98,10 @@ jobs:
       # empaquette les modules avec esbuild.
       - name: Lots 1 et 2 tests (interrupteur de la nouvelle page mission)
         run: node --test tests/ux/lot12-mission-beta.test.mjs
+      # Design simplifié, fondations : paliers de texte (rien sous 12 px),
+      # visages, icônes qui attendent. Ce test empaquette les composants avec esbuild.
+      - name: Fondations du design simplifié
+        run: node --test tests/ux/fondations-simplicite.test.mjs
       - name: Vite production build
         run: npx vite build
 

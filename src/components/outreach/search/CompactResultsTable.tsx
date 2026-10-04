@@ -376,7 +376,7 @@ const FlagIcon: React.FC<{ active: boolean | undefined; label: string; emoji?: s
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center justify-center w-5 h-5 bg-success/15 text-success rounded-sm text-[10px] font-bold" aria-label={label}>{emoji}</span>
+        <span className="inline-flex items-center justify-center w-5 h-5 bg-success/15 text-success rounded-sm text-2xs font-bold" aria-label={label}>{emoji}</span>
       </TooltipTrigger>
       <TooltipContent side="top">
         <p className="text-xs">{label}</p>
@@ -481,14 +481,14 @@ const ExperienceCell: React.FC<{ exp: any | undefined }> = ({ exp }) => {
         {/* Description société */}
         {exp.company_description && (
           <div className="px-3 py-2 border-b border-border bg-background">
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{exp.company_description}</p>
           </div>
         )}
 
         {/* Détails du poste */}
         <div className="p-3 bg-background">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1.5">Poste occupé</p>
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold mb-1.5">Poste occupé</p>
           <p className="text-sm font-medium text-foreground">{role || '—'}</p>
           <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
             <CalendarDays className="w-3 h-3" aria-hidden="true" />
@@ -582,14 +582,14 @@ const EducationCell: React.FC<{ edu: any | undefined }> = ({ edu }) => {
         {/* Description école */}
         {schoolDescription && (
           <div className="px-3 py-2 border-b border-border bg-background">
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
+            <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold mb-1">À propos</p>
             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{schoolDescription}</p>
           </div>
         )}
 
         {/* Détails du diplôme */}
         <div className="p-3 bg-background space-y-1.5">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">Cursus</p>
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground font-bold">Cursus</p>
           {degree && (
             <div className="flex items-start gap-1.5 text-xs">
               <BookOpen className="w-3 h-3 mt-0.5 text-muted-foreground shrink-0" aria-hidden="true" />
@@ -981,7 +981,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                           <TooltipContent side="top">
                             <p className="text-xs font-bold">{col.label}</p>
                             {col.criterion?.source && (
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                              <p className="text-2xs text-muted-foreground mt-0.5">
                                 Source : {col.criterion.source === 'skills' ? 'Compétences du poste' : col.criterion.source === 'mustHave' ? 'Must-have' : col.criterion.source === 'shouldHave' ? 'Should-have' : col.criterion.source === 'niceToHave' ? 'Nice-to-have' : 'Évaluation IA'}
                               </p>
                             )}
@@ -1041,7 +1041,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                           <td key={col.id} className={baseTd} style={styleObj}>
                             <Avatar className="w-7 h-7 border border-border">
                               <AvatarImage src={profile.profile_picture_url} alt={fullName} className="object-cover" />
-                              <AvatarFallback className="bg-primary/10 text-foreground text-[10px] font-medium">{initials}</AvatarFallback>
+                              <AvatarFallback className="bg-primary/10 text-foreground text-2xs font-medium">{initials}</AvatarFallback>
                             </Avatar>
                           </td>
                         );
@@ -1210,9 +1210,9 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                                 <TooltipTrigger asChild>
                                   <div className="flex flex-wrap gap-1 max-w-[260px]">
                                     {skills.slice(0, 3).map((s, i) => (
-                                      <span key={i} className="text-[10px] px-1 py-0.5 bg-muted text-muted-foreground truncate max-w-[80px]">{s}</span>
+                                      <span key={i} className="text-2xs px-1 py-0.5 bg-muted text-muted-foreground truncate max-w-[80px]">{s}</span>
                                     ))}
-                                    {skills.length > 3 && <span className="text-[10px] text-muted-foreground">+{skills.length - 3}</span>}
+                                    {skills.length > 3 && <span className="text-2xs text-muted-foreground">+{skills.length - 3}</span>}
                                   </div>
                                 </TooltipTrigger>
                                 <TooltipContent side="top">
@@ -1243,7 +1243,7 @@ export const CompactResultsTable: React.FC<CompactResultsTableProps> = ({
                         return (
                           <td key={col.id} className={baseTd}>
                             {statusLabel ? (
-                              <span className={`text-[10px] px-1.5 py-0.5 uppercase tracking-wider font-bold ${
+                              <span className={`text-2xs px-1.5 py-0.5 uppercase tracking-wider font-bold ${
                                 status?.status === 'replied' ? 'bg-success/10 text-success'
                                 : status?.status === 'messaged' ? 'bg-info/10 text-info'
                                 : status?.status === 'dismissed' ? 'bg-destructive/10 text-destructive'

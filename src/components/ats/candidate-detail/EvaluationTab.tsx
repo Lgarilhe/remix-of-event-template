@@ -181,7 +181,7 @@ function ScoreHero({
             />
           </svg>
           <div className="absolute inset-0 grid place-items-center flex-col">
-            <span className="font-display font-bold text-[22px] tabular-nums leading-none" style={{ color: colors.text }}>
+            <span className="font-display font-bold text-2xl tabular-nums leading-none" style={{ color: colors.text }}>
               {score}
             </span>
             <span className="text-3xs uppercase tracking-wider font-bold opacity-60 mt-0.5" style={{ color: colors.text }}>
@@ -206,10 +206,10 @@ function ScoreHero({
               </span>
             )}
           </div>
-          <h3 className="font-display font-bold text-[15px] sm:text-[16px] tracking-tight mt-0.5" style={{ color: colors.text }}>
+          <h3 className="font-display font-bold text-base sm:text-base tracking-tight mt-0.5" style={{ color: colors.text }}>
             {verdict}
           </h3>
-          <p className="text-[12px] text-muted-foreground mt-1.5 leading-relaxed">
+          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
             Score calculé pour la mission depuis laquelle ce candidat a été ouvert.
             {historyCount > 1 && (
               <> Le candidat a aussi été scoré sur <span className="font-semibold text-foreground">{historyCount - 1} autre{historyCount - 1 > 1 ? 's' : ''} mission{historyCount - 1 > 1 ? 's' : ''}</span> — voir l'historique en bas.</>
@@ -241,7 +241,7 @@ function SectionCard({
           <Icon className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-display font-bold text-[14px] tracking-tight text-foreground leading-tight">
+          <h3 className="font-display font-bold text-md tracking-tight text-foreground leading-tight">
             {title}
           </h3>
           {eyebrow && (
@@ -285,7 +285,7 @@ function CollapsibleCard({
           <Icon className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0 text-left">
-          <h3 className="font-display font-bold text-[14px] tracking-tight text-foreground leading-tight">
+          <h3 className="font-display font-bold text-md tracking-tight text-foreground leading-tight">
             {title}
           </h3>
           {eyebrow && (

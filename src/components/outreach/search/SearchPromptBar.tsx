@@ -137,12 +137,12 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
             rows={2}
             disabled={disabled || loading}
             placeholder="Décris le profil — ex. Account Manager SaaS B2B en Île-de-France, 8+ ans, a géré des grands comptes, pas de profil ESN"
-            className="flex-1 min-w-0 resize-none border-0 bg-transparent p-0 text-[15px] leading-relaxed text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none"
+            className="flex-1 min-w-0 resize-none border-0 bg-transparent p-0 text-base leading-relaxed text-[var(--k-text)] placeholder:text-[var(--k-text-placeholder)] focus:outline-none"
           />
         </div>
         <div className="mt-2 flex items-center gap-2.5">
           <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-[var(--k-text-muted)]">
-            <kbd className="font-mono text-[11px] px-1.5 py-0.5 rounded border border-[var(--k-hairline)] text-[var(--k-text-muted)]">⏎</kbd>
+            <kbd className="font-mono text-2xs px-1.5 py-0.5 rounded border border-[var(--k-hairline)] text-[var(--k-text-muted)]">⏎</kbd>
             pour lancer
           </span>
           <button
@@ -150,7 +150,7 @@ export const SearchPromptBar: React.FC<SearchPromptBarProps> = ({
             onClick={handleGenerate}
             disabled={disabled || loading}
             className={cn(
-              'ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-150 disabled:opacity-60',
+              'ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-150 disabled:opacity-60',
               armed
                 ? 'bg-[var(--k-accent)] text-[var(--k-on-accent)] hover:bg-[var(--k-accent-hover)] border border-transparent'
                 : 'bg-transparent text-[var(--k-text-muted)] border border-[var(--k-hairline)] hover:text-[var(--k-text)] hover:border-[var(--k-hairline-hover)]'
