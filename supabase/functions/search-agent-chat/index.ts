@@ -1078,7 +1078,7 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
         `cite tes sources (liens). Max 3 recherches par réponse — sois précis dans tes requêtes. ` +
         `Des CONNECTEURS EXTERNES configurés par l'organisation ou le membre (wiki, messagerie d'équipe, calendrier, ` +
         `outils internes…) peuvent exposer des outils supplémentaires. Ces connecteurs sont ` +
-        `STRICTEMENT EN LECTURE SEULE et limités à une liste blanche validée par un administrateur. ` +
+        `STRICTEMENT EN LECTURE SEULE et limités à une liste d'outils de lecture (fixée par Konekt pour une connexion personnelle, validée par un administrateur pour un connecteur de l'organisation). ` +
         `N'essaie JAMAIS d'écrire, créer, modifier, supprimer ou envoyer quoi que ce soit via un ` +
         `connecteur MCP. Toute action d'écriture doit passer par un outil Konekt avec sa politique ` +
         `d'approbation serveur ; si aucun outil Konekt équivalent n'existe, explique la limite. ` +

@@ -95,6 +95,19 @@ test('old OAuth return on ?tab=agent-actions lands on Connexions, message shown 
   await expect(message).toHaveCount(1);
 });
 
+test('direct OAuth return lands on the connected apps list, message shown once', async ({ asRole }) => {
+  const page = await asRole('agencyOwner');
+  await mockNotionStatus(page, true);
+  await page.goto('/settings/account/connections?notion_oauth=connected');
+
+  const message = page.getByText('Notion est connecté à l’assistant.', { exact: true });
+  await expect(message.first()).toBeVisible();
+  // Le serveur renvoie sans ancre : le lecteur de retour pose #applications.
+  await expect(page).toHaveURL(/\/settings\/account\/connections#applications$/);
+  await page.waitForTimeout(1_000);
+  await expect(message).toHaveCount(1);
+});
+
 test('old digest link ?tab=agent-actions opens Règles de l’assistant at the morning summary', async ({ asRole }) => {
   const page = await asRole('agencyOwner');
   await page.goto('/settings?tab=agent-actions');

@@ -107,9 +107,10 @@ export function ConnectorMenu({ connectors, loading = false, onToggle }: Connect
               || connector.kind === 'outlook'
               || connector.kind === 'email';
             // Une application non connectée (Notion, e-mail) propose « Connecter », comme toutes les autres.
+            // Statut en vérification ou illisible : interrupteur désactivé, jamais « Connecter ».
             const canConnect = connector.kind !== 'mcp'
               && !connector.connected
-              && connector.status !== 'checking';
+              && connector.status === 'disconnected';
 
             return (
               <div

@@ -47,6 +47,7 @@ import { Plug, Plus, Trash2, AlertTriangle, Pencil, ChevronDown, SlidersHorizont
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
+import { RESERVED_BUILTIN_CONNECTORS } from '@/lib/assistantConnectors';
 
 interface McpServerRow {
   id: string;
@@ -117,6 +118,11 @@ export function AgentConnectorsSettings() {
     const allowedTools = parseAllowedTools(allowedToolsText);
     if (!NAME_RE.test(slug)) {
       toast.error('Nom invalide : 2 à 40 caractères, en minuscules, chiffres et tirets (ex : wiki-interne).');
+      return;
+    }
+    // Nom tenu par une connexion personnelle : le chat et le serveur l'ignoreraient sans le dire.
+    if (RESERVED_BUILTIN_CONNECTORS.has(slug)) {
+      toast.error('Ce nom est réservé : Notion et l’e-mail se connectent dans Paramètres › Connexions, liste « Applications connectées ».');
       return;
     }
     if (!url.trim().startsWith('https://')) {

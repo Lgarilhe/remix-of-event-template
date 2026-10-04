@@ -31,7 +31,8 @@ export function AssistantConnectorsCard() {
       return (data ?? []).filter((server) => !RESERVED_BUILTIN_CONNECTORS.has(server.name.toLowerCase()));
     },
     enabled: Boolean(organizationId),
-    staleTime: 30_000,
+    // Relue à chaque visite : Règles de l'assistant n'invalide pas ce cache.
+    staleTime: 0,
   });
 
   return (
@@ -53,7 +54,7 @@ export function AssistantConnectorsCard() {
                 <Plug className="h-4 w-4 text-muted-foreground" />
               </span>
               <div className="min-w-0">
-                <h3 className="truncate text-sm font-medium text-foreground">{connectorLabel(server.name)}</h3>
+                <h4 className="truncate text-sm font-medium text-foreground">{connectorLabel(server.name)}</h4>
                 <p className="text-xs text-muted-foreground">Ajouté par votre organisation</p>
               </div>
             </div>

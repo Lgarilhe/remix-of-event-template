@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ExternalLink, Loader2, RefreshCw, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -82,7 +82,8 @@ export function NotionConnectorRow() {
   const { organizationId } = useOrganization();
   const { user } = useAuthReady();
   const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const handledOAuthResult = useRef<string | null>(null);
@@ -104,11 +105,14 @@ export function NotionConnectorRow() {
       toast.error(OAUTH_ERROR_MESSAGES[oauthError || ''] || 'La connexion Notion a échoué. Réessayez.');
     }
 
+    // Le serveur renvoie sans ancre (défense contre les redirections) : l'adresse nettoyée
+    // porte #applications, pour que la page se cale sur la liste au retour.
     const next = new URLSearchParams(searchParams);
     next.delete('notion_oauth');
     next.delete('notion_error');
-    setSearchParams(next, { replace: true });
-  }, [oauthError, oauthOutcome, organizationId, queryClient, searchParams, setSearchParams, user?.id]);
+    const search = next.toString();
+    navigate({ search: search ? `?${search}` : '', hash: '#applications' }, { replace: true });
+  }, [navigate, oauthError, oauthOutcome, organizationId, queryClient, searchParams, user?.id]);
 
   const connection = statusQuery.data?.connection ?? null;
   const connected = isUsableNotionConnection(connection);
@@ -166,7 +170,7 @@ export function NotionConnectorRow() {
             <img src={notionLogo} alt="" className="h-5 w-5 object-contain" />
           </span>
           <div className="min-w-0">
-            <h3 className="text-sm font-medium text-foreground">Notion</h3>
+            <h4 className="text-sm font-medium text-foreground">Notion</h4>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <NotionStatus state={state} />
               {connected && connection?.email_domain && (
