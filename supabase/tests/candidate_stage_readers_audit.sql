@@ -795,6 +795,32 @@ BEGIN
     failures := failures || pg_temp.cr_eq('U10 Pré-qualif vers CV envoyé, annulé', got,
                                           '---x-|updated|interviewing/Pré-qualif/true/-----');
 
+    -- U12. Colonne d'entretien d'une ligne entrée en entretien par l'application
+    --      (jalons contact, réponse et entretien à la date d'entrée) : Pré-qualif
+    --      vers Offre, annulé : Pré-qualif, date d'entrée et jalons d'avant gardés
+    --      (le geste n'a changé ni l'étape ni la date).
+    x := pg_temp.cr_row(m6, 'U12', 'shortlisted', 'Pré-qualif', p_by => u_a);
+    PERFORM pg_temp.cr_force(x, 'stage_entered_at', t_b);
+    PERFORM pg_temp.cr_force(x, 'contacted_at', t_b);
+    PERFORM pg_temp.cr_force(x, 'replied_at', t_b);
+    PERFORM pg_temp.cr_force(x, 'first_interview_at', t_b);
+    bf_x := pg_temp.cr_before(x);
+    PERFORM pg_temp.cr_as(u_a);
+    SET LOCAL ROLE authenticated;
+    g := public.set_candidate_stages(ARRAY[x], 'interviewing', 'user', NULL, NULL, 'Offre');
+    RESET ROLE;
+    got := pg_temp.cr_jal(x);
+    mv := jsonb_build_array(pg_temp.cr_move(x, g, bf_x) || jsonb_build_object('after_pipeline_stage', 'Offre'));
+    SET LOCAL ROLE authenticated;
+    u := public.undo_candidate_stages(mv);
+    RESET ROLE;
+    PERFORM pg_temp.cr_as(NULL);
+    SELECT got || '|' || pg_temp.cr_res(u, x) || '|' || j.general_stage || '/' || j.pipeline_stage || '/'
+           || (j.stage_entered_at = t_b) || '/' || pg_temp.cr_jal(j.id)
+      INTO got FROM public.job_candidate_status j WHERE j.id = x;
+    failures := failures || pg_temp.cr_eq('U12 Pré-qualif vers Offre, annulé : jalons d''avant gardés', got,
+                                          'xxx--|updated|interviewing/Pré-qualif/true/xxx--');
+
     -- U11. Annulation forgée sur une ligne contactée par le serveur (date
     --      d'entrée exacte) : moved_since, rien d'écrit, contacted_at intact.
     y := pg_temp.cr_row(m6, 'U11', 'discovered', p_by => u_a);
@@ -1082,5 +1108,5 @@ BEGIN
   IF failures IS NOT NULL THEN
     RAISE EXCEPTION 'candidate_stage_readers_audit : %', failures;
   END IF;
-  RAISE NOTICE 'candidate_stage_readers_audit : tous les contrôles passés (S1-S7, V1-V14, C1-C4, St1-St6, U1-U11, I1-I2, P1-P5, Rc, B1-B5)';
+  RAISE NOTICE 'candidate_stage_readers_audit : tous les contrôles passés (S1-S7, V1-V14, C1-C4, St1-St6, U1-U12, I1-I2, P1-P5, Rc, B1-B5)';
 END $$;

@@ -269,15 +269,16 @@ export const useMissionProcess = (projectId: string | undefined) => {
   const initializeDefaultSteps = () => initializeFromTemplate(DEFAULT_STEPS);
 
   // Nb de candidats positionnés sur une étape ACTUELLE (process_step_id, lot 0c ;
-  // une ligne par candidat, doublons réunis) : pour l'AlertDialog.
-  const countCandidatesOnSteps = async (): Promise<number> => {
+  // une ligne par candidat, doublons réunis) : pour l'AlertDialog. null quand la
+  // lecture échoue : un zéro inventé ferait annoncer « aucun candidat ».
+  const countCandidatesOnSteps = async (): Promise<number | null> => {
     if (!projectId || steps.length === 0) return 0;
     const { count, error } = await db
       .from('mission_candidate_rows')
       .select('id', { count: 'exact', head: true })
       .eq('project_id', projectId)
       .in('process_step_id', steps.map(s => s.id));
-    if (error) return 0;
+    if (error) return null;
     return count ?? 0;
   };
 
