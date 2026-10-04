@@ -140,3 +140,14 @@ test('icônes qui attendent : décoratives, et chaque boucle finit sur la pose f
   // Mouvement réduit : la règle globale arrête tout, y compris ces boucles.
   assert.match(read('src/index.css'), /@media \(prefers-reduced-motion: reduce\) \{\n\s+\*,\n\s+\*::before,\n\s+\*::after \{\n\s+animation-duration: 0\.01ms !important;\n\s+animation-iteration-count: 1 !important;/);
 });
+
+test('panneau « Prise de contact » : la liste des séquences garde la forme compacte', () => {
+  // 440 px : les colonnes d'ordinateur n'y tiennent pas (nom écrit une lettre par ligne).
+  assert.match(read('src/components/missions/v3/panels/ContactPanel.tsx'), /<SequencesList[\s\S]*?layout="compact"[\s\S]*?\/>/);
+  const list = read('src/components/outreach/SequencesList.tsx');
+  assert.match(list, /layout\?: 'auto' \| 'compact';/);
+  assert.match(list, /const wide = layout === 'auto';/);
+  // Aucune classe de colonnes d'ordinateur appliquée sans passer par `wide`.
+  assert.doesNotMatch(list, /className="[^"]*\blg:(contents|grid|block|sr-only|justify-center|text-center|hidden)\b/);
+  assert.doesNotMatch(list, /`[^`]*\$\{ROW_GRID\}`\}/);
+});
