@@ -209,6 +209,10 @@ export interface SequenceListActionDeps {
   setEditingActiveCount: Dispatch<SetStateAction<number | undefined>>;
   setEditingSequence: Dispatch<SetStateAction<Sequence | null>>;
   setShowBuilder: Dispatch<SetStateAction<boolean>>;
+  /** Nom de la copie ; défaut « X (copie) ». Page d'une séquence (lot 5c-2) : « Copie de X ». */
+  copyName?: (name: string) => string;
+  /** Copie créée, étapes comprises (page d'une séquence : ouverture de la copie). */
+  onDuplicated?: (copy: { id: string; name: string }) => void;
 }
 
 export function createSequenceListActions(deps: SequenceListActionDeps) {
@@ -222,6 +226,7 @@ export function createSequenceListActions(deps: SequenceListActionDeps) {
     missionSequenceIds, setNudging, setNudgeConfirmOpen,
     setActivateConfirm, setDeleteConfirmId, duplicatingRef, setDuplicatingId,
     editorBaseStepIdsRef, setEditingActiveCount, setEditingSequence, setShowBuilder,
+    copyName = (name: string) => `${name} (copie)`, onDuplicated,
   } = deps;
 
   const handleNudgeToday = async () => {
@@ -640,7 +645,8 @@ export function createSequenceListActions(deps: SequenceListActionDeps) {
     await activateSequence(seq.id, 0, otherPaused, otherMembers);
   };
 
-  const handleDelete = async (sequenceId: string) => {
+  // Rend true si la séquence a bien été supprimée (page d'une séquence : retour à la liste).
+  const handleDelete = async (sequenceId: string): Promise<boolean> => {
     try {
       // .select('id') : un refus d'accès supprime 0 ligne sans erreur.
       const { data: deleted, error } = await supabase
@@ -652,16 +658,18 @@ export function createSequenceListActions(deps: SequenceListActionDeps) {
       if (error) throw error;
       if (!deleted || deleted.length === 0) {
         toast.error('Suppression impossible', { description: 'Vous n’avez pas les droits sur cette séquence.' });
-        return;
+        return false;
       }
 
       setSequences(prev => prev.filter(s => s.id !== sequenceId));
       toast.success('Séquence supprimée');
       // Les chiffres de la mission (inscrits retirés avec la séquence) suivent.
       void fetchSequences();
+      return true;
     } catch (err) {
       console.error('Error deleting sequence:', err);
       toast.error('Impossible de supprimer la séquence', { description: 'Réessayez dans un instant.' });
+      return false;
     } finally {
       setDeleteConfirmId(null);
     }
@@ -690,16 +698,18 @@ export function createSequenceListActions(deps: SequenceListActionDeps) {
         .order('step_order', { ascending: true }) as any);
       if (stepsErr) throw sequenceSaveError(stepsErr);
 
-      // 2. Crée la nouvelle séquence avec un nom suffixé "(copie)"
+      // 2. Crée la nouvelle séquence, nommée « X (copie) » (ou par copyName)
       const { data: newSeq, error: seqErr } = await (supabase
         .from('outreach_sequences')
         .insert({
-          name: `${seq.name} (copie)`,
+          name: copyName(seq.name),
           description: seq.description,
           is_active: false, // toujours inactive par défaut, l'user choisit quand activer
           created_by: user.id,
           organization_id: organizationId,
-          ...(projectId ? { project_id: projectId } : {}),
+          // Depuis une mission : la copie lui appartient. Depuis l'écran
+          // Séquences de l'organisation (lot 5c-2) : la mission de l'originale.
+          ...(projectId ? { project_id: projectId } : seq.project_id ? { project_id: seq.project_id } : {}),
           // Garde-fous et expéditeurs : la copie doit s'arrêter et tourner
           // entre comptes comme l'originale.
           stop_conditions: seq.stop_conditions ?? null,
@@ -765,6 +775,7 @@ export function createSequenceListActions(deps: SequenceListActionDeps) {
       toast.success(`Séquence dupliquée : "${newSeq.name}"`, {
         description: 'La copie reste inactive tant que vous ne l’activez pas.',
       });
+      onDuplicated?.({ id: newSeq.id, name: newSeq.name });
       // Refresh la liste
       await fetchSequences();
     } catch (err) {
@@ -1014,6 +1025,45 @@ export function createEnrollmentActions(deps: EnrollmentActionDeps) {
     }
   };
 
+  // « Mettre en pause » de la barre groupée (page d'une séquence, lot 5c-2) :
+  // les candidats choisis qui sont en cours, même écriture que la pause d'un
+  // candidat, sans fenêtre ; « Annuler » reprend ceux que l'écriture a touchés.
+  const pauseEnrollments = async (enrollmentIds: string[]) => {
+    const ids = [...new Set(enrollmentIds)];
+    if (ids.length === 0) return;
+    try {
+      const { data, error: enrollError } = await supabase
+        .from('sequence_enrollments')
+        .update({ status: 'paused', pause_reason: 'manual' })
+        .in('id', ids)
+        .eq('status', 'active')
+        .select('id');
+      if (enrollError) throw enrollError;
+      const pausedIds = (data ?? []).map(row => row.id);
+      if (pausedIds.length === 0) {
+        toast.info('Aucun des candidats choisis n’était en cours.');
+        await fetchEnrollments();
+        return;
+      }
+      setEnrollments(prev =>
+        prev.map(e => pausedIds.includes(e.id) ? { ...e, status: 'paused', pause_reason: 'manual' } : e)
+      );
+      void fetchStatusCounts();
+      const single = pausedIds.length === 1 ? nameOf(pausedIds[0]) : null;
+      const skipped = ids.length - pausedIds.length;
+      offerUndoPause({
+        title: single ? pauseToastTitle(single) : `Séquence mise en pause pour ${candidats(pausedIds.length)}.`,
+        description: skipped > 0 ? `${candidats(skipped)} ${skipped > 1 ? 'n’étaient' : 'n’était'} pas en cours.` : null,
+        enrollmentIds: pausedIds,
+        candidateName: single,
+        onSettled: () => fetchEnrollments(),
+      });
+    } catch (error) {
+      console.error('Error pausing enrollments:', error);
+      toast.error('La mise en pause a échoué. Réessayez.');
+    }
+  };
+
   // Mise en pause de TOUS les candidats en cours de la séquence, filtrée en
   // base (pas sur les 200 lignes chargées). Les étapes gardent leur date.
   // Sans fenêtre (lot 5b) : l'écriture rend les inscriptions touchées, les
@@ -1220,5 +1270,5 @@ export function createEnrollmentActions(deps: EnrollmentActionDeps) {
     await fetchEnrollments();
   };
 
-  return { stopEnrollment, bulkStopActive, bulkResumePaused, skipStep, markReplied };
+  return { stopEnrollment, pauseEnrollments, bulkStopActive, bulkResumePaused, skipStep, markReplied };
 }

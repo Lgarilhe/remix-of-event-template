@@ -245,6 +245,9 @@ function duplicateHarness({ stepsCreateError = null, manage = true } = {}) {
     DEFAULT_WAIT_TIMEOUT_DAYS: 3,
     implicitWaitEvent: (type, event) => event || (type === 'wait_reply' ? 'reply_received' : null),
     fetchSequences: async () => {},
+    // Lot 5c-2 : nom de la copie et ouverture de la copie, passés par la page ; défaut de la liste.
+    copyName: (name) => `${name} (copie)`,
+    onDuplicated: undefined,
   });
   const seq = { id: 'src-1', name: 'Relance', description: null, organization_id: 'org-1', sender_accounts: null, multi_sender_enabled: false };
   return { handleDuplicate, seq, calls, toasts, duplicatingRef };

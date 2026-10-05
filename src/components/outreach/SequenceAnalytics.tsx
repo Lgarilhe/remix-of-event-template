@@ -59,6 +59,12 @@ interface SequenceAnalyticsProps {
   sequenceName?: string;
   /** Mission d'où les statistiques sont ouvertes : ses inscriptions sont comptées par défaut. */
   projectId?: string | null;
+  /**
+   * Dans une page (onglet « Statistiques » de l'écran Séquences, lot 5c-2) :
+   * le contenu sans le panneau latéral, chargé dès l'affichage. Défaut : le
+   * panneau, comme avant.
+   */
+  embedded?: boolean;
 }
 
 interface AnalyticsRow {
@@ -130,6 +136,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   sequenceId,
   sequenceName,
   projectId,
+  embedded = false,
 }) => {
   const [analytics, setAnalytics] = useState<AnalyticsRow[]>([]);
   const [enrollmentStats, setEnrollmentStats] = useState<EnrollmentStats | null>(null);
@@ -340,8 +347,8 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
   }, [period, customStart, customEnd, sequenceId, selectedSeqId, projectId, scope]);
 
   useEffect(() => {
-    if (isOpen) fetchData();
-  }, [isOpen, fetchData]);
+    if (isOpen || embedded) fetchData();
+  }, [isOpen, embedded, fetchData]);
 
   const totals = useMemo(() => {
     return analytics.reduce(
@@ -411,6 +418,302 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
     || stepStats.some(s => s.sent > 0);
   const title = sequenceName ? `Statistiques : ${sequenceName}` : 'Statistiques de toutes les séquences';
 
+  // Contenu commun au panneau et à la page.
+  const body = (
+    <>
+      {/* Filtres */}
+      <div className="flex flex-wrap items-end gap-2">
+        {projectId && (
+          <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
+            <SelectTrigger className="w-full sm:w-44" aria-label="Périmètre">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mission">Cette mission</SelectItem>
+              <SelectItem value="all">Toutes les missions</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        {!sequenceId && (
+          <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
+            <SelectTrigger className="w-full sm:w-56" aria-label="Séquence">
+              <SelectValue placeholder="Toutes les séquences" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes les séquences</SelectItem>
+              {sequences.map(s => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90' | 'custom')}>
+          <SelectTrigger className="min-w-0 flex-1 sm:w-48 sm:flex-none" aria-label="Période">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">{PERIOD_LABELS['7']}</SelectItem>
+            <SelectItem value="30">{PERIOD_LABELS['30']}</SelectItem>
+            <SelectItem value="90">{PERIOD_LABELS['90']}</SelectItem>
+            <SelectItem value="custom">{PERIOD_LABELS.custom}</SelectItem>
+          </SelectContent>
+        </Select>
+        <UiTooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={fetchData}
+              disabled={loading}
+              className="shrink-0 max-md:h-11 max-md:w-11"
+              aria-label="Actualiser les statistiques"
+            >
+              <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Actualiser</TooltipContent>
+        </UiTooltip>
+        {period === 'custom' && (
+          <div className="flex w-full flex-wrap gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor={startId} className="text-xs text-muted-foreground">Du</Label>
+              <Input
+                id={startId}
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                max={customEnd}
+                className="w-40"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={endId} className="text-xs text-muted-foreground">Au</Label>
+              <Input
+                id={endId}
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                min={customStart}
+                max={format(new Date(), 'yyyy-MM-dd')}
+                className="w-40"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div role="status" aria-label="Chargement des statistiques">
+          <AnalyticsSkeleton />
+        </div>
+      ) : loadError ? (
+        <ErrorState
+          title="Impossible de charger les statistiques"
+          description="Vérifiez votre connexion, puis réessayez."
+          detail={loadErrorDetail}
+          onRetry={fetchData}
+        />
+      ) : !hasData ? (
+        <EmptyState
+          icon={BarChart3}
+          title="Pas encore de statistiques"
+          description={sequenceId
+            ? 'Les chiffres apparaissent dès les premiers envois de cette séquence.'
+            : 'Les chiffres apparaissent dès les premiers envois de vos séquences.'}
+        />
+      ) : (
+        <>
+          {/* Indicateurs */}
+          <StatGrid cols={{ base: 2, sm: 3 }}>
+            <StatTile label="Visites de profil" value={totals.profileVisits} />
+            <StatTile
+              label="Invitations"
+              value={totals.invitesSent}
+              trailing={<span className="text-xs text-muted-foreground">{acceptRate} % acceptées</span>}
+            />
+            <StatTile label="Messages" value={totals.messagesSent} />
+            <StatTile
+              label="Candidats inscrits"
+              value={enrollmentStats?.total || 0}
+              trailing={<span className="text-xs text-muted-foreground">{plural(responseRate.contacted, 'contacté')}</span>}
+            />
+            <StatTile
+              label="Réponses"
+              value={enrollmentStats?.replied || 0}
+              trailing={responseRate.rate === null
+                ? undefined
+                : <span className="text-xs text-muted-foreground">{responseRate.rate} % des contactés</span>}
+            />
+            <StatTile
+              label="Délai de réponse"
+              value={formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null)}
+              trailing={<span className="text-xs text-muted-foreground">en moyenne</span>}
+            />
+          </StatGrid>
+          <p className="text-xs text-muted-foreground">
+            Candidats, réponses et taux : candidats inscrits sur la période.
+            {missionScoped && ' Visites, invitations et messages : toutes missions confondues pour les séquences de cette mission.'}
+          </p>
+
+          {/* Entonnoir */}
+          <Section title="Entonnoir de conversion" padded>
+            <ol className="space-y-3">
+              {funnelData.map((item, index) => {
+                const maxVal = Math.max(...funnelData.map(f => f.value), 1);
+                const width = item.value > 0 ? Math.max((item.value / maxVal) * 100, 2) : 0;
+                const prevValue = index > 0 ? funnelData[index - 1].value : null;
+                const convRate = prevValue && prevValue > 0 ? Math.round((item.value / prevValue) * 100) : null;
+
+                return (
+                  <li key={item.name} className="grid grid-cols-[6rem_1fr_5rem] items-center gap-3">
+                    <span className="truncate text-xs text-muted-foreground">{item.name}</span>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                      <div className="h-full rounded-full bg-foreground-secondary" style={{ width: `${width}%` }} />
+                    </div>
+                    <span className="text-right text-sm font-medium tabular-nums text-foreground">
+                      {item.value}
+                      {convRate !== null && (
+                        <span className="ml-1 text-xs font-normal text-muted-foreground">({convRate} %)</span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Entre parenthèses : la part de l'étape précédente.
+            </p>
+          </Section>
+
+          {/* Répartition des candidats */}
+          {statusData.length > 0 && enrollmentStats && (
+            <Section title="Répartition des candidats" padded>
+              <div className="mb-3 flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
+                {statusData.map((item) => (
+                  <div
+                    key={item.key}
+                    className={cn('h-full', TONE_FILL[enrollmentStatusMeta(item.key).tone])}
+                    style={{ width: `${(item.value / enrollmentStats.total) * 100}%` }}
+                  />
+                ))}
+              </div>
+              <ul className="flex flex-wrap gap-x-4 gap-y-2">
+                {statusData.map((item) => (
+                  <li key={item.key} className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold tabular-nums text-foreground">{item.value}</span>
+                    <EnrollmentStatusBadge status={item.key} />
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+
+          {/* Activité quotidienne */}
+          {chartData.length > 0 && (
+            <Section title="Activité quotidienne" padded>
+              <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Légende">
+                {SERIES.map((s) => (
+                  <li key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className={cn('h-2.5 w-2.5 rounded-sm', s.swatch)} aria-hidden="true" />
+                    {s.label}
+                  </li>
+                ))}
+              </ul>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={chartData} barGap={2} barCategoryGap="20%">
+                  <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={(d) => format(new Date(d), 'dd/MM', { locale: fr })}
+                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    width={28}
+                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'hsl(var(--accent))' }}
+                    labelFormatter={(d) => format(new Date(d as string), 'd MMMM yyyy', { locale: fr })}
+                    contentStyle={{
+                      borderRadius: 8,
+                      border: '1px solid hsl(var(--border))',
+                      backgroundColor: 'hsl(var(--popover))',
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
+                    itemStyle={{ color: 'hsl(var(--foreground-secondary))' }}
+                  />
+                  {SERIES.map((s) => (
+                    <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.fill} radius={[4, 4, 0, 0]} maxBarSize={24} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </Section>
+          )}
+
+          {/* Résultats A/B */}
+          {abResults.length > 0 && (
+            <ABTestResults results={abResults} />
+          )}
+
+          {/* Performance par étape */}
+          {stepStats.length > 0 && (
+            <Section title="Performance par étape" padded>
+              <ul className="space-y-2">
+                {stepStats.map(s => {
+                  // Seules les réponses e-mail sont rattachées à une étape.
+                  const tracksReplies = s.action_type === 'email';
+                  const stepReplyRate = s.sent > 0 ? (s.replied / s.sent) * 100 : 0;
+                  return (
+                    <li
+                      key={s.id}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-background p-2.5 text-xs"
+                    >
+                      <span className="w-14 shrink-0 font-medium text-foreground">Étape {s.step_order + 1}</span>
+                      <span className="min-w-0 flex-1 truncate text-foreground-secondary">{stepTypeLabel(s.action_type)}</span>
+                      <span className="text-muted-foreground">
+                        <span className="font-semibold tabular-nums text-foreground">{s.sent}</span> {s.sent > 1 ? 'envoyées' : 'envoyée'}
+                        {tracksReplies && s.replied > 0 && (
+                          <>
+                            {' · '}
+                            <span className="font-semibold tabular-nums text-foreground">{s.replied}</span> {s.replied > 1 ? 'réponses' : 'réponse'}
+                          </>
+                        )}
+                      </span>
+                      <span
+                        className={cn(
+                          'w-14 shrink-0 text-right font-semibold tabular-nums',
+                          !tracksReplies
+                            ? 'text-muted-foreground'
+                            : stepReplyRate >= 20 ? 'text-success' : stepReplyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
+                        )}
+                      >
+                        {tracksReplies
+                          ? `${stepReplyRate.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`
+                          : '–'}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Réponses suivies pour l'e-mail uniquement : une réponse sur LinkedIn n'est pas rattachée à une
+                étape. Taux de réponse en vert à partir de 20 %, en orange de 10 à 20 %, en gris en dessous.
+              </p>
+            </Section>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  if (embedded) return <div className="space-y-4">{body}</div>;
+
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
@@ -421,296 +724,7 @@ export const SequenceAnalytics: React.FC<SequenceAnalyticsProps> = ({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
-          {/* Filtres */}
-          <div className="flex flex-wrap items-end gap-2">
-            {projectId && (
-              <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
-                <SelectTrigger className="w-full sm:w-44" aria-label="Périmètre">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mission">Cette mission</SelectItem>
-                  <SelectItem value="all">Toutes les missions</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-            {!sequenceId && (
-              <Select value={selectedSeqId} onValueChange={setSelectedSeqId}>
-                <SelectTrigger className="w-full sm:w-56" aria-label="Séquence">
-                  <SelectValue placeholder="Toutes les séquences" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les séquences</SelectItem>
-                  {sequences.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Select value={period} onValueChange={(v) => setPeriod(v as '7' | '30' | '90' | 'custom')}>
-              <SelectTrigger className="min-w-0 flex-1 sm:w-48 sm:flex-none" aria-label="Période">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">{PERIOD_LABELS['7']}</SelectItem>
-                <SelectItem value="30">{PERIOD_LABELS['30']}</SelectItem>
-                <SelectItem value="90">{PERIOD_LABELS['90']}</SelectItem>
-                <SelectItem value="custom">{PERIOD_LABELS.custom}</SelectItem>
-              </SelectContent>
-            </Select>
-            <UiTooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={fetchData}
-                  disabled={loading}
-                  className="shrink-0 max-md:h-11 max-md:w-11"
-                  aria-label="Actualiser les statistiques"
-                >
-                  <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Actualiser</TooltipContent>
-            </UiTooltip>
-            {period === 'custom' && (
-              <div className="flex w-full flex-wrap gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor={startId} className="text-xs text-muted-foreground">Du</Label>
-                  <Input
-                    id={startId}
-                    type="date"
-                    value={customStart}
-                    onChange={(e) => setCustomStart(e.target.value)}
-                    max={customEnd}
-                    className="w-40"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor={endId} className="text-xs text-muted-foreground">Au</Label>
-                  <Input
-                    id={endId}
-                    type="date"
-                    value={customEnd}
-                    onChange={(e) => setCustomEnd(e.target.value)}
-                    min={customStart}
-                    max={format(new Date(), 'yyyy-MM-dd')}
-                    className="w-40"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {loading ? (
-            <div role="status" aria-label="Chargement des statistiques">
-              <AnalyticsSkeleton />
-            </div>
-          ) : loadError ? (
-            <ErrorState
-              title="Impossible de charger les statistiques"
-              description="Vérifiez votre connexion, puis réessayez."
-              detail={loadErrorDetail}
-              onRetry={fetchData}
-            />
-          ) : !hasData ? (
-            <EmptyState
-              icon={BarChart3}
-              title="Pas encore de statistiques"
-              description={sequenceId
-                ? 'Les chiffres apparaissent dès les premiers envois de cette séquence.'
-                : 'Les chiffres apparaissent dès les premiers envois de vos séquences.'}
-            />
-          ) : (
-            <>
-              {/* Indicateurs */}
-              <StatGrid cols={{ base: 2, sm: 3 }}>
-                <StatTile label="Visites de profil" value={totals.profileVisits} />
-                <StatTile
-                  label="Invitations"
-                  value={totals.invitesSent}
-                  trailing={<span className="text-xs text-muted-foreground">{acceptRate} % acceptées</span>}
-                />
-                <StatTile label="Messages" value={totals.messagesSent} />
-                <StatTile
-                  label="Candidats inscrits"
-                  value={enrollmentStats?.total || 0}
-                  trailing={<span className="text-xs text-muted-foreground">{plural(responseRate.contacted, 'contacté')}</span>}
-                />
-                <StatTile
-                  label="Réponses"
-                  value={enrollmentStats?.replied || 0}
-                  trailing={responseRate.rate === null
-                    ? undefined
-                    : <span className="text-xs text-muted-foreground">{responseRate.rate} % des contactés</span>}
-                />
-                <StatTile
-                  label="Délai de réponse"
-                  value={formatAvgTime(enrollmentStats?.avgResponseTimeHours ?? null)}
-                  trailing={<span className="text-xs text-muted-foreground">en moyenne</span>}
-                />
-              </StatGrid>
-              <p className="text-xs text-muted-foreground">
-                Candidats, réponses et taux : candidats inscrits sur la période.
-                {missionScoped && ' Visites, invitations et messages : toutes missions confondues pour les séquences de cette mission.'}
-              </p>
-
-              {/* Entonnoir */}
-              <Section title="Entonnoir de conversion" padded>
-                <ol className="space-y-3">
-                  {funnelData.map((item, index) => {
-                    const maxVal = Math.max(...funnelData.map(f => f.value), 1);
-                    const width = item.value > 0 ? Math.max((item.value / maxVal) * 100, 2) : 0;
-                    const prevValue = index > 0 ? funnelData[index - 1].value : null;
-                    const convRate = prevValue && prevValue > 0 ? Math.round((item.value / prevValue) * 100) : null;
-
-                    return (
-                      <li key={item.name} className="grid grid-cols-[6rem_1fr_5rem] items-center gap-3">
-                        <span className="truncate text-xs text-muted-foreground">{item.name}</span>
-                        <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                          <div className="h-full rounded-full bg-foreground-secondary" style={{ width: `${width}%` }} />
-                        </div>
-                        <span className="text-right text-sm font-medium tabular-nums text-foreground">
-                          {item.value}
-                          {convRate !== null && (
-                            <span className="ml-1 text-xs font-normal text-muted-foreground">({convRate} %)</span>
-                          )}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Entre parenthèses : la part de l'étape précédente.
-                </p>
-              </Section>
-
-              {/* Répartition des candidats */}
-              {statusData.length > 0 && enrollmentStats && (
-                <Section title="Répartition des candidats" padded>
-                  <div className="mb-3 flex h-2 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
-                    {statusData.map((item) => (
-                      <div
-                        key={item.key}
-                        className={cn('h-full', TONE_FILL[enrollmentStatusMeta(item.key).tone])}
-                        style={{ width: `${(item.value / enrollmentStats.total) * 100}%` }}
-                      />
-                    ))}
-                  </div>
-                  <ul className="flex flex-wrap gap-x-4 gap-y-2">
-                    {statusData.map((item) => (
-                      <li key={item.key} className="flex items-center gap-1.5">
-                        <span className="text-sm font-semibold tabular-nums text-foreground">{item.value}</span>
-                        <EnrollmentStatusBadge status={item.key} />
-                      </li>
-                    ))}
-                  </ul>
-                </Section>
-              )}
-
-              {/* Activité quotidienne */}
-              {chartData.length > 0 && (
-                <Section title="Activité quotidienne" padded>
-                  <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Légende">
-                    {SERIES.map((s) => (
-                      <li key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <span className={cn('h-2.5 w-2.5 rounded-sm', s.swatch)} aria-hidden="true" />
-                        {s.label}
-                      </li>
-                    ))}
-                  </ul>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={chartData} barGap={2} barCategoryGap="20%">
-                      <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
-                      <XAxis
-                        dataKey="date"
-                        tickFormatter={(d) => format(new Date(d), 'dd/MM', { locale: fr })}
-                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                        axisLine={{ stroke: 'hsl(var(--border))' }}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        allowDecimals={false}
-                        width={28}
-                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        cursor={{ fill: 'hsl(var(--accent))' }}
-                        labelFormatter={(d) => format(new Date(d as string), 'd MMMM yyyy', { locale: fr })}
-                        contentStyle={{
-                          borderRadius: 8,
-                          border: '1px solid hsl(var(--border))',
-                          backgroundColor: 'hsl(var(--popover))',
-                          fontSize: 12,
-                        }}
-                        labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
-                        itemStyle={{ color: 'hsl(var(--foreground-secondary))' }}
-                      />
-                      {SERIES.map((s) => (
-                        <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.fill} radius={[4, 4, 0, 0]} maxBarSize={24} />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Section>
-              )}
-
-              {/* Résultats A/B */}
-              {abResults.length > 0 && (
-                <ABTestResults results={abResults} />
-              )}
-
-              {/* Performance par étape */}
-              {stepStats.length > 0 && (
-                <Section title="Performance par étape" padded>
-                  <ul className="space-y-2">
-                    {stepStats.map(s => {
-                      // Seules les réponses e-mail sont rattachées à une étape.
-                      const tracksReplies = s.action_type === 'email';
-                      const stepReplyRate = s.sent > 0 ? (s.replied / s.sent) * 100 : 0;
-                      return (
-                        <li
-                          key={s.id}
-                          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-background p-2.5 text-xs"
-                        >
-                          <span className="w-14 shrink-0 font-medium text-foreground">Étape {s.step_order + 1}</span>
-                          <span className="min-w-0 flex-1 truncate text-foreground-secondary">{stepTypeLabel(s.action_type)}</span>
-                          <span className="text-muted-foreground">
-                            <span className="font-semibold tabular-nums text-foreground">{s.sent}</span> {s.sent > 1 ? 'envoyées' : 'envoyée'}
-                            {tracksReplies && s.replied > 0 && (
-                              <>
-                                {' · '}
-                                <span className="font-semibold tabular-nums text-foreground">{s.replied}</span> {s.replied > 1 ? 'réponses' : 'réponse'}
-                              </>
-                            )}
-                          </span>
-                          <span
-                            className={cn(
-                              'w-14 shrink-0 text-right font-semibold tabular-nums',
-                              !tracksReplies
-                                ? 'text-muted-foreground'
-                                : stepReplyRate >= 20 ? 'text-success' : stepReplyRate >= 10 ? 'text-warning' : 'text-muted-foreground',
-                            )}
-                          >
-                            {tracksReplies
-                              ? `${stepReplyRate.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`
-                              : '–'}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Réponses suivies pour l'e-mail uniquement : une réponse sur LinkedIn n'est pas rattachée à une
-                    étape. Taux de réponse en vert à partir de 20 %, en orange de 10 à 20 %, en gris en dessous.
-                  </p>
-                </Section>
-              )}
-            </>
-          )}
-        </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">{body}</div>
       </SheetContent>
     </Sheet>
   );

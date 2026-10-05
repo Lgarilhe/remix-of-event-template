@@ -113,6 +113,8 @@ import {
 } from './sequence/sequenceGraph';
 
 import type { SequenceStep, StopConditions, Sequence } from '@/types/sequence';
+// « Séquence recommandée » : le modèle Konekt « Séquence longue (17 étapes) » (lot 5c-2).
+import { generateRecommendedSequence } from '@/lib/sequenceStarterTemplates';
 
 // Types sortis au lot 5c-1 dans src/types/sequence.ts, réexportés jusqu'au lot 5j
 // pour les fichiers voués au retrait (StepEditor, WorkflowCanvas,
@@ -209,75 +211,6 @@ const createEmptyStep = (order: number, actionType: string = 'connection_request
     timeoutAction: 'skip',
     waitForEvent: trigger?.waitEvent as SequenceStep['waitForEvent'],
   };
-};
-
-const generateRecommendedSequence = (): SequenceStep[] => {
-  const mkStep = (
-    order: number,
-    actionType: SequenceStep['actionType'],
-    overrides: Partial<SequenceStep> = {}
-  ): SequenceStep => ({
-    id: crypto.randomUUID(),
-    order,
-    actionType,
-    conditionType: 'always',
-    delayDays: 0,
-    delayHours: 0,
-    delayMinutes: 0,
-    preferredHourStart: 9,
-    preferredHourEnd: 18,
-    useAiPersonalization: actionType === 'smart_message',
-    aiTone: 'professional',
-    timeoutDays: 3,
-    timeoutAction: 'skip',
-    ...overrides,
-  });
-
-  const profileVisit = mkStep(0, 'profile_visit');
-  const checkConnection = mkStep(1, 'check_connection', { delayMinutes: 2 });
-  const t1_message = mkStep(2, 'smart_message');
-  const t2_waitReply = mkStep(3, 'wait_connection', { actionType: 'wait_reply', waitForEvent: 'reply_received', timeoutDays: 3, timeoutAction: 'skip' });
-  const t3_relance1 = mkStep(4, 'smart_message');
-  const t4_waitReply2 = mkStep(5, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 4, timeoutAction: 'skip' });
-  const t5_relance2 = mkStep(6, 'smart_message');
-
-  t1_message.nextStepId = t2_waitReply.id;
-  t2_waitReply.nextStepId = t3_relance1.id;
-  t3_relance1.nextStepId = t4_waitReply2.id;
-  t4_waitReply2.nextStepId = t5_relance2.id;
-
-  const f1_invite = mkStep(7, 'connection_request');
-  const f2_waitConnection = mkStep(8, 'wait_connection', { waitForEvent: 'connection_accepted', timeoutDays: 3, timeoutAction: 'skip' });
-  const f3_message = mkStep(9, 'smart_message');
-  const f4_waitReply = mkStep(10, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 3, timeoutAction: 'skip' });
-  const f5_relance1 = mkStep(11, 'smart_message');
-  const f6_waitReply2 = mkStep(12, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 4, timeoutAction: 'skip' });
-  const f7_relance2 = mkStep(13, 'smart_message');
-  const f8_inmail = mkStep(14, 'inmail', { useAiPersonalization: true });
-  const f9_waitReply = mkStep(15, 'wait_reply', { waitForEvent: 'reply_received', timeoutDays: 5, timeoutAction: 'skip' });
-  const f10_inmailRelance = mkStep(16, 'inmail', { useAiPersonalization: true });
-
-  f1_invite.nextStepId = f2_waitConnection.id;
-  f2_waitConnection.nextStepId = f3_message.id;
-  f3_message.nextStepId = f4_waitReply.id;
-  f4_waitReply.nextStepId = f5_relance1.id;
-  f5_relance1.nextStepId = f6_waitReply2.id;
-  f6_waitReply2.nextStepId = f7_relance2.id;
-  f2_waitConnection.timeoutAction = 'alternative_step';
-  f2_waitConnection.timeoutBranchStepId = f8_inmail.id;
-  f8_inmail.nextStepId = f9_waitReply.id;
-  f9_waitReply.nextStepId = f10_inmailRelance.id;
-
-  checkConnection.ifTrueGotoStep = t1_message.id;
-  checkConnection.ifFalseGotoStep = f1_invite.id;
-
-  return [
-    profileVisit, checkConnection,
-    t1_message, t2_waitReply, t3_relance1, t4_waitReply2, t5_relance2,
-    f1_invite, f2_waitConnection,
-    f3_message, f4_waitReply, f5_relance1, f6_waitReply2, f7_relance2,
-    f8_inmail, f9_waitReply, f10_inmailRelance,
-  ];
 };
 
 const isAction = (actionType: string) => ACTIONS.some(a => a.value === actionType);
