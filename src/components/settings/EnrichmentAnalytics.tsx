@@ -214,29 +214,36 @@ export const EnrichmentAnalytics: React.FC = () => {
         <span className="text-xs text-muted-foreground">30 derniers jours</span>
       </div>
 
-      {/* Bandeau forfait */}
-      <div className="border border-border rounded-lg p-3 space-y-2">
+      {/* Bandeau forfait. Design simplifié : sans encadré (règle 3) ; rien d'utilisé, le forfait
+          s'écrit en clair, sans « 0 / 200 », barre vide ni date de remise à zéro (règle 8). */}
+      <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Package className="h-3.5 w-3.5" aria-hidden="true" />
             <span>Forfait du mois (1 par e-mail, 10 par mobile)</span>
           </div>
-          <div className="text-sm font-semibold tabular-nums text-foreground">
-            {includedUsed} / {includedMonthly}
-            {resetDay && <span className="text-xs font-normal text-muted-foreground ml-1.5">(remise à zéro le {resetDay})</span>}
-          </div>
+          {includedUsed > 0 || includedMonthly <= 0 ? (
+            <div className="text-sm font-semibold tabular-nums text-foreground">
+              {includedUsed} / {includedMonthly}
+              {resetDay && <span className="text-xs font-normal text-muted-foreground ml-1.5">(remise à zéro le {resetDay})</span>}
+            </div>
+          ) : (
+            <div className="text-sm tabular-nums text-muted-foreground">
+              {plural(includedMonthly, 'unité incluse', 'unités incluses')}
+            </div>
+          )}
         </div>
-        {includedMonthly > 0 ? (
+        {includedMonthly <= 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Aucune unité incluse dans votre forfait actuel : les enrichissements de contact sont facturés en crédits.
+          </p>
+        ) : includedUsed > 0 && (
           <div className="bg-muted rounded-full h-1.5 overflow-hidden" aria-hidden="true">
             <div
               className={`h-full transition-all ${includedPct >= 100 ? 'bg-danger' : 'bg-foreground'}`}
               style={{ width: `${includedPct}%` }}
             />
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Aucune unité incluse dans votre forfait actuel : les enrichissements de contact sont facturés en crédits.
-          </p>
         )}
       </div>
 
