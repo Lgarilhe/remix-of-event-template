@@ -36,6 +36,12 @@ test('BULLE-2 : ouvre le tiroir par openAgent, rond, fixé en bas à droite', ()
   assert.match(launcher, /aria-label="Ouvrir l'assistant"/);
 });
 
+test('BULLE-2b : étoile animée du kit, pas une icône fixe', () => {
+  assert.match(launcher, /import \{ SparkleIcon \} from '@\/components\/ui\/animated-icons'/);
+  assert.match(launcher, /<SparkleIcon \/>/);
+  assert.doesNotMatch(launcher, /from 'lucide-react'/);
+});
+
 test('BULLE-3 : masquée sur /agents et /inbox', () => {
   const routes = launcher.match(/HIDDEN_ROUTES = \[([^\]]*)\]/);
   assert.ok(routes, 'liste HIDDEN_ROUTES introuvable');
