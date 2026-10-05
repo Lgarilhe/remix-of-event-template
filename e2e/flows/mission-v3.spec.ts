@@ -19,7 +19,10 @@
  *  8. anciennes adresses ?tab= converties, interrupteur allumé ;
  *  9. nouvelle page par défaut (rien d'écrit dans le stockage) ;
  *     ?nouvelle-mission=0|1 ; « Revenir à l'ancienne page », choix gardé ;
- * 10. barre latérale allumée : pas de chevron des vues sur la mission.
+ * 10. barre latérale allumée : pas de chevron des vues sur la mission ;
+ * 11. en-tête allégé : logo du client devant le nom (client du brief d'abord),
+ *     statut sans cadre ni couleur, focus rendu après l'archivage annulé, mission
+ *     archivée avec un seul « Réactiver » par écran.
  *
  * Harnais : stack locale (e2e/local-stack), comme stage-0b4-gestes.spec.ts.
  * Seuls la liste des comptes LinkedIn, la recherche LinkedIn, la génération
@@ -322,6 +325,70 @@ test.describe('Lots 1 et 2 : coquille de la nouvelle page mission', () => {
     await expect(page).toHaveURL(urlIs(ws));
     await expect(tabs(page).getByRole('link', { name: 'Pipeline', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(listRows(page).filter({ hasText: N.retained })).toBeVisible({ timeout: 30_000 });
+  });
+
+  test('En-tête allégé : logo du client devant le nom, statut sans cadre ni couleur, focus rendu après l’archivage ; mission archivée : un seul « Réactiver » par écran, qui réactive', async ({ browser }) => {
+    const ws = await workspace('E2E V3 entete');
+    await admin().from('sourcing_projects').update({ client_name: 'Groupe Orion' }).eq('id', ws.missionId);
+    await candidate(ws, N.retained, 'retained');
+    const page = await openAs(browser, ws, { beta: true });
+    await openPipeline(page, ws);
+
+    // Un seul titre : le nom, précédé du logo du client (ses initiales, faute de logo enregistré), sans « · » décoratif.
+    const header = shell(page).locator('header');
+    await expect(header.locator('h1')).toHaveCount(1);
+    await expect(header.locator('h1')).toContainText(ws.missionName);
+    await expect(header.locator('h1 [aria-hidden="true"]').first()).toHaveText('GO');
+    await expect(header).not.toContainText('·');
+
+    // Le client se lit comme l'accueil et la liste : celui du brief d'abord (ici le seul renseigné), pour le logo comme pour le texte.
+    const { data: brief } = await admin().from('sourcing_projects').select('job_details').eq('id', ws.missionId).single();
+    await admin().from('sourcing_projects').update({ client_name: null, job_details: { ...((brief?.job_details as object | null) ?? {}), client: { name: 'Altéa Conseil' } } }).eq('id', ws.missionId);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(header.locator('h1 [aria-hidden="true"]').first()).toHaveText('AC', { timeout: 30_000 });
+
+    // Statut : le mot et un chevron, ni bordure ni fond ni point de couleur ; même nom accessible, même menu.
+    const status = header.getByRole('button', { name: 'Statut : Active, changer le statut' });
+    await expect(status).toBeVisible();
+    expect(await status.evaluate((el) => { const s = getComputedStyle(el); return `${s.borderTopWidth} ${s.backgroundColor}`; })).toBe('0px rgba(0, 0, 0, 0)');
+    expect(await status.evaluate((el) => el.querySelectorAll('span[aria-hidden="true"], .rounded-full').length)).toBe(0);
+    await status.click();
+    await expect(page.getByRole('menuitemradio')).toHaveText(['Active', 'En pause', 'Pourvue', 'Archivée']);
+    expect(await page.getByRole('menuitemradio').evaluateAll((els) => els.filter((el) => el.querySelector('.rounded-full')).length)).toBe(0);
+
+    // Archivage annulé : le focus revient au bouton qui a ouvert la confirmation (statut, puis « ... »), jamais <body>.
+    await page.getByRole('menuitemradio', { name: 'Archivée' }).click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await page.getByRole('button', { name: 'Annuler' }).click();
+    await expect(status).toBeFocused();
+    const more = header.getByRole('button', { name: "Plus d'actions" });
+    await more.click();
+    await page.getByRole('menuitem', { name: 'Archiver la mission' }).click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(more).toBeFocused();
+
+    // Mission archivée : « Réactiver » une seule fois sur chacun des trois écrans (celui du bandeau).
+    await admin().from('sourcing_projects').update({ status: 'archived' }).eq('id', ws.missionId);
+    const reactivate = page.getByRole('button', { name: 'Réactiver', exact: true });
+    for (const rest of ['', '/sourcing', '/cadrage']) {
+      await page.goto(missionUrl(ws, rest), { waitUntil: 'domcontentloaded' });
+      await expect(shell(page).getByText('Mission archivée. Réactivez-la pour trier, sourcer ou contacter.')).toBeVisible({ timeout: 30_000 });
+      await expect(reactivate, `un seul « Réactiver » (${rest || '/pipeline'})`).toHaveCount(1);
+    }
+    // Sourcing : l'écran fermé est une phrase, sans bouton.
+    await page.goto(missionUrl(ws, '/sourcing'), { waitUntil: 'domcontentloaded' });
+    const notice = page.getByTestId('archived-notice');
+    await expect(notice).toBeVisible({ timeout: 30_000 });
+    await expect(notice.getByRole('button')).toHaveCount(0);
+
+    // Le seul « Réactiver » réactive la mission.
+    await reactivate.click();
+    await expect(toast(page, 'Mission réactivée.')).toBeVisible({ timeout: 30_000 });
+    await expect(shell(page).getByText('Mission archivée. Réactivez-la pour trier, sourcer ou contacter.')).toHaveCount(0);
+    await expect(header.getByRole('button', { name: 'Statut : Active, changer le statut' })).toBeVisible();
+    const { data } = await admin().from('sourcing_projects').select('status').eq('id', ws.missionId).single();
+    expect(data?.status).toBe('active');
   });
 
   test('Cadrage : un critère modifié est enregistré ; une étape sans candidat se supprime après confirmation', async ({ browser }) => {

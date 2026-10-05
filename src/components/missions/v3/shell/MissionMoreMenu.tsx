@@ -2,7 +2,7 @@
 // Archiver (avec confirmation) ou réactiver, et revenir à l'ancienne page.
 // Pas de « Dupliquer » (aucune fonction de duplication n'existe) ni de
 // « Confier à des cabinets » (une seule porte, dans Cadrage).
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ArchiveRestore, Archive, MoreHorizontal, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,12 +20,14 @@ export function MissionMoreMenu() {
   const { project, isArchived, leaveBeta } = useMissionV3();
   const status = useMissionStatusControl();
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button
+            ref={triggerRef}
             type="button"
             variant="ghost"
             size="icon-sm"
@@ -37,25 +39,34 @@ export function MissionMoreMenu() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
           {status.canManage && isArchived && (
-            <DropdownMenuItem disabled={status.saving} onSelect={() => void status.changeStatus('active')}>
+            <DropdownMenuItem
+              disabled={status.saving}
+              onSelect={() => void status.changeStatus('active')}
+              className="max-sm:min-h-11"
+            >
               <ArchiveRestore aria-hidden="true" className="mr-2 h-4 w-4" />
               Réactiver la mission
             </DropdownMenuItem>
           )}
           {status.canManage && !isArchived && (
-            <DropdownMenuItem onSelect={() => setArchiveOpen(true)}>
+            <DropdownMenuItem onSelect={() => setArchiveOpen(true)} className="max-sm:min-h-11">
               <Archive aria-hidden="true" className="mr-2 h-4 w-4" />
               Archiver la mission
             </DropdownMenuItem>
           )}
           {status.canManage && <DropdownMenuSeparator />}
-          <DropdownMenuItem onSelect={leaveBeta}>
+          <DropdownMenuItem onSelect={leaveBeta} className="max-sm:min-h-11">
             <Undo2 aria-hidden="true" className="mr-2 h-4 w-4" />
             Revenir à l'ancienne page
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <ArchiveMissionDialog projectId={project.id} open={archiveOpen} onOpenChange={setArchiveOpen} />
+      <ArchiveMissionDialog
+        projectId={project.id}
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
+        returnFocusRef={triggerRef}
+      />
     </>
   );
 }

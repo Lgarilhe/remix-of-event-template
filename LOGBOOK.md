@@ -32,6 +32,20 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — REFACTOR — Refonte mission, en-tête de mission et liste des missions allégés
+
+**Contexte** : fin du lot M du design simplifié (`docs/design/06-simplicite.md`) après le Pipeline, le Cadrage et le Sourcing (en ligne sur main depuis ef4d33b). Même méthode : un agent par écran, trois relectures indépendantes (règles de design, non-régression, accessibilité), correction, puis vérification complète.
+**Décision / Fait** : en-tête avec le logo du client, statut sans cadre ni point de couleur (déplacé à droite), un seul « Réactiver » sur une mission archivée. Liste des missions avec logo du client, visages des candidats en entretien, aucun zéro écrit, colonnes d'effectifs à partir de 1280 px, menu de ligne au survol, au focus ou au toucher.
+**Raison** : zéros partout, « à l'instant » répété sur chaque ligne, aucun logo, pastille de statut encadrée, « Réactiver » en double.
+**Impact** : `src/components/missions/v3/shell/**`, `v3/panels/ContactPanel.tsx` (une prop, pour garder un « Réactiver » atteignable dans le panneau plein écran), `outreach/projects/ProjectsListV2.tsx` et ses deux voisins (`missionListFormat.ts`, `useInterviewingPeople.ts`), tests c1 et ux, `e2e/flows/mission-v3.spec.ts`, `stage-0c-lectures.spec.ts`. Aucun calcul de chiffre ne change. Un test du 04/10 (`mission-now`, scénario 10) dépendait de l'heure (7 j avant midi à Paris, 8 j après) : assertion rendue tolérante.
+**Reste à faire** :
+- [ ] État vide de /missions (`EmptyMissionState`, ancien langage : majuscules, cartes, chiffres marketing).
+- [ ] « Réessayer » de `ErrorState` reste un bouton plein à côté de « Nouvelle mission » (composant partagé).
+- [ ] Menu des autres missions : le logo n'a que des initiales (les lignes de la barre latérale n'ont pas l'adresse du logo).
+- [ ] Photos réelles à la place des initiales (lot P).
+
+---
+
 ## 2026-10-04 — REFACTOR — Refonte mission, Cadrage et Sourcing allégés
 
 **Contexte** : suite de l'allègement du Pipeline (retour « trop chargé, on comprend mal »), mêmes règles (`docs/design/06-simplicite.md`, lot M). Travail mené par deux agents en parallèle (un par écran), relu par trois angles indépendants (règles de design, non-régression, accessibilité), puis corrigé.

@@ -2,6 +2,8 @@
 // (conception, 3.2 : absente aujourd'hui de la Configuration). Le toast de
 // succès suit l'écriture ; une erreur est annoncée par le hook de mise à jour
 // (useSourcingProjects), et la fenêtre reste ouverte pour réessayer ou annuler.
+// La fenêtre s'ouvre depuis un élément de menu qui disparaît avec le menu : à la
+// fermeture, le focus revient au déclencheur donné (sinon il tombait sur <body>).
 import { useState } from 'react';
 import type React from 'react';
 import { toast } from 'sonner';
@@ -21,9 +23,11 @@ interface ArchiveMissionDialogProps {
   projectId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Bouton du menu qui a ouvert la fenêtre : il reprend le focus à la fermeture. */
+  returnFocusRef: React.RefObject<HTMLElement | null>;
 }
 
-export function ArchiveMissionDialog({ projectId, open, onOpenChange }: ArchiveMissionDialogProps) {
+export function ArchiveMissionDialog({ projectId, open, onOpenChange, returnFocusRef }: ArchiveMissionDialogProps) {
   const { updateProject } = useSourcingProjects();
   const [saving, setSaving] = useState(false);
 
@@ -45,7 +49,14 @@ export function ArchiveMissionDialog({ projectId, open, onOpenChange }: ArchiveM
 
   return (
     <AlertDialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
-      <AlertDialogContent>
+      <AlertDialogContent
+        onCloseAutoFocus={(event) => {
+          const target = returnFocusRef.current;
+          if (!target) return;
+          event.preventDefault();
+          target.focus();
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>Archiver cette mission ?</AlertDialogTitle>
           <AlertDialogDescription>

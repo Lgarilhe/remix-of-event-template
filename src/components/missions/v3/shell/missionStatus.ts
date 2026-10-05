@@ -19,13 +19,6 @@ export const MISSION_STATUS_LABEL: Readonly<Record<MissionStatus, string>> = {
   archived: 'Archivée',
 };
 
-export const MISSION_STATUS_DOT: Readonly<Record<MissionStatus, string>> = {
-  active: 'bg-success',
-  paused: 'bg-warning',
-  completed: 'bg-info',
-  archived: 'bg-muted-foreground',
-};
-
 const STATUS_TOAST: Readonly<Record<Exclude<MissionStatus, 'archived'>, string>> = {
   active: 'Mission réactivée.',
   paused: 'Mission mise en pause.',

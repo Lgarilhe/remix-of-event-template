@@ -201,12 +201,15 @@ test.describe('Lot 0c-3 : liste et kanban de mission', () => {
     await expect(row).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Brief incomplet')).toHaveCount(0);
     await expect(row).toContainText('1 profil trouvé');
-    // Colonnes d'effectifs : À trier, Contacté, A répondu, En entretien.
+    // Colonnes d'effectifs : seulement celles qui ont un nombre (À trier, Contacté). A répondu et
+    // En entretien, à zéro pour toute la liste, ne sont pas affichées : aucun zéro écrit.
     const cells = row.locator('td');
+    await expect(cells).toHaveCount(4); // mission, À trier, Contacté, menu de la ligne
     await expect(cells.nth(1)).toHaveText('2');
     await expect(cells.nth(2)).toHaveText('1');
-    await expect(cells.nth(3)).toHaveText('0');
-    await expect(cells.nth(4)).toHaveText('0');
+    await expect(page.getByRole('columnheader', { name: 'À trier', exact: true })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'A répondu', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: 'En entretien', exact: true })).toHaveCount(0);
 
     // Kanban : les mêmes nombres sous les mêmes noms d'étape.
     await openMissionKanban(page, ws.missionId, 'Alice Atrier');
@@ -216,6 +219,53 @@ test.describe('Lot 0c-3 : liste et kanban de mission', () => {
     await expect(column(page, 'Contacté')).toHaveAttribute('aria-label', 'Colonne Contacté, 1 candidat');
     await expect(page.getByText('Zoe Jamaisouverte', { exact: true }), 'jamais ouvert : absent du Pipeline').toHaveCount(0);
     await expect(page.getByText('Denis Doublon', { exact: true }), 'un doublon, une carte').toHaveCount(1);
+  });
+});
+
+test.describe('Design simplifié : liste des missions', () => {
+  test('les candidats en entretien montrent leur visage (photo enregistrée, sinon initiales), une case à zéro reste vide', async ({ browser }) => {
+    const ws = await workspace('E2E liste visages');
+    const photo = `data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><rect width='8' height='8' fill='#c9724a'/></svg>")}`;
+    const interviewing = async (name: string, picture: string | null) => {
+      const { id } = await seedCandidateRow({
+        orgId: ws.org.orgId,
+        createdBy: ws.org.owner.userId,
+        candidateId: `ACoAA0F${rand()}`,
+        missionId: ws.missionId,
+        stage: 'interviewing',
+        extra: { candidate_name: name, linkedin_profile_data: picture ? { profile_picture_url: picture } : {} },
+      });
+      return id;
+    };
+    await interviewing('Eric Entretien', photo);
+    await interviewing('Eva Entretien', null);
+    await candidate(ws, 'Alice Atrier');
+
+    const page = await openAs(browser, ws);
+    await page.goto('/missions', { waitUntil: 'domcontentloaded' });
+    const row = page.getByTestId('mission-row').filter({ hasText: ws.missionName });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+
+    // Les deux visages, nommés ; la photo enregistrée est celle de la ligne, l'autre en initiales.
+    const faces = row.getByRole('img', { name: /Eric Entretien/ });
+    await expect(faces).toBeVisible({ timeout: 30_000 });
+    await expect(faces).toHaveAccessibleName(/Eva Entretien/);
+    await expect(row.locator(`img[src="${photo}"]`)).toHaveCount(1);
+    await expect(faces.getByText('EE', { exact: true })).toHaveCount(1);
+    // Colonnes : À trier (1) et En entretien (les visages) ; Contacté et A répondu, vides partout, n'existent pas.
+    await expect(page.getByRole('columnheader', { name: 'En entretien', exact: true })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Contacté', exact: true })).toHaveCount(0);
+    await expect(row.locator('td').nth(1)).toHaveText('1');
+    // Sous-titre : une phrase sans zéro.
+    await expect(page.getByText(/^1 mission en cours\s*: 2 en entretien, 1 à trier\.$/)).toBeVisible();
+
+    // Le menu de la ligne est atteignable au clavier même sans survol, et ouvre les mêmes actions.
+    const menu = row.getByRole('button', { name: `Actions pour ${ws.missionName}` });
+    await menu.focus();
+    await expect(menu).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('menuitem', { name: 'Mettre en pause' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Supprimer' })).toBeVisible();
   });
 });
 

@@ -2,8 +2,9 @@
 // Le Sourcing d'aujourd'hui, pleine largeur, en disposition « mission-v3 »
 // (rangée Affiner, Filtres, Nouvelle recherche ; résultats en trois groupes,
 // src/components/missions/v3/sourcing/**). Même recherche et mêmes écritures ;
-// l'ancienne page et /sourcing/:id gardent leur rendu. Mission archivée : fermé, avec « Réactiver » (il n'a pas de mode
-// lecture seule). Sans compte LinkedIn utilisable : un message « Relier LinkedIn »
+// l'ancienne page et /sourcing/:id gardent leur rendu. Mission archivée : fermé, une
+// phrase (« Réactiver » est dans le bandeau de la page ; il n'a pas de mode lecture
+// seule). Sans compte LinkedIn utilisable : un message « Relier LinkedIn »
 // à la place de la recherche, une fois les comptes chargés (conception 5.3) ;
 // design simplifié (04/10/2026) : sans cadre, pastille d'icône, un seul bouton plein.
 import { Link } from 'react-router-dom';
@@ -21,7 +22,7 @@ export function SourcingScreen() {
   const { accounts, accountsLoading } = useFilteredLinkedInAccounts();
   if (isArchived) {
     return (
-      <div className="py-6">
+      <div className="py-10">
         <ArchivedNotice text="Le sourcing est fermé. Réactivez la mission pour chercher, noter ou contacter des profils." />
       </div>
     );

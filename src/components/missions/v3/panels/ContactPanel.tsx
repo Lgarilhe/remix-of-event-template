@@ -18,6 +18,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import { cn } from '@/lib/utils';
 import { useMissionV3 } from '../MissionV3Context';
 import { ArchivedNotice } from '../shell/ArchivedNotice';
+import { PANEL_FULLSCREEN_QUERY, useMediaQuery } from '../shell/useMediaQuery';
 import type { ContactPanelProps } from '../types';
 
 type ContactTab = 'sequences' | 'invitations';
@@ -38,6 +39,8 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   const location = useLocation();
   const baseId = useId();
   const buttons = useRef<Record<string, HTMLButtonElement | null>>({});
+  // Panneau plein écran (sous lg) : le bandeau « Réactiver » de la page est derrière lui, inerte.
+  const fullscreen = useMediaQuery(PANEL_FULLSCREEN_QUERY);
 
   const [tab, setTabState] = useState<ContactTab>(() =>
     new URLSearchParams(location.search).get(OUTREACH_PARAM) === 'invitations' ? 'invitations' : 'sequences',
@@ -70,7 +73,10 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   if (isArchived) {
     body = (
       <div className="px-4 py-4 sm:px-5">
-        <ArchivedNotice text="La prise de contact est fermée. Réactivez la mission pour gérer ses séquences et ses invitations." />
+        <ArchivedNotice
+          text="La prise de contact est fermée. Réactivez la mission pour gérer ses séquences et ses invitations."
+          withAction={fullscreen}
+        />
       </div>
     );
   } else if (accountsLoading) {

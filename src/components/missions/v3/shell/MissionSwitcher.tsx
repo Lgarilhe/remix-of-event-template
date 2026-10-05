@@ -1,6 +1,8 @@
 // Refonte mission, lot 1 : le nom de la mission est un menu (conception, 4.2).
 // Il liste les autres missions (épinglées, puis les miennes, mêmes lectures que
-// l'onglet Missions de la barre) et garde l'écran en cours.
+// l'onglet Missions de la barre) et garde l'écran en cours. Design simplifié
+// (04/10/2026) : le logo du client devant le nom, et devant chaque mission du
+// menu (initiales quand il n'est pas connu) ; 44 px de haut sur téléphone.
 import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,14 +19,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
 import { useMissionV3 } from '../MissionV3Context';
+import { missionClientName } from './missionClient';
 
 function MissionItem({ item, href }: { item: MissionNavItem; href: string }) {
   return (
     <DropdownMenuItem asChild className="cursor-pointer">
-      <Link to={href} className="flex min-w-0 flex-col items-start gap-0">
-        <span className="w-full truncate text-sm text-foreground">{item.name}</span>
-        {item.sub && <span className="w-full truncate text-xs text-muted-foreground">{item.sub}</span>}
+      <Link to={href} className="flex min-w-0 items-center gap-2.5 max-sm:min-h-11">
+        <MissionCompanyLogo company={item.client_name || item.name} size={24} />
+        <span className="flex min-w-0 flex-1 flex-col items-start">
+          <span className="w-full truncate text-sm text-foreground">{item.name}</span>
+          {item.sub && <span className="w-full truncate text-xs text-muted-foreground">{item.sub}</span>}
+        </span>
       </Link>
     </DropdownMenuItem>
   );
@@ -44,10 +51,15 @@ export function MissionSwitcher() {
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         className={cn(
-          'group inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-sm font-semibold text-foreground outline-none',
+          'group inline-flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-sm font-semibold text-foreground outline-none max-sm:min-h-11',
           'transition-colors duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
         )}
       >
+        <MissionCompanyLogo
+          company={missionClientName(project) || project.name}
+          logoUrl={project.job_details?.client?.logo_url}
+          size={24}
+        />
         <span className="truncate">{project.name}</span>
         <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
@@ -78,7 +90,7 @@ export function MissionSwitcher() {
               event.preventDefault();
               missions.retry();
             }}
-            className="flex flex-col items-start gap-0.5"
+            className="flex flex-col items-start gap-0.5 max-sm:min-h-11"
           >
             <span className="text-sm text-foreground">Impossible de charger vos missions.</span>
             <span className="text-xs text-muted-foreground">Réessayer</span>
@@ -97,7 +109,7 @@ export function MissionSwitcher() {
         )}
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild className="cursor-pointer">
+        <DropdownMenuItem asChild className="cursor-pointer max-sm:min-h-11">
           <Link to="/missions">Voir toutes les missions</Link>
         </DropdownMenuItem>
       </DropdownMenuContent>

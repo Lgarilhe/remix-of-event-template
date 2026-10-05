@@ -121,3 +121,81 @@ test('C-5 : règles de rédaction et d’écriture dans les fichiers de la coqui
     assert.doesNotMatch(src, /job_candidate_status|pipeline_stage|set_candidate_stage/, `${rel} : écriture d'étape`);
   }
 });
+
+test('C-6 : en-tête allégé (design simplifié, 04/10/2026) : logo du client, statut sans cadre ni couleur, un seul « Réactiver », cibles de 44 px, focus rendu', () => {
+  const header = code(`${SHELL_DIR}/MissionHeader.tsx`);
+  const switcher = code(`${SHELL_DIR}/MissionSwitcher.tsx`);
+  const more = code(`${SHELL_DIR}/MissionMoreMenu.tsx`);
+  const banner = code(`${SHELL_DIR}/MissionStateBanner.tsx`);
+  const notice = code(`${SHELL_DIR}/ArchivedNotice.tsx`);
+  const sourcing = code(`${SHELL_DIR}/SourcingScreen.tsx`);
+  const dialog = code(`${SHELL_DIR}/ArchiveMissionDialog.tsx`);
+  const client = code(`${SHELL_DIR}/missionClient.ts`);
+  const statusLib = code(`${SHELL_DIR}/missionStatus.ts`);
+
+  // Règle 4 : le logo du client (initiales sinon) devant le nom, et devant chaque mission du menu.
+  assert.match(switcher, /import \{ MissionCompanyLogo \} from '@\/components\/dashboard\/MissionCompanyLogo'/);
+  assert.equal((switcher.match(/<MissionCompanyLogo/g) ?? []).length, 2, 'logo dans le déclencheur et dans chaque entrée du menu');
+  assert.match(switcher, /company=\{item\.client_name \|\| item\.name\}/);
+  // Le client se lit comme l'accueil et la liste : celui du brief d'abord, puis client_name (même client partout).
+  assert.match(switcher, /company=\{missionClientName\(project\) \|\| project\.name\}/);
+  assert.match(client, /project\.job_details\?\.client\?\.name\?\.trim\(\) \|\| project\.client_name\?\.trim\(\) \|\| null/);
+  assert.match(header, /const client = missionClientName\(project\)/);
+  assert.doesNotMatch(header + switcher, /project\.client_name/, 'jamais client_name seul : passer par missionClientName');
+  assert.match(header, /<h1 className="[^"]*">\s*<MissionSwitcher \/>\s*<\/h1>/, 'un seul h1, le menu du nom');
+  assert.equal((header.match(/<h1/g) ?? []).length, 1);
+
+  // Le client se lit en discret à côté du nom, sans « · » décoratif, et rend sa place au nom.
+  assert.doesNotMatch(header, /aria-hidden="true">·</);
+  // Il ne s'écrit que si ce qui reste après le nom lui laisse 6 rem (conteneur de taille en ligne, base nulle) : jamais un fragment.
+  assert.match(header, /min-w-0 flex-1 basis-0 \[container-type:inline-size\]/);
+  assert.match(header, /hidden truncate text-muted-foreground \[@container\(min-width:6rem\)\]:block/);
+
+  // Statut : le mot et un chevron, ni cadre ni fond ni pilule ni point de couleur (la couleur est réservée à ce qui attend
+  // quelqu'un ; la liste des missions n'écrit même pas « Active ») ; mêmes noms accessibles et menu.
+  const statusBase = header.match(/const baseClass =([\s\S]*?);\n/)?.[1] ?? '';
+  assert.ok(statusBase.length > 0, 'classe de base du statut introuvable');
+  assert.doesNotMatch(statusBase, /\bborder\b|border-|rounded-full|\bbg-/);
+  assert.match(statusBase, /max-sm:min-h-11/);
+  assert.match(header, /aria-label=\{`Statut : \$\{missionStatusLabel\(project\.status\)\}, changer le statut`\}/);
+  assert.doesNotMatch(header, /MISSION_STATUS_DOT|rounded-full|bg-(success|warning|info)/, 'statut : aucun point de couleur');
+  assert.doesNotMatch(statusLib, /MISSION_STATUS_DOT|bg-(success|warning|info)/);
+  assert.match(header, /<DropdownMenuRadioItem key=\{status\} value=\{status\} className="max-sm:min-h-11">\s*\{MISSION_STATUS_LABEL\[status\]\}\s*<\/DropdownMenuRadioItem>/, 'menu du statut : le mot, la coche du contrôle dit lequel est actif');
+  assert.match(header, /canEditBrief/);
+  assert.match(header, /control\.blockedReason/);
+  assert.match(header, /<ArchiveMissionDialog\s/);
+
+  // Archivage : à la fermeture de la confirmation, le focus revient au bouton qui l'a ouverte (statut ou « ... »), jamais <body>.
+  assert.match(dialog, /returnFocusRef: React\.RefObject<HTMLElement \| null>/);
+  assert.match(dialog, /onCloseAutoFocus=\{\(event\) => \{[\s\S]*?event\.preventDefault\(\);\s*target\.focus\(\);/);
+  for (const [name, src] of [['MissionHeader', header], ['MissionMoreMenu', more]]) {
+    assert.match(src, /const triggerRef = useRef<HTMLButtonElement>\(null\)/, `${name} : cible de retour du focus`);
+    assert.match(src, /ref=\{triggerRef\}/, `${name} : le déclencheur porte la cible`);
+    assert.match(src, /returnFocusRef=\{triggerRef\}/, `${name} : la confirmation la reçoit`);
+  }
+
+  // Un seul « Réactiver » par écran : celui du bandeau de la page. La phrase de l'écran fermé n'a ni cadre ni bouton,
+  // sauf dans le panneau plein écran (le bandeau y est inerte), où ContactPanel le demande.
+  assert.match(banner, /variant="primary"/);
+  assert.match(banner, /changeStatus\('active'\)/);
+  assert.doesNotMatch(notice, /border|bg-card|rounded-|<Archive\b/, 'écran fermé sans cadre ni icône');
+  assert.match(notice, /withAction = false/);
+  assert.match(notice, /\{withAction && status\.canManage && \(/);
+  assert.doesNotMatch(sourcing, /withAction/, 'Sourcing : jamais de second « Réactiver »');
+  assert.match(code('src/components/missions/v3/panels/ContactPanel.tsx'), /withAction=\{fullscreen\}/);
+
+  // Un bouton plein au plus par fichier de la coquille ; aucune taille de texte écrite à la main.
+  for (const rel of SHELL_FILES) {
+    const src = code(rel);
+    assert.ok((src.match(/variant="primary"/g) ?? []).length <= 1, `${rel} : plus d'un bouton plein`);
+    assert.doesNotMatch(src, /text-\[\d/, `${rel} : taille de texte écrite à la main`);
+  }
+
+  // Cibles de 44 px sur téléphone : déclencheurs, entrées de menu, bouton « Réactiver ».
+  for (const [name, src] of [['MissionHeader', header], ['MissionSwitcher', switcher], ['MissionMoreMenu', more], ['MissionStateBanner', banner], ['ArchivedNotice', notice]]) {
+    assert.match(src, /max-sm:min-h-11/, `${name} : cible de 44 px sur téléphone`);
+  }
+  assert.equal((more.match(/max-sm:min-h-11/g) ?? []).length, 3, 'chaque entrée du menu « ... »');
+  assert.match(more, /aria-label="Plus d'actions"/);
+  assert.match(more, /Revenir à l'ancienne page/);
+});

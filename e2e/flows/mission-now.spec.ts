@@ -805,7 +805,8 @@ test.describe('Lot 3 : carte « Maintenant »', () => {
     // Pas de « Aucune action depuis N j » : l'ancienneté se lit sous l'étape, en orange et dite « sans mouvement ».
     await expect(carlRow).not.toContainText('Aucune action');
     await expect(carlRow).not.toContainText('Répondre');
-    await expect(carlRow).toContainText(/Contacté\s*depuis\s8\sj/);
+    // Midi (Paris) il y a 8 jours civils : la ligne compte des blocs de 24 h, soit 7 j avant midi à Paris et 8 j après.
+    await expect(carlRow).toContainText(/Contacté\s*depuis\s[78]\sj/);
     await expect(carlRow).toContainText('sans mouvement');
     // Une ligne récente (moins d'un jour) n'écrit aucune ancienneté.
     await expect(listRows(page).filter({ hasText: 'Rita Retenue' })).not.toContainText(/depuis\s\d+\sj/);
