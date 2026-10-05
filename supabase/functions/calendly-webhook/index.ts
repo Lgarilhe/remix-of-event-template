@@ -37,6 +37,162 @@ function exactProfileUrlPatterns(slug: string): string[] {
 const MAX_ENROLLMENTS_STOPPED_PER_BOOKING = 5;
 const PENDING_EXECUTION_STATUSES = ['scheduled', 'waiting_event', 'quota_blocked'];
 
+/**
+ * Séances qu'une annulation ou un déplacement Calendly peut encore changer.
+ * 'completed' (compte rendu fait) et 'cancelled' (déjà annulée) restent telles quelles.
+ */
+const SESSION_OPEN_STATUSES = ['scheduled', 'in_progress'];
+
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+/** Identifiant Calendly : dernier segment de l'URI d'un événement ou d'un invité. */
+function calendlyIdFromUri(uri: unknown): string | null {
+  if (typeof uri !== 'string') return null;
+  return uri.split('/').filter(Boolean).pop() ?? null;
+}
+
+type CalendlyEvent = {
+  uri?: string | null;
+  start_time?: string;
+  end_time?: string;
+  location?: { join_url?: string; location?: string; type?: string } | null;
+};
+
+/** Champs lus par l'annulation et le déplacement dans la charge utile d'un invité Calendly. */
+type CalendlyInviteePayload = {
+  uri?: string;
+  event?: string | CalendlyEvent;
+  scheduled_event?: CalendlyEvent;
+  rescheduled?: boolean;
+  old_invitee?: string | null;
+};
+
+/**
+ * Événement planifié d'une charge utile. Calendly envoie `scheduled_event`
+ * (objet) et `event` (URI en texte) ; une forme ancienne met l'objet dans `event`.
+ */
+function scheduledEventOf(payload: CalendlyInviteePayload | undefined): CalendlyEvent {
+  const obj = payload?.scheduled_event ?? (payload?.event && typeof payload.event === 'object' ? payload.event : null);
+  const uri = obj?.uri ?? (typeof payload?.event === 'string' ? payload.event : null);
+  return { ...(obj ?? {}), uri };
+}
+
+type SessionRef = { id: string; organization_id: string | null; calendly_invitee_id: string | null };
+
+/**
+ * Écrit `patch` sur chaque séance, filtrée par son organisation et relue au
+ * moment de l'écriture (une séance passée « completed » entre-temps ne bouge pas).
+ * Une séance sans organisation n'est jamais modifiée. Retourne le nombre de lignes changées.
+ */
+async function updateOpenSessions(rows: SessionRef[], patch: Record<string, unknown>): Promise<number> {
+  let updated = 0;
+  for (const row of rows) {
+    if (!row.organization_id) {
+      console.warn(`[calendly-webhook] session ${row.id} sans organisation : non modifiée`);
+      continue;
+    }
+    const { data, error } = await supabase
+      .from('qualification_sessions')
+      .update(patch)
+      .eq('id', row.id)
+      .eq('organization_id', row.organization_id)
+      .in('status', SESSION_OPEN_STATUSES)
+      .select('id');
+    if (error) throw error;
+    updated += data?.length ?? 0;
+  }
+  return updated;
+}
+
+/**
+ * invitee.canceled : la séance de cet invité passe à 'cancelled'. Le secret
+ * Calendly est global et la charge utile ne porte pas d'organisation : elle
+ * vient de la séance trouvée, et l'identifiant d'invité (unique chez
+ * Calendly) ne désigne que la réservation annulée.
+ */
+async function handleInviteeCanceled(payload: CalendlyInviteePayload | undefined): Promise<Response> {
+  // Un déplacement envoie aussi invitee.canceled (rescheduled: true) : la séance
+  // est déplacée par l'invitee.created qui l'accompagne (old_invitee), jamais annulée.
+  if (payload?.rescheduled === true) {
+    return jsonResponse({ success: true, skipped: true, reason: 'rescheduled' });
+  }
+  const inviteeId = calendlyIdFromUri(payload?.uri);
+  if (!inviteeId) {
+    return jsonResponse({ success: true, skipped: true, reason: 'invitee_unknown' });
+  }
+
+  const { data: byInvitee, error } = await supabase
+    .from('qualification_sessions')
+    .select('id, organization_id, calendly_invitee_id')
+    .eq('calendly_invitee_id', inviteeId);
+  if (error) throw error;
+  let rows = (byInvitee ?? []) as SessionRef[];
+
+  // Séances anciennes sans identifiant d'invité : repli par l'événement. Jamais
+  // une séance qui porte un autre invité (événement de groupe).
+  if (rows.length === 0) {
+    const eventId = calendlyIdFromUri(scheduledEventOf(payload).uri);
+    if (eventId) {
+      const { data: byEvent, error: eventError } = await supabase
+        .from('qualification_sessions')
+        .select('id, organization_id, calendly_invitee_id')
+        .eq('calendly_event_id', eventId)
+        .is('calendly_invitee_id', null);
+      if (eventError) throw eventError;
+      rows = (byEvent ?? []) as SessionRef[];
+    }
+  }
+
+  if (rows.length === 0) {
+    console.log(`[calendly-webhook] invitee.canceled ${inviteeId} : aucune séance`);
+    return jsonResponse({ success: true, skipped: true, reason: 'session_not_found' });
+  }
+  const cancelled = await updateOpenSessions(rows, { status: 'cancelled' });
+  console.log(`[calendly-webhook] invitee.canceled ${inviteeId} : ${cancelled} séance(s) annulée(s)`);
+  return jsonResponse({ success: true, sessions_cancelled: cancelled });
+}
+
+/**
+ * invitee.created d'un déplacement (old_invitee renseigné) : la séance de
+ * l'ancienne réservation prend le nouvel événement, les nouvelles heures et
+ * le nouveau lien, au lieu d'en créer une seconde. Rejeu : la séance porte
+ * déjà le nouvel invité, rien à refaire. `handled` faux : aucune séance liée,
+ * le parcours normal crée la séance.
+ */
+async function moveRescheduledSession(payload: CalendlyInviteePayload | undefined): Promise<{ handled: boolean; updated: number }> {
+  const oldInviteeId = calendlyIdFromUri(payload?.old_invitee);
+  if (!oldInviteeId) return { handled: false, updated: 0 };
+  const newInviteeId = calendlyIdFromUri(payload?.uri);
+
+  const { data, error } = await supabase
+    .from('qualification_sessions')
+    .select('id, organization_id, calendly_invitee_id')
+    .in('calendly_invitee_id', newInviteeId ? [oldInviteeId, newInviteeId] : [oldInviteeId]);
+  if (error) throw error;
+  const rows = (data ?? []) as SessionRef[];
+  const oldRows = rows.filter((r) => r.calendly_invitee_id === oldInviteeId);
+  if (rows.length === 0) return { handled: false, updated: 0 };
+
+  const event = scheduledEventOf(payload);
+  const newEventId = calendlyIdFromUri(event.uri);
+  const location = event.location ? (event.location.join_url || event.location.location || event.location.type || null) : null;
+  const patch: Record<string, unknown> = {
+    ...(newEventId ? { calendly_event_id: newEventId } : {}),
+    ...(newInviteeId ? { calendly_invitee_id: newInviteeId } : {}),
+    ...(event.start_time ? { event_start_at: event.start_time } : {}),
+    ...(event.end_time ? { event_end_at: event.end_time } : {}),
+    ...(location ? { event_location: location } : {}),
+  };
+  const updated = oldRows.length > 0 && Object.keys(patch).length > 0 ? await updateOpenSessions(oldRows, patch) : 0;
+  console.log(`[calendly-webhook] déplacement ${oldInviteeId} → ${newInviteeId}: ${updated} séance(s) déplacée(s)`);
+  return { handled: true, updated };
+}
+
 async function verifyCalendlySignature(req: Request, body: string): Promise<boolean> {
   const signingKey = Deno.env.get('CALENDLY_WEBHOOK_SIGNING_KEY');
   if (!signingKey) {
@@ -117,6 +273,11 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Annulation : la séance de l'invité passe à 'cancelled'.
+    if (body.event === 'invitee.canceled') {
+      return await handleInviteeCanceled(body.payload);
+    }
+
     // We only care about invitee.created
     if (body.event !== 'invitee.created') {
       return new Response(JSON.stringify({ success: true, skipped: true }), {
@@ -125,6 +286,14 @@ Deno.serve(async (req) => {
     }
 
     const payload = body.payload;
+
+    // Déplacement : la séance existante est mise à jour, jamais doublée. Avant
+    // le filtre sur le nom de l'événement : la séance se retrouve par l'ancien invité.
+    const moved = await moveRescheduledSession(payload);
+    if (moved.handled) {
+      return jsonResponse({ success: true, rescheduled: true, sessions_updated: moved.updated });
+    }
+
     const invitee = payload;
     const event = payload.event || payload.scheduled_event;
 
