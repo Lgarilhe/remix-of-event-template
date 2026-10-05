@@ -1,0 +1,279 @@
+{
+  "_description": "Jeu de cas commun du rendu des modèles de message (refonte mission, lot 5d-1). Chaque cas est joué par tests/ux/lot5d1-rendu-apercu.test.mjs sur renderTemplatePreview(text, values) (src/lib/templatePreview.ts, navigateur) et par supabase/functions/_shared/sequence-preview-values.test.ts sur interpolateAndStrip (moteur) : même texte attendu, mêmes variables retirées. Un cas avec « enrollment » est aussi passé dans le contexte du moteur (buildSequenceContext, faux client : sender = profil de l'expéditeur, organization_name, mission = ligne sourcing_projects, custom_variables = user_template_variables) : les valeurs de « values » doivent être celles que preview_values rend pour cette inscription, pour chaque variable du texte.",
+  "cases": [
+    {
+      "name": "prénom fiable, clé insensible à la casse et filtre",
+      "enrollment": {
+        "profile_name": "Julie Martin",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "values": {
+        "prenom": "Julie",
+        "first_name": "Julie"
+      },
+      "text": "Bonjour {{prenom}}, {{first_name | upper}} ou {{ Prenom }} ?",
+      "expected": "Bonjour Julie, JULIE ou Julie ?",
+      "missing": []
+    },
+    {
+      "name": "prénom non fiable (émoji) : salutation neutre, sans espace avant la virgule",
+      "enrollment": {
+        "profile_name": "🚀 Julie Martin",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "values": {},
+      "text": "Bonjour {{prenom}}, votre parcours m'intéresse.",
+      "expected": "Bonjour, votre parcours m'intéresse.",
+      "missing": [
+        "prenom"
+      ]
+    },
+    {
+      "name": "prénom non fiable (titre) : repli du modèle",
+      "enrollment": {
+        "profile_name": "Dr. Paul Roux",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "values": {},
+      "text": "Bonjour {{prenom | fallback:\"Madame, Monsieur\"}}, je me permets de vous écrire.",
+      "expected": "Bonjour Madame, Monsieur, je me permets de vous écrire.",
+      "missing": []
+    },
+    {
+      "name": "titre « X chez Y » découpé en poste et entreprise, alias anglais",
+      "enrollment": {
+        "profile_name": "Marc Lefèvre",
+        "profile_headline": "Directeur financier chez Acme | Ex-Big4",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "values": {
+        "poste_actuel": "Directeur financier",
+        "entreprise_actuelle": "Acme",
+        "company": "Acme",
+        "job_title": "Directeur financier"
+      },
+      "text": "Vous êtes {{poste_actuel}} chez {{entreprise_actuelle}} ({{company}}, {{job_title}}).",
+      "expected": "Vous êtes Directeur financier chez Acme (Acme, Directeur financier).",
+      "missing": []
+    },
+    {
+      "name": "titre sans entreprise : repli du modèle",
+      "enrollment": {
+        "profile_name": "Marc Lefèvre",
+        "profile_headline": "Développeur Go · Freelance",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "values": {
+        "poste_actuel": "Développeur Go"
+      },
+      "text": "Votre rôle de {{poste_actuel}} chez {{entreprise_actuelle | fallback:\"votre entreprise\"}} m'intéresse.",
+      "expected": "Votre rôle de Développeur Go chez votre entreprise m'intéresse.",
+      "missing": []
+    },
+    {
+      "name": "entreprise écrite sur l'inscription prioritaire sur celle du titre",
+      "enrollment": {
+        "profile_name": "Sophie Bernard",
+        "profile_headline": "Responsable RH @ Initech",
+        "company_name": "Initech France",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "values": {
+        "poste_actuel": "Responsable RH",
+        "entreprise_actuelle": "Initech France"
+      },
+      "text": "{{poste_actuel}}, {{entreprise_actuelle}}",
+      "expected": "Responsable RH, Initech France",
+      "missing": []
+    },
+    {
+      "name": "alias city / ville : variable personnelle « ville » de l'expéditeur",
+      "enrollment": {
+        "profile_name": "Sophie Bernard",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "custom_variables": [
+        {
+          "key": "ville",
+          "value": "Lyon"
+        }
+      ],
+      "values": {
+        "city": "Lyon",
+        "ville": "Lyon"
+      },
+      "text": "Le poste est basé à {{city}} ({{ville | upper}}).",
+      "expected": "Le poste est basé à Lyon (LYON).",
+      "missing": []
+    },
+    {
+      "name": "city inconnue du moteur : variable retirée entre deux mots",
+      "enrollment": {
+        "profile_name": "Sophie Bernard",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "values": {},
+      "text": "Je serai à {{city}} la semaine prochaine.",
+      "expected": "Je serai à la semaine prochaine.",
+      "missing": [
+        "city"
+      ]
+    },
+    {
+      "name": "variable vide devant une virgule",
+      "values": {
+        "prenom": ""
+      },
+      "text": "Bonjour {{prenom}}, comment allez-vous ?",
+      "expected": "Bonjour, comment allez-vous ?",
+      "missing": [
+        "prenom"
+      ]
+    },
+    {
+      "name": "variables vides devant un point et devant un point d'interrogation",
+      "values": {
+        "prenom": "   "
+      },
+      "text": "Merci {{prenom}}. Une question {{nom}} ?",
+      "expected": "Merci. Une question ?",
+      "missing": [
+        "prenom",
+        "nom"
+      ]
+    },
+    {
+      "name": "expéditeur et organisation",
+      "enrollment": {
+        "profile_name": "Julie Martin",
+        "created_by": "u-sender",
+        "organization_id": "org-1"
+      },
+      "sender": {
+        "display_name": "Laure Dupont",
+        "job_title": "Chargée de recrutement"
+      },
+      "organization_name": "Talentis",
+      "values": {
+        "sender_name": "Laure",
+        "mon_poste": "Chargée de recrutement",
+        "ma_signature": "Laure Dupont",
+        "ma_societe": "Talentis"
+      },
+      "text": "{{sender_name}} ({{mon_poste}}), {{ma_signature}} pour {{ma_societe}}",
+      "expected": "Laure (Chargée de recrutement), Laure Dupont pour Talentis",
+      "missing": []
+    },
+    {
+      "name": "mission : poste recherché, client, lieu, trois compétences",
+      "enrollment": {
+        "profile_name": "Julie Martin",
+        "created_by": "u-sender",
+        "organization_id": "org-1",
+        "job_id": "mission-1",
+        "job_title": "Titre écrit sur l'inscription"
+      },
+      "mission": {
+        "name": "Mission contrôle de gestion",
+        "job_details": {
+          "title": "Contrôleur de gestion",
+          "client": {
+            "name": "Globex"
+          },
+          "location": "Paris",
+          "skills_must_have": [
+            "SAP",
+            "Excel",
+            "SQL",
+            "Power BI"
+          ]
+        }
+      },
+      "values": {
+        "poste_recherche": "Contrôleur de gestion",
+        "client": "Globex",
+        "lieu_poste": "Paris",
+        "skills_requis": "SAP, Excel, SQL"
+      },
+      "text": "Poste : {{poste_recherche}} chez {{client}} à {{lieu_poste}} ({{skills_requis}}).",
+      "expected": "Poste : Contrôleur de gestion chez Globex à Paris (SAP, Excel, SQL).",
+      "missing": []
+    },
+    {
+      "name": "mission introuvable : titre écrit sur l'inscription en repli du poste recherché",
+      "enrollment": {
+        "profile_name": "Julie Martin",
+        "created_by": "u-sender",
+        "organization_id": "org-1",
+        "job_id": "mission-absente",
+        "job_title": "Lead Dev Go"
+      },
+      "values": {
+        "poste_recherche": "Lead Dev Go"
+      },
+      "text": "Pour le poste de {{poste_recherche}}.",
+      "expected": "Pour le poste de Lead Dev Go.",
+      "missing": []
+    },
+    {
+      "name": "filtres title, trim, capitalize, first_word, truncate",
+      "values": {
+        "nom_complet": "julie martin",
+        "headline": "  directrice financière groupe  "
+      },
+      "text": "{{nom_complet | title}} / {{headline | trim | capitalize}} / {{headline | trim | first_word}} / {{nom_complet | truncate:5}}",
+      "expected": "Julie Martin / Directrice financière groupe / directrice / julie…",
+      "missing": []
+    },
+    {
+      "name": "variable inconnue retirée, repli par default entre apostrophes",
+      "values": {},
+      "text": "Cordialement {{inconnue}}, {{autre | default:'à bientôt'}}",
+      "expected": "Cordialement, à bientôt",
+      "missing": [
+        "inconnue"
+      ]
+    }
+  ],
+  "_invite_note_description": "Note d'invitation (connection_request) : le moteur coupe la note rendue à 300 caractères (smartTruncate de supabase/functions/_shared/sequence-send-rules.ts, process-sequences). Le navigateur applique la même coupe au texte affiché (inviteNoteText de src/lib/templatePreview.ts). Joué des deux côtés : tests/ux/lot5d1-rendu-apercu.test.mjs et supabase/functions/_shared/sequence-preview-values.test.ts.",
+  "invite_note_cases": [
+    {
+      "name": "note courte : inchangée (espaces de bord retirés)",
+      "text": "  Bonjour Julie, ravi de vous suivre.  ",
+      "expected": "Bonjour Julie, ravi de vous suivre."
+    },
+    {
+      "name": "note de 300 caractères exactement : inchangée",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.",
+      "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa."
+    },
+    {
+      "name": "note longue : coupée à la dernière phrase entière",
+      "text": "Bonjour Julie, votre parcours de directrice financière chez Acme a retenu mon attention. Bonjour Julie, votre parcours de directrice financière chez Acme a retenu mon attention. Bonjour Julie, votre parcours de directrice financière chez Acme a retenu mon attention. Bonjour Julie, votre parcours de directrice financière chez Acme a retenu mon attention. Bonjour Julie, votre parcours de directrice financière chez Acme a retenu mon attention.",
+      "expected": "Bonjour Julie, votre parcours de directrice financière chez Acme a retenu mon attention. Bonjour Julie, votre parcours de directrice financière chez Acme a retenu mon attention. Bonjour Julie, votre parcours de directrice financière chez Acme a retenu mon attention."
+    },
+    {
+      "name": "note longue sans phrase : coupée au dernier espace, points de suspension",
+      "text": "mot0 mot1 mot2 mot3 mot4 mot5 mot6 mot7 mot8 mot9 mot10 mot11 mot12 mot13 mot14 mot15 mot16 mot17 mot18 mot19 mot20 mot21 mot22 mot23 mot24 mot25 mot26 mot27 mot28 mot29 mot30 mot31 mot32 mot33 mot34 mot35 mot36 mot37 mot38 mot39 mot40 mot41 mot42 mot43 mot44 mot45 mot46 mot47 mot48 mot49 mot50 mot51 mot52 mot53 mot54 mot55 mot56 mot57 mot58 mot59 mot60 mot61 mot62 mot63 mot64 mot65 mot66 mot67 mot68 mot69 mot70 mot71 mot72 mot73 mot74 mot75 mot76 mot77 mot78 mot79",
+      "expected": "mot0 mot1 mot2 mot3 mot4 mot5 mot6 mot7 mot8 mot9 mot10 mot11 mot12 mot13 mot14 mot15 mot16 mot17 mot18 mot19 mot20 mot21 mot22 mot23 mot24 mot25 mot26 mot27 mot28 mot29 mot30 mot31 mot32 mot33 mot34 mot35 mot36 mot37 mot38 mot39 mot40 mot41 mot42 mot43 mot44 mot45 mot46 mot47 mot48 mot49 mot50…"
+    },
+    {
+      "name": "note longue sans espace : coupée net à 299 caractères, points de suspension",
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expected": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+    },
+    {
+      "name": "titre développé : la variable longue fait dépasser la note",
+      "text": "Bonjour Julie, je vois que vous êtes Directrice financière | Ex-Big4 | Contrôle de gestion | Consolidation | IFRS | M&A | Trésorerie | Fiscalité | Audit interne | Transformation finance | SAP S/4HANA | Pilotage de la performance | Management d’équipes | Business partnering | Relations investisseurs chez Acme. Échangeons ? Belle journée.",
+      "expected": "Bonjour Julie, je vois que vous êtes Directrice financière | Ex-Big4 | Contrôle de gestion | Consolidation | IFRS | M&A | Trésorerie | Fiscalité | Audit interne | Transformation finance | SAP S/4HANA | Pilotage de la performance | Management d’équipes | Business partnering | Relations…"
+    }
+  ]
+}

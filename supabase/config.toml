@@ -73,6 +73,9 @@ verify_jwt = false
 [functions.detect-profile-fraud]
 verify_jwt = false
 
+[functions.draft-sequence]
+verify_jwt = false
+
 [functions.enrich-company]
 verify_jwt = false
 
@@ -155,6 +158,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.nl-filter-edit]
+verify_jwt = false
+
+[functions.resolve-client-logo]
 verify_jwt = false
 
 [functions.resolve-pedigree-directory]
