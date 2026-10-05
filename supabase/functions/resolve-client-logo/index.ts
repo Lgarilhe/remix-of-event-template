@@ -3,6 +3,10 @@
 // {organization_id}/clients/) et l'enregistre dans job_details.client.logo_url
 // de toutes les missions de l'organisation qui ont ce client.
 //
+// Sources, dans l'ordre : Apollo (si une clé existe), puis l'icône du site
+// officiel du client (lue par le serveur : domaine du brief, sinon quelques
+// domaines évidents, retenus seulement si la page parle bien du client).
+//
 // Pourquoi côté serveur : le navigateur ne devine jamais un logo en interrogeant
 // un service tiers, ce serait lui envoyer le nom des clients du cabinet (revue
 // design A-27). Le logo affiché vient de notre stockage.
@@ -60,15 +64,19 @@ function normalizeDomain(input: string | null | undefined): string | null {
   }
 }
 
+/** Hôte public seulement : jamais une adresse IP, localhost ou un nom interne. */
+function isPublicHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return false;
+  if (/^[\d.]+$/.test(h) || h.includes(":")) return false;
+  return h.includes(".");
+}
+
 /** Seuls des liens https vers un nom de domaine public sont téléchargés. */
 function isSafeLogoUrl(raw: string): boolean {
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:") return false;
-    const host = url.hostname.toLowerCase();
-    if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) return false;
-    if (/^[\d.]+$/.test(host) || host.includes(":")) return false;
-    return host.includes(".");
+    return url.protocol === "https:" && isPublicHost(url.hostname);
   } catch {
     return false;
   }
@@ -113,6 +121,8 @@ async function findApolloLogo(apiKey: string, clientName: string, domain: string
       const data = await res.json();
       const org: ApolloOrg = data.organization ?? data;
       if (org?.logo_url) return org.logo_url;
+    } else {
+      console.log(`[resolve-client-logo] Apollo enrich ${res.status}`);
     }
     return null;
   }
@@ -121,13 +131,80 @@ async function findApolloLogo(apiKey: string, clientName: string, domain: string
     headers,
     body: JSON.stringify({ q_organization_name: clientName, per_page: 5 }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.log(`[resolve-client-logo] Apollo search ${res.status}`);
+    return null;
+  }
   const data = await res.json();
   const list: ApolloOrg[] = data.organizations ?? data.accounts ?? [];
   // Nom identique seulement : un client homonyme ou voisin n'est jamais retenu.
   const wanted = normalizeName(clientName);
   const match = list.find((org) => normalizeName(org.name) === wanted && org.logo_url);
   return match?.logo_url ?? null;
+}
+
+/** Icônes déclarées par une page, la meilleure d'abord (apple-touch-icon, icon, puis og:image). */
+function iconsOfPage(html: string, pageUrl: string): string[] {
+  const found: Array<{ url: string; score: number }> = [];
+  const add = (href: string | undefined, score: number) => {
+    if (!href) return;
+    try {
+      const url = new URL(href, pageUrl);
+      if (url.protocol === "https:" && isPublicHost(url.hostname)) found.push({ url: url.toString(), score });
+    } catch {
+      // lien invalide
+    }
+  };
+  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+    const rel = /rel=["']([^"']+)["']/i.exec(tag)?.[1] ?? "";
+    if (!/icon/i.test(rel) || /mask-icon/i.test(rel)) continue;
+    const href = /href=["']([^"']+)["']/i.exec(tag)?.[1];
+    const size = Number(/sizes=["'](\d+)x\d+["']/i.exec(tag)?.[1] ?? 0);
+    add(href, (/apple-touch-icon/i.test(rel) ? 1000 : 500) + size);
+  }
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    if (/property=["']og:image["']/i.test(tag)) add(/content=["']([^"']+)["']/i.exec(tag)?.[1], 100);
+  }
+  return found.sort((a, b) => b.score - a.score).map((f) => f.url);
+}
+
+/** Le site est celui du client : son titre ou son nom de site contient le nom du client. */
+function pageIsClient(html: string, clientName: string): boolean {
+  const wanted = normalizeName(clientName);
+  if (!wanted) return false;
+  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1] ?? "";
+  const siteName = /property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i.exec(html)?.[1] ?? "";
+  return normalizeName(`${title} ${siteName}`).includes(wanted);
+}
+
+/** Icône du site officiel : domaine connu, sinon quelques domaines évidents vérifiés sur la page. */
+async function findSiteLogos(clientName: string, knownDomain: string | null): Promise<string[]> {
+  const slug = normalizeName(clientName).replace(/\s+/g, "");
+  const candidates = knownDomain
+    ? [knownDomain]
+    : slug.length >= 3
+    ? [`${slug}.com`, `${slug}.fr`, `${slug}.io`]
+    : [];
+  for (const domain of candidates) {
+    if (!isPublicHost(domain)) continue;
+    try {
+      const res = await fetchWithTimeout(`https://${domain}/`, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; KonektLogoBot/1.0)" },
+        redirect: "follow",
+      }, 8000);
+      if (!res.ok) continue;
+      const finalUrl = new URL(res.url);
+      if (finalUrl.protocol !== "https:" || !isPublicHost(finalUrl.hostname)) continue;
+      const html = (await res.text()).slice(0, 400_000);
+      // Un domaine deviné n'est retenu que si la page parle bien du client.
+      if (!knownDomain && !pageIsClient(html, clientName)) continue;
+      const icons = iconsOfPage(html, finalUrl.toString());
+      if (icons.length > 0) return icons;
+    } catch (error) {
+      console.log(`[resolve-client-logo] site ${domain} illisible : ${error instanceof Error ? error.message : error}`);
+    }
+  }
+  return [];
 }
 
 function extensionOf(contentType: string): string | null {
@@ -187,41 +264,54 @@ Deno.serve(async (req) => {
       normalizeName(row.job_details?.client?.name || row.client_name) === wanted
     );
 
+    const knownDomain = normalizeDomain(client.website) ??
+      siblings.map((row) => normalizeDomain(row.job_details?.client?.website)).find(Boolean) ?? null;
+
+    // Sources, dans l'ordre : Apollo (si une clé existe), puis l'icône du site officiel.
+    const sources: string[] = [];
     const apollo = await resolveApolloCredentials(organizationId, admin);
-    let logoUrl: string | null = null;
     if (apollo?.apiKey) {
       try {
-        const domain = normalizeDomain(client.website) ??
-          siblings.map((row) => normalizeDomain(row.job_details?.client?.website)).find(Boolean) ?? null;
-        logoUrl = await findApolloLogo(apollo.apiKey, clientName, domain);
+        const url = await findApolloLogo(apollo.apiKey, clientName, knownDomain);
+        if (url) sources.push(url);
+        else console.log(`[resolve-client-logo] Apollo : aucun logo pour ${clientName}`);
       } catch (error) {
         console.warn("[resolve-client-logo] Apollo failed:", error);
       }
+    } else {
+      console.log("[resolve-client-logo] pas de clé Apollo : site officiel seulement");
     }
+    sources.push(...await findSiteLogos(clientName, knownDomain));
 
     // Copie dans notre stockage : l'affichage ne dépend d'aucun tiers.
     let storedUrl: string | null = null;
-    if (logoUrl && isSafeLogoUrl(logoUrl)) {
+    for (const logoUrl of sources.slice(0, 4)) {
+      if (!isSafeLogoUrl(logoUrl)) continue;
       try {
         const res = await fetchWithTimeout(logoUrl, {}, 10000);
         const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
         const extension = extensionOf(contentType);
-        if (res.ok && extension) {
-          const bytes = new Uint8Array(await res.arrayBuffer());
-          if (bytes.length > 0 && bytes.length <= MAX_LOGO_BYTES) {
-            const slug = wanted.replace(/\s+/g, "-").slice(0, 60) || "client";
-            const path = `${organizationId}/clients/${slug}-${Date.now()}.${extension}`;
-            const { error: uploadError } = await admin.storage
-              .from("org-logos")
-              .upload(path, bytes, { contentType: contentType.split(";")[0], upsert: false });
-            if (!uploadError) storedUrl = admin.storage.from("org-logos").getPublicUrl(path).data.publicUrl;
-            else console.warn("[resolve-client-logo] upload failed:", uploadError.message);
-          }
+        if (!res.ok || !extension) continue;
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.length === 0 || bytes.length > MAX_LOGO_BYTES) continue;
+        const slug = wanted.replace(/\s+/g, "-").slice(0, 60) || "client";
+        const path = `${organizationId}/clients/${slug}-${Date.now()}.${extension}`;
+        const { error: uploadError } = await admin.storage
+          .from("org-logos")
+          .upload(path, bytes, { contentType: contentType.split(";")[0], upsert: false });
+        if (uploadError) {
+          console.warn("[resolve-client-logo] upload failed:", uploadError.message);
+          continue;
         }
+        storedUrl = admin.storage.from("org-logos").getPublicUrl(path).data.publicUrl;
+        break;
       } catch (error) {
         console.warn("[resolve-client-logo] download failed:", error);
       }
     }
+    console.log(
+      `[resolve-client-logo] ${clientName} : ${storedUrl ? "logo enregistré" : "introuvable"} (${sources.length} source(s))`,
+    );
 
     const now = new Date().toISOString();
     for (const row of siblings) {
