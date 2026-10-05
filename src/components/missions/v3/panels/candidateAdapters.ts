@@ -20,6 +20,16 @@ export function hasProfileData(raw: unknown): boolean {
   return !!raw && typeof raw === 'object' && !Array.isArray(raw) && Object.keys(raw as object).length > 0;
 }
 
+/**
+ * Photo de la fiche : celle de la ligne, sinon celle du profil enregistré que la fiche a chargé (le dernier
+ * profil du candidat, dans une autre mission si la ligne n'en a pas). Absente : les initiales.
+ */
+export function candidatePictureUrl(row: Pick<MissionCandidateRow, 'pictureUrl'>, raw?: unknown): string | null {
+  if (row.pictureUrl) return row.pictureUrl;
+  const r = (hasProfileData(raw) ? raw : {}) as Raw;
+  return text(r.profile_picture_url) ?? text(r.profile_picture_url_large);
+}
+
 /** Nom affiché d'un candidat ; « Candidat sans nom » à défaut. */
 export function candidateDisplayName(row: Pick<MissionCandidateRow, 'name'>, raw?: unknown): string {
   if (row.name) return row.name;

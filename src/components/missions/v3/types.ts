@@ -30,7 +30,11 @@ export type { CadrageSection, MissionPanelKind, MissionScreen, MissionV3Location
 /** Taille d'une page de la liste de Pipeline et de la section À trier. */
 export const PIPELINE_PAGE_SIZE = 50;
 
-/** Colonnes légères de mission_candidate_rows pour les listes (sans profil LinkedIn ni détail de note). */
+/**
+ * Colonnes légères de mission_candidate_rows pour les listes (sans profil LinkedIn ni détail de note).
+ * La photo seule est extraite côté base (`linkedin_profile_data->>…`, comme useInterviewingPeople) :
+ * jamais le profil entier.
+ */
 export const MISSION_ROW_LIGHT_COLUMNS = [
   'id',
   'group_ids',
@@ -54,6 +58,8 @@ export const MISSION_ROW_LIGHT_COLUMNS = [
   'rejected_at',
   'rejected_from_stage',
   'reply_summary',
+  'picture:linkedin_profile_data->>profile_picture_url',
+  'picture_large:linkedin_profile_data->>profile_picture_url_large',
   'tags',
   'job_id',
   'project_id',
@@ -77,6 +83,8 @@ export interface MissionCandidateRow {
   name: string | null;
   headline: string | null;
   linkedinUrl: string | null;
+  /** Adresse de la photo LinkedIn enregistrée ; absente, ce sont les initiales (PersonAvatar). */
+  pictureUrl: string | null;
   stage: GeneralStage;
   processStepId: string | null;
   stageEnteredAt: string | null;
@@ -133,6 +141,7 @@ export function toMissionCandidateRow(raw: unknown): MissionCandidateRow | null 
     name: str(r.candidate_name),
     headline: str(r.candidate_headline),
     linkedinUrl: str(r.linkedin_profile_url),
+    pictureUrl: str(r.picture) ?? str(r.picture_large),
     stage: isGeneralStage(r.general_stage) ? r.general_stage : 'to_sort',
     processStepId: str(r.process_step_id),
     stageEnteredAt: str(r.stage_entered_at),

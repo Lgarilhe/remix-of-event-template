@@ -35,6 +35,7 @@ import {
 } from '@dnd-kit/core';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PersonAvatar } from '@/components/ui/person-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { MissionStageCounts } from '@/hooks/useMissionStageCounts';
 import { useKnownStagesVersion, useMissionBoardRows } from '@/hooks/useMissionCandidateRows';
@@ -156,8 +157,10 @@ const BoardCard = memo(function BoardCard({
         overlay && 'cursor-grabbing shadow-lg',
       )}
     >
-      <div className="flex items-baseline justify-between gap-1.5">
-        <p className="min-w-0 truncate font-medium text-foreground">{candidateName(row)}</p>
+      <div className="flex items-center gap-2">
+        {/* Fond de la page : la pastille ne se confond pas avec la carte (même ton que bg-muted). */}
+        <PersonAvatar name={row.name} src={row.pictureUrl} size={28} className="bg-background" />
+        <p className="min-w-0 flex-1 truncate font-medium text-foreground">{candidateName(row)}</p>
         <ScorePill score={row.score} title={row.recommendation} />
       </div>
       {/* Une vraie action, sinon l'ancienneté d'un candidat qui n'avance plus ; jamais « Aucune action depuis 0 j ». */}
@@ -245,7 +248,7 @@ function Column({
       ref={setNodeRef}
       aria-label={`${column.label}, ${plural(rows.length, 'candidat')}`}
       className={cn(
-        'flex max-h-[calc(100dvh-300px)] min-h-[120px] w-[190px] shrink-0 flex-col gap-2 rounded-[10px] bg-card p-2.5 transition-colors duration-150',
+        'flex max-h-[calc(100dvh-300px)] min-h-[120px] w-[224px] shrink-0 flex-col gap-2 rounded-[10px] bg-card p-2.5 transition-colors duration-150',
         aside && 'ml-2 border border-dashed border-border-strong',
         isOver && 'bg-muted/60 ring-1 ring-inset ring-brand/50',
       )}
@@ -419,7 +422,7 @@ export function MissionBoard({
     return (
       <div className="flex gap-3 overflow-x-auto pb-2" aria-busy="true" aria-label="Chargement du tableau par étape">
         {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-[160px] w-[190px] shrink-0 rounded-[10px]" />
+          <Skeleton key={i} className="h-[160px] w-[224px] shrink-0 rounded-[10px]" />
         ))}
       </div>
     );

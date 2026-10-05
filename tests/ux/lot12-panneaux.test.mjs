@@ -129,6 +129,16 @@ test('buildEnrichedProfile : même construction que la fiche du /pipeline', () =
   assert.equal(fallback.headline, 'Titre');
 });
 
+test('candidatePictureUrl : la ligne d\'abord, le profil chargé en repli, sinon rien', () => {
+  const profile = { profile_picture_url: 'https://media.example/p.png', profile_picture_url_large: 'https://media.example/l.png' };
+  assert.equal(A.candidatePictureUrl({ pictureUrl: 'https://media.example/row.png' }, profile), 'https://media.example/row.png');
+  assert.equal(A.candidatePictureUrl({ pictureUrl: null }, profile), 'https://media.example/p.png');
+  assert.equal(A.candidatePictureUrl({ pictureUrl: null }, { profile_picture_url_large: 'https://media.example/l.png' }), 'https://media.example/l.png');
+  assert.equal(A.candidatePictureUrl({ pictureUrl: null }, {}), null);
+  assert.equal(A.candidatePictureUrl({ pictureUrl: null }, null), null);
+  assert.equal(A.candidatePictureUrl({ pictureUrl: null }, ['x']), null);
+});
+
 test('positionLine et candidateDisplayName', () => {
   assert.equal(A.positionLine({ currentRole: 'CFO', currentCompany: 'Verallia' }, null), 'CFO, Verallia');
   assert.equal(A.positionLine({ headline: 'Titre du profil' }, 'Titre de la ligne'), 'Titre du profil');
