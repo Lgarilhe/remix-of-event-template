@@ -526,3 +526,63 @@ test('Passerelle : chaque fonction a son entrée, verify_jwt = false sauf submit
   const verified = functions.filter((name) => settingOf(name) === 'true');
   assert.deepEqual(verified, ['submit-application'], `verify_jwt = true inattendu : ${verified.join(', ')}`);
 });
+
+// ─── Calendly : annulation et déplacement d'un rendez-vous ──────────────────
+// calendly-webhook ne traitait que invitee.created : une séance annulée dans
+// l'agenda restait « scheduled » (BUG-078 de docs/audit-2026-09-01.md). Le
+// comportement se rejoue dans e2e/api/seq-meeting.spec.ts et
+// tests/ux/calendly-annulation.test.mjs ; ici, les invariants qui ne doivent
+// pas sauter sans bruit.
+const CALENDLY_WEBHOOK = 'supabase/functions/calendly-webhook/index.ts';
+const CALENDLY_SETUP = 'supabase/functions/setup-calendly-webhook/index.ts';
+
+test('Calendly : invitee.canceled est traité après la vérification de signature, avant le filtre « invitee.created »', () => {
+  const src = read(CALENDLY_WEBHOOK);
+  const serve = src.slice(src.indexOf('Deno.serve('));
+  const verify = serve.indexOf('verifyCalendlySignature(req, rawBody)');
+  const canceled = serve.indexOf("body.event === 'invitee.canceled'");
+  const onlyCreated = serve.indexOf("body.event !== 'invitee.created'");
+  assert.ok(verify >= 0 && canceled > verify, 'annulation traitée après la signature');
+  assert.ok(onlyCreated > canceled, 'annulation traitée avant le filtre invitee.created');
+  assert.match(serve, /handleInviteeCanceled\(body\.payload\)/);
+});
+
+test('Calendly : toute écriture sur une séance filtre par organisation et par statut ouvert', () => {
+  const src = read(CALENDLY_WEBHOOK);
+  assert.match(src, /const SESSION_OPEN_STATUSES = \['scheduled', 'in_progress'\];/);
+  const writer = fnBody(src, 'async function updateOpenSessions(');
+  assert.match(writer, /\.update\(patch\)\s*\.eq\('id', row\.id\)\s*\.eq\('organization_id', row\.organization_id\)\s*\.in\('status', SESSION_OPEN_STATUSES\)/);
+  assert.match(writer, /if \(!row\.organization_id\)/, 'une séance sans organisation n’est jamais modifiée');
+  // Aucune autre écriture sur qualification_sessions dans les nouveaux gestionnaires.
+  for (const signature of ['async function handleInviteeCanceled(', 'async function moveRescheduledSession(']) {
+    assert.doesNotMatch(fnBody(src, signature), /\.update\(|\.delete\(|\.insert\(/, `${signature} écrit par updateOpenSessions seulement`);
+  }
+});
+
+test('Calendly : l’annulation pose « cancelled », un déplacement n’annule jamais', () => {
+  const src = read(CALENDLY_WEBHOOK);
+  const cancel = fnBody(src, 'async function handleInviteeCanceled(');
+  assert.match(cancel, /payload\?\.rescheduled === true/);
+  assert.match(cancel, /updateOpenSessions\(rows, \{ status: 'cancelled' \}\)/);
+  const move = fnBody(src, 'async function moveRescheduledSession(');
+  assert.match(move, /payload\?\.old_invitee/);
+  assert.doesNotMatch(move, /status:/, 'le déplacement ne change pas le statut');
+  assert.match(src, /const moved = await moveRescheduledSession\(payload\);\s*if \(moved\.handled\)/);
+});
+
+test('Calendly : l’abonnement demande les deux événements, signés, et un abonnement incomplet est recréé', () => {
+  const src = read(CALENDLY_SETUP);
+  assert.match(src, /const WEBHOOK_EVENTS = \['invitee\.created', 'invitee\.canceled'\];/);
+  assert.match(src, /events: WEBHOOK_EVENTS,/);
+  assert.match(src, /WEBHOOK_EVENTS\.every\(\(ev\) => \(wh\.events \?\? \[\]\)\.includes\(ev\)\)/, '« déjà configuré » exige les deux événements');
+  assert.match(src, /signing_key: signingKey,/);
+  assert.ok(
+    src.indexOf("Deno.env.get('CALENDLY_WEBHOOK_SIGNING_KEY')") < src.indexOf("method: 'DELETE'"),
+    'la clé est exigée avant de supprimer un abonnement existant',
+  );
+});
+
+test('Calendly : la barre latérale ignore les entretiens annulés', () => {
+  const src = read('src/lib/sidebarSignals.ts');
+  assert.match(src, /row\.status === 'completed' \|\| row\.status === 'cancelled'/);
+});

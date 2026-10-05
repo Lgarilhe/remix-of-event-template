@@ -166,7 +166,20 @@ async function cycleFor(...execIds: string[]) {
   }
 }
 
-/** Rendez-vous Calendly signé (t=…,v1=HMAC(t.body)). */
+/** Livraison Calendly signée (t=…,v1=HMAC(t.body)). */
+async function postCalendly(body: unknown) {
+  const raw = JSON.stringify(body);
+  const t = Math.floor(Date.now() / 1000);
+  const sig = createHmac('sha256', CALENDLY_KEY).update(`${t}.${raw}`).digest('hex');
+  const res = await fetch(`${E2E.supabaseUrl}/functions/v1/calendly-webhook`, {
+    method: 'POST',
+    headers: { apikey: E2E.anonKey, 'Content-Type': 'application/json', 'Calendly-Webhook-Signature': `t=${t},v1=${sig}` },
+    body: raw,
+  });
+  return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> };
+}
+
+/** Rendez-vous Calendly (invitee.created) pour un profil LinkedIn. */
 async function calendlyBooking(linkedinAnswer: string, eventId: string) {
   const body = {
     event: 'invitee.created',
@@ -183,15 +196,7 @@ async function calendlyBooking(linkedinAnswer: string, eventId: string) {
       },
     },
   };
-  const raw = JSON.stringify(body);
-  const t = Math.floor(Date.now() / 1000);
-  const sig = createHmac('sha256', CALENDLY_KEY).update(`${t}.${raw}`).digest('hex');
-  const res = await fetch(`${E2E.supabaseUrl}/functions/v1/calendly-webhook`, {
-    method: 'POST',
-    headers: { apikey: E2E.anonKey, 'Content-Type': 'application/json', 'Calendly-Webhook-Signature': `t=${t},v1=${sig}` },
-    body: raw,
-  });
-  return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> };
+  return postCalendly(body);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -439,6 +444,90 @@ test.describe('Webhook Calendly : correspondance exacte', () => {
       expect(((notifs![0].metadata as Record<string, unknown>).enrollment_ids as string[]).sort())
         .toEqual([exact.enrollmentId, slash.enrollmentId].sort());
       expect(await sentInvites(accountId)).toEqual([]);
+    });
+  });
+});
+
+// Annulation et déplacement : une séance annulée dans l'agenda quitte la barre
+// latérale (« cancelled »), un déplacement met à jour la séance existante.
+test.describe('Webhook Calendly : annulation et déplacement', () => {
+  test.describe('webhook-annulation-deplacement-executee', () => {
+    test.describe.configure({ mode: 'serial' });
+    // webhook-annulation-deplacement-executee
+    test('invitee.canceled passe la séance à « cancelled » ; un déplacement met à jour la même séance, sans seconde ligne', async () => {
+      const { org } = await trackedSendingOrg('E2E meeting annulation');
+      const owner = org.owner.userId;
+      const eventUri = (id: string) => `https://api.calendly.com/scheduled_events/${id}`;
+      const inviteeUri = (eventId: string, inviteeId: string) => `${eventUri(eventId)}/invitees/${inviteeId}`;
+      const sessionRow = async (id: string) => {
+        const { data, error } = await admin().from('qualification_sessions')
+          .select('status, calendly_event_id, calendly_invitee_id, event_start_at, event_location').eq('id', id).single();
+        if (error || !data) throw new Error(`qualification_sessions ${id}: ${error?.message}`);
+        return data as { status: string; calendly_event_id: string; calendly_invitee_id: string; event_start_at: string; event_location: string | null };
+      };
+
+      // 1. Annulation : la séance de l'invité passe à « cancelled », l'autre ne bouge pas.
+      const cancelEvent = `evt_cancel_${rand()}`;
+      const cancelInvitee = `inv_cancel_${rand()}`;
+      const toCancel = await insertMeeting(org.orgId, owner, { calendly_event_id: cancelEvent, calendly_invitee_id: cancelInvitee, event_start_at: minutesFromNow(2 * DAY), event_end_at: minutesFromNow(2 * DAY + 20) });
+      const kept = await insertMeeting(org.orgId, owner, { event_start_at: minutesFromNow(3 * DAY), event_end_at: minutesFromNow(3 * DAY + 20), calendly_invitee_id: `inv_kept_${rand()}` });
+      const canceled = await postCalendly({
+        event: 'invitee.canceled',
+        payload: { uri: inviteeUri(cancelEvent, cancelInvitee), event: eventUri(cancelEvent), rescheduled: false, status: 'canceled' },
+      });
+      expect(canceled.status, JSON.stringify(canceled.body)).toBe(200);
+      expect(canceled.body.sessions_cancelled).toBe(1);
+      expect((await sessionRow(toCancel)).status).toBe('cancelled');
+      expect((await sessionRow(kept)).status, 'autre séance de l’organisation intacte').toBe('scheduled');
+
+      // 2. Déplacement : même séance, nouvel événement, nouvelles heures, nouveau lien ; l'annulation qui l'accompagne n'annule rien.
+      const oldEvent = `evt_old_${rand()}`;
+      const oldInvitee = `inv_old_${rand()}`;
+      const newEvent = `evt_new_${rand()}`;
+      const newInvitee = `inv_new_${rand()}`;
+      const moved = await insertMeeting(org.orgId, owner, { calendly_event_id: oldEvent, calendly_invitee_id: oldInvitee, event_start_at: minutesFromNow(2 * DAY), event_end_at: minutesFromNow(2 * DAY + 20), event_location: 'https://meet.example.org/old' });
+      const newStart = minutesFromNow(5 * DAY);
+      const before = (await admin().from('qualification_sessions').select('id').eq('organization_id', org.orgId)).data?.length;
+      const lateCancel = await postCalendly({
+        event: 'invitee.canceled',
+        payload: { uri: inviteeUri(oldEvent, oldInvitee), event: eventUri(oldEvent), rescheduled: true, new_invitee: inviteeUri(newEvent, newInvitee) },
+      });
+      expect(lateCancel.body.reason).toBe('rescheduled');
+      expect((await sessionRow(moved)).status).toBe('scheduled');
+      const rescheduled = await postCalendly({
+        event: 'invitee.created',
+        payload: {
+          uri: inviteeUri(newEvent, newInvitee),
+          event: eventUri(newEvent),
+          old_invitee: inviteeUri(oldEvent, oldInvitee),
+          rescheduled: true,
+          scheduled_event: {
+            uri: eventUri(newEvent),
+            name: CALENDLY_EVENT_NAME,
+            start_time: newStart,
+            end_time: minutesFromNow(5 * DAY + 20),
+            location: { type: 'zoom', join_url: 'https://zoom.example.org/new' },
+          },
+        },
+      });
+      expect(rescheduled.status, JSON.stringify(rescheduled.body)).toBe(200);
+      expect(rescheduled.body).toMatchObject({ rescheduled: true, sessions_updated: 1 });
+      const after = await sessionRow(moved);
+      expect(after.status).toBe('scheduled');
+      expect(after.calendly_event_id).toBe(newEvent);
+      expect(after.calendly_invitee_id).toBe(newInvitee);
+      expect(new Date(after.event_start_at).getTime()).toBe(new Date(newStart).getTime());
+      expect(after.event_location).toBe('https://zoom.example.org/new');
+      const { data: rows } = await admin().from('qualification_sessions').select('id').eq('organization_id', org.orgId);
+      expect(rows, 'aucune seconde séance').toHaveLength(before ?? -1);
+
+      // 3. Annuler la réservation déplacée annule la même séance.
+      const secondCancel = await postCalendly({
+        event: 'invitee.canceled',
+        payload: { uri: inviteeUri(newEvent, newInvitee), event: eventUri(newEvent), rescheduled: false },
+      });
+      expect(secondCancel.body.sessions_cancelled).toBe(1);
+      expect((await sessionRow(moved)).status).toBe('cancelled');
     });
   });
 });
