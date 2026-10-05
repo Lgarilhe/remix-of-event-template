@@ -188,7 +188,7 @@ export function suggestedMissionName(a: BriefAnalysisData): string {
  */
 export function buildJobDetails(
   a: BriefAnalysisData,
-  ctx: { briefName: string; briefText: string; clientName: string },
+  ctx: { briefName: string; briefText: string; clientName: string; sourceUrl?: string },
 ): Record<string, unknown> {
   const briefText = ctx.briefText.trim();
   const jobDetails: Record<string, unknown> = {
@@ -197,6 +197,8 @@ export function buildJobDetails(
     raw_brief: briefText,
     brief_source: 'imported',
   };
+  // Adresse de l'offre d'origine : la liste des missions s'en sert pour signaler une offre déjà importée.
+  if (ctx.sourceUrl) jobDetails.source_url = ctx.sourceUrl;
   if (a.context) jobDetails.context = a.context;
   if (ctx.clientName || a.detected_company) {
     jobDetails.client = { name: ctx.clientName || a.detected_company };

@@ -271,7 +271,8 @@ test('design : une seule croix de fermeture, celle du dialogue', () => {
 test('texte : vouvoiement, pas de tutoiement dans les chaînes affichées', () => {
   for (const [name, src] of Object.entries(FILES)) {
     const c = code(src);
-    assert.doesNotMatch(c, /\b(tu|toi|ton|ta|tes|tiens)\b/i, `${name} : tutoiement`);
+    // Bornes sur les lettres Unicode : \b ne voit que l'ASCII et prendrait « prêtes » pour un « tes » isolé.
+    assert.doesNotMatch(c, /(?<!\p{L})(tu|toi|ton|ta|tes|tiens)(?!\p{L})/iu, `${name} : tutoiement`);
     assert.doesNotMatch(c, /['"`][^'"`\n]*\b(Colle|Remplis|Vérifie|Saisis|Utilise|Choisis|Complète)\b[^'"`\n]*['"`]/, `${name} : impératif au tutoiement`);
   }
   assert.match(dialog, /Collez la fiche de poste/);

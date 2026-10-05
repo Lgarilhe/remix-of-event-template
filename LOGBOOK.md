@@ -32,6 +32,26 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-05 — SHIP — Brief IA : lire une offre, ou toutes les offres d'une société, depuis une adresse web
+
+**Contexte** : « Une adresse web » du Brief IA ne lisait que le texte de l'adresse (poste, société, lieu d'une adresse Welcome to the Jungle) et demandait de coller la fiche. La fonction qui lisait les pages (`scrape-job-url`) avait été retirée le 06/09 faute d'appelant.
+**Décision / Fait** :
+- Nouvelle fonction `fetch-job-source` (`resolve` : une offre ou la liste d'une société ; `read_job` : la fiche d'une offre de la liste). Trois niveaux, du plus propre au plus coûteux : l'interface publique du logiciel de recrutement (Greenhouse, Lever, Ashby, Recruitee), la lecture directe de la page (données `JobPosting`, liens d'offres, sinon texte), Firecrawl en dernier recours, seulement si `FIRECRAWL_API_KEY` est posée, avec un plafond de 60 pages par utilisateur et par jour. Le niveau utilisé est journalisé : c'est la mesure du taux de réussite par site.
+- La fonction lit des adresses saisies par les utilisateurs : https, port 443 et nom de domaine public seulement, aucune adresse IP, résolution DNS refusée vers une adresse privée, redirections manuelles et revalidées, taille et durée bornées, jeton d'ATS validé avant de construire une adresse, LinkedIn jamais lu. Aucun appel de modèle, aucun crédit débité, limite de 30 lectures par minute.
+- Écran : une offre remplit la zone « Fiche de poste » (texte réel, intitulé, société). Une société ouvre la liste de ses offres (gratuite) : au plus 10 cochées, coût annoncé depuis le catalogue (7 crédits par offre pour `brief_analysis`), une offre déjà importée (adresse source `job_details.source_url`) n'est pas cochable. Une seule offre cochée s'ouvre dans le Brief IA pour relecture ; deux ou plus sont lues et analysées trois à la fois, puis créées comme missions (nom : intitulé et lieu, client : la société, brief et filtres comme le Brief IA d'une fiche). Un échec n'arrête pas les autres ; des crédits épuisés arrêtent les suivantes et laissent créer celles qui sont prêtes. Un seul message annonce le lot (`silent` sur `createProject`).
+- Page illisible : retour au comportement d'avant (poste, société et lieu de l'adresse) avec une phrase qui dit de coller la fiche.
+**Raison** : demande du propriétaire du 05/10/2026, « puissant » : l'adresse suffit, pour une offre comme pour toute une société. Les connecteurs de la base (`connector_registry`, 8 entrées, sans écran ni moteur) servent à brancher son propre compte d'ATS ; ici le recruteur lit la page publique d'un client, sans identifiant.
+**Impact** : `supabase/functions/fetch-job-source/` (`guard.ts`, `readers.ts`, `resolve.ts`, `index.ts`), `supabase/config.toml`, `src/components/missions/v2/jobSource.ts`, `JobOffersPicker.tsx`, `CreateMissionV2.tsx`, `briefAnalysis.ts`, `src/hooks/useSourcingProjects.ts` (`silent`, `jd_source_url`), `src/types/jobDetails.ts` (`source_url`) ; tests `tests/ux/lecture-offres-serveur.test.mjs` (31) et `tests/ux/import-offres.test.mjs` (18), job Build de la CI ; `CLAUDE.md` (72 fonctions).
+**Recette** : tests sur réseau simulé (chaque niveau, chaque repli, LinkedIn, plafond de Firecrawl, 130 offres tronquées à 100) et banc visuel sur le vrai composant : liste de six offres dont une déjà importée, trois choisies, analyse, création de trois missions avec leur adresse source, une offre seule ouverte dans le Brief IA, page illisible, crédits épuisés en cours de lot, clair, 1440 px et 390 px. Huit mutations des tests sont détectées : cinq pour ce lot (redirections suivies, http admis, LinkedIn lu, lot qui continue sans crédits, toast par mission) et trois pour le lot précédent. Aucun accès à Welcome to the Jungle ni aux interfaces des ATS depuis cette session (accès réseau refusé) : les formats Greenhouse, Lever, Ashby et Recruitee suivent leur documentation publique et n'ont pas été vérifiés en réel.
+**Reste à faire** :
+- [ ] Après déploiement : lire une page société et une offre Welcome to the Jungle, et relever dans les journaux le niveau utilisé (`ats_api`, `json_ld`, `direct_text`, `firecrawl`). Si le site refuse la lecture directe et que Firecrawl n'est pas configuré, la page reste illisible.
+- [ ] Vérifier que `FIRECRAWL_API_KEY` est posée dans les secrets Supabase : sans elle, le troisième niveau est ignoré.
+- [ ] Faire valider les conditions d'utilisation de Welcome to the Jungle avant d'ouvrir la fonction aux clients (lecture déclenchée par l'utilisateur, une page à la fois ; pas de lecture de sociétés en masse).
+- [ ] Un merge sur `main` redéploie toutes les fonctions (`_shared/ai-config.ts` modifié par le lot précédent) : compter une trentaine de minutes.
+**Refs** : `docs/design/06-simplicite.md`, lot précédent « Brief IA : design simplifié et analyse par Sonnet 5.5 ».
+
+---
+
 ## 2026-10-05 — SHIP — Brief IA : design simplifié et analyse par Sonnet 5.5
 
 **Contexte** : la fenêtre de création de mission (`CreateMissionV2`, écran « Brief IA ») était restée dans l'ancien langage (dégradés, emoji, tutoiement, deux croix de fermeture) et appelait `generate-search-filters` sans action ni modèle choisi, donc sur Sonnet 4.6. Une fiche de 6 185 caractères n'était lue que sur ses 800 premiers.

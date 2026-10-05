@@ -19,7 +19,7 @@
  *   - editorDraft : la saisie survit à une fermeture (constat UX06)
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   saveEditorDraft,
   loadEditorDraft,
@@ -36,18 +36,24 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useSourcingProjects, CreateProjectInput } from '@/hooks/useSourcingProjects';
 import { isInsufficientCreditsError } from '@/lib/invokeEdgeFunction';
-import { invokeWithCredits } from '@/lib/invokeWithCredits';
+import { estimateActionCredits, invokeWithCredits } from '@/lib/invokeWithCredits';
+import { plural } from '@/lib/plural';
 import { toast } from 'sonner';
 import {
   ArrowLeft, ArrowRight, FileText, Globe, Link2, Paperclip, Pencil, Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BriefAnalysisPanel } from './BriefAnalysisPanel';
+import { JobOffersPicker } from './JobOffersPicker';
 import {
   MIN_BRIEF_CHARS, MAX_BRIEF_CHARS, SHORT_BRIEF_CHARS, CREDITS_EXHAUSTED_MESSAGE,
   analysisErrorMessage, buildExtractedFields, buildJobDetails, suggestedMissionName,
   type AnalyzeResponse, type BriefAnalysis, type ExtractedField,
 } from './briefAnalysis';
+import {
+  BULK_MESSAGES, MAX_BATCH_OFFERS, buildBriefText, createMissionsFromItems, readJobSource, resolveJobSource, runBulkAnalysis,
+  type BulkDeps, type BulkItem, type SourceJob,
+} from './jobSource';
 
 // ── URL helpers (détection des sources connues) ──
 function detectUrlSource(url: string): { label: string } | null {
@@ -158,18 +164,20 @@ interface CreateMissionV2Props {
   initialMode?: EntryMode;
 }
 
-type EntryMode = 'choose' | 'brief' | 'manual';
+type EntryMode = 'choose' | 'brief' | 'manual' | 'offers';
 
 const MODE_TITLES: Record<EntryMode, string> = {
   choose: 'Nouvelle mission',
   brief: 'Brief IA',
   manual: 'Saisie manuelle',
+  offers: 'Offres de la société',
 };
 
 const MODE_DESCRIPTIONS: Record<EntryMode, string> = {
   choose: 'Comment souhaitez-vous décrire la mission ?',
   brief: "Collez la fiche de poste : l'assistant en tire les informations du brief.",
   manual: 'Renseignez les champs. Vous complèterez le brief après la création.',
+  offers: 'Choisissez les offres à transformer en missions.',
 };
 
 // ── Choix du mode d'entrée ──
@@ -231,7 +239,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   initialMode = 'choose',
 }) => {
   const navigate = useNavigate();
-  const { createProject } = useSourcingProjects();
+  const { createProject, projects } = useSourcingProjects();
 
   const [mode, setMode] = useState<EntryMode>(initialMode);
   const [briefText, setBriefText] = useState('');
@@ -253,6 +261,19 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
   const creationReussieRef = useRef(false);
   // Vrai tant que le nom vient d'une saisie de l'utilisateur : l'analyse n'y touche pas.
   const userNamedRef = useRef(false);
+  // Adresse de l'offre lue en ligne, conservée avec le brief de la mission créée.
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  // Offres d'une société lues depuis une adresse : choix, analyse et création en lot.
+  const [offers, setOffers] = useState<{ company: string; jobs: SourceJob[]; truncated: boolean } | null>(null);
+  const [selectedUrls, setSelectedUrls] = useState<ReadonlySet<string>>(new Set());
+  const [bulkItems, setBulkItems] = useState<BulkItem[] | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const bulkCancelRef = useRef(false);
+  const importedUrls = useMemo(
+    () => new Set(projects.map((p) => p.jd_source_url).filter((u): u is string => !!u)),
+    [projects],
+  );
+  const creditsPerOffer = estimateActionCredits('brief_analysis');
 
   const analysisKey = `${briefText.trim().slice(0, MAX_BRIEF_CHARS)}\u0000${clientName.trim()}`;
   const isStale = analysis !== null && analysedKey !== analysisKey;
@@ -283,7 +304,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     const aDuTexte =
       briefText.trim() || briefName.trim() || clientName.trim() || description.trim();
     const aConserver = aDuTexte && !creationReussieRef.current;
-    return aConserver ? { mode, briefText, briefName, clientName, description } : null;
+    return aConserver ? { mode: mode === 'offers' ? 'brief' : mode, briefText, briefName, clientName, description } : null;
   };
   const brouillonRef = useRef(brouillonCourant);
   useEffect(() => {
@@ -400,6 +421,7 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
           briefName: briefName.trim(),
           briefText,
           clientName: clientName.trim(),
+          sourceUrl: sourceUrl ?? undefined,
         });
       }
 
@@ -416,69 +438,207 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [creating, briefName, briefText, clientName, analysis, createProject, onClose, navigate]);
+  }, [creating, briefName, briefText, clientName, analysis, sourceUrl, createProject, onClose, navigate]);
 
-  // ── Scan d'URL : parsing local du slug uniquement.
+  // ── Adresse web : fonction fetch-job-source, qui lit une offre ou les offres d'une société.
   //
-  // Note : on n'essaie PAS de scraper le contenu de la page.
-  // Les sites modernes (WTTJ, LinkedIn jobs, ATS) font du Client-Side
-  // Rendering avec anti-bot, ce qui rend le scraping non-fiable.
-  // À la place : parsing rapide du slug pour pré-remplir titre +
-  // entreprise + lieu, et l'utilisateur colle le texte de la fiche.
+  // Si la page ne peut pas être lue (site protégé, adresse inconnue), on retombe sur ce
+  // que l'adresse elle-même dit (poste, entreprise et lieu d'une adresse Welcome to the
+  // Jungle, par exemple) et l'utilisateur colle le texte de la fiche.
+  const applyJob = useCallback((job: SourceJob, url: string) => {
+    const text = buildBriefText(job);
+    setBriefText(prev => {
+      const without = prev.replace(url, '').trim();
+      return without ? `${without}\n\n${text}` : text;
+    });
+    if (!briefName.trim()) setBriefName(job.title);
+    if (!clientName.trim() && job.company) setClientName(job.company);
+    setSourceUrl(url);
+    setUrlSuggestion(null);
+  }, [briefName, clientName]);
+
+  const applyUrlFallback = useCallback((url: string, reason: string) => {
+    const parsed = parseJobUrl(url);
+
+    // Adresse de poste dont le chemin dit quelque chose : on pré-remplit.
+    if (parsed && parsed.isJobUrl && (parsed.title || parsed.company)) {
+      const lines = [
+        parsed.title && `Poste : ${parsed.title}`,
+        parsed.company && `Entreprise : ${parsed.company}`,
+        parsed.location && `Lieu : ${parsed.location}`,
+        `Source : ${parsed.source}`,
+        `URL : ${url}`,
+      ].filter(Boolean).join('\n');
+
+      setBriefText(prev => {
+        const without = prev.replace(url, '').trim();
+        return without ? `${without}\n\n${lines}` : lines;
+      });
+      if (!briefName && parsed.title) setBriefName(parsed.title);
+      if (!clientName && parsed.company) setClientName(parsed.company);
+      setUrlSuggestion(null);
+      toast.info("La page n'a pas pu être lue", {
+        description: `${parsed.source} reconnu : poste, entreprise et lieu repris de l'adresse. Collez ensuite le texte de la fiche sous ces lignes.`,
+        duration: 7000,
+      });
+      return;
+    }
+
+    // Page d'une société, sans liste lisible.
+    if (parsed && !parsed.isJobUrl && parsed.company) {
+      if (!clientName) setClientName(parsed.company);
+      toast.info("La liste des offres n'a pas pu être lue", {
+        description: `Entreprise pré-remplie (${parsed.company}). Collez le texte de la fiche de poste dans la zone prévue.`,
+        duration: 7000,
+      });
+      return;
+    }
+
+    toast.warning('Adresse non lue', {
+      description: reason || 'Collez directement le texte de la fiche dans la zone prévue.',
+      duration: 6000,
+    });
+  }, [briefName, clientName]);
+
   const handleScanUrl = useCallback(async (urlOverride?: string) => {
     const url = (urlOverride || urlSuggestion || '').trim();
     if (!url) return;
     setScanningUrl(true);
-
     try {
-      const parsed = parseJobUrl(url);
-
-      // Cas 1 : URL de poste avec slug parsable → on pré-remplit
-      if (parsed && parsed.isJobUrl && (parsed.title || parsed.company)) {
-        const lines = [
-          parsed.title && `Poste : ${parsed.title}`,
-          parsed.company && `Entreprise : ${parsed.company}`,
-          parsed.location && `Lieu : ${parsed.location}`,
-          `Source : ${parsed.source}`,
-          `URL : ${url}`,
-        ].filter(Boolean).join('\n');
-
-        setBriefText(prev => {
-          const without = prev.replace(url, '').trim();
-          return without ? `${without}\n\n${lines}` : lines;
-        });
-        if (!briefName && parsed.title) setBriefName(parsed.title);
-        if (!clientName && parsed.company) setClientName(parsed.company);
-        setUrlSuggestion(null);
-
-        toast.success(`${parsed.source} reconnu`, {
-          description: 'Poste, entreprise et lieu pré-remplis. Collez ensuite le texte de la fiche sous ces lignes.',
+      const outcome = await resolveJobSource(url);
+      if (outcome.status === 'ok' && outcome.data.kind === 'job') {
+        applyJob(outcome.data.job, url);
+        toast.success(`Offre lue : ${outcome.data.job.title}`, {
+          description: "Le texte de la fiche est dans la zone. Relisez-le, puis lancez l'analyse.",
           duration: 6000,
         });
         return;
       }
-
-      // Cas 2 : URL de page entreprise (pas une fiche de poste précise)
-      if (parsed && !parsed.isJobUrl && parsed.company) {
-        if (!clientName) setClientName(parsed.company);
-        toast.info('Page entreprise détectée', {
-          description: `Entreprise pré-remplie (${parsed.company}). Collez le texte de la fiche de poste dans la zone prévue.`,
-          duration: 7000,
-        });
+      if (outcome.status === 'ok' && outcome.data.kind === 'company') {
+        setBriefText(prev => prev.replace(url, '').trim());
+        setUrlSuggestion(null);
+        setOffers({ company: outcome.data.company.name, jobs: outcome.data.jobs, truncated: outcome.data.truncated });
+        setSelectedUrls(new Set());
+        setBulkItems(null);
+        setMode('offers');
         return;
       }
-
-      // Cas 3 : URL non reconnue
-      toast.warning('Adresse non reconnue', {
-        description: 'Collez directement le texte de la fiche dans la zone prévue.',
-        duration: 5000,
-      });
-    } catch {
-      toast.error("L'adresse n'a pas pu être lue.");
+      applyUrlFallback(url, outcome.status === 'ok' ? (outcome.data.kind === 'unreadable' ? outcome.data.message : '') : outcome.message);
     } finally {
       setScanningUrl(false);
     }
-  }, [urlSuggestion, briefName, clientName]);
+  }, [urlSuggestion, applyJob, applyUrlFallback]);
+
+  // ── Offres d'une société : choix, puis une offre dans le Brief IA, ou une analyse et des missions par lot ──
+  const toggleOffer = useCallback((url: string) => {
+    setSelectedUrls(prev => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else if (next.size < MAX_BATCH_OFFERS) next.add(url);
+      return next;
+    });
+  }, []);
+
+  const toggleAllOffers = useCallback(() => {
+    setSelectedUrls(prev => prev.size > 0
+      ? new Set()
+      : new Set((offers?.jobs ?? []).filter(j => !importedUrls.has(j.url)).slice(0, MAX_BATCH_OFFERS).map(j => j.url)));
+  }, [offers, importedUrls]);
+
+  const leaveOffers = useCallback(() => {
+    bulkCancelRef.current = true;
+    setOffers(null);
+    setBulkItems(null);
+    setSelectedUrls(new Set());
+    setMode('brief');
+  }, []);
+
+  // Une seule offre choisie : on la lit et on l'ouvre dans le Brief IA, à relire avant l'analyse.
+  const openSingleOffer = useCallback(async (job: SourceJob) => {
+    setBulkRunning(true);
+    const read = await readJobSource(job.url);
+    setBulkRunning(false);
+    if (read.status === 'error') {
+      toast.error("Cette offre n'a pas pu être lue", { description: read.message });
+      return;
+    }
+    applyJob({ ...job, ...read.data }, job.url);
+    toast.success(`Offre lue : ${job.title}`, { description: "Relisez la fiche, puis lancez l'analyse.", duration: 6000 });
+    setOffers(null);
+    setSelectedUrls(new Set());
+    setMode('brief');
+  }, [applyJob]);
+
+  const startBulk = useCallback(async () => {
+    if (!offers || bulkRunning) return;
+    const chosen = offers.jobs.filter(j => selectedUrls.has(j.url));
+    if (chosen.length === 0) return;
+    if (chosen.length === 1) {
+      await openSingleOffer(chosen[0]);
+      return;
+    }
+    bulkCancelRef.current = false;
+    setBulkRunning(true);
+    setBulkItems(chosen.map(job => ({ job, status: 'pending' as const })));
+    const deps: BulkDeps = {
+      read: async (job) => {
+        const read = await readJobSource(job.url);
+        // Dans un lot, « collez le texte » n'a pas de sens : l'offre est simplement marquée illisible.
+        return read.status === 'ok' ? { text: buildBriefText({ ...job, ...read.data }) } : { error: BULK_MESSAGES.unreadable };
+      },
+      analyze: async (text, job) => {
+        const client = job.company || offers.company;
+        const { data, error } = await invokeWithCredits<AnalyzeResponse>(
+          'generate-search-filters',
+          'brief_analysis',
+          {
+            job: {
+              id: 'draft',
+              title: text.split('\n')[0].slice(0, 80),
+              description: text.slice(0, MAX_BRIEF_CHARS),
+              client: client ? { name: client } : null,
+              location: null,
+              skills: [],
+              seniority: null,
+            },
+          },
+          { description: 'Brief IA : analyse de plusieurs offres' },
+        );
+        if (error) return isInsufficientCreditsError(error) ? { error: 'credits' as const } : { error: 'failed' as const };
+        if (!data?.success || data.degraded || !data.analysis) return { error: 'failed' as const };
+        return { analysis: { filters: data.filters ?? {}, analysis: data.analysis } };
+      },
+    };
+    try {
+      await runBulkAnalysis(
+        chosen,
+        deps,
+        (index, patch) => setBulkItems(prev => (prev ? prev.map((item, i) => (i === index ? { ...item, ...patch } : item)) : prev)),
+        { isCancelled: () => bulkCancelRef.current },
+      );
+    } finally {
+      setBulkRunning(false);
+    }
+  }, [offers, bulkRunning, selectedUrls, openSingleOffer]);
+
+  const createBulk = useCallback(async () => {
+    if (!bulkItems || creating) return;
+    setCreating(true);
+    try {
+      const result = await createMissionsFromItems(bulkItems, offers?.company ?? '', createProject);
+      if (result.created === 0) {
+        toast.error('Aucune mission créée', { description: 'Réessayez dans un instant.' });
+        return;
+      }
+      toast.success(plural(result.created, 'mission créée', 'missions créées'), {
+        description: result.failed > 0 ? plural(result.failed, 'offre non créée', 'offres non créées') : undefined,
+      });
+      onClose();
+      navigate(result.created === 1 && result.firstId ? `/missions/${result.firstId}?tab=sourcing` : '/missions');
+    } finally {
+      setCreating(false);
+    }
+  }, [bulkItems, creating, offers, createProject, onClose, navigate]);
 
   // ── Upload d'un fichier texte (TXT / Markdown) ──
   const handleFileUpload = useCallback(async (file: File) => {
@@ -551,8 +711,21 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
       else handleAnalyze();
     } else if (mode === 'manual' && briefName.trim()) {
       handleCreateManual();
+    } else if (mode === 'offers') {
+      if (bulkItems) createBulk();
+      else startBulk();
     }
   };
+
+  const bulkFinished = bulkItems?.filter(i => i.status === 'done' || i.status === 'error' || i.status === 'skipped').length ?? 0;
+  const bulkReady = bulkItems?.filter(i => i.status === 'done').length ?? 0;
+  const offersStatus = bulkItems
+    ? bulkRunning
+      ? `Analyse ${bulkFinished} sur ${bulkItems.length}`
+      : `${plural(bulkReady, 'offre prête', 'offres prêtes')}${bulkReady < bulkItems.length ? ` · ${bulkItems.length - bulkReady} non analysée${bulkItems.length - bulkReady > 1 ? 's' : ''}` : ''}`
+    : selectedUrls.size === 0
+      ? 'Aucune offre sélectionnée'
+      : `${plural(selectedUrls.size, 'offre sélectionnée', 'offres sélectionnées')}${selectedUrls.size > 1 ? ` · environ ${plural(selectedUrls.size * creditsPerOffer, 'crédit')}` : ''}`;
 
   // Vide pendant une action : le bouton et le panneau disent déjà ce qui se passe.
   const briefStatus = creating || analyzing
@@ -577,13 +750,13 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               size="icon-sm"
               className="-ml-2"
               aria-label="Retour"
-              onClick={() => setMode('choose')}
+              onClick={() => (mode === 'offers' ? leaveOffers() : setMode('choose'))}
             >
               <ArrowLeft />
             </Button>
           )}
           <div className="min-w-0">
-            <DialogTitle>{MODE_TITLES[mode]}</DialogTitle>
+            <DialogTitle>{mode === 'offers' && offers ? `Offres de ${offers.company}` : MODE_TITLES[mode]}</DialogTitle>
             <DialogDescription className="text-xs">{MODE_DESCRIPTIONS[mode]}</DialogDescription>
           </div>
         </div>
@@ -611,6 +784,19 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               onScanUrl={handleScanUrl}
               uploadingFile={uploadingFile}
               onFileUpload={handleFileUpload}
+            />
+          )}
+          {mode === 'offers' && offers && (
+            <JobOffersPicker
+              company={offers.company}
+              jobs={offers.jobs}
+              truncated={offers.truncated}
+              importedUrls={importedUrls}
+              selected={selectedUrls}
+              maxSelectable={MAX_BATCH_OFFERS}
+              items={bulkItems}
+              onToggle={toggleOffer}
+              onToggleAll={toggleAllOffers}
             />
           )}
           {mode === 'manual' && (
@@ -650,6 +836,33 @@ export const CreateMissionV2: React.FC<CreateMissionV2Props> = ({
               ) : (
                 <Button variant="primary" onClick={handleAnalyze} loading={analyzing} disabled={!canAnalyze}>
                   {analyzing ? 'Analyse en cours' : 'Analyser la fiche'}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {mode === 'offers' && offers && (
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border px-6 py-3">
+            <p className="min-w-0 truncate text-xs text-muted-foreground" aria-live="polite">{offersStatus}</p>
+            <div className="flex shrink-0 items-center gap-2">
+              {bulkItems && !bulkRunning && (
+                <Button variant="ghost" onClick={() => setBulkItems(null)} disabled={creating}>
+                  Modifier la sélection
+                </Button>
+              )}
+              {bulkItems ? (
+                <Button variant="primary" onClick={createBulk} loading={creating || bulkRunning} disabled={bulkRunning || bulkReady === 0}>
+                  {bulkRunning ? 'Analyse en cours' : bulkReady > 0 ? `Créer ${plural(bulkReady, 'mission')}` : 'Créer les missions'}
+                  {!bulkRunning && <ArrowRight />}
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={startBulk} loading={bulkRunning} disabled={selectedUrls.size === 0}>
+                  {selectedUrls.size === 0
+                    ? 'Analyser les offres'
+                    : selectedUrls.size === 1
+                      ? 'Ouvrir cette offre'
+                      : `Analyser ${plural(selectedUrls.size, 'offre')}`}
                 </Button>
               )}
             </div>
@@ -841,11 +1054,11 @@ const BriefMode: React.FC<BriefModeProps> = ({
                 disabled={!manualUrl.trim() || !isValidUrl(manualUrl.trim())}
                 loading={scanningUrl}
               >
-                Pré-remplir
+                Lire la page
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Le poste, l'entreprise et le lieu sont lus dans l'adresse. Collez ensuite le texte de la fiche.
+              Adresse d'une offre : sa fiche est lue pour vous. Adresse de la page emplois d'une société : vous choisissez parmi ses offres.
             </p>
           </div>
         )}
@@ -856,7 +1069,7 @@ const BriefMode: React.FC<BriefModeProps> = ({
             <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <p className="min-w-0 flex-1 truncate text-xs">Adresse {sourceInfo.label} détectée.</p>
             <Button variant="ghost" size="xs" onClick={() => onScanUrl()} loading={scanningUrl}>
-              Pré-remplir
+              Lire la page
             </Button>
           </div>
         )}

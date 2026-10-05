@@ -130,6 +130,11 @@ jobs:
       # brief_analysis (Sonnet 5.5), brouillon conservé à la fermeture.
       - name: Brief IA de la création de mission
         run: node --test tests/ux/creation-mission-brief.test.mjs
+      # Brief IA, lecture d'offres depuis une adresse web : fonction fetch-job-source
+      # (garde SSRF, lecteurs, flux de décision sur réseau simulé) et écrans de choix,
+      # d'analyse et de création en lot.
+      - name: Lecture d'offres depuis une adresse web
+        run: node --test tests/ux/lecture-offres-serveur.test.mjs tests/ux/import-offres.test.mjs
       - name: Vite production build
         run: npx vite build
 
