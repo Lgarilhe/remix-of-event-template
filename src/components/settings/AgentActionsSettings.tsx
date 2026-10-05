@@ -52,7 +52,8 @@ import {
 import { StatGrid, StatTile } from '@/components/layout/StatTile';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ErrorState } from '@/components/layout/ErrorState';
-import { EnrollFirstMessagePreview, readFirstStepPreview } from '@/components/agent/EnrollFirstMessagePreview';
+import { EnrollFirstMessagePreview } from '@/components/agent/EnrollFirstMessagePreview';
+import { readFirstStepPreview } from '@/components/agent/firstStepPreview';
 import {
   CheckCircle2,
   Clock,

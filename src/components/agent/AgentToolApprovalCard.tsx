@@ -21,7 +21,8 @@ import { Check, X, AlertTriangle, Loader2, Pencil, ShieldAlert } from 'lucide-re
 import { supabase } from '@/integrations/supabase/client';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { businessDaysCutoff } from '@/lib/businessDays';
-import { EnrollFirstMessagePreview, readFirstStepPreview } from './EnrollFirstMessagePreview';
+import { EnrollFirstMessagePreview } from './EnrollFirstMessagePreview';
+import { readFirstStepPreview } from './firstStepPreview';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';

@@ -1106,7 +1106,14 @@ function denoCommand(): { cmd: string; pre: string[] } {
 interface ProposedCall {
   outcome: 'executed_inline' | 'awaiting_approval' | 'denied';
   executionId?: string;
-  payload: Record<string, any>;
+  payload: { error?: unknown; details?: Record<string, unknown> } & Record<string, unknown>;
+}
+
+/** details.first_step_preview rendu par le dryRun d'enroll_in_sequence. */
+interface FirstStepPreviewPayload {
+  candidate_name: string;
+  candidate_in_mission: boolean;
+  texts: Array<{ step_label: string; text: string; condition: string | null; ai: boolean; missing: string[] }>;
 }
 
 /**
@@ -1232,10 +1239,7 @@ test.describe('@critical Assistant : garde-fous d’envoi (lot 5a)', () => {
         sequence_id: sequenceId, candidate_id: candidate, profile_name: 'C. Dubois', job_id: mission, profile_url: url,
       });
       expect(proposed.outcome, JSON.stringify(proposed.payload)).toBe('awaiting_approval');
-      const preview = proposed.payload.details?.first_step_preview as {
-        candidate_name: string; candidate_in_mission: boolean;
-        texts: Array<{ step_label: string; text: string; condition: string | null; ai: boolean; missing: string[] }>;
-      };
+      const preview = proposed.payload.details?.first_step_preview as FirstStepPreviewPayload;
       const expected = 'Bonjour Claire, votre rôle de Lead Developer chez Qonto m’intéresse pour un poste de Senior Backend Engineer.';
       expect(preview.candidate_in_mission).toBe(true);
       expect(preview.candidate_name).toBe('Claire Dubois');
@@ -1243,7 +1247,8 @@ test.describe('@critical Assistant : garde-fous d’envoi (lot 5a)', () => {
       expect(preview.texts[0]).toMatchObject({ step_label: 'Message', text: expected, condition: null, ai: false, missing: [] });
       // La même carte, lue en base (bandeau d'approbation).
       const { data: stored } = await admin().from('agent_tool_executions').select('dry_run_result').eq('id', proposed.executionId!).single();
-      expect((stored?.dry_run_result as any)?.details?.first_step_preview?.texts?.[0]?.text).toBe(expected);
+      const storedDetails = (stored?.dry_run_result as { details?: { first_step_preview?: FirstStepPreviewPayload } } | null)?.details;
+      expect(storedDetails?.first_step_preview?.texts?.[0]?.text).toBe(expected);
 
       // Approbation, puis un passage du moteur : ce texte, et lui seul, part.
       const approved = await approve(token, proposed.executionId!);
@@ -1271,7 +1276,7 @@ test.describe('@critical Assistant : garde-fous d’envoi (lot 5a)', () => {
         sequence_id: sequenceId, candidate_id: newProfileId(), profile_name: 'Marie Martin', job_id: mission,
       });
       expect(proposed.outcome, JSON.stringify(proposed.payload)).toBe('awaiting_approval');
-      const preview = proposed.payload.details?.first_step_preview;
+      const preview = proposed.payload.details?.first_step_preview as FirstStepPreviewPayload;
       expect(preview.candidate_in_mission).toBe(false);
       expect(preview.texts[0].text).toBe('Bonjour Marie, votre poste de m’intéresse.');
       expect(preview.texts[0].missing).toEqual(['Poste actuel inconnu : retiré du message.']);
