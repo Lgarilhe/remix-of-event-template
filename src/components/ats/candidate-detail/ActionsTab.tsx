@@ -6,6 +6,7 @@ import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/layout/EmptyState';
+import { HEADER_ACTION_BORDER } from '@/components/outreach/result-card/headerActions';
 import { REVEAL_ON_ROW } from '@/components/missions/v3/cadrage/sectionUi';
 
 interface Reminder {
@@ -102,11 +103,11 @@ export const ActionsTab = React.memo<ActionsTabProps>(({ reminders, onAddReminde
           <h4 id="candidate-actions-reminders" className="eyebrow">Rappels</h4>
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => setShowNewReminder(!showNewReminder)}
             aria-expanded={showNewReminder}
-            className="-mr-2 text-foreground-secondary hover:text-foreground"
+            className={HEADER_ACTION_BORDER}
           >
             <Plus aria-hidden="true" />
             Ajouter un rappel

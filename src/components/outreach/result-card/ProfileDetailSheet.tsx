@@ -37,6 +37,7 @@ import { toast } from 'sonner';
 import { scoreReasons } from '@/components/missions/v3/panels/candidateAdapters';
 import { ScorePill } from '@/components/missions/v3/pipeline/CandidateListRow';
 import { cn } from '@/lib/utils';
+import { HEADER_ACTION_BORDER } from './headerActions';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PHONE_REGEX = /^(\+?[\d().\s-]{6,})$/;
@@ -1124,10 +1125,10 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                 ))}
                 {pipelineMeta.onCreatePortalLink && (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={pipelineMeta.onCreatePortalLink}
-                    className="ml-auto text-foreground-secondary hover:text-foreground"
+                    className={cn('ml-auto', HEADER_ACTION_BORDER)}
                     title="Générer un lien à partager au client"
                   >
                     <Link2 aria-hidden="true" />
@@ -1156,8 +1157,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
             )}
 
             {/* ─── ACTIONS ─── */}
-            {/* En mode pipeline, les actions sont toutes discrètes (texte et icône) et alignées sur le bord du texte. */}
-            <div className={cn('mt-3 flex flex-wrap items-center gap-2 empty:hidden', pipelineMeta && '-ml-2.5 gap-1')} data-no-swipe>
+            <div className="mt-3 flex flex-wrap items-center gap-2 empty:hidden" data-no-swipe>
               {selectedJob && onScoreProfile && (!jobScore || isDegradedScore(jobScore)) && (
                 <Button
                   variant="primary"
@@ -1178,7 +1178,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   accountId={accountId}
                   selectedJob={selectedJob ?? undefined}
                   onSuccess={() => { onSequenceEnroll?.(); onProfileTreated?.(); }}
-                  quiet={!!pipelineMeta}
+                  className={pipelineMeta ? HEADER_ACTION_BORDER : undefined}
                 />
               )}
 
@@ -1217,7 +1217,7 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   profile={profile}
                   compact
                   mode="button-only"
-                  quiet={!!pipelineMeta}
+                  className={pipelineMeta ? HEADER_ACTION_BORDER : ''}
                 />
               )}
 
