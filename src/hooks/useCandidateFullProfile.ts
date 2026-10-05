@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { aiRecommendationMeta, qualificationVerdictMeta } from '@/lib/verdicts';
 import { enrollmentStatusLabel } from '@/lib/sequenceLabels';
 import { isInternalSequenceAction, sequenceExecutionTitle, stepNumberLabel } from '@/lib/sequenceActionLabels';
+import { fetchPhoneCallsForCandidate } from '@/lib/phoneCalls';
 
 export interface CandidateActivity {
   type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added' | 'appointment' | 'shortlist_added' | 'aircall_call';
@@ -136,7 +137,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
           fetchInmails(candidateId),
           fetchScoringHistory(candidateId),
           linkedinUrl ? fetchAirtableHistory(linkedinUrl) : Promise.resolve(),
-          linkedinUrl ? fetchAircallCalls(linkedinUrl) : Promise.resolve(),
+          fetchAircallCalls(),
         ]);
       } finally {
         setLoading(false);
@@ -394,34 +395,19 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       }
     }
 
-    async function fetchAircallCalls(url: string) {
-      // First try to find matched calls via airtable candidate
-      const slug = extractSlug(url);
-      const { data: candidates } = await supabase
-        .from('airtable_candidates')
-        .select('airtable_id')
-        .ilike('linkedin_url', `%${slug}%`)
-        .limit(1);
-
-      if (candidates && candidates.length > 0) {
-        const { data: calls } = await supabase
-          .from('aircall_calls')
-          .select('*')
-          .eq('matched_airtable_candidate_id', candidates[0].airtable_id)
-          .order('started_at', { ascending: false })
-          .limit(50);
-
-        setAircallCalls((calls || []).map((c: any) => ({
-          id: c.id,
-          direction: c.direction,
-          status: c.status,
-          startedAt: c.started_at,
-          duration: c.duration || 0,
-          userName: c.user_name,
-          notes: c.notes,
-          tags: c.tags || [],
-        })));
-      }
+    // Appels de l'opérateur relié (table phone_calls), par les numéros connus du candidat.
+    async function fetchAircallCalls() {
+      const calls = await fetchPhoneCallsForCandidate(candidateId);
+      setAircallCalls(calls.map(c => ({
+        id: c.id,
+        direction: c.direction ?? 'unknown',
+        status: c.outcome,
+        startedAt: c.startedAt,
+        duration: c.talkSeconds,
+        userName: c.agentName,
+        notes: c.notes,
+        tags: c.tags,
+      })));
     }
 
     fetchAll();
