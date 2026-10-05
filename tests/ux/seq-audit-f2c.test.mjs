@@ -24,6 +24,10 @@ const stripComments = (src) => src
 const list = stripComments(read('src/components/outreach/SequencesList.tsx'));
 const panel = stripComments(read('src/components/outreach/SequenceEnrollmentsPanel.tsx'));
 const diagnostic = stripComments(read('src/components/outreach/SequenceDiagnostic.tsx'));
+// Lot 5c-1 : fonctions de la liste sorties dans sequenceActions.ts, enregistrement
+// de l'éditeur dans useSequenceSave.ts.
+const actions = stripComments(read('src/lib/sequenceActions.ts'));
+const saveHook = stripComments(read('src/hooks/useSequenceSave.ts'));
 
 /** Corps d'une fonction fléchée `const name = async (...) => { ... }` (accolades équilibrées). */
 function body(src, name) {
@@ -51,26 +55,26 @@ function extractFunction(src, name) {
 
 // ---------------------------------------------------------------- SEQ-059 (B6)
 test('SEQ-059 — le refus STEP_HAS_HISTORY nomme les étapes, numérotées comme dans l’éditeur', () => {
-  const blockedStepsNotice = extractFunction(list, 'blockedStepsNotice');
+  const blockedStepsNotice = extractFunction(actions, 'blockedStepsNotice');
   // DETAIL de save_sequence_steps en step_order (base 0), trié comme du texte.
   assert.equal(blockedStepsNotice('Étape(s) concernée(s) : 0, 2'), ' Étapes concernées : 1, 3.');
   assert.equal(blockedStepsNotice('Étape(s) concernée(s) : 10, 2'), ' Étapes concernées : 3, 11.');
   assert.equal(blockedStepsNotice('Étape(s) concernée(s) : 4'), ' Étape concernée : 5.');
   assert.equal(blockedStepsNotice(undefined), '');
   assert.equal(blockedStepsNotice(''), '');
-  const save = body(list, 'handleSaveSequence');
+  const save = body(saveHook, 'handleSaveSequence');
   assert.match(save, /Modifiez son contenu à la place\.\$\{blockedStepsNotice\(stepsError\.details, baseStepLabels\)\}/);
 });
 
 // ---------------------------------------------------------------- SEQ-219 (F5 / F2b)
 test('SEQ-219 — save_sequence_steps est typé : plus de contournement de type', () => {
-  assert.doesNotMatch(list, /'save_sequence_steps' as any/);
-  assert.equal((list.match(/supabase\.rpc\('save_sequence_steps', \{/g) || []).length, 2, 'enregistrement et duplication');
+  assert.doesNotMatch(`${list}\n${saveHook}\n${actions}`, /'save_sequence_steps' as any/);
+  assert.equal((`${list}\n${saveHook}\n${actions}`.match(/supabase\.rpc\('save_sequence_steps', \{/g) || []).length, 2, 'enregistrement et duplication');
 });
 
 // ---------------------------------------------------------------- SEQ-001 (E1a)
 test('SEQ-001 — « Envoyer les actions du jour » lit `advanced`, sans l’ancien alias', () => {
-  const nudge = body(list, 'handleNudgeToday');
+  const nudge = body(actions, 'handleNudgeToday');
   assert.match(nudge, /const count = payload\.advanced \?\? 0;/);
   assert.doesNotMatch(nudge, /rescheduled/);
   assert.match(nudge, /payload\?\.message \|\| error\?\.message/, 'le message français du serveur est affiché en premier');
@@ -78,8 +82,8 @@ test('SEQ-001 — « Envoyer les actions du jour » lit `advanced`, sans l’anc
 
 // ---------------------------------------------------------------- SEQ-004 (E1a)
 test('SEQ-004 — la réactivation rappelle la reprise tant qu’il reste des candidats', () => {
-  const on = body(list, 'activateSequence');
-  assert.match(list, /const MAX_RESUME_ROUNDS = 10;/);
+  const on = body(actions, 'activateSequence');
+  assert.match(actions, /const MAX_RESUME_ROUNDS = 10;/);
   assert.match(on, /for \(let round = 0; round < MAX_RESUME_ROUNDS; round \+= 1\) \{/);
   const loop = on.slice(on.indexOf('for (let round'), on.indexOf("toast.dismiss(`resume-${sequenceId}`);"));
   assert.match(loop, /action: 'resume_enrollments'/);
@@ -151,7 +155,7 @@ test('SEQ-082 — la cause précise d’une pause « échec d’envoi » est aff
 
   assert.match(panel, /: enrollment\.status === 'paused'\s*\?\s*\(pauseDetail \?\? \(sequencePauseResumable \? SEQUENCE_ACTIVE_AGAIN_HINT : pauseReasonHint\(enrollment\.pause_reason\)\)\)/);
   // « Reprendre à l'étape suivante » était faux (vague finale) : l'étape en échec est retentée.
-  assert.doesNotMatch(panel, /Reprendre à l’étape suivante/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /Reprendre à l’étape suivante/);
   assert.match(panel, /\{retriesFailedStep \? 'Réessayer l’étape en échec' : 'Reprendre la séquence'\}/);
   assert.match(panel, /\{enrollment\.pause_reason === 'send_failed' && !pauseDetail && \(\s*<DropdownMenuItem onClick=\{\(\) => showEnrollmentDetail/);
 });
@@ -168,7 +172,7 @@ test('SEQ-161 — la reprise individuelle affiche le bilan partagé', () => {
 
 // ---------------------------------------------------------------- SEQ-069 (F1a)
 test('SEQ-069 — l’éditeur lit les étapes comme le choix de modèle, défauts affichés compris', () => {
-  const edit = body(list, 'handleEdit');
+  const edit = body(actions, 'handleEdit');
   assert.match(edit, /steps: steps\.map\(s => \(\{\s*\.\.\.rowToSequenceStep\(s\),/);
   // Les valeurs par défaut de l'éditeur (SEQ-147) passent après la lecture commune.
   assert.ok(edit.indexOf('...rowToSequenceStep(s)') < edit.indexOf('DEFAULT_SCORE_THRESHOLD'));

@@ -14,6 +14,10 @@ const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'ut
 const list = read('src/components/outreach/SequencesList.tsx');
 const panel = read('src/components/outreach/SequenceEnrollmentsPanel.tsx');
 const diagnostic = read('src/components/outreach/SequenceDiagnostic.tsx');
+// Lot 5c-1 : fonctions de la liste et du suivi sorties dans sequenceActions.ts,
+// enregistrement de l'éditeur dans useSequenceSave.ts.
+const actions = read('src/lib/sequenceActions.ts');
+const saveHook = read('src/hooks/useSequenceSave.ts');
 
 /** Corps d'une fonction fléchée `const name = async (...) => { ... }` (accolades équilibrées). */
 function body(src, name) {
@@ -33,7 +37,7 @@ function body(src, name) {
 
 // ---------------------------------------------------------------- SEQ-001
 test('SEQ-001 — « Envoyer les actions du jour » est borné à la mission et confirmé', () => {
-  const nudge = body(list, 'handleNudgeToday');
+  const nudge = body(actions, 'handleNudgeToday');
   assert.match(nudge, /action: 'nudge_sequences'/);
   assert.match(nudge, /sequence_ids: missionSequenceIds/, 'l’appel doit viser les seules séquences de la mission');
   assert.match(list, /\.filter\(s => s\.project_id === projectId && canManage\(s\)\)/);
@@ -63,15 +67,15 @@ test('SEQ-001 — le diagnostic n’a plus de bouton « Forcer un cycle »', () 
 
 // ---------------------------------------------------------------- SEQ-002 / SEQ-004 / SEQ-023
 test('SEQ-002 — la désactivation pose une raison propre, la réactivation ne reprend qu’elle', () => {
-  const off = body(list, 'deactivateSequence');
+  const off = body(actions, 'deactivateSequence');
   assert.match(off, /pause_reason: 'sequence_inactive'/);
   assert.doesNotMatch(off, /pause_reason: 'manual'/);
-  const on = body(list, 'activateSequence');
+  const on = body(actions, 'activateSequence');
   assert.match(on, /action: 'resume_enrollments'/);
   assert.match(on, /pause_reasons: SEQUENCE_LEVEL_PAUSE_REASONS/);
-  assert.match(list, /import \{ SEQUENCE_LEVEL_PAUSE_REASONS \} from '@\/lib\/sequenceLabels'/);
+  assert.match(actions, /import \{[^}]*\bSEQUENCE_LEVEL_PAUSE_REASONS\b[^}]*\} from '@\/lib\/sequenceLabels'/);
   // Plus aucune réactivation en masse de toutes les pauses depuis le navigateur.
-  assert.doesNotMatch(list, /update\(\{ status: 'active', pause_reason: null \}\)/);
+  assert.doesNotMatch(`${list}\n${actions}`, /update\(\{ status: 'active', pause_reason: null \}\)/);
 });
 
 test('SEQ-002 — le panneau lit les libellés de pause partagés', () => {
@@ -95,46 +99,46 @@ test('SEQ-004 — reprise et relance passent par le serveur, sans réarmer d’e
 });
 
 test('Contrat §4/§6 — « Marquer comme répondu » passe par la clôture serveur', () => {
-  const mark = body(panel, 'markReplied');
+  const mark = body(actions, 'markReplied');
   assert.match(mark, /action: 'mark_replied'/);
   assert.doesNotMatch(mark, /from\('sequence_enrollments'\)/);
   assert.doesNotMatch(mark, /from\('sequence_step_executions'\)/);
 });
 
 test('Contrat §1 — mettre en pause un candidat n’annule plus ses étapes', () => {
-  const stop = body(panel, 'stopEnrollment');
+  const stop = body(actions, 'stopEnrollment');
   assert.doesNotMatch(stop, /sequence_step_executions/);
   assert.match(stop, /\.eq\('status', 'active'\)\s*\.select\('id'\)/);
-  assert.doesNotMatch(panel, /'Arrêt manuel'|'Arrêt groupé'/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /'Arrêt manuel'|'Arrêt groupé'/);
 });
 
 test('SEQ-004 — « Relancer » n’est pas proposé à un candidat en pause, et nomme ce qui part', () => {
   const menu = panel.slice(panel.indexOf("setConfirmAction({ type: 'reEnroll'") - 400, panel.indexOf("setConfirmAction({ type: 'reEnroll'"));
   assert.doesNotMatch(menu, /enrollment\.status === 'paused'/, 'un candidat en pause a « Reprendre », pas « Relancer »');
-  assert.doesNotMatch(panel, /Ré-enrôler|ré-enrôl/);
+  assert.doesNotMatch(`${panel}\n${actions}`, /Ré-enrôler|ré-enrôl/);
   assert.match(panel, /`Relancer \$\{confirmName\} \?`/);
   assert.match(panel, /vérifiez que la conversation est bien close\./);
 });
 
 test('SEQ-004 / SEQ-023 — la réactivation ne réécrit plus aucune exécution et se confirme', () => {
-  assert.doesNotMatch(list, /scheduled_at: now/);
-  assert.doesNotMatch(list, /from\('sequence_step_executions'/);
+  assert.doesNotMatch(`${list}\n${actions}`, /scheduled_at: now/);
+  assert.doesNotMatch(`${list}\n${actions}`, /from\('sequence_step_executions'/);
   assert.match(list, /Réactiver cette séquence \?/);
   assert.match(list, /Chaque étape garde sa date prévue ; celles déjà passées partiront dans les prochaines heures\./);
-  assert.match(list, /repris, \$\{failed\} en erreur/);
+  assert.match(actions, /repris, \$\{failed\} en erreur/);
 });
 
 test('SEQ-023 / lot 5b — la mise en pause de la séquence part sans fenêtre et dit le résultat réel', () => {
   // Décision 3 : plus de dialogue « Désactiver cette séquence ? », le toast
   // dit le nombre de candidats réellement mis en pause, avec « Annuler ».
   assert.doesNotMatch(list, /Désactiver cette séquence \?/);
-  assert.match(body(list, 'deactivateSequence'), /title: sequencePauseToastTitle\(pausedCount\)/);
+  assert.match(body(actions, 'deactivateSequence'), /title: sequencePauseToastTitle\(pausedCount\)/);
   assert.doesNotMatch(list, /les enrollments reprendront là où ils en étaient/);
 });
 
 // ---------------------------------------------------------------- SEQ-025
 test('SEQ-025 — désactiver : pause des inscriptions vérifiée avant l’interrupteur', () => {
-  const off = body(list, 'deactivateSequence');
+  const off = body(actions, 'deactivateSequence');
   const pauseAt = off.indexOf("from('sequence_enrollments')");
   const flagAt = off.indexOf("from('outreach_sequences')");
   assert.ok(pauseAt !== -1 && flagAt !== -1 && pauseAt < flagAt, 'les inscriptions doivent passer en pause avant is_active');
@@ -169,14 +173,14 @@ test('SEQ-025 — interrupteur désactivé pendant l’appel, masqué hors de mo
 });
 
 test('SEQ-025 — supprimer : 0 ligne n’affiche jamais de succès', () => {
-  const del = body(list, 'handleDelete');
+  const del = body(actions, 'handleDelete');
   assert.match(del, /\.delete\(\)\s*\.eq\('id', sequenceId\)\s*\.select\('id'\)/);
   assert.match(del, /toast\.error\('Suppression impossible', \{ description: 'Vous n’avez pas les droits sur cette séquence\.' \}\)/);
 });
 
 // ---------------------------------------------------------------- SEQ-026
 test('SEQ-026 — la pause groupée vise toute la séquence en base, pas la page chargée', () => {
-  const bulk = body(panel, 'bulkStopActive');
+  const bulk = body(actions, 'bulkStopActive');
   assert.doesNotMatch(bulk, /enrollments\.filter\(/);
   assert.match(bulk, /\.eq\('sequence_id', sequenceId\)\s*\.eq\('status', 'active'\)\s*\.select\('id'\)/);
   // Contrat : une pause ne touche pas aux exécutions en attente.
@@ -187,12 +191,12 @@ test('SEQ-026 — la pause groupée vise toute la séquence en base, pas la page
 
 // ---------------------------------------------------------------- SEQ-019
 test('SEQ-019 — garde-fous et expéditeurs enregistrés à la création et rechargés à l’édition', () => {
-  const save = body(list, 'handleSaveSequence');
+  const save = body(saveHook, 'handleSaveSequence');
   const insert = save.slice(save.indexOf('.insert({'), save.indexOf('.select()'));
   for (const col of ['stop_conditions', 'sender_accounts', 'rotation_mode', 'multi_sender_enabled']) {
     assert.match(insert, new RegExp(`${col}:`), `l’insert doit écrire ${col}`);
   }
-  const edit = body(list, 'handleEdit');
+  const edit = body(actions, 'handleEdit');
   assert.match(edit, /stopConditions: \{ \.\.\.DEFAULT_STOP_CONDITIONS, \.\.\.\(seq\.stop_conditions \?\? \{\}\) \}/);
   assert.match(edit, /senderAccounts: seq\.sender_accounts \?\? \[\]/);
   assert.match(edit, /rotationMode: seq\.rotation_mode \?\? 'round_robin'/);
@@ -201,22 +205,22 @@ test('SEQ-019 — garde-fous et expéditeurs enregistrés à la création et rec
 
 // ---------------------------------------------------------------- SEQ-031
 test('SEQ-031 — une étape d’attente enregistrée porte toujours son événement', () => {
-  assert.match(list, /if \(actionType === 'wait_reply'\) return 'reply_received';/);
-  assert.match(list, /if \(actionType === 'wait_connection'\) return 'connection_accepted';/);
-  assert.match(list, /wait_for_event: implicitWaitEvent\(step\.actionType, step\.waitForEvent\)/);
-  assert.doesNotMatch(list, /wait_for_event: step\.waitForEvent \?\? null/);
+  assert.match(actions, /if \(actionType === 'wait_reply'\) return 'reply_received';/);
+  assert.match(actions, /if \(actionType === 'wait_connection'\) return 'connection_accepted';/);
+  assert.match(saveHook, /wait_for_event: implicitWaitEvent\(step\.actionType, step\.waitForEvent\)/);
+  assert.doesNotMatch(saveHook, /wait_for_event: step\.waitForEvent \?\? null/);
 });
 
 // ---------------------------------------------------------------- SEQ-059
 test('SEQ-059 — refus de supprimer une étape déjà envoyée, message clair', () => {
-  const save = body(list, 'handleSaveSequence');
+  const save = body(saveHook, 'handleSaveSequence');
   assert.match(save, /stepsError\.hint === 'STEP_HAS_HISTORY'/);
   assert.match(save, /Cette étape a déjà été envoyée à des candidats : elle ne peut pas être supprimée\. Modifiez son contenu à la place\./);
 });
 
 // ---------------------------------------------------------------- SEQ-060
 test('SEQ-060 — « Dupliquer » recopie fin de séquence, options e-mail et réglages d’en-tête', () => {
-  const dup = body(list, 'handleDuplicate');
+  const dup = body(actions, 'handleDuplicate');
   for (const key of ['ends_sequence', 'cc_emails', 'bcc_emails', 'include_unsubscribe', 'signature_id']) {
     assert.match(dup, new RegExp(`${key}: s\\.${key} \\?\\?`), `la copie doit garder ${key}`);
   }
@@ -228,8 +232,9 @@ test('SEQ-060 — « Dupliquer » recopie fin de séquence, options e-mail et r�
 // ---------------------------------------------------------------- SEQ-069
 test('SEQ-069 — à la réouverture, « Si timeout » reflète l’étape de repli', () => {
   // Une seule lecture des étapes (celle du choix de modèle), qui déduit le repli.
-  assert.match(body(list, 'handleEdit'), /\.\.\.rowToSequenceStep\(s\),/);
-  assert.match(list, /import \{ rowToSequenceStep \} from '\.\/sequence\/sequenceGraph';/);
+  assert.match(body(actions, 'handleEdit'), /\.\.\.rowToSequenceStep\(s\),/);
+  // Même import, chemin depuis src/lib (lot 5c-1).
+  assert.match(actions, /import \{ rowToSequenceStep \} from '@\/components\/outreach\/sequence\/sequenceGraph';/);
   const graph = read('src/components/outreach/sequence/sequenceGraph.ts');
   assert.match(graph, /timeoutAction: s\.timeout_branch_step_id \? 'alternative_step' : 'skip'/);
 });

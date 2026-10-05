@@ -43,6 +43,10 @@ const fiche = stripComments(read('src/components/outreach/CandidateSequencesPane
 const ficheHook = stripComments(read('src/hooks/useCandidateEnrollments.ts'));
 const inbox = stripComments(read('src/components/outreach/inbox/MessageView.tsx'));
 const list = stripComments(read('src/components/outreach/SequencesList.tsx'));
+// Lot 5c-1 : fonctions de la liste et du suivi sorties dans sequenceActions.ts,
+// enregistrement de l'éditeur dans useSequenceSave.ts.
+const actions = stripComments(read('src/lib/sequenceActions.ts'));
+const saveHook = stripComments(read('src/hooks/useSequenceSave.ts'));
 const hookSrc = stripComments(read(HOOK));
 const badges = read('src/components/outreach/SequenceBadges.tsx');
 const claude = read('CLAUDE.md');
@@ -513,30 +517,30 @@ test('annulation par process-sequences : resume_enrollments et undo_stop_enrollm
   assert.match(hookSrc, /export const UNDO_RESUME_CHUNK = 25;/);
   // Pause de séquence annulée : interrupteur avec les contrôles d'offre de
   // « Réactiver » (décision 32), puis reprise des seuls identifiants rendus.
-  const undo = list.slice(list.indexOf('const undoSequencePause = async'), list.indexOf('const activateSequence = async'));
+  const undo = actions.slice(actions.indexOf('const undoSequencePause = async'), actions.indexOf('const activateSequence = async'));
   assert.ok(undo.indexOf('plan.unknown') < undo.indexOf(".update({ is_active: true })"), 'contrôle d’abonnement avant l’écriture');
   assert.ok(undo.indexOf('plan.canSend') < undo.indexOf(".update({ is_active: true })"));
   assert.match(undo, /\.update\(\{ is_active: true \}\)\s*\.eq\('id', sequenceId\)\s*\.select\('id'\)/);
   assert.match(undo, /await resumeIds\(enrollmentIds\)/);
   assert.doesNotMatch(undo, /pause_reasons|sequence_id:/, 'jamais par séquence et raisons');
-  assert.match(list, /onUndo: \(\) => undoSequencePause\(sequenceId, undoIds\)/);
+  assert.match(actions, /onUndo: \(\) => undoSequencePause\(sequenceId, undoIds\)/);
 });
 
 test('aucune écriture de statut « active » ni « completed », ni d’exécution, depuis le navigateur', () => {
-  for (const [name, src] of Object.entries({ panel, fiche, ficheHook, inbox, list, hookSrc })) {
+  for (const [name, src] of Object.entries({ panel, fiche, ficheHook, inbox, list, hookSrc, actions, saveHook })) {
     assert.doesNotMatch(src, /\.update\(\{[^}]*status: '(active|completed)'/, `${name} : statut écrit par le navigateur`);
     assert.doesNotMatch(src, /from\('sequence_step_executions'\)\s*\.(update|insert|upsert|delete)\(/, `${name} : exécution écrite par le navigateur`);
   }
   // Les pauses restent des écritures bornées et relues.
-  assert.match(panel, /\.update\(\{ status: 'paused', pause_reason: 'manual' \}\)\s*\.eq\('id', enrollmentId\)\s*\.eq\('status', 'active'\)\s*\.select\('id'\)/);
+  assert.match(actions, /\.update\(\{ status: 'paused', pause_reason: 'manual' \}\)\s*\.eq\('id', enrollmentId\)\s*\.eq\('status', 'active'\)\s*\.select\('id'\)/);
   assert.match(ficheHook, /\.eq\('status', 'active'\)\s*\.select\('id'\)/);
   assert.match(inbox, /\.in\('id', ids\)\s*\.eq\('status', 'active'\)\s*\.select\('id'\);/);
   // « Annuler » ne reprend que les identifiants rendus par l'écriture de pause.
-  assert.match(panel, /enrollmentIds: data\.map\(row => row\.id\)/);
-  assert.match(panel, /const pausedIds = \(data \?\? \[\]\)\.map\(row => row\.id\);/);
+  assert.match(actions, /enrollmentIds: data\.map\(row => row\.id\)/);
+  assert.match(actions, /const pausedIds = \(data \?\? \[\]\)\.map\(row => row\.id\);/);
   assert.match(ficheHook, /enrollmentIds: data\.map\(row => row\.id\)/);
   assert.match(inbox, /enrollmentIds: \(paused \?\? \[\]\)\.map\(e => e\.id\)/);
-  assert.match(list, /pausedIds = \(paused \?\? \[\]\)\.map\(row => row\.id\);/);
+  assert.match(actions, /pausedIds = \(paused \?\? \[\]\)\.map\(row => row\.id\);/);
 });
 
 // ---------------------------------------------------------------- Arrêt : aide, statut, relance
@@ -619,7 +623,8 @@ test('statut « Arrêtée par … le … » aussi dans la messagerie, le Pipelin
 });
 
 test('pause partielle : « Annuler » offert pour les seules inscriptions mises en pause (suivi et messagerie)', () => {
-  const bulk = panel.slice(panel.indexOf('const bulkStopActive = async'), panel.indexOf('const stopForCandidate = async'));
+  // Lot 5c-1 : dans sequenceActions.ts, bulkStopActive est suivi de bulkResumePaused.
+  const bulk = actions.slice(actions.indexOf('const bulkStopActive = async'), actions.indexOf('const bulkResumePaused = async'));
   assert.match(bulk, /const offerPartialUndo = \(title: string, description: string\) => offerUndoPause\(\{\s*title, description, tone: 'warning', enrollmentIds: pausedIds,/);
   assert.equal((bulk.match(/if \(paused > 0 && pausedIds\.length > 0\) offerPartialUndo\(/g) || []).length, 2, 'recompte illisible, et candidats encore en cours');
   // Toast sans « Annuler » seulement quand rien n'a été mis en pause.
@@ -649,10 +654,10 @@ test('libellés du plan : « Mettre en pause pour ce candidat » partout, « Arr
 
 test('interrupteur « Mettre en pause la séquence » : plus de vocabulaire « désactiver » dans ses messages ni dans le statut', () => {
   for (const legacy of [/Désactivation réservée/, /Désactivation impossible/, /pas pu être désactivée/, /Désactivez puis réactivez/, /de désactiver la séquence/, /Préférez la désactivation/, /Désactiver une séquence/]) {
-    assert.doesNotMatch(list, legacy, String(legacy));
+    assert.doesNotMatch(`${list}\n${actions}\n${saveHook}`, legacy, String(legacy));
   }
-  assert.match(list, /toast\.error\('Mise en pause réservée', \{ description: COLLABORATOR_DEACTIVATION_HINT \}\)/);
-  assert.match(list, /toast\.error\('Mise en pause impossible', \{ description: 'Vous n’avez pas les droits sur cette séquence\.' \}\)/);
+  assert.match(actions, /toast\.error\('Mise en pause réservée', \{ description: COLLABORATOR_DEACTIVATION_HINT \}\)/);
+  assert.match(actions, /toast\.error\('Mise en pause impossible', \{ description: 'Vous n’avez pas les droits sur cette séquence\.' \}\)/);
   assert.equal(labels.PAUSE_REASON_LABELS.sequence_inactive, 'En pause (séquence en pause)');
   assert.equal(msgs.formatSkipReason('Séquence désactivée'), 'Séquence mise en pause');
 });
