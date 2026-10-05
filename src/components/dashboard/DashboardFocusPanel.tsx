@@ -19,6 +19,8 @@ import { IconTile } from '@/components/ui/IconTile';
 import { AvatarStack } from '@/components/ui/person-avatar';
 import { HourglassIcon, TypingIcon } from '@/components/ui/animated-icons';
 import { Skeleton } from '@/components/ui/skeleton';
+import { texturedCard } from '@/components/layout/texturedCard';
+import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
 
 export interface FocusPerson {
@@ -52,30 +54,40 @@ interface SignalRowProps {
   people?: FocusPerson[];
   total?: number;
   action?: { label: string; href: string };
+  /** Bandeau texturé chaud (blocage) à la place d'une ligne de liste : l'accueil en porte un seul à la fois. */
+  texture?: 'warm';
 }
 
 // Sur téléphone, les visages et le lien passent sous la phrase, alignés sur elle.
-const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people, total, action }) => (
-  <li className="flex items-start gap-3.5 py-4 sm:items-center">
-    {tile}
-    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-6 gap-y-2">
-      <div className="min-w-0">
-        <p className="text-md font-medium text-foreground">{title}</p>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      {(people?.length || action) && (
-        <div className="flex items-center gap-4">
-          {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} />}
-          {action && (
-            <Button asChild variant="link" size="sm" className="min-h-11 min-w-11 px-0 font-semibold md:min-h-0 md:min-w-0">
-              <Link to={action.href}>{action.label}</Link>
-            </Button>
-          )}
+const SignalRow: React.FC<SignalRowProps> = ({ tile, title, description, people, total, action, texture }) => {
+  const Root = texture ? 'div' : 'li';
+  return (
+    <Root className={texture ? texturedCard(texture, 'flex items-start gap-3.5 rounded-xl px-4 py-4 sm:items-center sm:px-5') : 'flex items-start gap-3.5 py-4 sm:items-center'}>
+      {tile}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <p className="text-md font-medium text-foreground">{title}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-      )}
-    </div>
-  </li>
-);
+        {(people?.length || action) && (
+          <div className="flex items-center gap-4">
+            {people && people.length > 0 && <AvatarStack people={people} total={total} size={30} />}
+            {action && (
+              <Button
+                asChild
+                variant={texture ? 'primary' : 'link'}
+                size="sm"
+                className={texture ? 'min-h-11 md:min-h-0' : 'min-h-11 min-w-11 px-0 font-semibold md:min-h-0 md:min-w-0'}
+              >
+                <Link to={action.href}>{action.label}</Link>
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </Root>
+  );
+};
 
 /** Ligne d'un compteur inconnu : jamais de chiffre, l'état de la lecture. */
 const UnknownRow: React.FC<{ title: string; unavailable: boolean }> = ({ title, unavailable }) => (
@@ -108,17 +120,16 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
 
   const rows: React.ReactNode[] = [];
 
-  if (linkedinIssue) {
-    rows.push(
-      <SignalRow
-        key="linkedin"
-        tile={<IconTile icon={Unplug} tone="destructive" size="lg" />}
-        title="Compte LinkedIn à reconnecter"
-        description="Les envois sont en pause jusqu'à la reconnexion."
-        action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
-      />,
-    );
-  }
+  // Un blocage des envois est la chose à faire avant toutes les autres : bandeau texturé, au-dessus de la liste.
+  const linkedinBanner = linkedinIssue ? (
+    <SignalRow
+      tile={<IconTile icon={Unplug} tone="default" size="lg" />}
+      title="Compte LinkedIn à reconnecter"
+      description="Les envois sont en pause jusqu'à la reconnexion."
+      action={{ label: 'Reconnecter', href: '/settings/account/connections' }}
+      texture="warm"
+    />
+  ) : null;
 
   // La bulle qui écrit va à la première ligne de conversation, pas aux deux.
   let typingUsed = false;
@@ -188,6 +199,11 @@ export const DashboardFocusPanel: React.FC<DashboardFocusPanelProps> = ({
     );
   }
 
-  if (rows.length === 0) return null;
-  return <ul className="divide-y divide-border border-b border-border">{rows}</ul>;
+  if (rows.length === 0 && !linkedinBanner) return null;
+  return (
+    <>
+      {linkedinBanner}
+      {rows.length > 0 && <ul className={cn('divide-y divide-border border-b border-border', linkedinBanner && 'mt-3')}>{rows}</ul>}
+    </>
+  );
 };

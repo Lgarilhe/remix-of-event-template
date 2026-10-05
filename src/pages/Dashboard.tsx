@@ -168,7 +168,7 @@ export default function Dashboard() {
   };
 
   return (
-    <PageLayout maxWidth="md">
+    <PageLayout maxWidth="md" backdrop>
       <SEOHead
         title="Tableau de bord | Konekt"
         description="Votre point de départ : ce qui demande votre attention aujourd'hui."

@@ -217,7 +217,7 @@ test('téléphone : titre entier, chiffres sans coupure, visages alignés sur le
 
 test('page d\'accueil : deux sections, plus de canaux, de semaine, d\'activité ni de réordonnancement', () => {
   const page = read('src/pages/Dashboard.tsx');
-  assert.match(page, /<PageLayout maxWidth="md">/);
+  assert.match(page, /<PageLayout maxWidth="md"( backdrop)?>/);
   assert.match(page, /<h2 id="dashboard-todo"[^>]*>\s*À faire\s*<\/h2>/);
   assert.match(page, /<Link to="\/tasks">Toutes les tâches<\/Link>/);
   assert.match(page, /<DashboardMissionsPanel/);
