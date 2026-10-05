@@ -304,7 +304,7 @@ export const SearchPlan: React.FC<SearchPlanProps> = ({ query, stage, chips, wit
     { title: 'Recherche des profils', state: stage === 'search' ? 'active' : 'wait' },
   ];
   return (
-    <div className="flex-1 px-4 py-6 min-h-[420px]">
+    <div className="flex-1 px-4 py-6 min-h-[420px] relative">
       <div className="max-w-[720px] mx-auto">
         <div className="flex items-center gap-2.5 rounded-[10px] border border-[var(--k-hairline)] bg-[var(--k-surface)] px-3 py-2.5">
           <AiBurst className="w-[15px] h-[15px] shrink-0 text-[var(--k-accent)]" />

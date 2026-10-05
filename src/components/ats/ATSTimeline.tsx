@@ -3,26 +3,40 @@
  * candidats groupés par date de dernière action. Hors « Aujourd'hui », chaque
  * ligne porte la date courte et l'heure (« 12 sept. à 14:32 »). Le nom est un
  * bouton qui ouvre la fiche ; le poste, un bouton qui ouvre le poste.
+ * Les lignes sont paginées dans l'ordre affiché : un groupe qui dépasse la page
+ * continue sur la suivante, son titre gardant l'effectif du groupe entier.
+ *
+ * Design simplifié (lot Suite) : plus de carte autour de chaque ligne ni
+ * d'étiquette encadrée ; l'étape, la mission et la séquence tiennent sur une
+ * ligne de texte discret, sous le nom.
  */
 import React, { useMemo } from 'react';
 import { format, isThisMonth, isThisWeek, isThisYear, isToday, isYesterday, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Bell, Briefcase, GitBranch, Send, StickyNote } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PersonAvatar } from '@/components/ui/person-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ATSPagination } from '@/components/ats/ATSPagination';
+import { PAGE_SIZE, usePagination } from '@/hooks/usePagination';
 import { ATS_STAGES, type ATSCandidate } from '@/hooks/useATSData';
 
 interface ATSTimelineProps {
   candidates: ATSCandidate[];
   onCandidateClick: (candidate: ATSCandidate) => void;
   onJobClick?: (jobId: string) => void;
+  /** Valeur dont le changement ramène à la première page (les filtres de la page). */
+  resetKey?: unknown;
 }
 
 interface TimelineGroup {
   label: string;
   candidates: ATSCandidate[];
+}
+
+interface TimelinePageGroup extends TimelineGroup {
+  /** Effectif du groupe entier, pas seulement de sa part sur la page. */
+  total: number;
 }
 
 const SOURCE_ICONS: Record<ATSCandidate['source'], React.ElementType> = {
@@ -43,7 +57,9 @@ function activityTimeLabel(date: Date): string {
   return format(date, isThisYear(date) ? "d MMM 'à' HH:mm" : "d MMM yyyy 'à' HH:mm", { locale: fr });
 }
 
-export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidateClick, onJobClick }) => {
+export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidateClick, onJobClick, resetKey }) => {
+  const { containerRef, currentPage, pageCount, firstRow, lastRow, goToPage } = usePagination(candidates.length, resetKey);
+
   const timelineGroups = useMemo(() => {
     const groups: TimelineGroup[] = [];
     const today: ATSCandidate[] = [];
@@ -77,16 +93,29 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
     return groups;
   }, [candidates]);
 
+  // Les groupes se suivent dans l'ordre affiché : la page est la tranche [firstRow, firstRow + PAGE_SIZE) de leur mise bout à bout.
+  const pageGroups = useMemo(() => {
+    const result: TimelinePageGroup[] = [];
+    let offset = 0;
+    for (const group of timelineGroups) {
+      const from = Math.max(firstRow - offset, 0);
+      const to = Math.min(firstRow + PAGE_SIZE - offset, group.candidates.length);
+      if (to > from) result.push({ label: group.label, total: group.candidates.length, candidates: group.candidates.slice(from, to) });
+      offset += group.candidates.length;
+    }
+    return result;
+  }, [timelineGroups, firstRow]);
+
   return (
-    <div className="space-y-6">
-      {timelineGroups.map(group => (
+    <div ref={containerRef} className="space-y-6">
+      {pageGroups.map(group => (
         <section key={group.label}>
           <div className="mb-3 flex items-center gap-3">
             <h2 className="text-sm font-semibold text-foreground">
               {group.label}
               <span className="ml-2 text-xs font-normal tabular-nums text-muted-foreground">
-                {group.candidates.length}
-                <span className="sr-only"> candidat{group.candidates.length > 1 ? 's' : ''}</span>
+                {group.total}
+                <span className="sr-only"> candidat{group.total > 1 ? 's' : ''}</span>
               </span>
             </h2>
             <div className="h-px flex-1 bg-border" />
@@ -99,15 +128,15 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
               return (
                 <li key={candidate.id} className="relative pl-7">
                   <span
-                    className="absolute left-0 top-3 grid h-5 w-5 place-items-center rounded-full border border-border bg-card text-muted-foreground"
+                    className="absolute left-0 top-3 grid h-5 w-5 place-items-center rounded-full bg-muted text-muted-foreground"
                     aria-hidden="true"
                   >
                     <SourceIcon className="h-3 w-3" />
                   </span>
 
-                  <div className="relative rounded-lg border border-border bg-card p-3 transition-colors duration-150 hover:border-border-strong">
+                  <div className="relative rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-muted/50">
                     <div className="flex items-start justify-between gap-3">
-                      <PersonAvatar name={candidate.name} src={candidate.pictureUrl} size={32} />
+                      <PersonAvatar name={candidate.name} src={candidate.pictureUrl} candidateId={candidate.candidateId} size={32} />
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <h3 className="min-w-0 text-sm font-medium text-foreground">
@@ -136,37 +165,40 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">{candidate.headline}</p>
                         )}
 
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <Badge variant="muted">{stageLabel(candidate.stage)}</Badge>
+                        <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-foreground-secondary">
+                          <span>{stageLabel(candidate.stage)}</span>
                           {candidate.stage === 'ITW en cours' && candidate.processStepName && (
-                            <span className="max-w-[220px] truncate text-xs text-muted-foreground">{candidate.processStepName}</span>
+                            <span className="max-w-[220px] truncate text-muted-foreground">{candidate.processStepName}</span>
                           )}
-                          {candidate.jobTitle && (jobClickable ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="xs"
-                              onClick={() => onJobClick?.(candidate.jobId as string)}
-                              className="relative z-10 h-auto max-w-[220px] gap-1 rounded-full px-2 py-0.5 font-normal text-foreground-secondary hover:text-foreground [&_svg]:size-3"
-                            >
-                              <Briefcase aria-hidden="true" />
-                              <span className="sr-only">Voir la mission </span>
-                              <span className="truncate">{candidate.jobTitle}</span>
-                            </Button>
-                          ) : (
-                            <span className="inline-flex max-w-[220px] items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-foreground-secondary">
-                              <Briefcase className="h-3 w-3 shrink-0" aria-hidden="true" />
-                              <span className="truncate">{candidate.jobTitle}</span>
-                            </span>
-                          ))}
+                          {candidate.jobTitle && (
+                            <>
+                              <span aria-hidden="true" className="text-muted-foreground">·</span>
+                              {jobClickable ? (
+                                <Button
+                                  type="button"
+                                  variant="link"
+                                  onClick={() => onJobClick?.(candidate.jobId as string)}
+                                  className="relative z-10 h-auto max-w-[260px] justify-start p-0 text-sm font-normal text-foreground-secondary after:absolute after:inset-x-0 after:-inset-y-1 hover:text-foreground [@media(pointer:coarse)]:after:-inset-y-3"
+                                >
+                                  <span className="sr-only">Voir la mission </span>
+                                  <span className="truncate">{candidate.jobTitle}</span>
+                                </Button>
+                              ) : (
+                                <span className="max-w-[260px] truncate">{candidate.jobTitle}</span>
+                              )}
+                            </>
+                          )}
                           {candidate.sequenceName && (
-                            <span className="inline-flex max-w-[220px] items-center gap-1 text-xs text-muted-foreground">
-                              <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
-                              <span className="sr-only">Séquence </span>
-                              <span className="truncate">{candidate.sequenceName}</span>
-                            </span>
+                            <>
+                              <span aria-hidden="true" className="text-muted-foreground">·</span>
+                              <span className="inline-flex max-w-[220px] items-center gap-1 text-muted-foreground">
+                                <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
+                                <span className="sr-only">Séquence </span>
+                                <span className="truncate">{candidate.sequenceName}</span>
+                              </span>
+                            </>
                           )}
-                        </div>
+                        </p>
                       </div>
 
                       {candidate.lastActivity && (
@@ -182,6 +214,16 @@ export const ATSTimeline: React.FC<ATSTimelineProps> = ({ candidates, onCandidat
           </ol>
         </section>
       ))}
+      {/* Sans cadre : un filet la sépare de la liste (design simplifié). */}
+      <ATSPagination
+        total={candidates.length}
+        currentPage={currentPage}
+        pageCount={pageCount}
+        firstRow={firstRow}
+        lastRow={lastRow}
+        onPageChange={goToPage}
+        className="border-t border-border"
+      />
     </div>
   );
 };
@@ -197,7 +239,7 @@ export const ATSTimelineSkeleton: React.FC = () => (
         </div>
         <div className="space-y-2 pl-7">
           {[0, 1, 2].map((item) => (
-            <div key={item} className="space-y-2 rounded-lg border border-border bg-card p-3">
+            <div key={item} className="space-y-2 px-3 py-2.5">
               <div className="flex items-center justify-between gap-3">
                 <Skeleton className="h-4 w-40 rounded-sm" />
                 <Skeleton className="h-3 w-20 rounded-sm" />

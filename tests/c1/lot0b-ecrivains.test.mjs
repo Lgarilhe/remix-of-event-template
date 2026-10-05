@@ -326,7 +326,14 @@ test('0b-2a : RGPD (effacement, purge, export) et lecture du /pipeline', () => {
   const erase = topLevelBody(contact, 'export async function recordGdprErasure(');
   assert.match(erase, /\.from\('mission_conversations'\)\.delete\(\)\.in\('candidate_id', batch\)/);
   assert.match(erase, /\.update\(\{ reply_summary: null \}\)/);
-  assert.doesNotMatch(erase.slice(erase.indexOf('// 9.')), /\bstatus:|pipeline_stage:/);
+  const step9 = erase.indexOf('// 9.');
+  const step10 = erase.indexOf('// 10.');
+  assert.ok(step9 > 0 && step10 > step9, 'étapes 9 puis 10');
+  assert.doesNotMatch(erase.slice(step9, step10), /\bstatus:|pipeline_stage:/);
+  // Étape 10 (copies privées des photos, lot P du design simplifié) : seul l'état
+  // de candidate_photos est écrit, jamais l'étape ni le couple du pipeline.
+  assert.match(erase.slice(step10), /\.from\('candidate_photos'\)\.upsert\(/);
+  assert.doesNotMatch(erase.slice(step10), /pipeline_stage:|\.from\('job_candidate_status'\)\s*\.(update|upsert|insert|delete)\(/);
   assert.match(read('supabase/functions/rgpd-purge/index.ts'), /\.from\("mission_conversations"\)\s*\.delete\(\)/);
   assert.match(read('supabase/functions/export-org-data/index.ts'), /\.from\("mission_conversations"\)/);
   // Lot 0c-4 : plus de displayStage dans ATS.tsx ; la colonne vient de l'étape

@@ -72,10 +72,10 @@ test('0c-1 : les stats_* lisent get_mission_stage_counts, recalcul sans updated_
 // ─── 0c-1 : libellés « au total » des lecteurs de stats_* ───────────────────
 
 test('0c-1 : recherches, résumé du matin et tableau de bord disent « au total »', () => {
+  // /sourcing (2148cfab) ne montre plus que les profils trouvés : ni retenus ni contactés.
   const searches = read('src/pages/SourcingSearches.tsx');
   assert.doesNotMatch(searches, /shortlistés/);
-  assert.match(searches, /label: search\.stats_shortlisted > 1 \? 'retenus au total' : 'retenu au total'/);
-  assert.match(searches, /label: search\.stats_messaged > 1 \? 'contactés au total' : 'contacté au total'/);
+  assert.doesNotMatch(searches, /stats_shortlisted|stats_messaged/);
 
   const digest = read('supabase/functions/agent-daily-digest/index.ts');
   assert.doesNotMatch(digest, /shortlistés/);

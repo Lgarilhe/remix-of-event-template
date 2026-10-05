@@ -15,6 +15,8 @@ import { PersonAvatar } from '@/components/ui/person-avatar';
 interface CandidateAvatarProps {
   name: string;
   avatarUrl?: string | null;
+  /** Identifiant du candidat : sa copie privée de photo passe avant `avatarUrl`. */
+  candidateId?: string | null;
   /** Taille en px. Default 32. */
   size?: number;
   className?: string;
@@ -23,6 +25,7 @@ interface CandidateAvatarProps {
 export const CandidateAvatar: React.FC<CandidateAvatarProps> = ({
   name,
   avatarUrl,
+  candidateId,
   size = 32,
   className,
-}) => <PersonAvatar name={name} src={avatarUrl} size={size} className={className} />;
+}) => <PersonAvatar name={name} src={avatarUrl} candidateId={candidateId} size={size} className={className} />;

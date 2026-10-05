@@ -159,7 +159,7 @@ const BoardCard = memo(function BoardCard({
     >
       <div className="flex items-center gap-2">
         {/* Fond de la page : la pastille ne se confond pas avec la carte (même ton que bg-muted). */}
-        <PersonAvatar name={row.name} src={row.pictureUrl} size={28} className="bg-background" />
+        <PersonAvatar name={row.name} src={row.pictureUrl} candidateId={row.candidateId} size={28} className="bg-background" />
         <p className="min-w-0 flex-1 truncate font-medium text-foreground">{candidateName(row)}</p>
         <ScorePill score={row.score} title={row.recommendation} />
       </div>

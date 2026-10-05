@@ -164,7 +164,7 @@ export const EventDetailSheet: React.FC<EventDetailSheetProps> = ({ event, open,
                   onClick={() => onOpenChange(false)}
                   className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <CandidateAvatar name={meta.candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} size={36} />
+                  <CandidateAvatar name={meta.candidateName} avatarUrl={meta.candidateAvatarUrl ?? null} candidateId={meta.candidateId} size={36} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-foreground">{meta.candidateName}</span>
                     {meta.candidateHeadline && <span className="block truncate text-xs text-muted-foreground">{meta.candidateHeadline}</span>}
