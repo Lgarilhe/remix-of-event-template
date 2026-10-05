@@ -76,11 +76,11 @@ export default function TasksPage() {
   }, [reminders, suggestions]);
   const photos = useCandidateAvatarsByCandidateId(candidateIds);
 
-  // Mission d'une tâche (job_id « project:… » ou nu) : lien et client, pour les initiales.
+  // Mission d'une tâche (job_id « project:… » ou nu) : lien, client et logo enregistré, sinon les initiales.
   const { projects } = useSourcingProjects();
   const missionOf = useMemo(() => {
     const byId = new Map<string, TaskMission>(
-      projects.map((p) => [p.id, { id: p.id, client: p.jd_client || p.client_name || null }]),
+      projects.map((p) => [p.id, { id: p.id, client: p.jd_client || p.client_name || null, logo: p.jd_client_logo ?? null }]),
     );
     return (jobId: string | null) => (jobId ? byId.get(jobId.replace(/^project:/, '')) ?? null : null);
   }, [projects]);

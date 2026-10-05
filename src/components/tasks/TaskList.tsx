@@ -40,10 +40,12 @@ import { plural } from '@/lib/plural';
 import type { Reminder, ReminderBucket } from '@/hooks/useAllReminders';
 import type { AutoTaskSuggestion } from '@/hooks/useAutoTaskSuggestions';
 
-/** Mission d'une tâche, quand on la connaît : de quoi faire le lien et nommer le client. */
+/** Mission d'une tâche, quand on la connaît : de quoi faire le lien, nommer le client et montrer son logo. */
 export interface TaskMission {
   id: string;
   client: string | null;
+  /** Logo du client enregistré dans le brief (resolve-client-logo), sinon les initiales. */
+  logo: string | null;
 }
 
 /** « Aujourd'hui à 14:30 », « Demain à 9:00 », « 22 sept. à 11:29 ». */
@@ -137,7 +139,7 @@ const TaskRow = React.memo(function TaskRow({
     r.candidate_id || r.candidate_name ? (
       <CandidateAvatar name={r.candidate_name || 'Candidat'} avatarUrl={photo} size={36} />
     ) : r.job_id || r.job_title ? (
-      <MissionCompanyLogo company={mission?.client || r.job_title} size={36} />
+      <MissionCompanyLogo company={mission?.client || r.job_title} logoUrl={mission?.logo ?? null} size={36} />
     ) : (
       <IconTile icon={ListChecks} size="md" />
     );

@@ -145,9 +145,13 @@ export default function Dashboard() {
     [projects],
   );
 
-  // Client d'une mission, pour les initiales d'une tâche sans candidat.
+  // Client d'une mission, pour les initiales d'une tâche sans candidat, et son logo enregistré.
   const missionClientOf = useMemo(() => {
     const byId = new Map(projects.map((p) => [p.id, p.jd_client || p.client_name || null]));
+    return (jobId: string) => byId.get(jobId.replace(/^project:/, '')) ?? null;
+  }, [projects]);
+  const missionLogoOf = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p.jd_client_logo ?? null]));
     return (jobId: string) => byId.get(jobId.replace(/^project:/, '')) ?? null;
   }, [projects]);
 
@@ -201,6 +205,7 @@ export default function Dashboard() {
             scheduledMessages={scheduledMessages}
             remindersToday={remindersToday}
             missionClientOf={missionClientOf}
+            missionLogoOf={missionLogoOf}
             isLoading={messagesLoading || remindersLoading}
             error={todayError}
             onRetry={retryToday}

@@ -68,7 +68,13 @@ const task = (over) => ({
   source_event_id: null,
   ...over,
 });
-const missionOf = (jobId) => (jobId === `project:${MISSION}` ? { id: MISSION, client: 'Nova Pay' } : null);
+const LOGO_MISSION = '22222222-2222-4222-8222-000000000003';
+const missionOf = (jobId) =>
+  jobId === `project:${MISSION}`
+    ? { id: MISSION, client: 'Nova Pay', logo: null }
+    : jobId === LOGO_MISSION
+      ? { id: LOGO_MISSION, client: 'Médicis Santé', logo: 'https://exemple.test/medicis.png' }
+      : null;
 const section = (props) =>
   render(kit.TaskSection, {
     bucket: 'overdue',
@@ -127,6 +133,14 @@ test('Ligne : tâche de mission, initiales du client et lien vers la mission san
   const named = section({ items: [task({ job_id: `project:${MISSION}`, job_title: 'Lead Developer Backend · Nova Pay' })] });
   assert.match(named, />Lead Developer Backend · Nova Pay</);
   assert.doesNotMatch(named, /Nova Pay, Nova Pay/);
+});
+
+test('Ligne : le logo enregistré du client quand il existe, et l\'identifiant nu accepté', () => {
+  const html = section({ items: [task({ title: 'Lancer une nouvelle recherche', job_id: LOGO_MISSION, job_title: 'Head of Sales' })] });
+  assert.match(html, /<img src="https:\/\/exemple\.test\/medicis\.png"/);
+  assert.doesNotMatch(html, />MS</, 'pas d\'initiales quand le logo existe');
+  assert.match(html, new RegExp(`href="/missions/${LOGO_MISSION}"`));
+  assert.match(html, />Head of Sales, Médicis Santé</);
 });
 
 test('Ligne : sans candidat ni mission, une pastille et pas de lien', () => {
@@ -236,6 +250,7 @@ test('Page : un seul bouton plein, plus d\'« Actualiser », liste puis suggesti
   assert.ok(src.indexOf('<TaskSection') < src.indexOf('<TaskSuggestions'), 'les suggestions viennent après la liste');
   assert.match(src, /useCandidateAvatarsByCandidateId\(candidateIds\)/);
   assert.match(src, /jobId\.replace\(\/\^project:\/, ''\)/);
+  assert.match(src, /logo: p\.jd_client_logo \?\? null/);
   // Pas de zéro : sans tâche en cours, l'état vide parle ; « terminée » seulement s'il y en a.
   assert.match(src, /counts\.active === 0\s*\? undefined/);
   assert.match(src, /counts\.done > 0 \? `, \$\{plural\(counts\.done, 'terminée'\)\}` : ''/);
