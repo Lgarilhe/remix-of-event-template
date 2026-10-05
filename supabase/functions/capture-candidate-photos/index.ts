@@ -22,6 +22,7 @@
 // Sortie : { orphans, claimed, stored, expired, failed, skipped, erased }.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
 import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 import { isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
 import {
@@ -65,8 +66,8 @@ async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// deno-lint-ignore no-explicit-any
-type Admin = any;
+// Même type que celui de _shared/get-or-fetch-contact.ts (isCandidateErasedForOrg).
+type Admin = SupabaseClient;
 
 /** Supprime les copies de candidats qui n'ont plus de fiche dans l'organisation. */
 async function removeOrphans(admin: Admin): Promise<number> {
