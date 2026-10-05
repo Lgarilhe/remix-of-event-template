@@ -93,6 +93,9 @@ verify_jwt = false
 [functions.generate-embedding]
 verify_jwt = false
 
+[functions.generate-interview-followup]
+verify_jwt = false
+
 [functions.generate-outreach-message]
 verify_jwt = false
 
@@ -184,6 +187,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.search-agent-chat]
+verify_jwt = false
+
+[functions.send-candidate-email]
 verify_jwt = false
 
 [functions.send-team-invitation]

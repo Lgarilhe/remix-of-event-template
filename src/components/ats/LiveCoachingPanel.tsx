@@ -10,7 +10,7 @@
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, CalendarPlus, Check, CheckCircle2, Circle, CircleDot, Copy, FileText, Loader2, Mic,
+  AlertTriangle, ArrowRight, Check, CheckCircle2, Circle, CircleDot, Copy, FileText, Loader2, Mic,
   Search, Square, User, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { AudioSetupGuide } from './AudioSetupGuide';
+import { InterviewFollowUp } from './InterviewFollowUp';
 
 interface Criterion {
   id: string;
@@ -88,6 +89,11 @@ interface LiveCoachingPanelProps {
   candidateName: string;
   candidateHeadline?: string;
   candidateProfileSummary?: string;
+  /** Adresse connue du candidat, reprise dans le message de suivi. */
+  candidateEmail?: string | null;
+  candidateLinkedinUrl?: string | null;
+  /** Mission du candidat (uuid) : le brief donne le client et le manager de la présentation. */
+  projectId?: string | null;
   jobId: string;
   jobTitle: string;
   jobContext: string;
@@ -161,6 +167,9 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   candidateName,
   candidateHeadline,
   candidateProfileSummary,
+  candidateEmail,
+  candidateLinkedinUrl,
+  projectId,
   jobId,
   jobTitle,
   jobContext,
@@ -1008,13 +1017,16 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
             </section>
           )}
 
-          <section className="border-t border-border pt-3">
-            <h4 className="eyebrow">Suite de l'entretien</h4>
-            <Button variant="outline" size="sm" onClick={() => setScheduleOpen(true)} className="mt-2 w-full max-md:min-h-11">
-              <CalendarPlus aria-hidden="true" />
-              Programmer l'entretien suivant
-            </Button>
-          </section>
+          <InterviewFollowUp
+            report={report}
+            candidateId={candidateId}
+            candidateName={candidateName}
+            candidateEmail={candidateEmail}
+            candidateLinkedinUrl={candidateLinkedinUrl}
+            projectId={projectId}
+            jobTitle={jobTitle}
+            onScheduleNext={() => setScheduleOpen(true)}
+          />
         </div>
       )}
 

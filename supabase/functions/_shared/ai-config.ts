@@ -205,6 +205,14 @@ export const ACTION_COSTS: Record<string, AIActionCost> = {
     routingTier: "default",
     category: "qualification",
   },
+  interview_followup: {
+    action: "interview_followup",
+    label: "Message après un entretien",
+    floor: 1,
+    typicalTokens: 3_000,
+    routingTier: "fast",
+    category: "qualification",
+  },
   live_coaching: {
     action: "live_coaching",
     label: "Coaching live (par minute)",
