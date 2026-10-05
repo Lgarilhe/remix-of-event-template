@@ -93,7 +93,9 @@ export function useAllReminders({ scope = 'mine' }: { scope?: TaskScope } = {}) 
     queryKey: ['all-reminders'],
     queryFn: fetchAllReminders,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: false,
+    // La page Tâches n'a plus de bouton « Actualiser » (design simplifié, lot T) :
+    // la liste se relit au retour sur l'onglet, une fois les 30 s écoulées.
+    refetchOnWindowFocus: true,
   });
 
   // Filtre côté client : le cache ['all-reminders'] reste partagé (mêmes

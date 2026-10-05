@@ -9,7 +9,9 @@
  *   l'inscription ou « Mission probable » quand elle n'est que déduite des
  *   messages ; actions sur ordinateur comme sur téléphone : sommeil, archive,
  *   « Inscrire dans une séquence », menu « Plus d'actions » (D-02, D-03,
- *   D-08, D-18) ;
+ *   D-08, D-18). Design simplifié (lot Suite) : le statut s'écrit en mots à
+ *   côté du nom, « Inscrire dans une séquence » en bouton discret, le logo
+ *   LinkedIn ne se pose plus sur le visage ;
  * - fil : frise d'activité tirée du catalogue des séquences, bulles sans ombre
  *   ni ressort, réagir et supprimer au doigt, au survol et au clavier (D-01,
  *   D-12, D-15) ;
@@ -47,7 +49,7 @@ import { EmptyState } from '@/components/layout';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
 import {
   Archive, ArrowRight, Briefcase, Check, CheckCheck, ChevronLeft, CircleStop, Clock, ExternalLink,
-  FileText, ListPlus, Loader2, MessageSquare, MoreHorizontal, RefreshCw, SmilePlus, Trash2,
+  FileText, GitBranch, ListPlus, Loader2, MessageSquare, MoreHorizontal, RefreshCw, SmilePlus, Trash2,
 } from 'lucide-react';
 import { useTextActions, type SummarizeResult } from '@/hooks/useTextActions';
 import { toast } from 'sonner';
@@ -665,7 +667,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
           illustration="conversation"
           title="Sélectionnez une conversation"
           description="Vos messages LinkedIn et vos InMails s'affichent ici."
-          className="w-full max-w-sm"
+          className="w-full max-w-sm border-0"
         />
       </div>
     );
@@ -789,7 +791,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
             <ChevronLeft aria-hidden="true" />
           </Button>
 
-          {/* Avatar et pastille du canal */}
+          {/* Avatar ; la pastille du canal seulement hors LinkedIn */}
           <span className="relative mt-0.5 shrink-0">
             <Avatar className="h-10 w-10">
               <AvatarImage src={avatar} alt="" />
@@ -797,23 +799,26 @@ export const MessageView: React.FC<MessageViewProps> = ({
                 {getInitials(displayName)}
               </AvatarFallback>
             </Avatar>
-            <span
-              aria-hidden="true"
-              className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-background ring-1 ring-border"
-            >
-              <ChannelIcon channel={channel} size="xs" />
-            </span>
+            {channel !== 'linkedin' && (
+              <span
+                aria-hidden="true"
+                className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-background ring-1 ring-border"
+              >
+                <ChannelIcon channel={channel} size="xs" />
+              </span>
+            )}
           </span>
 
           <div className="min-w-0 flex-1 py-0.5">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            {/* Le nom, puis l'état de l'inscription en mots, sans pastille (design simplifié) */}
+            <div className="flex min-w-0 items-baseline gap-x-2">
               <h2 className="min-w-0 truncate text-md font-semibold text-foreground">{displayName}</h2>
               {enrollmentStatus && (
-                <EnrollmentStatusBadge
-                  status={enrollmentStatus}
-                  pauseReason={enrollmentPauseReason}
-                  className="px-1.5 py-0 text-2xs"
-                />
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <GitBranch className="h-3 w-3 self-center" aria-hidden="true" />
+                  <span className="sr-only">Séquence : </span>
+                  <EnrollmentStatusBadge status={enrollmentStatus} pauseReason={enrollmentPauseReason} plain />
+                </span>
               )}
             </div>
             {headline && <p className="truncate text-xs text-muted-foreground">{headline}</p>}
@@ -844,7 +849,7 @@ export const MessageView: React.FC<MessageViewProps> = ({
 
           {/* Actions : visibles sur ordinateur et sur téléphone */}
           <div className="flex shrink-0 items-center gap-0.5 md:gap-1">
-            <Button variant="outline" size="sm" onClick={onEnrollInSequence} className="hidden lg:inline-flex">
+            <Button variant="ghost" size="sm" onClick={onEnrollInSequence} className="hidden lg:inline-flex">
               <ListPlus aria-hidden="true" />
               Inscrire dans une séquence
             </Button>

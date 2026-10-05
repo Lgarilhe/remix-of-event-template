@@ -65,6 +65,28 @@ export const MODEL_CATALOG: Record<string, AIModel> = {
     supportsThinking: true,
     description: "Le plus avancé, pour les raisonnements complexes",
   },
+  // Nouvelle génération : même rôle que Avancé et Expert, moins chers et plus
+  // capables (miroir du multiplicateur serveur, _shared/ai-config.ts).
+  "claude-sonnet-5-5": {
+    id: "claude-sonnet-5-5",
+    name: "Avancé (nouveau)",
+    provider: "anthropic",
+    tier: "balanced",
+    multiplier: 0.7,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Équilibré, nouvelle génération. Choisi automatiquement pour l'évaluation des candidats",
+  },
+  "claude-opus-5-5": {
+    id: "claude-opus-5-5",
+    name: "Expert (nouveau)",
+    provider: "anthropic",
+    tier: "premium",
+    multiplier: 1.5,
+    contextWindow: 1_000_000,
+    supportsThinking: true,
+    description: "Le plus avancé, nouvelle génération, pour les raisonnements complexes",
+  },
 };
 
 // ─── Action Cost Types ──────────────────────────────────────────────────────
@@ -95,7 +117,7 @@ export interface AIActionCost {
 // par action, historique). Le miroir serveur (_shared/ai-config.ts) garde les
 // anciens tant qu'aucun changement de _shared ne part : il ne s'affiche nulle part.
 export const ACTION_COSTS: Record<string, AIActionCost> = {
-  scoring: { action: "scoring", label: "Évaluation d'un candidat", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing", autoDefault: "claude-haiku-4-5" },
+  scoring: { action: "scoring", label: "Évaluation d'un candidat", floor: 2, typicalTokens: 4_000, routingTier: "default", category: "sourcing", autoDefault: "claude-sonnet-5-5" },
   outreach_message: { action: "outreach_message", label: "Message d'approche", floor: 2, typicalTokens: 5_000, routingTier: "default", category: "outreach" },
   analyze_response: { action: "analyze_response", label: "Analyse d'une réponse", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "outreach" },
   screen_candidate: { action: "screen_candidate", label: "Présélection rapide", floor: 1, typicalTokens: 2_000, routingTier: "fast", category: "sourcing" },

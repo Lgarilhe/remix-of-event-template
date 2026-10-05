@@ -132,7 +132,12 @@ export const BaseKonektCard = () => {
 
         {planAllows ? (
           <>
-            {includedMonthly > 0 ? (
+            {/* Design simplifié (règle 8) : rien d'utilisé, ni « 0 / 100 », ni barre vide, ni date de remise à zéro. */}
+            {includedMonthly > 0 && includedUsed <= 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {includedMonthly.toLocaleString('fr-FR')} recherches incluses par mois{isTrialing ? ' (essai)' : ''}.
+              </p>
+            ) : includedMonthly > 0 ? (
               <div className="space-y-1.5">
                 <Progress value={usagePercent} className="h-2" />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
