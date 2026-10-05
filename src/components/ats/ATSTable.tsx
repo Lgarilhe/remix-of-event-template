@@ -2,13 +2,20 @@
  * Affichage « Tableau » du pipeline global (revue design E-25) : le nom de
  * chaque ligne est un bouton qui ouvre la fiche (la ligne entière reste
  * cliquable à la souris), le tri annonce son sens (aria-sort et chevron), la
- * dernière action a le format des cartes, le score passe par `ScoreBadge`.
+ * dernière action a le format des cartes.
+ *
+ * Design simplifié (lot Suite) : six colonnes qui tiennent dans l'écran
+ * (candidat, étape, mission, dernière action, note, liens), sans cadre autour
+ * du tableau. La source et la séquence passent sous la mission, en mots ; la
+ * note est un anneau ; les liens vers LinkedIn et l'e-mail apparaissent au
+ * survol de la ligne, au clavier, et restent visibles sur un écran tactile.
+ *
  * Les lignes sont paginées : le tri porte sur toute la liste, seules les lignes
  * de la page courante sont rendues (avatar, infobulles et badges de chaque
  * ligne ralentissent l'écran quand la liste est longue).
  */
 import React, { useState, useMemo } from 'react';
-import { Bell, Briefcase, ChevronDown, ChevronUp, ChevronsUpDown, GitBranch, Mail, Send, StickyNote } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, ChevronsUpDown, Mail, StickyNote } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -20,9 +27,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { ChannelIcon } from '@/components/ui/ChannelIcon';
 import { PersonAvatar } from '@/components/ui/person-avatar';
-import { ScoreBadge } from '@/components/ui/score-badge';
+import { ScoreRing } from '@/components/ui/score-ring';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
 import { ATSPagination } from '@/components/ats/ATSPagination';
 import { PAGE_SIZE, usePagination } from '@/hooks/usePagination';
 import {
@@ -33,6 +39,7 @@ import {
 } from '@/hooks/useATSData';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/relativeTime';
+import { enrollmentStatusLabel, pausedLabel } from '@/lib/sequenceLabels';
 
 interface ATSTableProps {
   candidates: ATSCandidate[];
@@ -42,14 +49,23 @@ interface ATSTableProps {
   resetKey?: unknown;
 }
 
-type SortKey = 'name' | 'stage' | 'source' | 'jobTitle' | 'lastActivity' | 'createdAt';
+type SortKey = 'name' | 'stage' | 'jobTitle' | 'lastActivity' | 'createdAt';
 type SortDirection = 'asc' | 'desc';
 
-const SOURCE_ICONS: Record<ATSCandidate['source'], React.ElementType> = {
-  local: Briefcase,
-  sequence: GitBranch,
-  inmail: Send,
-};
+/** Sous la mission : la séquence et son état, sinon la source quand ce n'est pas une mission. */
+function originText(candidate: ATSCandidate): string | null {
+  if (candidate.sequenceName) {
+    const status = candidate.sequenceStatus
+      ? (candidate.sequenceStatus === 'paused' ? pausedLabel(null) : enrollmentStatusLabel(candidate.sequenceStatus)).toLowerCase()
+      : null;
+    return status ? `Séquence ${candidate.sequenceName}, ${status}` : `Séquence ${candidate.sequenceName}`;
+  }
+  return candidate.source === 'local' ? null : ATS_SOURCE_LABELS[candidate.source];
+}
+
+/** Liens de la ligne : au survol, au clavier, toujours visibles sur un écran tactile. */
+const REVEAL_ON_ROW =
+  'opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none';
 
 const stageLabel = (stage: string) => ATS_STAGES.find((s) => s.key === stage)?.label ?? stage;
 
@@ -59,8 +75,12 @@ const stageRank = (stage: string) => {
   return index === -1 ? ATS_STAGES.length : index;
 };
 
-/** Bouton du kit rendu comme un texte de cellule (nom, poste). */
-const TEXT_BUTTON = 'h-auto min-w-0 max-w-full justify-start gap-0 rounded-sm p-0 text-left underline-offset-2';
+/** Bouton du kit rendu comme un texte de cellule (nom, poste) ; au doigt, sa zone de toucher fait 44 px de haut. */
+const TEXT_BUTTON =
+  'relative h-auto min-w-0 max-w-full justify-start gap-0 rounded-sm p-0 text-left underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-1 [@media(pointer:coarse)]:after:-inset-y-3';
+
+/** Lien en icône de 28 px, zone de toucher de 44 px. */
+const ICON_LINK = 'relative after:absolute after:-inset-2';
 
 export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick, resetKey }) => {
   const [sortKey, setSortKey] = useState<SortKey>('lastActivity');
@@ -84,7 +104,6 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
       switch (sortKey) {
         case 'name': aVal = a.name?.toLowerCase() || ''; bVal = b.name?.toLowerCase() || ''; break;
         case 'stage': aVal = stageRank(a.stage); bVal = stageRank(b.stage); break;
-        case 'source': aVal = a.source; bVal = b.source; break;
         case 'jobTitle': aVal = a.jobTitle?.toLowerCase() || ''; bVal = b.jobTitle?.toLowerCase() || ''; break;
         case 'lastActivity': aVal = a.lastActivity || ''; bVal = b.lastActivity || ''; break;
         case 'createdAt': aVal = a.createdAt || ''; bVal = b.createdAt || ''; break;
@@ -111,7 +130,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
           variant="ghost"
           size="xs"
           onClick={() => handleSort(key)}
-          className="-mx-1.5 gap-1 rounded-md px-1.5 text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
+          className="relative -mx-1.5 gap-1 rounded-md px-1.5 text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-2 hover:text-foreground [&_svg]:size-3.5"
         >
           {label}
           <Icon className={cn(active && 'text-foreground')} aria-hidden="true" />
@@ -128,17 +147,15 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
   const now = new Date();
 
   return (
-    <div ref={containerRef} className="overflow-hidden rounded-xl border border-border bg-card">
+    <div ref={containerRef}>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             {sortHeader('Candidat', 'name', 'min-w-[220px]')}
             {sortHeader('Étape', 'stage')}
-            {sortHeader('Source', 'source')}
-            {sortHeader('Mission', 'jobTitle', 'min-w-[160px]')}
-            <TableHead className="h-10 px-3 text-xs font-medium">Séquence</TableHead>
+            {sortHeader('Mission', 'jobTitle', 'min-w-[180px]')}
             {sortHeader('Dernière action', 'lastActivity', 'min-w-[150px]')}
-            <TableHead className="h-10 px-3 text-xs font-medium">Score</TableHead>
+            <TableHead className="h-10 px-3 text-xs font-medium">Note</TableHead>
             <TableHead className="h-10 px-3 text-xs font-medium">
               <span className="sr-only">Liens</span>
             </TableHead>
@@ -148,11 +165,11 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
           {pageCandidates.map(candidate => {
             const stagnant = stagnantDays(candidate, now);
             const activity = candidate.lastActivity || candidate.createdAt;
-            const SourceIcon = SOURCE_ICONS[candidate.source];
+            const origin = originText(candidate);
             return (
               <TableRow
                 key={candidate.id}
-                className="cursor-pointer"
+                className="group cursor-pointer"
                 onClick={(e) => {
                   // La ligne s'ouvre à la souris ; ses boutons et liens gardent leur action.
                   if ((e.target as HTMLElement).closest('button, a')) return;
@@ -195,34 +212,21 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                     <span className="block max-w-[160px] truncate text-xs text-muted-foreground">{candidate.processStepName}</span>
                   )}
                 </TableCell>
-                <TableCell className="whitespace-nowrap px-3 py-2.5">
-                  <span className="inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-                    <SourceIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                    {ATS_SOURCE_LABELS[candidate.source]}
-                  </span>
-                </TableCell>
                 <TableCell className="px-3 py-2.5">
                   {candidate.jobTitle && (candidate.jobId && onJobClick ? (
                     <Button
                       type="button"
                       variant="link"
                       onClick={() => onJobClick(candidate.jobId as string)}
-                      className={cn(TEXT_BUTTON, 'max-w-[200px] font-normal text-foreground-secondary hover:text-foreground')}
+                      className={cn(TEXT_BUTTON, 'max-w-[240px] font-normal text-foreground-secondary hover:text-foreground')}
                     >
                       <span className="sr-only">Voir la mission </span>
                       <span className="truncate">{candidate.jobTitle}</span>
                     </Button>
                   ) : (
-                    <span className="block max-w-[200px] truncate text-sm text-foreground-secondary">{candidate.jobTitle}</span>
+                    <span className="block max-w-[240px] truncate text-sm text-foreground-secondary">{candidate.jobTitle}</span>
                   ))}
-                </TableCell>
-                <TableCell className="px-3 py-2.5">
-                  {candidate.sequenceName && (
-                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                      <span className="max-w-[160px] truncate text-sm text-foreground-secondary">{candidate.sequenceName}</span>
-                      {candidate.sequenceStatus && <EnrollmentStatusBadge status={candidate.sequenceStatus} />}
-                    </div>
-                  )}
+                  {origin && <span className="block max-w-[240px] truncate text-xs text-muted-foreground">{origin}</span>}
                 </TableCell>
                 <TableCell className="whitespace-nowrap px-3 py-2.5">
                   {stagnant !== null ? (
@@ -240,14 +244,14 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                   ) : null}
                 </TableCell>
                 <TableCell className="px-3 py-2.5">
-                  <ScoreBadge score={candidate.score} />
+                  <ScoreRing score={candidate.score} />
                 </TableCell>
                 <TableCell className="px-3 py-2.5">
-                  <div className="flex items-center gap-1">
+                  <div className={cn('flex items-center gap-1', REVEAL_ON_ROW)}>
                     {candidate.linkedin && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button asChild variant="ghost" size="icon-xs">
+                          <Button asChild variant="ghost" size="icon-xs" className={ICON_LINK}>
                             <a
                               href={candidate.linkedin}
                               target="_blank"
@@ -264,7 +268,7 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                     {candidate.email && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button asChild variant="ghost" size="icon-xs">
+                          <Button asChild variant="ghost" size="icon-xs" className={ICON_LINK}>
                             <a href={`mailto:${candidate.email}`} aria-label={`Écrire un e-mail à ${candidate.name}`}>
                               <Mail aria-hidden="true" />
                             </a>
