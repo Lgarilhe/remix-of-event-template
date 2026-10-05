@@ -69,7 +69,7 @@ const MissionRow: React.FC<{ project: SourcingProject; interviewing?: Interviewi
         className={`-mx-2 grid grid-cols-1 items-center gap-x-6 gap-y-2 rounded-lg px-2 py-3.5 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${ROW_GRID}`}
       >
         <span className="flex min-w-0 items-center gap-3.5">
-          <MissionCompanyLogo company={clientName || project.name} size={40} />
+          <MissionCompanyLogo company={clientName || project.name} logoUrl={project.jd_client_logo} size={40} />
           <span className="min-w-0">
             <span className="block truncate text-md font-medium text-foreground">{project.name}</span>
             {clientName && <span className="block truncate text-sm text-muted-foreground">{clientName}</span>}

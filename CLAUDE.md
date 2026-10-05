@@ -387,14 +387,14 @@ Enrichment & sociétés: enrich-company, enrich-candidate-contact, get-enrichmen
                     resolve-pedigree-directory, refresh-pedigree-by-funding-stage
 LinkedIn accounts:  unipile-accounts, unipile-webhook, unipile-manage-webhooks
 Missions / pipeline: add-to-shortlist, submit-application (neutralisée au lot C1 : répond 410, à supprimer en prod), client-portal-data,
-                    accept-mission-invitation, accept-invitation, send-team-invitation, marketplace-admin
+                    accept-mission-invitation, accept-invitation, send-team-invitation, marketplace-admin, resolve-client-logo (logo du client enregistré dans le brief, copie dans org-logos/{org}/clients/, appelée à l'affichage de la liste et de la mission)
 Notion:             notion-mcp-oauth (connexion Notion de l'assistant)
 Autres intégrations: stripe-webhook, create-checkout-session, create-portal-session, aircall-webhook, calendly-webhook,
                     setup-calendly-webhook, backfill-calendly
 Extension Chrome:   extension-token, extension-quick-add, extension-pipeline-status
 RGPD / données:     export-org-data, rgpd-erase-contact, rgpd-purge (compte seulement par défaut, lot 0c-2)
 ```
-70 fonctions (2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
+71 fonctions (2026-10-05, resolve-client-logo ajoutée ; 70 au 2026-09-28, après le retrait de Notion hors connexion de l'assistant ; create-portal-session ajoutée par le lot P0-C, marketplace-admin par le lot M). Supprimées lors des nettoyages : database-search, apollo-search, pdl-search, enrich-contact, enrich-vivier-contacts, puis le 2026-09-06 (aucun appelant) : analyze-linkedin-profile, backfill-knowledge-lake, chat-filter-assistant, estimate-search-count, fetch-aircall, fetch-airtable, fetch-notion-schema, n8n-create-workflow, nurturing-analyzer, preview-transactional-email, process-debrief, scan-career-pages, scrape-job-url, screen-candidate, sequence-snippets-crud, sequence-templates-crud, check-invitation-status, audit-employer-brand, generate-recruiter-bio, scan-recruiter-linkedin, puis le 2026-09-28 (retrait de Notion hors MCP) : fetch-notion-jobs, fetch-notion-candidates, update-notion-job, notify-notion, update-candidate-stage. Liste à jour : `ls supabase/functions/`.
 
 ---
 

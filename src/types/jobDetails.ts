@@ -17,6 +17,8 @@ export interface JobDetails {
     culture_notes?: string;
     website?: string;
     logo_url?: string;
+    /** Dernière recherche infructueuse du logo (resolve-client-logo) : pas de nouvelle avant 30 jours. */
+    logo_checked_at?: string;
     hiring_manager?: {
       name?: string;
       title?: string;

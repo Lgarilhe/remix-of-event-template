@@ -13,6 +13,8 @@ export interface UnifiedProject {
   jobTitle: string | null;
   /** Client : celui du brief, sinon client_name. */
   clientName: string | null;
+  /** Logo du client enregistré dans le brief. */
+  clientLogoUrl: string | null;
   status: SourcingProject['status'];
   /** Lieu du brief. */
   location: string | null;
@@ -34,6 +36,7 @@ export function toUnifiedProjects(sourcingProjects: SourcingProject[]): UnifiedP
     name: sp.name,
     jobTitle: text(sp.jd_title) ?? text(sp.job_title),
     clientName: text(sp.jd_client) ?? text(sp.client_name),
+    clientLogoUrl: text(sp.jd_client_logo),
     status: sp.status,
     location: text(sp.jd_location),
     description: sp.description,

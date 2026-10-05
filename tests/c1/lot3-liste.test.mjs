@@ -153,7 +153,7 @@ const PEOPLE = 'src/components/outreach/projects/useInterviewingPeople.ts';
 test('liste simplifiée : une ligne = le logo du client et le nom, le client dessous, les visages en entretien', () => {
   const src = code(LIST);
   assert.match(src, /import \{ MissionCompanyLogo \} from '@\/components\/dashboard\/MissionCompanyLogo'/);
-  assert.match(src, /<MissionCompanyLogo\s+company=\{project\.clientName \|\| project\.name\}\s+size=\{archived \? 32 : 40\}/);
+  assert.match(src, /<MissionCompanyLogo\s+company=\{project\.clientName \|\| project\.name\}\s+logoUrl=\{project\.clientLogoUrl\}\s+size=\{archived \? 32 : 40\}/);
   assert.match(src, /import \{ AvatarStack \} from '@\/components\/ui\/person-avatar'/);
   assert.match(src, /<AvatarStack people=\{people\} total=\{value\}/);
   // Le client d'abord dans la ligne du dessous : c'est de lui que parle le logo.

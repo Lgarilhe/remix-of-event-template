@@ -73,6 +73,8 @@ interface EnrichContactButtonProps {
    * est déjà géré ailleurs (block CONTACT INFO).
    */
   mode?: 'auto' | 'button-only';
+  /** Nouvelle page mission : bouton discret, sans contour, cible de 44 px sur téléphone. */
+  quiet?: boolean;
 }
 
 function getCurrentCompany(profile: LinkedInProfile): string | undefined {
@@ -86,6 +88,7 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   compact = false,
   className = '',
   mode = 'auto',
+  quiet = false,
 }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -303,10 +306,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   if (!canEnrich) {
     return (
       <Button
-        variant="outline"
+        variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`shrink-0 ${className}`}
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
         title="Demandez à votre administrateur d'activer la récupération de coordonnées"
       >
         <AtSign aria-hidden="true" />
@@ -318,10 +321,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   if (isFreePlan) {
     return (
       <Button
-        variant="outline"
+        variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         disabled
-        className={`shrink-0 ${className}`}
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
         title="L'enrichissement de contact nécessite un abonnement"
       >
         <AtSign aria-hidden="true" />
@@ -333,10 +336,10 @@ export const EnrichContactButton: React.FC<EnrichContactButtonProps> = ({
   return (
     <>
       <Button
-        variant="outline"
+        variant={quiet ? 'ghost' : 'outline'}
         size={compact ? 'sm' : 'default'}
         onClick={() => setConfirmOpen(true)}
-        className={`shrink-0 ${className}`}
+        className={`shrink-0 ${quiet ? 'text-foreground-secondary hover:text-foreground max-sm:min-h-11 ' : ''}${className}`}
         title={`Récupérer email & téléphone de ${fullName}`}
       >
         <AtSign aria-hidden="true" />
