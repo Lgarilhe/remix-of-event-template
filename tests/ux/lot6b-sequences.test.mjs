@@ -231,5 +231,8 @@ test('D-27 — plus de chemin d’inscription mort dans la liste', () => {
 
 test('D-29 — vouvoiement et « inscriptions » dans les messages', () => {
   assert.doesNotMatch(list, /Active-la quand tu es prêt|Tu pourras|enrollments mis en pause|⚠ Impact/);
-  assert.match(list, /Vous pourrez la réactiver à tout moment/);
+  // Lot 5b : la fenêtre de désactivation (« Vous pourrez la réactiver à tout
+  // moment ») est retirée, la mise en pause part avec « Annuler » ; les
+  // messages restants vouvoient.
+  assert.match(list, /Vous n’avez pas les droits sur cette séquence\./);
 });

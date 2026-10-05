@@ -12,6 +12,11 @@
  * étapes prévues (le moteur les ignore tant que l'inscription n'est pas
  * active). Reprendre et marquer comme répondu passent par les actions serveur
  * de process-sequences : le navigateur ne réécrit jamais une exécution.
+ *
+ * Lot 5b : la pause part sans fenêtre, avec « Annuler » dans un toast (reprise
+ * serveur resume_enrollments) ; « Arrêter pour ce candidat » passe par
+ * stop_enrollments et « Relancer la séquence » par re_enroll
+ * (useUndoableEnrollmentAction).
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -20,10 +25,13 @@ import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import {
   isGdprErasedEnrollment,
   isSentExecutionStatus,
+  pauseToastTitle,
   summarizeResumeResponse,
   type ResumeResponse,
 } from '@/lib/sequenceErrorMessages';
 import { toast } from 'sonner';
+import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
+import { isManualStopTrace, readManualStop, type ManualStopInfo } from '@/lib/sequenceLabels';
 
 export interface CandidateEnrollmentStepExecution {
   id: string;
@@ -67,6 +75,10 @@ export interface CandidateEnrollment {
   next_step_action_type: string | null;
   /** D5 : effacement RGPD demandé, l'inscription ne peut plus être reprise ni relancée. */
   gdpr_erased: boolean;
+  /** Lot 5b : arrêt manuel (« Arrêtée par … le … »), null pour toute autre inscription. */
+  manual_stop: ManualStopInfo | null;
+  /** Lot 5b : trace d'un arrêt manuel, quel que soit le statut (motif « Arrêt manuel » lu comme un arrêt). */
+  stopped_manually: boolean;
   executions: CandidateEnrollmentStepExecution[];
 }
 
@@ -95,6 +107,9 @@ interface EnrollmentRow {
   job_title: string | null;
   /** tracking_data.gdpr_erased_at seul (tracking_data peut être lourd). */
   gdpr_erased_at: unknown;
+  /** Lot 5b : raison de fin et trace d'un arrêt manuel. */
+  completion_reason: unknown;
+  manual_stop: unknown;
   outreach_sequences: SequenceRelation | SequenceRelation[] | null;
   sequence_step_executions: Array<{
     id: string;
@@ -120,6 +135,7 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
   const [error, setError] = useState<string | null>(null);
   /** Inscription dont une action est en cours : ses boutons sont désactivés. */
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const { offerUndoPause, stopEnrollments } = useUndoableEnrollmentAction();
 
   const fetchEnrollments = useCallback(async () => {
     if (!profileId || !enabled) {
@@ -139,6 +155,8 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
           id, sequence_id, status, profile_name, created_by, pause_reason, current_step_order, created_at,
           replied_at, connection_status, job_id, job_title,
           gdpr_erased_at:tracking_data->gdpr_erased_at,
+          completion_reason:tracking_data->>completion_reason,
+          manual_stop:tracking_data->manual_stop,
           outreach_sequences (id, name, is_active),
           sequence_step_executions (
             id, step_id, step_order, status, scheduled_at, executed_at,
@@ -204,6 +222,8 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
           next_scheduled_at: nextExec?.scheduled_at || null,
           next_step_action_type: nextExec?.step?.action_type || null,
           gdpr_erased: isGdprErasedEnrollment(e.gdpr_erased_at, normalizedExecs),
+          manual_stop: readManualStop(e.status, e.completion_reason, e.manual_stop),
+          stopped_manually: isManualStopTrace(e.manual_stop),
           executions: normalizedExecs,
         };
       });
@@ -222,11 +242,13 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
   }, [fetchEnrollments]);
 
   /**
-   * Met une inscription en pause (status 'paused', pause_reason 'manual').
-   * Les étapes prévues gardent leur date : le moteur n'envoie rien tant que
-   * l'inscription n'est pas reprise.
+   * Met une inscription en pause (status 'paused', pause_reason 'manual'),
+   * sans fenêtre. Les étapes prévues gardent leur date : le moteur n'envoie
+   * rien tant que l'inscription n'est pas reprise. « Annuler » du toast la
+   * reprend par l'action serveur resume_enrollments.
    */
   const stop = useCallback(async (enrollmentId: string): Promise<boolean> => {
+    const name = enrollments.find(e => e.id === enrollmentId)?.profile_name || null;
     setPendingId(enrollmentId);
     try {
       const { data, error: enrollError } = await supabase
@@ -247,8 +269,11 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
       setEnrollments(prev =>
         prev.map(e => e.id === enrollmentId ? { ...e, status: 'paused', pause_reason: 'manual' } : e)
       );
-      toast.success('Séquence mise en pause', {
-        description: 'Aucun message ne partira tant que vous ne la reprenez pas.',
+      offerUndoPause({
+        title: pauseToastTitle(name),
+        enrollmentIds: data.map(row => row.id),
+        candidateName: name,
+        onSettled: () => fetchEnrollments(),
       });
       return true;
     } catch (err) {
@@ -258,7 +283,68 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
     } finally {
       setPendingId(null);
     }
-  }, [fetchEnrollments]);
+  }, [enrollments, fetchEnrollments, offerUndoPause]);
+
+  /**
+   * « Arrêter pour ce candidat » (lot 5b) : clôture serveur (stop_enrollments),
+   * sans fenêtre, avec « Annuler » pendant que le toast est affiché.
+   */
+  const manualStop = useCallback(async (enrollmentId: string): Promise<boolean> => {
+    const name = enrollments.find(e => e.id === enrollmentId)?.profile_name || null;
+    setPendingId(enrollmentId);
+    try {
+      const summary = await stopEnrollments({
+        enrollmentIds: [enrollmentId],
+        candidateName: name,
+        onSettled: () => fetchEnrollments(),
+      });
+      return summary.stoppedIds.length > 0;
+    } finally {
+      setPendingId(null);
+    }
+  }, [enrollments, fetchEnrollments, stopEnrollments]);
+
+  /**
+   * « Relancer la séquence » après un arrêt manuel : action serveur re_enroll,
+   * qui réarme l'étape annulée par l'arrêt (ou programme la suivante).
+   */
+  const reEnroll = useCallback(async (enrollmentId: string): Promise<boolean> => {
+    const name = enrollments.find(e => e.id === enrollmentId)?.profile_name || 'ce candidat';
+    setPendingId(enrollmentId);
+    try {
+      const { data, error } = await invokeEdgeFunction<ResumeResponse>('process-sequences', {
+        action: 're_enroll',
+        enrollment_ids: [enrollmentId],
+      });
+      const result = data?.results?.find(r => r.enrollment_id === enrollmentId);
+      if (error || !data?.success || !result) {
+        toast.error(`La séquence n’a pas pu être relancée pour ${name}`, {
+          description: data?.message || error?.message || 'Réessayez dans un instant.',
+        });
+        return false;
+      }
+      // Mêmes messages que le suivi des inscrits (SequenceEnrollmentsPanel).
+      if (result.outcome === 'resumed') {
+        toast.success(`Séquence relancée pour ${name}`, {
+          description: 'La prochaine action est programmée selon les délais de la séquence, pendant vos heures d’envoi.',
+        });
+      } else if (result.outcome === 'nothing_to_resume') {
+        toast.info(`Rien à relancer : cette séquence est terminée pour ${name}`);
+      } else if (result.outcome === 'account_unlinked') {
+        toast.error('Ce compte LinkedIn n’est plus relié. Reliez-le avant de relancer la séquence.');
+      } else {
+        toast.error(`La séquence n’a pas pu être relancée pour ${name}`, { description: result.message });
+      }
+      return result.outcome === 'resumed';
+    } catch (err) {
+      console.error('[useCandidateEnrollments] reEnroll error:', err);
+      toast.error(`La séquence n’a pas pu être relancée pour ${name}`);
+      return false;
+    } finally {
+      setPendingId(null);
+      await fetchEnrollments();
+    }
+  }, [enrollments, fetchEnrollments]);
 
   /**
    * Reprend une inscription en pause par l'action serveur resume_enrollments :
@@ -346,6 +432,8 @@ export function useCandidateEnrollments({ profileId, enabled = true }: UseCandid
     pendingId,
     refetch: fetchEnrollments,
     stop,
+    manualStop,
+    reEnroll,
     resume,
     markReplied,
   };

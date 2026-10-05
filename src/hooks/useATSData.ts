@@ -19,6 +19,7 @@ import {
 } from '@/lib/candidateStage';
 import { atsColumnOf, atsColumnTitle, invalidateStageReaders } from '@/lib/stageDisplay';
 import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
+import { readManualStop, type ManualStopInfo } from '@/lib/sequenceLabels';
 
 // Types
 export interface ATSCandidate {
@@ -39,6 +40,8 @@ export interface ATSCandidate {
   sequenceId?: string;
   sequenceName?: string;
   sequenceStatus?: string;
+  /** Arrêt manuel de l'inscription (lot 5b) : « Arrêtée par … le … ». */
+  sequenceManualStop?: ManualStopInfo | null;
   connectionStatus?: string;
   lastActivity: string | null;
   createdAt: string;
@@ -303,11 +306,22 @@ export function candidateOfMissionRow(r: MissionRow, stepNames?: ReadonlyMap<str
 /** Étape générale d'une colonne du /pipeline (candidat de séquence ou d'InMail, sans ligne). */
 const generalStageOfColumn = (column: string): GeneralStage | null => ATS_LABEL_TO_STAGE[column]?.stage ?? null;
 
+interface SequenceEnrichmentRow {
+  profile_id: string;
+  sequence_id: string;
+  status: string;
+  connection_status: string | null;
+  completion_reason: string | null;
+  manual_stop: unknown;
+  outreach_sequences: { id: string; name: string } | null;
+}
+
 // Fetch sequence enrollments for enrichment
-async function fetchSequenceEnrichment(): Promise<Map<string, { sequenceId: string; sequenceName: string; sequenceStatus: string; connectionStatus: string }>> {
+async function fetchSequenceEnrichment(): Promise<Map<string, { sequenceId: string; sequenceName: string; sequenceStatus: string; sequenceManualStop: ManualStopInfo | null; connectionStatus: string }>> {
   const { data: enrollments, error } = await supabase
     .from('sequence_enrollments')
-    .select('profile_id, sequence_id, status, connection_status, outreach_sequences (id, name)')
+    // Ligne typée à la main : l'inférence des chemins JSON dépasse la profondeur de TypeScript.
+    .select<string, SequenceEnrichmentRow>('profile_id, sequence_id, status, connection_status, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop, outreach_sequences (id, name)')
     .order('created_at', { ascending: false });
 
   // Séquence seulement : la mission et son titre viennent de la ligne de mission
@@ -320,6 +334,7 @@ async function fetchSequenceEnrichment(): Promise<Map<string, { sequenceId: stri
           sequenceId: e.sequence_id,
           sequenceName: (e as any).outreach_sequences?.name || null,
           sequenceStatus: e.status,
+          sequenceManualStop: readManualStop(e.status, e.completion_reason, e.manual_stop),
           connectionStatus: e.connection_status,
         });
       }
@@ -332,7 +347,8 @@ async function fetchSequenceEnrichment(): Promise<Map<string, { sequenceId: stri
 async function fetchSequenceOnlyCandidates(existingIds: Set<string>): Promise<ATSCandidate[]> {
   const { data: enrollments, error } = await supabase
     .from('sequence_enrollments')
-    .select('id, sequence_id, profile_id, provider_id, resolved_profile_id, profile_name, profile_headline, profile_url, status, connection_status, job_id, job_title, replied_at, updated_at, created_at, outreach_sequences (id, name)')
+    // Ligne non inférée : les chemins JSON dépassent la profondeur de TypeScript (lue champ par champ plus bas).
+    .select<string, Record<string, unknown>>('id, sequence_id, profile_id, provider_id, resolved_profile_id, profile_name, profile_headline, profile_url, status, connection_status, job_id, job_title, replied_at, updated_at, created_at, completion_reason:tracking_data->>completion_reason, manual_stop:tracking_data->manual_stop, outreach_sequences (id, name)')
     .order('created_at', { ascending: false });
 
   if (error || !enrollments) return [];
@@ -365,6 +381,7 @@ async function fetchSequenceOnlyCandidates(existingIds: Set<string>): Promise<AT
         sequenceId: enrollment.sequence_id,
         sequenceName: enrollment.outreach_sequences?.name || null,
         sequenceStatus: enrollment.status,
+        sequenceManualStop: readManualStop(enrollment.status, enrollment.completion_reason, enrollment.manual_stop),
         connectionStatus: enrollment.connection_status,
         lastActivity: enrollment.updated_at || enrollment.created_at,
         createdAt: enrollment.created_at,

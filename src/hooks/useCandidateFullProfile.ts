@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { aiRecommendationMeta, qualificationVerdictMeta } from '@/lib/verdicts';
-import { enrollmentStatusLabel } from '@/lib/sequenceLabels';
+import { enrollmentStatusLabel, manualStopLabel, readManualStopFromTracking, type ManualStopInfo } from '@/lib/sequenceLabels';
+import { useMemberName } from '@/hooks/useTeamMembers';
 import { isInternalSequenceAction, sequenceExecutionTitle, stepNumberLabel } from '@/lib/sequenceActionLabels';
 
 export interface CandidateActivity {
@@ -33,6 +34,8 @@ export interface SequenceEnrollmentInfo {
   repliedAt: string | null;
   completedAt: string | null;
   connectionStatus: string | null;
+  /** Arrêt manuel (lot 5b) : « Arrêtée par … le … » dans la chronologie. */
+  manualStop: ManualStopInfo | null;
 }
 
 export interface ScoringDimension {
@@ -108,6 +111,8 @@ export interface CandidateFullProfile {
 export function useCandidateFullProfile(candidateId: string, linkedinUrl: string | null): CandidateFullProfile {
   const [qualificationSessions, setQualificationSessions] = useState<QualificationSession[]>([]);
   const [sequenceEnrollments, setSequenceEnrollments] = useState<SequenceEnrollmentInfo[]>([]);
+  // Auteur d'un arrêt manuel, pour la chronologie.
+  const memberName = useMemberName();
   const [sequenceSteps, setSequenceSteps] = useState<SequenceStepDetail[]>([]);
   const [inmailsSent, setInmailsSent] = useState<any[]>([]);
   const [scoringHistory, setScoringHistory] = useState<ScoringRecord[]>([]);
@@ -220,6 +225,7 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         repliedAt: e.replied_at,
         completedAt: e.completed_at,
         connectionStatus: e.connection_status,
+        manualStop: readManualStopFromTracking(e.status, e.tracking_data),
       })));
     }
 
@@ -455,7 +461,8 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       type: 'sequence_enrolled',
       date: se.createdAt,
       title: `Inscription à « ${se.sequenceName} »`,
-      detail: se.status === 'completed' ? 'Séquence terminée'
+      detail: se.manualStop ? manualStopLabel(se.manualStop, memberName(se.manualStop.by))
+        : se.status === 'completed' ? 'Séquence terminée'
         : se.repliedAt || se.status === 'replied' ? 'A répondu'
         : se.status === 'active' ? stepNumberLabel(se.currentStep)
         : enrollmentStatusLabel(se.status),

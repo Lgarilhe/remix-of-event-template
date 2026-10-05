@@ -58,6 +58,8 @@ const STUBS = [
   'export const invalidateStageReaders = async () => {};',
   // Mission d'un job_id, src/hooks/useEnrollmentPreview.ts.
   'export const missionIdOfJob = (id) => (id ? String(id).replace(/^project:/, "") : undefined);',
+  // Lot 5b : arrêt manuel d'une inscription (« Arrêtée par … »), src/lib/sequenceLabels.ts.
+  'export const readManualStop = () => null;',
 ].join('\n');
 
 const loadATSData = async () => {

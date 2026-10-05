@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
 import { type ATSCandidate, daysInStage, stagnantDays } from '@/hooks/useATSData';
+import { useMemberName } from '@/hooks/useTeamMembers';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/relativeTime';
 
@@ -141,6 +142,7 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
   overlay = false,
 }) => {
   const signal = cardSignal(candidate, new Date());
+  const memberName = useMemberName();
   // Nom de l'étape d'entretien de la mission, sous la mission : colonne En entretien seulement.
   const stepName = candidate.stage === 'ITW en cours' ? candidate.processStepName : null;
   const jobClickable = !overlay && !!candidate.jobTitle && !!candidate.jobId && !!onJobClick;
@@ -170,7 +172,12 @@ export const ATSCandidateCard: React.FC<ATSCandidateCardProps> = ({
           <span className="sr-only">
             {candidate.sequenceName ? `Séquence « ${candidate.sequenceName} » :` : 'Séquence :'}
           </span>
-          <EnrollmentStatusBadge status={signal.status} className="shrink-0" />
+          <EnrollmentStatusBadge
+            status={signal.status}
+            manualStop={candidate.sequenceManualStop}
+            stoppedByName={memberName(candidate.sequenceManualStop?.by)}
+            className="shrink-0"
+          />
           {signal.ago && <span className="truncate">{signal.ago}</span>}
         </>
       ) : (

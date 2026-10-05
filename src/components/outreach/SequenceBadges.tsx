@@ -32,7 +32,7 @@ import {
   sequenceActionLabel,
   sequenceActionMeta,
 } from '@/lib/sequenceCatalog';
-import { pausedLabel } from '@/lib/sequenceLabels';
+import { manualStopLabel, pausedLabel, type ManualStopInfo } from '@/lib/sequenceLabels';
 
 const ACTION_ICONS: Record<string, React.ElementType> = {
   connection_request: UserPlus,
@@ -69,20 +69,33 @@ export function SequenceActionLabel({ type, className }: { type: string | null |
   );
 }
 
-/** Statut d'une inscription ; une pause dit sa raison quand elle est connue (« En pause (limite d’envoi atteinte) »). */
+/**
+ * Statut d'une inscription ; une pause dit sa raison quand elle est connue
+ * (« En pause (limite d’envoi atteinte) ») ; un arrêt manuel (lot 5b) dit qui
+ * l'a posé et quand (« Arrêtée par Guillaume Martin le 29/09 »), lu par
+ * readManualStop (tracking_data.completion_reason et tracking_data.manual_stop)
+ * dans le suivi, la fiche, la messagerie, le Pipeline et la chronologie.
+ */
 export function EnrollmentStatusBadge({
   status,
   pauseReason,
+  manualStop: manualStopInfo,
+  stoppedByName,
   className,
 }: {
   status: string | null | undefined;
   pauseReason?: string | null;
+  /** Arrêt manuel lu sur l'inscription (readManualStop), null sinon. */
+  manualStop?: ManualStopInfo | null;
+  /** Nom de l'auteur de l'arrêt manuel, s'il est connu. */
+  stoppedByName?: string | null;
   className?: string;
 }) {
   const meta = enrollmentStatusMeta(status);
+  const manualStop = status === 'completed' ? manualStopInfo ?? null : null;
   return (
     <Badge variant={meta.tone} className={className}>
-      {status === 'paused' ? pausedLabel(pauseReason) : meta.label}
+      {manualStop ? manualStopLabel(manualStop, stoppedByName) : status === 'paused' ? pausedLabel(pauseReason) : meta.label}
     </Badge>
   );
 }

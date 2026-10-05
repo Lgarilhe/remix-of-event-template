@@ -6,12 +6,15 @@
  *   - Nombre d'actions envoyées + prochaine action prévue
  *   - Mission/job rattaché
  *   - Historique dépliable des étapes
- *   - Actions inline : Mettre en pause / Reprendre / Marquer comme répondu
+ *   - Actions inline : Mettre en pause pour ce candidat / Reprendre / Marquer comme répondu
  *     (un collaborateur ne les voit que sur les candidats qu'il a inscrits,
  *     comme dans le suivi des inscrits)
+ *   - Lot 5b : pause et « Arrêter pour ce candidat » immédiats, avec
+ *     « Annuler » dans un toast ; « Relancer la séquence » après un arrêt
  *
  * Source : useCandidateEnrollments (pause locale sans toucher aux étapes,
- * reprise et « a répondu » par les actions serveur de process-sequences).
+ * reprise, arrêt, relance et « a répondu » par les actions serveur de
+ * process-sequences).
  */
 
 import React, { useState } from 'react';
@@ -19,6 +22,7 @@ import { Link } from 'react-router-dom';
 import { useCandidateEnrollments, CandidateEnrollment } from '@/hooks/useCandidateEnrollments';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
 import {
   executionDoneVerb,
   executionStatusLabel,
@@ -32,7 +36,15 @@ import {
   SEQUENCE_ACTIVE_AGAIN_HINT,
   shouldShowExecutionError,
 } from '@/lib/sequenceErrorMessages';
-import { enrollmentStatusLabel, pausedLabel, pauseReasonHint } from '@/lib/sequenceLabels';
+import {
+  enrollmentStatusLabel,
+  MANUAL_STOP_HELP,
+  manualStopLabel,
+  pausedLabel,
+  pauseReasonHint,
+  RELAUNCH_AFTER_STOP_LABEL,
+  STOP_FOR_CANDIDATE_LABEL,
+} from '@/lib/sequenceLabels';
 import { stepTypeLabel } from '@/components/outreach/sequence/sequenceGraph';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -109,18 +121,27 @@ const EXEC_STATUS_STYLE: Record<string, { color: string; icon: React.ReactNode }
 const NEUTRAL_EXEC_STYLE = { color: 'text-muted-foreground', icon: <AlertCircle className="w-3 h-3" aria-hidden="true" /> };
 
 export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle, compact }) => {
-  const { enrollments, loading, error, pendingId, stop, resume, markReplied, refetch } = useCandidateEnrollments({
+  const { enrollments, loading, error, pendingId, stop, manualStop, reEnroll, resume, markReplied, refetch } = useCandidateEnrollments({
     profileId,
   });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [confirmStop, setConfirmStop] = useState<CandidateEnrollment | null>(null);
+  // Lot 5b : la pause et l'arrêt partent sans fenêtre (« Annuler » dans le
+  // toast) ; reprise, relance et « a répondu » gardent leur confirmation.
   const [confirmResume, setConfirmResume] = useState<CandidateEnrollment | null>(null);
+  const [confirmReEnroll, setConfirmReEnroll] = useState<CandidateEnrollment | null>(null);
   const [confirmReply, setConfirmReply] = useState<CandidateEnrollment | null>(null);
   // Décision 31 : même règle que le suivi des inscrits et le serveur, un
   // collaborateur n'agit que sur les inscriptions qu'il a créées.
   const { isCollaborator } = useOrganization();
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
+  const { members } = useTeamMembers();
+  // Auteur d'un arrêt manuel : nom du membre, « vous » pour soi-même sans nom connu.
+  const memberName = (memberId: string | null): string | null => {
+    if (!memberId) return null;
+    const member = members.find(m => m.userId === memberId);
+    return member?.displayName || member?.email || (memberId === userId ? 'vous' : null);
+  };
 
   const toggleExpanded = (id: string) => {
     setExpanded(prev => {
@@ -190,9 +211,12 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
           isExpanded={expanded.has(enrollment.id)}
           isBusy={pendingId === enrollment.id}
           ownRow={!isCollaborator || (!!userId && enrollment.created_by === userId)}
+          stoppedLabel={enrollment.manual_stop ? manualStopLabel(enrollment.manual_stop, memberName(enrollment.manual_stop.by)) : null}
           onToggleExpand={() => toggleExpanded(enrollment.id)}
           onShowError={() => expand(enrollment.id)}
-          onStop={() => setConfirmStop(enrollment)}
+          onStop={() => { void stop(enrollment.id); }}
+          onManualStop={() => { void manualStop(enrollment.id); }}
+          onReEnroll={() => setConfirmReEnroll(enrollment)}
           onResume={() => setConfirmResume(enrollment)}
           onMarkReplied={() => setConfirmReply(enrollment)}
           compact={compact}
@@ -200,25 +224,25 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
       ))}
 
       {/* Confirmations */}
-      <AlertDialog open={!!confirmStop} onOpenChange={open => !open && setConfirmStop(null)}>
+      <AlertDialog open={!!confirmReEnroll} onOpenChange={open => !open && setConfirmReEnroll(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mettre en pause « {sequenceName(confirmStop)} » ?</AlertDialogTitle>
+            <AlertDialogTitle>Relancer « {sequenceName(confirmReEnroll)} » ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Aucun message de cette séquence ne partira vers ce candidat tant que vous ne la reprenez pas.
-              Les étapes prévues gardent leur date.
+              La séquence reprend là où elle a été arrêtée : l’étape prévue garde sa date (au plus tôt dans une minute),
+              sinon l’étape suivante suit son délai habituel, pendant vos heures d’envoi.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={async () => {
-                const target = confirmStop;
-                setConfirmStop(null);
-                if (target) await stop(target.id);
+                const target = confirmReEnroll;
+                setConfirmReEnroll(null);
+                if (target) await reEnroll(target.id);
               }}
             >
-              Mettre en pause
+              Relancer
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -281,16 +305,20 @@ export const CandidateSequencesPanel: React.FC<Props> = ({ profileId, hideTitle,
 // ─── EnrollmentCard ──────────────────────────────────────────────────
 
 function EnrollmentCard({
-  enrollment, isExpanded, isBusy, ownRow, onToggleExpand, onShowError, onStop, onResume, onMarkReplied, compact,
+  enrollment, isExpanded, isBusy, ownRow, stoppedLabel, onToggleExpand, onShowError, onStop, onManualStop, onReEnroll, onResume, onMarkReplied, compact,
 }: {
   enrollment: CandidateEnrollment;
   isExpanded: boolean;
   isBusy: boolean;
   /** Faux pour un collaborateur sur l'inscription d'un autre membre : consultation seule. */
   ownRow: boolean;
+  /** Lot 5b : « Arrêtée par Guillaume Martin le 29/09 » pour un arrêt manuel. */
+  stoppedLabel: string | null;
   onToggleExpand: () => void;
   onShowError: () => void;
   onStop: () => void;
+  onManualStop: () => void;
+  onReEnroll: () => void;
   onResume: () => void;
   onMarkReplied: () => void;
   compact?: boolean;
@@ -298,7 +326,7 @@ function EnrollmentCard({
   const statusStyle = STATUS_STYLE[enrollment.status] || NEUTRAL_STATUS_STYLE;
   const isActive = enrollment.status === 'active';
   const isPaused = enrollment.status === 'paused';
-  const statusLabel = isPaused ? pausedLabel(enrollment.pause_reason) : enrollmentStatusLabel(enrollment.status);
+  const statusLabel = stoppedLabel ?? (isPaused ? pausedLabel(enrollment.pause_reason) : enrollmentStatusLabel(enrollment.status));
   // D5 : un effacement RGPD est définitif, ni reprise ni relance.
   const gdprErased = enrollment.gdpr_erased;
   // Pause de séquence (désactivation, auto-pause) restée alors que la séquence
@@ -309,6 +337,9 @@ function EnrollmentCard({
   // on la traite comme une pause manuelle.
   const resumable = isPaused && !gdprErased && (!pauseReason || RESUMABLE_PAUSE_REASONS.has(pauseReason) || sequencePauseResumable);
   const canResume = resumable && ownRow;
+  // Lot 5b : arrêt d'une inscription en cours ou en pause ; relance après un arrêt manuel.
+  const canManualStop = (isActive || isPaused) && ownRow && !gdprErased;
+  const canReEnrollAfterStop = !!enrollment.manual_stop && ownRow && !gdprErased;
   const pauseHint = gdprErased
     ? GDPR_ERASED_NOTICE
     : resumable && !ownRow
@@ -386,7 +417,7 @@ function EnrollmentCard({
               disabled={isBusy}
             >
               {isBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" aria-hidden="true" /> : <Pause className="w-3 h-3 mr-1" aria-hidden="true" />}
-              Mettre en pause
+              Mettre en pause pour ce candidat
             </Button>
           )}
           {isPaused && pauseReason === 'account_disconnected' && (
@@ -418,8 +449,11 @@ function EnrollmentCard({
             </Button>
           )}
           <DropdownMenu>
+            {/* Déclencheur jamais désactivé : le menu lui rend le focus après un
+                geste (« Arrêter pour ce candidat »), et le toast « Annuler » reste
+                atteignable au clavier. Les éléments, eux, attendent la fin de l'appel. */}
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Actions de l'inscription" disabled={isBusy}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Actions de l'inscription">
                 <MoreHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
@@ -429,13 +463,36 @@ function EnrollmentCard({
                 {isExpanded ? "Masquer l'historique" : "Voir l'historique"}
               </DropdownMenuItem>
               {canResume && pauseReason === 'send_failed' && (
-                <DropdownMenuItem onClick={onResume}>
+                <DropdownMenuItem onClick={onResume} disabled={isBusy}>
                   <Play className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                   Reprendre la séquence
                 </DropdownMenuItem>
               )}
+              {canManualStop && (
+                <DropdownMenuItem
+                  onClick={onManualStop}
+                  disabled={isBusy}
+                  aria-label={STOP_FOR_CANDIDATE_LABEL}
+                  aria-describedby={`stop-help-${enrollment.id}`}
+                  className="items-start"
+                >
+                  <XCircle className="w-3.5 h-3.5 mr-2 mt-0.5 shrink-0" aria-hidden="true" />
+                  <span className="flex min-w-0 flex-col">
+                    <span>{STOP_FOR_CANDIDATE_LABEL}</span>
+                    <span id={`stop-help-${enrollment.id}`} className="whitespace-normal text-2xs text-muted-foreground">
+                      {MANUAL_STOP_HELP}
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              )}
+              {canReEnrollAfterStop && (
+                <DropdownMenuItem onClick={onReEnroll} disabled={isBusy}>
+                  <RefreshCw className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                  {RELAUNCH_AFTER_STOP_LABEL}
+                </DropdownMenuItem>
+              )}
               {(isActive || isPaused) && ownRow && (
-                <DropdownMenuItem onClick={onMarkReplied}>
+                <DropdownMenuItem onClick={onMarkReplied} disabled={isBusy}>
                   <MessageCircle className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                   Marquer comme ayant répondu
                 </DropdownMenuItem>
@@ -452,7 +509,7 @@ function EnrollmentCard({
             Historique ({enrollment.executions.length} étape{enrollment.executions.length > 1 ? 's' : ''})
           </p>
           {enrollment.executions.map((exec, idx) => (
-            <ExecutionRow key={exec.id} execution={exec} index={idx} compact={compact} />
+            <ExecutionRow key={exec.id} execution={exec} index={idx} compact={compact} stoppedManually={enrollment.stopped_manually} />
           ))}
         </div>
       )}
@@ -475,11 +532,13 @@ function EnrollmentCard({
 // ─── ExecutionRow — une ligne de l'historique ─────────────────────────
 
 function ExecutionRow({
-  execution, index, compact,
+  execution, index, compact, stoppedManually = false,
 }: {
   execution: CandidateEnrollment['executions'][0];
   index: number;
   compact?: boolean;
+  /** L'inscription porte la trace d'un arrêt manuel (motif « Arrêt manuel » lu comme un arrêt). */
+  stoppedManually?: boolean;
 }) {
   const statusStyle = EXEC_STATUS_STYLE[execution.status] || NEUTRAL_EXEC_STYLE;
   const actionType = execution.step?.action_type || 'message';
@@ -542,7 +601,7 @@ function ExecutionRow({
         )}
         {execution.skip_reason && !isSent && (
           <p className="text-2xs text-muted-foreground mt-0.5 italic">
-            Raison : {formatSkipReason(execution.skip_reason)}
+            Raison : {formatSkipReason(execution.skip_reason, { manualStop: stoppedManually })}
           </p>
         )}
       </div>

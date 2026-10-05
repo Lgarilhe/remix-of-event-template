@@ -20,6 +20,7 @@ import { PersonAvatar } from '@/components/ui/person-avatar';
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EnrollmentStatusBadge } from '@/components/outreach/SequenceBadges';
+import { useMemberName } from '@/hooks/useTeamMembers';
 import {
   ATS_SOURCE_LABELS,
   ATS_STAGES,
@@ -58,6 +59,7 @@ const TEXT_BUTTON = 'h-auto min-w-0 max-w-full justify-start gap-0 rounded-sm p-
 export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick, onJobClick }) => {
   const [sortKey, setSortKey] = useState<SortKey>('lastActivity');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const memberName = useMemberName();
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -203,7 +205,13 @@ export const ATSTable: React.FC<ATSTableProps> = ({ candidates, onCandidateClick
                   {candidate.sequenceName && (
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                       <span className="max-w-[160px] truncate text-sm text-foreground-secondary">{candidate.sequenceName}</span>
-                      {candidate.sequenceStatus && <EnrollmentStatusBadge status={candidate.sequenceStatus} />}
+                      {candidate.sequenceStatus && (
+                        <EnrollmentStatusBadge
+                          status={candidate.sequenceStatus}
+                          manualStop={candidate.sequenceManualStop}
+                          stoppedByName={memberName(candidate.sequenceManualStop?.by)}
+                        />
+                      )}
                     </div>
                   )}
                 </TableCell>

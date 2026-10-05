@@ -190,8 +190,9 @@ test('SEQ-187 — cadence par compte d\'envoi, e-mails hors plafond et hors espa
 // ---------------------------------------------------------------- SEQ-189
 test('SEQ-189 — dernier contrôle en échec fermé', () => {
   const lastCall = slice(loop, '// ⭐ LAST-CALL CHECK', 'const executeResult = await executeStepAction(');
-  // D1 (contrat §7) : la séquence est relue avec l'inscription.
-  assert.match(lastCall, /\.select\('status, sequence:outreach_sequences\(is_active\)'\)\.eq\('id', enrollment\.id\)\.maybeSingle\(\)/);
+  // D1 (contrat §7) : la séquence est relue avec l'inscription ; lot 5b :
+  // tracking_data aussi, pour reconnaître un arrêt manuel posé pendant l'envoi.
+  assert.match(lastCall, /\.select\('status, tracking_data, sequence:outreach_sequences\(is_active\)'\)\.eq\('id', enrollment\.id\)\.maybeSingle\(\)/);
   assert.match(lastCall, /if \(lastCallErr\) \{[\s\S]*?15 \* 60 \* 1000[\s\S]*?\.eq\('status', 'sending'\)[\s\S]*?continue;/);
   assert.match(lastCall, /if \(!lastCall\) \{[\s\S]*?continue;/, 'inscription disparue : rien ne part');
 });

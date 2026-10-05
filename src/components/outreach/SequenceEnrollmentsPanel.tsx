@@ -5,6 +5,8 @@ import type { Tables } from '@/integrations/supabase/types';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAuthReady } from '@/hooks/useAuthReady';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useUndoableEnrollmentAction } from '@/hooks/useUndoableEnrollmentAction';
 import {
   formatSequenceError as formatErrorMessage,
   formatSkipReason,
@@ -14,6 +16,8 @@ import {
   isHiddenActionType,
   isAiReviewPending,
   scheduledExecutionError,
+  pauseToastTitle,
+  STOP_FAILED_MESSAGE,
   summarizeResumeResponse,
   type ResumeResponse,
 } from '@/lib/sequenceErrorMessages';
@@ -59,6 +63,7 @@ import {
   ExternalLink,
   MoreHorizontal,
   StopCircle,
+  XCircle,
   Play,
   CheckCircle2,
   ChevronRight,
@@ -75,9 +80,15 @@ import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
 import {
   DONE_EXECUTION_STATUSES,
+  MANUAL_STOP_HELP,
   PENDING_EXECUTION_STATUSES,
+  RELAUNCH_AFTER_STOP_LABEL,
   SEQUENCE_LEVEL_PAUSE_REASONS,
+  STOP_FOR_CANDIDATE_LABEL,
   enrollmentStatusLabel,
+  hasManualStopTrace,
+  manualStopLabel,
+  readManualStopFromTracking,
   pausedLabel,
   pauseReasonHint,
 } from '@/lib/sequenceLabels';
@@ -185,6 +196,8 @@ const OTHER_MEMBER_RESUME_HINT = 'Candidat inscrit par un autre membre : un admi
 const BULK_RESUME_PAUSE_REASONS: string[] = ['manual', ...SEQUENCE_LEVEL_PAUSE_REASONS];
 /** Candidats par appel de reprise groupée (le serveur en traite 100 au plus, en 35 s). */
 const BULK_RESUME_CHUNK = 25;
+/** « Arrêter » groupé : 200 inscriptions au plus par demande (stop_enrollments). */
+const BULK_STOP_MAX = 200;
 
 /** Motif des étapes annulées par un effacement RGPD (moteur, recordGdprErasure). */
 const GDPR_ERASURE_SKIP_PREFIX = 'Effacement des données demandé';
@@ -264,7 +277,9 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const [expandedEnrollments, setExpandedEnrollments] = useState<Set<string>>(new Set());
   const [allSteps, setAllSteps] = useState<SequenceStep[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [confirmAction, setConfirmAction] = useState<{ type: 'stop' | 'bulkStop' | 'bulkResume' | 'resume' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string } | null>(null);
+  // Lot 5b : la pause (un candidat ou tous) et l'arrêt partent sans fenêtre,
+  // avec « Annuler » dans un toast ; les autres gestes gardent leur confirmation.
+  const [confirmAction, setConfirmAction] = useState<{ type: 'bulkResume' | 'resume' | 'markReplied' | 'reEnroll' | 'skipStep'; id?: string; stepId?: string } | null>(null);
   // Compteurs de la séquence entière, lus en base (la liste n'en charge que
   // 200 à la fois). null tant qu'ils ne sont pas connus. `resumable` : en
   // pause pour une raison que « Reprendre tous les candidats en pause » lève.
@@ -274,11 +289,16 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   // null tant qu'il n'est pas connu (aucune reprise de ce type proposée).
   const [sequenceActive, setSequenceActive] = useState<boolean | null>(null);
   const [bulkResuming, setBulkResuming] = useState(false);
+  // Pause ou arrêt groupé en cours : boutons de la barre désactivés.
+  const [bulkBusy, setBulkBusy] = useState<'pause' | 'stop' | null>(null);
   // D3 : un collaborateur ne met en pause ni ne reprend que ses propres
   // inscriptions (RLS, serveur) : les actions groupées ne lui sont pas proposées.
   const { isCollaborator } = useOrganization();
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
+  // Lot 5b : gestes immédiats avec « Annuler », et nom de l'auteur d'un arrêt.
+  const { offerUndoPause, stopEnrollments } = useUndoableEnrollmentAction();
+  const { members } = useTeamMembers();
   // Échec du dernier chargement complet (message technique, montré replié) :
   // affiché avec « Réessayer » au lieu de « Aucun candidat inscrit ».
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -445,9 +465,11 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
   const nameOf = (enrollmentId: string) =>
     enrollments.find(e => e.id === enrollmentId)?.profile_name || 'ce candidat';
 
-  // Mise en pause d'un candidat : on ne touche qu'à l'inscription. Les étapes
-  // prévues gardent leur date, le moteur les ignore tant que l'inscription
-  // n'est pas reprise, et « Reprendre » les retrouve telles quelles.
+  // Mise en pause d'un candidat, sans fenêtre (lot 5b) : on ne touche qu'à
+  // l'inscription. Les étapes prévues gardent leur date, le moteur les ignore
+  // tant que l'inscription n'est pas reprise, et « Reprendre » les retrouve
+  // telles quelles. « Annuler » du toast la reprend par le serveur
+  // (resume_enrollments), jamais par une écriture du navigateur.
   const stopEnrollment = async (enrollmentId: string) => {
     const name = nameOf(enrollmentId);
     try {
@@ -471,8 +493,11 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         prev.map(e => e.id === enrollmentId ? { ...e, status: 'paused', pause_reason: 'manual' } : e)
       );
       void fetchStatusCounts();
-      toast.success(`${name} est en pause`, {
-        description: 'Ses étapes prévues gardent leur date. Reprenez sa séquence quand vous le souhaitez.',
+      offerUndoPause({
+        title: pauseToastTitle(name),
+        enrollmentIds: data.map(row => row.id),
+        candidateName: name,
+        onSettled: () => fetchEnrollments(),
       });
     } catch (error) {
       console.error('Error pausing enrollment:', error);
@@ -522,6 +547,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
   // Mise en pause de TOUS les candidats en cours de la séquence, filtrée en
   // base (pas sur les 200 lignes chargées). Les étapes gardent leur date.
+  // Sans fenêtre (lot 5b) : l'écriture rend les inscriptions touchées, les
+  // seules que « Annuler » reprend.
   const bulkStopActive = async () => {
     try {
       const { data, count, error: enrollError } = await supabase
@@ -543,20 +570,29 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
         .eq('sequence_id', sequenceId)
         .eq('status', 'active');
       const remaining = stillActive ?? 0;
+      const pausedIds = (data ?? []).map(row => row.id);
+      // Pause partielle : « Annuler » reste offert pour les inscriptions
+      // réellement mises en pause (rendues par l'écriture), et elles seules.
+      const offerPartialUndo = (title: string, description: string) => offerUndoPause({
+        title, description, tone: 'warning', enrollmentIds: pausedIds, onSettled: () => fetchEnrollments(),
+      });
       if (countError) {
         console.error('Error recounting active enrollments:', countError);
-        toast.warning(paused > 0 ? pausedText : 'Aucun candidat n’a été mis en pause', {
-          description: 'Impossible de vérifier s’il reste des candidats en cours : actualisez la liste.',
-        });
+        const description = 'Impossible de vérifier s’il reste des candidats en cours : actualisez la liste.';
+        if (paused > 0 && pausedIds.length > 0) offerPartialUndo(pausedText, description);
+        else toast.warning(paused > 0 ? pausedText : 'Aucun candidat n’a été mis en pause', { description });
       } else if (remaining > 0) {
-        toast.error(paused > 0 ? `${pausedText}, ${remaining} encore en cours` : 'Aucun candidat n’a été mis en pause', {
-          description: `${remaining} candidat${remaining > 1 ? 's' : ''} en cours ${remaining > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remaining > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remaining > 1 ? 'ils viennent' : 'il vient'} d’être ${remaining > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur.`,
-        });
+        const title = paused > 0 ? `${pausedText}, ${remaining} encore en cours` : 'Aucun candidat n’a été mis en pause';
+        const description = `${remaining} candidat${remaining > 1 ? 's' : ''} en cours ${remaining > 1 ? 'recevront' : 'recevra'} encore des messages : vous n’avez pas les droits sur ${remaining > 1 ? 'leurs inscriptions' : 'son inscription'}, ou ${remaining > 1 ? 'ils viennent' : 'il vient'} d’être ${remaining > 1 ? 'inscrits' : 'inscrit'}. Réessayez, ou demandez à un administrateur.`;
+        if (paused > 0 && pausedIds.length > 0) offerPartialUndo(title, description);
+        else toast.error(title, { description });
       } else if (paused === 0) {
         toast.info('Aucun candidat n’était en cours.');
       } else {
-        toast.success(pausedText, {
-          description: 'Ils ne recevront plus de messages de cette séquence tant que vous ne les reprenez pas.',
+        offerUndoPause({
+          title: pausedText,
+          enrollmentIds: pausedIds,
+          onSettled: () => fetchEnrollments(),
         });
       }
     } catch (error) {
@@ -564,6 +600,62 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       toast.error('La mise en pause groupée a échoué. Réessayez.');
     }
     await fetchEnrollments();
+  };
+
+  // « Arrêter pour ce candidat » (lot 5b) : clôture serveur (stop_enrollments),
+  // sans fenêtre, avec « Annuler » pendant que le toast est affiché.
+  const stopForCandidate = async (enrollmentId: string) => {
+    const name = enrollments.find(e => e.id === enrollmentId)?.profile_name || null;
+    await stopEnrollments({
+      enrollmentIds: [enrollmentId],
+      candidateName: name,
+      onSettled: () => fetchEnrollments(),
+    });
+  };
+
+  // « Arrêter » groupé (lot 5b) : candidats en cours ou en pause de toute la
+  // séquence, lus en base, 200 au plus par demande. Réservé aux membres qui
+  // gèrent toutes les inscriptions (le bouton est masqué au collaborateur).
+  const bulkManualStop = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sequence_enrollments')
+        .select('id')
+        .eq('sequence_id', sequenceId)
+        .in('status', ['active', 'paused'])
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(BULK_STOP_MAX + 1);
+      if (error) throw error;
+      const ids = (data ?? []).map(row => row.id);
+      if (ids.length === 0) {
+        toast.info('Aucun candidat n’était en cours ni en pause.');
+        await fetchEnrollments();
+        return;
+      }
+      if (ids.length > BULK_STOP_MAX) {
+        toast.info(`Arrêt groupé limité à ${BULK_STOP_MAX} candidats`, {
+          description: 'Mettez plutôt la séquence en pause, ou arrêtez les candidats un par un.',
+        });
+        return;
+      }
+      await stopEnrollments({ enrollmentIds: ids, onSettled: () => fetchEnrollments() });
+    } catch (error) {
+      console.error('Error bulk stopping:', error);
+      toast.error(STOP_FAILED_MESSAGE, {
+        action: { label: 'Réessayer', onClick: () => { void runBulk('stop', bulkManualStop); } },
+      });
+    }
+  };
+
+  // Pause ou arrêt groupé : les boutons de la barre attendent la fin du geste.
+  const runBulk = async (kind: 'pause' | 'stop', action: () => Promise<void>) => {
+    setBulkBusy(kind);
+    try {
+      await action();
+    } finally {
+      setBulkBusy(null);
+    }
   };
 
   // D6 : « Reprendre tous les candidats en pause » (pauses une par une, dont
@@ -757,12 +849,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
   const handleConfirmedAction = async () => {
     if (!confirmAction) return;
-    if (confirmAction.type === 'stop' && confirmAction.id) {
-      await stopEnrollment(confirmAction.id);
-    } else if (confirmAction.type === 'resume' && confirmAction.id) {
+    if (confirmAction.type === 'resume' && confirmAction.id) {
       await resumeEnrollment(confirmAction.id);
-    } else if (confirmAction.type === 'bulkStop') {
-      await bulkStopActive();
     } else if (confirmAction.type === 'bulkResume') {
       await bulkResumePaused();
     } else if (confirmAction.type === 'markReplied' && confirmAction.id) {
@@ -789,13 +877,23 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
     .flatMap(e => e.executions || [])
     .filter(exec => exec.status === 'scheduled' && new Date(exec.scheduled_at) < new Date());
 
-  // D3 : pause et reprise groupées pour les seuls membres qui gèrent toutes les inscriptions.
+  // D3 : pause, arrêt et reprise groupés pour les seuls membres qui gèrent toutes les inscriptions.
   const canBulkManage = !isCollaborator;
   const bulkResumableCount = statusCounts?.resumable ?? 0;
+  // « Arrêter » groupé : candidats en cours ou en pause (compteurs de la séquence entière).
+  const stoppableCount = activeCount + pausedCount;
+  // Auteur d'un arrêt manuel : nom du membre, « vous » pour soi-même sans nom connu.
+  const memberName = (memberId: string | null): string | null => {
+    if (!memberId) return null;
+    const member = members.find(m => m.userId === memberId);
+    return member?.displayName || member?.email || (memberId === userId ? 'vous' : null);
+  };
 
   const confirmEnrollment = confirmAction?.id ? enrollments.find(e => e.id === confirmAction.id) : undefined;
   const confirmName = confirmEnrollment?.profile_name || 'ce candidat';
   const confirmNextAction = confirmAction?.type === 'reEnroll' ? nextActionLabel(confirmEnrollment) : null;
+  // « Relancer la séquence » après un arrêt manuel : l'étape annulée par l'arrêt est réarmée.
+  const confirmManualStop = confirmEnrollment ? readManualStopFromTracking(confirmEnrollment.status, confirmEnrollment.tracking_data) : null;
   // « Reprendre » d'une pause pour échec d'envoi : c'est l'étape en échec qui repart.
   const confirmRetriesFailedStep = confirmAction?.type === 'resume' && !!confirmEnrollment && resumeRetriesFailedStep(confirmEnrollment);
 
@@ -886,19 +984,36 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
 
               {/* Actions groupées : réservées à ceux qui gèrent toutes les
                   inscriptions (D3, un collaborateur n'agit que sur les siennes). */}
-              {canBulkManage && (activeCount > 0 || (sequenceActive === true && bulkResumableCount > 0)) && (
+              {canBulkManage && (activeCount > 0 || stoppableCount > 0 || (sequenceActive === true && bulkResumableCount > 0)) && (
                 <div className="flex flex-wrap justify-end gap-2">
+                  {/* Lot 5b : pause immédiate, « Annuler » dans le toast. */}
                   {canBulkManage && activeCount > 0 && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setConfirmAction({ type: 'bulkStop' })}
+                      onClick={() => { void runBulk('pause', bulkStopActive); }}
+                      loading={bulkBusy === 'pause'}
+                      disabled={bulkBusy !== null}
                       className="text-danger hover:text-danger max-md:h-11 max-md:w-full"
                     >
-                      <StopCircle aria-hidden="true" />
+                      {bulkBusy !== 'pause' && <StopCircle aria-hidden="true" />}
                       {statusCounts
                         ? `Mettre en pause tous les candidats actifs (${statusCounts.active})`
                         : 'Mettre en pause tous les candidats actifs'}
+                    </Button>
+                  )}
+                  {/* Lot 5b : arrêt groupé (200 au plus), « Annuler » dans le toast. */}
+                  {canBulkManage && stoppableCount > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { void runBulk('stop', bulkManualStop); }}
+                      loading={bulkBusy === 'stop'}
+                      disabled={bulkBusy !== null}
+                      className="text-danger hover:text-danger max-md:h-11 max-md:w-full"
+                    >
+                      {bulkBusy !== 'stop' && <XCircle aria-hidden="true" />}
+                      {`Arrêter (${stoppableCount})`}
                     </Button>
                   )}
                   {/* D6 : reprise groupée, seulement quand la séquence est active (le
@@ -946,9 +1061,13 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                 <ul className="space-y-2" aria-label="Candidats inscrits">
                   {filtered.map((enrollment) => {
                     const status = statusStyle[enrollment.status] || NEUTRAL_STATUS_STYLE;
-                    const statusLabel = enrollment.status === 'paused'
-                      ? pausedLabel(enrollment.pause_reason)
-                      : enrollmentStatusLabel(enrollment.status);
+                    // Lot 5b : « Arrêtée par Guillaume Martin le 29/09 » pour un arrêt manuel.
+                    const manualStop = readManualStopFromTracking(enrollment.status, enrollment.tracking_data);
+                    const statusLabel = manualStop
+                      ? manualStopLabel(manualStop, memberName(manualStop.by))
+                      : enrollment.status === 'paused'
+                        ? pausedLabel(enrollment.pause_reason)
+                        : enrollmentStatusLabel(enrollment.status);
                     const isExpanded = expandedEnrollments.has(enrollment.id);
                     const executions = enrollment.executions || [];
                     const name = enrollment.profile_name || 'Candidat';
@@ -1071,7 +1190,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       serveur et la base refuseraient ces actions. */}
                                   {enrollment.status === 'active' && ownRow ? (
                                     <DropdownMenuItem
-                                      onClick={() => setConfirmAction({ type: 'stop', id: enrollment.id })}
+                                      onClick={() => { void stopEnrollment(enrollment.id); }}
                                     >
                                       <StopCircle className="mr-2 h-4 w-4" aria-hidden="true" />
                                       Mettre en pause pour ce candidat
@@ -1114,6 +1233,24 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       )}
                                     </>
                                   ) : null}
+                                  {/* Lot 5b : arrêt immédiat, « Annuler » dans le toast ; le
+                                      candidat reste compté comme contacté (90 jours). */}
+                                  {ownRow && !gdprErased && (enrollment.status === 'active' || enrollment.status === 'paused') && (
+                                    <DropdownMenuItem
+                                      onClick={() => { void stopForCandidate(enrollment.id); }}
+                                      aria-label={STOP_FOR_CANDIDATE_LABEL}
+                                      aria-describedby={`stop-help-${enrollment.id}`}
+                                      className="items-start"
+                                    >
+                                      <XCircle className="mr-2 mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                                      <span className="flex min-w-0 flex-col">
+                                        <span>{STOP_FOR_CANDIDATE_LABEL}</span>
+                                        <span id={`stop-help-${enrollment.id}`} className="max-w-[15rem] whitespace-normal text-xs text-muted-foreground">
+                                          {MANUAL_STOP_HELP}
+                                        </span>
+                                      </span>
+                                    </DropdownMenuItem>
+                                  )}
                                   {/* Marquer comme ayant répondu (réponse hors canal :
                                       téléphone, en personne, autre boîte mail). Évite de
                                       continuer à relancer le candidat. */}
@@ -1133,7 +1270,8 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                       onClick={() => setConfirmAction({ type: 'reEnroll', id: enrollment.id })}
                                     >
                                       <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-                                      Relancer depuis l’étape suivante
+                                      {/* Après un arrêt manuel, la relance reprend l'étape annulée par l'arrêt. */}
+                                      {manualStop ? RELAUNCH_AFTER_STOP_LABEL : 'Relancer depuis l’étape suivante'}
                                     </DropdownMenuItem>
                                   )}
                                   {enrollment.profile_url && (
@@ -1264,7 +1402,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                                                 )}
                                                 {(exec.status === 'skipped' || exec.status === 'cancelled') && exec.skip_reason && (
                                                   <p className={cn('text-muted-foreground', isChannelSkip && 'italic')}>
-                                                    {formatSkipReason(exec.skip_reason)}
+                                                    {formatSkipReason(exec.skip_reason, { manualStop: hasManualStopTrace(enrollment.tracking_data) })}
                                                   </p>
                                                 )}
                                                 {exec.status === 'failed' && exec.error_message && (
@@ -1336,28 +1474,20 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {confirmAction?.type === 'bulkStop'
-              ? (statusCounts
-                ? `Mettre en pause tous les candidats actifs (${statusCounts.active}) ?`
-                : 'Mettre en pause tous les candidats actifs ?')
-              : confirmAction?.type === 'bulkResume'
-                ? `Reprendre tous les candidats en pause (${bulkResumableCount}) ?`
-                : confirmAction?.type === 'markReplied'
-                  ? `Marquer ${confirmName} comme ayant répondu ?`
-                  : confirmAction?.type === 'reEnroll'
-                    ? `Relancer ${confirmName} ?`
-                    : confirmAction?.type === 'resume'
-                      ? (confirmRetriesFailedStep
-                        ? `Réessayer l’étape en échec pour ${confirmName} ?`
-                        : `Reprendre la séquence pour ${confirmName} ?`)
-                      : confirmAction?.type === 'skipStep'
-                        ? 'Sauter cette étape ?'
-                        : `Mettre en pause la séquence pour ${confirmName} ?`}
+            {confirmAction?.type === 'bulkResume'
+              ? `Reprendre tous les candidats en pause (${bulkResumableCount}) ?`
+              : confirmAction?.type === 'markReplied'
+                ? `Marquer ${confirmName} comme ayant répondu ?`
+                : confirmAction?.type === 'reEnroll'
+                  ? `Relancer ${confirmName} ?`
+                  : confirmAction?.type === 'resume'
+                    ? (confirmRetriesFailedStep
+                      ? `Réessayer l’étape en échec pour ${confirmName} ?`
+                      : `Reprendre la séquence pour ${confirmName} ?`)
+                    : 'Sauter cette étape ?'}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {confirmAction?.type === 'bulkStop'
-              ? 'Tous les candidats en cours de cette séquence, y compris ceux qui ne sont pas affichés, ne recevront plus de messages tant que vous ne les reprenez pas. Leurs étapes prévues gardent leur date.'
-              : confirmAction?.type === 'bulkResume'
+            {confirmAction?.type === 'bulkResume'
                 // Pas de délai promis : une étape en attente garde sa date, sinon
                 // la suivante est programmée selon son délai (parfois plusieurs jours).
                 ? 'Ces candidats, y compris ceux qui ne sont pas affichés, recevront de nouveau les messages de cette séquence. Une étape déjà programmée garde sa date (au plus tôt dans une minute) ; sinon, l’étape suivante est programmée selon son délai habituel, pendant vos heures d’envoi. Les candidats en pause pour une autre raison (compte déconnecté, abonnement, limite d’envoi, échec d’envoi, candidat injoignable) ne sont pas concernés.'
@@ -1370,26 +1500,23 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
                   : confirmAction?.type === 'reEnroll'
                     // Pas de délai promis : le serveur programme l'étape suivante
                     // selon son délai, et les attentes intermédiaires sont masquées.
-                    ? `La séquence reprend à l’étape suivante, selon ses délais habituels${confirmNextAction ? ` (prochaine action estimée : ${confirmNextAction})` : ', s’il en reste une'}.${
-                      confirmEnrollment?.status === 'replied'
-                        ? ` ${confirmName} a répondu${confirmEnrollment.replied_at ? ` le ${format(new Date(confirmEnrollment.replied_at), 'd MMMM yyyy', { locale: fr })}` : ''} : vérifiez que la conversation est bien close.`
-                        : ''}`
+                    // Après un arrêt manuel, il réarme l'étape annulée par l'arrêt.
+                    ? (confirmManualStop
+                      ? 'La séquence reprend là où elle a été arrêtée : l’étape prévue garde sa date (au plus tôt dans une minute), sinon l’étape suivante suit son délai habituel, pendant vos heures d’envoi.'
+                      : `La séquence reprend à l’étape suivante, selon ses délais habituels${confirmNextAction ? ` (prochaine action estimée : ${confirmNextAction})` : ', s’il en reste une'}.${
+                        confirmEnrollment?.status === 'replied'
+                          ? ` ${confirmName} a répondu${confirmEnrollment.replied_at ? ` le ${format(new Date(confirmEnrollment.replied_at), 'd MMMM yyyy', { locale: fr })}` : ''} : vérifiez que la conversation est bien close.`
+                          : ''}`)
                     : confirmAction?.type === 'resume'
                       ? (confirmRetriesFailedStep
                         ? 'L’étape en échec sera retentée après son délai habituel, pendant vos heures d’envoi. Si la cause de l’échec n’est pas réglée, elle échouera de nouveau.'
                         : 'Une étape déjà programmée garde sa date (au plus tôt dans une minute) ; sinon, l’étape suivante est programmée selon son délai habituel, pendant vos heures d’envoi.')
-                      : confirmAction?.type === 'skipStep'
-                        ? 'Cette étape ne sera pas envoyée pour ce candidat. La séquence passera directement à l\'étape suivante.'
-                        : `${confirmName} ne recevra plus de messages tant que vous ne reprenez pas sa séquence. Ses étapes prévues gardent leur date.`}
+                      : 'Cette étape ne sera pas envoyée pour ce candidat. La séquence passera directement à l\'étape suivante.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>
-            {confirmAction?.type === 'stop' || confirmAction?.type === 'bulkStop'
-              ? 'Laisser en cours'
-              : confirmAction?.type === 'skipStep'
-                ? "Garder l'étape"
-                : 'Annuler'}
+            {confirmAction?.type === 'skipStep' ? "Garder l'étape" : 'Annuler'}
           </AlertDialogCancel>
           <AlertDialogAction
             className={['markReplied', 'reEnroll', 'resume', 'bulkResume'].includes(confirmAction?.type || '') ? undefined : 'bg-destructive'}
@@ -1399,8 +1526,7 @@ export const SequenceEnrollmentsPanel: React.FC<SequenceEnrollmentsPanelProps> =
               : confirmAction?.type === 'reEnroll' ? 'Relancer'
               : confirmAction?.type === 'resume' ? (confirmRetriesFailedStep ? 'Réessayer' : 'Reprendre')
               : confirmAction?.type === 'bulkResume' ? 'Reprendre'
-              : confirmAction?.type === 'skipStep' ? 'Sauter l\'étape'
-              : 'Mettre en pause'}
+              : 'Sauter l\'étape'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
