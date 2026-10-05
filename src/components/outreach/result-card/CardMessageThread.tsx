@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { emitQuotaAction } from '@/lib/quotaEvents';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Link } from 'react-router-dom';
 import { MessageSquare, Loader2, Send } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -142,8 +143,13 @@ export const CardMessageThread: React.FC<CardMessageThreadProps> = ({
     return (
       <EmptyState
         className={emptyClass}
-        title="Messages indisponibles"
-        description="Aucun compte LinkedIn n'est associé à ce candidat. L'historique apparaît après une séquence ou un InMail envoyé depuis votre compte."
+        title="Aucun compte LinkedIn utilisable"
+        description="Reliez ou reconnectez votre compte LinkedIn pour lire et envoyer des messages à ce candidat."
+        action={(
+          <Button asChild variant="outline" size="sm">
+            <Link to="/settings/account/connections">Ouvrir mes connexions</Link>
+          </Button>
+        )}
       />
     );
   }

@@ -36,6 +36,7 @@ import { ManualContactsEditor } from './candidate-detail/ManualContactsEditor';
 import { CardMessageThread } from '@/components/outreach/result-card/CardMessageThread';
 import { useAgent } from '@/contexts/AgentContext';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useMyLinkedInAccountId } from '@/hooks/useMyLinkedInAccountId';
 import { missionIdOfJob } from '@/hooks/useEnrollmentPreview';
 import { getCandidateContacts, type CandidateContacts } from '@/lib/candidateContacts';
 import { toast } from 'sonner';
@@ -85,6 +86,8 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
   const [loading, setLoading] = useState(false);
   const { openAgent } = useAgent();
   const { organizationId } = useOrganization();
+  // Compte d'envoi du candidat (séquences, InMails), sinon le compte relié de la personne : l'onglet Messages s'ouvre aussi pour un candidat contacté à la main.
+  const myLinkedInAccountId = useMyLinkedInAccountId();
 
   const fullProfile = useCandidateFullProfile(candidate.candidateId, candidate.linkedin);
   const [profileSnapshot, setProfileSnapshot] = useState<any | null>(candidate.linkedinProfileData ?? null);
@@ -389,7 +392,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
       icon: MessageSquare,
       content: (
         <CardMessageThread
-          accountId={fullProfile.accountId || undefined}
+          accountId={fullProfile.accountId || myLinkedInAccountId || undefined}
           profileId={candidate.candidateId}
           profileName={candidate.name}
           projectId={missionIdOfJob(candidate.jobId)}
@@ -440,7 +443,7 @@ export const CandidateDetailModal: React.FC<CandidateDetailModalProps> = ({
     },
   ], [
     candidate, candidateWithProfileData, enrichedProfile, fullProfile, notes,
-    reminders, loading, activeRemindersCount, openAgent, organizationId,
+    reminders, loading, activeRemindersCount, openAgent, organizationId, myLinkedInAccountId,
   ]);
 
   return (
