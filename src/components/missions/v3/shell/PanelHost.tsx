@@ -15,7 +15,7 @@ import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { useMissionV3 } from '../MissionV3Context';
 import { CandidatePanel } from '../panels/CandidatePanel';
 import { ContactPanel } from '../panels/ContactPanel';
-import { useSourcingPanelSlot } from './sourcingPanelSlot';
+import { useSourcingPanelSlot } from './sourcingPanelContext';
 import { PANEL_FULLSCREEN_QUERY, useMediaQuery } from './useMediaQuery';
 
 const FOCUSABLE =

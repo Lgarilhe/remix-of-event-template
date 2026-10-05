@@ -893,15 +893,17 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
                   <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                     <span title="Évalué sur les données de la liste de recherche">Évaluation rapide</span>
                     {accountId && onDeepScore && (
-                      <button
+                      <Button
                         type="button"
+                        variant="link"
+                        size="xs"
                         onClick={runDeepScore}
                         disabled={isEnriching}
                         title={isEnriching ? 'Chargement du profil en cours' : 'Ré-évaluer sur le profil complet (peut consommer 1 visite de profil LinkedIn)'}
-                        className="rounded-sm text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-auto p-0 text-xs font-normal text-brand"
                       >
                         Analyse complète
-                      </button>
+                      </Button>
                     )}
                   </span>
                 )}

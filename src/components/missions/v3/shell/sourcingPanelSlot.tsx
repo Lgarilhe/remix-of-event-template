@@ -5,23 +5,8 @@
 // fiche par un portail (React garde ainsi ses données à jour).
 // Hors de la coquille (anciennes pages), le contexte est absent : la fiche
 // garde sa fenêtre latérale d'origine.
-import { createContext, useCallback, useContext, useId, useMemo, useState, type ReactNode } from 'react';
-
-interface SourcingPanelSlotValue {
-  /** Identifiant du titre de la fiche (focus et nom accessible du panneau). */
-  titleId: string;
-  /** Une fiche du Sourcing est ouverte. */
-  open: boolean;
-  /** Ferme la fiche (Échap, croix). */
-  onClose: (() => void) | null;
-  /** Conteneur du panneau, présent une fois le panneau affiché. */
-  element: HTMLElement | null;
-  setElement: (element: HTMLElement | null) => void;
-  /** Réserve le panneau ; rend la fonction qui le libère. */
-  claim: (onClose: () => void) => () => void;
-}
-
-const SourcingPanelSlotContext = createContext<SourcingPanelSlotValue | null>(null);
+import { useCallback, useId, useMemo, useState, type ReactNode } from 'react';
+import { SourcingPanelSlotContext, type SourcingPanelSlotValue } from './sourcingPanelContext';
 
 export function SourcingPanelSlotProvider({ children }: { children: ReactNode }) {
   const titleId = useId();
@@ -41,9 +26,4 @@ export function SourcingPanelSlotProvider({ children }: { children: ReactNode })
     [titleId, onClose, element, claim],
   );
   return <SourcingPanelSlotContext.Provider value={value}>{children}</SourcingPanelSlotContext.Provider>;
-}
-
-/** null hors de la coquille de la nouvelle page mission. */
-export function useSourcingPanelSlot(): SourcingPanelSlotValue | null {
-  return useContext(SourcingPanelSlotContext);
 }

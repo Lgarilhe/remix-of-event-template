@@ -36,7 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ModelPicker } from '@/components/ai/ModelPicker';
 import { SourcingResultsV3, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
 import { retainedStageLabel, sourcingGroupOf, sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
-import { useSourcingPanelSlot } from '@/components/missions/v3/shell/sourcingPanelSlot';
+import { useSourcingPanelSlot } from '@/components/missions/v3/shell/sourcingPanelContext';
 
 interface SearchResultsPanelProps {
   // Results

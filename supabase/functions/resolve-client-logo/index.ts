@@ -74,6 +74,26 @@ function isSafeLogoUrl(raw: string): boolean {
   }
 }
 
+interface ClientDetails {
+  name?: string;
+  website?: string;
+  logo_url?: string;
+  logo_checked_at?: string;
+  [key: string]: unknown;
+}
+
+interface JobDetailsLike {
+  client?: ClientDetails;
+  [key: string]: unknown;
+}
+
+interface ProjectRow {
+  id: string;
+  organization_id?: string;
+  client_name: string | null;
+  job_details: JobDetailsLike | null;
+}
+
 interface ApolloOrg {
   name?: string;
   logo_url?: string | null;
@@ -149,8 +169,8 @@ Deno.serve(async (req) => {
       return json({ error: "Forbidden" }, 403);
     }
 
-    const details = (project.job_details ?? {}) as Record<string, any>;
-    const client = (details.client ?? {}) as Record<string, any>;
+    const details: JobDetailsLike = (project as ProjectRow).job_details ?? {};
+    const client: ClientDetails = details.client ?? {};
     const clientName = String(client.name || project.client_name || "").trim();
     if (!clientName) return json({ status: "no_client" });
     if (client.logo_url) return json({ status: "already" });
@@ -163,7 +183,7 @@ Deno.serve(async (req) => {
       .from("sourcing_projects")
       .select("id, client_name, job_details")
       .eq("organization_id", organizationId);
-    const siblings = (candidates ?? []).filter((row: any) =>
+    const siblings = ((candidates ?? []) as ProjectRow[]).filter((row) =>
       normalizeName(row.job_details?.client?.name || row.client_name) === wanted
     );
 
@@ -172,7 +192,7 @@ Deno.serve(async (req) => {
     if (apollo?.apiKey) {
       try {
         const domain = normalizeDomain(client.website) ??
-          siblings.map((row: any) => normalizeDomain(row.job_details?.client?.website)).find(Boolean) ?? null;
+          siblings.map((row) => normalizeDomain(row.job_details?.client?.website)).find(Boolean) ?? null;
         logoUrl = await findApolloLogo(apollo.apiKey, clientName, domain);
       } catch (error) {
         console.warn("[resolve-client-logo] Apollo failed:", error);
@@ -205,8 +225,8 @@ Deno.serve(async (req) => {
 
     const now = new Date().toISOString();
     for (const row of siblings) {
-      const rowDetails = (row.job_details ?? {}) as Record<string, any>;
-      const rowClient = { ...(rowDetails.client ?? {}) };
+      const rowDetails: JobDetailsLike = row.job_details ?? {};
+      const rowClient: ClientDetails = { ...(rowDetails.client ?? {}) };
       if (rowClient.logo_url) continue;
       if (storedUrl) rowClient.logo_url = storedUrl;
       rowClient.logo_checked_at = now;
